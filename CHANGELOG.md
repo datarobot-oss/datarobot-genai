@@ -4,10 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.82
+## 0.15.85
 - Expanded the `e2e-dragent-llmgw` job in `.github/workflows/e2e.yml` to cover multiple model providers. Matrix is now loaded from a new `e2e-tests/llmgw_matrix.yaml` file (5 agents × 4 models). The `default` model (bedrock) runs the full `dragent_tests` suite; other models (gpt, sonnet, gemini) run `test_streaming.py` only as a fast cross-model smoke check. This pre-empts model-specific framework bugs (like the LlamaIndex `tool_choice` issue below) before they reach downstream consumers.
 - Tightened the planner/writer system prompts in `e2e-tests/dragent/{langgraph,crewai,llamaindex,nat}/` to reduce input tokens, output verbosity, and TTFT during e2e runs. Dropped the `make_system_prompt` boilerplate wrapper from test agents and shortened outputs to "1 bullet" + "1 short sentence". Test contracts (tool calls, HITL interrupt, multi-agent handoff) are preserved.
 - `llama_index/llm.py`: Fixed `DataRobotLiteLLM` sending `tool_choice` and `parallel_tool_calls` in requests when no tools are provided. LlamaIndex's `_prepare_chat_with_tools` unconditionally emits both fields, which the DR LLM gateway rejects for Azure/GPT backends. Override strips both from the request when `tools` is absent.
+
+## 0.15.84
+- Refactored DataRobot feature flag logic and moved it to drmcpbase
+- Added datarobot api client with async API in drmcpbase
+
+## 0.15.83
+- `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
+
+## 0.15.82
+- `drmcp`: removed the `memory_management` package (`MemoryManager`, S3-backed agent storage, and memory MCP tools), the `enable_memory_management` / `ENABLE_MEMORY_MANAGEMENT` config flag, memory-aware tool wrapping (`agent_id` / `storage_id` injection from `X-Agent-Id`), and the `/agent/...` storage REST routes.
+- `drtools`: removed AWS/S3 credential fields and helpers from `MCPServerCredentials` (`aws_credential`, `aws_access_key_id`, `has_aws_credentials`, `get_aws_credentials`, `aws_predictions_s3_*`); they were only used by memory management.
+- `drmcp` extra: dropped the `boto3` dependency.
 
 ## 0.15.81
 `drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
