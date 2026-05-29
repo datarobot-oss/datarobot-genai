@@ -64,18 +64,9 @@ from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_v
 from pydantic import Field
 from pydantic import field_validator
 
-# Resolver helpers live in core/ so telemetry_agent can reuse them without
-# importing from nat/. Keep underscore aliases so this module's existing
-# Field(default_factory=…) bindings stay stable.
-from datarobot_genai.core.datarobot_otel import (
-    resolve_api_key_from_env as _resolve_api_key_from_env,
-)
-from datarobot_genai.core.datarobot_otel import (
-    resolve_entity_id_from_env as _resolve_entity_id_from_env,
-)
-from datarobot_genai.core.datarobot_otel import (
-    resolve_otel_endpoint_from_env as _resolve_otel_endpoint_from_env,
-)
+from datarobot_genai.core.datarobot_otel import resolve_api_key_from_env
+from datarobot_genai.core.datarobot_otel import resolve_entity_id_from_env
+from datarobot_genai.core.datarobot_otel import resolve_otel_endpoint_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +85,7 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     """
 
     endpoint: str = Field(
-        default_factory=_resolve_otel_endpoint_from_env,
+        default_factory=resolve_otel_endpoint_from_env,
         description=(
             "OTLP/HTTP endpoint for the DataRobot OTel collector. If "
             "omitted, derived from DATAROBOT_PUBLIC_API_ENDPOINT / "
@@ -103,14 +94,14 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
         ),
     )
     datarobot_api_key: SerializableSecretStr = Field(
-        default_factory=lambda: SerializableSecretStr(_resolve_api_key_from_env()),
+        default_factory=lambda: SerializableSecretStr(resolve_api_key_from_env()),
         description=(
             "DataRobot API key sent as the X-DataRobot-Api-Key header. If "
             "omitted, derived from the DATAROBOT_API_TOKEN env var."
         ),
     )
     datarobot_entity_id: str = Field(
-        default_factory=_resolve_entity_id_from_env,
+        default_factory=resolve_entity_id_from_env,
         description=(
             "DataRobot entity identifier sent as the X-DataRobot-Entity-Id "
             "header. Must use the prefixed form 'deployment-<id>' (e.g. "
