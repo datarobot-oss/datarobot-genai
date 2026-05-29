@@ -47,11 +47,9 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-router
     primary:
-      use_datarobot_llm_gateway: true
-      llm_default_model: azure/gpt-5-mini-2025-08-07
+      llm_default_model: datarobot/azure/gpt-5-mini-2025-08-07
     fallbacks:
-      - use_datarobot_llm_gateway: true
-        llm_default_model: anthropic/claude-opus-4-20250514
+      - llm_default_model: datarobot/anthropic/claude-opus-4-20250514
     num_retries: 3
 ```
 
@@ -68,8 +66,7 @@ Each `primary`/`fallbacks[*]` entry uses the same core LLM config shape.
 
 | Field | Meaning |
 |---|---|
-| `use_datarobot_llm_gateway` | `true` routes via DataRobot LLM Gateway; `false` uses deployment/NIM/external based on ids. |
-| `llm_default_model` | Model id for that entry (for example `azure/gpt-5-mini-2025-08-07`). |
+| `llm_default_model` | Model id for that entry. Prefix with `datarobot/` to route via DataRobot LLM Gateway (for example `datarobot/azure/gpt-5-mini-2025-08-07`); omit the prefix for external providers. |
 | `llm_deployment_id` | DataRobot deployment id for deployment routing. |
 | `nim_deployment_id` | DataRobot deployment id for NIM routing. |
 | `datarobot_endpoint` | Optional per-entry endpoint override (usually from env). |
@@ -90,11 +87,9 @@ llms:
   datarobot_llm:
     _type: datarobot-llm-router
     primary:
-      use_datarobot_llm_gateway: true
-      llm_default_model: "your-primary-model-id"
+      llm_default_model: "datarobot/your-primary-model-id"
     fallbacks:
-      - use_datarobot_llm_gateway: true
-        llm_default_model: "your-fallback-model-id"
+      - llm_default_model: "datarobot/your-fallback-model-id"
     num_retries: 1
 
 workflow:
@@ -124,13 +119,11 @@ from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.langgraph.llm import get_router_llm
 
 primary = LLMConfig(
-    use_datarobot_llm_gateway=True,
-    llm_default_model="azure/gpt-5-mini-2025-08-07",
+    llm_default_model="datarobot/azure/gpt-5-mini-2025-08-07",
 )
 fallbacks = [
     LLMConfig(
-        use_datarobot_llm_gateway=True,
-        llm_default_model="anthropic/claude-opus-4-20250514",
+        llm_default_model="datarobot/anthropic/claude-opus-4-20250514",
     )
 ]
 

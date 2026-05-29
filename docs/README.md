@@ -56,10 +56,9 @@ The examples and `workflow.yaml` expect the variables below; see [LLM configurat
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | — | Your DataRobot API token. |
 | `DATAROBOT_ENDPOINT` | `https://app.datarobot.com/api/v2` | Base URL for your DataRobot API requests. |
-| `USE_DATAROBOT_LLM_GATEWAY` | `true` | Set to `true` to use the DataRobot LLM Gateway. |
-| `LLM_DEPLOYMENT_ID` | — | Set this to target a specific LLM deployment when the gateway is off. |
-| `NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment when the gateway is off. |
-| `LLM_DEFAULT_MODEL` | `datarobot-deployed-llm` | Default model name you run against. |
+| `LLM_DEPLOYMENT_ID` | — | Set this to target a specific LLM deployment. |
+| `NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment. |
+| `LLM_DEFAULT_MODEL` | — | Default model name. Prefix with `datarobot/` to route via the DataRobot LLM Gateway. |
 | `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` | `20` | Maximum number of prior messages the client keeps in history. |
 
 ## License
