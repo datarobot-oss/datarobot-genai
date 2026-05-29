@@ -35,7 +35,6 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
         datarobot_api_token="env-token",
         llm_deployment_id=None,
         nim_deployment_id=None,
-        use_datarobot_llm_gateway=True,
         llm_default_model=None,
     )
     monkeypatch.setattr(config_mod, "Config", lambda: env)
@@ -50,8 +49,8 @@ def _make_chunk(content: str) -> Any:
 def test_get_router_llm_returns_llm_instance() -> None:
     from datarobot_genai.crewai.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    _fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_deployment_id="dep-1")
+    _fallback = LLMConfig(llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -70,8 +69,8 @@ def test_router_llm_call_streams_and_accumulates() -> None:
     mock_router.completion.return_value = iter(chunks)
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     result = llm.call(messages=[{"role": "user", "content": "hi"}])
@@ -89,8 +88,8 @@ def test_router_llm_call_invokes_callbacks_per_chunk() -> None:
     mock_router.completion.return_value = iter(chunks)
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     callback = MagicMock()
@@ -111,8 +110,8 @@ def test_router_llm_call_emits_llm_stream_chunk_events() -> None:
     mock_router.completion.return_value = iter(chunks)
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     emitted: list[LLMStreamChunkEvent] = []
@@ -147,8 +146,8 @@ async def test_router_llm_acall_streams_and_accumulates() -> None:
     mock_router.acompletion = fake_acompletion
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_deployment_id="dep-1")
+        fb = LLMConfig(llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [fb])
 
     result = await llm.acall(messages=[{"role": "user", "content": "hi"}])

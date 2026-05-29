@@ -187,7 +187,7 @@ async def test_datarobot_nim_llamaindex():
 
 async def test_datarobot_llm_component_langchain_use_gateway():
     llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", model_name="azure/gpt-4o-2024-11-20"
+        api_key="some_token", model_name="datarobot/azure/gpt-4o-2024-11-20"
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
@@ -196,16 +196,16 @@ async def test_datarobot_llm_component_langchain_use_gateway():
 
 
 @pytest.mark.parametrize(
-    "use_datarobot_llm_gateway,llm_deployment_id,nim_deployment_id",
+    "model_name,llm_deployment_id,nim_deployment_id",
     [
-        pytest.param(True, None, None, id="llm_gateway"),
-        pytest.param(False, "123", None, id="llm_deployment"),
-        pytest.param(False, None, "123", id="nim_deployment"),
-        pytest.param(False, None, None, id="external"),
+        pytest.param("datarobot/anthropic/claude-3", None, None, id="llm_gateway"),
+        pytest.param("anthropic/claude-3", "123", None, id="llm_deployment"),
+        pytest.param("anthropic/claude-3", None, "123", id="nim_deployment"),
+        pytest.param("anthropic/claude-3", None, None, id="external"),
     ],
 )
 async def test_datarobot_llm_component_langchain(
-    use_datarobot_llm_gateway, llm_deployment_id, nim_deployment_id
+    model_name, llm_deployment_id, nim_deployment_id
 ):
     with patch.dict(
         os.environ,
@@ -216,8 +216,7 @@ async def test_datarobot_llm_component_langchain(
         clear=False,
     ):
         llm_config = DataRobotLLMComponentModelConfig(
-            model_name="anthropic/claude-3",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+            model_name=model_name,
             headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
@@ -267,16 +266,16 @@ async def test_datarobot_llm_component_langchain(
 
 
 @pytest.mark.parametrize(
-    "use_datarobot_llm_gateway,llm_deployment_id,nim_deployment_id",
+    "model_name,llm_deployment_id,nim_deployment_id",
     [
-        pytest.param(True, None, None, id="llm_gateway"),
-        pytest.param(False, "123", None, id="llm_deployment"),
-        pytest.param(False, None, "123", id="nim_deployment"),
-        pytest.param(False, None, None, id="external"),
+        pytest.param("datarobot/anthropic/claude-3", None, None, id="llm_gateway"),
+        pytest.param("anthropic/claude-3", "123", None, id="llm_deployment"),
+        pytest.param("anthropic/claude-3", None, "123", id="nim_deployment"),
+        pytest.param("anthropic/claude-3", None, None, id="external"),
     ],
 )
 async def test_datarobot_llm_component_crewai(
-    use_datarobot_llm_gateway, llm_deployment_id, nim_deployment_id
+    model_name, llm_deployment_id, nim_deployment_id
 ):
     with patch.dict(
         os.environ,
@@ -287,8 +286,7 @@ async def test_datarobot_llm_component_crewai(
         clear=False,
     ):
         llm_config = DataRobotLLMComponentModelConfig(
-            model_name="anthropic/claude-3",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+            model_name=model_name,
             headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
@@ -344,16 +342,16 @@ async def test_datarobot_llm_component_crewai(
 
 
 @pytest.mark.parametrize(
-    "use_datarobot_llm_gateway,llm_deployment_id,nim_deployment_id",
+    "model_name,llm_deployment_id,nim_deployment_id",
     [
-        pytest.param(True, None, None, id="llm_gateway"),
-        pytest.param(False, "123", None, id="llm_deployment"),
-        pytest.param(False, None, "123", id="nim_deployment"),
-        pytest.param(False, None, None, id="external"),
+        pytest.param("datarobot/azure/gpt-5-mini", None, None, id="llm_gateway"),
+        pytest.param("azure/gpt-5-mini", "123", None, id="llm_deployment"),
+        pytest.param("azure/gpt-5-mini", None, "123", id="nim_deployment"),
+        pytest.param("azure/gpt-5-mini", None, None, id="external"),
     ],
 )
 async def test_datarobot_llm_component_llamaindex(
-    use_datarobot_llm_gateway, llm_deployment_id, nim_deployment_id
+    model_name, llm_deployment_id, nim_deployment_id
 ):
     # Pin endpoint so test is independent of .env (e.g. DATAROBOT_ENDPOINT)
     with patch.dict(
@@ -365,8 +363,7 @@ async def test_datarobot_llm_component_llamaindex(
         clear=False,
     ):
         llm_config = DataRobotLLMComponentModelConfig(
-            model_name="azure/gpt-5-mini",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+            model_name=model_name,
             headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,

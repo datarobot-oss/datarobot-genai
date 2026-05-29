@@ -26,7 +26,6 @@ from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_model_name
 from datarobot_genai.core.config import default_nim_deployment_id
-from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 from datarobot_genai.core.config import deployment_url
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.config import llm_gateway_url
@@ -39,7 +38,6 @@ def _make_config(**overrides: object) -> Config:
         "datarobot_api_token": None,
         "llm_deployment_id": None,
         "nim_deployment_id": None,
-        "use_datarobot_llm_gateway": True,
         "llm_default_model": None,
     }
     defaults.update(overrides)
@@ -69,32 +67,38 @@ def test_get_max_history_messages_default_env_positive(monkeypatch: pytest.Monke
 # --- Config.get_llm_type ---
 
 
-def test_get_llm_type_returns_gateway_when_use_gateway_true() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=True)
+def test_get_llm_type_returns_gateway_when_model_has_datarobot_prefix() -> None:
+    cfg = _make_config(llm_default_model="datarobot/azure/gpt-4o")
     assert cfg.get_llm_type() == LLMType.GATEWAY
 
 
-def test_get_llm_type_returns_deployment_when_gateway_false_and_deployment_id_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False, llm_deployment_id="dep-123")
+def test_get_llm_type_returns_deployment_when_deployment_id_set() -> None:
+    cfg = _make_config(llm_deployment_id="dep-123")
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
 
-def test_get_llm_type_returns_nim_when_gateway_false_and_nim_id_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False, nim_deployment_id="nim-456")
+def test_get_llm_type_returns_nim_when_nim_id_set() -> None:
+    cfg = _make_config(nim_deployment_id="nim-456")
     assert cfg.get_llm_type() == LLMType.NIM
 
 
-def test_get_llm_type_returns_external_when_nothing_else_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False)
+def test_get_llm_type_returns_external_when_model_has_no_datarobot_prefix() -> None:
+    cfg = _make_config(llm_default_model="azure/gpt-4o")
+    assert cfg.get_llm_type() == LLMType.EXTERNAL
+
+
+def test_get_llm_type_returns_external_when_no_model_set() -> None:
+    cfg = _make_config()
     assert cfg.get_llm_type() == LLMType.EXTERNAL
 
 
 def test_get_llm_type_deployment_takes_priority_over_nim() -> None:
-    cfg = _make_config(
-        use_datarobot_llm_gateway=False,
-        llm_deployment_id="dep-123",
-        nim_deployment_id="nim-456",
-    )
+    cfg = _make_config(llm_deployment_id="dep-123", nim_deployment_id="nim-456")
+    assert cfg.get_llm_type() == LLMType.DEPLOYMENT
+
+
+def test_get_llm_type_deployment_takes_priority_over_gateway_model() -> None:
+    cfg = _make_config(llm_deployment_id="dep-123", llm_default_model="datarobot/azure/gpt-4o")
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
 
@@ -126,21 +130,6 @@ def test_default_model_name_returns_none_when_unset() -> None:
     cfg = _make_config(llm_default_model=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_model_name() is None
-
-
-# --- default_use_datarobot_llm_gateway ---
-
-
-def test_default_use_datarobot_llm_gateway_true_by_default() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=True)
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_use_datarobot_llm_gateway() is True
-
-
-def test_default_use_datarobot_llm_gateway_respects_config() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False)
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_use_datarobot_llm_gateway() is False
 
 
 # --- deployment_url (pure function) ---
