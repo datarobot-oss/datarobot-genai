@@ -154,7 +154,7 @@ async def test_add_items_item_user_id_beats_configured_user_id() -> None:
 async def test_add_items_injects_expiration_date_from_default_ttl() -> None:
     # GIVEN an editor configured with a positive TTL (e.g. AGENT_MEMORY_TTL_SECONDS = 1 day).
     mem0 = FakeMem0Api()
-    editor = DRMem0Editor(FakeMem0Client(mem0), default_ttl_seconds=86_400)
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=86_400)
     item = MemoryItem(
         conversation=[{"role": "user", "content": "remember Python"}],
         user_id="session-user-123",
@@ -196,7 +196,7 @@ async def test_add_items_omits_expiration_date_when_no_default_ttl() -> None:
 async def test_add_items_treats_ttl_zero_as_no_expiration() -> None:
     # GIVEN an editor explicitly configured with ttl=0 (the "no expiration" opt-out).
     mem0 = FakeMem0Api()
-    editor = DRMem0Editor(FakeMem0Client(mem0), default_ttl_seconds=0)
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=0)
     item = MemoryItem(
         conversation=[{"role": "user", "content": "remember Python"}],
         user_id="session-user-123",
@@ -212,7 +212,7 @@ async def test_add_items_treats_ttl_zero_as_no_expiration() -> None:
 async def test_add_items_caller_supplied_expiration_date_beats_default_ttl() -> None:
     # GIVEN an editor with a configured TTL and a per-call expiration_date override.
     mem0 = FakeMem0Api()
-    editor = DRMem0Editor(FakeMem0Client(mem0), default_ttl_seconds=86_400)
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=86_400)
     item = MemoryItem(
         conversation=[{"role": "user", "content": "remember Python"}],
         user_id="session-user-123",
@@ -407,7 +407,7 @@ async def test_registered_memory_client_forwards_default_ttl_to_editor(
         # THEN the editor stores the TTL so subsequent add_items calls inject
         # expiration_date — without this hop the config value would be inert.
         assert isinstance(editor, DRMem0Editor)
-        assert editor._default_ttl_seconds == 12_345
+        assert editor._ttl_seconds == 12_345
 
 
 async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatch: Any) -> None:

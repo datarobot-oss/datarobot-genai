@@ -42,7 +42,6 @@ from datetime import timedelta
 from typing import Any
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
-from datarobot.core.config import getenv
 from nat.builder.builder import Builder
 from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
@@ -64,6 +63,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
     """
 
     mem0_api_key: str | None = None
+    agent_memory_ttl_seconds: int | None = None
 
 
 def _get_default_mem0_api_key() -> str | None:
@@ -71,28 +71,7 @@ def _get_default_mem0_api_key() -> str | None:
 
 
 def _get_default_ttl_seconds() -> int | None:
-    """Read ``AGENT_MEMORY_TTL_SECONDS`` from env or DR runtime parameters.
-
-    Uses ``datarobot.core.config.getenv`` (not ``os.getenv``) so the
-    DataRobot ``MLOPS_RUNTIME_PARAM_AGENT_MEMORY_TTL_SECONDS`` runtime
-    parameter set by ``infra/agent.py`` is honored when the agent runs
-    inside DRUM. The env-var name is fixed at ``AGENT_MEMORY_TTL_SECONDS``
-    to match the runtime parameter key — going through a
-    ``DataRobotAppFrameworkBaseSettings`` field would require the env-var
-    name to match the field name (uppercased), which doesn't fit the
-    "default" qualifier the recipe applies on its side.
-    """
-    raw = getenv("AGENT_MEMORY_TTL_SECONDS")
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning(
-            "AGENT_MEMORY_TTL_SECONDS=%r is not an integer; treating as unset.",
-            raw,
-        )
-        return None
+    return Config().agent_memory_ttl_seconds
 
 
 def _ttl_to_expiration_date(ttl_seconds: int) -> str:
@@ -202,10 +181,10 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
     """Adapt ``Mem0Client`` to NAT's ``MemoryEditor`` interface."""
 
-    def __init__(self, client: Any, default_ttl_seconds: int | None = None) -> None:
+    def __init__(self, client: Any, ttl_seconds: int | None = None) -> None:
         self._client = client
         self._mem0 = client._memory
-        self._default_ttl_seconds = default_ttl_seconds
+        self._ttl_seconds = ttl_seconds
 
     async def add_items(self, items: list[MemoryItem], **kwargs: Any) -> None:
         add_kwargs = dict(kwargs)
@@ -219,8 +198,8 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         # the caller hasn't supplied one. Per-call overrides (e.g. via
         # ``add_params: {expiration_date: ...}`` in workflow.yaml) win so
         # special-case memories can opt out of or extend the default.
-        if "expiration_date" not in add_kwargs and self._default_ttl_seconds:
-            add_kwargs["expiration_date"] = _ttl_to_expiration_date(self._default_ttl_seconds)
+        if "expiration_date" not in add_kwargs and self._ttl_seconds:
+            add_kwargs["expiration_date"] = _ttl_to_expiration_date(self._ttl_seconds)
 
         coroutines = []
         for item in items:
@@ -359,7 +338,7 @@ async def dr_mem0_memory_client(
 
     editor: MemoryEditor = DRMem0Editor(
         _create_mem0_client(config, api_key),
-        default_ttl_seconds=config.default_ttl_seconds,
+        ttl_seconds=config.default_ttl_seconds,
     )
     if isinstance(config, RetryMixin):
         editor = patch_with_retry(
