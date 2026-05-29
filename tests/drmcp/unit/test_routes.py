@@ -13,18 +13,15 @@
 # limitations under the License.
 import json
 from collections.abc import Callable
-from datetime import datetime
 from http import HTTPStatus
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from botocore.exceptions import ClientError
 from fastmcp.prompts import Prompt
 
 from datarobot_genai import __version__ as drmcp_genai_version
-from datarobot_genai.drmcp.core.memory_management.manager import MemoryStorage
 from datarobot_genai.drmcp.core.routes import register_routes
 
 
@@ -38,26 +35,9 @@ class TestRoutesCoverage:
         self.mock_request.path_params = {}
         self.mock_request.json = AsyncMock()
 
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    def test_register_routes_without_memory_manager(self, mock_get_memory_manager):
-        """Test register_routes when memory manager is not available."""
-        mock_get_memory_manager.return_value = None
-
-        # This should not raise an exception
+    def test_register_routes(self):
+        """Test register_routes registers custom routes."""
         register_routes(self.mock_mcp)
-
-        # Verify that custom routes were registered
-        assert self.mock_mcp.custom_route.called
-
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    def test_register_routes_with_memory_manager(self, mock_get_memory_manager):
-        """Test register_routes when memory manager is available."""
-        mock_memory_manager = Mock()
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        register_routes(self.mock_mcp)
-
-        # Verify that custom routes were registered
         assert self.mock_mcp.custom_route.called
 
     def test_health_endpoint_registration(self):
@@ -78,43 +58,6 @@ class TestRoutesCoverage:
 
         # Test that health endpoint is registered
         assert "/" in registered_routes
-
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    def test_memory_manager_routes_registration(self, mock_get_memory_manager):
-        """Test that memory manager routes are registered when memory manager is available."""
-        mock_memory_manager = Mock()
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        # Create a mock that captures the route registration
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Check that memory manager routes are registered
-        memory_routes = [
-            "/agent/{agent_id}/storage/{label}",
-            "/agent/{agent_id}/storages",
-            "/agent/{agent_id}/storages/{storage_id}",
-            "/agent/{agent_id}",
-            "/agent/{agent_id}/storages/{storage_id}/activate",
-            "/agent/{agent_id}/active-storage",
-        ]
-
-        for route_pattern in memory_routes:
-            # Check if any registered route contains the pattern
-            found = any(
-                route_pattern in registered_route for registered_route in registered_routes.keys()
-            )
-            assert found, f"Memory manager route {route_pattern} not found in registered routes"
 
     def test_deployment_routes_registration(self):
         """Test that deployment routes are registered."""
@@ -280,139 +223,6 @@ class TestRoutesCoverage:
         assert response.status_code == 200
         assert "deleted successfully" in response.body.decode()
 
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_endpoints_execution(self, mock_get_memory_manager):
-        """Test memory manager endpoints execution."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.initialize_storage = AsyncMock(return_value="storage123")
-        mock_memory_manager.list_storages = AsyncMock(return_value=[])
-        mock_memory_manager.get_storage = AsyncMock(return_value=None)
-        mock_memory_manager.delete_storage = AsyncMock(return_value=True)
-        mock_memory_manager.delete_agent = AsyncMock(return_value=True)
-        mock_memory_manager.set_storage_id_for_agent = AsyncMock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(return_value="storage123")
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock()
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        # Create a mock that captures the route registration
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test initialize storage endpoint
-        self.mock_request.path_params = {"agent_id": "agent123", "label": "test_storage"}
-        self.mock_request.json.return_value = {"config": {"key": "value"}}
-
-        init_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/storage/{label}" in route:
-                init_handler = handler
-                break
-
-        if init_handler:
-            response = await init_handler(self.mock_request)
-            assert response.status_code == 200
-
-        # Test list storages endpoint
-        self.mock_request.path_params = {"agent_id": "agent123"}
-
-        list_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/storages" in route and "{storage_id}" not in route:
-                list_handler = handler
-                break
-
-        if list_handler:
-            response = await list_handler(self.mock_request)
-            assert response.status_code == 200
-
-        # Test get storage endpoint
-        self.mock_request.path_params = {"agent_id": "agent123", "storage_id": "storage123"}
-
-        get_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/storages/{storage_id}" in route and "activate" not in route:
-                get_handler = handler
-                break
-
-        if get_handler:
-            response = await get_handler(self.mock_request)
-            # The handler might return 200 or 404 depending on the mock setup
-            assert response.status_code in [200, 404]
-
-        # Test delete storage endpoint
-        delete_storage_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/storages/{storage_id}" in route and "activate" not in route:
-                # This should be the DELETE handler
-                delete_storage_handler = handler
-                break
-
-        if delete_storage_handler:
-            response = await delete_storage_handler(self.mock_request)
-            assert response.status_code == 200
-
-        # Test delete agent endpoint
-        self.mock_request.path_params = {"agent_id": "agent123"}
-
-        delete_agent_handler = None
-        for route, handler in registered_routes.items():
-            if route == "/agent/{agent_id}":  # Exact match for delete agent
-                delete_agent_handler = handler
-                break
-
-        if delete_agent_handler:
-            response = await delete_agent_handler(self.mock_request)
-            assert response.status_code == 200
-
-        # Test set active storage endpoint
-        self.mock_request.path_params = {"agent_id": "agent123", "storage_id": "storage123"}
-
-        set_active_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/storages/{storage_id}/activate" in route:
-                set_active_handler = handler
-                break
-
-        if set_active_handler:
-            response = await set_active_handler(self.mock_request)
-            assert response.status_code == 404  # Storage not found
-
-        # Test get active storage endpoint
-        self.mock_request.path_params = {"agent_id": "agent123"}
-
-        get_active_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/active-storage" in route and "activate" not in route:
-                get_active_handler = handler
-                break
-
-        if get_active_handler:
-            response = await get_active_handler(self.mock_request)
-            assert response.status_code == 200
-
-        # Test clear active storage endpoint
-        clear_active_handler = None
-        for route, handler in registered_routes.items():
-            if "/agent/{agent_id}/active-storage" in route and "activate" not in route:
-                # This should be the DELETE handler
-                clear_active_handler = handler
-                break
-
-        if clear_active_handler:
-            response = await clear_active_handler(self.mock_request)
-            assert response.status_code == 200
-
 
 class TestRoutesAdditionalCoverage:
     """Additional test cases for route handlers in routes.py."""
@@ -436,89 +246,6 @@ class TestRoutesAdditionalCoverage:
             return decorator
 
         self.mock_mcp.custom_route = mock_custom_route
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_storage_found_scenarios(self, mock_get_memory_manager):
-        """Test memory manager endpoints when storage is found."""
-        # Create a mock storage object
-        mock_storage = MemoryStorage(
-            id="storage123",
-            agent_identifier="agent123",
-            label="test_storage",
-            created_at=datetime.now(),
-            storage_config={"key": "value"},
-        )
-
-        mock_memory_manager = Mock()
-        mock_memory_manager.initialize_storage = AsyncMock(return_value="storage123")
-        mock_memory_manager.list_storages = AsyncMock(return_value=[mock_storage])
-        mock_memory_manager.get_storage = AsyncMock(return_value=mock_storage)
-        mock_memory_manager.delete_storage = AsyncMock(return_value=True)
-        mock_memory_manager.delete_agent = AsyncMock(return_value=True)
-        mock_memory_manager.set_storage_id_for_agent = AsyncMock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(return_value="storage123")
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock()
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        register_routes(self.mock_mcp)
-
-        # Test list storages with data
-        self.mock_request.path_params = {"agent_id": "agent123"}
-        list_handler = self.registered_routes.get("/agent/{agent_id}/storages")
-        response = await list_handler(self.mock_request)
-        assert response.status_code == 200
-        assert b"storage123" in response.body
-
-        # Test get storage found
-        self.mock_request.path_params = {"agent_id": "agent123", "storage_id": "storage123"}
-        get_handler = self.registered_routes.get("/agent/{agent_id}/storages/{storage_id}")
-        response = await get_handler(self.mock_request)
-        assert response.status_code == 200
-        assert b"storage123" in response.body
-
-        # Test set active storage
-        self.mock_request.path_params = {"agent_id": "agent123", "storage_id": "storage123"}
-        set_active_handler = self.registered_routes.get(
-            "/agent/{agent_id}/storages/{storage_id}/activate"
-        )
-        response = await set_active_handler(self.mock_request)
-        assert response.status_code == 200
-
-        # Test get active storage
-        self.mock_request.path_params = {"agent_id": "agent123"}
-        get_active_handler = self.registered_routes.get("/agent/{agent_id}/active-storage")
-        response = await get_active_handler(self.mock_request)
-        assert response.status_code == 200
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_client_error_scenarios(self, mock_get_memory_manager):
-        """Test memory manager endpoints with ClientError scenarios."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError({"Error": {"Code": "404", "Message": "Not found"}}, "GetItem")
-        )
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError(
-                {"Error": {"Code": "404", "Message": "Not found"}}, "DeleteItem"
-            )
-        )
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        register_routes(self.mock_mcp)
-
-        # Test get active storage with 404 error
-        self.mock_request.path_params = {"agent_id": "agent123"}
-        get_active_handler = self.registered_routes.get("/agent/{agent_id}/active-storage")
-        response = await get_active_handler(self.mock_request)
-        assert response.status_code == 404
-
-        # Test clear active storage with 404 error
-        self.mock_request.path_params = {"agent_id": "agent123"}
-        clear_handler = self.registered_routes.get("/agent/{agent_id}/active-storage")
-        response = await clear_handler(self.mock_request)
-        assert response.status_code == 404
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.routes.get_registered_tool_deployments")
@@ -557,25 +284,6 @@ class TestRoutesAdditionalCoverage:
         response = await delete_handler(self.mock_request)
         assert response.status_code == 500
 
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_storage_not_found_for_activation(self, mock_get_memory_manager):
-        """Test set active storage when storage is not found."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.get_storage = AsyncMock(return_value=None)
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        register_routes(self.mock_mcp)
-
-        # Test set active storage when storage not found
-        self.mock_request.path_params = {"agent_id": "agent123", "storage_id": "nonexistent"}
-        set_active_handler = self.registered_routes.get(
-            "/agent/{agent_id}/storages/{storage_id}/activate"
-        )
-        response = await set_active_handler(self.mock_request)
-        assert response.status_code == 404
-        assert b"Storage nonexistent not found" in response.body
-
 
 class TestRoutesSimpleFinal:
     """Simple test cases for route handlers in routes.py."""
@@ -587,17 +295,10 @@ class TestRoutesSimpleFinal:
         self.mock_request.path_params = {}
         self.mock_request.json = AsyncMock()
 
-    def test_register_routes_without_memory_manager(self):
-        """Test register_routes when memory manager is not available."""
-        with patch("datarobot_genai.drmcp.core.routes.get_memory_manager", return_value=None):
-            register_routes(self.mock_mcp)
-            assert self.mock_mcp.custom_route.called
-
-    def test_register_routes_with_memory_manager(self):
-        """Test register_routes when memory manager is available."""
-        with patch("datarobot_genai.drmcp.core.routes.get_memory_manager", return_value=Mock()):
-            register_routes(self.mock_mcp)
-            assert self.mock_mcp.custom_route.called
+    def test_register_routes(self):
+        """Test register_routes registers custom routes."""
+        register_routes(self.mock_mcp)
+        assert self.mock_mcp.custom_route.called
 
     @pytest.mark.asyncio
     async def test_health_endpoint_execution(self):
@@ -652,103 +353,6 @@ class TestRoutesSimpleFinal:
             b'{"deployments":[{"deploymentId":"deployment1","toolName":"tool1"},{"deploymentId":"deployment2","toolName":"tool2"}],"count":2}'
             == response.body
         )
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_endpoints_basic(self, mock_get_memory_manager):
-        """Test basic memory manager endpoints execution."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.initialize_storage = AsyncMock(return_value="storage123")
-        mock_memory_manager.list_storages = AsyncMock(return_value=[])
-        mock_memory_manager.get_storage = AsyncMock(return_value=None)
-        mock_memory_manager.delete_storage = AsyncMock(return_value=True)
-        mock_memory_manager.delete_agent = AsyncMock(return_value=True)
-        mock_memory_manager.set_storage_id_for_agent = AsyncMock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(return_value="storage123")
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock()
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test that routes were registered
-        assert len(registered_routes) > 0
-
-        # Test that memory manager routes are present
-        memory_routes = [route for route in registered_routes.keys() if "agent" in route]
-        assert len(memory_routes) > 0
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_endpoints_with_errors(self, mock_get_memory_manager):
-        """Test memory manager endpoints with error scenarios."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError({"Error": {"Code": "404", "Message": "Not found"}}, "GetObject")
-        )
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError({"Error": {"Code": "404", "Message": "Not found"}}, "GetObject")
-        )
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test that routes were registered
-        assert len(registered_routes) > 0
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_memory_manager")
-    async def test_memory_manager_endpoints_with_other_errors(self, mock_get_memory_manager):
-        """Test memory manager endpoints with other error scenarios."""
-        mock_memory_manager = Mock()
-        mock_memory_manager.get_active_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError(
-                {"Error": {"Code": "500", "Message": "Internal error"}}, "GetObject"
-            )
-        )
-        mock_memory_manager.clear_storage_id_for_agent = AsyncMock(
-            side_effect=ClientError(
-                {"Error": {"Code": "500", "Message": "Internal error"}}, "GetObject"
-            )
-        )
-        mock_get_memory_manager.return_value = mock_memory_manager
-
-        registered_routes = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered_routes[route_path] = handler
-                return handler
-
-            return decorator
-
-        self.mock_mcp.custom_route = mock_custom_route
-
-        register_routes(self.mock_mcp)
-
-        # Test that routes were registered
-        assert len(registered_routes) > 0
 
 
 class TestPromptTemplateRoutes:
