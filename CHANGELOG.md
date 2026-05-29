@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.0
+- Removed `USE_DATAROBOT_LLM_GATEWAY` / `use_datarobot_llm_gateway` config field. Gateway routing is now determined by model name prefix: a `llm_default_model` (or `model_name`) starting with `datarobot/` routes to the DataRobot LLM Gateway; any other model routes as external. **Breaking change**: update any config, workflow YAML, or Python code that sets `use_datarobot_llm_gateway=True` to instead prefix the model name with `datarobot/`.
+
 ## 0.15.85
 - Expanded the `e2e-dragent-llmgw` job in `.github/workflows/e2e.yml` to cover multiple model providers. Matrix is now loaded from a new `e2e-tests/llmgw_matrix.yaml` file (5 agents × 4 models). The `default` model (bedrock) runs the full `dragent_tests` suite; other models (gpt, sonnet, gemini) run `test_streaming.py` only as a fast cross-model smoke check. This pre-empts model-specific framework bugs (like the LlamaIndex `tool_choice` issue below) before they reach downstream consumers.
 - Tightened the planner/writer system prompts in `e2e-tests/dragent/{langgraph,crewai,llamaindex,nat}/` to reduce input tokens, output verbosity, and TTFT during e2e runs. Dropped the `make_system_prompt` boilerplate wrapper from test agents and shortened outputs to "1 bullet" + "1 short sentence". Test contracts (tool calls, HITL interrupt, multi-agent handoff) are preserved.
