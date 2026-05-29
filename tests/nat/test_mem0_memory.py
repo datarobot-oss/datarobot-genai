@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 import pytest
@@ -148,6 +149,103 @@ async def test_add_items_item_user_id_beats_configured_user_id() -> None:
             },
         }
     ]
+
+
+async def test_add_items_injects_expiration_date_from_default_ttl() -> None:
+    # GIVEN an editor configured with a positive TTL (e.g. AGENT_MEMORY_TTL_SECONDS = 1 day).
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=86_400)
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember Python"}],
+        user_id="session-user-123",
+    )
+
+    # WHEN the editor stores a memory.
+    from datetime import datetime
+    from datetime import timedelta
+
+    before = datetime.now(UTC)
+    await editor.add_items([item])
+    after = datetime.now(UTC)
+
+    # THEN the Mem0 call carries ``expiration_date = today + ttl`` as YYYY-MM-DD,
+    # so the platform's expiration sweep will delete the memory after that date.
+    valid_dates = {
+        (before + timedelta(seconds=86_400)).strftime("%Y-%m-%d"),
+        (after + timedelta(seconds=86_400)).strftime("%Y-%m-%d"),
+    }
+    assert mem0.add_calls[0]["kwargs"]["expiration_date"] in valid_dates
+
+
+async def test_add_items_omits_expiration_date_when_no_default_ttl() -> None:
+    # GIVEN an editor with no TTL configured (the default, backward-compatible path).
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0))
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember Python"}],
+        user_id="session-user-123",
+    )
+
+    # WHEN the editor stores a memory.
+    await editor.add_items([item])
+
+    # THEN no expiration_date is set — memories live forever, matching prior behavior.
+    assert "expiration_date" not in mem0.add_calls[0]["kwargs"]
+
+
+async def test_add_items_treats_ttl_zero_as_no_expiration() -> None:
+    # GIVEN an editor explicitly configured with ttl=0 (the "no expiration" opt-out).
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=0)
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember Python"}],
+        user_id="session-user-123",
+    )
+
+    # WHEN the editor stores a memory.
+    await editor.add_items([item])
+
+    # THEN ``expiration_date`` is unset — 0 means "no TTL", not "expire immediately".
+    assert "expiration_date" not in mem0.add_calls[0]["kwargs"]
+
+
+async def test_add_items_caller_supplied_expiration_date_beats_default_ttl() -> None:
+    # GIVEN an editor with a configured TTL and a per-call expiration_date override.
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), ttl_seconds=86_400)
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember Python"}],
+        user_id="session-user-123",
+    )
+
+    # WHEN the caller passes ``expiration_date`` explicitly (e.g. via
+    # ``add_params`` in workflow.yaml) for a memory that needs a longer life.
+    await editor.add_items([item], expiration_date="2099-12-31")
+
+    # THEN the explicit override wins so callers can keep special memories
+    # past the configured TTL.
+    assert mem0.add_calls[0]["kwargs"]["expiration_date"] == "2099-12-31"
+
+
+def test_ttl_to_expiration_date_returns_calendar_date() -> None:
+    # GIVEN a TTL in seconds.
+    # WHEN converted to mem0's expiration_date format.
+    from datetime import datetime
+    from datetime import timedelta
+
+    from datarobot_genai.nat.datarobot_mem0_memory import _ttl_to_expiration_date
+
+    before = datetime.now(UTC)
+    result = _ttl_to_expiration_date(7 * 86_400)
+    after = datetime.now(UTC)
+
+    # THEN the result is a YYYY-MM-DD string within +7 days of "now".
+    # Accept either bound to avoid flakiness when the test straddles UTC midnight.
+    valid_dates = {
+        (before + timedelta(days=7)).strftime("%Y-%m-%d"),
+        (after + timedelta(days=7)).strftime("%Y-%m-%d"),
+    }
+    assert result in valid_dates
 
 
 async def test_search_builds_mem0_v2_filters_with_session_user_id() -> None:
@@ -292,6 +390,26 @@ async def test_remove_items_without_memory_id_or_user_id_is_a_noop() -> None:
     assert mem0.delete_all_calls == []
 
 
+async def test_registered_memory_client_forwards_default_ttl_to_editor(
+    monkeypatch: Any,
+) -> None:
+    # GIVEN a config with a configured default_ttl_seconds and a stubbed mem0
+    # client (the real one needs network access to validate the API key).
+    monkeypatch.setattr(
+        datarobot_mem0_memory, "_create_mem0_client", lambda *_a, **_k: FakeMem0Client()
+    )
+    monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+
+    config = DRMem0MemoryClientConfig(api_key="secret-key", default_ttl_seconds=12_345)
+
+    # WHEN NAT builds the memory client.
+    async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:
+        # THEN the editor stores the TTL so subsequent add_items calls inject
+        # expiration_date — without this hop the config value would be inert.
+        assert isinstance(editor, DRMem0Editor)
+        assert editor._ttl_seconds == 12_345
+
+
 async def test_registered_memory_client_uses_config_api_key_and_retry(monkeypatch: Any) -> None:
     # GIVEN a configured NAT memory provider with an explicit Mem0 API key.
     created_clients: list[dict[str, Any]] = []
@@ -345,6 +463,46 @@ def test_memory_client_config_uses_settings_mem0_api_key(monkeypatch: Any) -> No
     # THEN the api_key defaults from the settings config.
     assert Config().mem0_api_key == "settings-key"
     assert config.api_key == "settings-key"
+
+
+def test_memory_client_config_uses_settings_default_ttl(monkeypatch: Any) -> None:
+    # GIVEN AGENT_MEMORY_TTL_SECONDS is set in the env (e.g. by infra/agent.py's
+    # runtime parameter), exposing the recipe's configured retention to the
+    # NAT memory editor.
+    monkeypatch.setenv("AGENT_MEMORY_TTL_SECONDS", "604800")
+
+    # WHEN the NAT memory config is created without an explicit default_ttl_seconds.
+    config = DRMem0MemoryClientConfig(api_key="any")
+
+    # THEN the field defaults from the AGENT_MEMORY_TTL_SECONDS env var, so the
+    # recipe's runtime parameter automatically reaches mem0 via expiration_date.
+    assert config.default_ttl_seconds == 604800
+
+
+def test_memory_client_config_explicit_default_ttl_beats_env(monkeypatch: Any) -> None:
+    # GIVEN AGENT_MEMORY_TTL_SECONDS set in env but the workflow passing an
+    # explicit override (e.g. a per-deployment retention different from the
+    # global default).
+    monkeypatch.setenv("AGENT_MEMORY_TTL_SECONDS", "100")
+
+    # WHEN the config is constructed with an explicit value.
+    config = DRMem0MemoryClientConfig(api_key="any", default_ttl_seconds=42)
+
+    # THEN the explicit value wins (env is only the default).
+    assert config.default_ttl_seconds == 42
+
+
+def test_memory_client_config_default_ttl_is_none_without_env(monkeypatch: Any) -> None:
+    # GIVEN no AGENT_MEMORY_TTL_SECONDS env var (e.g. a deployment that
+    # opted out of TTL or never set the recipe's runtime parameter).
+    monkeypatch.delenv("AGENT_MEMORY_TTL_SECONDS", raising=False)
+
+    # WHEN the config is constructed without an explicit override.
+    config = DRMem0MemoryClientConfig(api_key="any")
+
+    # THEN default_ttl_seconds is None — memories never expire, matching the
+    # pre-TTL behavior so existing deployments don't silently change semantics.
+    assert config.default_ttl_seconds is None
 
 
 async def test_registered_memory_client_requires_api_key(monkeypatch: Any) -> None:
