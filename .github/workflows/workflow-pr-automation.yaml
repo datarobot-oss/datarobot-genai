@@ -18,6 +18,8 @@ jobs:
     uses: datarobot-oss/github-actions/.github/workflows/mark-pr-reviewed.yaml@0.0.8
     with:
       pr_number: ${{ github.event.pull_request.number }}
+    permissions:
+      pull-requests: write
 
   # Triggered when the "ready for review" label is added to a PR.
   # Sends a Slack notification with PR metadata (title, author, diff size, URL)
@@ -35,6 +37,8 @@ jobs:
       repo_name: ${{ github.event.repository.name }}
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    permissions:
+      pull-requests: write
 
   # Triggered when a PR is opened or its title/description is edited.
   # Parses the PR title or branch name for a Jira ticket ID and adds a link
@@ -57,3 +61,6 @@ jobs:
     uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.8
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    permissions:
+      contents: read
+      pull-requests: read
