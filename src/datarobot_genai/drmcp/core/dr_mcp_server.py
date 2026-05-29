@@ -219,7 +219,9 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
-            if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+            if asyncio.run(
+                FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
+            ):
                 try:
                     linear_manager = LineageManager(self._mcp)
                     asyncio.run(linear_manager.sync_mcp_tools())

@@ -24,6 +24,11 @@ from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_
 from datarobot_genai.drtools.core.exceptions import ToolError
 
 
+@pytest.fixture
+def module_under_test() -> str:
+    return "datarobot_genai.drtools.core.clients.datarobot"
+
+
 class TestGetDatarobotAccessToken:
     """Test get_datarobot_access_token function."""
 

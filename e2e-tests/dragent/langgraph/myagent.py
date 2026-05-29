@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
 from langchain.agents import create_agent
 from langchain.chat_models import BaseChatModel
@@ -37,7 +36,7 @@ E2E_INTERRUPT_CONTINUING = "E2E_INTERRUPT_CONTINUING"
 
 prompt_template = ChatPromptTemplate.from_messages(
     [
-        ("system", "You are a helpful assistant. {chat_history}"),
+        ("system", "{chat_history}"),
         ("user", "{topic}"),
     ]
 )
@@ -49,12 +48,7 @@ def graph_factory(
     agent_planner = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt=make_system_prompt(
-            "You are a content planner. Given a topic, produce a short bullet-point "
-            "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-            "Use the generate_objectid tool when asked to generate an object ID for a "
-            "deployment."
-        ),
+        system_prompt="Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed.",
         name="planner",
         debug=verbose,
     )
@@ -62,11 +56,7 @@ def graph_factory(
     agent_writer = create_agent(
         llm,
         tools=[generate_objectid_tool] + tools,
-        system_prompt=make_system_prompt(
-            "You are a concise writer. Using the planner's outline, write a short response "
-            "in 2-3 sentences. Use the generate_objectid tool when asked to "
-            "generate an object ID for a deployment."
-        ),
+        system_prompt="Reply with only the tool's result, or 1 brief line.",
         name="writer",
         debug=verbose,
     )

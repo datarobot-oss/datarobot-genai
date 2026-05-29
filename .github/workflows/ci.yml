@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: '0 3 * * *'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   TASK_VERSION: 3.48.0
 

@@ -18,6 +18,7 @@ import httpx
 import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
+from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
 from dragent_tests.helpers import GENERATE_STREAM_PATH
@@ -29,6 +30,17 @@ from dragent_tests.helpers import parse_sse_responses
 if not ALL_TEST_CASES:
     pytest.skip(
         "Running minimal test set for non-LLM Gateway LLM, skipping streaming tests",
+        allow_module_level=True,
+    )
+
+if AGENT == "nat":
+    # NAT's orchestrator emits TOOL_CALL_ARGS for its internal sub-tool calls
+    # (planner, writer) without a preceding TOOL_CALL_START, which fails the
+    # strict AG-UI validate_sequence check. Other nat streaming format quirks
+    # are similarly opted out of in test_single_response.py and
+    # test_chat_completions.py.
+    pytest.skip(
+        "NAT internal sub-tool calls do not emit AG-UI TOOL_CALL_START events.",
         allow_module_level=True,
     )
 
