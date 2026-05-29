@@ -39,6 +39,7 @@ from datarobot_genai.core.agents import InvokeReturn
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.core.agents.text_tool_calls import rewrite_text_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,9 @@ async def agent_chat_completion_wrapper(
         async def _stream_with_mcp() -> InvokeReturn:
             async with mcp_tools_factory() as mcp_tools:
                 agent.set_tools(_merge_mcp_tools_with_agent_tools(mcp_tools, agent))
-                async for item in agent.invoke(run_agent_input):
+                # Recover any text-encoded tool calls (e.g. Anthropic via Bedrock) so
+                # they surface as structured AG-UI tool events regardless of framework.
+                async for item in rewrite_text_tool_calls(agent.invoke(run_agent_input)):
                     yield item
 
         return _stream_with_mcp()

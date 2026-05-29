@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.84
+- `core`: recover text-encoded tool calls from the assistant text stream. Models that emit Hermes-style `<tool_call>` / `<tool_response>` markup as plain text (e.g. Anthropic served via AWS Bedrock behind a text tool-calling template) now surface as structured AG-UI `TOOL_CALL_*` events instead of raw markup. Applied once at the shared chat-completion boundary (`agent_chat_completion_wrapper`), so it covers all frameworks (LangGraph, CrewAI, LlamaIndex, NAT) without per-framework changes. The transform is display-only (it never re-executes tools) and only triggers when the markup is present in text content, so native tool-calling models are unaffected.
+
 ## 0.15.83
 - `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.
 
