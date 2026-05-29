@@ -92,3 +92,19 @@ tasks:
       - echo "🔨 Running dragent"
       - task: install
       - task dragent:run-{{.AGENT}}
+
+  run-dragent-a2a:
+    desc: "🔨 Run dragent with A2A server enabled (NAT only)"
+    cmds:
+      - echo "🔨 Running dragent with A2A server enabled"
+      - task: install
+        vars:
+          AGENT: nat
+      - task dragent:run-nat-a2a
+
+  test-dragent-a2a:
+    desc: "🧪 Run A2A end-to-end tests (NAT only)"
+    cmds:
+      - echo "🧪 Running A2A tests"
+      - uv run pytest dragent_tests/test_a2a.py -vv -s
+
