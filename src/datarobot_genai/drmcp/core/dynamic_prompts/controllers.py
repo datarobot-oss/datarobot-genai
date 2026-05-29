@@ -59,7 +59,7 @@ async def register_prompt_from_prompt_template_id_and_version(
         registered_prompt = await register_prompt_from_datarobot_prompt_management(
             prompt_template=prompt_template
         )
-        if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+        if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
             try:
                 linear_manager = LineageManager(mcp)
                 await linear_manager.sync_mcp_prompts()
@@ -80,7 +80,7 @@ async def register_prompt_from_prompt_template_id_and_version(
     registered_prompt = await register_prompt_from_datarobot_prompt_management(
         prompt_template=prompt_template, prompt_template_version=prompt_template_version
     )
-    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+    if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
         try:
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_prompts()
@@ -103,7 +103,7 @@ async def delete_registered_prompt_template(prompt_template_id: str) -> bool:
         f"Deleted prompt name {prompt_name} for prompt template id {prompt_template_id}, "
         f"version {prompt_template_version_id}"
     )
-    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+    if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
         try:
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_prompts()
@@ -157,7 +157,7 @@ async def refresh_registered_prompt_template(headers_auth_only: bool = False) ->
             # We need to also delete prompt templates that are
             await mcp.remove_prompt_mapping(mcp_prompt_template_id, mcp_prompt_template_version_id)
 
-    if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+    if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
         try:
             linear_manager = LineageManager(mcp)
             await linear_manager.sync_mcp_prompts()
