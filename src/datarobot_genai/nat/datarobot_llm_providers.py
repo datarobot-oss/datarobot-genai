@@ -27,7 +27,6 @@ from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
-from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 
 
 class DataRobotLLMComponentModelConfig(
@@ -42,10 +41,6 @@ class DataRobotLLMComponentModelConfig(
             "The model name (required for gateway, NIM, and external; optional for deployment)."
         ),
         default=None,
-    )
-    use_datarobot_llm_gateway: bool = Field(
-        default_factory=default_use_datarobot_llm_gateway,
-        description="Whether to use the DataRobot LLM gateway.",
     )
     llm_deployment_id: str | None = Field(
         description="The LLM deployment ID.",
@@ -160,10 +155,8 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
           _type: datarobot-llm-router
           primary:
             llm_deployment_id: "abc123"
-            use_datarobot_llm_gateway: false
           fallbacks:
             - llm_deployment_id: "def456"
-              use_datarobot_llm_gateway: false
           num_retries: 3
     """
 

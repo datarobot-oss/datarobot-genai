@@ -48,18 +48,15 @@ class LLMConfig(BaseModel):
     datarobot_api_token: str | None = None
     llm_deployment_id: str | None = None
     nim_deployment_id: str | None = None
-    use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
 
     def get_llm_type(self) -> LLMType:
-        if self.use_datarobot_llm_gateway:
-            return LLMType.GATEWAY
-        elif self.llm_deployment_id:
+        if self.llm_deployment_id:
             return LLMType.DEPLOYMENT
         elif self.nim_deployment_id:
             return LLMType.NIM
-        else:
-            return LLMType.EXTERNAL
+        model = getattr(self, "model_name", None) or self.llm_default_model or ""
+        return LLMType.GATEWAY if model.startswith("datarobot/") else LLMType.EXTERNAL
 
     def to_litellm_params(self) -> dict:
         """Return a litellm_params dict suitable for ``litellm.Router``'s model_list.
@@ -144,11 +141,6 @@ def default_api_key() -> str | None:
 def default_model_name() -> str | None:
     config = Config()
     return config.llm_default_model
-
-
-def default_use_datarobot_llm_gateway() -> bool:
-    config = Config()
-    return config.use_datarobot_llm_gateway
 
 
 def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:

@@ -50,7 +50,6 @@ EXCLUDE_FIELDS = {
     "api_type",
     "llm_deployment_id",
     "nim_deployment_id",
-    "use_datarobot_llm_gateway",
     # Fields inherited from LLMConfig that are not framework-level LLM kwargs:
     "datarobot_api_token",
     "datarobot_endpoint",
