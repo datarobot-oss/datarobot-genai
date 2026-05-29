@@ -182,28 +182,29 @@ async def streaming_memory_agent(
         #    through to the caller while collecting them for the post-stream
         #    assistant memory save.
         collected: list[DRAgentEventResponse] = []
-        async for event_response in inner_agent_fn.astream(inner_input):
-            collected.append(event_response)
-            yield event_response
-
-        # 4. Persist the assistant response. Run regardless of partial errors
-        #    so partial output still lands in memory.
-        if config.save_ai_messages_to_memory and collected:
-            aggregated = aggregate_dragent_event_responses(collected)
-            ai_text = convert_dragent_event_response_to_str(aggregated)
-            if ai_text:
-                try:
-                    await memory_editor.add_items(
-                        [
-                            MemoryItem(
-                                conversation=[{"role": "assistant", "content": ai_text}],
-                                user_id=user_id,
-                            )
-                        ],
-                        **config.add_params,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("memory.add_items(assistant) failed: %s", exc)
+        try:
+            async for event_response in inner_agent_fn.astream(inner_input):
+                collected.append(event_response)
+                yield event_response
+        finally:
+            # 4. Persist the assistant response. Run regardless of partial
+            #    errors so partial output still lands in memory.
+            if config.save_ai_messages_to_memory and collected:
+                aggregated = aggregate_dragent_event_responses(collected)
+                ai_text = convert_dragent_event_response_to_str(aggregated)
+                if ai_text:
+                    try:
+                        await memory_editor.add_items(
+                            [
+                                MemoryItem(
+                                    conversation=[{"role": "assistant", "content": ai_text}],
+                                    user_id=user_id,
+                                )
+                            ],
+                            **config.add_params,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("memory.add_items(assistant) failed: %s", exc)
 
     async def _stream_to_str(
         responses: AsyncGenerator[DRAgentEventResponse],
