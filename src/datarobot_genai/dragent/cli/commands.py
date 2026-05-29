@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import click
 from nat.cli.commands.start import StartCommandGroup
@@ -31,6 +33,30 @@ _FRONTEND_COMMANDS: dict[str, dict[str, str]] = {
     "dragent_fastapi": {"alias": "serve", "help": "Start the dragent HTTP server."},
     "dragent_console": {"alias": "run", "help": "Execute a dragent workflow locally (in-process)."},
 }
+
+
+_OTEL_ENV_KEYS = ("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS")
+
+
+def _bridge_pulumi_otel_env() -> None:
+    """Read OTel vars from pulumi_config.json into os.environ (lowest priority).
+
+    Searches from CWD upward. Uses setdefault so explicit env vars are never overridden.
+    """
+    cwd = Path.cwd()
+    for directory in [cwd, *cwd.parents]:
+        config_path = directory / "pulumi_config.json"
+        if config_path.is_file():
+            try:
+                data = json.loads(config_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                return
+            if not isinstance(data, dict):
+                return
+            for key in _OTEL_ENV_KEYS:
+                if key in data and data[key]:
+                    os.environ.setdefault(key, str(data[key]))
+            return
 
 
 class DRAgentCommandGroup(StartCommandGroup):
@@ -65,6 +91,7 @@ class DRAgentCommandGroup(StartCommandGroup):
                 "No config file provided. "
                 "Pass --config_file <path> or set the DRAGENT_CONFIG_FILE env var."
             )
+        _bridge_pulumi_otel_env()
         return super().invoke_subcommand(ctx, cmd_name, config_file, override, **kwargs)
 
     def _load_commands(self) -> dict[str, click.Command]:

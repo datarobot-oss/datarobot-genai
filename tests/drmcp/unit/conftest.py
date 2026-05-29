@@ -72,8 +72,12 @@ def mock_all_telemetry(request: pytest.FixtureRequest) -> Generator[None, None, 
 
 
 @pytest.fixture
-def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[Mock]:
-    with patch.object(FeatureFlag, "is_mcp_tools_gallery_support_enabled") as mock_func:
+def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[AsyncMock]:
+    with patch.object(
+        FeatureFlag,
+        "is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user",
+        new_callable=AsyncMock,
+    ) as mock_func:
         yield mock_func
 
 

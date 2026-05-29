@@ -42,7 +42,6 @@ from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_man
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
-from .memory_management.manager import MemoryManager
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
@@ -149,22 +148,6 @@ class DataRobotMCPServer:
         # Initialize OAuth middleware
         initialize_oauth_middleware(mcp)
 
-        # Initialize memory manager if AWS credentials are available
-        self._memory_manager: MemoryManager | None = None
-        if self._config.enable_memory_management:
-            if self._credentials.has_aws_credentials():
-                self._logger.info("Initializing memory manager")
-                try:
-                    self._memory_manager = MemoryManager.get_instance()
-                except Exception as e:
-                    self._logger.error(f"Error initializing memory manager: {e}")
-                    self._logger.info("Skipping memory manager initialization")
-                    self._memory_manager = None
-            else:
-                self._logger.info(
-                    "No AWS credentials found, skipping memory manager initialization"
-                )
-
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = Path(__file__).parent.parent
         if load_native_mcp_tools:
@@ -178,14 +161,6 @@ class DataRobotMCPServer:
                     )
                 else:
                     self._logger.debug(f"Skipping {tool_type} tools - not enabled")
-
-        # Load memory management tools if available
-        if self._memory_manager:
-            _import_modules_from_dir(
-                directory=os.path.join(base_dir, "core", "memory_management"),
-                package_prefix="datarobot_genai.drmcp.core.memory_management",
-                module_name="memory_tools",
-            )
 
         # Load additional recipe user modules if provided
         if additional_module_paths:
@@ -244,7 +219,9 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
-            if FeatureFlag.is_mcp_tools_gallery_support_enabled():
+            if asyncio.run(
+                FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
+            ):
                 try:
                     linear_manager = LineageManager(self._mcp)
                     asyncio.run(linear_manager.sync_mcp_tools())

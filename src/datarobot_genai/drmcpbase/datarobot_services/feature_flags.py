@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,3 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
+
+
+async def is_mcp_tools_gallery_support_enabled(
+    datarobot_api_endpoint: str,
+    datarobot_user_bear_token: str,
+) -> bool:
+    async with DataRobotClientWithAsyncAPI(datarobot_api_endpoint) as datarobot_client:
+        return await datarobot_client._is_feature_flag_enabled(
+            "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
+            datarobot_user_bear_token,
+        )

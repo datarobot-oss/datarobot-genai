@@ -388,14 +388,6 @@ class MCPServerConfig(BaseSettings):
         " - 'error': will raise an error and prevent registration. "
         " - 'ignore': will skip registration of the new tool.",
     )
-    enable_memory_management: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MEMORY_MANAGEMENT",
-            "ENABLE_MEMORY_MANAGEMENT",
-        ),
-        description="Enable/disable memory management",
-    )
     mcp_cli_configs: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -432,7 +424,6 @@ class MCPServerConfig(BaseSettings):
         "otel_enabled_http_instrumentors",
         "otel_exporter_otlp_endpoint",
         "otel_exporter_otlp_headers",
-        "enable_memory_management",
         "mcp_cli_configs",
         "tool_registration_allow_empty_schema",
         "mcp_server_register_dynamic_tools_on_startup",

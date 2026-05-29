@@ -16,7 +16,6 @@ from crewai import Agent
 from crewai import Crew
 from crewai import Task
 from crewai.tools import tool
-from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
 from datarobot_genai.crewai.llm import get_llm
 from datarobot_genai.drtools.calculator import calculator
@@ -29,23 +28,17 @@ calculator_tool = tool(calculator)
 llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 agent_planner = Agent(
-    role="Content Planner",
-    goal="Create a short bullet-point outline with 3-5 key points about: {topic}.",
-    backstory=make_system_prompt(
-        "You are a content planner. Given a topic, produce a short bullet-point "
-        "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-    ),
+    role="Planner",
+    goal="Call any required tool for {topic}. Reply with only the tool's result, or 1 brief line if no tool is needed.",
+    backstory="Replies with tool result only, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool, calculator_tool],
 )
 
 agent_writer = Agent(
-    role="Content Writer",
-    goal="Write a 2-3 sentence response based on the planner's outline about: {topic}.",
-    backstory=make_system_prompt(
-        "You are a concise writer. Using the planner's outline, write a short response "
-        "in 2-3 sentences. "
-    ),
+    role="Writer",
+    goal="Reply about {topic} with only the tool's result, or 1 brief line.",
+    backstory="Replies with tool result only, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool, calculator_tool],
 )
@@ -53,22 +46,14 @@ agent_writer = Agent(
 agents = [agent_planner, agent_writer]
 
 task_planner = Task(
-    description=(
-        "Create a short outline about: {topic}. "
-        "Prior conversation context (may be empty): {chat_history}. "
-        "Execute tool calls if requested instead of this task."
-    ),
-    expected_output=("A bullet-point outline with 3-5 key points. Or the result of a tool call."),
+    description="Topic: {topic}. History: {chat_history}. Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed.",
+    expected_output="Tool result, or 1 brief line.",
     agent=agent_planner,
 )
 
 task_writer = Task(
-    description=(
-        "Using the planner's outline, write a short response about: {topic}. "
-        "Prior conversation context (may be empty): {chat_history}. "
-        "Execute tool calls if requested instead of this task."
-    ),
-    expected_output="A concise 2-3 sentence response. Or the result of a tool call.",
+    description="Topic: {topic}. Call any required tool. Reply with only the tool's result, or 1 brief line.",
+    expected_output="Tool result, or 1 brief line.",
     agent=agent_writer,
 )
 
