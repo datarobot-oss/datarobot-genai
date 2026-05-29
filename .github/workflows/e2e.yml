@@ -6,6 +6,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   TASK_VERSION: 3.48.0
 
@@ -60,16 +64,31 @@ jobs:
           done
           echo "agents=$agents" >> "$GITHUB_OUTPUT"
 
+  load-llmgw-matrix:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          matrix=$(python3 -c "
+          import yaml, json
+          with open('e2e-tests/llmgw_matrix.yaml') as f:
+              data = yaml.safe_load(f)
+          print(json.dumps(data))
+          ")
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
   e2e-dragent-llmgw:
-    needs: detect-changes
+    needs: [detect-changes, load-llmgw-matrix]
     if: needs.detect-changes.outputs.agents != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        agent: ${{ fromJson(needs.detect-changes.outputs.agents) }}
-        python-version: ['3.12']
+      matrix: ${{ fromJson(needs.load-llmgw-matrix.outputs.matrix) }}
     permissions:
       contents: read
     env:
@@ -82,7 +101,7 @@ jobs:
       AGENT: ${{ matrix.agent }}
       LLM: llmgw
 
-      LLM_DEFAULT_MODEL: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+      LLM_DEFAULT_MODEL: ${{ matrix.model.id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,23 +144,20 @@ jobs:
           wait-on: http-get://localhost:8080/health
           wait-for: 60s
 
-      - name: Run e2e tests with LLM Gateway (full test suite)
+      - name: Run e2e tests with LLM Gateway
         working-directory: e2e-tests
-        env:
-          LLM_DEFAULT_MODEL: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
         run: |
-          if [ "${{ matrix.agent }}" = "nat" ]; then
-            uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=3 --reruns-delay=5 --junitxml=test_results/results.xml
-          else
+          if [ "${{ matrix.model.label }}" = "default" ]; then
             uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          else
+            uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 -k test_generate_streaming --junitxml=test_results/results.xml
           fi
-
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results-${{ matrix.agent }}-py${{ matrix.python-version }}-llmgw
+          name: e2e-results-${{ matrix.agent }}-${{ matrix.model.label }}-py${{ matrix.python-version }}-llmgw
           path: e2e-tests/test_results/
           if-no-files-found: ignore
 
