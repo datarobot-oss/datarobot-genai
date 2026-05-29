@@ -17,12 +17,12 @@ memory:
 
 functions:
   probe_agent:
-    _type: auto_memory_probe_agent
+    _type: streaming_memory_probe_agent
 
 workflow:
-  _type: auto_memory_agent
+  _type: streaming_memory_agent
   llm_name: unused_for_probe_agent
-  description: "Auto-memory wrapper integration probe."
+  description: "Streaming-memory wrapper integration probe."
   inner_agent_name: probe_agent
   memory_name: mem0_memory
   save_ai_messages_to_memory: false
