@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.81
 `drmcp`: `MCPServerConfig` now reads `pulumi_config.json` via `PulumiConfigSettingsSource` (lowest priority) and accepts standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` fields. Telemetry setup bridges these to `os.environ` so local OTel tracing works without manual env var configuration.
 
+## 0.15.80.1
+- `e2e-tests`: Added A2A (Agent-to-Agent) end-to-end tests. A minimal `workflow-a2a.yaml` starts the NAT agent with the A2A server enabled (no middleware/MCP/extra tools) and two tests validate the agent card endpoint and `message/send` JSON-RPC flow. New Taskfile targets: `run-dragent-a2a`, `test-dragent-a2a`.
+
 ## 0.15.80
 - `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` is now a no-op when the `moderation` block is omitted or has no guards configured, so it can be listed unconditionally in `workflow.yaml` without requiring DataRobot credentials or emitting a warning. `load_llm_moderation_pipeline` returns `None` in those cases and skips `ModerationPipeline.from_config`.
 

@@ -104,6 +104,8 @@ tasks:
 
   test-dragent-a2a:
     desc: "🧪 Run A2A end-to-end tests (NAT only)"
+    env:
+      AGENT: nat
     cmds:
       - echo "🧪 Running A2A tests"
       - uv run pytest dragent_tests/test_a2a.py -vv -s
