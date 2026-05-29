@@ -22,8 +22,12 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from datarobot_genai.nat.datarobot_otelcollector import DataRobotOtelCollectorTelemetryExporter
-from datarobot_genai.nat.datarobot_otelcollector import datarobot_otelcollector_telemetry_exporter
+from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
+    DataRobotOtelCollectorTelemetryExporter,
+)
+from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
+    datarobot_otelcollector_telemetry_exporter,
+)
 
 ENDPOINT = "https://staging.datarobot.com/otel/v1/traces"
 ENTITY_ID = "deployment-abc123"
@@ -70,7 +74,7 @@ class TestConfigValidation:
     def test_explicit_invalid_entity_id_rejected(self, clean_env):
         # Bare ID without the 'deployment-' prefix should still fail
         # validation when explicitly provided — relaxation only allows
-        # empty so prune_exporter_if_env_missing can drop the entry.
+        # empty (for the env-not-set / local-dev path).
         with pytest.raises(ValidationError) as excinfo:
             _make_config(datarobot_entity_id="abc123")
         assert "deployment-<id>" in str(excinfo.value)
@@ -136,7 +140,8 @@ class TestEnvDerivation:
 
     def test_endpoint_empty_when_env_unset(self, clean_env):
         # No silent fallback to app.datarobot.com — empty is the explicit
-        # "not configured" signal that prune_exporter_if_env_missing relies on.
+        # "not configured" signal so an unconfigured env never targets
+        # the public DR endpoint by accident.
         cfg = DataRobotOtelCollectorTelemetryExporter(
             datarobot_api_key=API_KEY,
             datarobot_entity_id=ENTITY_ID,
@@ -160,7 +165,7 @@ class TestExporterFactory:
     async def test_emits_both_datarobot_headers(self):
         cfg = _make_config()
         with patch(
-            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -179,7 +184,7 @@ class TestExporterFactory:
             },
         )
         with patch(
-            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -195,7 +200,7 @@ class TestExporterFactory:
         # SecretStr wrapper — OTLP exporter expects str values.
         cfg = _make_config()
         with patch(
-            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -210,7 +215,7 @@ class TestExporterFactory:
         # otelcollector exporter.
         cfg = _make_config(project="my-agent")
         with patch(
-            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -229,7 +234,7 @@ class TestExporterFactory:
             resource_attributes={"service.name": "override-name", "env": "prod"},
         )
         with patch(
-            "datarobot_genai.nat.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass

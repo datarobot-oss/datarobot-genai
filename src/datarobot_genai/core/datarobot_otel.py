@@ -15,7 +15,8 @@
 """DataRobot OTel ingest endpoint helpers.
 
 Two responsibilities, intentionally co-located so a single import covers
-both the NAT exporter (``datarobot_genai.nat.datarobot_otelcollector``) and
+both the NAT telemetry exporter
+(``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
 the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry_agent``):
 
 * ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``DATAROBOT_API_TOKEN`` /
