@@ -18,12 +18,6 @@ tasks:
     cmds:
       - echo "🔨 Running NAT agent"
       - uv run nat dragent serve --config_file workflow.yaml --port {{.AGENT_PORT}}
-  run-nat-a2a:
-    desc: "🔨 Running NAT agent with A2A server enabled"
-    dir: ./nat
-    cmds:
-      - echo "🔨 Running NAT agent with A2A server enabled"
-      - uv run nat dragent serve --config_file workflow-a2a.yaml --a2a --port {{.AGENT_PORT}}
   run-crewai:
     desc: "🔨 Running CrewAI agent via NAT"
     dir: ./crewai

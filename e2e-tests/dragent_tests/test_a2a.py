@@ -17,25 +17,17 @@
 These tests validate that the A2A server is reachable, advertises a valid
 agent card, and can process a ``message/send`` JSON-RPC request end-to-end.
 
-The agent is started with a minimal workflow (no middleware, MCP, or extra
-tools) so failures here indicate an A2A-specific regression.
+A2A is enabled in every agent's default ``workflow.yaml``, so these tests
+run for all agent types (NAT, LangGraph, CrewAI, LlamaIndex, base).
 """
 
 from __future__ import annotations
 
 import httpx
-import pytest
 
-from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import A2A_AGENT_CARD_PATH
 from dragent_tests.helpers import A2A_PATH
 from dragent_tests.helpers import make_a2a_message_send_payload
-
-if AGENT != "nat":
-    pytest.skip(
-        "A2A e2e tests are currently only supported for the NAT agent.",
-        allow_module_level=True,
-    )
 
 
 def test_a2a_agent_card(http_client: httpx.Client) -> None:
