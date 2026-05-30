@@ -31,7 +31,6 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drtools.core.mode import MCPMode
-from datarobot_genai.drtools.core.mode import get_mcp_mode_from_headers
 
 
 @pytest.fixture()
@@ -53,7 +52,9 @@ class TestGetMcpMode:
     def test_defaults_to_tools_when_no_headers(self, mock_get_fast_mcp_headers) -> None:
         mock_get_fast_mcp_headers.return_value = {}
 
-        assert get_mcp_mode_from_headers() == MCPMode.TOOLS
+        actual = MCPMode.from_current_http_request_headers()
+
+        assert actual == MCPMode.TOOLS
 
     @pytest.mark.parametrize("tools", ["TOOLS", "tools"])
     def test_returns_tools_when_header_says_tools(
@@ -61,7 +62,9 @@ class TestGetMcpMode:
     ) -> None:
         mock_get_fast_mcp_headers.return_value = {code_mode_header_key: tools}
 
-        assert get_mcp_mode_from_headers() == MCPMode.TOOLS
+        actual = MCPMode.from_current_http_request_headers()
+
+        assert actual == MCPMode.TOOLS
 
     @pytest.mark.parametrize("code_execute", ["code_execute", "CODE_EXECUTE"])
     def test_returns_code_execute_when_header_set(
@@ -69,18 +72,24 @@ class TestGetMcpMode:
     ) -> None:
         mock_get_fast_mcp_headers.return_value = {code_mode_header_key: code_execute}
 
-        assert get_mcp_mode_from_headers() == MCPMode.CODE_EXECUTE
+        actual = MCPMode.from_current_http_request_headers()
+
+        assert actual == MCPMode.CODE_EXECUTE
 
     def test_unknown_header_value_falls_back_to_tools(
         self, mock_get_fast_mcp_headers, code_mode_header_key
     ) -> None:
         mock_get_fast_mcp_headers.return_value = {code_mode_header_key: "ooops"}
 
-        assert get_mcp_mode_from_headers() == MCPMode.TOOLS
+        actual = MCPMode.from_current_http_request_headers()
+
+        assert actual == MCPMode.TOOLS
 
     def test_other_headers_ignored(self, mock_get_fast_mcp_headers, code_mode_header_key) -> None:
         mock_get_fast_mcp_headers.return_value = {
             code_mode_header_key + "x": MCPMode.CODE_EXECUTE.name
         }
 
-        assert get_mcp_mode_from_headers() == MCPMode.TOOLS
+        actual = MCPMode.from_current_http_request_headers()
+
+        assert actual == MCPMode.TOOLS

@@ -36,22 +36,22 @@ except ImportError:
         return {}
 
 
-def get_mcp_mode_header_key() -> str:
-    return "x-datarobot-mcp-mode"
-
-
 class MCPMode(Enum):
     TOOLS = auto()
     CODE_EXECUTE = auto()
 
     @classmethod
-    def from_headers(cls, value: Mapping[str, str]) -> "MCPMode":
+    def from_current_http_request_headers(cls) -> "MCPMode":
+        headers = get_fast_mcp_http_headers()
+        return cls._from_headers(headers)
+
+    @staticmethod
+    def _get_mcp_mode_header_key() -> str:
+        return "x-datarobot-mcp-mode"
+
+    @classmethod
+    def _from_headers(cls, value: Mapping[str, str]) -> "MCPMode":
         try:
-            return cls[value.get(get_mcp_mode_header_key(), "").upper()]
+            return cls[value.get(cls._get_mcp_mode_header_key(), "").upper()]
         except KeyError:
             return cls.TOOLS
-
-
-def get_mcp_mode_from_headers() -> MCPMode:
-    headers = get_fast_mcp_http_headers()
-    return MCPMode.from_headers(headers)

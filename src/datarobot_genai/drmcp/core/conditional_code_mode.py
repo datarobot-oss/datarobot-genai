@@ -34,7 +34,6 @@ from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
 from datarobot_genai.drtools.core.mode import MCPMode
-from datarobot_genai.drtools.core.mode import get_mcp_mode_from_headers
 
 
 class ConditionalCodeMode(CodeMode):
@@ -47,7 +46,7 @@ class ConditionalCodeMode(CodeMode):
     """
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
-        if get_mcp_mode_from_headers() is MCPMode.CODE_EXECUTE:
+        if MCPMode.from_current_http_request_headers() is MCPMode.CODE_EXECUTE:
             return await super().transform_tools(tools)
         return tools
 
@@ -58,6 +57,6 @@ class ConditionalCodeMode(CodeMode):
         *,
         version: VersionSpec | None = None,
     ) -> Tool | None:
-        if get_mcp_mode_from_headers() is MCPMode.CODE_EXECUTE:
+        if MCPMode.from_current_http_request_headers() == MCPMode.CODE_EXECUTE:
             return await super().get_tool(name, call_next, version=version)
         return await call_next(name, version=version)
