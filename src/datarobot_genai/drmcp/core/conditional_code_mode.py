@@ -23,14 +23,6 @@ from datarobot_genai.drtools.core.mode import MCPMode
 
 
 class ConditionalCodeMode(CodeMode):
-    """`CodeMode` that engages only when the request asks for `code_execute`.
-
-    - Mode `tools` (default): catalog passes through unchanged; tools are
-      listed and callable directly.
-    - Mode `code_execute`: catalog collapses to CodeMode's discovery + execute
-      meta-tools, and `get_tool` resolves only those names.
-    """
-
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         if MCPMode.from_current_http_request_headers() is MCPMode.CODE_EXECUTE:
             return await super().transform_tools(tools)
