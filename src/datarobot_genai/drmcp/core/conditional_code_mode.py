@@ -12,20 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-request gating of FastMCP's CodeMode transform.
-
-CodeMode is a CatalogTransform that replaces the visible tool catalog with
-discovery + execute meta-tools (`search`, `get_schema`, `execute`). It engages
-globally if left unconditional. We want it engaged only when the request asks
-for `code_execute` via the `x-datarobot-mcp-mode` header — see
-`datarobot_genai.drtools.core.mode`.
-
-The conditional check inside `transform_tools` / `get_tool` is safe: the
-`CatalogTransform` base class uses an internal ContextVar to bypass itself on
-re-entrant calls from `get_tool_catalog()`, so `super().transform_tools()` can
-read the real catalog without recursing through this gate.
-"""
-
 from collections.abc import Sequence
 
 from fastmcp.experimental.transforms.code_mode import CodeMode

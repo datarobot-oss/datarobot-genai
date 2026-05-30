@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MCP execution mode selection via the `x-datarobot-mcp-mode` request header.
-
-The active mode is read from FastMCP's per-request HTTP context using the same
-soft-import pattern as ``drtools/core/auth.py`` so this module remains usable
-when fastmcp is not installed (tests, stdio transport, library consumers).
-"""
-
 from collections.abc import Mapping
 from enum import Enum
 from enum import auto

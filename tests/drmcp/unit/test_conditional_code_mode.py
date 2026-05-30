@@ -28,8 +28,6 @@ from datarobot_genai.drtools.core.mode import MCPMode
 
 
 class _UnsafeTestSandboxProvider:
-    """Test-only sandbox that uses exec(). Never use in production."""
-
     async def run(
         self,
         code: str,
@@ -75,7 +73,6 @@ def mock_from_current_http_request_headers() -> Iterator[Mock]:
 
 @pytest.mark.asyncio
 async def test_tools_mode_exposes_real_catalog(mock_from_current_http_request_headers: Any) -> None:
-    """No header (default TOOLS) → real tools visible, CodeMode meta-tools hidden."""
     mock_from_current_http_request_headers.return_value = MCPMode.TOOLS
     mcp = _make_server()
 
@@ -92,7 +89,6 @@ async def test_tools_mode_exposes_real_catalog(mock_from_current_http_request_he
 async def test_code_execute_mode_collapses_catalog(
     mock_from_current_http_request_headers: Any,
 ) -> None:
-    """code_execute → catalog collapses to search + get_schema + execute."""
     mock_from_current_http_request_headers.return_value = MCPMode.CODE_EXECUTE
     mcp = _make_server()
 
@@ -104,7 +100,6 @@ async def test_code_execute_mode_collapses_catalog(
 
 @pytest.mark.asyncio
 async def test_mode_switch_between_calls(mock_from_current_http_request_headers: Any) -> None:
-    """The same server instance returns different catalogs as the mode changes."""
     mcp = _make_server()
 
     mock_from_current_http_request_headers.return_value = MCPMode.TOOLS
@@ -124,7 +119,6 @@ async def test_mode_switch_between_calls(mock_from_current_http_request_headers:
 async def test_get_tool_passes_through_in_tools_mode(
     mock_from_current_http_request_headers: Any,
 ) -> None:
-    """Tools mode: get_tool resolves real tools and NOT CodeMode meta-tools."""
     mock_from_current_http_request_headers.return_value = MCPMode.TOOLS
     mcp = _make_server()
 
@@ -141,7 +135,6 @@ async def test_get_tool_passes_through_in_tools_mode(
 async def test_get_tool_resolves_meta_tools_in_code_execute_mode(
     mock_from_current_http_request_headers: Any,
 ) -> None:
-    """code_execute mode: get_tool resolves CodeMode meta-tools by name."""
     mock_from_current_http_request_headers.return_value = MCPMode.CODE_EXECUTE
     mcp = _make_server()
 
@@ -153,7 +146,6 @@ async def test_get_tool_resolves_meta_tools_in_code_execute_mode(
 
 @pytest.mark.asyncio
 async def test_no_header_defaults_to_tools_mode() -> None:
-    """When fastmcp's request context yields no header, defaults to TOOLS."""
     mcp = _make_server()
 
     # Don't patch get_mcp_mode — let the real implementation run with no HTTP ctx.
