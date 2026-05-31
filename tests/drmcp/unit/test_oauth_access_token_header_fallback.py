@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
+from datarobot.auth.exceptions import OAuthValidationErr
 
 from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.auth import oauth_access_token_header_name
@@ -207,3 +208,20 @@ class TestGetOauthAccessTokenWithHeaderFallback:
             )
         assert isinstance(out, ToolError)
         assert out.kind == ToolErrorKind.INTERNAL
+
+    @pytest.mark.asyncio
+    async def test_tool_error_authentication_on_oauth_validation_error(self) -> None:
+        with patch(
+            "datarobot_genai.drtools.core.auth.get_access_token",
+            new_callable=AsyncMock,
+            side_effect=OAuthValidationErr("No identity found for provider 'google'."),
+        ):
+            out = await get_oauth_access_token_with_header_fallback(
+                "google",
+                display_name="Google",
+                access_token_header_segment="google-drive",
+            )
+
+        assert isinstance(out, ToolError)
+        assert out.kind == ToolErrorKind.AUTHENTICATION
+        assert "x-datarobot-google-drive-access-token" in str(out)

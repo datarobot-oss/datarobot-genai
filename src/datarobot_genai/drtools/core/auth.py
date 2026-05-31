@@ -18,6 +18,8 @@ import logging
 from typing import Any
 
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
+from datarobot.auth.exceptions import OAuthProviderNotFound
+from datarobot.auth.exceptions import OAuthValidationErr
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import ToolAuth
 
@@ -286,6 +288,14 @@ async def get_oauth_access_token_with_header_fallback(
             e,
             exc_info=True,
         )
+    except (OAuthProviderNotFound, OAuthValidationErr) as e:
+        oauth_exc = e
+        logger.info(
+            "OAuth provider authorization not available for %s (%s); checking header fallback.",
+            pt,
+            e,
+            exc_info=True,
+        )
     except RuntimeError as e:
         oauth_exc = e
         logger.info("No OAuth auth context for %s (%s); checking header fallback.", pt, e)
@@ -302,7 +312,7 @@ async def get_oauth_access_token_with_header_fallback(
         return header_token
 
     header = oauth_access_token_header_name(access_token_header_segment)
-    if isinstance(oauth_exc, OAuthServiceClientErr):
+    if isinstance(oauth_exc, (OAuthServiceClientErr, OAuthProviderNotFound, OAuthValidationErr)):
         logger.error("OAuth client error (no header fallback): %s", oauth_exc, exc_info=True)
         return ToolError(
             f"Could not obtain access token for {display_name}. Complete the OAuth flow or pass "

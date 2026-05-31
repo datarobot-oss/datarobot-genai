@@ -15,6 +15,7 @@
 import json
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 from typing import Literal
 
@@ -24,6 +25,21 @@ from pydantic import field_validator
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_headers_case_insensitive(
+    headers: dict[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = dict(headers)
+    for key, value in overrides.items():
+        header = str(key)
+        for existing in list(merged):
+            if existing.lower() == header.lower():
+                del merged[existing]
+        merged[header] = value
+
+    return merged
 
 
 class MCPConfig(DataRobotAppFrameworkBaseSettings):
@@ -165,7 +181,9 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             headers = self._authorization_bearer_header()
             if self.external_mcp_headers:
                 external_headers = json.loads(self.external_mcp_headers)
-                headers.update(external_headers)
+                # HTTP header names are case-insensitive, so explicit external headers
+                # must replace injected auth even when casing differs.
+                headers = _merge_headers_case_insensitive(headers, external_headers)
 
             logger.info(f"Using external MCP URL: {self.external_mcp_url}")
 
