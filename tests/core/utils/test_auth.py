@@ -16,6 +16,7 @@ import os
 import random
 from typing import Any
 from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import aiohttp
@@ -29,6 +30,7 @@ from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import set_authorization_context
+from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
@@ -36,6 +38,9 @@ from datarobot_genai.core.utils.auth import AuthlibTokenRetriever
 from datarobot_genai.core.utils.auth import DatarobotTokenRetriever
 from datarobot_genai.core.utils.auth import OAuthConfig
 from datarobot_genai.core.utils.auth import create_token_retriever
+from datarobot_genai.core.utils.auth import get_current_datarobot_bearer_token
+from datarobot_genai.core.utils.auth import set_current_datarobot_bearer_token
+from datarobot_genai.drtools.core.auth import OAuthMiddleWare
 
 
 @pytest.fixture
@@ -372,9 +377,14 @@ class TestAuthContextHeaderHandlerRoundtrip:
 
 
 @pytest.fixture
-def mock_datarobot_client():
+def mock_datarobot_client(monkeypatch: pytest.MonkeyPatch):
     # mock dr client, to avoid external calls
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "unit-test-token")
     with patch("datarobot_genai.core.utils.auth.DatarobotOAuthClient") as m:
+        instance = MagicMock()
+        instance.__aenter__ = AsyncMock(return_value=instance)
+        instance.__aexit__ = AsyncMock(return_value=False)
+        m.return_value = instance
         yield m
 
 
@@ -787,6 +797,99 @@ class TestCreateTokenRetriever:
             create_token_retriever(config)
 
 
+class TestDatarobotTokenRetriever:
+    """Tests for DataRobot OAuth provider token refresh."""
+
+    @pytest.fixture(autouse=True)
+    def reset_bearer_context(self):
+        set_current_datarobot_bearer_token(None)
+        yield
+        set_current_datarobot_bearer_token(None)
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_uses_contextvar_bearer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN an inbound MCP bearer WHEN refreshing THEN use that bearer."""
+        monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+        set_current_datarobot_bearer_token("pat-X")
+        identity = Identity(
+            id="identity-1",
+            provider_type="google",
+            type="oauth2",
+            provider_user_id="user@example.com",
+            provider_identity_id="authz-1",
+        )
+        token_data = MagicMock()
+        token_data.access_token = "google-token"
+
+        with patch("datarobot_genai.core.utils.auth.DatarobotOAuthClient") as client_cls:
+            client = MagicMock()
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            client.refresh_access_token = AsyncMock(return_value=token_data)
+            client_cls.return_value = client
+
+            token = await DatarobotTokenRetriever().refresh_access_token(identity)
+
+        assert token is token_data
+        client_cls.assert_called_once_with(datarobot_api_token="pat-X")
+        client.refresh_access_token.assert_awaited_once_with(identity_id="authz-1")
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_raises_without_contextvar_or_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN no bearer or env token WHEN refreshing THEN fail explicitly."""
+        monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+        identity = Identity(
+            id="identity-1",
+            provider_type="google",
+            type="oauth2",
+            provider_user_id="user@example.com",
+            provider_identity_id="authz-1",
+        )
+
+        with patch("datarobot_genai.core.utils.auth.DatarobotOAuthClient") as client_cls:
+            with pytest.raises(ValueError, match="Set DATAROBOT_API_TOKEN"):
+                await DatarobotTokenRetriever().refresh_access_token(identity)
+
+        client_cls.assert_not_called()
+
+
+class TestOAuthMiddlewareBearerContext:
+    """Tests for request-scoped MCP bearer binding."""
+
+    @pytest.fixture(autouse=True)
+    def reset_bearer_context(self):
+        set_current_datarobot_bearer_token(None)
+        yield
+        set_current_datarobot_bearer_token(None)
+
+    @pytest.mark.asyncio
+    async def test_on_call_tool_clears_bearer_context_when_tool_raises(self) -> None:
+        """GIVEN an inbound bearer WHEN a tool fails THEN clear the scoped bearer."""
+        middleware = OAuthMiddleWare(
+            auth_handler=AuthContextHeaderHandler(secret_key="test-secret-key")
+        )
+        middleware_context = MagicMock()
+        middleware_context.fastmcp_context = MagicMock()
+        middleware_context.fastmcp_context.set_state = AsyncMock()
+        observed: dict[str, str | None] = {}
+
+        async def failing_call_next(context: Any) -> ToolResult:
+            observed["during"] = get_current_datarobot_bearer_token()
+            raise RuntimeError("tool failed")
+
+        headers = {"authorization": "Bearer pat-token"}
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+            with pytest.raises(RuntimeError, match="tool failed"):
+                await middleware.on_call_tool(middleware_context, failing_call_next)
+
+        assert observed["during"] == "pat-token"
+        assert get_current_datarobot_bearer_token() is None
+
+
 class TestAuthlibTokenRetriever:
     """Tests for AuthlibTokenRetriever class."""
 
@@ -832,7 +935,7 @@ class TestAuthlibTokenRetriever:
             patch("aiohttp.ClientSession.post") as mock_post,
         ):
             mock_response = AsyncMock()
-            mock_response.raise_for_status = AsyncMock()
+            mock_response.raise_for_status = MagicMock()
             mock_response.json = AsyncMock(return_value=mock_response_data)
             mock_post.return_value.__aenter__.return_value = mock_response
 

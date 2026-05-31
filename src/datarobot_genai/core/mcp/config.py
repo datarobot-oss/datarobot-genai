@@ -159,10 +159,10 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             }
 
         if self.external_mcp_url:
-            # External MCP URL - no authentication needed
-            headers = {}
-
-            # Merge external headers if provided
+            # external_mcp_url does not have a DataRobot gateway wrapper to add auth headers,
+            # so turn datarobot_api_token config into the outbound Authorization header here.
+            # Other external MCP headers remain explicit via EXTERNAL_MCP_HEADERS.
+            headers = self._authorization_bearer_header()
             if self.external_mcp_headers:
                 external_headers = json.loads(self.external_mcp_headers)
                 headers.update(external_headers)

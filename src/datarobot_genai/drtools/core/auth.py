@@ -24,6 +24,8 @@ from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
+from datarobot_genai.core.utils.auth import reset_current_datarobot_bearer_token
+from datarobot_genai.core.utils.auth import set_current_datarobot_bearer_token
 from datarobot_genai.drtools.core.constants import AUTH_CTX_KEY
 from datarobot_genai.drtools.core.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drtools.core.exceptions import ToolError
@@ -94,15 +96,23 @@ class OAuthMiddleWare(Middleware):
         ToolResult
             The result from the tool execution.
         """
-        auth_context = self._extract_auth_context()
-        if not auth_context:
-            logger.debug("No valid authorization context extracted from request headers.")
+        # AuthCtx identifies the provider authorization, while this request bearer
+        # authorizes the DataRobot refresh call. Bind it only for this tool call and
+        # reset in finally so concurrent FastMCP calls cannot share bearer state.
+        bearer = resolve_token_from_headers()
+        bearer_ctx_token = set_current_datarobot_bearer_token(bearer)
+        try:
+            auth_context = self._extract_auth_context()
+            if not auth_context:
+                logger.debug("No valid authorization context extracted from request headers.")
 
-        if context.fastmcp_context is not None:
-            await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
-            logger.debug("Authorization context attached to state.")
+            if context.fastmcp_context is not None:
+                await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
+                logger.debug("Authorization context attached to state.")
 
-        return await call_next(context)
+            return await call_next(context)
+        finally:
+            reset_current_datarobot_bearer_token(bearer_ctx_token)
 
     def _extract_auth_context(self) -> AuthCtx | None:
         """Extract and validate authentication context from request headers.
@@ -435,10 +445,9 @@ def resolve_token_from_headers() -> str | None:
     """
     Resolve API token from request headers, trying both sources.
 
-    Order: try framework get_http_headers() first (preferred), then context
-    (set by RequestHeadersMiddleware). If both have headers, tries token extraction
-    from the first; if no token found, tries the second so the token is used
-    whichever source it came from.
+    Framework headers are preferred because FastMCP owns the active request context.
+    The RequestHeadersMiddleware context fallback keeps custom routes/tests working when
+    no FastMCP HTTP context is available.
     """
     framework_headers = None
     try:
