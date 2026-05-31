@@ -19,10 +19,15 @@ MAX_INLINE_SIZE = 1024 * 1024  # 1MB
 
 AUTH_CTX_KEY = "authorization_context"
 
-# Header names to check for authorization tokens (in order of preference)
-HEADER_TOKEN_CANDIDATE_NAMES = [
+# Headers that explicitly carry a DataRobot API token/PAT for SDK and OAuth refresh calls.
+DATAROBOT_API_TOKEN_HEADER_CANDIDATE_NAMES = [
     "x-datarobot-authorization",
     "x-datarobot-api-key",
     "x-datarobot-api-token",
+]
+
+# Generic token resolution preserves historical behavior for callers that need any bearer.
+HEADER_TOKEN_CANDIDATE_NAMES = [
+    *DATAROBOT_API_TOKEN_HEADER_CANDIDATE_NAMES,
     "authorization",
 ]

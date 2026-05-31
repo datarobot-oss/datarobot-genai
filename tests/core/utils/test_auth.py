@@ -889,6 +889,28 @@ class TestOAuthMiddlewareBearerContext:
         assert observed["during"] == "pat-token"
         assert get_current_datarobot_bearer_token() is None
 
+    @pytest.mark.asyncio
+    async def test_on_call_tool_does_not_bind_jwt_authorization_as_api_token(self) -> None:
+        """GIVEN a Hydra JWT bearer WHEN a tool runs THEN do not bind it as API token."""
+        middleware = OAuthMiddleWare(
+            auth_handler=AuthContextHeaderHandler(secret_key="test-secret-key")
+        )
+        middleware_context = MagicMock()
+        middleware_context.fastmcp_context = MagicMock()
+        middleware_context.fastmcp_context.set_state = AsyncMock()
+        observed: dict[str, str | None] = {}
+
+        async def call_next(context: Any) -> ToolResult:
+            observed["during"] = get_current_datarobot_bearer_token()
+            return ToolResult(structured_content={"ok": True})
+
+        headers = {"authorization": "Bearer header.payload.signature"}
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+            await middleware.on_call_tool(middleware_context, call_next)
+
+        assert observed["during"] is None
+        assert get_current_datarobot_bearer_token() is None
+
 
 class TestAuthlibTokenRetriever:
     """Tests for AuthlibTokenRetriever class."""

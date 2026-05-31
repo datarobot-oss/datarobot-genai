@@ -34,8 +34,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Request-local DataRobot bearer for concurrent FastMCP tool calls. A module global
-# could leak one caller's PAT into another caller's OAuth refresh request; OAuthMiddleWare
+# Request-local DataRobot API bearer for concurrent FastMCP tool calls. A module global
+# could leak one caller's token into another caller's OAuth refresh request; OAuthMiddleWare
 # binds this at tool entry and resets it in finally after the call completes.
 _mcp_datarobot_bearer_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "mcp_datarobot_bearer_token", default=None
@@ -45,12 +45,12 @@ _mcp_datarobot_bearer_token: contextvars.ContextVar[str | None] = contextvars.Co
 def set_current_datarobot_bearer_token(
     token: str | None,
 ) -> contextvars.Token[str | None]:
-    """Bind the inbound PAT used for DataRobot OAuth refresh calls in this task."""
+    """Bind the inbound DataRobot API token used for OAuth refresh calls in this task."""
     return _mcp_datarobot_bearer_token.set(token)
 
 
 def reset_current_datarobot_bearer_token(token: contextvars.Token[str | None]) -> None:
-    """Clear/restore the task-local PAT so concurrent MCP calls do not share it."""
+    """Clear/restore the task-local API token so concurrent MCP calls do not share it."""
     _mcp_datarobot_bearer_token.reset(token)
 
 
