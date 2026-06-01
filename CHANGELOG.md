@@ -4,10 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.87
+## 0.15.90
 - Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
 - Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
 - Fixed `get_datarobot_prompt_template` and `get_datarobot_prompt_template_version` in `dr_lib.py` to always use `get_api_client()` for token resolution.
+
+## 0.15.89
+- Added `drtools.core.rest_client.request_user_dr_client`: a request-user-scoped DataRobot REST client reachable from `drtools` alone, so consumers pinning `datarobot-genai[drtools]` (e.g. global-mcp) and agents importing `drtools` directly can call the DataRobot API as the requesting user without depending on `drmcp`. It is a context manager backed by `client_configuration()` (ContextVar-scoped), so it does **not** mutate the global `dr.Client()` and won't mix tokens across concurrent requests (MODEL-23521). Also exposes `resolve_request_user_token`.
+- Added `drtools.core.feature_flags.FeatureFlag`: per-user, entitlements-backed feature-flag evaluation keyed by `(flag, principal)` with a TTL cache (`ttl_seconds=0` bypasses the cache for live checks). Reachable from `drtools`, it is the building block for per-user, live tool gating (e.g. hiding a tool unless an entitlement is enabled). Distinct from `drmcp.core.feature_flags`, which evaluates the application-static MCP-container account.
+
+## 0.15.88
+- `core/datarobot_otel`: `bootstrap_otel_provider_for_datarobot()` now attaches a DataRobot-pointed `BatchSpanProcessor` to a pre-existing SDK `TracerProvider` instead of skipping. The `dragent_fastapi` server installs its own provider at startup before the agent module loads; under the previous skip behaviour, framework auto-instrumentor spans (CrewAI, Langchain, LlamaIndex) bound to that provider and never reached the DataRobot OTel ingest. Framework spans now show up in the deployment's Tracing tab alongside the existing exporter's output.
+- `dragent/plugins/datarobot_otelcollector`: new NAT telemetry exporter that sends OTLP traces to the DataRobot OTel ingest endpoint with `X-DataRobot-Api-Key` / `X-DataRobot-Entity-Id` headers (NAT's built-in `otelcollector` doesn't support headers). `endpoint`, `datarobot_api_key`, and `datarobot_entity_id` auto-derive from deployment env (`MLOPS_DEPLOYMENT_ID`, `DATAROBOT_API_TOKEN`, `DATAROBOT_(PUBLIC_)ENDPOINT`), so the minimal `workflow.yaml` block is `_type: datarobot_otelcollector` + `project`. `project` maps to `service.name`.
+- `core/telemetry_agent`: `instrument()` installs a global `TracerProvider` wired to the same DataRobot OTel endpoint when deployment env is present, so framework auto-instrumentors (Langchain, CrewAI, LlamaIndex) emit spans to the deployment's Tracing tab alongside the NAT exporter. No-ops when env is incomplete or another component has already set a `TracerProvider`. Shared env-resolution helpers live in `core/datarobot_otel`.
+
+## 0.15.87
+- `dragent/plugins/streaming_memory_agent`: registered via `register_per_user_function` (instead of `register_function`) so the wrapper builds lazily inside a `PerUserWorkflowBuilder` and `builder.get_function(inner_agent_name)` resolves per-user inner agents from the per-user cache (shared inner agents still resolve via fall-through). Switched the wrapper's I/O from NAT `ChatRequest` / `ChatResponseChunk` to AG-UI `RunAgentInput` and `DRAgentEventResponse`, so inner agents' native AG-UI events pass straight through without the intermediate `convert_chunks_to_agui_events` step. Added `stream_to_single_fn` so the function is also usable in non-streaming contexts.
 
 ## 0.15.86
 - `nat/datarobot_mem0_memory`: added `default_ttl_seconds` to `dr_mem0_memory` config (defaults from the `AGENT_MEMORY_TTL_SECONDS` env var / DataRobot runtime parameter via `DataRobotAppFrameworkBaseSettings`). When set to a positive value, `DRMem0Editor.add_items` sends `expiration_date = today + ttl` (UTC, `YYYY-MM-DD`) to Mem0's `add` API so memories auto-expire on the platform's expiration sweep. A per-call `expiration_date` in `add_params` overrides the default; `None` / `0` leaves the field unset (no expiration), matching prior behavior.

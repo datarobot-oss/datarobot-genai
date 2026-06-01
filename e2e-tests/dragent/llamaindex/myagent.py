@@ -30,9 +30,8 @@ planner = FunctionAgent(
     name="planner",
     description="Calls tools or replies briefly, then hands off",
     system_prompt=(
-        "Call any required tool. "
-        "Reply with only the tool's result, or 1 brief line if no tool is needed. "
-        "Hand off to writer."
+        "Call any required tool. Reply with only the tool's result, "
+        "or 1 brief line if no tool is needed. Hand off to writer."
     ),
     llm=llm,
     tools=[generate_objectid_tool],
