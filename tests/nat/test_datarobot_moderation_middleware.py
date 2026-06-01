@@ -430,17 +430,102 @@ def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() ->
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
         ) as from_config,
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
     ):
         assert load_llm_moderation_pipeline(cfg) is None
     from_config.assert_not_called()
+    from_yaml.assert_not_called()
 
 
-def test_load_llm_moderation_pipeline_missing_moderation_block_is_noop() -> None:
+def test_load_llm_moderation_pipeline_config_file_missing_is_noop() -> None:
     with patch(
         "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
         assert load_llm_moderation_pipeline(DataRobotModerationConfig()) is None
     from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_inline_missing_moderation_block_is_noop() -> None:
+    cfg = DataRobotModerationConfig(config_source="inline")
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+        ) as from_config,
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
+    ):
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_config.assert_not_called()
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_config_file_empty_guards_in_yaml_is_noop(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "moderation_config.yaml").write_text("guards: []\n", encoding="utf-8")
+    cfg = DataRobotModerationConfig(config_source="config_file", model_dir=str(tmp_path))
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_inline_does_not_fallback_to_config_file() -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    cfg = DataRobotModerationConfig(
+        config_source="inline",
+        model_dir=str(fixture_dir),
+        moderation=ModerationConfig.model_validate({"guards": []}),
+    )
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_config_file_does_not_fallback_to_inline_moderation(
+    tmp_path: Path,
+) -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    cfg = DataRobotModerationConfig(
+        config_source="config_file",
+        model_dir=str(tmp_path),
+        moderation=_moderation_config_from_fixture_dir(fixture_dir),
+    )
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+    ) as from_config:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_config.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("config_source", "cfg_kwargs"),
+    [
+        ("inline", {"config_source": "inline"}),
+        (
+            "inline",
+            {
+                "config_source": "inline",
+                "moderation": ModerationConfig.model_validate({"guards": []}),
+            },
+        ),
+        ("config_file", {"config_source": "config_file", "model_dir": "/nonexistent/model/dir"}),
+    ],
+    ids=["inline-missing-block", "inline-empty-guards", "config_file-missing-file"],
+)
+def test_moderation_middleware_disabled_when_selected_source_has_no_guards(
+    builder_mock: MagicMock,
+    config_source: str,
+    cfg_kwargs: dict[str, Any],
+) -> None:
+    mw = DataRobotModerationMiddleware(DataRobotModerationConfig(**cfg_kwargs), builder_mock)
+    assert mw.enabled is False
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
