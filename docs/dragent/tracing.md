@@ -25,7 +25,7 @@ Two independent span sources reach DataRobot, each wired through its own switch:
 - **NAT lifecycle spans** — workflow runs, tool calls, and other `IntermediateStep`-derived events NAT emits as your `workflow.yaml` executes. Enabled by a block in `workflow.yaml` (see below).
 - **Framework auto-instrumentor spans** — spans emitted by `opentelemetry-instrumentation-crewai`, `-langchain`, `-llamaindex`, and `-openai`. Enabled by calling `instrument(framework=...)` from your own code.
 
-You generally want **both**. Wire the YAML side for NAT lifecycle, the Python side for framework internals.
+You generally want both: wire the YAML side for NAT lifecycle and the Python side for framework internals.
 
 ## `workflow.yaml`: enable the NAT exporter
 
@@ -42,7 +42,7 @@ general:
 
 Fields:
 
-| Field | Required | Default | Description |
+| Field | Required? | Default | Description |
 |---|---|---|---|
 | `project` | yes | — | OTel `service.name` for spans emitted by this workflow. |
 | `endpoint` | no | `<DATAROBOT_(PUBLIC_)ENDPOINT>/otel/v1/traces` | Full OTLP/HTTP endpoint override. |
@@ -65,16 +65,16 @@ instrument(framework="langgraph")  # "crewai" | "langgraph" | "llamaindex" | "na
 
 Accepted `framework` values are `"crewai"`, `"langgraph"`, `"llamaindex"`, `"nat"`, or `None`. `"nat"` is shorthand for all three framework instrumentors. Passing `None` instruments only HTTP clients and the OpenAI SDK.
 
-`instrument()` is idempotent — repeat calls are no-ops — and safe to keep in `register.py` during local development: when the DataRobot deployment env vars below are not all set, the underlying `bootstrap_otel_provider_for_datarobot()` silently skips installing the SDK provider, so framework spans simply go nowhere instead of erroring.
+`instrument()` is idempotent — repeat calls are no-ops — and safe to keep in `register.py` during local development: when the DataRobot deployment environment variables below are not all set, the underlying `bootstrap_otel_provider_for_datarobot()` silently skips installing the SDK provider, so framework spans simply go nowhere instead of erroring.
 
 ## Required environment
 
-The runtime reads the same env vars from both sides (the NAT exporter and the SDK bootstrap). Inside a DataRobot deployment they are populated for you; locally you set them yourself.
+The runtime reads the same environment variables from both sides (the NAT exporter and the SDK bootstrap). Inside a DataRobot deployment they are populated for you; locally you set them yourself.
 
 | Variable | Description | Missing → |
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | API token used as `X-DataRobot-Api-Key`. | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID` | Deployment id; auto-prefixed to form `X-DataRobot-Entity-Id`. | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID` | Deployment ID; auto-prefixed to form `X-DataRobot-Entity-Id`. | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | Base URL; `/otel/v1/traces` is appended. | Silent no-op; no spans reach DataRobot. |
 
 Optional override: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
@@ -85,6 +85,6 @@ The repo ships a minimal reproducer at [`e2e-tests/dragent/base/workflow-tracing
 
 ## Troubleshooting
 
-- **Tracing tab is empty.** Confirm the three env vars in the table above are set in the deployment. Both sides silently skip when any is missing.
-- **NAT lifecycle spans appear but framework spans don't.** `instrument(framework=...)` was not called, or was called after the framework imported. Move the call to the top of `register.py`.
-- **`datarobot_entity_id must be of the form 'deployment-<id>'`.** You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.
+- **Tracing tab is empty**: Confirm the three environment variables in the table above are set in the deployment. Both sides silently skip when any is missing.
+- **NAT lifecycle spans appear but framework spans don't**: `instrument(framework=...)` was not called, or was called after the framework imported. Move the call to the top of `register.py`.
+- **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.
