@@ -99,11 +99,18 @@ def _iter_message_blocks(
       (string). This is what the DataRobot LLM gateway returns over its
       OpenAI-style HTTP API, even when the underlying model is Anthropic.
 
+    These shapes are not mutually exclusive: with extended thinking enabled the
+    DataRobot gateway emits the *same* reasoning delta in BOTH
+    ``additional_kwargs["reasoning_content"]`` and as a native ``content``
+    thinking block. To avoid double-emitting, the flat ``reasoning_content`` is
+    only used as a fallback when ``content`` does not already carry thinking.
+
     Reasoning is yielded before content so consumers can route REASONING_*
     events ahead of the matching text in the AG-UI stream.
     """
+    content_pairs = list(_iter_content_blocks(getattr(message, "content", None)))
     ak = getattr(message, "additional_kwargs", None) or {}
     reasoning_text = ak.get("reasoning_content")
-    if reasoning_text:
+    if reasoning_text and not any(kind == "thinking" for kind, _ in content_pairs):
         yield "thinking", reasoning_text
-    yield from _iter_content_blocks(getattr(message, "content", None))
+    yield from content_pairs

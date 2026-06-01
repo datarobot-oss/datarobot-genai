@@ -963,7 +963,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.88"
+version = "0.15.89"
 source = { editable = "../" }
 
 [package.optional-dependencies]

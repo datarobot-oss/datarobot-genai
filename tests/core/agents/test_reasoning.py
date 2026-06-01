@@ -118,6 +118,18 @@ def test_flatten_to_text(content, expected):
         ),
         # Object without an additional_kwargs attribute at all: no crash.
         (SimpleNamespace(content="hi"), [("text", "hi")]),
+        # Gateway sends the SAME reasoning in BOTH list-form content AND
+        # reasoning_content. The flat copy must be dropped (no double-emit).
+        (
+            SimpleNamespace(
+                content=[
+                    {"type": "thinking", "thinking": "t"},
+                    {"type": "text", "text": "say"},
+                ],
+                additional_kwargs={"reasoning_content": "t"},
+            ),
+            [("thinking", "t"), ("text", "say")],
+        ),
     ],
 )
 def test_iter_message_blocks(message, expected):

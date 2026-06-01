@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import EventType
-from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -66,24 +65,6 @@ def _extract_text(result: Any) -> str:
             if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
         )
     return str(result)
-
-
-def _extract_reasoning(result: Any) -> list[str]:
-    """Pull reasoning deltas from a stream result's AG-UI events, in order.
-
-    Only the ``DRAgentEventResponse`` path (NAT wrapping a DataRobot agent) carries
-    inner AG-UI events. Its ``ReasoningMessageChunkEvent``s come from reasoning-aware
-    inner agents (langgraph/llamaindex) and would otherwise be dropped by
-    :func:`_extract_text`. Returns ``[]`` for plain ``ChatResponse``/string results.
-    """
-    events = getattr(result, "events", None)
-    if not events:
-        return []
-    return [
-        event.delta
-        for event in events
-        if isinstance(event, ReasoningMessageChunkEvent) and event.delta
-    ]
 
 
 def convert_to_ragas_messages(
@@ -243,20 +224,6 @@ class NatAgent(BaseAgent[None]):
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
                     async for result in runner.result_stream():
-                        # Forward reasoning from inner DataRobot agents (DRAgentEventResponse)
-                        # as self-contained AG-UI reasoning chunks, before any text for this
-                        # result. Plain ChatResponse/string results yield nothing here.
-                        for reasoning_delta in _extract_reasoning(result):
-                            yield (
-                                ReasoningMessageChunkEvent(
-                                    type=EventType.REASONING_MESSAGE_CHUNK,
-                                    message_id=message_id,
-                                    delta=reasoning_delta,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-
                         result_text = _extract_text(result)
                         if result_text:
                             if not text_started:

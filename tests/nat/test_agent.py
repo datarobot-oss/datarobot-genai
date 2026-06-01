@@ -16,7 +16,6 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -24,8 +23,6 @@ from unittest.mock import patch
 
 import pytest
 from ag_ui.core import AssistantMessage
-from ag_ui.core import EventType
-from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -376,55 +373,6 @@ async def test_invoke_gracefully_degrades_when_memory_fails(workflow_path):
     assert isinstance(events[-1][0], RunFinishedEvent)
     assert captured_prompts == ["Memory:\n\n\nLatest: Follow-up"]
     assert "{memory}" not in captured_prompts[0]
-
-
-async def test_invoke_forwards_inner_agent_reasoning_events(workflow_path, run_agent_input):
-    """When NAT wraps a DataRobot agent (result has ``.events``), the inner agent's
-    ``REASONING_MESSAGE_CHUNK`` events are forwarded (before text), not dropped.
-    """
-    result = SimpleNamespace(
-        events=[
-            ReasoningMessageChunkEvent(
-                type=EventType.REASONING_MESSAGE_CHUNK,
-                message_id="inner",
-                delta="thinking hard",
-            ),
-            TextMessageContentEvent(
-                type=EventType.TEXT_MESSAGE_CONTENT,
-                message_id="inner",
-                delta="the answer",
-            ),
-        ]
-    )
-
-    async def result_stream():
-        yield result
-
-    agent = NatAgent(workflow_path=workflow_path)
-    intermediate_future: asyncio.Future[list[IntermediateStep]] = asyncio.Future()
-    intermediate_future.set_result([])
-    mock_run = MagicMock()
-    mock_run.return_value.__aenter__.return_value = AsyncMock(result_stream=result_stream)
-    mock_session = MagicMock()
-    mock_session.return_value.__aenter__.return_value = AsyncMock(run=mock_run)
-
-    with (
-        patch("datarobot_genai.nat.agent.pull_intermediate_structured") as mock_intermediate,
-        patch("datarobot_genai.nat.agent.load_workflow", new_callable=MagicMock) as mock_load,
-    ):
-        mock_intermediate.return_value = intermediate_future
-        mock_load.return_value.__aenter__.return_value = AsyncMock(session=mock_session)
-
-        ag_events = [event async for (event, _, _) in agent.invoke(run_agent_input)]
-
-    # THEN: the inner reasoning chunk is forwarded with its delta preserved
-    reasoning = [e for e in ag_events if isinstance(e, ReasoningMessageChunkEvent)]
-    assert [e.delta for e in reasoning] == ["thinking hard"]
-    # THEN: reasoning precedes the text content, and text is still emitted
-    types = [type(e).__name__ for e in ag_events]
-    assert types.index("ReasoningMessageChunkEvent") < types.index("TextMessageContentEvent")
-    text = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
-    assert [e.delta for e in text] == ["the answer"]
 
 
 async def test_invoke_does_not_store_memory_when_workflow_fails(workflow_path):
