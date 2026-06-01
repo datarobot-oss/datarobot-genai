@@ -254,12 +254,10 @@ class TestPromptTemplatesAdd:
             prompt_template_version_id,
         )
 
-        mock_get_datarobot_prompt_template.assert_called_once_with(
-            prompt_template_id, headers_auth_only=False
-        )
+        mock_get_datarobot_prompt_template.assert_called_once_with(prompt_template_id)
         mock_prompt_template = mock_get_datarobot_prompt_template.return_value
         mock_get_datarobot_prompt_template_version.assert_called_once_with(
-            prompt_template_id, prompt_template_version_id, headers_auth_only=False
+            prompt_template_id, prompt_template_version_id
         )
         mock_prompt_template_version = mock_get_datarobot_prompt_template_version.return_value
         mock_register_prompt_from_datarobot_prompt_management.assert_called_once_with(

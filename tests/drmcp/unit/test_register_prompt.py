@@ -186,7 +186,7 @@ class TestRegisterPrompt:
         )
 
     @pytest.mark.asyncio
-    async def test_register_prompt_removes_prior_mapping_before_deduplication(
+    async def test_register_prompt_sets_mapping_when_prompt_template_provided(
         self,
         mock_check_prompt_registration_status_after_it_finishes: Mock,
         mock_datarobot_mcp_server: Mock,
@@ -195,10 +195,8 @@ class TestRegisterPrompt:
         mock_mcp_tool_callable: Mock,
         mock_prompt_from_function: Mock,
     ) -> None:
-        mock_datarobot_mcp_server.get_prompt_mapping = AsyncMock(
-            return_value={"pt1": ("v0", "my_prompt")}
-        )
-        mock_datarobot_mcp_server.remove_prompt_mapping = AsyncMock()
+        deduplicated_name = "my_prompt"
+        mock_get_prompt_name_no_duplicate.return_value = deduplicated_name
         mock_datarobot_mcp_server.set_prompt_mapping = AsyncMock()
 
         await register_prompt(
@@ -207,7 +205,9 @@ class TestRegisterPrompt:
             prompt_template=("pt1", "v1"),
         )
 
-        mock_datarobot_mcp_server.remove_prompt_mapping.assert_called_once_with("pt1", "v0")
+        mock_datarobot_mcp_server.set_prompt_mapping.assert_called_once_with(
+            "pt1", "v1", deduplicated_name
+        )
         mock_get_prompt_name_no_duplicate.assert_called_once_with(
             mock_datarobot_mcp_server, "my_prompt"
         )

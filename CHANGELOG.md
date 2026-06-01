@@ -7,7 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.90
 - Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
 - Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
-- Fixed `get_datarobot_prompt_template` and `get_datarobot_prompt_template_version` in `dr_lib.py` to always use `get_api_client()` for token resolution.
 
 ## 0.15.89
 - Added `drtools.core.rest_client.request_user_dr_client`: a request-user-scoped DataRobot REST client reachable from `drtools` alone, so consumers pinning `datarobot-genai[drtools]` (e.g. global-mcp) and agents importing `drtools` directly can call the DataRobot API as the requesting user without depending on `drmcp`. It is a context manager backed by `client_configuration()` (ContextVar-scoped), so it does **not** mutate the global `dr.Client()` and won't mix tokens across concurrent requests (MODEL-23521). Also exposes `resolve_request_user_token`.

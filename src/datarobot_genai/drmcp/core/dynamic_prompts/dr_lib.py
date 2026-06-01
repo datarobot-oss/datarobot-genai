@@ -11,14 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 from collections import defaultdict
 
 import datarobot as dr
 
 from datarobot_genai.drmcp.core.clients import get_api_client
-
-logger = logging.getLogger(__name__)
 
 
 def get_datarobot_prompt_templates() -> list[dr.genai.PromptTemplate]:
@@ -58,49 +55,17 @@ def get_datarobot_prompt_template_versions(
     return prompt_template_versions
 
 
-def get_datarobot_prompt_template(
-    prompt_template_id: str,
-    *,
-    headers_auth_only: bool = False,
-) -> dr.genai.PromptTemplate | None:
+def get_datarobot_prompt_template(prompt_template_id: str) -> dr.genai.PromptTemplate | None:
     try:
-        client = get_api_client(headers_auth_only=headers_auth_only)
-        response = client.get(
-            url=f"genai/promptTemplates/{prompt_template_id}/",
-            join_endpoint=True,
-        )
-        return dr.genai.PromptTemplate.from_server_data(response.json())
-    except Exception as exc:
-        logger.debug(
-            "Failed to fetch prompt template %s (headers_auth_only=%s): %s",
-            prompt_template_id,
-            headers_auth_only,
-            exc,
-        )
+        return dr.genai.PromptTemplate.get(prompt_template_id)
+    except Exception:
         return None
 
 
 def get_datarobot_prompt_template_version(
-    prompt_template_id: str,
-    prompt_template_version_id: str,
-    *,
-    headers_auth_only: bool = False,
+    prompt_template_id: str, prompt_template_version_id: str
 ) -> dr.genai.PromptTemplateVersion | None:
     try:
-        client = get_api_client(headers_auth_only=headers_auth_only)
-        response = client.get(
-            url=(
-                f"genai/promptTemplates/{prompt_template_id}/versions/{prompt_template_version_id}/"
-            ),
-            join_endpoint=True,
-        )
-        return dr.genai.PromptTemplateVersion.from_server_data(response.json())
-    except Exception as exc:
-        logger.debug(
-            "Failed to fetch prompt template version %s/%s (headers_auth_only=%s): %s",
-            prompt_template_id,
-            prompt_template_version_id,
-            headers_auth_only,
-            exc,
-        )
+        return dr.genai.PromptTemplateVersion.get(prompt_template_id, prompt_template_version_id)
+    except Exception:
         return None
