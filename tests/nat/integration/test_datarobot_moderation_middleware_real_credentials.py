@@ -87,12 +87,16 @@ def _build_moderation_middleware_for_model_dir(
     model_dir: Path,
     builder_mock: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
+    use_config_file: bool = False,
 ) -> DataRobotModerationMiddleware:
     try:
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
-        )
+        if use_config_file:
+            cfg = DataRobotModerationConfig(model_dir=str(model_dir))
+        else:
+            cfg = DataRobotModerationConfig(
+                moderation=_moderation_config_from_fixture_dir(model_dir),
+            )
+        mw = DataRobotModerationMiddleware(cfg, builder_mock)
     except RuntimeError as exc:
         if "cannot reach" in str(exc):
             pytest.skip(str(exc))
