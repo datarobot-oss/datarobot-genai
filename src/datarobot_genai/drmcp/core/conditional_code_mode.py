@@ -12,14 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+from collections.abc import Mapping
 from collections.abc import Sequence
+from enum import Enum
+from enum import auto
+from typing import Any
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
 from fastmcp.server.transforms import GetToolNext
 from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
-from datarobot_genai.drtools.core.mode import MCPMode
+try:
+    from fastmcp.server.dependencies import get_http_headers
+
+    def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
+        # include_all=True so x-datarobot-* headers survive FastMCP's default exclusion list
+        return get_http_headers(include_all=True, **kwargs)
+
+except ImportError:
+
+    def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
+        return {}
+
+
+class MCPMode(Enum):
+    TOOLS = auto()
+    CODE_EXECUTE = auto()
+
+    @classmethod
+    def from_current_http_request_headers(cls) -> "MCPMode":
+        headers = get_fast_mcp_http_headers()
+        return cls._from_headers(headers)
+
+    @staticmethod
+    def _get_mcp_mode_header_key() -> str:
+        return "x-datarobot-mcp-mode"
+
+    @classmethod
+    def _from_headers(cls, value: Mapping[str, str]) -> "MCPMode":
+        try:
+            return cls[value.get(cls._get_mcp_mode_header_key(), "").upper()]
+        except KeyError:
+            return cls.TOOLS
+
+
+logger = logging.getLogger(__name__)
+
+
+def initialize_code_mode(mcp: Any) -> None:
+    mcp.add_transform(ConditionalCodeMode())
+    logger.info("Code mode transform registered successfully")
 
 
 class ConditionalCodeMode(CodeMode):
