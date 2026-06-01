@@ -75,6 +75,10 @@ def _locked_task_writes_shard(shard_path: str) -> Iterator[None]:
 
 # On-disk subtree for all saver paths under ``root`` (not LangGraph ``thread_id``).
 _CHECKPOINT_TREE_DIR = "checkpoints"
+# Internal-path prefix appended after a ``catalog_id`` when building a ``dr://`` root, so
+# checkpoint artifacts live under ``dr://<catalog_id>/langgraph_checkpoints/checkpoints/...``
+# rather than at the catalog-item root.
+_CATALOG_CHECKPOINT_PREFIX = "langgraph_checkpoints"
 # Length-prefixed binary (``struct``) only — no file-type magic bytes. LangGraph ``serde`` payloads
 # stay raw bytes inside typed frames; no pickle on disk. Files use ``.bin`` (not ``.pkl``).
 _CHECKPOINT_ARTIFACT_EXT = ".bin"
@@ -205,6 +209,20 @@ def _normalize_dr_fs_root(root: str) -> str:
     return "dr://" if trimmed == "dr:" else trimmed
 
 
+def _root_from_catalog_id(catalog_id: str) -> str:
+    """Build a ``dr://<catalog_id>/langgraph_checkpoints`` root for a DataRobot catalog item.
+
+    The catalog id becomes the first path segment (the catalog item; see
+    :meth:`datarobot.fs.DataRobotFileSystem._split_path`), so checkpoints are written under that
+    specific catalog item instead of relying on the bare ``dr://`` scheme.
+    """
+    cid = catalog_id.strip().strip("/")
+    if not cid:
+        msg = "catalog_id must be a non-empty DataRobot catalog item id."
+        raise ValueError(msg)
+    return f"dr://{cid}/{_CATALOG_CHECKPOINT_PREFIX}"
+
+
 def _register_checkpoint_root_cleanup(fs: AbstractFileSystem, root: str) -> None:
     """Remove ``<root>/checkpoints`` recursively on interpreter exit (best-effort).
 
@@ -278,12 +296,17 @@ class DataRobotFileSystemCheckpointSaver(BaseCheckpointSaver[str]):
 
     **Root and effective prefix**
 
-    - ``root="dr://"`` (default via :func:`default_langgraph_checkpointer` when no
-      ``checkpoint_base`` is set): :class:`datarobot.fs.DataRobotFileSystem` resolves the
-      active catalog; objects are stored under
-      ``<catalog_id>/langgraph_checkpoints/checkpoints/...``.
-    - Explicit prefix, for example ``dr://<catalog_id>/langgraph_checkpoints``: same
-      ``checkpoints/`` subtree is appended under that path.
+    Provide at most one of ``root`` or ``catalog_id`` (defaults to bare ``dr://`` when neither
+    is set):
+
+    - ``catalog_id="<catalog_item_id>"``: builds the root
+      ``dr://<catalog_id>/langgraph_checkpoints`` so objects are stored under
+      ``<catalog_id>/langgraph_checkpoints/checkpoints/...``. The catalog item must already
+      exist (create one with :meth:`datarobot.fs.DataRobotFileSystem.create_catalog_item_dir`).
+    - ``root="dr://<catalog_id>/langgraph_checkpoints"`` (or any path the filesystem accepts):
+      the ``checkpoints/`` subtree is appended under that path. With
+      :class:`datarobot.fs.DataRobotFileSystem` the first path segment is the catalog item id.
+    - neither: defaults to ``root="dr://"``.
 
     **Layout** (paths below are relative to the effective prefix ending in
     ``.../checkpoints/``):
@@ -305,12 +328,39 @@ class DataRobotFileSystemCheckpointSaver(BaseCheckpointSaver[str]):
         self,
         *,
         fs: AbstractFileSystem,
-        root: str,
+        root: str | None = None,
+        catalog_id: str | None = None,
         serde: SerializerProtocol | None = None,
     ) -> None:
+        """Initialize the saver.
+
+        At most one of ``root`` or ``catalog_id`` may be provided. If neither is given, the
+        root defaults to the bare ``dr://`` scheme.
+
+        :param fs: fsspec filesystem to persist on, for example
+            :class:`datarobot.fs.DataRobotFileSystem`.
+        :param root: explicit root prefix the filesystem accepts, for example
+            ``dr://<catalog_id>/langgraph_checkpoints``. The ``checkpoints/`` subtree is
+            appended under it. Defaults to ``dr://`` when neither ``root`` nor ``catalog_id``
+            is set.
+        :param catalog_id: DataRobot catalog item id to store checkpoints in. When given,
+            ``root`` is built as ``dr://<catalog_id>/langgraph_checkpoints`` (the catalog item
+            must already exist). Cannot be combined with ``root``.
+        :param serde: optional serializer; defaults to LangGraph's.
+        :raises ValueError: if both ``root`` and ``catalog_id`` are provided.
+        """
+        if root is not None and catalog_id is not None:
+            msg = "Provide at most one of 'root' or 'catalog_id'."
+            raise ValueError(msg)
         super().__init__(serde=serde)
         self.fs = fs
-        self.root = _normalize_dr_fs_root(root)
+        if catalog_id is not None:
+            resolved_root = _root_from_catalog_id(catalog_id)
+        elif root is not None:
+            resolved_root = root
+        else:
+            resolved_root = "dr://"
+        self.root = _normalize_dr_fs_root(resolved_root)
 
     def _ns_root(self, thread_id: str, checkpoint_ns: str) -> str:
         return _path_join(
