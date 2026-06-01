@@ -54,21 +54,6 @@ HITL_CHECKPOINTER = InMemorySaver()
 agent = MyLangGraphAgent(llm=llm, tools=tools, checkpointer=HITL_CHECKPOINTER)
 ```
 
-**3. DataRobot File System** — wire the saver yourself, for example the process-wide helper or a custom instance:
-
-```python
-from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
-
-# Optional checkpoint_base="dr://<catalog_id>/langgraph_checkpoints" from app settings
-checkpointer = default_langgraph_checkpointer()
-
-agent = MyLangGraphAgent(llm=llm, tools=tools, checkpointer=checkpointer)
-```
-
-With no `checkpoint_base`, the saver root is `dr://` and `DataRobotFileSystem` writes under `<catalog_id>/langgraph_checkpoints/checkpoints/...` (see [`dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)). `default_langgraph_checkpointer()` registers **best-effort deletion** of only that `checkpoints/` subtree on normal exit (`atexit`), not the whole catalog prefix.
-
-Use a **durable** saver when checkpoints must survive restarts or multiple workers. The DR FS helper is mainly for single-process dev / short-lived runs within one deployment.
-
 ## What clients see in the event stream
 
 When the graph reports an `__interrupt__` update, streaming emits a **`CUSTOM`** event named **`on_interrupt`**, then a **`RUN_FINISHED`** with `result["langgraph"]["interrupted"]` so UIs can show approval UI before the next call.

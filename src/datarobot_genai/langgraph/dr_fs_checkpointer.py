@@ -736,36 +736,3 @@ def _resolved_checkpoint_root(checkpoint_base: str | None) -> str:
     if not normalized:
         return "dr://"
     return _normalize_dr_fs_root(normalized)
-
-
-def default_langgraph_checkpointer(
-    *, checkpoint_base: str | None = None
-) -> DataRobotFileSystemCheckpointSaver:
-    """Return a process-wide default saver using :class:`datarobot.fs.DataRobotFileSystem`.
-
-    ``checkpoint_base`` is the optional ``dr://`` prefix for checkpoint files (typically passed
-    from application configuration). If unset or empty, the saver root is ``dr://``, which the
-    filesystem resolves to ``<catalog_id>/langgraph_checkpoints``; this module then writes under
-    ``.../checkpoints/`` (see :class:`DataRobotFileSystemCheckpointSaver`). Best-effort removal
-    of each distinct ``<effective_prefix>/checkpoints`` tree is registered with :mod:`atexit` (not
-    the entire catalog prefix). For checkpoints that must survive process shutdown, construct
-    and pass your own ``checkpointer=`` instead of relying on this default.
-    """
-    root = _resolved_checkpoint_root(checkpoint_base)
-
-    if (existing := _default_process_checkpointers.get(root)) is not None:
-        return existing
-    from datarobot.fs import DataRobotFileSystem
-
-    fs = DataRobotFileSystem()
-    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root=root)
-    _default_process_checkpointers[saver.root] = saver
-    _register_checkpoint_root_cleanup(fs, saver.root)
-    return saver
-
-
-def reset_default_langgraph_checkpointer_for_tests() -> None:
-    """Clear process-wide defaults (for test isolation)."""
-    _default_process_checkpointers.clear()
-    _cleanup_registered_roots.clear()
-    _task_writes_shard_locks.clear()

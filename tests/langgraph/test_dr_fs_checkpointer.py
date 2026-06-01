@@ -263,13 +263,3 @@ def test_register_checkpoint_root_cleanup_tracks_dr_scheme_not_dr_colon() -> Non
     fs = MemoryFileSystem()
     _register_checkpoint_root_cleanup(fs, "dr://")
     assert dr_cp._cleanup_registered_roots == {"dr://checkpoints"}
-
-
-def test_reset_default_langgraph_checkpointer_clears_caches() -> None:
-    import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
-
-    dr_cp._default_process_checkpointers["k"] = object()  # type: ignore[assignment]
-    dr_cp._cleanup_registered_roots.add("/x")
-    dr_cp.reset_default_langgraph_checkpointer_for_tests()
-    assert dr_cp._default_process_checkpointers == {}
-    assert dr_cp._cleanup_registered_roots == set()
