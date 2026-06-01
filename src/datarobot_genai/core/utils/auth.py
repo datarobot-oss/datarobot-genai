@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import contextvars
 import logging
 import os
 import warnings
@@ -32,6 +33,30 @@ from datarobot.models.genai.agent.auth import get_authorization_context
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+# Request-local DataRobot API bearer for concurrent FastMCP tool calls. A module global
+# could leak one caller's token into another caller's OAuth refresh request; OAuthMiddleWare
+# binds this at tool entry and resets it in finally after the call completes.
+_mcp_datarobot_bearer_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "mcp_datarobot_bearer_token", default=None
+)
+
+
+def set_current_datarobot_bearer_token(
+    token: str | None,
+) -> contextvars.Token[str | None]:
+    """Bind the inbound DataRobot API token used for OAuth refresh calls in this task."""
+    return _mcp_datarobot_bearer_token.set(token)
+
+
+def reset_current_datarobot_bearer_token(token: contextvars.Token[str | None]) -> None:
+    """Clear/restore the task-local API token so concurrent MCP calls do not share it."""
+    _mcp_datarobot_bearer_token.reset(token)
+
+
+def get_current_datarobot_bearer_token() -> str | None:
+    """Return the bound token, if any."""
+    return _mcp_datarobot_bearer_token.get()
 
 
 class AuthContextConfig(DataRobotAppFrameworkBaseSettings):
@@ -218,9 +243,6 @@ class TokenRetriever(Protocol):
 class DatarobotTokenRetriever:
     """Retrieves OAuth tokens using the DataRobot platform."""
 
-    def __init__(self) -> None:
-        self._client = DatarobotOAuthClient()
-
     def filter_identities(self, identities: Sequence[Identity]) -> list[Identity]:
         """Filter oauth2 identities to only those with provider_identity_id.
 
@@ -230,8 +252,21 @@ class DatarobotTokenRetriever:
         return [i for i in identities if i.type == "oauth2" and i.provider_identity_id]
 
     async def refresh_access_token(self, identity: Identity) -> OAuthToken:
-        """Refresh the access token using DataRobot's OAuth client."""
-        return await self._client.refresh_access_token(identity_id=identity.provider_identity_id)
+        """Refresh the access token using DataRobot's OAuth client.
+
+        The request bearer preserves per-user OAuth refresh for MCP calls; the deploy-time
+        ``DATAROBOT_API_TOKEN`` remains the fallback for non-HTTP jobs and local utilities.
+        """
+        # AuthCtx selects the OAuth provider authorization; this bearer authorizes
+        # the DataRobot refresh call for the current request.
+        token = get_current_datarobot_bearer_token() or os.environ.get("DATAROBOT_API_TOKEN")
+        if not token:
+            raise ValueError(
+                "Set DATAROBOT_API_TOKEN or invoke tools with a DataRobot bearer token "
+                "in request headers."
+            )
+        async with DatarobotOAuthClient(datarobot_api_token=token) as client:
+            return await client.refresh_access_token(identity_id=identity.provider_identity_id)
 
 
 class AuthlibTokenRetriever:

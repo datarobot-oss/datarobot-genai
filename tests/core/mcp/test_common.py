@@ -60,7 +60,9 @@ class TestMCPConfig:
             assert config.external_mcp_url == test_url
             assert config.server_config is not None
             assert config.server_config["url"] == test_url
-            assert config.server_config["headers"] == {}
+            assert config.server_config["headers"] == {
+                "Authorization": "Bearer dummy-token",
+            }
             assert config.server_config["transport"] == "streamable-http"
 
     def test_mcp_config_with_datarobot_deployment_id(self, agent_auth_context_data):
@@ -237,9 +239,11 @@ class TestMCPConfig:
             config = MCPConfig()
             # Invalid JSON should result in None for external_mcp_headers
             assert config.external_mcp_headers is None
-            # Server config should still work, just without the invalid headers
+            # Server config should still work; Bearer from DATAROBOT_API_TOKEN is sent
             assert config.server_config is not None
-            assert config.server_config["headers"] == {}
+            assert config.server_config["headers"] == {
+                "Authorization": "Bearer dummy-token",
+            }
 
     def test_mcp_config_with_external_transport(self):
         test_url = "https://mcp-server.example.com/mcp"
@@ -339,7 +343,27 @@ class TestMCPConfig:
         ):
             config = MCPConfig()
             assert config.external_mcp_headers == raw.strip()
-            assert config.server_config["headers"] == {"X-Test": "value"}
+            assert config.server_config["headers"] == {
+                "Authorization": "Bearer dummy-token",
+                "X-Test": "value",
+            }
+
+    def test_external_mcp_headers_override_authorization_case_insensitively(self):
+        """Lowercase authorization in external headers should replace injected Authorization."""
+        with patch.dict(
+            os.environ,
+            {
+                "EXTERNAL_MCP_URL": "https://mcp-server.example.com/mcp",
+                "EXTERNAL_MCP_HEADERS": json.dumps({"authorization": "Bearer external-token"}),
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.example/api/v2",
+                "DATAROBOT_API_TOKEN": "dummy-token",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.server_config["headers"] == {
+                "authorization": "Bearer external-token",
+            }
 
     def test_mcp_deployment_id_validation_errors(self):
         """Invalid deployment IDs should return None and log warning, not raise error."""

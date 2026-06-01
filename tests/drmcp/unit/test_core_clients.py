@@ -28,9 +28,15 @@ from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,
 )
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
+from datarobot_genai.drtools.core.auth import _extract_datarobot_api_token_from_headers
+from datarobot_genai.drtools.core.auth import (
+    _extract_datarobot_api_token_from_headers_with_fallback,
+)
 from datarobot_genai.drtools.core.auth import _extract_token_from_auth_context
 from datarobot_genai.drtools.core.auth import _extract_token_from_headers
 from datarobot_genai.drtools.core.auth import _extract_token_from_headers_with_fallback
+from datarobot_genai.drtools.core.auth import resolve_datarobot_api_token_from_headers
+from datarobot_genai.drtools.core.auth import set_request_headers_for_context
 
 
 @pytest.fixture
@@ -280,6 +286,60 @@ class TestExtractTokenFromHeaders:
         }
         result = _extract_token_from_headers(headers)
         assert result == "user-api-key"
+
+
+class TestExtractDatarobotApiTokenFromHeaders:
+    """Test cases for DataRobot API-token extraction used by OAuth refresh."""
+
+    def test_extracts_non_jwt_authorization_bearer(self):
+        """GIVEN a non-JWT Authorization bearer WHEN extracting THEN return it."""
+        headers = {"authorization": "Bearer pat-token-123"}
+        result = _extract_datarobot_api_token_from_headers(headers)
+        assert result == "pat-token-123"
+
+    def test_skips_jwt_shaped_authorization_bearer(self):
+        """GIVEN a JWT-shaped Authorization bearer WHEN extracting THEN skip it."""
+        headers = {"authorization": "Bearer header.payload.signature"}
+        result = _extract_datarobot_api_token_from_headers(headers)
+        assert result is None
+
+    def test_explicit_api_token_header_can_be_jwt_shaped(self):
+        """GIVEN an explicit API token header WHEN extracting THEN return it as-is."""
+        headers = {"x-datarobot-api-token": "Bearer pat.with.dots"}
+        result = _extract_datarobot_api_token_from_headers(headers)
+        assert result == "pat.with.dots"
+
+    @patch("datarobot_genai.drtools.core.auth.AuthContextHeaderHandler")
+    def test_falls_back_to_auth_context_metadata(self, mock_handler_class):
+        """GIVEN no API token header WHEN AuthCtx metadata has api_key THEN return it."""
+        auth_ctx = AuthCtx(
+            user=User(id="test-user-123", email="test.user@example.com"),
+            identities=[],
+            metadata={"dr_ctx": {"api_key": "metadata-api-key"}},
+        )
+        mock_handler = Mock()
+        mock_handler.get_context.return_value = auth_ctx
+        mock_handler_class.return_value = mock_handler
+
+        result = _extract_datarobot_api_token_from_headers_with_fallback(
+            {"x-datarobot-authorization-context": "jwt-token"}
+        )
+
+        assert result == "metadata-api-key"
+
+    def test_resolve_uses_context_headers_when_framework_has_jwt_authorization(self):
+        """GIVEN framework JWT and ctx API token WHEN resolving THEN use ctx API token."""
+        set_request_headers_for_context({"x-datarobot-api-token": "ctx-api-token"})
+        try:
+            with patch(
+                "datarobot_genai.drtools.core.auth._get_http_headers",
+                return_value={"authorization": "Bearer header.payload.signature"},
+            ):
+                result = resolve_datarobot_api_token_from_headers()
+        finally:
+            set_request_headers_for_context({})
+
+        assert result == "ctx-api-token"
 
 
 class TestExtractTokenFromAuthContext:

@@ -18,19 +18,24 @@ import logging
 from typing import Any
 
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
+from datarobot.auth.exceptions import OAuthProviderNotFound
+from datarobot.auth.exceptions import OAuthValidationErr
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import ToolAuth
 
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
+from datarobot_genai.core.utils.auth import reset_current_datarobot_bearer_token
+from datarobot_genai.core.utils.auth import set_current_datarobot_bearer_token
 from datarobot_genai.drtools.core.constants import AUTH_CTX_KEY
+from datarobot_genai.drtools.core.constants import DATAROBOT_API_TOKEN_HEADER_CANDIDATE_NAMES
 from datarobot_genai.drtools.core.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
-# Try to import get_http_headers from FastMCP if available
-# The deplyment is expected to have the fastmcp dependency installed.
+# Try to import get_http_headers from FastMCP if available.
+# The deployment is expected to have the fastmcp dependency installed.
 # If not, you need to add your own implementation of get_http_headers.
 try:
     from fastmcp.server.dependencies import get_context
@@ -44,6 +49,9 @@ try:
     _get_context = get_context
 except ImportError:
     # FastMCP not available - create a stub that returns empty dict
+    class Middleware:  # type: ignore[no-redef]
+        pass
+
     def _get_http_headers(**kwargs: Any) -> dict[str, str]:
         return {}
 
@@ -62,6 +70,17 @@ logger = logging.getLogger(__name__)
 _request_headers_ctx: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
     "request_headers", default=None
 )
+
+
+def _resolve_framework_headers() -> dict[str, str] | None:
+    try:
+        return _get_http_headers()
+    except RuntimeError as exc:
+        logger.debug("No FastMCP HTTP context available for header resolution: %s", exc)
+        return None
+    except Exception:
+        logger.exception("Unexpected error resolving FastMCP HTTP headers.")
+        return None
 
 
 class OAuthMiddleWare(Middleware):
@@ -94,15 +113,24 @@ class OAuthMiddleWare(Middleware):
         ToolResult
             The result from the tool execution.
         """
-        auth_context = self._extract_auth_context()
-        if not auth_context:
-            logger.debug("No valid authorization context extracted from request headers.")
+        # AuthCtx identifies the provider authorization, while this request bearer
+        # authorizes the DataRobot refresh call. Bind it only for this tool call and
+        # reset in finally so concurrent FastMCP calls cannot share bearer state.
+        bearer = resolve_datarobot_api_token_from_headers()
+        bearer_ctx_token = set_current_datarobot_bearer_token(bearer) if bearer else None
+        try:
+            auth_context = self._extract_auth_context()
+            if not auth_context:
+                logger.debug("No valid authorization context extracted from request headers.")
 
-        if context.fastmcp_context is not None:
-            await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
-            logger.debug("Authorization context attached to state.")
+            if context.fastmcp_context is not None:
+                await context.fastmcp_context.set_state(AUTH_CTX_KEY, auth_context)
+                logger.debug("Authorization context attached to state.")
 
-        return await call_next(context)
+            return await call_next(context)
+        finally:
+            if bearer_ctx_token is not None:
+                reset_current_datarobot_bearer_token(bearer_ctx_token)
 
     def _extract_auth_context(self) -> AuthCtx | None:
         """Extract and validate authentication context from request headers.
@@ -224,11 +252,7 @@ def resolve_oauth_access_token_from_headers(header_segment: str) -> str | None:
     """
     header_key = oauth_access_token_header_name(header_segment).lower()
 
-    framework_headers: dict[str, str] | None = None
-    try:
-        framework_headers = _get_http_headers()
-    except Exception:
-        pass
+    framework_headers = _resolve_framework_headers()
 
     if framework_headers:
         if token := _extract_oauth_fallback_token_from_headers(framework_headers, header_key):
@@ -276,6 +300,14 @@ async def get_oauth_access_token_with_header_fallback(
             e,
             exc_info=True,
         )
+    except (OAuthProviderNotFound, OAuthValidationErr) as e:
+        oauth_exc = e
+        logger.info(
+            "OAuth provider authorization not available for %s (%s); checking header fallback.",
+            pt,
+            e,
+            exc_info=True,
+        )
     except RuntimeError as e:
         oauth_exc = e
         logger.info("No OAuth auth context for %s (%s); checking header fallback.", pt, e)
@@ -292,7 +324,7 @@ async def get_oauth_access_token_with_header_fallback(
         return header_token
 
     header = oauth_access_token_header_name(access_token_header_segment)
-    if isinstance(oauth_exc, OAuthServiceClientErr):
+    if isinstance(oauth_exc, (OAuthServiceClientErr, OAuthProviderNotFound, OAuthValidationErr)):
         logger.error("OAuth client error (no header fallback): %s", oauth_exc, exc_info=True)
         return ToolError(
             f"Could not obtain access token for {display_name}. Complete the OAuth flow or pass "
@@ -340,18 +372,26 @@ def set_request_headers_for_context(headers: dict[str, str]) -> None:
     _request_headers_ctx.set(headers)
 
 
-def _extract_token_from_headers(headers: dict[str, str]) -> str | None:
+def _is_jwt_shaped_token(token: str) -> bool:
+    return token.count(".") == 2
+
+
+def _extract_token_from_candidate_headers(
+    headers: dict[str, str],
+    candidate_names: list[str],
+) -> str | None:
     """
-    Extract a Bearer token from headers by checking multiple header name candidates.
+    Extract a token from headers by checking multiple header name candidates.
 
     Args:
         headers: Dictionary of headers (keys should be lowercase)
+        candidate_names: Header names to check in preference order
 
     Returns
     -------
         The extracted token string, or None if not found
     """
-    for candidate_name in HEADER_TOKEN_CANDIDATE_NAMES:
+    for candidate_name in candidate_names:
         auth_header = headers.get(candidate_name)
         if not auth_header:
             continue
@@ -370,6 +410,38 @@ def _extract_token_from_headers(headers: dict[str, str]) -> str | None:
         if token:
             return token
 
+    return None
+
+
+def _extract_token_from_headers(headers: dict[str, str]) -> str | None:
+    """
+    Extract a Bearer token from headers by checking multiple header name candidates.
+
+    Args:
+        headers: Dictionary of headers (keys should be lowercase)
+
+    Returns
+    -------
+        The extracted token string, or None if not found
+    """
+    return _extract_token_from_candidate_headers(headers, HEADER_TOKEN_CANDIDATE_NAMES)
+
+
+def _extract_datarobot_api_token_from_headers(headers: dict[str, str]) -> str | None:
+    """Extract a DataRobot API token/PAT without treating Hydra JWTs as refresh tokens."""
+    if token := _extract_token_from_candidate_headers(
+        headers,
+        DATAROBOT_API_TOKEN_HEADER_CANDIDATE_NAMES,
+    ):
+        return token
+
+    auth_header = headers.get("authorization")
+    if not isinstance(auth_header, str):
+        return None
+
+    token = _parse_optional_bearer_token(auth_header)
+    if token and not _is_jwt_shaped_token(token):
+        return token
     return None
 
 
@@ -402,8 +474,8 @@ def _extract_token_from_auth_context(headers: dict[str, str]) -> str | None:
 
         return None
 
-    except Exception as e:
-        logger.debug(f"Failed to get token from auth context: {e}")
+    except Exception:
+        logger.warning("Failed to get token from auth context.", exc_info=True)
         return None
 
 
@@ -431,20 +503,28 @@ def _extract_token_from_headers_with_fallback(headers: dict[str, str]) -> str | 
     return None
 
 
+def _extract_datarobot_api_token_from_headers_with_fallback(
+    headers: dict[str, str],
+) -> str | None:
+    """Extract a DataRobot API token/PAT, then fall back to AuthCtx metadata."""
+    if token := _extract_datarobot_api_token_from_headers(headers):
+        return token
+
+    if token := _extract_token_from_auth_context(headers):
+        return token
+
+    return None
+
+
 def resolve_token_from_headers() -> str | None:
     """
     Resolve API token from request headers, trying both sources.
 
-    Order: try framework get_http_headers() first (preferred), then context
-    (set by RequestHeadersMiddleware). If both have headers, tries token extraction
-    from the first; if no token found, tries the second so the token is used
-    whichever source it came from.
+    Framework headers are preferred because FastMCP owns the active request context.
+    The RequestHeadersMiddleware context fallback keeps custom routes/tests working when
+    no FastMCP HTTP context is available.
     """
-    framework_headers = None
-    try:
-        framework_headers = _get_http_headers()
-    except Exception:
-        pass  # No HTTP context (e.g. stdio transport)
+    framework_headers = _resolve_framework_headers()
 
     request_headers_ctx = _request_headers_ctx.get()
 
@@ -453,6 +533,28 @@ def resolve_token_from_headers() -> str | None:
     )
     if not token and request_headers_ctx:
         token = _extract_token_from_headers_with_fallback(request_headers_ctx)
+    return token
+
+
+def resolve_datarobot_api_token_from_headers() -> str | None:
+    """
+    Resolve a DataRobot API token/PAT for SDK calls and OAuth refresh.
+
+    A Hydra JWT in the standard Authorization header authenticates the inbound MCP
+    request but cannot refresh provider OAuth tokens through the DataRobot API. Explicit
+    DataRobot API token headers and AuthCtx metadata remain valid refresh-token sources.
+    """
+    framework_headers = _resolve_framework_headers()
+
+    request_headers_ctx = _request_headers_ctx.get()
+
+    token = (
+        _extract_datarobot_api_token_from_headers_with_fallback(framework_headers)
+        if framework_headers
+        else None
+    )
+    if not token and request_headers_ctx:
+        token = _extract_datarobot_api_token_from_headers_with_fallback(request_headers_ctx)
     return token
 
 
