@@ -46,7 +46,7 @@ For a minimal custom agent without a framework wrapper, start from [`e2e-tests/d
 
 ## DRAgent CLI
 
-The standalone CLI runs and queries DRAgent workflows over NAT. See [docs/dragent/](dragent/) for `serve`, `run`, `query`, completion JSON, authentication, and debugging.
+The standalone CLI runs and queries DRAgent workflows over NAT. See [docs/dragent/](dragent/) for `serve`, `run`, `query`, completion JSON, authentication, and debugging. For wiring OpenTelemetry tracing into the deployment **Data Exploration** tab, see [docs/dragent/tracing.md](dragent/tracing.md).
 
 ## Configuration reference
 
