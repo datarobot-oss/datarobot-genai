@@ -45,6 +45,15 @@ Inside a DataRobot deployment, the minimal ``workflow.yaml`` is::
 
 Explicit overrides for any of the three auto-derived fields are honored —
 pin them in ``workflow.yaml`` to point at a non-default collector.
+
+Local dev / incomplete config: when any of ``endpoint``,
+``datarobot_api_key``, or ``datarobot_entity_id`` resolves empty — the
+typical local shape, where ``MLOPS_DEPLOYMENT_ID`` is unset so the entity id
+is blank — the exporter silently drops spans instead of POSTing to a real
+endpoint with bad auth (which the DataRobot ingest rejects with repeated
+``401 Unauthorized``). This mirrors the no-op contract that
+``bootstrap_otel_provider_for_datarobot`` already honors for framework
+auto-instrumentor spans.
 """
 
 from __future__ import annotations
@@ -56,7 +65,9 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_telemetry_exporter
 from nat.data_models.common import SerializableSecretStr
 from nat.data_models.common import get_secret_value
+from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.telemetry_exporter import TelemetryExporterBaseConfig
+from nat.observability.exporter.base_exporter import BaseExporter
 from nat.observability.mixin.batch_config_mixin import BatchConfigMixin
 from nat.observability.mixin.collector_config_mixin import CollectorConfigMixin
 from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
@@ -144,14 +155,51 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
         return value
 
 
+class _DroppingSpanExporter(BaseExporter):
+    """Subscribes to the event stream but drops every span.
+
+    Yielded in place of the real OTLP exporter when the DataRobot OTel ingest
+    credentials are incomplete (the local-dev / CI shape, where
+    ``MLOPS_DEPLOYMENT_ID`` is unset so the entity id resolves empty). NAT's
+    exporter manager requires the registered async generator to yield a valid
+    ``BaseExporter`` (it does ``async with exporter.start():``), so a no-op
+    exporter — not a skipped yield — is the correct shape. Mirrors the silent
+    no-op contract that ``bootstrap_otel_provider_for_datarobot`` already
+    honors, keeping local runs free of the repeated ``401 Unauthorized``
+    span-export errors a misconfigured OTLP exporter would otherwise emit.
+    """
+
+    def export(self, event: IntermediateStep) -> None:
+        return None
+
+
 @register_telemetry_exporter(config_type=DataRobotOtelCollectorTelemetryExporter)
 async def datarobot_otelcollector_telemetry_exporter(
     config: DataRobotOtelCollectorTelemetryExporter,
     builder: Builder,
-) -> AsyncGenerator[OTLPSpanAdapterExporter, None]:
-    """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
+) -> AsyncGenerator[BaseExporter, None]:
+    """Yield an OTLP span exporter pointed at the DataRobot OTel collector.
+
+    When the resolved config is incomplete (missing endpoint, api key, or
+    entity id — the local-dev shape) yield a no-op exporter that drops spans
+    instead of authenticating against a real endpoint and failing with 401.
+    """
+    api_key = get_secret_value(config.datarobot_api_key)
+    if not api_key or not config.datarobot_entity_id or not config.endpoint:
+        logger.info(
+            "datarobot_otelcollector: DataRobot OTel ingest config incomplete "
+            "(endpoint=%s, entity_id=%s, api_key=%s) — dropping spans. Set "
+            "MLOPS_DEPLOYMENT_ID / DATAROBOT_API_TOKEN / DATAROBOT_(PUBLIC_)ENDPOINT "
+            "(e.g. via a shell deployment) to export traces.",
+            config.endpoint or "<unset>",
+            config.datarobot_entity_id or "<unset>",
+            "<set>" if api_key else "<unset>",
+        )
+        yield _DroppingSpanExporter()
+        return
+
     headers: dict[str, str] = {
-        "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
+        "X-DataRobot-Api-Key": api_key,
         "X-DataRobot-Entity-Id": config.datarobot_entity_id,
     }
     # Caller-supplied headers win on collision; lets you e.g. add request-

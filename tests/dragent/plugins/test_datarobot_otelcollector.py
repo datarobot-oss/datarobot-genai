@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     DataRobotOtelCollectorTelemetryExporter,
 )
+from datarobot_genai.dragent.plugins.datarobot_otelcollector import _DroppingSpanExporter
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     datarobot_otelcollector_telemetry_exporter,
 )
@@ -244,3 +245,47 @@ class TestExporterFactory:
         assert attrs["env"] == "prod"
         # SDK defaults still merged in.
         assert attrs["telemetry.sdk.language"] == "python"
+
+
+class TestExporterNoOpGate:
+    # When the resolved config is incomplete — the local-dev shape — the
+    # factory must yield a no-op dropping exporter instead of a live OTLP
+    # exporter that POSTs to a real endpoint and fails with 401.
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            # The reported 401 case: endpoint + api key resolve (DATAROBOT_*
+            # set) but MLOPS_DEPLOYMENT_ID is unset, so entity id is empty.
+            pytest.param({"datarobot_entity_id": ""}, id="missing-entity-id"),
+            pytest.param({"endpoint": ""}, id="missing-endpoint"),
+            pytest.param({"datarobot_api_key": ""}, id="missing-api-key"),
+        ],
+    )
+    async def test_incomplete_config_yields_dropping_exporter(self, overrides):
+        cfg = _make_config(**overrides)
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(
+                cfg, builder=MagicMock()
+            ) as exporter:
+                assert isinstance(exporter, _DroppingSpanExporter)
+        # The live OTLP exporter is never constructed on the no-op path.
+        mock_exporter.assert_not_called()
+
+    async def test_dropping_exporter_drops_spans(self):
+        # export() is a silent no-op — no network call, no raise.
+        assert _DroppingSpanExporter().export(MagicMock()) is None
+
+    async def test_fully_configured_yields_live_exporter(self):
+        # Regression: all three fields set → real OTLPSpanAdapterExporter built.
+        cfg = _make_config()
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(
+                cfg, builder=MagicMock()
+            ) as exporter:
+                assert exporter is mock_exporter.return_value
+        mock_exporter.assert_called_once()
