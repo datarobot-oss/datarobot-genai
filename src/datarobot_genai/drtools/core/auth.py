@@ -34,8 +34,8 @@ from datarobot_genai.drtools.core.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
-# Try to import get_http_headers from FastMCP if available
-# The deplyment is expected to have the fastmcp dependency installed.
+# Try to import get_http_headers from FastMCP if available.
+# The deployment is expected to have the fastmcp dependency installed.
 # If not, you need to add your own implementation of get_http_headers.
 try:
     from fastmcp.server.dependencies import get_context
@@ -49,6 +49,9 @@ try:
     _get_context = get_context
 except ImportError:
     # FastMCP not available - create a stub that returns empty dict
+    class Middleware:  # type: ignore[no-redef]
+        pass
+
     def _get_http_headers(**kwargs: Any) -> dict[str, str]:
         return {}
 
@@ -114,7 +117,7 @@ class OAuthMiddleWare(Middleware):
         # authorizes the DataRobot refresh call. Bind it only for this tool call and
         # reset in finally so concurrent FastMCP calls cannot share bearer state.
         bearer = resolve_datarobot_api_token_from_headers()
-        bearer_ctx_token = set_current_datarobot_bearer_token(bearer)
+        bearer_ctx_token = set_current_datarobot_bearer_token(bearer) if bearer else None
         try:
             auth_context = self._extract_auth_context()
             if not auth_context:
@@ -126,7 +129,8 @@ class OAuthMiddleWare(Middleware):
 
             return await call_next(context)
         finally:
-            reset_current_datarobot_bearer_token(bearer_ctx_token)
+            if bearer_ctx_token is not None:
+                reset_current_datarobot_bearer_token(bearer_ctx_token)
 
     def _extract_auth_context(self) -> AuthCtx | None:
         """Extract and validate authentication context from request headers.

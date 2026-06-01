@@ -30,7 +30,6 @@ from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import set_authorization_context
-from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
@@ -877,7 +876,7 @@ class TestOAuthMiddlewareBearerContext:
         middleware_context.fastmcp_context.set_state = AsyncMock()
         observed: dict[str, str | None] = {}
 
-        async def failing_call_next(context: Any) -> ToolResult:
+        async def failing_call_next(context: Any) -> dict[str, bool]:
             observed["during"] = get_current_datarobot_bearer_token()
             raise RuntimeError("tool failed")
 
@@ -900,9 +899,9 @@ class TestOAuthMiddlewareBearerContext:
         middleware_context.fastmcp_context.set_state = AsyncMock()
         observed: dict[str, str | None] = {}
 
-        async def call_next(context: Any) -> ToolResult:
+        async def call_next(context: Any) -> dict[str, bool]:
             observed["during"] = get_current_datarobot_bearer_token()
-            return ToolResult(structured_content={"ok": True})
+            return {"ok": True}
 
         headers = {"authorization": "Bearer header.payload.signature"}
         with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
@@ -910,6 +909,29 @@ class TestOAuthMiddlewareBearerContext:
 
         assert observed["during"] is None
         assert get_current_datarobot_bearer_token() is None
+
+    @pytest.mark.asyncio
+    async def test_on_call_tool_preserves_existing_bearer_when_no_api_token(self) -> None:
+        """GIVEN an outer bearer binding WHEN no API token resolves THEN preserve it."""
+        middleware = OAuthMiddleWare(
+            auth_handler=AuthContextHeaderHandler(secret_key="test-secret-key")
+        )
+        middleware_context = MagicMock()
+        middleware_context.fastmcp_context = MagicMock()
+        middleware_context.fastmcp_context.set_state = AsyncMock()
+        observed: dict[str, str | None] = {}
+        set_current_datarobot_bearer_token("outer-pat")
+
+        async def call_next(context: Any) -> dict[str, bool]:
+            observed["during"] = get_current_datarobot_bearer_token()
+            return {"ok": True}
+
+        headers = {"authorization": "Bearer header.payload.signature"}
+        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+            await middleware.on_call_tool(middleware_context, call_next)
+
+        assert observed["during"] == "outer-pat"
+        assert get_current_datarobot_bearer_token() == "outer-pat"
 
 
 class TestAuthlibTokenRetriever:
