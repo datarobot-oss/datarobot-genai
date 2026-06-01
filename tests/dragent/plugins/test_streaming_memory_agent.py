@@ -19,19 +19,20 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import AssistantMessage
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgUiSystemMessage
+from ag_ui.core import UserMessage as AgUiUserMessage
+from ag_ui.core.events import EventType
+from ag_ui.core.events import TextMessageContentEvent
 from nat.data_models.agent import AgentBaseConfig
-from nat.data_models.api_server import ChatRequest
-from nat.data_models.api_server import ChatResponseChunk
-from nat.data_models.api_server import ChatResponseChunkChoice
-from nat.data_models.api_server import ChoiceDelta
-from nat.data_models.api_server import Message
-from nat.data_models.api_server import UserMessageContentRoleType
 from nat.data_models.component_ref import FunctionRef
 from nat.data_models.component_ref import LLMRef
 from nat.data_models.component_ref import MemoryRef
 from nat.memory.models import MemoryItem
 from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.plugins.streaming_memory_agent import StreamingMemoryAgentConfig
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _last_user_text
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _user_id_from_context
@@ -46,28 +47,39 @@ _MODULE = "datarobot_genai.dragent.plugins.streaming_memory_agent"
 # ---------------------------------------------------------------------------
 
 
-def _user(content: str) -> Message:
-    return Message(role=UserMessageContentRoleType.USER, content=content)
+def _user(content: str, msg_id: str | None = None) -> AgUiUserMessage:
+    return AgUiUserMessage(id=msg_id or f"u-{content}", content=content)
 
 
-def _assistant(content: str) -> Message:
-    return Message(role=UserMessageContentRoleType.ASSISTANT, content=content)
+def _assistant(content: str, msg_id: str | None = None) -> AssistantMessage:
+    return AssistantMessage(id=msg_id or f"a-{content}", content=content)
 
 
-def _system(content: str) -> Message:
-    return Message(role=UserMessageContentRoleType.SYSTEM, content=content)
+def _system(content: str, msg_id: str | None = None) -> AgUiSystemMessage:
+    return AgUiSystemMessage(id=msg_id or f"s-{content}", content=content)
 
 
-def _chunk(content: str | None = None, chunk_id: str = "chunk-1") -> ChatResponseChunk:
-    import datetime
+def _input(*messages) -> RunAgentInput:
+    """Build a minimal RunAgentInput around a message list."""
+    return RunAgentInput(
+        thread_id="thread-1",
+        run_id="run-1",
+        state={},
+        messages=list(messages),
+        tools=[],
+        context=[],
+        forwarded_props={},
+    )
 
-    return ChatResponseChunk(
-        id=chunk_id,
-        created=datetime.datetime.now(datetime.UTC),
-        choices=[
-            ChatResponseChunkChoice(
-                index=0,
-                delta=ChoiceDelta(content=content),
+
+def _chunk(content: str, msg_id: str = "m-1") -> DRAgentEventResponse:
+    """Build a DRAgentEventResponse with a single text-content event."""
+    return DRAgentEventResponse(
+        events=[
+            TextMessageContentEvent(
+                type=EventType.TEXT_MESSAGE_CONTENT,
+                message_id=msg_id,
+                delta=content,
             )
         ],
     )
@@ -87,7 +99,7 @@ def _make_config(memory_name: str = "mem0", **overrides) -> StreamingMemoryAgent
 
 def _make_builder(
     memory_editor: AsyncMock | None = None,
-    inner_agent_chunks: list[ChatResponseChunk] | None = None,
+    inner_agent_chunks: list[DRAgentEventResponse] | None = None,
 ) -> MagicMock:
     """Build a NAT Builder mock with the methods the plugin calls."""
     builder = MagicMock()
@@ -104,12 +116,6 @@ def _make_builder(
     inner_agent._test_astream = _astream  # type: ignore[attr-defined]
     builder.get_function = AsyncMock(return_value=inner_agent)
     return builder
-
-
-async def _build_stream_fn(config: StreamingMemoryAgentConfig, builder: MagicMock):
-    """Enter the streaming_memory_agent context manager and return its stream_fn."""
-    async with streaming_memory_agent(config, builder) as fn_info:
-        return fn_info, builder
 
 
 async def _drain(gen: AsyncGenerator) -> list:
@@ -235,7 +241,7 @@ class TestLastUserText:
 
     def test_skips_user_message_without_content(self):
         # content="" is falsy, so the function falls back to the next user message.
-        messages = [_user("earlier"), _user("")]
+        messages = [_user("earlier"), _user("", msg_id="empty")]
         assert _last_user_text(messages) == "earlier"
 
 
@@ -251,9 +257,9 @@ class TestWithMemoryContext:
 
         assert len(out) == len(messages) + 1
         # Inserted system message is the one immediately before the final user message.
-        assert out[-1].role == UserMessageContentRoleType.USER
+        assert isinstance(out[-1], AgUiUserMessage)
         assert out[-1].content == "question"
-        assert out[-2].role == UserMessageContentRoleType.SYSTEM
+        assert isinstance(out[-2], AgUiSystemMessage)
         assert "Relevant context from memory:" in str(out[-2].content)
         assert "remembered fact" in str(out[-2].content)
         # Earlier messages are unchanged.
@@ -264,7 +270,7 @@ class TestWithMemoryContext:
         messages = [_assistant("hello"), _system("sys")]
         out = _with_memory_context(messages, "fact")
 
-        assert out[0].role == UserMessageContentRoleType.SYSTEM
+        assert isinstance(out[0], AgUiSystemMessage)
         assert "fact" in str(out[0].content)
         # Original messages follow, in order.
         assert out[1:] == messages
@@ -273,15 +279,15 @@ class TestWithMemoryContext:
         # Injection target must match `_last_user_text`'s choice: both functions
         # skip empty-content user messages so the system message lands next to
         # the user turn the memory search was actually keyed off of.
-        messages = [_user("earlier"), _user("")]
+        messages = [_user("earlier"), _user("", msg_id="empty")]
         out = _with_memory_context(messages, "fact")
 
         # Inserted system message sits immediately before "earlier", not before "".
         assert len(out) == len(messages) + 1
-        assert out[0].role == UserMessageContentRoleType.SYSTEM
-        assert out[1].role == UserMessageContentRoleType.USER
+        assert isinstance(out[0], AgUiSystemMessage)
+        assert isinstance(out[1], AgUiUserMessage)
         assert out[1].content == "earlier"
-        assert out[2].role == UserMessageContentRoleType.USER
+        assert isinstance(out[2], AgUiUserMessage)
         assert out[2].content == ""
 
     def test_does_not_mutate_input_list(self):
@@ -305,18 +311,6 @@ def context_user_id():
         yield "test-user"
 
 
-@pytest.fixture
-def passthrough_converter():
-    """Replace convert_chunks_to_agui_events with a passthrough so we can assert on chunks."""
-
-    async def _passthrough(chunks):
-        async for chunk in chunks:
-            yield chunk
-
-    with patch(f"{_MODULE}.convert_chunks_to_agui_events", side_effect=_passthrough) as mock:
-        yield mock
-
-
 class TestStreamingMemoryAgentFactory:
     async def test_yields_function_info_with_stream_fn(self, context_user_id):
         config = _make_config()
@@ -325,6 +319,14 @@ class TestStreamingMemoryAgentFactory:
             assert fn_info is not None
             assert fn_info.stream_fn is not None
             assert fn_info.description == config.description
+
+    async def test_yields_function_info_with_single_fn(self, context_user_id):
+        # stream_to_single_fn is wired so `nat dragent run` (and other
+        # non-streaming callers) can collapse the event stream to text.
+        config = _make_config()
+        builder = _make_builder(memory_editor=AsyncMock())
+        async with streaming_memory_agent(config, builder) as fn_info:
+            assert fn_info.single_fn is not None
 
     async def test_fetches_memory_client_and_inner_agent(self, context_user_id):
         config = _make_config(memory_name="mem0")
@@ -341,10 +343,20 @@ class TestStreamingMemoryAgentFactory:
 # ---------------------------------------------------------------------------
 
 
+def _content_deltas(responses: list[DRAgentEventResponse]) -> list[str]:
+    """Pull TEXT_MESSAGE_CONTENT deltas out of an event-response list."""
+    out: list[str] = []
+    for r in responses:
+        for ev in r.events:
+            if isinstance(ev, TextMessageContentEvent):
+                out.append(ev.delta)
+    return out
+
+
 class TestStreamFnAllFlagsOff:
     """All save/retrieve flags off → chunks still stream, no mem0 calls."""
 
-    async def test_streams_chunks_unchanged(self, context_user_id, passthrough_converter):
+    async def test_streams_chunks_unchanged(self, context_user_id):
         config = _make_config(
             save_user_messages_to_memory=False,
             retrieve_memory_for_every_response=False,
@@ -355,27 +367,25 @@ class TestStreamFnAllFlagsOff:
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=chunks)
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            request = ChatRequest(messages=[_user("hi")])
-            out = await _drain(fn_info.stream_fn(request))
+            out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
-        assert len(out) == 2
-        assert out[0].choices[0].delta.content == "Hello"
-        assert out[1].choices[0].delta.content == " world"
+        assert _content_deltas(out) == ["Hello", " world"]
         # No memory side effects when every flag is off.
         memory_editor.add_items.assert_not_called()
         memory_editor.search.assert_not_called()
 
 
 class TestStreamFnSavesUserMessage:
-    async def test_saves_last_user_message_to_memory(self, context_user_id, passthrough_converter):
+    async def test_saves_last_user_message_to_memory(self, context_user_id):
         config = _make_config(memory_name="mem0")
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            request = ChatRequest(messages=[_user("earlier"), _assistant("a"), _user("latest")])
-            await _drain(fn_info.stream_fn(request))
+            await _drain(
+                fn_info.stream_fn(_input(_user("earlier"), _assistant("a"), _user("latest")))
+            )
 
         # First add_items call should persist the user's latest message.
         first_call = memory_editor.add_items.await_args_list[0]
@@ -386,14 +396,14 @@ class TestStreamFnSavesUserMessage:
         assert item.conversation == [{"role": "user", "content": "latest"}]
         assert item.user_id == "test-user"
 
-    async def test_skips_save_when_disabled(self, context_user_id, passthrough_converter):
+    async def test_skips_save_when_disabled(self, context_user_id):
         config = _make_config(memory_name="mem0", save_user_messages_to_memory=False)
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         # Only the assistant save (after streaming) is expected.
         user_saves = [
@@ -403,7 +413,7 @@ class TestStreamFnSavesUserMessage:
         ]
         assert user_saves == []
 
-    async def test_skips_save_when_no_user_text(self, context_user_id, passthrough_converter):
+    async def test_skips_save_when_no_user_text(self, context_user_id):
         config = _make_config(memory_name="mem0")
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
@@ -411,7 +421,7 @@ class TestStreamFnSavesUserMessage:
 
         async with streaming_memory_agent(config, builder) as fn_info:
             # No user messages at all.
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_assistant("just chatting")])))
+            await _drain(fn_info.stream_fn(_input(_assistant("just chatting"))))
 
         user_saves = [
             call
@@ -420,21 +430,19 @@ class TestStreamFnSavesUserMessage:
         ]
         assert user_saves == []
 
-    async def test_forwards_add_params(self, context_user_id, passthrough_converter):
+    async def test_forwards_add_params(self, context_user_id):
         config = _make_config(memory_name="mem0", add_params={"namespace": "foo"})
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         for call in memory_editor.add_items.await_args_list:
             assert call.kwargs == {"namespace": "foo"}
 
-    async def test_save_failure_does_not_propagate(
-        self, context_user_id, passthrough_converter, caplog
-    ):
+    async def test_save_failure_does_not_propagate(self, context_user_id, caplog):
         config = _make_config(memory_name="mem0", save_ai_messages_to_memory=False)
         memory_editor = AsyncMock()
         memory_editor.add_items.side_effect = RuntimeError("kapow")
@@ -444,16 +452,14 @@ class TestStreamFnSavesUserMessage:
         async with streaming_memory_agent(config, builder) as fn_info:
             with caplog.at_level(logging.WARNING, logger=_MODULE):
                 # Should not raise even though add_items blew up.
-                out = await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+                out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         assert out  # streaming still happened
         assert any("memory.add_items(user) failed" in rec.message for rec in caplog.records)
 
 
 class TestStreamFnRetrievesMemory:
-    async def test_injects_search_results_as_system_message(
-        self, context_user_id, passthrough_converter
-    ):
+    async def test_injects_search_results_as_system_message(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -475,40 +481,32 @@ class TestStreamFnRetrievesMemory:
         builder.get_function.return_value.astream = _astream
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(
-                fn_info.stream_fn(
-                    ChatRequest(messages=[_user("first"), _assistant("ok"), _user("now")])
-                )
-            )
+            await _drain(fn_info.stream_fn(_input(_user("first"), _assistant("ok"), _user("now"))))
 
         memory_editor.search.assert_awaited_once()
         assert memory_editor.search.await_args.kwargs["query"] == "now"
         assert memory_editor.search.await_args.kwargs["user_id"] == "test-user"
 
-        inner_request: ChatRequest = captured_request["request"]
-        assert inner_request.stream is True
+        inner_request: RunAgentInput = captured_request["request"]
         # System message with both memory snippets, inserted right before the last user message.
-        roles = [m.role for m in inner_request.messages]
-        assert roles[-1] == UserMessageContentRoleType.USER
-        assert roles[-2] == UserMessageContentRoleType.SYSTEM
+        assert isinstance(inner_request.messages[-1], AgUiUserMessage)
+        assert isinstance(inner_request.messages[-2], AgUiSystemMessage)
         injected = str(inner_request.messages[-2].content)
         assert "user likes cats" in injected
         assert "user lives in NYC" in injected
 
-    async def test_skips_search_when_disabled(self, context_user_id, passthrough_converter):
+    async def test_skips_search_when_disabled(self, context_user_id):
         config = _make_config(memory_name="mem0", retrieve_memory_for_every_response=False)
         memory_editor = AsyncMock()
         memory_editor.search.return_value = []
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         memory_editor.search.assert_not_called()
 
-    async def test_no_system_message_when_search_returns_no_text(
-        self, context_user_id, passthrough_converter
-    ):
+    async def test_no_system_message_when_search_returns_no_text(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -528,12 +526,11 @@ class TestStreamFnRetrievesMemory:
         builder.get_function.return_value.astream = _astream
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
-        roles = [m.role for m in captured["request"].messages]
-        assert UserMessageContentRoleType.SYSTEM not in roles
+        assert not any(isinstance(m, AgUiSystemMessage) for m in captured["request"].messages)
 
-    async def test_forwards_search_params(self, context_user_id, passthrough_converter):
+    async def test_forwards_search_params(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -545,13 +542,11 @@ class TestStreamFnRetrievesMemory:
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("ok")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         assert memory_editor.search.await_args.kwargs["top_k"] == 5
 
-    async def test_search_failure_does_not_propagate(
-        self, context_user_id, passthrough_converter, caplog
-    ):
+    async def test_search_failure_does_not_propagate(self, context_user_id, caplog):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -563,16 +558,14 @@ class TestStreamFnRetrievesMemory:
 
         async with streaming_memory_agent(config, builder) as fn_info:
             with caplog.at_level(logging.WARNING, logger=_MODULE):
-                out = await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+                out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         assert out
         assert any("memory.search failed" in rec.message for rec in caplog.records)
 
 
 class TestStreamFnSavesAiResponse:
-    async def test_accumulates_text_and_saves_after_stream(
-        self, context_user_id, passthrough_converter
-    ):
+    async def test_accumulates_text_and_saves_after_stream(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -586,10 +579,10 @@ class TestStreamFnSavesAiResponse:
         )
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            out = await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         # All chunks streamed through.
-        assert [c.choices[0].delta.content for c in out] == ["Hel", "lo", " world"]
+        assert _content_deltas(out) == ["Hel", "lo", " world"]
 
         # Exactly one add_items call, for the assistant turn.
         assert memory_editor.add_items.await_count == 1
@@ -597,7 +590,7 @@ class TestStreamFnSavesAiResponse:
         assert items[0].conversation == [{"role": "assistant", "content": "Hello world"}]
         assert items[0].user_id == "test-user"
 
-    async def test_skips_save_when_disabled(self, context_user_id, passthrough_converter):
+    async def test_skips_save_when_disabled(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -608,13 +601,11 @@ class TestStreamFnSavesAiResponse:
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[_chunk("hi")])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         memory_editor.add_items.assert_not_called()
 
-    async def test_skips_save_when_no_text_accumulated(
-        self, context_user_id, passthrough_converter
-    ):
+    async def test_skips_save_when_no_text_accumulated(self, context_user_id):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -625,13 +616,11 @@ class TestStreamFnSavesAiResponse:
         builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=[])
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         memory_editor.add_items.assert_not_called()
 
-    async def test_save_failure_does_not_propagate(
-        self, context_user_id, passthrough_converter, caplog
-    ):
+    async def test_save_failure_does_not_propagate(self, context_user_id, caplog):
         config = _make_config(
             memory_name="mem0",
             save_user_messages_to_memory=False,
@@ -643,14 +632,14 @@ class TestStreamFnSavesAiResponse:
 
         async with streaming_memory_agent(config, builder) as fn_info:
             with caplog.at_level(logging.WARNING, logger=_MODULE):
-                out = await _drain(fn_info.stream_fn(ChatRequest(messages=[_user("hi")])))
+                out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
         assert out  # streaming itself succeeded
         assert any("memory.add_items(assistant) failed" in rec.message for rec in caplog.records)
 
 
 class TestStreamFnInnerRequest:
-    async def test_inner_request_has_stream_true(self, context_user_id, passthrough_converter):
+    async def test_inner_request_carries_modified_messages(self, context_user_id):
         config = _make_config(
             save_user_messages_to_memory=False,
             retrieve_memory_for_every_response=False,
@@ -658,7 +647,7 @@ class TestStreamFnInnerRequest:
         )
         captured: dict = {}
 
-        async def _astream(inner_request, to_type=None):  # noqa: ARG001
+        async def _astream(inner_request, to_type=None):
             captured["request"] = inner_request
             captured["to_type"] = to_type
             yield _chunk("ok")
@@ -667,8 +656,12 @@ class TestStreamFnInnerRequest:
         builder.get_function.return_value.astream = _astream
 
         async with streaming_memory_agent(config, builder) as fn_info:
-            request = ChatRequest(messages=[_user("hi")], stream=False)
-            await _drain(fn_info.stream_fn(request))
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
 
-        assert captured["request"].stream is True
-        assert captured["to_type"] is ChatResponseChunk
+        # No explicit to_type — the wrapper relies on the inner agent's native
+        # DRAgentEventResponse stream rather than converting.
+        assert captured["to_type"] is None
+        # And RunAgentInput is forwarded (possibly with extra system messages, but
+        # in this test no flags are on so nothing is injected).
+        assert isinstance(captured["request"], RunAgentInput)
+        assert [m.content for m in captured["request"].messages] == ["hi"]
