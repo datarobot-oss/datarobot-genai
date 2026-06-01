@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.92
-- `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` loads guard configuration from `moderation_config.yaml` in `model_dir` (DRUM layout, default when `moderation` is omitted) or inline from `middleware.<name>.moderation` in `workflow.yaml`. Optional `model_dir` defaults to the process working directory; inline `moderation` takes precedence when both are present.
+- `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` loads guard configuration via explicit `config_source` (`config_file`, default, reads `moderation_config.yaml` from `model_dir`) or `inline` (reads `middleware.<name>.moderation` in `workflow.yaml`). Optional `model_dir` defaults to the process working directory when using `config_file`.
 
 ## 0.15.91
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.

@@ -25,10 +25,11 @@ Expected workflow contracts:
 
 Guard configuration (``_type: datarobot_moderation``):
 
-* **DRUM-style file (default)** — omit ``moderation`` and optionally set ``model_dir`` to the custom
-  model directory containing ``moderation_config.yaml`` (defaults to the process working directory).
-* **Inline** — nest guards under ``middleware.<name>.moderation`` in ``workflow.yaml``. When both
-  are present, inline ``moderation`` takes precedence over ``moderation_config.yaml``.
+* **DRUM-style file (default)** — set ``config_source: config_file`` (the default) and optionally
+  ``model_dir`` to the custom model directory containing ``moderation_config.yaml`` (defaults to
+  the process working directory).
+* **Inline** — set ``config_source: inline`` and nest guards under
+  ``middleware.<name>.moderation`` in ``workflow.yaml``.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
@@ -124,6 +125,8 @@ _logger = logging.getLogger(__name__)
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
+ModerationConfigSource = Literal["config_file", "inline"]
+
 
 def _workflow_input_from_args(args: tuple[Any, ...]) -> WorkflowInput | None:
     if not args:
@@ -140,18 +143,26 @@ class DataRobotModerationConfig(
 ):
     """NAT middleware: DataRobot prescore / postscore guards."""
 
+    config_source: ModerationConfigSource = Field(
+        default="config_file",
+        description=(
+            "Where to load guard configuration from: ``moderation_config.yaml`` in ``model_dir`` "
+            "(``config_file``, default) or the inline ``moderation`` block (``inline``)."
+        ),
+    )
     model_dir: str | None = Field(
         default=None,
         description=(
             "Directory containing ``moderation_config.yaml`` and guard assets (DRUM custom model "
-            "layout). Defaults to the process working directory."
+            "layout). Used when ``config_source`` is ``config_file``. Defaults to the process "
+            "working directory."
         ),
     )
     moderation: ModerationConfig | None = Field(
         default=None,
         description=(
-            "Inline guard configuration (``ModerationConfig`` from datarobot_dome). When set, "
-            "takes precedence over ``moderation_config.yaml`` in ``model_dir``."
+            "Inline guard configuration (``ModerationConfig`` from datarobot_dome). Used when "
+            "``config_source`` is ``inline``."
         ),
     )
 
@@ -183,22 +194,27 @@ def load_moderation_config_from_file(model_dir: str | None) -> ModerationConfig 
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
-    """Build an LLM moderation pipeline from inline config or ``moderation_config.yaml``.
+    """Build an LLM moderation pipeline from the configured guard configuration source.
 
-    Returns ``None`` when moderation is disabled, no configuration source is present, or no guards
-    are configured so the middleware is a no-op and can be listed unconditionally in
+    Returns ``None`` when moderation is disabled, the selected source is missing or empty, or no
+    guards are configured so the middleware is a no-op and can be listed unconditionally in
     ``workflow.yaml``.
     """
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
-    resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
-
-    if config.moderation is not None:
+    if config.config_source == "inline":
+        if config.moderation is None:
+            _logger.debug(
+                "config_source is inline but no ``moderation`` block configured; "
+                "moderation middleware is a no-op"
+            )
+            return None
         if not moderation_config_has_guards(config.moderation):
             _logger.debug("Moderation config has no guards; moderation middleware is a no-op")
             return None
+        resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
         return ModerationPipeline.from_config(config.moderation, model_dir=resolved_model_dir)
 
     config_path = moderation_config_file_path(config.model_dir)

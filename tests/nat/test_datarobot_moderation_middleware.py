@@ -21,7 +21,6 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from typing import Literal
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -76,6 +75,7 @@ from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
+from datarobot_genai.nat.datarobot_moderation_middleware import ModerationConfigSource
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
@@ -120,8 +120,6 @@ def _moderation_config_from_fixture_dir(model_dir: Path) -> ModerationConfig:
     return ModerationConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
-ModerationConfigSource = Literal["inline", "config_file"]
-
 _CREDENTIAL_ENV = {
     "DATAROBOT_API_TOKEN": "test-token",
     "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
@@ -141,9 +139,15 @@ def _moderation_middleware_for_fixture_dir(
 ) -> DataRobotModerationMiddleware:
     """Build inline or file-backed moderation middleware from a fixture model directory."""
     if config_source == "inline":
-        cfg = DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir))
+        cfg = DataRobotModerationConfig(
+            config_source="inline",
+            moderation=_moderation_config_from_fixture_dir(model_dir),
+        )
     else:
-        cfg = DataRobotModerationConfig(model_dir=str(model_dir))
+        cfg = DataRobotModerationConfig(
+            config_source="config_file",
+            model_dir=str(model_dir),
+        )
     mw = DataRobotModerationMiddleware(cfg, builder_mock)
     assert mw.enabled is True
     return mw
@@ -417,7 +421,10 @@ def test_moderation_config_has_guards() -> None:
 
 
 def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() -> None:
-    cfg = DataRobotModerationConfig(moderation=ModerationConfig.model_validate({"guards": []}))
+    cfg = DataRobotModerationConfig(
+        config_source="inline",
+        moderation=ModerationConfig.model_validate({"guards": []}),
+    )
     with (
         patch.dict(os.environ, {}, clear=True),
         patch(
@@ -430,10 +437,10 @@ def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() ->
 
 def test_load_llm_moderation_pipeline_missing_moderation_block_is_noop() -> None:
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
-    ) as from_config:
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
         assert load_llm_moderation_pipeline(DataRobotModerationConfig()) is None
-    from_config.assert_not_called()
+    from_yaml.assert_not_called()
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
@@ -454,7 +461,7 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
             "timeout_sec": 60,
         }
     )
-    cfg = DataRobotModerationConfig(moderation=moderation)
+    cfg = DataRobotModerationConfig(config_source="inline", moderation=moderation)
     with patch.dict(
         os.environ,
         {
@@ -469,7 +476,7 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
 
 def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
     model_dir = INTEGRATION_MODERATION_MODEL_DIR
-    cfg = DataRobotModerationConfig(model_dir=str(model_dir))
+    cfg = DataRobotModerationConfig(config_source="config_file", model_dir=str(model_dir))
     with patch.dict(os.environ, _CREDENTIAL_ENV):
         pipeline = load_llm_moderation_pipeline(cfg)
     assert pipeline is not None
@@ -477,7 +484,7 @@ def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
 
 
 def test_load_llm_moderation_pipeline_from_config_file_missing_is_noop(tmp_path: Path) -> None:
-    cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
+    cfg = DataRobotModerationConfig(config_source="config_file", model_dir=str(tmp_path))
     with patch(
         "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
@@ -485,20 +492,43 @@ def test_load_llm_moderation_pipeline_from_config_file_missing_is_noop(tmp_path:
     from_yaml.assert_not_called()
 
 
-def test_load_llm_moderation_pipeline_inline_takes_precedence_over_config_file(
-    tmp_path: Path,
-) -> None:
+def test_load_llm_moderation_pipeline_config_source_inline_uses_moderation_field() -> None:
     fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
-    inline = ModerationConfig.model_validate({"guards": []})
+    inline = _moderation_config_from_fixture_dir(fixture_dir)
     cfg = DataRobotModerationConfig(
+        config_source="inline",
         model_dir=str(fixture_dir),
         moderation=inline,
     )
-    with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
-    ) as from_yaml:
-        assert load_llm_moderation_pipeline(cfg) is None
+    with (
+        patch.dict(os.environ, _CREDENTIAL_ENV),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
+    ):
+        pipeline = load_llm_moderation_pipeline(cfg)
     from_yaml.assert_not_called()
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
+def test_load_llm_moderation_pipeline_config_source_config_file_ignores_inline_moderation() -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    cfg = DataRobotModerationConfig(
+        config_source="config_file",
+        model_dir=str(fixture_dir),
+        moderation=ModerationConfig.model_validate({"guards": []}),
+    )
+    with (
+        patch.dict(os.environ, _CREDENTIAL_ENV),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+        ) as from_config,
+    ):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    from_config.assert_not_called()
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
 
 
 def test_moderation_middleware_enabled_when_fixture_config_present(
