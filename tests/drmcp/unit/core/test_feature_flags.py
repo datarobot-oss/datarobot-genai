@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections.abc import Iterator
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -26,37 +27,30 @@ class TestFeatureFlags:
         return "datarobot_genai.drmcp.core.feature_flags"
 
     @pytest.fixture
-    def mock_get_datarobot_client(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(
-            f"{module_under_test}.setup_and_return_dr_api_client_with_static_config_in_container"
-        ) as mock_func:
+    def mock_get_credentials(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_credentials") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_feature_flag_create(self) -> Iterator[Mock]:
-        with patch.object(FeatureFlag, "create") as mock_func:
+    def mock_is_mcp_tools_gallery_support_enabled(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.is_mcp_tools_gallery_support_enabled",
+            new_callable=AsyncMock,
+        ) as mock_func:
             yield mock_func
 
-    def test_create(self, mock_get_datarobot_client: Mock) -> None:
-        mock_datarobot_client = mock_get_datarobot_client.return_value
-        expected_feature_flag_name = Mock()
-        expected_feature_status = Mock()
-        mock_datarobot_client.post.return_value.json.return_value = {
-            "entitlements": [{"name": expected_feature_flag_name, "value": expected_feature_status}]
-        }
-
-        output = FeatureFlag.create(expected_feature_flag_name)
-
-        mock_datarobot_client.post.assert_called_once_with(
-            "entitlements/evaluate/",
-            json={"entitlements": [{"name": expected_feature_flag_name}]},
-        )
-        assert output == FeatureFlag(
-            name=expected_feature_flag_name, enabled=bool(expected_feature_status)
+    @pytest.mark.asyncio
+    async def test_is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user(
+        self,
+        mock_get_credentials: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        output = (
+            await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
         )
 
-    def test_is_mcp_tools_gallery_support_enabled(self, mock_feature_flag_create: Mock) -> None:
-        output = FeatureFlag.is_mcp_tools_gallery_support_enabled()
-
-        mock_feature_flag_create.assert_called_once_with("ENABLE_MCP_TOOLS_GALLERY_SUPPORT")
-        assert output == mock_feature_flag_create.return_value.enabled
+        mock_credentials = mock_get_credentials.return_value
+        mock_token = mock_credentials.datarobot.application_api_token
+        mock_endpoint = mock_credentials.datarobot.endpoint
+        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with(mock_endpoint, mock_token)
+        assert output == mock_is_mcp_tools_gallery_support_enabled.return_value

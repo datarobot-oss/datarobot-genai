@@ -14,7 +14,6 @@
 
 from typing import Any
 
-from datarobot_genai.core.agents import make_system_prompt
 from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
 from datarobot_genai.llama_index.llm import get_llm
 from llama_index.core.agent.workflow import AgentWorkflow
@@ -29,12 +28,10 @@ llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 planner = FunctionAgent(
     name="planner",
-    description="Creates short bullet-point outlines",
-    system_prompt=make_system_prompt(
-        "You are a content planner. Given a topic, produce a short bullet-point "
-        "outline with 3-5 key points. No paragraphs, no explanations — just the list. "
-        "Use the generate_objectid tool when asked to generate an object ID for a "
-        "deployment."
+    description="Calls tools or replies briefly, then hands off",
+    system_prompt=(
+        "Call any required tool. Reply with only the tool's result, "
+        "or 1 brief line if no tool is needed. Hand off to writer."
     ),
     llm=llm,
     tools=[generate_objectid_tool],
@@ -42,12 +39,8 @@ planner = FunctionAgent(
 )
 writer = FunctionAgent(
     name="writer",
-    description="Writes concise responses based on outlines",
-    system_prompt=make_system_prompt(
-        "You are a concise writer. Using the planner's outline, write a short response "
-        "in 2-3 sentences. Use the generate_objectid tool when asked to "
-        "generate an object ID for a deployment."
-    ),
+    description="Writes",
+    system_prompt="Reply with only the tool's result, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool],
 )

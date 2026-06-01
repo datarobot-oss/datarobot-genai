@@ -11,22 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-memory:
-  mem0_memory:
-    _type: dr_mem0_memory
+from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 
-functions:
-  probe_agent:
-    _type: auto_memory_probe_agent
 
-workflow:
-  _type: auto_memory_agent
-  llm_name: unused_for_probe_agent
-  description: "Auto-memory wrapper integration probe."
-  inner_agent_name: probe_agent
-  memory_name: mem0_memory
-  save_ai_messages_to_memory: false
-  search_params:
-    top_k: 5
-  add_params:
-    async_mode: false
+async def is_mcp_tools_gallery_support_enabled(
+    datarobot_api_endpoint: str,
+    datarobot_user_bear_token: str,
+) -> bool:
+    async with DataRobotClientWithAsyncAPI(datarobot_api_endpoint) as datarobot_client:
+        return await datarobot_client._is_feature_flag_enabled(
+            "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
+            datarobot_user_bear_token,
+        )

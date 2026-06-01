@@ -4,10 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.84
+## 0.15.88
 - `langgraph/agent.py`: handle reasoning content from reasoning models (Claude extended thinking, Qwen, OpenAI o1, GPT-OSS, DeepSeek). Two surfaces are normalized: native list-form `AIMessage.content` with `{"type": "thinking"/"reasoning", ...}` blocks (Anthropic/Bedrock SDK pass-through) and OpenAI-compatible flat shape where reasoning lives in `additional_kwargs["reasoning_content"]` (DataRobot LLM gateway and other OpenAI-style proxies). Thinking/reasoning blocks are emitted as AG-UI `ReasoningMessageChunkEvent`s before the text lifecycle; list content is flattened to text before ragas conversion so evaluation traces stay valid (thinking is dropped from ragas; AG-UI stream still carries it). The framework-agnostic block-normalization helpers (`_iter_content_blocks`, `_iter_message_blocks`, `_flatten_to_text`) live in `core/agents/reasoning.py` so other adapters can share them.
 - `llama_index/agent.py`: surface reasoning from reasoning models for LlamaIndex agents. The stock `llama_index.llms.litellm` wrapper drops `reasoning_content` from streaming deltas (so `AgentStream.thinking_delta` is empty on this path), so the adapter recovers it from the raw LiteLLM chunk on `AgentStream.raw` and emits each delta as an AG-UI `ReasoningMessageChunkEvent` before the text lifecycle (preferring `thinking_delta` when an integration does populate it). New helper: `_thinking_delta_from_raw`.
 - `nat/agent.py`: when a NAT workflow wraps a DataRobot agent (stream results carry `.events`), forward the inner agent's `ReasoningMessageChunkEvent`s (before text) instead of dropping them — `_extract_text` only joined text deltas. New helper: `_extract_reasoning`. (Reasoning from NAT calling an LLM directly is still dropped at NAT's `ChatResponse` layer, which has no reasoning field — out of scope here.)
+
+## 0.15.87
+- `dragent/plugins/streaming_memory_agent`: registered via `register_per_user_function` (instead of `register_function`) so the wrapper builds lazily inside a `PerUserWorkflowBuilder` and `builder.get_function(inner_agent_name)` resolves per-user inner agents from the per-user cache (shared inner agents still resolve via fall-through). Switched the wrapper's I/O from NAT `ChatRequest` / `ChatResponseChunk` to AG-UI `RunAgentInput` and `DRAgentEventResponse`, so inner agents' native AG-UI events pass straight through without the intermediate `convert_chunks_to_agui_events` step. Added `stream_to_single_fn` so the function is also usable in non-streaming contexts.
+
+## 0.15.86
+- `nat/datarobot_mem0_memory`: added `default_ttl_seconds` to `dr_mem0_memory` config (defaults from the `AGENT_MEMORY_TTL_SECONDS` env var / DataRobot runtime parameter via `DataRobotAppFrameworkBaseSettings`). When set to a positive value, `DRMem0Editor.add_items` sends `expiration_date = today + ttl` (UTC, `YYYY-MM-DD`) to Mem0's `add` API so memories auto-expire on the platform's expiration sweep. A per-call `expiration_date` in `add_params` overrides the default; `None` / `0` leaves the field unset (no expiration), matching prior behavior.
+
+## 0.15.85
+- Expanded the `e2e-dragent-llmgw` job in `.github/workflows/e2e.yml` to cover multiple model providers. Matrix is now loaded from a new `e2e-tests/llmgw_matrix.yaml` file (5 agents × 4 models). The `default` model (bedrock) runs the full `dragent_tests` suite; other models (gpt, sonnet, gemini) run `test_streaming.py` only as a fast cross-model smoke check. This pre-empts model-specific framework bugs (like the LlamaIndex `tool_choice` issue below) before they reach downstream consumers.
+- Tightened the planner/writer system prompts in `e2e-tests/dragent/{langgraph,crewai,llamaindex,nat}/` to reduce input tokens, output verbosity, and TTFT during e2e runs. Dropped the `make_system_prompt` boilerplate wrapper from test agents and shortened outputs to "1 bullet" + "1 short sentence". Test contracts (tool calls, HITL interrupt, multi-agent handoff) are preserved.
+- `llama_index/llm.py`: Fixed `DataRobotLiteLLM` sending `tool_choice` and `parallel_tool_calls` in requests when no tools are provided. LlamaIndex's `_prepare_chat_with_tools` unconditionally emits both fields, which the DR LLM gateway rejects for Azure/GPT backends. Override strips both from the request when `tools` is absent.
+
+## 0.15.84
+- Refactored DataRobot feature flag logic and moved it to drmcpbase
+- Added datarobot api client with async API in drmcpbase
 
 ## 0.15.83
 - `dragent`: CLI now reads env vars `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` from `pulumi_config.json` at startup, so local OTel tracing works without manual env var setup.

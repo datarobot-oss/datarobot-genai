@@ -23,10 +23,18 @@ emitted are lost.
 
 ``streaming_memory_agent`` performs the same mem0 capture/retrieve operations
 (save user message → retrieve and inject as system context → save AI
-response) but ``astream``s the inner agent and pipes its
-``ChatResponseChunk`` stream through
-:func:`convert_chunks_to_agui_events`, so token deltas and tool-call deltas
-surface as proper AG-UI ``TextMessage*`` / ``ToolCall*`` events.
+response) but ``astream``s the inner agent and yields its native
+``DRAgentEventResponse`` events straight through, so token deltas and
+tool-call deltas surface as proper AG-UI ``TextMessage*`` / ``ToolCall*``
+events.
+
+Registered with ``register_per_user_function`` so the wrapper itself builds
+lazily inside a ``PerUserWorkflowBuilder``. Without that, the wrapper's
+``builder.get_function(inner_agent_name)`` call would run at workflow-build
+time and miss per-user inner agents (which are built lazily on first user
+invocation). Per-user inner agents end up in the per-user builder's cache
+before the workflow is built, and shared inner agents still resolve via
+fall-through to the shared builder — both cases work transparently.
 
 The configuration surface (``memory_name``, ``inner_agent_name``,
 ``save_user_messages_to_memory``, ``retrieve_memory_for_every_response``,
@@ -36,25 +44,25 @@ without reauthoring ``workflow.yaml``.
 """
 
 import logging
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from typing import Any
 
+from ag_ui.core import RunAgentInput
+from ag_ui.core import SystemMessage as AgUiSystemMessage
+from ag_ui.core import UserMessage as AgUiUserMessage
 from nat.builder.builder import Builder
 from nat.builder.context import Context
 from nat.builder.function_info import FunctionInfo
 from nat.builder.function_info import Streaming
-from nat.cli.register_workflow import register_function
-from nat.data_models.api_server import ChatRequest
-from nat.data_models.api_server import ChatResponseChunk
-from nat.data_models.api_server import Message
-from nat.data_models.api_server import UserMessageContentRoleType
+from nat.cli.register_workflow import register_per_user_function
 from nat.memory.models import MemoryItem
 from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +71,13 @@ class StreamingMemoryAgentConfig(  # type: ignore[call-arg, misc]
     AutoMemoryAgentConfig,
     name="streaming_memory_agent",
 ):
-    """Streaming variant of ``auto_memory_agent``.
+    """Streaming, per-user variant of ``auto_memory_agent``.
 
     Inherits ``memory_name``, ``inner_agent_name``,
     ``save_user_messages_to_memory``, ``retrieve_memory_for_every_response``,
     ``save_ai_messages_to_memory``, ``search_params``, and ``add_params``
-    from :class:`AutoMemoryAgentConfig`.  No additional fields — only the
-    ``_type`` discriminator differs, so a workflow can switch between the two
-    by renaming ``_type``.
+    from :class:`AutoMemoryAgentConfig`.  Only the ``_type`` discriminator
+    differs, so a workflow can switch between the two by renaming ``_type``.
     """
 
 
@@ -94,26 +101,34 @@ def _user_id_from_context() -> str:
     return "default_user"
 
 
-def _last_user_text(messages: list[Message]) -> str:
+def _last_user_text(messages: list[Any]) -> str:
     for msg in reversed(messages):
-        if msg.role == UserMessageContentRoleType.USER and msg.content:
-            return str(msg.content)
+        if isinstance(msg, AgUiUserMessage) and msg.content:
+            content = msg.content
+            if isinstance(content, str):
+                return content
+            return "".join(getattr(part, "text", "") for part in content if part is not None)
     return ""
 
 
-def _with_memory_context(messages: list[Message], memory_text: str) -> list[Message]:
+def _with_memory_context(messages: list[Any], memory_text: str) -> list[Any]:
     """Return a new list with a system message inserted before the last user message."""
     payload = f"Relevant context from memory:\n{memory_text}"
+    sys_msg = AgUiSystemMessage(id=str(uuid.uuid4()), content=payload)
     out = list(messages)
     for i in range(len(out) - 1, -1, -1):
-        if out[i].role == UserMessageContentRoleType.USER and out[i].content:
-            out.insert(i, Message(role=UserMessageContentRoleType.SYSTEM, content=payload))
+        if isinstance(out[i], AgUiUserMessage) and out[i].content:
+            out.insert(i, sys_msg)
             return out
-    out.insert(0, Message(role=UserMessageContentRoleType.SYSTEM, content=payload))
+    out.insert(0, sys_msg)
     return out
 
 
-@register_function(config_type=StreamingMemoryAgentConfig)  # type: ignore[untyped-decorator]
+@register_per_user_function(  # type: ignore[untyped-decorator]
+    config_type=StreamingMemoryAgentConfig,
+    input_type=RunAgentInput,
+    streaming_output_type=DRAgentEventResponse,
+)
 async def streaming_memory_agent(
     config: StreamingMemoryAgentConfig, builder: Builder
 ) -> AsyncGenerator[Any, None]:
@@ -122,12 +137,12 @@ async def streaming_memory_agent(
     inner_agent_fn = await builder.get_function(config.inner_agent_name)
 
     async def _stream_fn(
-        chat_request: ChatRequest,
+        input_message: RunAgentInput,
     ) -> Annotated[
         AsyncGenerator[DRAgentEventResponse, None],
         Streaming(convert=aggregate_dragent_event_responses),
     ]:
-        user_text = _last_user_text(chat_request.messages)
+        user_text = _last_user_text(input_message.messages)
         user_id = _user_id_from_context()
 
         # 1. Capture the user's latest message.
@@ -146,7 +161,7 @@ async def streaming_memory_agent(
                 logger.warning("memory.add_items(user) failed: %s", exc)
 
         # 2. Retrieve relevant memory and inject it as a system message.
-        messages = list(chat_request.messages)
+        messages = list(input_message.messages)
         if config.retrieve_memory_for_every_response and user_text:
             try:
                 memory_items = await memory_editor.search(
@@ -160,43 +175,45 @@ async def streaming_memory_agent(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("memory.search failed: %s", exc)
 
-        inner_request = chat_request.model_copy(update={"messages": messages, "stream": True})
+        inner_input = input_message.model_copy(update={"messages": messages})
 
-        # 3. astream the inner agent.  Wrap the chunk iterator so we can both
-        #    accumulate the response text for the post-stream memory save and
-        #    hand the chunks to the shared AG-UI converter, which already
-        #    handles parent_message_id, tool-call-id registry handoff to the
-        #    step adaptor, and client-disconnect / error semantics.
-        ai_buffer: list[str] = []
-
-        async def _collecting_chunks() -> AsyncGenerator[ChatResponseChunk, None]:
-            async for chunk in inner_agent_fn.astream(inner_request, to_type=ChatResponseChunk):
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    ai_buffer.append(chunk.choices[0].delta.content)
-                yield chunk
-
-        async for event_response in convert_chunks_to_agui_events(_collecting_chunks()):
-            yield event_response
-
-        # 4. Persist the assistant response.  Run regardless of partial errors
-        #    so partial output still lands in memory; convert_chunks_to_agui_events
-        #    has already surfaced any upstream error as a RunErrorEvent.
-        ai_text = "".join(ai_buffer)
-        if config.save_ai_messages_to_memory and ai_text:
-            try:
-                await memory_editor.add_items(
-                    [
-                        MemoryItem(
-                            conversation=[{"role": "assistant", "content": ai_text}],
-                            user_id=user_id,
+        # 3. astream the inner agent. Inner per-user agents (or shared inner
+        #    agents) yield DRAgentEventResponse natively; we pass them straight
+        #    through to the caller while collecting them for the post-stream
+        #    assistant memory save.
+        collected: list[DRAgentEventResponse] = []
+        try:
+            async for event_response in inner_agent_fn.astream(inner_input):
+                collected.append(event_response)
+                yield event_response
+        finally:
+            # 4. Persist the assistant response. Run regardless of partial
+            #    errors so partial output still lands in memory.
+            if config.save_ai_messages_to_memory and collected:
+                aggregated = aggregate_dragent_event_responses(collected)
+                ai_text = convert_dragent_event_response_to_str(aggregated)
+                if ai_text:
+                    try:
+                        await memory_editor.add_items(
+                            [
+                                MemoryItem(
+                                    conversation=[{"role": "assistant", "content": ai_text}],
+                                    user_id=user_id,
+                                )
+                            ],
+                            **config.add_params,
                         )
-                    ],
-                    **config.add_params,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("memory.add_items(assistant) failed: %s", exc)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("memory.add_items(assistant) failed: %s", exc)
+
+    async def _stream_to_str(
+        responses: AsyncGenerator[DRAgentEventResponse],
+    ) -> str:
+        aggregated = aggregate_dragent_event_responses([r async for r in responses])
+        return convert_dragent_event_response_to_str(aggregated)
 
     yield FunctionInfo.create(
         stream_fn=_stream_fn,
+        stream_to_single_fn=_stream_to_str,
         description=config.description,
     )

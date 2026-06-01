@@ -11,32 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
-from functools import lru_cache
+from async_lru import alru_cache
 
-from datarobot_genai.drmcp.core.clients import (
-    setup_and_return_dr_api_client_with_static_config_in_container,
+from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
+    is_mcp_tools_gallery_support_enabled,
 )
+from datarobot_genai.drtools.core.credentials import get_credentials
 
 
-@dataclass
 class FeatureFlag:
-    name: str
-    enabled: bool
-
-    @classmethod
-    def create(cls, feature_flag_name: str) -> "FeatureFlag":
-        client = setup_and_return_dr_api_client_with_static_config_in_container()
-        flags_json = {"entitlements": [{"name": feature_flag_name}]}
-        response = client.post("entitlements/evaluate/", json=flags_json)
-
-        feature_flag_info = response.json()["entitlements"][0]
-        return cls(
-            name=feature_flag_info["name"],
-            enabled=bool(feature_flag_info["value"]),
+    @staticmethod
+    @alru_cache(maxsize=1)
+    async def is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user() -> bool:
+        credentials = get_credentials()
+        dr_api_endpoint = credentials.datarobot.endpoint
+        dr_api_token_of_static_account_in_mcp_container = (
+            credentials.datarobot.application_api_token
         )
 
-    @classmethod
-    @lru_cache(maxsize=1)
-    def is_mcp_tools_gallery_support_enabled(cls) -> bool:
-        return cls.create("ENABLE_MCP_TOOLS_GALLERY_SUPPORT").enabled
+        return await is_mcp_tools_gallery_support_enabled(
+            dr_api_endpoint, dr_api_token_of_static_account_in_mcp_container
+        )
