@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import datarobot as dr
@@ -597,6 +598,10 @@ def get_prompt_template_mock(
             "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_template_versions",
             return_value={prompt_template_id_ok: [dr_prompt_version]},
         ),
+        patch(
+            "datarobot_genai.drmcp.core.mcp_instance.check_prompt_registration_status_after_it_finishes",
+            AsyncMock(),
+        ),
     ):
         yield
 
@@ -648,6 +653,10 @@ def get_prompt_template_duplicated_name_mock(
                 prompt_template_id_ok: [dr_prompt_version_1],
                 prompt_template_id_ok_2: [dr_prompt_version_2],
             },
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.mcp_instance.check_prompt_registration_status_after_it_finishes",
+            AsyncMock(),
         ),
     ):
         yield

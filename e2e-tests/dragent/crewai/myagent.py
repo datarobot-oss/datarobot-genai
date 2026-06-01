@@ -29,7 +29,10 @@ llm = get_llm(model_name="datarobot/azure-openai-gpt-5-codex")
 
 agent_planner = Agent(
     role="Planner",
-    goal="Call any required tool for {topic}. Reply with only the tool's result, or 1 brief line if no tool is needed.",
+    goal=(
+        "Call any required tool for {topic}. "
+        "Reply with only the tool's result, or 1 brief line if no tool is needed."
+    ),
     backstory="Replies with tool result only, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool, calculator_tool],
@@ -46,13 +49,19 @@ agent_writer = Agent(
 agents = [agent_planner, agent_writer]
 
 task_planner = Task(
-    description="Topic: {topic}. History: {chat_history}. Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed.",
+    description=(
+        "Topic: {topic}. History: {chat_history}. Call any required tool. "
+        "Reply with only the tool's result, or 1 brief line if no tool is needed."
+    ),
     expected_output="Tool result, or 1 brief line.",
     agent=agent_planner,
 )
 
 task_writer = Task(
-    description="Topic: {topic}. Call any required tool. Reply with only the tool's result, or 1 brief line.",
+    description=(
+        "Topic: {topic}. Call any required tool. "
+        "Reply with only the tool's result, or 1 brief line."
+    ),
     expected_output="Tool result, or 1 brief line.",
     agent=agent_writer,
 )
