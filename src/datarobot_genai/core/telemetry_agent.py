@@ -119,6 +119,19 @@ def instrument(
     os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 
+    # Install a global OTel TracerProvider pointed at the DataRobot OTel
+    # ingest before any instrumentor patches a framework. NAT's
+    # datarobot_otelcollector exporter pipes its own IntermediateStep-derived
+    # spans through a separate channel that does not touch the OTel SDK
+    # global provider — so without this bootstrap, the framework
+    # instrumentors patched below would emit spans through a no-op tracer
+    # and nothing reaches DataRobot. Silently no-ops when DR deployment env
+    # is incomplete (local dev) or when another component already installed
+    # a provider.
+    from datarobot_genai.core.datarobot_otel import bootstrap_otel_provider_for_datarobot
+
+    bootstrap_otel_provider_for_datarobot()
+
     _instrument_threading()
     _instrument_http_clients()
     _instrument_openai()
