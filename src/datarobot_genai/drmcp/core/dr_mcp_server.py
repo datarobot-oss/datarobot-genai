@@ -34,7 +34,7 @@ from datarobot_genai.drtools.core.auth import initialize_oauth_middleware
 from datarobot_genai.drtools.core.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
-from .conditional_code_mode import initialize_code_mode
+from .conditional_code_mode import initialize_conditional_code_mode_transform
 from .config import get_config
 from .constants import MCP_PATH_ENDPOINT
 from .dr_mcp_server_logo import log_server_custom_banner
@@ -149,8 +149,7 @@ class DataRobotMCPServer:
         # Initialize OAuth middleware
         initialize_oauth_middleware(mcp)
 
-        # Initialize code mode transform
-        initialize_code_mode(mcp)
+        initialize_conditional_code_mode_transform(mcp)
 
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = Path(__file__).parent.parent

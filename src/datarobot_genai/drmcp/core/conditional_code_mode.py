@@ -61,11 +61,6 @@ class MCPMode(Enum):
 logger = logging.getLogger(__name__)
 
 
-def initialize_code_mode(mcp: Any) -> None:
-    mcp.add_transform(ConditionalCodeMode())
-    logger.info("Code mode transform registered successfully")
-
-
 class ConditionalCodeMode(CodeMode):
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         if MCPMode.from_current_http_request_headers() is MCPMode.CODE_EXECUTE:
@@ -82,3 +77,8 @@ class ConditionalCodeMode(CodeMode):
         if MCPMode.from_current_http_request_headers() == MCPMode.CODE_EXECUTE:
             return await super().get_tool(name, call_next, version=version)
         return await call_next(name, version=version)
+
+
+def initialize_conditional_code_mode_transform(mcp: Any) -> None:
+    mcp.add_transform(ConditionalCodeMode())
+    logger.info("Code mode transform registered successfully")

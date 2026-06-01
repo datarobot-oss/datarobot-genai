@@ -25,7 +25,9 @@ from fastmcp.experimental.transforms.code_mode import _ensure_async
 
 from datarobot_genai.drmcp.core.conditional_code_mode import ConditionalCodeMode
 from datarobot_genai.drmcp.core.conditional_code_mode import MCPMode
-from datarobot_genai.drmcp.core.conditional_code_mode import initialize_code_mode
+from datarobot_genai.drmcp.core.conditional_code_mode import (
+    initialize_conditional_code_mode_transform,
+)
 
 MODULE = "datarobot_genai.drmcp.core.conditional_code_mode"
 
@@ -79,10 +81,10 @@ class TestMCPMode:
         assert MCPMode.from_current_http_request_headers() == MCPMode.TOOLS
 
 
-class TestInitializeCodeMode:
+class TestInitializeConditionalCodeModeTransform:
     def test_registers_transform(self) -> None:
         mcp = Mock()
-        initialize_code_mode(mcp)
+        initialize_conditional_code_mode_transform(mcp)
         mcp.add_transform.assert_called_once()
         assert isinstance(mcp.add_transform.call_args[0][0], ConditionalCodeMode)
 
