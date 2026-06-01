@@ -30,11 +30,13 @@ from starlette.middleware import Middleware
 from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode import (
+    initialize_conditional_code_mode_transform,
+)
 from datarobot_genai.drtools.core.auth import initialize_oauth_middleware
 from datarobot_genai.drtools.core.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
-from .conditional_code_mode import initialize_conditional_code_mode_transform
 from .config import get_config
 from .constants import MCP_PATH_ENDPOINT
 from .dr_mcp_server_logo import log_server_custom_banner

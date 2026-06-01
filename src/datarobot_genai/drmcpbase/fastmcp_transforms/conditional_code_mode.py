@@ -20,21 +20,15 @@ from enum import auto
 from typing import Any
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
+from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.transforms import GetToolNext
 from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
-try:
-    from fastmcp.server.dependencies import get_http_headers
 
-    def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
-        # include_all=True so x-datarobot-* headers survive FastMCP's default exclusion list
-        return get_http_headers(include_all=True, **kwargs)
-
-except ImportError:
-
-    def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
-        return {}
+def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
+    # include_all=True so x-datarobot-* headers survive FastMCP's default exclusion list
+    return get_http_headers(include_all=True, **kwargs)
 
 
 class MCPMode(Enum):

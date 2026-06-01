@@ -23,13 +23,16 @@ import pytest
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import _ensure_async
 
-from datarobot_genai.drmcp.core.conditional_code_mode import ConditionalCodeMode
-from datarobot_genai.drmcp.core.conditional_code_mode import MCPMode
-from datarobot_genai.drmcp.core.conditional_code_mode import (
+from datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode import ConditionalCodeMode
+from datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode import MCPMode
+from datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode import (
     initialize_conditional_code_mode_transform,
 )
 
-MODULE = "datarobot_genai.drmcp.core.conditional_code_mode"
+
+@pytest.fixture
+def module_under_test() -> str:
+    return "datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode"
 
 
 class TestMCPMode:
@@ -38,8 +41,8 @@ class TestMCPMode:
         return "x-datarobot-mcp-mode"
 
     @pytest.fixture
-    def mock_get_fast_mcp_headers(self) -> Iterator[Mock]:
-        with patch(f"{MODULE}.get_fast_mcp_http_headers") as mock_func:
+    def mock_get_fast_mcp_headers(self, module_under_test) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_fast_mcp_http_headers") as mock_func:
             mock_func.return_value = {}
             yield mock_func
 
