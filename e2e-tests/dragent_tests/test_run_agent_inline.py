@@ -23,59 +23,18 @@ final aggregated OpenAI ``ChatCompletion`` to disk for the test to read back.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 from openai.types.chat import ChatCompletion
 
-from dragent_tests.helpers import AGENT
+from dragent_tests.helpers import E2E_ROOT
+from dragent_tests.helpers import agent_dir
+from dragent_tests.helpers import build_chat_completion
+from dragent_tests.helpers import spawn_runner
 
-E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
-RUNNER_MODULE = "dragent.run_agent"
-AGENT_DIR = E2E_ROOT / "dragent" / (AGENT or "base")
+AGENT_DIR = agent_dir()
 WORKFLOW_CONFIG = AGENT_DIR / "workflow.yaml"
-
-
-def build_chat_completion() -> dict[str, object]:
-    return {
-        "model": "unknown",
-        "messages": [{"role": "user", "content": "Say 'hello world' and nothing else."}],
-    }
-
-
-def spawn_runner(
-    *,
-    chat_completion: dict[str, object],
-    output_path: Path,
-) -> subprocess.CompletedProcess[str]:
-    # Invoke as ``python -m dragent.run_agent`` rather than as a script.
-    # If we ran the script directly, Python would prepend ``e2e-tests/dragent/``
-    # to ``sys.path``; that directory contains a local ``nat/`` subpackage (the
-    # NAT e2e agent) that shadows the third-party ``nvidia-nat`` and breaks
-    # ``import nat.data_models``. ``-m`` puts ``cwd`` (``e2e-tests/``) on
-    # ``sys.path`` instead, which has no top-level ``nat/`` collision.
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            RUNNER_MODULE,
-            "--chat_completion",
-            json.dumps(chat_completion),
-            "--custom_model_dir",
-            str(AGENT_DIR),
-            "--output_path",
-            str(output_path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=180,
-        cwd=str(E2E_ROOT),
-        env={**os.environ},
-        check=False,
-    )
 
 
 def test_run_agent_inline(tmp_path: Path) -> None:
