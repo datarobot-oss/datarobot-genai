@@ -16,7 +16,7 @@
 
 # OpenTelemetry tracing
 
-How to wire DRAgent spans into the deployment **Tracing** tab in DataRobot.
+How to wire DRAgent spans and view tracing in the deployment's **Monitoring -> Data exploration** tab in DataRobot.
 
 ## What gets traced
 
@@ -85,6 +85,6 @@ The repo ships a minimal reproducer at [`e2e-tests/dragent/base/workflow-tracing
 
 ## Troubleshooting
 
-- **Tracing tab is empty**: Confirm the three environment variables in the table above are set in the deployment. Both sides silently skip when any is missing.
+- **Data Exploration tab is empty**: Confirm the three environment variables in the table above are set in the deployment. Both sides silently skip when any is missing.
 - **NAT lifecycle spans appear but framework spans don't**: `instrument(framework=...)` was not called, or was called after the framework imported. Move the call to the top of `register.py`.
 - **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.
