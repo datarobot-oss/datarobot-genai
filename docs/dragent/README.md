@@ -92,3 +92,7 @@ nat dragent serve --config_file agent/workflow.yaml --port 8842
 ```
 
 Supported values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO` if not set.
+
+## Tracing
+
+To route DRAgent spans to the deployment **Tracing** tab in DataRobot, see [tracing.md](tracing.md).
