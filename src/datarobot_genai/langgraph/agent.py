@@ -52,7 +52,6 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
-from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -96,16 +95,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
     Framework-specific parameters:
 
     - ``checkpointer``: checkpoint store for ``interrupt()`` and thread resume. If omitted,
-      use ``use_datarobot_fs_checkpointer=True`` for the process-wide DR FS default (see
-      ``default_langgraph_checkpointer`` in ``dr_fs_checkpointer``), or pass any explicit
-      saver; otherwise no checkpointer is installed.
-    - ``langgraph_checkpoint_base``: optional ``dr://`` prefix passed to
-      ``default_langgraph_checkpointer()`` when ``use_datarobot_fs_checkpointer=True`` (supply
-      from application settings such as
-      :class:`~datarobot.core.config.DataRobotAppFrameworkBaseSettings`). Ignored when
-      ``checkpointer`` is set or DR FS default is not used.
-    - ``use_datarobot_fs_checkpointer``: when ``True`` and ``checkpointer`` is omitted, use
-      the process-wide ``DataRobotFileSystem`` saver (ignored if ``checkpointer`` is set).
+      use  no checkpointer is installed.
     - ``interrupt_before`` / ``interrupt_after``: compile-time interrupt node lists.
     - ``debug``: forwarded to ``StateGraph.compile(debug=...)``.
     - ``name``: optional name for the compiled graph.
@@ -124,21 +114,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         checkpointer: Any | None = None,
-        langgraph_checkpoint_base: str | None = None,
-        use_datarobot_fs_checkpointer: bool = False,
         interrupt_before: Any | None = None,
         interrupt_after: Any | None = None,
         debug: bool = False,
         name: str | None = None,
     ) -> None:
-        if checkpointer is not None:
-            self.checkpointer = checkpointer
-        elif use_datarobot_fs_checkpointer:
-            self.checkpointer = default_langgraph_checkpointer(
-                checkpoint_base=langgraph_checkpoint_base,
-            )
-        else:
-            self.checkpointer = None
+        self.checkpointer = checkpointer
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after
         self.debug = debug
@@ -636,13 +617,7 @@ def datarobot_agent_class_from_langgraph(
 
     Human-in-the-loop
     ------------------
-    Pass ``use_datarobot_fs_checkpointer=True`` (and omit ``checkpointer``) to use the
-    **process-wide** DR FS default so graphs can resume after ``interrupt()`` when the client
-    reuses the same ``thread_id`` within one process. Pass ``langgraph_checkpoint_base`` for the
-    ``dr://`` prefix (typically from application configuration); if omitted, the root is
-    ``dr://``. That default removes ``<root>/checkpoints`` best-effort on interpreter exit, not the
-    entire configured prefix.
-    Alternatively pass any explicit ``checkpointer=``.
+    Pass any explicit ``checkpointer=``.
     You can also pass resume payloads via ``run_agent_input.state["langgraph_resume"]``.
     """
 
