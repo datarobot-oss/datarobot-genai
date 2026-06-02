@@ -19,8 +19,8 @@ heavier ``drmcp``/``drmcpbase`` packages or their module-load side effects.
 
 This evaluator is per-user: it requires a request-scoped
 :class:`~datarobot.rest.RESTClientObject` (e.g. from
-:func:`datarobot_genai.drtools.core.rest_client.get_rest_client`) and caches
-results per ``(flag, principal)``. It is the building block for per-user,
+:func:`datarobot_genai.drtools.core.clients.datarobot.request_user_dr_client`)
+and caches results per ``(flag, principal)``. It is the building block for per-user,
 live tool gating (e.g. hiding the sandbox tool unless an entitlement is set).
 
 It is intentionally separate from

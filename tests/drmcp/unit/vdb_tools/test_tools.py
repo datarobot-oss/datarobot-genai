@@ -12,19 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import AsyncMock
+from collections.abc import Iterator
 from unittest.mock import MagicMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import pytest
 from datarobot.errors import ClientError
 
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.vdb import tools
 
 
+@pytest.fixture
+def mock_request_user_client() -> Iterator[Mock]:
+    with patch.object(ThreadSafeDataRobotClient, "request_user_client") as mock_func:
+        yield mock_func
+
+
+@pytest.fixture
+def mock_get_client_context_with_token_from_request_header(
+    mock_request_user_client: Mock,
+) -> Mock:
+    return mock_request_user_client
+
+
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_list_vector_databases_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -40,18 +57,7 @@ async def test_list_vector_databases_success() -> None:
     }
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         result = await tools.list_vector_databases()
         assert isinstance(result, dict)
         assert result["count"] == 1
@@ -63,23 +69,13 @@ async def test_list_vector_databases_success() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_list_vector_databases_pagination_params() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": [], "next": "url", "total_count": 7}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         result = await tools.list_vector_databases(offset=10, limit=25)
         mock_rest_client.get.assert_called_once_with(
             "deployments/",
@@ -98,46 +94,26 @@ async def test_list_vector_databases_negative_offset_validation() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_list_vector_databases_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         result = await tools.list_vector_databases()
         assert result["count"] == 0
         assert result["vector_databases"] == []
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_query_vector_database_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": [{"content": "doc1", "metadata": {}}]}
     mock_rest_client = MagicMock()
     mock_rest_client.post.return_value = mock_response
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         result = await tools.query_vector_database(deployment_id="dep1", query="test query")
         assert isinstance(result, dict)
         assert result["count"] == 1
@@ -145,6 +121,7 @@ async def test_query_vector_database_success() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_list_vector_databases_client_error_404() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.side_effect = ClientError(
@@ -152,18 +129,7 @@ async def test_list_vector_databases_client_error_404() -> None:
         status_code=404,
         json={"message": "Not Found"},
     )
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         with pytest.raises(ToolError) as exc_info:
             await tools.list_vector_databases()
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
@@ -171,6 +137,7 @@ async def test_list_vector_databases_client_error_404() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_query_vector_database_client_error_404() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.post.side_effect = ClientError(
@@ -178,18 +145,7 @@ async def test_query_vector_database_client_error_404() -> None:
         status_code=404,
         json={"message": "Not Found"},
     )
-    mock_dr_module = MagicMock()
-    mock_dr_module.client.get_client.return_value = mock_rest_client
-    with (
-        patch(
-            "datarobot_genai.drtools.vdb.tools.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.vdb.tools.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_dr_module
-
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         with pytest.raises(ToolError) as exc_info:
             await tools.query_vector_database(deployment_id="missing-dep", query="test")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND

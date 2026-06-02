@@ -26,6 +26,7 @@ from tests.drmcp.stub_credentials import apply_stub_datarobot_credentials_env  #
 
 apply_stub_datarobot_credentials_env()
 
+
 from datarobot_genai.drmcp import create_mcp_server  # noqa: E402
 
 # Import to register test tools with the MCP server

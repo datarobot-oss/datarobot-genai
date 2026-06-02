@@ -18,12 +18,12 @@ from typing import Any
 import datarobot as dr
 from datarobot.utils import from_api
 
-from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.base import MetadataBase
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import DrumMetadataAdapter
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import DrumTargetType
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import is_drum
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
 
@@ -110,15 +110,16 @@ def _fetch_deployment_metadata(deployment: dr.Deployment) -> dict[str, Any]:
     ------
         RuntimeError: If API call fails.
     """
-    api_client = get_api_client()
-
-    try:
-        response = api_client.get(url=f"deployments/{deployment.id}/directAccess/info/")
-        response.raise_for_status()
-        return _normalize_api_response(response)
-    except Exception as exc:
-        logger.error(f"Failed to fetch metadata for deployment {deployment.id}: {exc}")
-        raise RuntimeError(f"Could not retrieve metadata for deployment {deployment.id}") from exc
+    with request_user_dr_client(headers_auth_only=False) as api_client:
+        try:
+            response = api_client.get(url=f"deployments/{deployment.id}/directAccess/info/")
+            response.raise_for_status()
+            return _normalize_api_response(response)
+        except Exception as exc:
+            logger.error(f"Failed to fetch metadata for deployment {deployment.id}: {exc}")
+            raise RuntimeError(
+                f"Could not retrieve metadata for deployment {deployment.id}"
+            ) from exc
 
 
 def _fetch_supports_chat_api(deployment: dr.Deployment) -> bool:
@@ -136,25 +137,24 @@ def _fetch_supports_chat_api(deployment: dr.Deployment) -> bool:
     -------
         True only when the capability is present and explicitly true.
     """
-    api_client = get_api_client()
-
-    try:
-        response = api_client.get(url=f"deployments/{deployment.id}/capabilities/")
-        response.raise_for_status()
-        payload = response.json()
-        capabilities = (payload or {}).get("data") or []
-        for capability in capabilities:
-            if not isinstance(capability, dict):
-                continue
-            if capability.get("name") == "supports_chat_api":
-                return bool(capability.get("supported", False))
-        return False
-    except Exception as exc:
-        logger.warning(
-            f"Could not fetch capabilities for deployment {deployment.id}; "
-            f"assuming chat API not supported: {exc}"
-        )
-        return False
+    with request_user_dr_client(headers_auth_only=False) as api_client:
+        try:
+            response = api_client.get(url=f"deployments/{deployment.id}/capabilities/")
+            response.raise_for_status()
+            payload = response.json()
+            capabilities = (payload or {}).get("data") or []
+            for capability in capabilities:
+                if not isinstance(capability, dict):
+                    continue
+                if capability.get("name") == "supports_chat_api":
+                    return bool(capability.get("supported", False))
+            return False
+        except Exception as exc:
+            logger.warning(
+                f"Could not fetch capabilities for deployment {deployment.id}; "
+                f"assuming chat API not supported: {exc}"
+            )
+            return False
 
 
 def get_mcp_tool_metadata(deployment: dr.Deployment) -> MetadataBase:

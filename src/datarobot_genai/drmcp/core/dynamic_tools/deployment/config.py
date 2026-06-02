@@ -24,10 +24,10 @@ from urllib.parse import urljoin
 
 import datarobot as dr
 
-from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.base import MetadataBase
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp_tool_metadata
 from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
 
 
 def create_deployment_tool_config(
@@ -102,27 +102,26 @@ def _get_deployment_base_url(deployment: dr.Deployment) -> str:
     ------
         ValueError: If prediction server cannot be determined
     """
-    api_client = get_api_client()
+    with request_user_dr_client(headers_auth_only=False) as api_client:
+        # Determine base URL based on deployment type
+        if _is_serverless_deployment(deployment):
+            base_url = api_client.endpoint
+        elif "datarobot-nginx" in api_client.endpoint:
+            # On-prem/ST SAAS environments
+            base_url = "http://datarobot-prediction-server:80/predApi/v1.0"
+        else:
+            # Regular prediction server
+            pred_server = deployment.default_prediction_server
+            if not pred_server:
+                raise ValueError(f"Deployment {deployment.id} has no default prediction server")
 
-    # Determine base URL based on deployment type
-    if _is_serverless_deployment(deployment):
-        base_url = api_client.endpoint
-    elif "datarobot-nginx" in api_client.endpoint:
-        # On-prem/ST SAAS environments
-        base_url = "http://datarobot-prediction-server:80/predApi/v1.0"
-    else:
-        # Regular prediction server
-        pred_server = deployment.default_prediction_server
-        if not pred_server:
-            raise ValueError(f"Deployment {deployment.id} has no default prediction server")
+            url = pred_server["url"]
+            if not url:
+                raise ValueError(f"Deployment {deployment.id} prediction server has no URL")
+            base_url = f"{url}/predApi/v1.0"
 
-        url = pred_server["url"]
-        if not url:
-            raise ValueError(f"Deployment {deployment.id} prediction server has no URL")
-        base_url = f"{url}/predApi/v1.0"
-
-    merged_url = urljoin(base_url.rstrip("/") + "/", f"deployments/{deployment.id}/")
-    return merged_url
+        merged_url = urljoin(base_url.rstrip("/") + "/", f"deployments/{deployment.id}/")
+        return merged_url
 
 
 def _get_deployment_auth_headers(deployment: dr.Deployment) -> dict[str, str]:
@@ -135,17 +134,18 @@ def _get_deployment_auth_headers(deployment: dr.Deployment) -> dict[str, str]:
     -------
         Dictionary of authentication headers
     """
-    headers = {"Authorization": f"Bearer {get_api_client().token}"}
+    with request_user_dr_client(headers_auth_only=False) as api_client:
+        headers = {"Authorization": f"Bearer {api_client.token}"}
 
-    # For non-serverless deployments, include datarobot-key
-    if not _is_serverless_deployment(deployment):
-        pred_server = deployment.default_prediction_server
-        if pred_server:
-            dr_key = pred_server.get("datarobot-key")
-            if dr_key:
-                headers["datarobot-key"] = dr_key
+        # For non-serverless deployments, include datarobot-key
+        if not _is_serverless_deployment(deployment):
+            pred_server = deployment.default_prediction_server
+            if pred_server:
+                dr_key = pred_server.get("datarobot-key")
+                if dr_key:
+                    headers["datarobot-key"] = dr_key
 
-    return headers
+        return headers
 
 
 def _get_tool_name(deployment: dr.Deployment, metadata: MetadataBase) -> str:
@@ -159,7 +159,7 @@ def _get_additional_prediction_instructions(deployment_id: str) -> str:
     reliable.
     """
     return f"""
-    
+
 Follow these steps in order:
 1. Get deployment info: Call tools with the deployment_id="{deployment_id}" to learn about
    features and requirements.
