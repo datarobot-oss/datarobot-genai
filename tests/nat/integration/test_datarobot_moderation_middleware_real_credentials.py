@@ -91,13 +91,9 @@ def _build_moderation_middleware_for_model_dir(
 ) -> DataRobotModerationMiddleware:
     try:
         if use_config_file:
-            cfg = DataRobotModerationConfig(
-                config_source="config_file",
-                model_dir=str(model_dir),
-            )
+            cfg = DataRobotModerationConfig(model_dir=str(model_dir))
         else:
             cfg = DataRobotModerationConfig(
-                config_source="inline",
                 moderation=_moderation_config_from_fixture_dir(model_dir),
             )
         mw = DataRobotModerationMiddleware(cfg, builder_mock)

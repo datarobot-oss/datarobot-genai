@@ -29,7 +29,6 @@ llms:
 middleware:
   datarobot_guardrails:
     _type: datarobot_moderation
-    config_source: inline
     moderation:
       guards:
         - name: Prompt Tokens

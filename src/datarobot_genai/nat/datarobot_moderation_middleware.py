@@ -25,11 +25,11 @@ Expected workflow contracts:
 
 Guard configuration (``_type: datarobot_moderation``):
 
-* **DRUM-style file (default)** — set ``config_source: config_file`` (the default) and optionally
-  ``model_dir`` to the custom model directory containing ``moderation_config.yaml`` (defaults to
-  the process working directory).
-* **Inline** — set ``config_source: inline`` and nest guards under
-  ``middleware.<name>.moderation`` in ``workflow.yaml``.
+* **Inline (preferred)** — nest guards under ``middleware.<name>.moderation`` in ``workflow.yaml``.
+  When present, this block is used even if ``moderation_config.yaml`` also exists.
+* **DRUM-style file (fallback)** — when ``moderation`` is omitted, load ``moderation_config.yaml``
+  from ``model_dir`` (defaults to the process working directory).
+* If neither source is present or both are empty, the middleware is a no-op.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
@@ -125,8 +125,6 @@ _logger = logging.getLogger(__name__)
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
-ModerationConfigSource = Literal["config_file", "inline"]
-
 
 def _workflow_input_from_args(args: tuple[Any, ...]) -> WorkflowInput | None:
     if not args:
@@ -143,30 +141,23 @@ class DataRobotModerationConfig(
 ):
     """NAT middleware: DataRobot prescore / postscore guards.
 
-    The middleware is a no-op (``enabled`` is ``False``) when the selected ``config_source`` has
-    no guards configured. It does not fall back to the other source.
+    The middleware is a no-op (``enabled`` is ``False``) when no guards are configured in the
+    inline ``moderation`` block or in ``moderation_config.yaml``.
     """
 
-    config_source: ModerationConfigSource = Field(
-        default="config_file",
-        description=(
-            "Where to load guard configuration from: ``moderation_config.yaml`` in ``model_dir`` "
-            "(``config_file``, default) or the inline ``moderation`` block (``inline``)."
-        ),
-    )
     model_dir: str | None = Field(
         default=None,
         description=(
             "Directory containing ``moderation_config.yaml`` and guard assets (DRUM custom model "
-            "layout). Used when ``config_source`` is ``config_file``. Defaults to the process "
-            "working directory."
+            "layout). Used for the inline ``moderation`` block and as the fallback file location. "
+            "Defaults to the process working directory."
         ),
     )
     moderation: ModerationConfig | None = Field(
         default=None,
         description=(
-            "Inline guard configuration (``ModerationConfig`` from datarobot_dome). Used when "
-            "``config_source`` is ``inline``."
+            "Inline guard configuration (``ModerationConfig`` from datarobot_dome). When set, "
+            "takes priority over ``moderation_config.yaml``."
         ),
     )
 
@@ -200,17 +191,10 @@ def load_moderation_config_from_file(model_dir: str | None) -> ModerationConfig 
 def _load_llm_moderation_pipeline_from_inline(
     config: DataRobotModerationConfig,
 ) -> ModerationPipeline | None:
-    """Load guards from the inline ``moderation`` block only; no file fallback."""
-    if config.moderation is None:
-        _logger.debug(
-            "config_source is inline but no ``moderation`` block configured; "
-            "moderation middleware is a no-op"
-        )
-        return None
+    """Load guards from the inline ``moderation`` block."""
+    assert config.moderation is not None
     if not moderation_config_has_guards(config.moderation):
-        _logger.debug(
-            "config_source is inline but moderation has no guards; moderation middleware is a no-op"
-        )
+        _logger.debug("Inline ``moderation`` has no guards; moderation middleware is a no-op")
         return None
     resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
     return ModerationPipeline.from_config(config.moderation, model_dir=resolved_model_dir)
@@ -219,11 +203,11 @@ def _load_llm_moderation_pipeline_from_inline(
 def _load_llm_moderation_pipeline_from_config_file(
     config: DataRobotModerationConfig,
 ) -> ModerationPipeline | None:
-    """Load guards from ``moderation_config.yaml`` only; inline ``moderation`` is ignored."""
+    """Load guards from ``moderation_config.yaml`` when no inline ``moderation`` block is set."""
     config_path = moderation_config_file_path(config.model_dir)
     if not config_path.is_file():
         _logger.debug(
-            "config_source is config_file but no %s at %s; moderation middleware is a no-op",
+            "No inline ``moderation`` block and no %s at %s; moderation middleware is a no-op",
             MODERATION_CONFIG_FILE_NAME,
             config_path,
         )
@@ -232,14 +216,14 @@ def _load_llm_moderation_pipeline_from_config_file(
     moderation = load_moderation_config_from_file(config.model_dir)
     if moderation is None:
         _logger.debug(
-            "config_source is config_file but %s could not be parsed; "
+            "No inline ``moderation`` block and %s could not be parsed; "
             "moderation middleware is a no-op",
             config_path,
         )
         return None
     if not moderation_config_has_guards(moderation):
         _logger.debug(
-            "config_source is config_file but %s has no guards; moderation middleware is a no-op",
+            "No inline ``moderation`` block and %s has no guards; moderation middleware is a no-op",
             config_path,
         )
         return None
@@ -248,17 +232,17 @@ def _load_llm_moderation_pipeline_from_config_file(
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
-    """Build an LLM moderation pipeline from the configured guard configuration source.
+    """Build an LLM moderation pipeline from inline ``moderation`` or ``moderation_config.yaml``.
 
-    Returns ``None`` when moderation is disabled or the selected ``config_source`` is missing,
-    empty, or has no guards, so the middleware is a no-op and can be listed unconditionally in
-    ``workflow.yaml``. The other configuration source is never consulted as a fallback.
+    Returns ``None`` when moderation is disabled, no configuration source is available, or the
+    resolved source has no guards, so the middleware is a no-op and can be listed unconditionally
+    in ``workflow.yaml``. The inline ``moderation`` block takes priority over the YAML file.
     """
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
-    if config.config_source == "inline":
+    if config.moderation is not None:
         return _load_llm_moderation_pipeline_from_inline(config)
     return _load_llm_moderation_pipeline_from_config_file(config)
 
@@ -1217,9 +1201,9 @@ class DataRobotModerationMiddleware(
     * **NAT chat** (``ChatRequest`` / ``ChatRequestOrMessage`` in, ``ChatResponse`` out): same
       guard pipeline with NAT message models instead of AG-UI.
 
-    When the selected ``config_source`` has no guards (missing inline block, missing YAML file,
-    or empty guard list), ``load_llm_moderation_pipeline`` returns ``None`` and this middleware
-    is a no-op (``enabled`` is ``False``) without requiring DataRobot credentials.
+    When no guards are configured (missing inline block and YAML file, or empty guard list),
+    ``load_llm_moderation_pipeline`` returns ``None`` and this middleware is a no-op
+    (``enabled`` is ``False``) without requiring DataRobot credentials.
     """
 
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
