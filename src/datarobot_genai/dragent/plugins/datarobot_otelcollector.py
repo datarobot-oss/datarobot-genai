@@ -47,9 +47,8 @@ Explicit overrides for any of the three auto-derived fields are honored —
 pin them in ``workflow.yaml`` to point at a non-default collector.
 
 Local dev / incomplete config: when any of ``endpoint``,
-``datarobot_api_key``, or ``datarobot_entity_id`` resolves empty — the
-typical local shape, where ``MLOPS_DEPLOYMENT_ID`` is unset so the entity id
-is blank — the exporter silently drops spans instead of POSTing to a real
+``datarobot_api_key``, or ``datarobot_entity_id`` resolves empty -
+the exporter silently drops spans instead of POSTing to a real
 endpoint with bad auth (which the DataRobot ingest rejects with repeated
 ``401 Unauthorized``). This mirrors the no-op contract that
 ``bootstrap_otel_provider_for_datarobot`` already honors for framework
@@ -156,18 +155,7 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
 
 
 class _DroppingSpanExporter(BaseExporter):
-    """Subscribes to the event stream but drops every span.
-
-    Yielded in place of the real OTLP exporter when the DataRobot OTel ingest
-    credentials are incomplete (the local-dev / CI shape, where
-    ``MLOPS_DEPLOYMENT_ID`` is unset so the entity id resolves empty). NAT's
-    exporter manager requires the registered async generator to yield a valid
-    ``BaseExporter`` (it does ``async with exporter.start():``), so a no-op
-    exporter — not a skipped yield — is the correct shape. Mirrors the silent
-    no-op contract that ``bootstrap_otel_provider_for_datarobot`` already
-    honors, keeping local runs free of the repeated ``401 Unauthorized``
-    span-export errors a misconfigured OTLP exporter would otherwise emit.
-    """
+    """Subscribes to the event stream but drops every span."""
 
     def export(self, event: IntermediateStep) -> None:
         return None
@@ -181,19 +169,14 @@ async def datarobot_otelcollector_telemetry_exporter(
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector.
 
     When the resolved config is incomplete (missing endpoint, api key, or
-    entity id — the local-dev shape) yield a no-op exporter that drops spans
+    entity id — i.e. local-dev case) yield a no-op exporter that drops spans
     instead of authenticating against a real endpoint and failing with 401.
     """
     api_key = get_secret_value(config.datarobot_api_key)
     if not api_key or not config.datarobot_entity_id or not config.endpoint:
         logger.info(
-            "datarobot_otelcollector: DataRobot OTel ingest config incomplete "
-            "(endpoint=%s, entity_id=%s, api_key=%s) — dropping spans. Set "
-            "MLOPS_DEPLOYMENT_ID / DATAROBOT_API_TOKEN / DATAROBOT_(PUBLIC_)ENDPOINT "
-            "(e.g. via a shell deployment) to export traces.",
-            config.endpoint or "<unset>",
-            config.datarobot_entity_id or "<unset>",
-            "<set>" if api_key else "<unset>",
+            "datarobot_otelcollector: DataRobot OTel ingest config incomplete - "
+            "skipping span export."
         )
         yield _DroppingSpanExporter()
         return
