@@ -18,32 +18,43 @@ Two-phase correlation tolerates parallel same-name calls completing out of
 order: ``register`` (converter) appends to a per-name FIFO; ``bind`` (adaptor,
 ``FUNCTION_START``) pops the head into a UUID-keyed map; ``pop`` (adaptor,
 ``FUNCTION_END``) drains by UUID.
+
+Deferred end events prevent ``ToolCallEndEvent`` from racing ahead of
+``ToolCallArgsEvent`` chunks still being streamed by the converter.
 """
 
 from __future__ import annotations
 
 from collections import deque
 from contextvars import ContextVar
+from typing import Any
 
-_state: ContextVar[tuple[dict[str, deque[str]], dict[str, str]]] = ContextVar("dragent_tc")
+_state: ContextVar[
+    tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]]
+] = ContextVar("dragent_tc")
 
 
-def _get() -> tuple[dict[str, deque[str]], dict[str, str]]:
+def _get() -> tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]]:
     try:
         return _state.get()
     except LookupError:
-        s: tuple[dict[str, deque[str]], dict[str, str]] = ({}, {})
+        s: tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]] = (
+            {},
+            {},
+            set(),
+            {},
+        )
         _state.set(s)
         return s
 
 
 def register_tool_call(name: str, tool_call_id: str) -> None:
-    pending, _ = _get()
+    pending, _, _, _ = _get()
     pending.setdefault(name, deque()).append(tool_call_id)
 
 
 def bind_tool_call(name: str, nat_uuid: str) -> str | None:
-    pending, bound = _get()
+    pending, bound, _, _ = _get()
     queue = pending.get(name)
     if not queue:
         return None
@@ -55,5 +66,26 @@ def pop_tool_call(nat_uuid: str) -> str | None:
     return _get()[1].pop(nat_uuid, None)
 
 
+def mark_args_done(tool_call_id: str) -> list[Any]:
+    """Mark argument streaming complete for *tool_call_id*.
+
+    Returns (and removes) any end/result events that the step adaptor
+    deferred while arguments were still in flight.
+    """
+    _, _, args_done, deferred = _get()
+    args_done.add(tool_call_id)
+    return deferred.pop(tool_call_id, [])
+
+
+def is_args_done(tool_call_id: str) -> bool:
+    """True when the stream converter has finished emitting args for this call."""
+    return tool_call_id in _get()[2]
+
+
+def defer_tool_end(tool_call_id: str, events: list[Any]) -> None:
+    """Stash end/result events until argument streaming finishes."""
+    _get()[3][tool_call_id] = events
+
+
 def reset() -> None:
-    _state.set(({}, {}))
+    _state.set(({}, {}, set(), {}))

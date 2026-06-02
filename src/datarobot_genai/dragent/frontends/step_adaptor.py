@@ -47,6 +47,8 @@ from nat.retriever.models import GlobalTypeConverter
 
 from .response import DRAgentEventResponse
 from .tool_call_registry import bind_tool_call
+from .tool_call_registry import defer_tool_end
+from .tool_call_registry import is_args_done
 from .tool_call_registry import pop_tool_call
 
 logger = logging.getLogger(__name__)
@@ -302,17 +304,21 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
                 if payload.data is not None and getattr(payload.data, "output", None) is not None:
                     output = json.dumps(payload.data.output, default=str)
                 # End before Result; reversed order strands the UI in args streaming.
-                return DRAgentEventResponse(
-                    events=[
-                        ToolCallEndEvent(tool_call_id=tool_call_id),
-                        ToolCallResultEvent(
-                            message_id=tool_call_id,
-                            tool_call_id=tool_call_id,
-                            content=output,
-                            role="tool",
-                        ),
-                    ]
-                )
+                end_events = [
+                    ToolCallEndEvent(tool_call_id=tool_call_id),
+                    ToolCallResultEvent(
+                        message_id=tool_call_id,
+                        tool_call_id=tool_call_id,
+                        content=output,
+                        role="tool",
+                    ),
+                ]
+                # If the stream converter has already finished sending all
+                # ToolCallArgsEvent chunks, emit immediately.  Otherwise
+                # defer until the converter calls mark_args_done.
+                if is_args_done(tool_call_id):
+                    return DRAgentEventResponse(events=end_events)
+                defer_tool_end(tool_call_id, end_events)
         else:
             raise self._unknown_step_type(payload)
 
