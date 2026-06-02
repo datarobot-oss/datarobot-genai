@@ -24,7 +24,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import WRITES_IDX_MAP
 from langgraph.checkpoint.base import empty_checkpoint
 
-from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemSaver
+from datarobot_genai.langgraph.dr_fs_checkpointer import DataRobotFileSystemCheckpointSaver
 from datarobot_genai.langgraph.dr_fs_checkpointer import _decoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _encoder_segment
 from datarobot_genai.langgraph.dr_fs_checkpointer import _normalize_dr_fs_root
@@ -85,7 +85,7 @@ def test_resolved_checkpoint_root_null_is_dr_scheme_root() -> None:
 
 def test_get_next_version_single_dot_and_fixed_width_suffix() -> None:
     fs = MemoryFileSystem()
-    saver = DataRobotFileSystemSaver(fs=fs, root="/v")
+    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root="/v")
     for current in (
         None,
         0,
@@ -108,7 +108,7 @@ def test_encoder_empty_string_is_non_empty_path_segment() -> None:
 def test_list_with_default_empty_checkpoint_ns_does_not_crash() -> None:
     fs = MemoryFileSystem()
     root = "/cp-root"
-    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root=root)
     thread_id = "t-list"
     base_cfg: RunnableConfig = {
         "configurable": {"thread_id": thread_id, "checkpoint_ns": ""},
@@ -130,7 +130,7 @@ def test_list_with_default_empty_checkpoint_ns_does_not_crash() -> None:
 def test_data_robot_file_system_saver_roundtrip() -> None:
     fs = MemoryFileSystem()
     root = "/cp-root"
-    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root=root)
     thread_id = "t1"
     checkpoint_ns = ""
     base_cfg: RunnableConfig = {
@@ -149,7 +149,7 @@ def test_put_writes_concurrent_different_tasks_preserves_all_writes() -> None:
     """Parallel ``put_writes`` for the same checkpoint used to race on one map file."""
     fs = MemoryFileSystem()
     root = "/cp-root"
-    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root=root)
     thread_id = "t-par"
     checkpoint_ns = "ns"
     base_cfg: RunnableConfig = {
@@ -195,7 +195,7 @@ def test_put_writes_skips_duplicate_inner_key_same_batch_when_writes_map_empty(
 
     fs = MemoryFileSystem()
     root = "/cp-root"
-    saver = DataRobotFileSystemSaver(fs=fs, root=root)
+    saver = DataRobotFileSystemCheckpointSaver(fs=fs, root=root)
     thread_id = "t-dup"
     checkpoint_ns = "ns"
     base_cfg: RunnableConfig = {
@@ -263,13 +263,3 @@ def test_register_checkpoint_root_cleanup_tracks_dr_scheme_not_dr_colon() -> Non
     fs = MemoryFileSystem()
     _register_checkpoint_root_cleanup(fs, "dr://")
     assert dr_cp._cleanup_registered_roots == {"dr://checkpoints"}
-
-
-def test_reset_default_langgraph_checkpointer_clears_caches() -> None:
-    import datarobot_genai.langgraph.dr_fs_checkpointer as dr_cp
-
-    dr_cp._default_process_checkpointers["k"] = object()  # type: ignore[assignment]
-    dr_cp._cleanup_registered_roots.add("/x")
-    dr_cp.reset_default_langgraph_checkpointer_for_tests()
-    assert dr_cp._default_process_checkpointers == {}
-    assert dr_cp._cleanup_registered_roots == set()
