@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import sys
 from pathlib import Path
 
@@ -27,9 +26,6 @@ from tests.drmcp.stub_credentials import apply_stub_datarobot_credentials_env  #
 
 apply_stub_datarobot_credentials_env()
 
-# Enable tool groups exercised by acceptance tests (defaults are off except predictive).
-os.environ.setdefault("ENABLE_VDB_TOOLS", "true")
-os.environ.setdefault("ENABLE_USE_CASE_TOOLS", "true")
 
 from datarobot_genai.drmcp import create_mcp_server  # noqa: E402
 

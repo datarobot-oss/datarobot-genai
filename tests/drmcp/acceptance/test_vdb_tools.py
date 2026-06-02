@@ -26,6 +26,12 @@ from datarobot_genai.drmcp import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
+@pytest.fixture(scope="session")
+def vdb_deployment_id() -> str:
+    """Return a VDB deployment ID for acceptance tests."""
+    return "vdb_deployment_id_ete"
+
+
 @pytest.mark.skip(
     reason="MODEL-22978 - TODO: These tests failing and should run against a real VDB deployment"
 )

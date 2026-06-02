@@ -55,10 +55,13 @@ def get_sdk_client(headers_auth_only: bool = False) -> Any:
     """
     Get a DataRobot SDK client using the API token from the current request.
 
-    Token resolution (prefer middleware context, then framework):
-    1. _request_headers_ctx (RequestHeadersMiddleware or route handlers / tests)
-    2. get_http_headers() (framework; e.g. MCP tool request context)
-    3. Application credentials as final fallback (unless headers_auth_only)
+    Token resolution (prefer framework first, then our context):
+    1. get_http_headers() (framework; e.g. MCP tool request context)
+    2. _request_headers_ctx (set by RequestHeadersMiddleware or tests)
+    Token extraction from each source tries: standard auth headers, then
+    authorization context metadata (dr_ctx.api_key). If both sources have
+    headers, the token is taken from the first source that yields one.
+    3. Application credentials as final fallback
 
     If headers_auth_only is True, only use the token from the request headers.
 

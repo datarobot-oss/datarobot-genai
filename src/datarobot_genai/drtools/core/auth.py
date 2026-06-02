@@ -433,27 +433,27 @@ def _extract_token_from_headers_with_fallback(headers: dict[str, str]) -> str | 
 
 def resolve_token_from_headers() -> str | None:
     """
-    Resolve API token from request headers.
+    Resolve API token from request headers, trying both sources.
 
-    Prefer headers from RequestHeadersMiddleware (custom REST routes), then
-    framework get_http_headers() (MCP tool calls). When an MCP stream session is open
-    during acceptance tests, framework headers may omit Authorization even though the
-    concurrent REST request includes it via middleware.
+    Order: try framework get_http_headers() first (preferred), then context
+    (set by RequestHeadersMiddleware). If both have headers, tries token extraction
+    from the first; if no token found, tries the second so the token is used
+    whichever source it came from.
     """
-    request_headers_ctx = _request_headers_ctx.get()
-    if request_headers_ctx:
-        token = _extract_token_from_headers_with_fallback(request_headers_ctx)
-        if token:
-            return token
-
+    framework_headers = None
     try:
         framework_headers = _get_http_headers()
     except Exception:
-        return None
+        pass  # No HTTP context (e.g. stdio transport)
 
-    if framework_headers:
-        return _extract_token_from_headers_with_fallback(framework_headers)
-    return None
+    request_headers_ctx = _request_headers_ctx.get()
+
+    token = (
+        _extract_token_from_headers_with_fallback(framework_headers) if framework_headers else None
+    )
+    if not token and request_headers_ctx:
+        token = _extract_token_from_headers_with_fallback(request_headers_ctx)
+    return token
 
 
 def get_api_key_from_headers(header_name: str) -> str | None:

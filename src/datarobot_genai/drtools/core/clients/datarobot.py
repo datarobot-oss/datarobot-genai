@@ -17,9 +17,7 @@
 import logging
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
 
-import datarobot as dr
 from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 
@@ -56,33 +54,6 @@ def get_datarobot_access_token() -> str:
             kind=ToolErrorKind.AUTHENTICATION,
         )
     return token
-
-
-class DataRobotClient:
-    """Client for interacting with DataRobot API in tools.
-
-    Wraps the DataRobot Python SDK (datarobot package). Obtain the token
-    via get_datarobot_access_token() and pass it to the constructor.
-    """
-
-    def __init__(self, token: str) -> None:
-        self._token = token
-
-    @contextmanager
-    def get_client(self) -> Generator[Any, None, None]:
-        """
-        Context manager that configures the DR SDK for this asyncio task and yields dr.
-
-        Uses client_configuration() which stores the RESTClientObject in a ContextVar
-        (_context_client) rather than a plain global. Each asyncio Task that enters this
-        context gets its own isolated client — preventing token mixing between concurrent
-        MCP tool invocations.
-        """
-        credentials = get_credentials()
-        with client_configuration(token=self._token, endpoint=credentials.datarobot.endpoint):
-            # Avoid use-case context from trafaret affecting tool calls.
-            DRContext.use_case = None
-            yield dr
 
 
 class ThreadSafeDataRobotClient:

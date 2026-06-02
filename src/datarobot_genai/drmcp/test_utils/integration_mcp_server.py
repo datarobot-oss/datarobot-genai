@@ -214,17 +214,12 @@ def _apply_dr_client_stubs() -> None:
 
     clients.get_sdk_client = lambda *args, **kwargs: stub_dr
 
-    @contextmanager
-    def _stub_get_client(_self: Any) -> Generator[Any, None, None]:
-        yield stub_dr
-
-    tools_datarobot_client.DataRobotClient.get_client = _stub_get_client  # type: ignore[assignment]
-    # Tools use ThreadSafeDataRobotClient; no-op context avoids header token lookup in stdio.
+    # No-op context avoids header token lookup in stdio; SDK classes are stubbed above.
     thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
     thread_safe_client.get_client_context_with_token_from_request_header = (  # type: ignore[method-assign]
         _stub_thread_safe_get_client_context
     )
-    # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
+    # Tools call get_datarobot_access_token() inside the context; patch for stdio (no headers).
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()
     _apply_prompt_stubs()

@@ -17,7 +17,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import datarobot as dr
@@ -35,63 +34,6 @@ from tests.drmcp.stub_credentials import force_stub_datarobot_credentials_env
 def _is_stub_token() -> bool:
     """Return True when DATAROBOT_API_TOKEN is the stub (no real API calls)."""
     return os.environ.get("DATAROBOT_API_TOKEN") == STUB_DATAROBOT_API_TOKEN
-
-
-def _dataset_exists(dataset_id: str) -> bool:
-    try:
-        dr.Dataset.get(dataset_id)
-        return True
-    except Exception:
-        return False
-
-
-def _resolve_source_dataset_id(project: Any) -> str | None:
-    """Return the project's training dataset id if it still exists in AI Catalog, or None.
-
-    Reused MCP test projects may keep project.catalog_id after the catalog entry was
-    deleted; acceptance tests expect get_project_dataset_by_name to resolve that source.
-    """
-    candidates: list[str] = []
-    try:
-        source = project.get_dataset()
-        if source is not None and getattr(source, "id", None):
-            candidates.append(str(source.id))
-    except Exception:
-        pass
-    catalog_id = getattr(project, "catalog_id", None)
-    if catalog_id:
-        cid = str(catalog_id)
-        if cid not in candidates:
-            candidates.append(cid)
-    for dataset_id in candidates:
-        if _dataset_exists(dataset_id):
-            return dataset_id
-    return None
-
-
-def _reuse_deployment_fixture_or_none(deployment: Any) -> dict[str, Any] | None:
-    """Build fixture dict from an existing deployment, or None if project data is stale."""
-    if not deployment.model:
-        return None
-    model = dr.Model.get(
-        project=str(deployment.model["project_id"]),
-        model_id=str(deployment.model["id"]),
-    )
-    project = dr.Project.get(str(deployment.model["project_id"]))
-    source_dataset_id = _resolve_source_dataset_id(project)
-    if source_dataset_id is None:
-        print(
-            f"Skipping deployment {deployment.id}: no accessible source dataset "
-            f"for project {project.id}"
-        )
-        return None
-    return {
-        "project": project,
-        "model": model,
-        "deployment": deployment,
-        "deployment_id": deployment.id,
-        "source_dataset_id": source_dataset_id,
-    }
 
 
 def _stub_project_fixture_dict(
@@ -185,10 +127,22 @@ def timeseries_regression_project(
         for deployment in deployments:
             if deployment.label and deployment.label.startswith(deployment_label):
                 print(f"Reusing existing deployment: {deployment.id}")
-                fixture = _reuse_deployment_fixture_or_none(deployment)
-                if fixture is not None:
-                    yield fixture
-                    return
+                # Get the model and project info
+                if deployment.model:
+                    model = dr.Model.get(
+                        project=str(deployment.model["project_id"]),
+                        model_id=str(deployment.model["id"]),
+                    )
+                    project = dr.Project.get(str(deployment.model["project_id"]))
+
+                yield {
+                    "project": project,
+                    "model": model,
+                    "deployment": deployment,
+                    "deployment_id": deployment.id,
+                    "source_dataset_id": project.catalog_id,
+                }
+                return  # Exit early, don't clean up existing deployment
     except Exception as e:
         print(f"Error checking for existing deployments: {e}")
 
@@ -297,10 +251,22 @@ def multiseries_regression_project(
         for deployment in deployments:
             if deployment.label and deployment.label.startswith(deployment_label):
                 print(f"Reusing existing multiseries deployment: {deployment.id}")
-                fixture = _reuse_deployment_fixture_or_none(deployment)
-                if fixture is not None:
-                    yield fixture
-                    return
+                # Get the model and project info
+                if deployment.model:
+                    model = dr.Model.get(
+                        project=str(deployment.model["project_id"]),
+                        model_id=str(deployment.model["id"]),
+                    )
+                    project = dr.Project.get(str(deployment.model["project_id"]))
+
+                yield {
+                    "project": project,
+                    "model": model,
+                    "deployment": deployment,
+                    "deployment_id": deployment.id,
+                    "source_dataset_id": project.catalog_id,
+                }
+                return  # Exit early, don't clean up existing deployment
     except Exception as e:
         print(f"Error checking for existing multiseries deployments: {e}")
 
@@ -409,10 +375,22 @@ def classification_project(
         for deployment in deployments:
             if deployment.label and deployment.label.startswith(deployment_label):
                 print(f"Reusing existing text deployment: {deployment.id}")
-                fixture = _reuse_deployment_fixture_or_none(deployment)
-                if fixture is not None:
-                    yield fixture
-                    return
+                # Get the model and project info
+                if deployment.model:
+                    model = dr.Model.get(
+                        project=str(deployment.model["project_id"]),
+                        model_id=str(deployment.model["id"]),
+                    )
+                    project = dr.Project.get(str(deployment.model["project_id"]))
+
+                yield {
+                    "project": project,
+                    "model": model,
+                    "deployment": deployment,
+                    "deployment_id": deployment.id,
+                    "source_dataset_id": project.catalog_id,
+                }
+                return  # Exit early, don't clean up existing deployment
     except Exception as e:
         print(f"Error checking for existing text deployments: {e}")
 
@@ -598,10 +576,6 @@ def get_prompt_template_mock(
             "datarobot_genai.drmcp.core.dynamic_prompts.register.get_datarobot_prompt_template_versions",
             return_value={prompt_template_id_ok: [dr_prompt_version]},
         ),
-        patch(
-            "datarobot_genai.drmcp.core.mcp_instance.check_prompt_registration_status_after_it_finishes",
-            AsyncMock(),
-        ),
     ):
         yield
 
@@ -653,10 +627,6 @@ def get_prompt_template_duplicated_name_mock(
                 prompt_template_id_ok: [dr_prompt_version_1],
                 prompt_template_id_ok_2: [dr_prompt_version_2],
             },
-        ),
-        patch(
-            "datarobot_genai.drmcp.core.mcp_instance.check_prompt_registration_status_after_it_finishes",
-            AsyncMock(),
         ),
     ):
         yield

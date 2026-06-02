@@ -16,18 +16,17 @@
 
 import os
 
-from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
-
-STUB_DATAROBOT_API_TOKEN = "test-token"
+from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_API_TOKEN
+from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_ENDPOINT
 
 
 def apply_stub_datarobot_credentials_env() -> None:
     """Set DATAROBOT_* env only when unset (does not override a developer's real token)."""
     os.environ.setdefault("DATAROBOT_API_TOKEN", STUB_DATAROBOT_API_TOKEN)
-    os.environ.setdefault("DATAROBOT_ENDPOINT", DEFAULT_DATAROBOT_ENDPOINT)
+    os.environ.setdefault("DATAROBOT_ENDPOINT", STUB_DATAROBOT_ENDPOINT)
 
 
 def force_stub_datarobot_credentials_env() -> None:
     """Set stub DATAROBOT_* env (integration tests must not use .env credentials)."""
     os.environ["DATAROBOT_API_TOKEN"] = STUB_DATAROBOT_API_TOKEN
-    os.environ["DATAROBOT_ENDPOINT"] = DEFAULT_DATAROBOT_ENDPOINT
+    os.environ["DATAROBOT_ENDPOINT"] = STUB_DATAROBOT_ENDPOINT

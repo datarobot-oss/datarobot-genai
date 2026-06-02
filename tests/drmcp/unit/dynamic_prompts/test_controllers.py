@@ -39,10 +39,6 @@ def mcp_server() -> Iterator[DataRobotMCP]:
     with (
         patch("datarobot_genai.drmcp.core.dynamic_prompts.controllers.mcp", test_mcp),
         patch("datarobot_genai.drmcp.core.mcp_instance.mcp", test_mcp),
-        patch(
-            "datarobot_genai.drmcp.core.mcp_instance.check_prompt_registration_status_after_it_finishes",
-            AsyncMock(),
-        ),
     ):
         yield test_mcp
 

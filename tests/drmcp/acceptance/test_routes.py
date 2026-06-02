@@ -31,13 +31,13 @@ def _create_prompt_template_with_versions() -> Iterator[tuple[str, str, str, str
     new_prompt_api = create_prompt_template(new_prompt_api_name)
     new_prompt_api_id = new_prompt_api["id"]
     first_version = get_or_create_prompt_template_version(
-        new_prompt_api_id, "prompt text 1", variables=[]
+        new_prompt_api_id, "prompt text 1", variables=[], headers_auth_only=True
     )
     second_version = get_or_create_prompt_template_version(
-        new_prompt_api_id, "prompt text 2", variables=[]
+        new_prompt_api_id, "prompt text 2", variables=[], headers_auth_only=True
     )
     third_version = get_or_create_prompt_template_version(
-        new_prompt_api_id, "prompt text 3", variables=[]
+        new_prompt_api_id, "prompt text 3", variables=[], headers_auth_only=True
     )
     yield new_prompt_api_id, first_version["id"], second_version["id"], third_version["id"]
     delete_prompt_template(new_prompt_api_id)
