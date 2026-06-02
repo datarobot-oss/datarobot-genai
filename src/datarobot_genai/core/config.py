@@ -22,6 +22,7 @@ from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
+DEFAULT_THINKING_BUDGET_TOKENS = 1024
 
 
 class LLMType(StrEnum):
@@ -124,6 +125,11 @@ class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
         default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
     )
 
+    # Extended thinking, off by default. Enable via ENABLE_THINKING to exercise
+    # reasoning models (e.g. in E2E); applies to every LLM type the helpers build.
+    enable_thinking: bool = False
+    thinking_budget_tokens: int = Field(default=DEFAULT_THINKING_BUDGET_TOKENS, ge=1)
+
 
 def get_max_history_messages_default() -> int:
     """Return the default maximum number of history messages.
@@ -181,3 +187,27 @@ def default_llm_deployment_id() -> str | None:
 def default_nim_deployment_id() -> str | None:
     config = Config()
     return config.nim_deployment_id
+
+
+def apply_default_thinking(config: dict) -> bool:
+    """Inject the default extended-thinking block into ``config['extra_body']``.
+
+    When ``ENABLE_THINKING`` is set (default ``False``) and the caller has not
+    already specified thinking — top-level ``thinking`` or
+    ``extra_body['thinking']`` — add ``{"type": "enabled", "budget_tokens": N}``
+    (``THINKING_BUDGET_TOKENS``) so the gateway forwards it to thinking-capable
+    providers. Mutates ``config`` in place; a caller-supplied ``thinking`` wins.
+
+    Returns ``True`` when thinking is active in ``config`` after the call
+    (caller-supplied or injected), so callers can apply provider-specific
+    follow-ups (e.g. pinning ``temperature``) without re-deriving the check.
+    """
+    extra_body = dict(config.get("extra_body") or {})
+    if "thinking" in config or "thinking" in extra_body:
+        return True
+    cfg = Config()
+    if not cfg.enable_thinking:
+        return False
+    extra_body["thinking"] = {"type": "enabled", "budget_tokens": cfg.thinking_budget_tokens}
+    config["extra_body"] = extra_body
+    return True
