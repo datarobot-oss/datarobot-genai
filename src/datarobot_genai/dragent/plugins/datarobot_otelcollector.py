@@ -45,6 +45,14 @@ Inside a DataRobot deployment, the minimal ``workflow.yaml`` is::
 
 Explicit overrides for any of the three auto-derived fields are honored —
 pin them in ``workflow.yaml`` to point at a non-default collector.
+
+Local dev / incomplete config: when any of ``endpoint``,
+``datarobot_api_key``, or ``datarobot_entity_id`` resolves empty -
+the exporter silently drops spans instead of POSTing to a real
+endpoint with bad auth (which the DataRobot ingest rejects with repeated
+``401 Unauthorized``). This mirrors the no-op contract that
+``bootstrap_otel_provider_for_datarobot`` already honors for framework
+auto-instrumentor spans.
 """
 
 from __future__ import annotations
@@ -56,7 +64,9 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_telemetry_exporter
 from nat.data_models.common import SerializableSecretStr
 from nat.data_models.common import get_secret_value
+from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.telemetry_exporter import TelemetryExporterBaseConfig
+from nat.observability.exporter.base_exporter import BaseExporter
 from nat.observability.mixin.batch_config_mixin import BatchConfigMixin
 from nat.observability.mixin.collector_config_mixin import CollectorConfigMixin
 from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
@@ -144,14 +154,35 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
         return value
 
 
+class _DroppingSpanExporter(BaseExporter):
+    """Subscribes to the event stream but drops every span."""
+
+    def export(self, event: IntermediateStep) -> None:
+        return None
+
+
 @register_telemetry_exporter(config_type=DataRobotOtelCollectorTelemetryExporter)
 async def datarobot_otelcollector_telemetry_exporter(
     config: DataRobotOtelCollectorTelemetryExporter,
     builder: Builder,
-) -> AsyncGenerator[OTLPSpanAdapterExporter, None]:
-    """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
+) -> AsyncGenerator[BaseExporter, None]:
+    """Yield an OTLP span exporter pointed at the DataRobot OTel collector.
+
+    When the resolved config is incomplete (missing endpoint, api key, or
+    entity id — i.e. local-dev case) yield a no-op exporter that drops spans
+    instead of authenticating against a real endpoint and failing with 401.
+    """
+    api_key = get_secret_value(config.datarobot_api_key)
+    if not api_key or not config.datarobot_entity_id or not config.endpoint:
+        logger.info(
+            "datarobot_otelcollector: DataRobot OTel ingest config incomplete - "
+            "skipping span export."
+        )
+        yield _DroppingSpanExporter()
+        return
+
     headers: dict[str, str] = {
-        "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
+        "X-DataRobot-Api-Key": api_key,
         "X-DataRobot-Entity-Id": config.datarobot_entity_id,
     }
     # Caller-supplied headers win on collision; lets you e.g. add request-
