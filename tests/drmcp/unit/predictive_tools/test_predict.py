@@ -12,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock
-from unittest.mock import Mock
 from unittest.mock import patch
 
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import predict
@@ -43,15 +40,6 @@ def _running_job() -> MagicMock:
 @pytest.fixture()
 def mock_batch_prediction_job() -> MagicMock:
     return MagicMock()
-
-
-@pytest.fixture
-def mock_get_client_context_with_token_from_request_header() -> Iterator[Mock]:
-    with patch.object(
-        ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
-    ) as mock_func:
-        yield mock_func
 
 
 @pytest.mark.asyncio

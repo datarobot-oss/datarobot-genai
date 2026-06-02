@@ -15,7 +15,6 @@
 import io
 import json
 from collections.abc import Generator
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import Mock
@@ -34,15 +33,6 @@ from datarobot_genai.drtools.predictive.predict_realtime import predict_by_ai_ca
 
 THRESHOLD_HIGH = 0.8
 THRESHOLD_LOW = 0.2
-
-
-@pytest.fixture
-def mock_get_client_context_with_token_from_request_header() -> Iterator[Mock]:
-    with patch.object(
-        ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
-    ) as mock_func:
-        yield mock_func
 
 
 @pytest.fixture()
