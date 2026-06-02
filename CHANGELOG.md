@@ -5,11 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.91
-- `core/agents/reasoning.py`: framework-agnostic helpers (`_iter_content_blocks`, `_iter_message_blocks`, `_flatten_to_text`) that normalize reasoning/thinking from both native list-form `AIMessage.content` (`{"type": "thinking"/"reasoning", ...}` blocks, Anthropic/Bedrock pass-through) and the OpenAI-compatible flat shape (reasoning in `additional_kwargs["reasoning_content"]`, e.g. the DataRobot LLM gateway). De-duplicates reasoning when the gateway returns the same delta in both shapes — the flat `reasoning_content` is only a fallback when `content` does not already carry thinking.
-- `langgraph/agent.py`: emit reasoning from reasoning models (Claude extended thinking, Qwen, OpenAI o1, GPT-OSS, DeepSeek) as AG-UI `ReasoningMessageChunkEvent`s before the text lifecycle; list content is flattened to text before ragas conversion so evaluation traces stay valid (thinking dropped from ragas; AG-UI stream still carries it).
-- `llama_index/agent.py`: surface reasoning for LlamaIndex agents. The stock `llama_index.llms.litellm` wrapper drops `reasoning_content` from streaming deltas, so the adapter recovers it from the raw LiteLLM chunk on `AgentStream.raw` and emits each delta as a `ReasoningMessageChunkEvent` (preferring `thinking_delta` when an integration populates it). New helper: `_thinking_delta_from_raw`.
-- `dragent/frontends/step_adaptor.py`: normalize list-form reasoning content so the DRAgent/NAT step adaptor no longer crashes when a reasoning model streams `[{"type": "thinking", ...}, {"type": "text", ...}]` into a string `delta`. Root-level thinking → `ReasoningMessageChunkEvent`s, text → `TextMessageContentEvent`s; nested (sub-agent) output stays in the reasoning envelope.
-- `nat/agent.py`: NAT remains text-only — its `tool_calling_agent` stream forwards only string `content` + `tool_calls` and drops `reasoning_content` upstream (`ChatResponseChunk` has no reasoning field), so reasoning can't be surfaced for NAT without an upstream change.
+- Surface reasoning/thinking from reasoning models as AG-UI Reasoning events (LangGraph, LlamaIndex DRAgent adapters) and fix the LangGraph crash on list-form `AIMessage.content`.
 
 ## 0.15.90
 - `e2e-tests`: Enabled A2A server in all agent workflows and added A2A protocol end-to-end tests (agent card, `message/send`).

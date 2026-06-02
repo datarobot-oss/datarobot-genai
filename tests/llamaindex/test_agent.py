@@ -187,7 +187,7 @@ def test_datarobot_litellm_metadata_properties() -> None:
     assert meta.model_name == "dr/model"
 
 
-# --- Tests for reasoning_content extraction (BUZZOK-30788) ---
+# --- Tests for reasoning_content extraction ---
 
 
 def test_thinking_delta_from_raw_object_form() -> None:
@@ -581,7 +581,7 @@ async def test_invoke_agent_stream_multiple_agents(
     assert isinstance(ag_events[-1], RunFinishedEvent)
 
 
-# --- Tests for reasoning models (BUZZOK-30788) ---
+# --- Tests for reasoning models ---
 
 
 async def test_invoke_emits_reasoning_chunks_from_thinking_delta(

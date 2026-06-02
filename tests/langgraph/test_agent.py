@@ -851,10 +851,6 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
     assert len(msgs) == 2
 
 
-# --- BUZZOK-30788: list-form AIMessage.content handling ---
-# (block-parsing unit tests moved to tests/core/agents/test_reasoning.py)
-
-
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
     # AIMessage with list-form content (thinking + text) previously crashed ragas
     # with TypeError("AIMessage content must be a string, got list").
