@@ -47,7 +47,7 @@ from nat.data_models.step_adaptor import StepAdaptorMode
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
 
-from datarobot_genai.core.agents.reasoning import _iter_content_blocks
+from datarobot_genai.core.agents.reasoning import iter_content_blocks
 
 from .response import DRAgentEventResponse
 from .tool_call_registry import bind_tool_call
@@ -151,7 +151,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         CLI/web renderers already understand).
         """
         events: list[Event] = []
-        for kind, delta in _iter_content_blocks(content):
+        for kind, delta in iter_content_blocks(content):
             if kind == "thinking":
                 events.append(ReasoningMessageChunkEvent(message_id=message_id, delta=delta))
             else:
@@ -169,7 +169,7 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         """
         return [
             ReasoningMessageContentEvent(message_id=message_id, delta=delta)
-            for _kind, delta in _iter_content_blocks(content)
+            for _kind, delta in iter_content_blocks(content)
         ]
 
     def _handle_llm(

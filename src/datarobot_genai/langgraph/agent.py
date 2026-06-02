@@ -52,10 +52,10 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.agents.reasoning import _flatten_to_text
-from datarobot_genai.core.agents.reasoning import _iter_message_blocks
+from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.dr_fs_checkpointer import default_langgraph_checkpointer
+from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -443,7 +443,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     usage_metrics,
                                 )
                     elif message.content or message.additional_kwargs.get("reasoning_content"):
-                        for kind, delta in _iter_message_blocks(message):
+                        for kind, delta in iter_message_blocks(message):
                             if kind == "thinking":
                                 yield (
                                     ReasoningMessageChunkEvent(
@@ -619,7 +619,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         flattened: list[Any] = []
         for m in messages:
             if isinstance(m.content, list):
-                flattened.append(m.model_copy(update={"content": _flatten_to_text(m.content)}))
+                flattened.append(m.model_copy(update={"content": flatten_to_text(m.content)}))
             else:
                 flattened.append(m)
         # Lazy import to reduce memory overhead when ragas is not used

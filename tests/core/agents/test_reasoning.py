@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from types import SimpleNamespace
+import logging
 
 import pytest
 
-from datarobot_genai.core.agents.reasoning import _flatten_to_text
-from datarobot_genai.core.agents.reasoning import _iter_content_blocks
-from datarobot_genai.core.agents.reasoning import _iter_message_blocks
+from datarobot_genai.core.agents.reasoning import flatten_to_text
+from datarobot_genai.core.agents.reasoning import iter_content_blocks
 
 
 @pytest.mark.parametrize(
@@ -55,7 +54,7 @@ from datarobot_genai.core.agents.reasoning import _iter_message_blocks
     ],
 )
 def test_iter_content_blocks(content, expected):
-    assert list(_iter_content_blocks(content)) == expected
+    assert list(iter_content_blocks(content)) == expected
 
 
 @pytest.mark.parametrize(
@@ -81,56 +80,17 @@ def test_iter_content_blocks(content, expected):
     ],
 )
 def test_flatten_to_text(content, expected):
-    assert _flatten_to_text(content) == expected
+    assert flatten_to_text(content) == expected
 
 
-@pytest.mark.parametrize(
-    "message, expected",
-    [
-        # Plain text content, no reasoning.
-        (SimpleNamespace(content="hi", additional_kwargs={}), [("text", "hi")]),
-        # OpenAI-compatible flat shape: text in content, reasoning in additional_kwargs.
-        # Reasoning is yielded BEFORE text so AG-UI emits REASONING_* before TEXT_*.
-        (
-            SimpleNamespace(content="say", additional_kwargs={"reasoning_content": "think"}),
-            [("thinking", "think"), ("text", "say")],
-        ),
-        # Native list-form content (Anthropic/Bedrock blocks).
-        (
-            SimpleNamespace(
-                content=[
-                    {"type": "thinking", "thinking": "t"},
-                    {"type": "text", "text": "say"},
-                ],
-                additional_kwargs={},
-            ),
-            [("thinking", "t"), ("text", "say")],
-        ),
-        # Pure-reasoning chunk: empty content, only reasoning_content delta.
-        (
-            SimpleNamespace(content="", additional_kwargs={"reasoning_content": "delta"}),
-            [("thinking", "delta")],
-        ),
-        # Empty additional_kwargs reasoning_content is ignored.
-        (
-            SimpleNamespace(content="hi", additional_kwargs={"reasoning_content": ""}),
-            [("text", "hi")],
-        ),
-        # Object without an additional_kwargs attribute at all: no crash.
-        (SimpleNamespace(content="hi"), [("text", "hi")]),
-        # Gateway sends the SAME reasoning in BOTH list-form content AND
-        # reasoning_content. The flat copy must be dropped (no double-emit).
-        (
-            SimpleNamespace(
-                content=[
-                    {"type": "thinking", "thinking": "t"},
-                    {"type": "text", "text": "say"},
-                ],
-                additional_kwargs={"reasoning_content": "t"},
-            ),
-            [("thinking", "t"), ("text", "say")],
-        ),
-    ],
-)
-def test_iter_message_blocks(message, expected):
-    assert list(_iter_message_blocks(message)) == expected
+def test_malformed_item_raises():
+    """A non-str, non-dict list item raises to surface an unexpected content format."""
+    with pytest.raises(ValueError, match="Unparseable content item"):
+        list(iter_content_blocks([123]))
+
+
+def test_unrouted_block_type_skips_without_raising(caplog):
+    """A recognized-but-unrouted block (e.g. tool_use) is skipped at debug, never raised."""
+    with caplog.at_level(logging.DEBUG, logger="datarobot_genai.core.agents.reasoning"):
+        assert list(iter_content_blocks([{"type": "tool_use", "name": "search"}])) == []
+    assert [r for r in caplog.records if r.levelno == logging.DEBUG]

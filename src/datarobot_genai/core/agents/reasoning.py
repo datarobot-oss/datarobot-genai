@@ -11,21 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Framework-agnostic normalization of reasoning/thinking content.
+"""Framework-agnostic normalization of reasoning/thinking content blocks.
 
 Reasoning models (Claude extended thinking, Qwen, OpenAI o1, GPT-OSS, DeepSeek)
-expose reasoning in shapes that recur across LangChain/LiteLLM-based adapters:
+expose reasoning as native **list-form content blocks** —
+``[{"type": "thinking", ...}, {"type": "text", ...}]`` (Anthropic/Bedrock SDK
+pass-through). These helpers normalize that (and plain-string or list content)
+into typed ``(kind, delta)`` pairs so each framework adapter can route thinking
+to AG-UI Reasoning events and text to text events without re-implementing the
+parsing. They live in ``core`` (rather than a single framework package) so
+independent adapters can share them without leaf-to-leaf imports, and they carry
+no framework dependency.
 
-- native **list-form content blocks** — ``[{"type": "thinking", ...}, {"type": "text", ...}]``
-  (Anthropic/Bedrock SDK pass-through), and
-- the **OpenAI-compatible flat shape** — text on ``content`` with reasoning hoisted to
-  ``additional_kwargs["reasoning_content"]`` (DataRobot LLM gateway and other proxies).
-
-These helpers normalize both into typed ``(kind, delta)`` pairs so each framework
-adapter can route thinking to AG-UI Reasoning events and text to text events without
-re-implementing the parsing. They live in ``core`` (rather than a single framework
-package) so independent adapters can share them without leaf-to-leaf imports. The
-functions are duck-typed and carry no framework dependency.
+The OpenAI-compatible flat shape (reasoning hoisted to
+``additional_kwargs["reasoning_content"]``) is framework-specific and handled by
+the per-adapter wrappers, e.g. ``datarobot_genai.langgraph.reasoning``.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 
-def _iter_content_blocks(
+def iter_content_blocks(
     content: str | list[Any] | None,
 ) -> Iterator[tuple[Literal["text", "thinking"], str]]:
     """Yield typed (kind, delta) pairs for any AIMessage/ToolMessage content shape.
@@ -46,8 +46,14 @@ def _iter_content_blocks(
     Normalizes the union of shapes LangChain/LiteLLM produce for ``AIMessage.content``:
     plain string, list of strings, or list of structured blocks. Thinking and
     reasoning blocks both map to ``("thinking", delta)``. Empty deltas are filtered
-    so callers never need to emit zero-content events. Unknown block shapes are
-    skipped with a debug log to keep the stream resilient.
+    so callers never need to emit zero-content events.
+
+    A list item that is neither a string nor a block dict is malformed for every
+    framework we support, so it raises ``ValueError`` to surface the unexpected
+    format immediately rather than silently dropping content. A well-formed block
+    whose ``type`` we do not route (e.g. ``tool_use``, which agents handle via
+    their own tool-call path) is skipped at ``debug``: those are recognized,
+    non-renderable blocks, not format errors.
     """
     if not content:
         return
@@ -60,8 +66,10 @@ def _iter_content_blocks(
                 yield "text", block
             continue
         if not isinstance(block, dict):
-            logger.debug("Skipping unknown content item: %r", block)
-            continue
+            # Neither a string nor a block dict: malformed for every framework we
+            # support. Fail fast so an unexpected content format surfaces here
+            # instead of being silently dropped.
+            raise ValueError(f"Unparseable content item (expected str or dict): {block!r}")
         block_type = block.get("type")
         if block_type == "text":
             text = block.get("text", "")
@@ -76,41 +84,12 @@ def _iter_content_blocks(
             if reasoning:
                 yield "thinking", reasoning
         else:
-            logger.debug("Skipping unknown content block type: %r", block_type)
+            # Blocks we recognize but don't route here (e.g. tool_use) arrive
+            # routinely via flatten_to_text on tool-calling messages, so this
+            # stays at debug — warning/raising would fire on healthy runs.
+            logger.debug("Skipping block type: %r", block_type)
 
 
-def _flatten_to_text(content: str | list[Any] | None) -> str:
+def flatten_to_text(content: str | list[Any] | None) -> str:
     """Collapse any content shape to its text portion, dropping thinking blocks."""
-    return "".join(delta for kind, delta in _iter_content_blocks(content) if kind == "text")
-
-
-def _iter_message_blocks(
-    message: Any,
-) -> Iterator[tuple[Literal["text", "thinking"], str]]:
-    """Yield typed (kind, delta) pairs for any AIMessage/AIMessageChunk shape.
-
-    Combines two surfaces LangChain/LiteLLM produce for reasoning models:
-
-    - **Native list-form content**: e.g. Anthropic/Bedrock blocks
-      ``[{"type": "thinking", ...}, {"type": "text", ...}]`` — delegated to
-      ``_iter_content_blocks(message.content)``.
-    - **OpenAI-compatible flat shape**: text in ``message.content`` (string) and
-      reasoning hoisted to ``message.additional_kwargs["reasoning_content"]``
-      (string). This is what the DataRobot LLM gateway returns over its
-      OpenAI-style HTTP API, even when the underlying model is Anthropic.
-
-    These shapes are not mutually exclusive: with extended thinking enabled the
-    DataRobot gateway emits the *same* reasoning delta in BOTH
-    ``additional_kwargs["reasoning_content"]`` and as a native ``content``
-    thinking block. To avoid double-emitting, the flat ``reasoning_content`` is
-    only used as a fallback when ``content`` does not already carry thinking.
-
-    Reasoning is yielded before content so consumers can route REASONING_*
-    events ahead of the matching text in the AG-UI stream.
-    """
-    content_pairs = list(_iter_content_blocks(getattr(message, "content", None)))
-    ak = getattr(message, "additional_kwargs", None) or {}
-    reasoning_text = ak.get("reasoning_content")
-    if reasoning_text and not any(kind == "thinking" for kind, _ in content_pairs):
-        yield "thinking", reasoning_text
-    yield from content_pairs
+    return "".join(delta for kind, delta in iter_content_blocks(content) if kind == "text")
