@@ -71,7 +71,7 @@ async def predict_by_ai_catalog_rt(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:
@@ -243,7 +243,7 @@ async def predict_realtime(
     if series_id_column and series_id_column not in pl_df.columns:
         raise ValueError(f"series_id_column '{series_id_column}' not found in input data.")
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             deployment = dr.Deployment.get(deployment_id=deployment_id)
         except ClientError as e:

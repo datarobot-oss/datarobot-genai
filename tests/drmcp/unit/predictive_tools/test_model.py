@@ -31,7 +31,7 @@ from datarobot_genai.drtools.predictive.model import model_to_dict
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_success() -> None:
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
@@ -49,7 +49,7 @@ async def test_get_best_model_success() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_no_models() -> None:
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
@@ -59,7 +59,7 @@ async def test_get_best_model_no_models() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_project_not_found() -> None:
     with patch.object(dr.Project, "get", return_value=None):
         with pytest.raises(ToolError, match="Project with ID pid not found."):
@@ -67,7 +67,7 @@ async def test_get_best_model_project_not_found() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_project_client_error_404() -> None:
     with patch.object(
         dr.Project,
@@ -88,7 +88,7 @@ async def test_get_best_model_project_client_error_404() -> None:
 async def test_get_best_model_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -97,7 +97,7 @@ async def test_get_best_model_error() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_success() -> None:
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
@@ -117,7 +117,7 @@ async def test_list_models_success() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_pagination_offset_limit() -> None:
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = []
@@ -137,7 +137,7 @@ async def test_list_models_negative_offset() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_clamp_limit_applies_note() -> None:
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = [MagicMock(id="m1", model_type="T", metrics={})]
@@ -150,7 +150,7 @@ async def test_list_models_clamp_limit_applies_note() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_success() -> None:
     mock_project = MagicMock()
     mock_dr_model = MagicMock()
@@ -194,7 +194,7 @@ async def test_score_dataset_with_model_empty_dataset_id() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_project_not_found() -> None:
     project_id = "pid"
     with patch.object(
@@ -217,7 +217,7 @@ async def test_score_dataset_with_model_project_not_found() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_model_not_found() -> None:
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
@@ -243,7 +243,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> None:
     with patch.object(
         dr.Project,
@@ -267,7 +267,7 @@ async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> No
 async def test_score_dataset_with_model_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -280,7 +280,7 @@ async def test_score_dataset_with_model_error() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_model_details_success() -> None:
     mock_project = MagicMock()
     mock_project.target = "target_col"
@@ -319,7 +319,7 @@ async def test_get_model_details_missing_model_id() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_model_details_feature_impact_error() -> None:
     mock_project = MagicMock()
     mock_project.target = "target_col"
@@ -337,7 +337,7 @@ async def test_get_model_details_feature_impact_error() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_is_eligible_for_timeseries_training_success() -> None:
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
@@ -361,7 +361,7 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
@@ -401,9 +401,7 @@ async def _run_eligibility(
     pandas_df, *, datetime_column="date", target_column="target", series_id_column=None
 ):
     mock_dataset = _build_dataset_mock(pandas_df)
-    with patch.object(
-        ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-    ):
+    with patch.object(ThreadSafeDataRobotClient, "request_user_client"):
         with patch.object(dr.Dataset, "get", return_value=mock_dataset):
             return await model.is_eligible_for_timeseries_training(
                 dataset_id="ds1",

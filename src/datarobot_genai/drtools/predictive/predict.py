@@ -112,7 +112,7 @@ async def predict_by_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             dataset = dr.Dataset.get(dataset_id)
             job = dr.BatchPredictionJob.score(
@@ -174,7 +174,7 @@ async def predict_from_project_data(
             "Argument validation error: 'partition' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         intake_settings: dict[str, Any] = {
             "type": "dss",
             "project_id": project_id,
@@ -217,7 +217,7 @@ async def get_batch_prediction_job_status(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             job = dr.BatchPredictionJob.get(job_id.strip())
         except ClientError as e:
@@ -272,7 +272,7 @@ async def get_batch_prediction_results(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             job = dr.BatchPredictionJob.get(job_id.strip())
         except ClientError as e:

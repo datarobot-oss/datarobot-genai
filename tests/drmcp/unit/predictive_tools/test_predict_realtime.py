@@ -38,9 +38,7 @@ THRESHOLD_LOW = 0.2
 @pytest.fixture()
 def patch_realtime_dependencies() -> Generator[dict[str, Any], None, None]:
     with (
-        patch.object(
-            ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-        ),
+        patch.object(ThreadSafeDataRobotClient, "request_user_client"),
         patch.object(dr.Deployment, "get") as mock_deployment_get,
         patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv") as mock_read_csv,
         patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict") as mock_dr_predict,
@@ -624,9 +622,7 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         with (
-            patch.object(
-                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-            ),
+            patch.object(ThreadSafeDataRobotClient, "request_user_client"),
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
@@ -679,9 +675,7 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         with (
-            patch.object(
-                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-            ),
+            patch.object(ThreadSafeDataRobotClient, "request_user_client"),
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
@@ -735,9 +729,7 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         with (
-            patch.object(
-                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-            ),
+            patch.object(ThreadSafeDataRobotClient, "request_user_client"),
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
@@ -792,9 +784,7 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         with (
-            patch.object(
-                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-            ),
+            patch.object(ThreadSafeDataRobotClient, "request_user_client"),
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
@@ -851,9 +841,7 @@ class TestPredictByAiCatalogRt:
         mock_predictions_result_response.return_value = {"type": "inline", "data": "test_data"}
 
         with (
-            patch.object(
-                ThreadSafeDataRobotClient, "get_client_context_with_token_from_request_header"
-            ),
+            patch.object(ThreadSafeDataRobotClient, "request_user_client"),
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):

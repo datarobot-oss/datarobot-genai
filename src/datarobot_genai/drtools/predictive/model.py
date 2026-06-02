@@ -193,7 +193,7 @@ async def get_best_model(
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             project = dr.Project.get(project_id)
         except ClientError as e:
@@ -266,7 +266,7 @@ async def score_dataset_with_model(
     if not dataset_id or not dataset_id.strip():
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             project = dr.Project.get(project_id)
             dr_model = dr.Model.get(project, model_id)
@@ -321,7 +321,7 @@ async def list_models(
 
     limit, message = clamp_limit(limit)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             project = dr.Project.get(project_id)
         except ClientError as e:
@@ -365,7 +365,7 @@ async def get_model_details(
         bool, "If true, include validation ROC points (classification)."
     ] = False,
 ) -> dict[str, Any]:
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             project = dr.Project.get(project_id)
             model = dr.Model.get(project=project, model_id=model_id)
@@ -429,7 +429,7 @@ async def is_eligible_for_timeseries_training(
     if not target_column:
         raise ToolError("Target column must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:

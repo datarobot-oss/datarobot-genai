@@ -57,3 +57,16 @@ class TestGetDatarobotAccessToken:
             with pytest.raises(ToolError) as exc_info:
                 get_datarobot_access_token()
         assert "DataRobot API token not found" in str(exc_info.value)
+
+    def test_falls_back_to_app_token_when_headers_auth_only_false(self) -> None:
+        with (
+            patch(
+                "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
+                return_value=None,
+            ),
+            patch(
+                "datarobot_genai.drtools.core.clients.datarobot.get_credentials",
+            ) as mock_get_credentials,
+        ):
+            mock_get_credentials.return_value.datarobot.application_api_token = "app-tok"
+            assert get_datarobot_access_token(headers_auth_only=False) == "app-tok"

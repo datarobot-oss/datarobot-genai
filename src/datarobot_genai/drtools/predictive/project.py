@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_projects() -> dict[str, Any]:
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         projects = dr.Project.list()
         projects = {p.id: p.project_name for p in projects}
 
@@ -66,7 +66,7 @@ async def get_project_dataset_by_name(
     if not dataset_name:
         raise ToolError("Dataset name is required.", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             project = dr.Project.get(project_id)
         except ClientError as e:

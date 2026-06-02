@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_deployments() -> dict[str, Any]:
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         deployments = dr.Deployment.list()
         if not deployments:
             return {"deployments": []}
@@ -66,7 +66,7 @@ async def get_model_info_from_deployment(
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
@@ -95,7 +95,7 @@ async def deploy_model(
     if not label:
         raise ToolError("Model label must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         prediction_servers = dr.PredictionServer.list()
         if not prediction_servers:
             raise ToolError(
@@ -178,7 +178,7 @@ async def deploy_custom_model(
             "Add a model file to the folder or pass model_file_path.",
             kind=ToolErrorKind.VALIDATION,
         )
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         out = deploy_custom_model_impl(
             dr,
             model_folder=model_folder,
@@ -216,7 +216,7 @@ async def get_prediction_history(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
         params: dict = {"limit": limit, "offset": offset}

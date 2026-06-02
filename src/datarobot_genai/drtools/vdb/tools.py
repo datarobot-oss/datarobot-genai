@@ -62,7 +62,7 @@ async def list_vector_databases(
     if offset is not None:
         params["offset"] = offset
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
         try:
             response = rest_client.get("deployments/", params=params)
@@ -122,7 +122,7 @@ async def query_vector_database(
         "retrieval_mode": retrieval_mode,
     }
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
         try:
             response = rest_client.post(

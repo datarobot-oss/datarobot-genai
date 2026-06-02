@@ -24,7 +24,7 @@ from datarobot_genai.drtools.predictive import project
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_projects_success() -> None:
     mock_proj1 = MagicMock(id="1", project_name="proj1")
     mock_proj2 = MagicMock(id="2", project_name="proj2")
@@ -39,7 +39,7 @@ async def test_list_projects_success() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_projects_empty() -> None:
     with patch.object(dr.Project, "list", return_value=[]):
         result = await project.list_projects()
@@ -51,7 +51,7 @@ async def test_list_projects_empty() -> None:
 async def test_list_projects_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -60,7 +60,7 @@ async def test_list_projects_error() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_project_dataset_by_name_success() -> None:
     mock_project = MagicMock()
     mock_ds1 = MagicMock()
@@ -78,7 +78,7 @@ async def test_get_project_dataset_by_name_success() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_project_dataset_by_name_not_found() -> None:
     mock_project = MagicMock()
     mock_project.get_datasets.return_value = []
@@ -95,7 +95,7 @@ async def test_get_project_dataset_by_name_not_found() -> None:
 async def test_get_project_dataset_by_name_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
-        "get_client_context_with_token_from_request_header",
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:

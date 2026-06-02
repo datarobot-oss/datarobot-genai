@@ -88,7 +88,7 @@ async def upload_dataset_to_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         catalog_item = None
         if file_content_base64 is not None:
             raw_b64 = file_content_base64.strip()
@@ -163,7 +163,7 @@ async def list_ai_catalog_items(
 
     limit, message = clamp_limit(limit)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         # DataRobot ``Dataset.iterate`` expects an int; do not pass ``None`` when offset is omitted.
         iterate_offset = 0 if offset is None else offset
         try:
@@ -219,7 +219,7 @@ async def get_dataset_details(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             dataset = dr.Dataset.get(dataset_id)
         except ClientError as e:
@@ -269,7 +269,7 @@ async def list_datastores(
 
     limit, message = clamp_limit(limit)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
         params: dict[str, Any] = {"limit": limit}
@@ -335,7 +335,7 @@ async def browse_datastore(
 
     limit, message = clamp_limit(limit)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
         params: dict = {"offset": offset, "limit": limit}
@@ -399,7 +399,7 @@ async def query_datastore(
 
     limit, message = clamp_limit(limit)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
         payload = {"query": sql, "offset": offset, "limit": limit}

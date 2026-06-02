@@ -53,7 +53,7 @@ async def list_use_cases(
     if search:
         params["search"] = search
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
         try:
             response = rest_client.get("useCases/", params=params)
@@ -105,7 +105,7 @@ async def list_use_case_assets(
         )
 
     results: list[dict] = []
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         for uc_id in ids:
             entry: dict = {"use_case_id": uc_id}
 

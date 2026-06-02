@@ -65,7 +65,7 @@ async def get_deployment_info(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    with ThreadSafeDataRobotClient().get_client_context_with_token_from_request_header():
+    with ThreadSafeDataRobotClient().request_user_client():
         try:
             deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
