@@ -27,6 +27,8 @@ BASE_URL = "http://localhost:8080"
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
+A2A_PATH = "/a2a/"
+A2A_AGENT_CARD_PATH = "/a2a/.well-known/agent-card.json"
 
 AGENT = os.environ.get("AGENT")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
@@ -143,3 +145,22 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
     return "".join(parts)
+
+
+def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
+    """Build a JSON-RPC 2.0 ``message/send`` request body for the A2A protocol."""
+    uid = uuid.uuid4().hex[:8]
+    return {
+        "jsonrpc": "2.0",
+        "id": f"e2e-{uid}",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "kind": "message",
+                "messageId": message_id or f"e2e-msg-{uid}",
+                "role": "user",
+                "parts": [{"kind": "text", "text": text}],
+            },
+        },
+    }
+
