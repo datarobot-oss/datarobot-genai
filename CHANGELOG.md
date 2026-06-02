@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.91
+## 0.15.92
 - Surface reasoning/thinking from reasoning models as AG-UI Reasoning events (LangGraph, LlamaIndex DRAgent adapters) and fix the LangGraph crash on list-form `AIMessage.content`.
+- Added `ENABLE_THINKING` / `THINKING_BUDGET_TOKENS` config to opt into extended thinking on thinking-capable models (the LlamaIndex adapter pins `temperature` to 1 when thinking is active, as Anthropic requires), covered by reasoning end-to-end tests and an `e2e-dragent-reasoning` CI job exercising the LangGraph and LlamaIndex agents on `claude-sonnet-4`.
+
+## 0.15.91
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
 - Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
 - Removed `use_datarobot_fs_checkpointer` and its mentions
