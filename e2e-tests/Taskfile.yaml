@@ -92,3 +92,5 @@ tasks:
       - echo "🔨 Running dragent"
       - task: install
       - task dragent:run-{{.AGENT}}
+
+
