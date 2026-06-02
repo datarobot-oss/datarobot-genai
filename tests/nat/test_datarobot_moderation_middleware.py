@@ -2025,6 +2025,46 @@ async def test_function_middleware_stream_synthesizes_text_message_end_on_conten
     )
 
 
+async def test_function_middleware_stream_closes_generators_on_early_consumer_exit(
+    builder_mock: MagicMock,
+) -> None:
+    """Closing the consumer must aclose moderation and upstream iterators."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+
+    async def upstream():
+        yield _text_response("delta-one")
+        yield _text_response("delta-two")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware._aclose_async_iterator",
+            new_callable=AsyncMock,
+        ) as aclose_mock,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        stream = mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=stream_next,
+            context=_fn_context(),
+        )
+        agen = stream.__aiter__()
+        first = await agen.__anext__()
+        assert isinstance(first, DRAgentEventResponse)
+        await agen.aclose()
+
+    aclose_mock.assert_awaited()
+
+
 async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
     builder_mock: MagicMock,
 ) -> None:

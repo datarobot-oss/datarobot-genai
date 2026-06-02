@@ -38,11 +38,13 @@ boundary, then reverses to AG-UI on the way out.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import logging
 import math
 import os
 import uuid
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC
@@ -1120,12 +1122,20 @@ def _drain_pending_after_moderated_chunk(
     return ordered
 
 
+async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
+    """Close an async generator, ignoring errors from double-close or partial consumption."""
+    try:
+        await iterator.aclose()
+    except Exception:
+        _logger.debug("Error closing async iterator during stream teardown", exc_info=True)
+
+
 async def _moderated_dragent_stream(
-    upstream: AsyncIterator[DRAgentEventResponse],
+    upstream: AsyncGenerator[DRAgentEventResponse],
     *,
     moderation: ModerationPipeline,
     stream_state: _ModerationInvokeState,
-) -> AsyncIterator[DRAgentEventResponse]:
+) -> AsyncGenerator[DRAgentEventResponse]:
     """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
 
     Non-text upstream events pass through immediately until the first text delta. Text deltas are
@@ -1137,6 +1147,7 @@ async def _moderated_dragent_stream(
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
+    stopped_for_content_filter = False
 
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
         if response.events and _defer_until_after_moderated_chunk(response.events[0]):
@@ -1162,43 +1173,57 @@ async def _moderated_dragent_stream(
             current = await next_text_response()
 
     first_text: DRAgentEventResponse | None = None
-    async for response in upstream:
-        if response.events and not skip_event_type(response.events[0]):
-            first_text = response
-            break
-        _track_dragent_response_events(open_text_message_ids, response)
-        yield response
-    if first_text is None:
-        return
-
-    async for moderated in moderation.stream_response_async(
-        completion_chunks(first_text),
-        prompt=stream_state.prompt,
-        prescore_df=stream_state.prescore_df,
-        prescore_latency=stream_state.latency_so_far,
-    ):
-        source_response = moderation_source_responses.pop(0)
-        moderated_response = dome_chunk_to_dragent_event_response(
-            moderated,
-            source_ag_ui_events=source_response.events,
-            stream_tool_index_map=stream_tool_index_map,
-        )
-        _track_dragent_response_events(open_text_message_ids, moderated_response)
-        yield moderated_response
-        for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-            _track_dragent_response_events(open_text_message_ids, item)
-            yield item
-        finish = moderated.choices[0].finish_reason if moderated.choices else None
-        if finish == "content_filter":
-            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
-                yield end_response
+    try:
+        async for response in upstream:
+            if response.events and not skip_event_type(response.events[0]):
+                first_text = response
+                break
+            _track_dragent_response_events(open_text_message_ids, response)
+            yield response
+        if first_text is None:
             return
 
-    for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-        _track_dragent_response_events(open_text_message_ids, item)
-        yield item
-    for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
-        yield end_response
+        async with contextlib.aclosing(
+            moderation.stream_response_async(
+                completion_chunks(first_text),
+                prompt=stream_state.prompt,
+                prescore_df=stream_state.prescore_df,
+                prescore_latency=stream_state.latency_so_far,
+            )
+        ) as moderation_stream:
+            async for moderated in moderation_stream:
+                source_response = moderation_source_responses.pop(0)
+                moderated_response = dome_chunk_to_dragent_event_response(
+                    moderated,
+                    source_ag_ui_events=source_response.events,
+                    stream_tool_index_map=stream_tool_index_map,
+                )
+                _track_dragent_response_events(open_text_message_ids, moderated_response)
+                yield moderated_response
+                for item in _drain_pending_after_moderated_chunk(
+                    pending_deferred, pending_pass_through
+                ):
+                    _track_dragent_response_events(open_text_message_ids, item)
+                    yield item
+                finish = moderated.choices[0].finish_reason if moderated.choices else None
+                if finish == "content_filter":
+                    for end_response in _synthetic_text_message_end_responses(
+                        open_text_message_ids
+                    ):
+                        yield end_response
+                    stopped_for_content_filter = True
+                    break
+
+        if not stopped_for_content_filter:
+            for item in _drain_pending_after_moderated_chunk(
+                pending_deferred, pending_pass_through
+            ):
+                _track_dragent_response_events(open_text_message_ids, item)
+                yield item
+            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+                yield end_response
+    finally:
+        await _aclose_async_iterator(upstream)
 
 
 @dataclass
@@ -1484,19 +1509,31 @@ class DataRobotModerationMiddleware(
             # workflow input / prescore skipped), pass the stream through unchanged.
             stream_state = _moderation_invoke_state_ctx.get()
             if stream_state is None:
-                async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
-                    yield chunk
+                async with contextlib.aclosing(
+                    cast(
+                        AsyncGenerator[DRAgentEventResponse, None],
+                        call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    )
+                ) as upstream:
+                    async for chunk in upstream:
+                        yield chunk
                 return
 
             moderation = self._moderation
             assert moderation is not None
 
-            async for response in _moderated_dragent_stream(
-                call_next(*ctx.modified_args, **ctx.modified_kwargs),
-                moderation=moderation,
-                stream_state=stream_state,
-            ):
-                yield response
+            async with contextlib.aclosing(
+                _moderated_dragent_stream(
+                    cast(
+                        AsyncGenerator[DRAgentEventResponse, None],
+                        call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    ),
+                    moderation=moderation,
+                    stream_state=stream_state,
+                )
+            ) as moderated_stream:
+                async for response in moderated_stream:
+                    yield response
         finally:
             _clear_moderation_invoke_state_if_set()
 
