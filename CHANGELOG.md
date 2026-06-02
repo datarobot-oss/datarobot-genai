@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.92
+- `dragent/plugins/datarobot_otelcollector`: fix for local development experience to drop spans (no-op) when the resolved config is incomplete. Previously it POSTed to a real OTel ingest with an empty `X-DataRobot-Entity-Id`, spamming `401 Unauthorized` in logs per span batch. Now logs one INFO line; explicit `workflow.yaml` overrides still activate the live exporter.
+
 ## 0.15.91
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
 - Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
