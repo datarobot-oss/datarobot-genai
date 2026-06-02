@@ -1008,6 +1008,44 @@ def skip_event_type(event: Event) -> bool:
     }
 
 
+def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
+    """Track assistant text segments that started or received content but did not end."""
+    if isinstance(event, TextMessageStartEvent):
+        open_message_ids.add(event.message_id)
+    elif isinstance(event, TextMessageEndEvent):
+        open_message_ids.discard(event.message_id)
+    elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+        if event.message_id:
+            open_message_ids.add(event.message_id)
+
+
+def _synthetic_text_message_end_events(
+    open_message_ids: set[str],
+) -> list[TextMessageEndEvent]:
+    """Close dangling text segments when upstream ends the stream without TEXT_MESSAGE_END."""
+    end_events = [TextMessageEndEvent(message_id=message_id) for message_id in open_message_ids]
+    open_message_ids.clear()
+    return end_events
+
+
+def _synthetic_text_message_end_responses(
+    open_message_ids: set[str],
+) -> list[DRAgentEventResponse]:
+    """Wrap synthetic ``TEXT_MESSAGE_END`` events as ``DRAgentEventResponse`` batches."""
+    zero = default_usage_metrics()
+    return [
+        DRAgentEventResponse(events=[end_event], usage_metrics=zero)
+        for end_event in _synthetic_text_message_end_events(open_message_ids)
+    ]
+
+
+def _track_dragent_response_events(
+    open_message_ids: set[str], response: DRAgentEventResponse
+) -> None:
+    for event in response.events:
+        _track_open_text_message(open_message_ids, event)
+
+
 def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     """Check if the payload includes assistant text AG-UI deltas
     (possibly after lifecycle events).
@@ -1095,6 +1133,7 @@ async def _moderated_dragent_stream(
     during peek-ahead are buffered and emitted after each moderated chunk.
     """
     stream_tool_index_map: dict[int, str] = {}
+    open_text_message_ids: set[str] = set()
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
@@ -1127,6 +1166,7 @@ async def _moderated_dragent_stream(
         if response.events and not skip_event_type(response.events[0]):
             first_text = response
             break
+        _track_dragent_response_events(open_text_message_ids, response)
         yield response
     if first_text is None:
         return
@@ -1138,19 +1178,27 @@ async def _moderated_dragent_stream(
         prescore_latency=stream_state.latency_so_far,
     ):
         source_response = moderation_source_responses.pop(0)
-        yield dome_chunk_to_dragent_event_response(
+        moderated_response = dome_chunk_to_dragent_event_response(
             moderated,
             source_ag_ui_events=source_response.events,
             stream_tool_index_map=stream_tool_index_map,
         )
+        _track_dragent_response_events(open_text_message_ids, moderated_response)
+        yield moderated_response
         for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
+            _track_dragent_response_events(open_text_message_ids, item)
             yield item
         finish = moderated.choices[0].finish_reason if moderated.choices else None
         if finish == "content_filter":
+            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+                yield end_response
             return
 
     for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
+        _track_dragent_response_events(open_text_message_ids, item)
         yield item
+    for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+        yield end_response
 
 
 @dataclass

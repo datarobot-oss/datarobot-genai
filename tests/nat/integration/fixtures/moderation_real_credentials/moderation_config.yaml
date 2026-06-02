@@ -68,6 +68,12 @@ guards:
     type: ootb
     llm_type: llmGateway
     llm_gateway_model_id: azure/gpt-4o-2024-11-20
+    intervention:
+      action: block
+      message: "Agent did not complete the requested task."
+      conditions:
+        - comparator: lessThan
+          comparand: 0.5
   - name: Goal Accuracy (gateway)
     description: Goal accuracy
     ootb_type: agent_goal_accuracy
