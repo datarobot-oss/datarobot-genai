@@ -17,6 +17,10 @@ general:
     _type: dragent_fastapi
     step_adaptor:
       mode: "off"
+    a2a:
+      server:
+        name: "E2E LangGraph Agent"
+        description: "LangGraph agent for end-to-end testing."
 
 llms:
   datarobot_llm:
