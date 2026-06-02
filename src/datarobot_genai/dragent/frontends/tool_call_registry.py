@@ -78,7 +78,7 @@ def mark_args_done(tool_call_id: str) -> list[Any]:
 
 
 def is_args_done(tool_call_id: str) -> bool:
-    """True when the stream converter has finished emitting args for this call."""
+    """Check whether the stream converter has finished emitting args for this call."""
     return tool_call_id in _get()[2]
 
 
