@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed `drmcp.core.clients.get_sdk_client()` and `get_api_client()`; drmcp dynamic tool/prompt registration and deployment controllers use `request_user_dr_sdk` / `request_user_dr_client` from drtools. Public export is `request_user_dr_sdk` (was `get_sdk_client`). `drmcp.core.clients` still provides `RequestHeadersMiddleware` and `setup_and_return_dr_api_client_with_static_config_in_container()` for the container application account (lineage).
 - Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
 - Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
+
+## 0.15.92
 - `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` loads guard configuration from the inline `moderation` block in `workflow.yaml` when present, otherwise from `moderation_config.yaml` in `model_dir` (defaults to the process working directory). The middleware is a no-op when neither source has guards configured.
 
 ## 0.15.91
