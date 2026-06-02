@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.90
+- `e2e-tests`: Enabled A2A server in all agent workflows and added A2A protocol end-to-end tests (agent card, `message/send`).
+
 ## 0.15.89
 - Added `drtools.core.rest_client.request_user_dr_client`: a request-user-scoped DataRobot REST client reachable from `drtools` alone, so consumers pinning `datarobot-genai[drtools]` (e.g. global-mcp) and agents importing `drtools` directly can call the DataRobot API as the requesting user without depending on `drmcp`. It is a context manager backed by `client_configuration()` (ContextVar-scoped), so it does **not** mutate the global `dr.Client()` and won't mix tokens across concurrent requests (MODEL-23521). Also exposes `resolve_request_user_token`.
 - Added `drtools.core.feature_flags.FeatureFlag`: per-user, entitlements-backed feature-flag evaluation keyed by `(flag, principal)` with a TTL cache (`ttl_seconds=0` bypasses the cache for live checks). Reachable from `drtools`, it is the building block for per-user, live tool gating (e.g. hiding a tool unless an entitlement is enabled). Distinct from `drmcp.core.feature_flags`, which evaluates the application-static MCP-container account.
