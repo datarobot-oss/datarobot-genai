@@ -22,17 +22,37 @@ This page describes how **interrupt / resume** works when you use LangGraph insi
 
 LangGraph only **remembers** a paused run if the compiled graph was built with a [`Checkpointer`](https://langchain-ai.github.io/langgraph/reference/checkpoints/). The `LangGraphAgent` constructor accepts **`checkpointer=...`** and passes it to `StateGraph.compile(...)`.
 
-If you omit `checkpointer`, pass **`use_datarobot_fs_checkpointer=True`** on `LangGraphAgent` to
-use the **process-wide default** backed by `datarobot.fs.DataRobotFileSystem` so interrupts can
-resume when the client reuses the same `thread_id` within one process lifetime. Pass
-**`langgraph_checkpoint_base`** for the `dr://` prefix (for example from your app’s
-`DataRobotAppFrameworkBaseSettings`); if omitted, the checkpoint root is `dr://`.
-That default registers **best-effort deletion** of the LangGraph checkpoint tree only
-(``<prefix>/checkpoints``) when the process exits normally (`atexit`), not other objects under the
-same `dr://` prefix. For checkpoint data that must **survive** planned restarts or deployments,
-pass your
-own `checkpointer=` instead (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)
-and [`langgraph/dr_fs_checkpointer.py`](../../src/datarobot_genai/langgraph/dr_fs_checkpointer.py)).
+### Passing a checkpointer
+
+`LangGraphAgent` forwards whatever you pass as `checkpointer=` to `StateGraph.compile(...)` (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)). If you omit it, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
+
+```mermaid
+flowchart TD
+    A["LangGraphAgent(...)"] --> B{"checkpointer set?"}
+    B -->|yes| C["StateGraph.compile(checkpointer=...)"]
+    B -->|no| D["No persistence"]
+```
+
+| Option | Constructor | Resume across requests? | Typical use |
+|--------|-------------|-------------------------|-------------|
+| **None** (default) | omit `checkpointer` | No | Graphs without `interrupt()` / HITL |
+| **Any saver** | `checkpointer=...` | Depends on saver | E2E (`InMemorySaver`), DR FS, Postgres, etc. |
+
+**1. No checkpointer** (default):
+
+```python
+agent = MyLangGraphAgent(llm=llm, tools=tools)
+```
+
+**2. In-memory (e2e / single process)** — use one shared instance per process (see [`myagent.py`](../../e2e-tests/dragent/langgraph/myagent.py)):
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+
+HITL_CHECKPOINTER = InMemorySaver()
+
+agent = MyLangGraphAgent(llm=llm, tools=tools, checkpointer=HITL_CHECKPOINTER)
+```
 
 ## What clients see in the event stream
 
