@@ -106,9 +106,7 @@ def main() -> int:
     output_path = Path(args.output_path)
 
     config_file = Path(args.config_file) if args.config_file else None
-    logger.info(
-        "Executing dragent inline from %s (config_file=%s)", custom_model_dir, config_file
-    )
+    logger.info("Executing dragent inline from %s (config_file=%s)", custom_model_dir, config_file)
     result = execute_dragent_inline(
         chat_completion=chat_completion,
         custom_model_dir=custom_model_dir,

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.91
+- LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.
+- Updated `hitl.md` and comments/doc strings in `dr_fs_checkpointer` to be more descriptive.
+- Removed `use_datarobot_fs_checkpointer` and its mentions
+
 ## 0.15.90
 - `e2e-tests`: Enabled A2A server in all agent workflows and added A2A protocol end-to-end tests (agent card, `message/send`).
 
