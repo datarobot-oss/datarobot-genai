@@ -29,9 +29,9 @@ from collections import deque
 from contextvars import ContextVar
 from typing import Any
 
-_state: ContextVar[
-    tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]]
-] = ContextVar("dragent_tc")
+_state: ContextVar[tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]]] = (
+    ContextVar("dragent_tc")
+)
 
 
 def _get() -> tuple[dict[str, deque[str]], dict[str, str], set[str], dict[str, list[Any]]]:
