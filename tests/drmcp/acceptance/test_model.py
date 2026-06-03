@@ -25,13 +25,13 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_best_model_success(
+def expectations_for_models_get_bestmodel_success(
     classification_project_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_best_model",
+                name="models_get_bestmodel",
                 parameters={"project_id": classification_project_id},
                 result={
                     "project_id": "",
@@ -51,13 +51,13 @@ def expectations_for_get_best_model_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_best_model_failure(
+def expectations_for_models_get_bestmodel_failure(
     nonexistent_project_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_best_model",
+                name="models_get_bestmodel",
                 parameters={"project_id": nonexistent_project_id},
                 result="[not_found] DataRobot API error (404):",
             ),
@@ -74,7 +74,7 @@ def expectations_for_get_best_model_failure(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_score_dataset_with_model_success(
+def expectations_for_modeling_score_dataset_success(
     classification_project_id: str,
     model_id: str,
     classification_predict_dataset: Any,
@@ -82,7 +82,7 @@ def expectations_for_score_dataset_with_model_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="score_dataset_with_model",
+                name="modeling_score_dataset",
                 parameters={
                     "project_id": classification_project_id,
                     "model_id": model_id,
@@ -102,7 +102,7 @@ def expectations_for_score_dataset_with_model_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_score_dataset_with_model_failure(
+def expectations_for_modeling_score_dataset_failure(
     classification_project_id: str,
     nonexistent_model_id: str,
     classification_predict_dataset: Any,
@@ -110,7 +110,7 @@ def expectations_for_score_dataset_with_model_failure(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="score_dataset_with_model",
+                name="modeling_score_dataset",
                 parameters={
                     "project_id": classification_project_id,
                     "model_id": nonexistent_model_id,
@@ -146,10 +146,10 @@ class TestModelE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_best_model_success(
+    async def test_models_get_bestmodel_success(
         self,
         llm_client: Any,
-        expectations_for_get_best_model_success: ETETestExpectations,
+        expectations_for_models_get_bestmodel_success: ETETestExpectations,
         classification_project_id: str,
         prompt_template: str,
     ) -> None:
@@ -157,10 +157,10 @@ class TestModelE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_best_model_success"
+            test_name = frame.f_code.co_name if frame else "test_models_get_bestmodel_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_best_model_success,
+                expectations_for_models_get_bestmodel_success,
                 llm_client,
                 session,
                 test_name,
@@ -176,10 +176,10 @@ class TestModelE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_best_model_failure(
+    async def test_models_get_bestmodel_failure(
         self,
         llm_client: Any,
-        expectations_for_get_best_model_failure: ETETestExpectations,
+        expectations_for_models_get_bestmodel_failure: ETETestExpectations,
         nonexistent_project_id: str,
         prompt_template: str,
     ) -> None:
@@ -187,10 +187,10 @@ class TestModelE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_best_model_failure"
+            test_name = frame.f_code.co_name if frame else "test_models_get_bestmodel_failure"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_best_model_failure,
+                expectations_for_models_get_bestmodel_failure,
                 llm_client,
                 session,
                 test_name,
@@ -207,10 +207,10 @@ class TestModelE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_score_dataset_with_model_success(
+    async def test_modeling_score_dataset_success(
         self,
         llm_client: Any,
-        expectations_for_score_dataset_with_model_success: ETETestExpectations,
+        expectations_for_modeling_score_dataset_success: ETETestExpectations,
         classification_project_id: str,
         model_id: str,
         classification_predict_dataset: Any,
@@ -224,10 +224,10 @@ class TestModelE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_score_dataset_with_model_success"
+            test_name = frame.f_code.co_name if frame else "test_modeling_score_dataset_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_score_dataset_with_model_success,
+                expectations_for_modeling_score_dataset_success,
                 llm_client,
                 session,
                 test_name,
@@ -243,10 +243,10 @@ class TestModelE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_score_dataset_with_model_failure(
+    async def test_modeling_score_dataset_failure(
         self,
         llm_client: Any,
-        expectations_for_score_dataset_with_model_failure: ETETestExpectations,
+        expectations_for_modeling_score_dataset_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_model_id: str,
         classification_predict_dataset: Any,
@@ -260,10 +260,10 @@ class TestModelE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_score_dataset_with_model_failure"
+            test_name = frame.f_code.co_name if frame else "test_modeling_score_dataset_failure"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_score_dataset_with_model_failure,
+                expectations_for_modeling_score_dataset_failure,
                 llm_client,
                 session,
                 test_name,

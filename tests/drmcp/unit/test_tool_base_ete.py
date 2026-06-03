@@ -58,26 +58,26 @@ class TestToolCallTestExpectations:
 
 class TestCanonicalToolNameForExpectation:
     def test_matches_primary_name(self) -> None:
-        call = ToolCallTestExpectations(name="get_deployment_info", parameters={}, result="")
+        call = ToolCallTestExpectations(name="deployment_get_info", parameters={}, result="")
         assert (
-            _canonical_tool_name_for_expectation("get_deployment_info", call)
-            == "get_deployment_info"
+            _canonical_tool_name_for_expectation("deployment_get_info", call)
+            == "deployment_get_info"
         )
 
     def test_matches_acceptable_alternative(self) -> None:
         call = ToolCallTestExpectations(
-            name="get_deployment_info",
-            acceptable_tool_names=["get_deployment_features"],
+            name="deployment_get_info",
+            acceptable_tool_names=["deployment_get_features"],
             parameters={},
             result="",
         )
         assert (
-            _canonical_tool_name_for_expectation("get_deployment_features", call)
-            == "get_deployment_features"
+            _canonical_tool_name_for_expectation("deployment_get_features", call)
+            == "deployment_get_features"
         )
 
     def test_no_match(self) -> None:
-        call = ToolCallTestExpectations(name="get_deployment_info", parameters={}, result="")
+        call = ToolCallTestExpectations(name="deployment_get_info", parameters={}, result="")
         assert _canonical_tool_name_for_expectation("other_tool", call) is None
 
 

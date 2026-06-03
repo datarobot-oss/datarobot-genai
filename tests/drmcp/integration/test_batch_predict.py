@@ -30,26 +30,26 @@ from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_PROJECT_
 
 @pytest.mark.asyncio
 class TestBatchPredictToolsIntegration:
-    """MCP integration tests for predict_by_ai_catalog, status, and results (stdio stub server)."""
+    """Integration tests for batch predict tools: submit, status, and results (stdio stub)."""
 
     async def test_batch_predict_tools_registered(self) -> None:
         """Batch prediction tools are registered with predictive tools enabled."""
         async with integration_test_mcp_session() as session:
             listed = await session.list_tools()
             tool_names = [t.name for t in listed.tools]
-            assert "predict_by_ai_catalog" in tool_names
-            assert "predict_from_project_data" in tool_names
-            assert "get_batch_prediction_job_status" in tool_names
-            assert "get_batch_prediction_results" in tool_names
+            assert "predict_batch_predictions_from_dataset" in tool_names
+            assert "predict_batch_predictions_from_partition" in tool_names
+            assert "predict_get_batch_job_status" in tool_names
+            assert "predict_get_batch_results" in tool_names
 
-    async def test_predict_by_ai_catalog_submit_status_and_results(
+    async def test_predict_batch_predictions_from_dataset_submit_status_and_results(
         self, classification_project: dict[str, Any]
     ) -> None:
         """Submit batch scoring from catalog, poll status, and read inline CSV (stub job)."""
         deployment_id = classification_project["deployment_id"]
         async with integration_test_mcp_session() as session:
             submit = await session.call_tool(
-                "predict_by_ai_catalog",
+                "predict_batch_predictions_from_dataset",
                 {
                     "deployment_id": deployment_id,
                     "dataset_id": STUB_PREDICT_CATALOG_DATASET_ID,
@@ -62,10 +62,10 @@ class TestBatchPredictToolsIntegration:
             assert payload["deployment_id"] == deployment_id
             assert payload["batch_job_status"] == "COMPLETED"
             assert payload.get("url")
-            assert "get_batch_prediction_job_status" in payload["note"]
+            assert "predict_get_batch_job_status" in payload["note"]
 
             status = await session.call_tool(
-                "get_batch_prediction_job_status",
+                "predict_get_batch_job_status",
                 {"job_id": STUB_BATCH_PREDICTION_JOB_ID},
             )
             assert not status.isError
@@ -75,7 +75,7 @@ class TestBatchPredictToolsIntegration:
             assert st.get("url")
 
             results = await session.call_tool(
-                "get_batch_prediction_results",
+                "predict_get_batch_results",
                 {"job_id": STUB_BATCH_PREDICTION_JOB_ID},
             )
             assert not results.isError
@@ -87,14 +87,14 @@ class TestBatchPredictToolsIntegration:
             df = pd.read_csv(StringIO(body["data"]))
             assert len(df) >= 1
 
-    async def test_predict_from_project_data_submit_status_and_results(
+    async def test_predict_batch_predictions_from_partition_submit_status_and_results(
         self, classification_project: dict[str, Any]
     ) -> None:
         """Submit batch scoring from project holdout, poll, and download stub CSV."""
         deployment_id = classification_project["deployment_id"]
         async with integration_test_mcp_session() as session:
             submit = await session.call_tool(
-                "predict_from_project_data",
+                "predict_batch_predictions_from_partition",
                 {
                     "deployment_id": deployment_id,
                     "project_id": STUB_PROJECT_ID,
@@ -106,24 +106,26 @@ class TestBatchPredictToolsIntegration:
             assert payload["job_id"] == STUB_BATCH_PREDICTION_JOB_ID
 
             status = await session.call_tool(
-                "get_batch_prediction_job_status",
+                "predict_get_batch_job_status",
                 {"job_id": payload["job_id"]},
             )
             assert not status.isError
 
             results = await session.call_tool(
-                "get_batch_prediction_results",
+                "predict_get_batch_results",
                 {"job_id": payload["job_id"]},
             )
             assert not results.isError
             body = json.loads(results.content[0].text)
             assert "data" in body
 
-    async def test_predict_by_ai_catalog_empty_deployment_id_validation(self) -> None:
+    async def test_predict_batch_predictions_from_dataset_empty_deployment_id_validation(
+        self,
+    ) -> None:
         """Empty deployment_id returns a tool validation error."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "predict_by_ai_catalog",
+                "predict_batch_predictions_from_dataset",
                 {
                     "deployment_id": "   ",
                     "dataset_id": STUB_PREDICT_CATALOG_DATASET_ID,

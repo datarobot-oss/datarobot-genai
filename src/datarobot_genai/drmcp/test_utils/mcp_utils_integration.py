@@ -26,6 +26,11 @@ from mcp.client.stdio import stdio_client
 from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_ENDPOINT
 
+# Default tool groups enabled for integration/acceptance MCP servers (model default is off).
+_TEST_SUITE_ENABLED_TOOLS_ENV: dict[str, str] = {
+    "ENABLE_PREDICTIVE_TOOLS": "true",
+}
+
 
 def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerParameters:
     # When running with stubs, always use stub credentials so the subprocess never attempts
@@ -51,6 +56,7 @@ def integration_test_mcp_server_params(use_stub: bool = True) -> StdioServerPara
             "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP"
         )
         or "true",
+        **_TEST_SUITE_ENABLED_TOOLS_ENV,
     }
 
     script_dir = Path(__file__).resolve().parent

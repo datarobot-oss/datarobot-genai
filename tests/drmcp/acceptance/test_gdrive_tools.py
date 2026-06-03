@@ -67,13 +67,13 @@ def expectations_for_gdrive_list_files_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_gdrive_read_content_success(
+def expectations_for_gdrive_read_and_export_content_success(
     gdrive_pdf_file_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="gdrive_read_content",
+                name="gdrive_read_and_export_content",
                 parameters={
                     "file_id": gdrive_pdf_file_id,
                 },
@@ -128,10 +128,10 @@ class TestGdriveToolsE2E(ToolBaseE2E):
             "and tell me what the document is about."
         ],
     )
-    async def test_gdrive_read_content_success(
+    async def test_gdrive_read_and_export_content_success(
         self,
         llm_client: Any,
-        expectations_for_gdrive_read_content_success: ETETestExpectations,
+        expectations_for_gdrive_read_and_export_content_success: ETETestExpectations,
         gdrive_pdf_file_id: str,
         prompt_template: str,
     ) -> None:
@@ -139,10 +139,12 @@ class TestGdriveToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_gdrive_read_content_success"
+            test_name = (
+                frame.f_code.co_name if frame else "test_gdrive_read_and_export_content_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_gdrive_read_content_success,
+                expectations_for_gdrive_read_and_export_content_success,
                 llm_client,
                 session,
                 test_name,
