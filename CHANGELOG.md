@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.94
+- CI: cache only `~/.cache/uv`, not `.venv`, so each job rebuilds a clean venv. Caching `.venv` under a shared key could restore a stale environment, intermittently breaking the `drmcpbase` test job (`ModuleNotFoundError: No module named 'datarobot'`).
+
 ## 0.15.93
 - Per-user DataRobot API access (MODEL-23521): added `request_user_dr_client` and `request_user_dr_sdk` in `drtools.core.clients.datarobot`, both scoped via `client_configuration()` (ContextVar) instead of the global `dr.Client()`, so concurrent MCP tool requests do not share tokens.
 - Removed `drtools.core.rest_client`; consolidated token resolution into `get_datarobot_access_token(*, headers_auth_only=...)` alongside the new context managers.
