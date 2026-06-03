@@ -28,7 +28,8 @@ Guard configuration (``_type: datarobot_moderation``):
 * **Inline (preferred)** — nest guards under ``middleware.<name>.moderation`` in ``workflow.yaml``.
   When present, this block is used even if ``moderation_config.yaml`` also exists.
 * **DRUM-style file (fallback)** — when ``moderation`` is omitted, load ``moderation_config.yaml``
-  from ``model_dir`` (defaults to the process working directory).
+  from ``model_dir`` (defaults to the directory containing ``workflow.yaml``, resolved from
+  ``DRAGENT_CONFIG_FILE`` when set, otherwise the process working directory).
 * If neither source is present or both are empty, the middleware is a no-op.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
@@ -116,12 +117,15 @@ from openai.types.chat.chat_completion_message_tool_call import Function as Open
 from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_openai_chat_completion_chunk,
 )
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
+from datarobot_genai.dragent.workflow_paths import discover_workflow_yaml
+from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
 _logger = logging.getLogger(__name__)
 
@@ -152,7 +156,8 @@ class DataRobotModerationConfig(
         description=(
             "Directory containing ``moderation_config.yaml`` and guard assets (DRUM custom model "
             "layout). Used for the inline ``moderation`` block and as the fallback file location. "
-            "Defaults to the process working directory."
+            "Defaults to the directory containing ``workflow.yaml`` (``DRAGENT_CONFIG_FILE``), "
+            "or the process working directory when that env var is unset."
         ),
     )
     moderation: ModerationConfig | None = Field(
@@ -169,13 +174,33 @@ def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     return any(target.guards for target in moderation.targets)
 
 
+def _default_moderation_model_dir() -> str:
+    """Return the directory that holds ``workflow.yaml`` when known, else CWD."""
+    publish_dragent_config_file_env()
+    config_file = os.environ.get(DRAGENT_CONFIG_FILE_ENV)
+    if config_file:
+        found = discover_workflow_yaml()
+        if found is not None:
+            return str(found.parent)
+        try:
+            return str(Path(config_file).expanduser().resolve().parent)
+        except OSError:
+            pass
+    discovered = discover_workflow_yaml()
+    if discovered is not None:
+        return str(discovered.parent)
+    return os.path.abspath(os.getcwd())
+
+
 def resolve_moderation_model_dir(model_dir: str | None) -> str:
     """Resolve the base directory for guard assets and ``moderation_config.yaml``."""
-    return os.path.abspath(model_dir if model_dir is not None else os.getcwd())
+    if model_dir is not None:
+        return os.path.abspath(model_dir)
+    return _default_moderation_model_dir()
 
 
 def moderation_config_file_path(model_dir: str | None) -> Path:
-    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or CWD)."""
+    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or workflow dir)."""
     return Path(resolve_moderation_model_dir(model_dir)) / MODERATION_CONFIG_FILE_NAME
 
 
@@ -1281,11 +1306,19 @@ class DataRobotModerationMiddleware(
 
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
         super().__init__()
+        self._config = config
         self._moderation = load_llm_moderation_pipeline(config)
+
+    def _get_moderation(self) -> ModerationPipeline | None:
+        """Return the moderation pipeline, retrying discovery if startup missed ``workflow.yaml``."""
+        if self._moderation is None:
+            publish_dragent_config_file_env()
+            self._moderation = load_llm_moderation_pipeline(self._config)
+        return self._moderation
 
     @property
     def enabled(self) -> bool:
-        return self._moderation is not None
+        return self._get_moderation() is not None
 
     async def function_middleware_invoke(
         self,
@@ -1336,18 +1369,17 @@ class DataRobotModerationMiddleware(
         workflow_input = _workflow_input_from_args(context.original_args)
         if workflow_input is None:
             return None
-        if self._moderation is None:
+        moderation = self._get_moderation()
+        if moderation is None:
             return None
 
-        pipeline = self._moderation._pipeline
+        pipeline = moderation._pipeline
 
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
         prompt = moderation_prompt_from_workflow_input(workflow_input)
 
         # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
-        prompt_eval, prescore_latency, prescore_df = await self._moderation.evaluate_prompt_async(
-            prompt
-        )
+        prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(prompt)
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
@@ -1380,7 +1412,8 @@ class DataRobotModerationMiddleware(
             InvocationContext if modified, or None to pass through unchanged.
         """
         original_output = context.output
-        if self._moderation is None:
+        moderation = self._get_moderation()
+        if moderation is None:
             return None
 
         if isinstance(original_output, DRAgentEventResponse):
@@ -1399,7 +1432,7 @@ class DataRobotModerationMiddleware(
         if not response_text.strip():
             return None
 
-        pipeline = self._moderation._pipeline
+        pipeline = moderation._pipeline
         state = _moderation_invoke_state_ctx.get()
         if state is None:
             return None
@@ -1408,7 +1441,7 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        response_eval, _, _postscore_df = await self._moderation.evaluate_response_async(
+        response_eval, _, _postscore_df = await moderation.evaluate_response_async(
             response_text,
             prompt=state.prompt,
         )
@@ -1519,7 +1552,7 @@ class DataRobotModerationMiddleware(
                         yield chunk
                 return
 
-            moderation = self._moderation
+            moderation = self._get_moderation()
             assert moderation is not None
 
             async with contextlib.aclosing(
