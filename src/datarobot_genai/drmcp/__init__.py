@@ -28,6 +28,7 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_t
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drtools.core.config_utils import (
     extract_datarobot_credential_runtime_param_payload,
 )
@@ -37,7 +38,6 @@ from datarobot_genai.drtools.core.constants import RUNTIME_PARAM_ENV_VAR_NAME_PR
 from datarobot_genai.drtools.core.credentials import MCPServerCredentials
 from datarobot_genai.drtools.core.credentials import get_credentials
 
-from .core.clients import get_sdk_client
 from .core.config import MCPServerConfig
 from .core.config import get_config
 from .core.dr_mcp_server import BaseServerLifecycle
@@ -63,7 +63,7 @@ __all__ = [
     # Constants
     "RUNTIME_PARAM_ENV_VAR_NAME_PREFIX",
     # User extensibility
-    "get_sdk_client",
+    "request_user_dr_sdk",
     "dr_mcp_tool",
     "register_tools",
     "ToolKwargs",

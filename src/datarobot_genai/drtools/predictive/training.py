@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 import pandas as pd
 from datarobot.errors import ClientError
 from datarobot.utils import from_api
@@ -27,8 +28,7 @@ from datarobot.utils import is_convertable_to_api
 from datarobot.utils import to_api
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -157,28 +157,8 @@ def _get_dataset_or_raise(client: Any, dataset_id: str) -> tuple[Any, pd.DataFra
         )
 
 
-@tool_metadata(
-    tags={"predictive", "training", "read", "analysis", "dataset"},
-    description=(
-        "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
-        "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
-        "heuristic candidate targets. Read-only; does not train. Lighter than "
-        "get_exploratory_insights; does not rank ML use-case ideas (suggest_use_cases calls this "
-        "internally)."
-    ),
-)
-async def analyze_dataset(
-    *,
-    dataset_id: Annotated[str, "AI Catalog dataset id."],
-) -> dict[str, Any]:
-    if not dataset_id:
-        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
-
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    dataset, df = _get_dataset_or_raise(client, dataset_id)
-
-    # Analyze dataset structure
+def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
+    """Build structural dataset insights from an already-loaded dataframe."""
     numerical_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
     categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
     datetime_cols = df.select_dtypes(include=["datetime64"]).columns.tolist()
@@ -210,9 +190,29 @@ async def analyze_dataset(
         potential_targets=potential_targets,
         missing_data_summary=missing_data,
     )
-    insights_dict = asdict(insights)
+    return asdict(insights)
 
-    return insights_dict
+
+@tool_metadata(
+    tags={"predictive", "training", "read", "analysis", "dataset"},
+    description=(
+        "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
+        "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
+        "heuristic candidate targets. Read-only; does not train. Lighter than "
+        "get_exploratory_insights; does not rank ML use-case ideas (suggest_use_cases calls this "
+        "internally)."
+    ),
+)
+async def analyze_dataset(
+    *,
+    dataset_id: Annotated[str, "AI Catalog dataset id."],
+) -> dict[str, Any]:
+    if not dataset_id:
+        raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
+
+    with ThreadSafeDataRobotClient().request_user_client():
+        _, df = _get_dataset_or_raise(dr, dataset_id)
+        return _build_dataset_insights(df)
 
 
 @tool_metadata(
@@ -231,23 +231,19 @@ async def suggest_use_cases(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    dataset, df = _get_dataset_or_raise(client, dataset_id)
+    with ThreadSafeDataRobotClient().request_user_client():
+        _, df = _get_dataset_or_raise(dr, dataset_id)
+        insights = _build_dataset_insights(df)
 
-    # Get dataset insights first
-    insights_result = await analyze_dataset(dataset_id=dataset_id)
-    insights = insights_result
+        suggestions = []
+        for target_col in insights["potential_targets"]:
+            target_suggestions = _analyze_target_for_use_cases(df, target_col)
+            suggestions.extend([asdict(s) for s in target_suggestions])
 
-    suggestions = []
-    for target_col in insights["potential_targets"]:
-        target_suggestions = _analyze_target_for_use_cases(df, target_col)
-        suggestions.extend([asdict(s) for s in target_suggestions])
+        # Sort by confidence score
+        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
 
-    # Sort by confidence score
-    suggestions.sort(key=lambda x: x["confidence"], reverse=True)
-
-    return {"use_case_suggestions": suggestions}
+        return {"use_case_suggestions": suggestions}
 
 
 @tool_metadata(
@@ -284,114 +280,114 @@ async def get_exploratory_insights(
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    dataset, df = _get_dataset_or_raise(client, dataset_id)
+    with ThreadSafeDataRobotClient().request_user_client():
+        dataset, df = _get_dataset_or_raise(dr, dataset_id)
+        insights = _build_dataset_insights(df)
 
-    # Get dataset insights first
-    insights_result = await analyze_dataset(dataset_id=dataset_id)
-    insights = insights_result
-
-    eda_insights = {
-        "dataset_summary": {
-            "total_rows": int(insights["total_rows"]),  # Convert to native Python int
-            "total_columns": int(insights["total_columns"]),  # Convert to native Python int
-            "memory_usage": int(df.memory_usage().sum()),  # Convert to native Python int
-        },
-        "target_analysis": {},
-        "feature_correlations": {},
-        "missing_data": insights["missing_data_summary"],
-        "data_types": {
-            "numerical": insights["numerical_columns"],
-            "categorical": insights["categorical_columns"],
-            "datetime": insights["datetime_columns"],
-            "text": insights["text_columns"],
-        },
-    }
-
-    if feature_col:
-        if feature_col not in df.columns:
-            raise ToolError(
-                f"feature_col {feature_col!r} is not a column of this dataset.",
-                kind=ToolErrorKind.VALIDATION,
-            )
-        try:
-            details = dataset.get_details()
-        except ClientError as e:
-            raise_tool_error_for_client_error(e)
-        api_feature = _find_catalog_dataset_feature_by_name(dataset, feature_col)
-        if api_feature is None:
-            raise ToolError(
-                f"No catalog feature metadata found for {feature_col!r}. "
-                "The column may not appear in DataRobot allFeaturesDetails yet.",
-                kind=ToolErrorKind.NOT_FOUND,
-            )
-        profile: dict[str, Any] = {
-            "source": "datarobot_catalog_all_features_details",
-            "statistics_basis": "eda_sample_as_computed_by_datarobot",
-            "data_persisted": getattr(details, "data_persisted", None),
-            "feature": _serialize_catalog_dataset_feature(api_feature),
+        eda_insights = {
+            "dataset_summary": {
+                "total_rows": int(insights["total_rows"]),  # Convert to native Python int
+                "total_columns": int(insights["total_columns"]),  # Convert to native Python int
+                "memory_usage": int(df.memory_usage().sum()),  # Convert to native Python int
+            },
+            "target_analysis": {},
+            "feature_correlations": {},
+            "missing_data": insights["missing_data_summary"],
+            "data_types": {
+                "numerical": insights["numerical_columns"],
+                "categorical": insights["categorical_columns"],
+                "datetime": insights["datetime_columns"],
+                "text": insights["text_columns"],
+            },
         }
-        if include_feature_histogram:
+
+        if feature_col:
+            if feature_col not in df.columns:
+                raise ToolError(
+                    f"feature_col {feature_col!r} is not a column of this dataset.",
+                    kind=ToolErrorKind.VALIDATION,
+                )
             try:
-                histogram = api_feature.get_histogram()
-                profile["histogram"] = {"plot": histogram.plot}
+                details = dataset.get_details()
             except ClientError as e:
-                profile["histogram_error"] = str(e)
-        eda_insights["catalog_feature_profile"] = profile
+                raise_tool_error_for_client_error(e)
+            api_feature = _find_catalog_dataset_feature_by_name(dataset, feature_col)
+            if api_feature is None:
+                raise ToolError(
+                    f"No catalog feature metadata found for {feature_col!r}. "
+                    "The column may not appear in DataRobot allFeaturesDetails yet.",
+                    kind=ToolErrorKind.NOT_FOUND,
+                )
+            profile: dict[str, Any] = {
+                "source": "datarobot_catalog_all_features_details",
+                "statistics_basis": "eda_sample_as_computed_by_datarobot",
+                "data_persisted": getattr(details, "data_persisted", None),
+                "feature": _serialize_catalog_dataset_feature(api_feature),
+            }
+            if include_feature_histogram:
+                try:
+                    histogram = api_feature.get_histogram()
+                    profile["histogram"] = {"plot": histogram.plot}
+                except ClientError as e:
+                    profile["histogram_error"] = str(e)
+            eda_insights["catalog_feature_profile"] = profile
 
-    # Target-specific analysis
-    if target_col and target_col in df.columns:
-        target_data = df[target_col]
-        target_analysis = {
-            "column_name": target_col,
-            "data_type": str(target_data.dtype),
-            "unique_values": int(target_data.nunique()),  # Convert to native Python int
-            "missing_values": int(target_data.isnull().sum()),  # Convert to native Python int
-            "missing_percentage": float(
-                target_data.isnull().sum() / len(df) * 100
-            ),  # Already float
-        }
+        # Target-specific analysis
+        if target_col and target_col in df.columns:
+            target_data = df[target_col]
+            target_analysis = {
+                "column_name": target_col,
+                "data_type": str(target_data.dtype),
+                "unique_values": int(target_data.nunique()),  # Convert to native Python int
+                "missing_values": int(target_data.isnull().sum()),  # Convert to native Python int
+                "missing_percentage": float(
+                    target_data.isnull().sum() / len(df) * 100
+                ),  # Already float
+            }
 
-        if pd.api.types.is_numeric_dtype(target_data):
-            target_analysis.update(
-                {
-                    "min_value": float(target_data.min()),  # Convert to native Python float
-                    "max_value": float(target_data.max()),  # Convert to native Python float
-                    "mean": float(target_data.mean()),  # Convert to native Python float
-                    "median": float(target_data.median()),  # Convert to native Python float
-                    "std_dev": float(target_data.std()),  # Convert to native Python float
-                }
-            )
-        else:
-            value_counts = target_data.value_counts()
-            target_analysis.update(
-                {
-                    "value_counts": {
-                        str(k): int(v) for k, v in value_counts.items()
-                    },  # Convert both key and value
-                    "most_common": str(value_counts.index[0]) if len(value_counts) > 0 else None,
-                }
-            )
-
-        eda_insights["target_analysis"] = target_analysis
-
-        # Feature correlations with target (for numerical features)
-        if pd.api.types.is_numeric_dtype(target_data):
-            numerical_features = [col for col in insights["numerical_columns"] if col != target_col]
-            if numerical_features:
-                correlations = {}
-                for feature in numerical_features:
-                    corr = df[feature].corr(target_data)
-                    if not pd.isna(corr):
-                        correlations[feature] = float(corr)  # Convert to native Python float
-
-                # Sort by absolute correlation
-                eda_insights["feature_correlations"] = dict(
-                    sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
+            if pd.api.types.is_numeric_dtype(target_data):
+                target_analysis.update(
+                    {
+                        "min_value": float(target_data.min()),  # Convert to native Python float
+                        "max_value": float(target_data.max()),  # Convert to native Python float
+                        "mean": float(target_data.mean()),  # Convert to native Python float
+                        "median": float(target_data.median()),  # Convert to native Python float
+                        "std_dev": float(target_data.std()),  # Convert to native Python float
+                    }
+                )
+            else:
+                value_counts = target_data.value_counts()
+                target_analysis.update(
+                    {
+                        "value_counts": {
+                            str(k): int(v) for k, v in value_counts.items()
+                        },  # Convert both key and value
+                        "most_common": str(value_counts.index[0])
+                        if len(value_counts) > 0
+                        else None,
+                    }
                 )
 
-    return eda_insights
+            eda_insights["target_analysis"] = target_analysis
+
+            # Feature correlations with target (for numerical features)
+            if pd.api.types.is_numeric_dtype(target_data):
+                numerical_features = [
+                    col for col in insights["numerical_columns"] if col != target_col
+                ]
+                if numerical_features:
+                    correlations = {}
+                    for feature in numerical_features:
+                        corr = df[feature].corr(target_data)
+                        if not pd.isna(corr):
+                            correlations[feature] = float(corr)  # Convert to native Python float
+
+                    # Sort by absolute correlation
+                    eda_insights["feature_correlations"] = dict(
+                        sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
+                    )
+
+        return eda_insights
 
 
 def _identify_potential_targets(
@@ -645,56 +641,55 @@ async def start_autopilot(
     ]
     | None = None,
 ) -> dict[str, Any]:
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
+    with ThreadSafeDataRobotClient().request_user_client():
+        if not target:
+            raise ToolError("Target variable must be specified", kind=ToolErrorKind.VALIDATION)
 
-    if not project_id:
-        if not dataset_url and not dataset_id:
-            raise ToolError(
-                "Either dataset_url or dataset_id must be provided", kind=ToolErrorKind.VALIDATION
-            )
-        if dataset_url and dataset_id:
-            raise ToolError(
-                "Please provide either dataset_url or dataset_id, not both",
-                kind=ToolErrorKind.VALIDATION,
-            )
+        if not project_id:
+            if not dataset_url and not dataset_id:
+                raise ToolError(
+                    "Either dataset_url or dataset_id must be provided",
+                    kind=ToolErrorKind.VALIDATION,
+                )
+            if dataset_url and dataset_id:
+                raise ToolError(
+                    "Please provide either dataset_url or dataset_id, not both",
+                    kind=ToolErrorKind.VALIDATION,
+                )
 
-        if dataset_url:
-            dataset = client.Dataset.create_from_url(dataset_url)
+            if dataset_url:
+                dataset = dr.Dataset.create_from_url(dataset_url)
+            else:
+                try:
+                    dataset = dr.Dataset.get(dataset_id)
+                except ClientError as e:
+                    raise_tool_error_for_client_error(e)
+
+            project = dr.Project.create_from_dataset(
+                dataset.id, project_name=project_name, use_case=use_case_id
+            )
         else:
             try:
-                dataset = client.Dataset.get(dataset_id)
+                project = dr.Project.get(project_id)
             except ClientError as e:
                 raise_tool_error_for_client_error(e)
 
-        project = client.Project.create_from_dataset(
-            dataset.id, project_name=project_name, use_case=use_case_id
-        )
-    else:
         try:
-            project = client.Project.get(project_id)
-        except ClientError as e:
-            raise_tool_error_for_client_error(e)
+            # Start modeling
+            project.analyze_and_model(target=target, mode=mode)
 
-    if not target:
-        raise ToolError("Target variable must be specified", kind=ToolErrorKind.VALIDATION)
+            result = {
+                "project_id": project.id,
+                "target": target,
+                "mode": mode,
+                "status": project.get_status(),
+                "use_case_id": project.use_case_id,
+            }
 
-    try:
-        # Start modeling
-        project.analyze_and_model(target=target, mode=mode)
+            return result
 
-        result = {
-            "project_id": project.id,
-            "target": target,
-            "mode": mode,
-            "status": project.get_status(),
-            "use_case_id": project.use_case_id,
-        }
-
-        return result
-
-    except Exception as e:
-        raise ToolError(f"Failed to start Autopilot: {str(e)}", kind=ToolErrorKind.UPSTREAM)
+        except Exception as e:
+            raise ToolError(f"Failed to start Autopilot: {str(e)}", kind=ToolErrorKind.UPSTREAM)
 
 
 @tool_metadata(
@@ -722,45 +717,44 @@ async def get_model_roc_curve(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-        model = client.Model.get(project=project, model_id=model_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    try:
-        roc_curve = model.get_roc_curve(source=source)
-        roc_data = {
-            "roc_points": [
-                {
-                    "accuracy": point.get("accuracy", 0),
-                    "f1_score": point.get("f1_score", 0),
-                    "false_negative_score": point.get("false_negative_score", 0),
-                    "true_negative_score": point.get("true_negative_score", 0),
-                    "true_negative_rate": point.get("true_negative_rate", 0),
-                    "matthews_correlation_coefficient": point.get(
-                        "matthews_correlation_coefficient", 0
-                    ),
-                    "true_positive_score": point.get("true_positive_score", 0),
-                    "positive_predictive_value": point.get("positive_predictive_value", 0),
-                    "false_positive_score": point.get("false_positive_score", 0),
-                    "false_positive_rate": point.get("false_positive_rate", 0),
-                    "negative_predictive_value": point.get("negative_predictive_value", 0),
-                    "true_positive_rate": point.get("true_positive_rate", 0),
-                    "threshold": point.get("threshold", 0),
-                }
-                for point in roc_curve.roc_points
-            ],
-            "negative_class_predictions": roc_curve.negative_class_predictions,
-            "positive_class_predictions": roc_curve.positive_class_predictions,
-            "source": source,
-        }
+        try:
+            roc_curve = model.get_roc_curve(source=source)
+            roc_data = {
+                "roc_points": [
+                    {
+                        "accuracy": point.get("accuracy", 0),
+                        "f1_score": point.get("f1_score", 0),
+                        "false_negative_score": point.get("false_negative_score", 0),
+                        "true_negative_score": point.get("true_negative_score", 0),
+                        "true_negative_rate": point.get("true_negative_rate", 0),
+                        "matthews_correlation_coefficient": point.get(
+                            "matthews_correlation_coefficient", 0
+                        ),
+                        "true_positive_score": point.get("true_positive_score", 0),
+                        "positive_predictive_value": point.get("positive_predictive_value", 0),
+                        "false_positive_score": point.get("false_positive_score", 0),
+                        "false_positive_rate": point.get("false_positive_rate", 0),
+                        "negative_predictive_value": point.get("negative_predictive_value", 0),
+                        "true_positive_rate": point.get("true_positive_rate", 0),
+                        "threshold": point.get("threshold", 0),
+                    }
+                    for point in roc_curve.roc_points
+                ],
+                "negative_class_predictions": roc_curve.negative_class_predictions,
+                "positive_class_predictions": roc_curve.positive_class_predictions,
+                "source": source,
+            }
 
-        return {"data": roc_data}
-    except Exception as e:
-        raise ToolError(f"Failed to get ROC curve: {str(e)}", kind=ToolErrorKind.UPSTREAM)
+            return {"data": roc_data}
+        except Exception as e:
+            raise ToolError(f"Failed to get ROC curve: {str(e)}", kind=ToolErrorKind.UPSTREAM)
 
 
 @tool_metadata(
@@ -782,18 +776,17 @@ async def get_model_feature_impact(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-        model = client.Model.get(project=project, model_id=model_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    # Get feature impact
-    model.request_feature_impact()
-    feature_impact = model.get_or_request_feature_impact()
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        # Get feature impact
+        model.request_feature_impact()
+        feature_impact = model.get_or_request_feature_impact()
 
-    return {"data": feature_impact}
+        return {"data": feature_impact}
 
 
 @tool_metadata(
@@ -821,28 +814,27 @@ async def get_model_lift_chart(
     if not model_id:
         raise ToolError("Model ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-        model = client.Model.get(project=project, model_id=model_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            project = dr.Project.get(project_id)
+            model = dr.Model.get(project=project, model_id=model_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
 
-    # Get lift chart
-    lift_chart = model.get_lift_chart(source=source)
+        # Get lift chart
+        lift_chart = model.get_lift_chart(source=source)
 
-    lift_chart_data = {
-        "bins": [
-            {
-                "actual": bin["actual"],
-                "predicted": bin["predicted"],
-                "bin_weight": bin["bin_weight"],
-            }
-            for bin in lift_chart.bins
-        ],
-        "source_model_id": lift_chart.source_model_id,
-        "target_class": lift_chart.target_class,
-    }
+        lift_chart_data = {
+            "bins": [
+                {
+                    "actual": bin["actual"],
+                    "predicted": bin["predicted"],
+                    "bin_weight": bin["bin_weight"],
+                }
+                for bin in lift_chart.bins
+            ],
+            "source_model_id": lift_chart.source_model_id,
+            "target_class": lift_chart.target_class,
+        }
 
-    return {"data": lift_chart_data}
+        return {"data": lift_chart_data}

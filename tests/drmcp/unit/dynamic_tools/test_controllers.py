@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
@@ -87,13 +88,22 @@ def mock_external_dependencies():
     """Set up all external dependency mocks."""
     with (
         patch(
-            "datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers.get_sdk_client"
+            "datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers.request_user_dr_sdk"
         ) as mock_sdk,
+        patch(
+            "datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers.dr.Deployment.get",
+            side_effect=lambda deployment_id: MagicMock(id=deployment_id),
+        ),
         patch(
             "datarobot_genai.drmcp.core.dynamic_tools.deployment.register.create_deployment_tool_config"
         ) as mock_config,
     ):
-        mock_sdk.return_value.Deployment.get = lambda x: MagicMock(id=x)
+
+        @contextmanager
+        def _noop_sdk(*args, **kwargs):
+            yield None
+
+        mock_sdk.side_effect = lambda **kwargs: _noop_sdk()
         yield {"sdk": mock_sdk, "mock_config": mock_config}
 
 
@@ -106,8 +116,13 @@ class TestToolRegistration:
     """Tests for tool registration functionality."""
 
     @pytest.fixture
-    def mock_get_sdk_client(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.get_sdk_client") as mock_func:
+    def mock_request_user_dr_sdk(self, module_under_test: str) -> Iterator[Mock]:
+        @contextmanager
+        def _noop_sdk(**kwargs: object) -> Iterator[None]:
+            yield None
+
+        with patch(f"{module_under_test}.request_user_dr_sdk") as mock_func:
+            mock_func.side_effect = _noop_sdk
             yield mock_func
 
     @pytest.fixture
@@ -199,20 +214,22 @@ class TestToolRegistration:
     async def test_sync_mcp_metadata_after_registration(
         self,
         mock_is_mcp_tools_gallery_support_enabled: Mock,
-        mock_get_sdk_client: Mock,
+        mock_request_user_dr_sdk: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_tools: Mock,
         mock_register_tool_of_datarobot_deployment: AsyncMock,
         mcp_server: DataRobotMCP,
     ) -> None:
         tool_id = Mock()
-        await register_tool_for_deployment_id(tool_id)
+        with patch(
+            "datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers.dr.Deployment.get"
+        ) as mock_deployment_get:
+            await register_tool_for_deployment_id(tool_id)
 
-        mock_get_sdk_client.assert_called_once_with(headers_auth_only=True)
-        mock_sdk_client = mock_get_sdk_client.return_value
-        mock_sdk_client.Deployment.get.assert_called_once_with(tool_id)
+        mock_request_user_dr_sdk.assert_called_once_with(headers_auth_only=True)
+        mock_deployment_get.assert_called_once_with(tool_id)
         mock_register_tool_of_datarobot_deployment.assert_called_once_with(
-            mock_sdk_client.Deployment.get.return_value
+            mock_deployment_get.return_value
         )
         mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)

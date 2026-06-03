@@ -215,7 +215,7 @@ class TestIsDataRobotStructuredPrediction:
 class TestFetchDeploymentMetadata:
     """Test cases for _fetch_deployment_metadata function."""
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata._normalize_api_response")
     def test_successful_fetch(self, mock_normalize, mock_get_client):
         """Test successful metadata fetch."""
@@ -223,7 +223,8 @@ class TestFetchDeploymentMetadata:
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
         mock_client.get.return_value = mock_response
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
         mock_normalize.return_value = {"key": "value"}
 
         deployment = Mock()
@@ -237,12 +238,13 @@ class TestFetchDeploymentMetadata:
         )
         mock_normalize.assert_called_once_with(mock_response)
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     def test_api_call_failure_raises_runtime_error(self, mock_get_client):
         """Test that API call failure raises RuntimeError."""
         mock_client = Mock()
         mock_client.get.side_effect = Exception("API Error")
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
 
         deployment = Mock()
         deployment.id = "test-deployment-id"
@@ -363,7 +365,7 @@ class TestGetMcpToolMetadata:
 class TestFetchSupportsChatApi:
     """Test cases for _fetch_supports_chat_api."""
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     def test_returns_true_when_capability_present_and_supported(self, mock_get_client):
         mock_client = Mock()
         mock_response = Mock()
@@ -375,7 +377,8 @@ class TestFetchSupportsChatApi:
             ]
         }
         mock_client.get.return_value = mock_response
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
 
         deployment = Mock()
         deployment.id = "dep-123"
@@ -383,7 +386,7 @@ class TestFetchSupportsChatApi:
         assert _fetch_supports_chat_api(deployment) is True
         mock_client.get.assert_called_once_with(url="deployments/dep-123/capabilities/")
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     def test_returns_false_when_capability_present_and_unsupported(self, mock_get_client):
         mock_client = Mock()
         mock_response = Mock()
@@ -392,35 +395,38 @@ class TestFetchSupportsChatApi:
             "data": [{"name": "supports_chat_api", "supported": False}]
         }
         mock_client.get.return_value = mock_response
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
 
         deployment = Mock()
         deployment.id = "dep-123"
 
         assert _fetch_supports_chat_api(deployment) is False
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     def test_returns_false_when_capability_absent(self, mock_get_client):
         mock_client = Mock()
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"data": []}
         mock_client.get.return_value = mock_response
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
 
         deployment = Mock()
         deployment.id = "dep-123"
 
         assert _fetch_supports_chat_api(deployment) is False
 
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata.request_user_dr_client")
     def test_returns_false_on_api_error(self, mock_get_client):
         """Older clusters without /capabilities/ should not break tool
         registration — fail closed to /predictions routing.
         """
         mock_client = Mock()
         mock_client.get.side_effect = Exception("404 capabilities not found")
-        mock_get_client.return_value = mock_client
+        mock_get_client.return_value.__enter__.return_value = mock_client
+        mock_get_client.return_value.__exit__.return_value = False
 
         deployment = Mock()
         deployment.id = "dep-123"

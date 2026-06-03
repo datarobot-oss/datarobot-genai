@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import datarobot as dr
 import polars as pl
 import pytest
 from fastmcp.tools.tool import ToolResult
@@ -44,28 +45,16 @@ def _extract_content(result_obj: dict | ToolResult | ToolError) -> str:
     return str(result_obj.content)
 
 
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
-async def test_get_deployment_info_success(
-    mock_get_datarobot_access_token: Any, mock_data_robot_client: Any
-) -> None:
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_get_deployment_info_success() -> None:
     """Test successful retrieval of deployment features."""
     # Setup mocks
-    mock_client = MagicMock()
-    mock_data_robot_client.return_value.get_client.return_value = mock_client
-
     mock_deployment = MagicMock()
     mock_deployment.model = {"project_id": "proj123", "id": "model123"}
 
     mock_model = MagicMock()
     mock_model.model_type = "Regression"
-
-    # Mock feature impact
 
     mock_project = MagicMock()
     mock_project.target = "sales"
@@ -96,12 +85,12 @@ async def test_get_deployment_info_success(
         mock_features.append(feature)
     mock_deployment.get_features.return_value = mock_features
 
-    mock_client.Deployment.get.return_value = mock_deployment
-    mock_client.Model.get.return_value = mock_model
-    mock_client.Project.get.return_value = mock_project
-
-    # Test
-    result = await get_deployment_info(deployment_id="dep123")
+    with (
+        patch.object(dr.Deployment, "get", return_value=mock_deployment),
+        patch.object(dr.Model, "get", return_value=mock_model),
+        patch.object(dr.Project, "get", return_value=mock_project),
+    ):
+        result = await get_deployment_info(deployment_id="dep123")
 
     # Handle potential error response
     if isinstance(result, ToolError):
@@ -130,26 +119,11 @@ async def test_get_deployment_info_success(
     "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
     new_callable=AsyncMock,
 )
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
 async def test_generate_prediction_data_template(
-    mock_get_datarobot_access_token: Any,
-    mock_data_robot_client: Any,
     mock_get_features: Any,
 ) -> None:
     """Test generating prediction data template."""
-    # Setup mocks
-    mock_client = MagicMock()
-    mock_data_robot_client.return_value.get_client.return_value = mock_client
-
-    mock_deployment = MagicMock()
-    mock_client.Deployment.get.return_value = mock_deployment
-
     # Mock feature info
     features_info = {
         "deployment_id": "dep123",
@@ -215,24 +189,12 @@ async def test_generate_prediction_data_template(
     "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
     new_callable=AsyncMock,
 )
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_valid(
-    mock_get_datarobot_access_token: Any,
-    mock_data_robot_client: Any,
     mock_get_features: Any,
     tmp_path: Any,
 ) -> None:
     """Test validating valid prediction data."""
-    # Setup mocks
-    mock_client = MagicMock()
-    mock_data_robot_client.return_value.get_client.return_value = mock_client
-
     # Create test CSV
     test_file = tmp_path / "test_data.csv"
     df = pl.DataFrame(
@@ -295,16 +257,8 @@ async def test_validate_prediction_data_valid(
     "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
     new_callable=AsyncMock,
 )
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_missing_important_feature(
-    mock_get_datarobot_access_token: Any,
-    mock_data_robot_client: Any,
     mock_get_features: Any,
     tmp_path: Any,
 ) -> None:
@@ -319,7 +273,6 @@ async def test_validate_prediction_data_missing_important_feature(
         "total_features": 2,
     }
     mock_get_features.return_value = features_info
-    mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # Only notimp present
     pl.DataFrame({"notimp": ["", ""]}).write_csv(tmp_path / "test3.csv")
     test_file = tmp_path / "test3.csv"
@@ -666,6 +619,7 @@ async def test_get_deployment_features_missing_fields(mock_get_info: Any) -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_get_deployment_info_custom_model() -> None:
     class DummyDeployment:
         model: dict[str, Any] = {}
@@ -676,17 +630,7 @@ async def test_get_deployment_info_custom_model() -> None:
         def get_capabilities(self) -> None:
             pass
 
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient") as mock_drc,
-    ):
-        mock_client = MagicMock()
-        mock_client.Deployment.get.return_value = DummyDeployment()
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Deployment, "get", return_value=DummyDeployment()):
         result = await get_deployment_info(deployment_id="custom_id")
         assert result["model_type"] == "custom"
         assert result["target"] == ""
@@ -824,16 +768,8 @@ async def test_generate_prediction_data_template_frequent_values(
     "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
     new_callable=AsyncMock,
 )
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_missing_values(
-    mock_get_datarobot_access_token: Any,
-    mock_data_robot_client: Any,
     mock_get_features: Any,
     tmp_path: Any,
 ) -> None:
@@ -849,7 +785,6 @@ async def test_validate_prediction_data_missing_values(
         "total_features": 3,
     }
     mock_get_features.return_value = features_info
-    mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # All missing values (empty string)
     pl.DataFrame({"cat": ["", ""], "num": [None, None], "txt": ["", ""]}).write_csv(
         tmp_path / "test.csv"
@@ -877,16 +812,8 @@ async def test_validate_prediction_data_missing_values(
     "datarobot_genai.drtools.predictive.deployment_info.get_deployment_features",
     new_callable=AsyncMock,
 )
-@patch("datarobot_genai.drtools.predictive.deployment_info.DataRobotClient")
-@patch(
-    "datarobot_genai.drtools.predictive.deployment_info.get_datarobot_access_token",
-    new_callable=AsyncMock,
-    return_value="token",
-)
 @pytest.mark.asyncio
 async def test_validate_prediction_data_with_csv_string(
-    mock_get_datarobot_access_token: Any,
-    mock_data_robot_client: Any,
     mock_get_features: Any,
 ) -> None:
     features_info = {
@@ -900,7 +827,6 @@ async def test_validate_prediction_data_with_csv_string(
         "total_features": 2,
     }
     mock_get_features.return_value = features_info
-    mock_data_robot_client.return_value.get_client.return_value = MagicMock()
     # CSV string with only 'cat' column
     csv_str = "cat\nA\nB\n"
     result_obj = await validate_prediction_data(deployment_id="id", csv_string=csv_str)
