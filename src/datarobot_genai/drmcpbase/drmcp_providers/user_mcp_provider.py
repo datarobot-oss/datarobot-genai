@@ -36,9 +36,7 @@ from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestCon
 from datarobot_genai.drmcpbase.auth.utils import get_datarobot_bearer_token_from_mcp_request_context
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
-from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
-    is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client,
-)
+from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +163,8 @@ class UserMCPProvider(Provider):
 
     async def _list_tools(self) -> Sequence[Tool]:
         tools: list[Tool] = []
-        datarobot_token = get_datarobot_bearer_token_from_mcp_request_context()
-        if await is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client(
+        if await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(
             self.datarobot_api_client,  # type: ignore[arg-type]
-            datarobot_token,
         ):
             results = await asyncio.gather(
                 *[p.list_tools() for p in await self.get_user_mcp_proxy_providers_for_user()],

@@ -19,10 +19,10 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
-    is_mcp_tools_gallery_support_enabled,
+    get_feature_flag_enablement_with_existing_datarobot_client,
 )
 from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
-    is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client,
+    is_mcp_tools_gallery_support_enabled,
 )
 
 
@@ -61,7 +61,7 @@ class TestFeatureFlags:
         assert output == expected_feature_flag_value
 
     @pytest.mark.asyncio
-    async def test_is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client(
+    async def test_get_feature_flag_enablement_with_existing_datarobot_client(
         self,
     ) -> None:
         mock_api_client = Mock()
@@ -71,15 +71,15 @@ class TestFeatureFlags:
         )
 
         mock_api_token = Mock()
-        output = (
-            await is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client(
-                mock_api_client,
-                mock_api_token,
-            )
+        mock_feature_flag_name = Mock()
+        output = await get_feature_flag_enablement_with_existing_datarobot_client(
+            mock_api_client,
+            mock_api_token,
+            mock_feature_flag_name,
         )
 
         mock_api_client._is_feature_flag_enabled.assert_called_once_with(
-            "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
+            mock_feature_flag_name,
             mock_api_token,
         )
         assert output == expected_feature_flag_value

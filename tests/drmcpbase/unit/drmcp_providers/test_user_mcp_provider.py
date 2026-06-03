@@ -41,6 +41,7 @@ from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import httpx_as
 from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import (
     user_mcp_proxy_client_factory,
 )
+from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
 
 
 @pytest.fixture
@@ -49,9 +50,9 @@ def module_under_test() -> str:
 
 
 @pytest.fixture
-def mock_is_mcp_tools_gallery_support_enabled(module_under_test: str) -> Iterator[Mock]:
-    with patch(
-        f"{module_under_test}.is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client"
+def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[AsyncMock]:
+    with patch.object(
+        FeatureFlagEvaluation, "is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request"
     ) as mock_func:
         yield mock_func
 
@@ -104,7 +105,7 @@ class TestUserMCPProvider:
             yield mock_func
 
     @pytest.fixture
-    def mock_proxy_provider(self) -> Mock:
+    def mock_mcp_proxy_provider(self) -> Mock:
         proxy_provider = Mock()
         proxy_provider.list_tools = AsyncMock()
         return proxy_provider
@@ -142,26 +143,20 @@ class TestUserMCPProvider:
     async def test_private_method_list_tools(
         self,
         mock_asyncio_gather: AsyncMock,
-        mock_get_datarobot_bearer_token_from_mcp_request_context: Mock,
         mock_get_user_mcp_proxy_providers_for_user: Mock,
         mock_is_mcp_tools_gallery_support_enabled: Mock,
-        mock_proxy_provider: Mock,
+        mock_mcp_proxy_provider: Mock,
     ) -> None:
-        mock_get_user_mcp_proxy_providers_for_user.return_value = [mock_proxy_provider]
+        mock_get_user_mcp_proxy_providers_for_user.return_value = [mock_mcp_proxy_provider]
 
         mcp_provider = UserMCPProvider(Mock())
         await mcp_provider._list_tools()
 
-        mock_get_datarobot_bearer_token_from_mcp_request_context.assert_called_once_with()
-        mock_datarobot_api_token = (
-            mock_get_datarobot_bearer_token_from_mcp_request_context.return_value
-        )
         mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with(
             mcp_provider.datarobot_api_client,
-            mock_datarobot_api_token,
         )
         mock_get_user_mcp_proxy_providers_for_user.assert_called_once_with()
-        mock_proxy_provider.list_tools.assert_called_once_with()
+        mock_mcp_proxy_provider.list_tools.assert_called_once_with()
         mock_asyncio_gather.assert_called_once()
         assert mock_asyncio_gather.call_args.kwargs == {"return_exceptions": True}
 
@@ -251,7 +246,7 @@ class TestUserMCPProvider:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "side_effect",
+        "raised_error",
         [
             NoHeadersFoundInRequestContextError,
             NoDataRobotBearerTokenFoundInRequestContextError,
@@ -262,7 +257,7 @@ class TestUserMCPProvider:
     )
     async def test_get_user_mcp_proxy_providers_for_user_return_empty_if_errored(
         self,
-        side_effect: NoHeadersFoundInRequestContextError
+        raised_error: NoHeadersFoundInRequestContextError
         | NoDataRobotBearerTokenFoundInRequestContextError
         | RuntimeError
         | ClientResponseError,
@@ -272,7 +267,7 @@ class TestUserMCPProvider:
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
         mcp_provider.datarobot_api_client = mock_datarobot_api_client
-        mock_datarobot_api_client._list_mcp_deployment_ids.side_effect = side_effect
+        mock_datarobot_api_client._list_mcp_deployment_ids.side_effect = raised_error
 
         outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
 
@@ -298,7 +293,7 @@ class TestUserMCPProvider:
         assert output == mock_get_api_v2_endpoint.return_value
 
 
-class TestMCPClientSetup:
+class TestMCPProxyClientSetup:
     @pytest.fixture
     def mock_get_user_mcp_endpoint(self, module_under_test: str) -> Iterator[Mock]:
         with patch(f"{module_under_test}.get_user_mcp_endpoint") as mock_func:
@@ -384,7 +379,7 @@ class TestMCPClientSetup:
         assert output == mock_proxy_client_cls.return_value
 
 
-class TestUserMCPAuth:
+class TestUserMCPProxyAuth:
     @pytest.fixture
     def mock_fastmcp_get_http_request(self, module_under_test: str) -> Iterator[Mock]:
         with patch(f"{module_under_test}.get_http_request") as mock_func:
