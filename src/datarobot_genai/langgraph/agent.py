@@ -429,7 +429,18 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                 yield (
                                     ReasoningMessageChunkEvent(
                                         type=EventType.REASONING_MESSAGE_CHUNK,
-                                        message_id=str(message.id or ""),
+                                        # Its own message id, distinct from the assistant text
+                                        # so a frontend grouping by id renders reasoning as its
+                                        # own block instead of folding it into the text bubble.
+                                        # Derived (uuid5) from the text id: a valid UUID that is
+                                        # stable across this message's chunks (so they group)
+                                        # without extra state.
+                                        message_id=str(
+                                            uuid.uuid5(
+                                                uuid.NAMESPACE_OID,
+                                                f"{message.id or ''}-reasoning",
+                                            )
+                                        ),
                                         delta=delta,
                                     ),
                                     None,

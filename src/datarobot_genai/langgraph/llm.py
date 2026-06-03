@@ -17,8 +17,10 @@ from collections.abc import Iterator
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage  # noqa: TC002
 from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
+from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
@@ -27,6 +29,47 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+
+
+def _contains_reasoning_blocks(content: list[Any]) -> bool:
+    """Report whether any list item is a ``thinking``/``reasoning`` content block.
+
+    These blocks only appear on a model's *response* (assistant turns); multimodal
+    parts (e.g. ``image_url``) only appear on *input* (human turns). Gating the
+    collapse on this lets us strip reasoning on re-send without touching multimodal
+    (or any other valid list content), which would otherwise be flattened away.
+    """
+    return any(
+        isinstance(block, dict) and block.get("type") in ("thinking", "reasoning")
+        for block in content
+    )
+
+
+def _strip_thinking_from_history(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Return a copy of an outgoing message history with thinking blocks removed.
+
+    Reasoning models emit reasoning as ``{"type": "thinking", ...}`` blocks inside
+    list-form ``content``. Those are fine on the model's *response* — renderers
+    and AG-UI emitters turn them into Reasoning events — but on *re-send* they
+    break litellm's OpenAI request transform (a bare string where a content-part
+    dict is expected) and are rejected by OpenAI-compatible backends (e.g.
+    vLLM/NIM). So we collapse such content to text on the OUTGOING request only;
+    responses are left untouched so reasoning still renders.
+
+    Only messages whose list content actually carries thinking/reasoning blocks
+    are collapsed. Other list content (e.g. multimodal ``image_url`` parts on a
+    human message) is passed through intact, so the collapse can't strip it away.
+
+    Copies (never mutates) so the messages held in graph state keep their blocks.
+    """
+    cleaned: list[BaseMessage] = []
+    for message in messages:
+        content = getattr(message, "content", None)
+        if isinstance(content, list) and _contains_reasoning_blocks(content):
+            cleaned.append(message.model_copy(update={"content": flatten_to_text(content)}))
+        else:
+            cleaned.append(message)
+    return cleaned
 
 
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
@@ -45,7 +88,24 @@ def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
         model_kwargs["extra_body"] = extra_body
         config["model_kwargs"] = model_kwargs
 
-    return ChatLiteLLM(**config)
+    class _ContentNormalizingChatLiteLLM(ChatLiteLLM):  # type: ignore[valid-type,misc]
+        """ChatLiteLLM that strips reasoning thinking blocks from the OUTGOING history.
+
+        Responses are left intact (so reasoning still renders/emits); only the
+        re-sent message history is collapsed to plain-string content, which is
+        valid for every backend. See ``_strip_thinking_from_history``.
+
+        All four generation paths (``_generate``/``_agenerate``/``_stream``/
+        ``_astream``) funnel through ``_create_message_dicts`` to build the wire
+        request, so overriding that one method covers them all.
+        """
+
+        def _create_message_dicts(
+            self, messages: list[BaseMessage], stop: list[str] | None
+        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            return super()._create_message_dicts(_strip_thinking_from_history(messages), stop)
+
+    return _ContentNormalizingChatLiteLLM(**config)
 
 
 def get_datarobot_gateway_llm(

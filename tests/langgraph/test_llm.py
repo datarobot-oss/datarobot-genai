@@ -116,22 +116,15 @@ def test_get_external_llm_raises_when_model_unset() -> None:
 
 
 def test_gateway_llm_factory_omits_stream_options_kwarg_when_not_streaming() -> None:
-    """ChatLiteLLM has no ``_get_request_payload``; assert our factory kwargs instead."""
-    with patch("langchain_litellm.ChatLiteLLM") as mock_cls:
-        mock_cls.return_value = MagicMock(spec=BaseChatModel)
-        langgraph_llm.get_datarobot_gateway_llm(streaming=False)
-        kwargs = mock_cls.call_args.kwargs
-        assert kwargs.get("streaming") is False
-        assert "stream_options" not in kwargs
+    llm = langgraph_llm.get_datarobot_gateway_llm(streaming=False)
+    assert llm.streaming is False
+    assert llm.stream_options is None
 
 
 def test_gateway_llm_factory_passes_stream_options_when_streaming() -> None:
-    with patch("langchain_litellm.ChatLiteLLM") as mock_cls:
-        mock_cls.return_value = MagicMock(spec=BaseChatModel)
-        langgraph_llm.get_datarobot_gateway_llm(streaming=True)
-        kwargs = mock_cls.call_args.kwargs
-        assert kwargs.get("streaming") is True
-        assert kwargs.get("stream_options") == {"include_usage": True}
+    llm = langgraph_llm.get_datarobot_gateway_llm(streaming=True)
+    assert llm.streaming is True
+    assert llm.stream_options == {"include_usage": True}
 
 
 def test_get_external_llm_returns_base_chat_model() -> None:
@@ -272,11 +265,102 @@ def test_thinking_absent_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_llm_forwards_streaming_flag() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with (
-        patch.object(langgraph_llm, "Config", return_value=config),
-        patch("langchain_litellm.ChatLiteLLM") as mock_cls,
-    ):
-        mock_cls.return_value = MagicMock(spec=BaseChatModel)
-        langgraph_llm.get_llm(streaming=False)
-        kwargs = mock_cls.call_args.kwargs
-        assert kwargs.get("streaming") is False
+    with patch.object(langgraph_llm, "Config", return_value=config):
+        llm = langgraph_llm.get_llm(streaming=False)
+    assert llm.streaming is False
+
+
+def test_strip_thinking_from_history_collapses_list_content_to_text() -> None:
+    """Outgoing list-form content (reasoning thinking blocks) collapses to plain
+    text; string content passes through unchanged; originals are not mutated.
+    """
+    from langchain_core.messages import AIMessage
+    from langchain_core.messages import HumanMessage
+
+    original = AIMessage(
+        content=[
+            {"type": "thinking", "thinking": "reasoning"},
+            {"type": "text", "text": "answer"},
+        ],
+        additional_kwargs={"reasoning_content": "reasoning"},
+    )
+    human = HumanMessage(content="hi")
+    cleaned = langgraph_llm._strip_thinking_from_history([human, original])
+
+    assert cleaned[0] is human
+    assert cleaned[1].content == "answer"
+    # the message held in graph state keeps its blocks (copy, not in-place mutate)
+    assert isinstance(original.content, list)
+
+
+def test_strip_thinking_preserves_non_reasoning_list_content() -> None:
+    """List content with no thinking/reasoning blocks is left intact, so multimodal
+    parts (e.g. ``image_url``) survive the re-send instead of being flattened away.
+
+    Thinking/reasoning blocks only appear on assistant responses; multimodal parts
+    only appear on human input. Gating the collapse on the presence of thinking/
+    reasoning blocks keeps the two from colliding.
+    """
+    from langchain_core.messages import HumanMessage
+
+    multimodal = HumanMessage(
+        content=[
+            {"type": "text", "text": "what is in this image?"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG"}},
+        ]
+    )
+    cleaned = langgraph_llm._strip_thinking_from_history([multimodal])
+
+    # untouched: still a list, image part preserved
+    assert cleaned[0].content == multimodal.content
+    assert any(
+        isinstance(block, dict) and block.get("type") == "image_url" for block in cleaned[0].content
+    )
+
+
+def test_create_message_dicts_strips_reasoning_from_outgoing_history() -> None:
+    """All four generation paths (sync/async, stream/generate) build their wire
+    request through ``_create_message_dicts``, so overriding that one chokepoint
+    collapses re-sent thinking blocks to plain text for every path — while the
+    caller's history (and thus the response held in graph state) is left intact,
+    so reasoning still renders.
+    """
+    from langchain_core.messages import AIMessage
+
+    history = [
+        AIMessage(
+            content=[
+                {"type": "thinking", "thinking": "prev"},
+                {"type": "text", "text": "prior"},
+            ]
+        )
+    ]
+    llm = langgraph_llm.get_datarobot_deployment_llm("dep-1", model_name="m")
+    message_dicts, _ = llm._create_message_dicts(history, None)
+
+    # outgoing wire content collapsed to plain text (valid for OpenAI-compatible backends)
+    assert message_dicts[0]["content"] == "prior"
+    # caller's history object not mutated
+    assert isinstance(history[0].content, list)
+
+
+def test_create_message_dicts_collapses_reasoning_only_message_to_empty() -> None:
+    """A reasoning-only turn (the real gpt-oss/NIM shape: ``['', {thinking}...]``
+    with no text block) collapses to an empty string on the wire instead of being
+    re-sent as thinking blocks, which OpenAI-compatible backends reject.
+    """
+    from langchain_core.messages import AIMessage
+
+    history = [
+        AIMessage(
+            content=[
+                "",
+                {"type": "thinking", "thinking": "Need"},
+                {"type": "thinking", "thinking": " to search"},
+            ]
+        )
+    ]
+    llm = langgraph_llm.get_datarobot_deployment_llm("dep-1", model_name="m")
+    message_dicts, _ = llm._create_message_dicts(history, None)
+
+    assert message_dicts[0]["content"] == ""
