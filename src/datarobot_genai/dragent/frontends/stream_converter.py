@@ -39,6 +39,7 @@ from nat.data_models.api_server import ChatResponseChunk
 from datarobot_genai.core.agents import default_usage_metrics
 
 from .response import DRAgentEventResponse
+from .tool_call_registry import mark_args_done
 from .tool_call_registry import register_tool_call
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,10 @@ async def convert_chunks_to_agui_events(
             events: list[Event] = []
 
             if delta and delta.content:
-                # Reset per-turn index tracking; the next round's index 0 is a new tool call.
-                # Step adaptor owns ToolCallEnd at FUNCTION_END / TOOL_END.
+                # Args streaming is complete for all tracked tool calls.
+                # Flush any end/result events deferred by the step adaptor.
+                for tc_id in tool_index_map.values():
+                    events.extend(mark_args_done(tc_id))
                 tool_index_map.clear()
 
                 if active_message_id is None:
@@ -133,6 +136,9 @@ async def convert_chunks_to_agui_events(
     # Errors are surfaced to the AG-UI client via RunErrorEvent rather than
     # propagated as exceptions, so NAT's streaming infrastructure stays stable.
     end: list[Event] = []
+    # Mark remaining in-flight tool calls as args-done and flush deferred events.
+    for tc_id in tool_index_map.values():
+        end.extend(mark_args_done(tc_id))
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))
     if error is not None:

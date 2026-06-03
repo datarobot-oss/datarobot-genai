@@ -17,6 +17,9 @@ from collections.abc import Iterator
 import pytest
 
 from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import defer_tool_end
+from datarobot_genai.dragent.frontends.tool_call_registry import is_args_done
+from datarobot_genai.dragent.frontends.tool_call_registry import mark_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset
@@ -81,3 +84,34 @@ def test_reset_clears_pending() -> None:
 
     assert pop_tool_call("nat-1") is None
     assert bind_tool_call("planner", "nat-1") is None
+
+
+def test_mark_args_done_returns_empty_when_no_deferred() -> None:
+    assert mark_args_done("tc-1") == []
+    assert is_args_done("tc-1")
+
+
+def test_defer_then_mark_returns_deferred_events() -> None:
+    sentinel = ["ToolCallEndEvent", "ToolCallResultEvent"]
+    defer_tool_end("tc-1", sentinel)
+
+    assert not is_args_done("tc-1")
+    result = mark_args_done("tc-1")
+    assert result is sentinel
+    assert is_args_done("tc-1")
+
+
+def test_mark_before_defer_means_immediate() -> None:
+    """When args finish first, is_args_done is True so adaptor emits directly."""
+    mark_args_done("tc-1")
+    assert is_args_done("tc-1")
+    assert mark_args_done("tc-1") == []
+
+
+def test_reset_clears_args_done_and_deferred() -> None:
+    mark_args_done("tc-1")
+    defer_tool_end("tc-2", ["event"])
+    reset()
+
+    assert not is_args_done("tc-1")
+    assert mark_args_done("tc-2") == []
