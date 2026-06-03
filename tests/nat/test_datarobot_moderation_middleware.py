@@ -310,6 +310,39 @@ async def _passthrough_stream_response_async(
         current = peek
 
 
+async def _content_filter_on_last_stream_response_async(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Echo streamed chunks; mark the final chunk with ``finish_reason=content_filter``."""
+    aiter = completion.__aiter__()
+    try:
+        current = await aiter.__anext__()
+    except StopAsyncIteration:
+        return
+    while True:
+        try:
+            peek = await aiter.__anext__()
+        except StopAsyncIteration:
+            choice = current.choices[0]
+            yield ChatCompletionChunk(
+                id=current.id,
+                choices=[
+                    OpenAIChunkChoice(
+                        index=0,
+                        delta=choice.delta,
+                        finish_reason="content_filter",
+                    )
+                ],
+                created=current.created,
+                model=current.model,
+                object="chat.completion.chunk",
+            )
+            return
+        yield current
+        current = peek
+
+
 def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -1576,7 +1609,9 @@ async def test_function_middleware_stream_response_token_limit_blocks(
         ]
 
     stream_next.assert_called_once()
-    assert len(chunks) == 1
+    assert len(chunks) >= 1
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
     chunk = chunks[0]
     assert isinstance(chunk, DRAgentEventResponse)
     assert _assistant_text_joined_from_dragent_response(chunk) == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
@@ -1717,8 +1752,14 @@ async def test_function_middleware_stream_prompt_replace(
     stream_next.assert_called_once()
     assert predict_inputs
     assert run_input.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
-    assert len(chunks) == 1
-    assert _assistant_text_joined_from_dragent_response(chunks[0]) == "streamed-model-out"
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=default_usage_metrics())
+        )
+        == "streamed-model-out"
+    )
 
 
 async def test_function_middleware_invoke_response_replace(
@@ -1847,8 +1888,14 @@ async def test_function_middleware_stream_response_replace(
 
     stream_next.assert_called_once()
     assert predict_inputs
-    assert len(chunks) == 1
-    assert _assistant_text_joined_from_dragent_response(chunks[0]) == _MODEL_RESPONSE_REPLACEMENT
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=default_usage_metrics())
+        )
+        == _MODEL_RESPONSE_REPLACEMENT
+    )
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
@@ -1916,10 +1963,106 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
             )
         ]
 
-    assert len(chunks) == 1
+    assert len(chunks) == 2
     assert isinstance(chunks[0], DRAgentEventResponse)
-    deltas = "".join(ev.delta for ev in chunks[0].events if isinstance(ev, TextMessageContentEvent))
+    assert isinstance(chunks[1], DRAgentEventResponse)
+    deltas = "".join(
+        ev.delta for resp in chunks for ev in resp.events if isinstance(ev, TextMessageContentEvent)
+    )
     assert deltas == "delta-one"
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for resp in chunks for ev in resp.events)
+
+
+async def test_function_middleware_stream_synthesizes_text_message_end_on_content_filter(
+    builder_mock: MagicMock,
+) -> None:
+    """Moderation content_filter can end the stream without upstream TEXT_MESSAGE_END."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _content_filter_on_last_stream_response_async
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    msg_id = "msg-blocked"
+    zero = default_usage_metrics()
+    blocked_text = "Agent did not complete the requested task."
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=msg_id, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=msg_id, delta=blocked_text)],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(isinstance(ev, TextMessageEndEvent) and ev.message_id == msg_id for ev in flat), (
+        f"expected TEXT_MESSAGE_END for {msg_id!r}, got {[e.type for e in flat]}"
+    )
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=zero)
+        )
+        == blocked_text
+    )
+
+
+async def test_function_middleware_stream_closes_generators_on_early_consumer_exit(
+    builder_mock: MagicMock,
+) -> None:
+    """Closing the consumer must aclose moderation and upstream iterators."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+
+    async def upstream():
+        yield _text_response("delta-one")
+        yield _text_response("delta-two")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware._aclose_async_iterator",
+            new_callable=AsyncMock,
+        ) as aclose_mock,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        stream = mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=stream_next,
+            context=_fn_context(),
+        )
+        agen = stream.__aiter__()
+        first = await agen.__anext__()
+        assert isinstance(first, DRAgentEventResponse)
+        await agen.aclose()
+
+    aclose_mock.assert_awaited()
 
 
 async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
