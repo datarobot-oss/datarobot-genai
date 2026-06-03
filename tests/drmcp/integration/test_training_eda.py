@@ -25,20 +25,20 @@ from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_DATASET_
 
 @pytest.mark.asyncio
 class TestGetExploratoryInsightsIntegration:
-    """MCP integration tests for ``get_exploratory_insights`` including catalog API profile."""
+    """MCP integration tests for ``catalog_get_eda_insights`` including catalog API profile."""
 
-    async def test_get_exploratory_insights_registered(self) -> None:
-        """``get_exploratory_insights`` is registered when predictive tools load."""
+    async def test_catalog_get_eda_insights_registered(self) -> None:
+        """``catalog_get_eda_insights`` is registered when predictive tools load."""
         async with integration_test_mcp_session() as session:
             listed = await session.list_tools()
             tool_names = [t.name for t in listed.tools]
-            assert "get_exploratory_insights" in tool_names
+            assert "catalog_get_eda_insights" in tool_names
 
-    async def test_get_exploratory_insights_with_catalog_feature_profile(self) -> None:
+    async def test_catalog_get_eda_insights_with_catalog_feature_profile(self) -> None:
         """``feature_col`` returns DataRobot catalog-style stats and optional histogram."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_exploratory_insights",
+                "catalog_get_eda_insights",
                 {
                     "dataset_id": STUB_DATASET_ID,
                     "feature_col": "sales",
@@ -61,11 +61,11 @@ class TestGetExploratoryInsightsIntegration:
             assert "histogram" in profile
             assert profile["histogram"]["plot"][0]["label"] == "stub-bin"
 
-    async def test_get_exploratory_insights_invalid_feature_col(self) -> None:
+    async def test_catalog_get_eda_insights_invalid_feature_col(self) -> None:
         """Unknown ``feature_col`` yields a tool error."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_exploratory_insights",
+                "catalog_get_eda_insights",
                 {
                     "dataset_id": STUB_DATASET_ID,
                     "feature_col": "not_a_column",

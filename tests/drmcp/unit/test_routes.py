@@ -631,9 +631,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.is_atlassian_oauth_configured = False
-        mock_tool_config.is_google_oauth_configured = False
-        mock_tool_config.is_microsoft_oauth_configured = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -742,9 +739,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.is_atlassian_oauth_configured = False
-        mock_tool_config.is_google_oauth_configured = False
-        mock_tool_config.is_microsoft_oauth_configured = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -770,20 +764,19 @@ class TestMetadataRoute:
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
-    async def test_metadata_route_with_oauth_tools(
+    async def test_metadata_route_with_enabled_tools(
         self,
         mock_get_tool_tags: Mock,
         mock_get_prompt_tags: Mock,
         mock_get_resource_tags: Mock,
         mock_get_config: Mock,
     ):
-        """Test metadata route with OAuth-enabled tools."""
+        """Test metadata route reports enabled tool flags from config."""
         # Setup mocks with empty lists
         self.mock_mcp.list_tools = AsyncMock(return_value=[])
         self.mock_mcp.list_prompts = AsyncMock(return_value=[])
         self.mock_mcp.list_resources = AsyncMock(return_value=[])
 
-        # Create mock config with OAuth-enabled tools
         mock_config = Mock()
         mock_config.mcp_server_name = "test-server"
         mock_config.mcp_server_port = 8080
@@ -798,10 +791,10 @@ class TestMetadataRoute:
 
         mock_tool_config = Mock()
         mock_tool_config.enable_predictive_tools = False
-        mock_tool_config.enable_jira_tools = True  # OAuth required
-        mock_tool_config.enable_confluence_tools = True  # OAuth required
-        mock_tool_config.enable_gdrive_tools = True  # OAuth required
-        mock_tool_config.enable_microsoft_graph_tools = True  # OAuth required
+        mock_tool_config.enable_jira_tools = True
+        mock_tool_config.enable_confluence_tools = True
+        mock_tool_config.enable_gdrive_tools = True
+        mock_tool_config.enable_microsoft_graph_tools = True
         mock_tool_config.enable_perplexity_tools = False
         mock_tool_config.enable_tavily_tools = False
         mock_tool_config.enable_dr_docs_tools = False
@@ -809,9 +802,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.is_atlassian_oauth_configured = True
-        mock_tool_config.is_google_oauth_configured = True
-        mock_tool_config.is_microsoft_oauth_configured = True
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -824,20 +814,12 @@ class TestMetadataRoute:
         assert response.status_code == HTTPStatus.OK
         response_data = json.loads(response.body.decode("utf-8"))
 
-        # Verify OAuth tool configs (enabled from config; oauth_configured from OAuth check)
         tool_config = response_data["config"]["tool_config"]
         assert tool_config["jira"]["enabled"] is True
-        assert tool_config["jira"]["oauth_required"] is True
-        assert tool_config["jira"]["oauth_configured"] is True
         assert tool_config["confluence"]["enabled"] is True
-        assert tool_config["confluence"]["oauth_required"] is True
-        assert tool_config["confluence"]["oauth_configured"] is True
         assert tool_config["gdrive"]["enabled"] is True
-        assert tool_config["gdrive"]["oauth_required"] is True
-        assert tool_config["gdrive"]["oauth_configured"] is True
         assert tool_config["microsoft_graph"]["enabled"] is True
-        assert tool_config["microsoft_graph"]["oauth_required"] is True
-        assert tool_config["microsoft_graph"]["oauth_configured"] is True
+        assert tool_config["predictive"]["enabled"] is False
 
     @pytest.mark.asyncio
     async def test_metadata_route_error_scenario(self):
@@ -854,74 +836,3 @@ class TestMetadataRoute:
         response_data = json.loads(response.body.decode("utf-8"))
         assert "error" in response_data
         assert "Failed to retrieve metadata" in response_data["error"]
-
-    @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.routes.get_config")
-    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
-    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
-    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
-    async def test_metadata_route_tool_config_oauth_not_configured(
-        self,
-        mock_get_tool_tags: Mock,
-        mock_get_prompt_tags: Mock,
-        mock_get_resource_tags: Mock,
-        mock_get_config: Mock,
-    ):
-        """Test metadata route with OAuth-required tools but OAuth not configured."""
-        # Setup mocks with empty lists
-        self.mock_mcp.list_tools = AsyncMock(return_value=[])
-        self.mock_mcp.list_prompts = AsyncMock(return_value=[])
-        self.mock_mcp.list_resources = AsyncMock(return_value=[])
-
-        # Create mock config with OAuth-required tools but OAuth not configured
-        mock_config = Mock()
-        mock_config.mcp_server_name = "test-server"
-        mock_config.mcp_server_port = 8080
-        mock_config.mcp_server_log_level = "INFO"
-        mock_config.app_log_level = "DEBUG"
-        mock_config.mount_path = "/"
-        mock_config.mcp_server_register_dynamic_tools_on_startup = False
-        mock_config.mcp_server_register_dynamic_prompts_on_startup = False
-        mock_config.tool_registration_allow_empty_schema = False
-        mock_config.tool_registration_duplicate_behavior = "warn"
-        mock_config.prompt_registration_duplicate_behavior = "warn"
-
-        mock_tool_config = Mock()
-        mock_tool_config.enable_predictive_tools = False
-        mock_tool_config.enable_jira_tools = True  # OAuth required but not configured
-        mock_tool_config.enable_confluence_tools = True  # OAuth required but not configured
-        mock_tool_config.enable_gdrive_tools = False
-        mock_tool_config.enable_microsoft_graph_tools = False
-        mock_tool_config.enable_perplexity_tools = False
-        mock_tool_config.enable_tavily_tools = False
-        mock_tool_config.enable_dr_docs_tools = False
-        mock_tool_config.enable_use_case_tools = False
-        mock_tool_config.enable_code_execution_tools = False
-        mock_tool_config.enable_optimization_tools = False
-        mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.is_atlassian_oauth_configured = False  # OAuth not configured
-        mock_tool_config.is_google_oauth_configured = False
-        mock_tool_config.is_microsoft_oauth_configured = False
-
-        mock_config.tool_config = mock_tool_config
-        mock_get_config.return_value = mock_config
-
-        register_routes(self.mock_mcp)
-
-        metadata_handler = self.registered_routes["GET", "/metadata"]
-        response = await metadata_handler(self.mock_request)
-
-        assert response.status_code == HTTPStatus.OK
-        response_data = json.loads(response.body.decode("utf-8"))
-
-        # Verify tool config (enabled from config only; oauth_configured from OAuth check)
-        tool_config = response_data["config"]["tool_config"]
-        assert tool_config["jira"]["enabled"] is True
-        assert tool_config["jira"]["oauth_required"] is True
-        assert tool_config["jira"]["oauth_configured"] is False
-        assert tool_config["confluence"]["enabled"] is True
-        assert tool_config["confluence"]["oauth_required"] is True
-        assert tool_config["confluence"]["oauth_configured"] is False
-        assert tool_config["predictive"]["enabled"] is False
-        assert tool_config["predictive"]["oauth_required"] is False
-        assert tool_config["predictive"]["oauth_configured"] is None

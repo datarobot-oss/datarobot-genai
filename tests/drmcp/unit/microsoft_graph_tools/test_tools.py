@@ -21,7 +21,7 @@ import pytest
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphItem
 from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.microsoft_graph.tools import microsoft_create_file
+from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_create_file
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_search_content
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_share_item
 
@@ -391,7 +391,7 @@ class TestMicrosoftGraphShareItem:
 
 
 class TestMicrosoftCreateFile:
-    """Test microsoft_create_file tool."""
+    """Test microsoft_graph_create_file tool."""
 
     @pytest.fixture
     def mock_created_file(self) -> MicrosoftGraphItem:
@@ -432,7 +432,7 @@ class TestMicrosoftCreateFile:
         mock_client_create_success: AsyncMock,
     ) -> None:
         """Test file creation in SharePoint with explicit document_library_id."""
-        result = await microsoft_create_file(
+        result = await microsoft_graph_create_file(
             file_name="report.txt",
             content_text="Content",
             document_library_id="drive123",
@@ -451,7 +451,7 @@ class TestMicrosoftCreateFile:
         mock_client_create_success: AsyncMock,
     ) -> None:
         """Test file creation in personal OneDrive when no library specified."""
-        result = await microsoft_create_file(
+        result = await microsoft_graph_create_file(
             file_name="notes.txt",
             content_text="My notes",
         )
@@ -470,10 +470,10 @@ class TestMicrosoftCreateFile:
     ) -> None:
         """Test validation errors for missing required fields."""
         with pytest.raises(ToolError, match="file_name is required"):
-            await microsoft_create_file(file_name="", content_text="Content")
+            await microsoft_graph_create_file(file_name="", content_text="Content")
 
         with pytest.raises(ToolError, match="content_text is required"):
-            await microsoft_create_file(file_name="test.txt", content_text="")
+            await microsoft_graph_create_file(file_name="test.txt", content_text="")
 
     @pytest.mark.asyncio
     async def test_create_file_client_error(
@@ -493,7 +493,7 @@ class TestMicrosoftCreateFile:
             mock_client_class.return_value = mock_client
 
             with pytest.raises(MicrosoftGraphError, match="[Pp]ermission denied"):
-                await microsoft_create_file(
+                await microsoft_graph_create_file(
                     file_name="report.txt",
                     content_text="Content",
                     document_library_id="drive123",

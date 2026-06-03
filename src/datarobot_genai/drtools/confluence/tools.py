@@ -42,7 +42,7 @@ _FOOTER_COMMENTS_DOCS = (
     description=(
         "[Confluence—get page] Use when you have a numeric page id, or an exact page title plus "
         "space_key, and need the page body (storage HTML). Not CQL multi-page search "
-        "(confluence_search), not Jira (jira_get_issue).\n\n"
+        "(confluence_search_space), not Jira (jira_get_issue).\n\n"
         'Examples: By ID: page_id_or_title="856391684". By title: '
         'page_id_or_title="Meeting Notes", space_key="TEAM" (space_key is required when '
         "using a title).\n\n"
@@ -181,7 +181,7 @@ async def confluence_add_comment(
         f"Reference (CQL): {_CQL_DOCS}"
     ),
 )
-async def confluence_search(
+async def confluence_search_space(
     *,
     cql_query: Annotated[
         str,

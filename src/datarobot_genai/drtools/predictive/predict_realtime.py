@@ -50,11 +50,12 @@ def _parse_datetime(value: str) -> datetime:
         "[Predict—deployment + catalog, synchronous rows] Use when the user already has an AI "
         "Catalog dataset_id and wants realtime-style scoring through a deployment with rows "
         "returned in one response (moderate size). Not for pasted inline CSV/JSON "
-        "(predict_realtime), not for async batch CSV submit-and-poll (predict_by_ai_catalog plus "
-        "get_batch_prediction_job_status), not project-partition batch (predict_from_project_data)."
+        "(predict_score_inline_realtime), not for async batch CSV submit-and-poll "
+        "(predict_batch_predictions_from_dataset plus predict_get_batch_job_status), "
+        "not project-partition batch (predict_batch_predictions_from_partition)."
     ),
 )
-async def predict_by_ai_catalog_rt(
+async def predict_score_catalog_realtime(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset_id: Annotated[str, "AI Catalog dataset id (tabular)."],
@@ -125,14 +126,15 @@ async def predict_by_ai_catalog_rt(
         "in the conversation: a CSV snippet (header + rows) or a JSON array of row objects in "
         "the dataset argument, plus deployment_id. Immediate synchronous scoring; results return "
         "in the tool response. Do not use for catalog dataset_id only (use "
-        "predict_by_ai_catalog_rt or batch predict_by_ai_catalog), not for project holdout "
-        "batch jobs (predict_from_project_data), and not for leaderboard model scoring jobs "
-        "(score_dataset_with_model). Match feature columns to get_deployment_info. Time series: "
+        "predict_score_catalog_realtime or batch predict_batch_predictions_from_dataset), "
+        "not for project holdout batch jobs (predict_batch_predictions_from_partition), "
+        "and not for leaderboard model scoring jobs "
+        "(modeling_score_dataset). Match feature columns to deployment_get_info. Time series: "
         "forecast_point or forecast_range_start+end, plus series_id_column if multiseries. "
-        "validate_prediction_data can sanity-check CSV shape first."
+        "deployment_validate_prediction_data can sanity-check CSV shape first."
     ),
 )
-async def predict_realtime(
+async def predict_score_inline_realtime(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset: Annotated[

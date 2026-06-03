@@ -4,8 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.101
+## 0.15.103
 - `drtools`: refactored tool credentials to `ToolsAuthCredentials` and nested `DataRobotCredentials` using `DataRobotAppFrameworkBaseSettings` (env, runtime params, `.env`, file secrets, `pulumi_config.json`). Renamed fields to `datarobot_api_token` and `datarobot_endpoint` (`DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`). Replaced `MCPServerCredentials`; added third-party config fields (`tavily_api_key`, `perplexity_api_key`, `atlassian_api_token`, `atlassian_email`, `atlassian_site_url`). Public export is `ToolsAuthCredentials`.
+
+## 0.15.102
+- `drtools` Jira: `Issue` model tolerates real Jira payloads—optional `emailAddress`, optional unassigned `assignee`, and `as_flat_dict()` falls back to `displayName` or `accountId` when email is missing.
+
+## 0.15.101
+- `drmcp`: removed OAuth provider startup gating (`IS_*_OAUTH_PROVIDER_CONFIGURED`, `is_*_oauth_configured`, and `oauth_check` in `tool_config`). Tool enablement is controlled only by `ENABLE_*_TOOLS` flags; OAuth tokens are resolved at request time.
+- `drmcp`: `enable_predictive_tools` default is now `false` (opt in via env, `MCP_CLI_CONFIGS`, or runtime params). Integration and acceptance test harnesses set `ENABLE_PREDICTIVE_TOOLS=true` so predictive tool suites keep running.
+- `drmcp`: `/metadata` tool config reports `enabled` only (dropped `oauth_required` / `oauth_configured`).
+
+## 0.15.100
+- Renamed MCP tools and updated unit, integration and acceptance tests
 
 ## 0.15.99
 - `dragent/workflow_paths`: added `discover_workflow_yaml()` and `publish_dragent_config_file_env()` to locate `workflow.yaml` and set `DRAGENT_CONFIG_FILE` (from the env var, `$CODE_DIR/workflow.yaml`, or a walk up from CWD). Wired into the DRAgent CLI, FastAPI frontend startup, and `load_workflow()` so middleware can resolve guard assets without relying on the process working directory.

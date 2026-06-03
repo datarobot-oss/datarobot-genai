@@ -199,11 +199,12 @@ def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
         "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
         "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
         "heuristic candidate targets. Read-only; does not train. Lighter than "
-        "get_exploratory_insights; does not rank ML use-case ideas (suggest_use_cases calls this "
+        "catalog_get_eda_insights; does not rank ML use-case ideas "
+        "(catalog_suggest_ml_problems calls this "
         "internally)."
     ),
 )
-async def analyze_dataset(
+async def catalog_analyze_dataset(
     *,
     dataset_id: Annotated[str, "AI Catalog dataset id."],
 ) -> dict[str, Any]:
@@ -220,11 +221,12 @@ async def analyze_dataset(
     description=(
         "[Catalog—use-case ideas] Use when the user wants ranked ML problem suggestions from one "
         "catalog dataset (name, suggested target, problem type, confidence). Read-only. Builds on "
-        "dataset profiling; not the same as starting Autopilot (start_autopilot) or deep EDA "
-        "(get_exploratory_insights)."
+        "dataset profiling; not the same as starting Autopilot (modeling_start_autopilot) "
+        "or deep EDA "
+        "(catalog_get_eda_insights)."
     ),
 )
-async def suggest_use_cases(
+async def catalog_suggest_ml_problems(
     *,
     dataset_id: Annotated[str, "AI Catalog dataset id."],
 ) -> dict[str, Any]:
@@ -254,11 +256,11 @@ async def suggest_use_cases(
         "and numeric correlations. For averages/min/max/median/std on a specific column, set "
         "feature_col to use DataRobot catalog feature metadata (allFeaturesDetails; EDA sample "
         "per platform), optionally with include_feature_histogram. Read-only; does not train or "
-        "upload data. Heavier than analyze_dataset; not time-series eligibility "
-        "(is_eligible_for_timeseries_training)."
+        "upload data. Heavier than catalog_analyze_dataset; not time-series eligibility "
+        "(catalog_check_timeseries_eligibility)."
     ),
 )
-async def get_exploratory_insights(
+async def catalog_get_eda_insights(
     *,
     dataset_id: Annotated[str, "AI Catalog dataset id."],
     target_col: Annotated[
@@ -606,11 +608,11 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
         "existing project via project_id. mode must be string 'quick', 'comprehensive', or "
         "'manual' (default 'quick'). Returns "
         "project_id and status—not finished leaderboard models yet. Not deployment creation "
-        "(deploy_model), not batch scoring (predict_*), not dataset upload "
-        "(upload_dataset_to_ai_catalog) unless they already registered data."
+        "(deployment_create_deployment), not batch scoring (predict_*), not dataset upload "
+        "(catalog_upload_dataset) unless they already registered data."
     ),
 )
-async def start_autopilot(
+async def modeling_start_autopilot(
     *,
     target: Annotated[str, "Column name in the training table to predict."],
     project_id: Annotated[
@@ -698,11 +700,12 @@ async def start_autopilot(
         "[Project—ROC only] Use when the user wants ROC curve points for one binary classification "
         "leaderboard model; source must be string 'validation', 'holdout', or 'crossValidation'. "
         "Read-only. Not "
-        "for regression-only models, not full model card (get_model_details), not deployment "
-        "monitoring (get_prediction_history)."
+        "for regression-only models, not full model card (modeling_get_modeldetails), "
+        "not deployment "
+        "monitoring (deployment_get_prediction_history)."
     ),
 )
-async def get_model_roc_curve(
+async def modeling_get_model_roc(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     model_id: Annotated[str, "Leaderboard model id."],
@@ -762,11 +765,12 @@ async def get_model_roc_curve(
     description=(
         "[Project—global feature impact] Use for training-time global feature impact on one "
         "leaderboard model (may wait while impact is computed). Read-only. Not per-row SHAP from "
-        "live deployment predictions (those come from predict_realtime explanation flags), not "
-        "lift chart bins (get_model_lift_chart)."
+        "live deployment predictions "
+        "(those come from predict_score_inline_realtime explanation flags), not "
+        "lift chart bins (modeling_get_model_lift_chart)."
     ),
 )
-async def get_model_feature_impact(
+async def modeling_get_model_feature_impact(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     model_id: Annotated[str, "Leaderboard model id."],
@@ -794,12 +798,12 @@ async def get_model_feature_impact(
     description=(
         "[Project—lift chart] Use for lift chart bins on one classification leaderboard model "
         "(actual vs predicted by score bucket); source must be 'validation', 'holdout', or "
-        "'crossValidation'. Read-only. Not ROC points (get_model_roc_curve), not general model "
+        "'crossValidation'. Read-only. Not ROC points (modeling_get_model_roc), not general model "
         "metrics dump "
-        "(get_model_details)."
+        "(modeling_get_modeldetails)."
     ),
 )
-async def get_model_lift_chart(
+async def modeling_get_model_lift_chart(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     model_id: Annotated[str, "Leaderboard model id."],

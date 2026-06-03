@@ -33,11 +33,11 @@ logger = logging.getLogger(__name__)
     description=(
         "[Project—discover ids] Use when the user needs their modeling projects as id-to-name "
         "map (no single project_id yet). Read-only. Not for datasets inside one project "
-        "(get_project_dataset_by_name), not catalog datasets (list_ai_catalog_items), not "
-        "deployments (list_deployments)."
+        "(modeling_get_project_dataset), not catalog datasets (catalog_list_datasets), not "
+        "deployments (deployment_get_list)."
     ),
 )
-async def list_projects() -> dict[str, Any]:
+async def modeling_list_projects() -> dict[str, Any]:
     with ThreadSafeDataRobotClient().request_user_client():
         projects = dr.Project.list()
         projects = {p.id: p.project_name for p in projects}
@@ -53,10 +53,10 @@ async def list_projects() -> dict[str, Any]:
         "X') and you need its dataset_id: pass project_id plus dataset_name as a case-insensitive "
         "substring of the dataset display name. Read-only. Returns dataset_id and whether it is "
         "the project source or a prediction upload. Not for listing all projects "
-        "(list_projects) or arbitrary catalog lookup."
+        "(modeling_list_projects) or arbitrary catalog lookup."
     ),
 )
-async def get_project_dataset_by_name(
+async def modeling_get_project_dataset(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     dataset_name: Annotated[str, "Substring to match against dataset display names."],

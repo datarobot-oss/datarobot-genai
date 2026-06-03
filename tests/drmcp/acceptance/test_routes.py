@@ -249,14 +249,7 @@ class TestCustomRoutesE2E:
                 assert tool_type in tool_config
                 tool_type_config = tool_config[tool_type]
                 assert "enabled" in tool_type_config
-                assert "oauth_required" in tool_type_config
-                assert "oauth_configured" in tool_type_config
                 assert isinstance(tool_type_config["enabled"], bool)
-                assert isinstance(tool_type_config["oauth_required"], bool)
-                # oauth_configured can be None or bool
-                assert tool_type_config["oauth_configured"] is None or isinstance(
-                    tool_type_config["oauth_configured"], bool
-                )
 
     async def test_metadata_route_with_prompt_registration(self) -> None:
         """Test metadata route reflects prompt registration changes."""
@@ -352,10 +345,5 @@ class TestCustomRoutesE2E:
 
             # Verify tool config values are consistent
             tool_config = config["tool_config"]
-            for tool_type, tool_info in tool_config.items():
-                # If OAuth is not required, oauth_configured should be None
-                if not tool_info["oauth_required"]:
-                    assert tool_info["oauth_configured"] is None
-                # If OAuth is required, oauth_configured should be a bool
-                else:
-                    assert isinstance(tool_info["oauth_configured"], bool)
+            for _tool_type, tool_info in tool_config.items():
+                assert isinstance(tool_info["enabled"], bool)

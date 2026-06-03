@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Acceptance tests for use case MCP tools (list_use_cases, list_use_case_assets)."""
+"""Acceptance tests for use case MCP tools (datarobot_usecases_list, usecases_list_assets)."""
 
 import inspect
 from typing import Any
@@ -27,11 +27,11 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_use_cases_success() -> ETETestExpectations:
+def expectations_for_datarobot_usecases_list_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_use_cases",
+                name="datarobot_usecases_list",
                 parameters={},
                 result={"use_cases": {}},
             ),
@@ -45,11 +45,11 @@ def expectations_for_list_use_cases_success() -> ETETestExpectations:
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_use_cases_with_search_success() -> ETETestExpectations:
+def expectations_for_datarobot_usecases_list_with_search_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_use_cases",
+                name="datarobot_usecases_list",
                 parameters={"search": "fraud"},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -63,13 +63,13 @@ def expectations_for_list_use_cases_with_search_success() -> ETETestExpectations
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_use_case_assets_success(
+def expectations_for_usecases_list_assets_success(
     use_case_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_use_case_assets",
+                name="usecases_list_assets",
                 parameters={"use_case_id": use_case_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -95,7 +95,7 @@ def use_case_id() -> str:
 @pytest.mark.skip(reason="MODEL-22978 - TODO: Fix tests")
 @pytest.mark.asyncio
 class TestUseCaseToolsE2E(ToolBaseE2E):
-    """End-to-end tests for use case tools (list_use_cases, list_use_case_assets)."""
+    """End-to-end tests for use case tools (datarobot_usecases_list, usecases_list_assets)."""
 
     @pytest.mark.parametrize(
         "prompt",
@@ -106,19 +106,19 @@ class TestUseCaseToolsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_list_use_cases(
+    async def test_datarobot_usecases_list(
         self,
         llm_client: Any,
-        expectations_for_list_use_cases_success: ETETestExpectations,
+        expectations_for_datarobot_usecases_list_success: ETETestExpectations,
         prompt: str,
     ) -> None:
-        """E2E test: LLM lists all use cases via list_use_cases tool."""
+        """E2E test: LLM lists all use cases via datarobot_usecases_list tool."""
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_list_use_cases"
+            test_name = frame.f_code.co_name if frame else "test_datarobot_usecases_list"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_use_cases_success,
+                expectations_for_datarobot_usecases_list_success,
                 llm_client,
                 session,
                 test_name,
@@ -128,23 +128,25 @@ class TestUseCaseToolsE2E(ToolBaseE2E):
         "search_term",
         ["fraud"],
     )
-    async def test_list_use_cases_with_search(
+    async def test_datarobot_usecases_list_with_search(
         self,
         llm_client: Any,
-        expectations_for_list_use_cases_with_search_success: ETETestExpectations,
+        expectations_for_datarobot_usecases_list_with_search_success: ETETestExpectations,
         search_term: str,
     ) -> None:
-        """E2E test: LLM searches for use cases matching a keyword via list_use_cases tool."""
+        """E2E test: LLM searches use cases by keyword via datarobot_usecases_list."""
         prompt = (
             f"I need to find DataRobot use cases related to '{search_term}'. "
             f"Can you search for use cases containing '{search_term}' in their name?"
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_list_use_cases_with_search"
+            test_name = (
+                frame.f_code.co_name if frame else "test_datarobot_usecases_list_with_search"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_use_cases_with_search_success,
+                expectations_for_datarobot_usecases_list_with_search_success,
                 llm_client,
                 session,
                 test_name,
@@ -159,21 +161,21 @@ class TestUseCaseToolsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_list_use_case_assets(
+    async def test_usecases_list_assets(
         self,
         llm_client: Any,
-        expectations_for_list_use_case_assets_success: ETETestExpectations,
+        expectations_for_usecases_list_assets_success: ETETestExpectations,
         use_case_id: str,
         prompt_template: str,
     ) -> None:
-        """E2E test: LLM lists assets in a use case via list_use_case_assets tool."""
+        """E2E test: LLM lists assets in a use case via usecases_list_assets tool."""
         prompt = prompt_template.format(use_case_id=use_case_id)
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_list_use_case_assets"
+            test_name = frame.f_code.co_name if frame else "test_usecases_list_assets"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_use_case_assets_success,
+                expectations_for_usecases_list_assets_success,
                 llm_client,
                 session,
                 test_name,
