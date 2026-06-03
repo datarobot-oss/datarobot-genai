@@ -14,9 +14,9 @@
 
 import logging
 
+import datarobot as dr
 from fastmcp.tools.tool import Tool
 
-from datarobot_genai.drmcp.core.clients import get_sdk_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tool_of_datarobot_deployment,
 )
@@ -24,6 +24,7 @@ from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ async def register_tool_for_deployment_id(deployment_id: str) -> Tool:
     -------
         The registered Tool instance.
     """
-    deployment = get_sdk_client(headers_auth_only=True).Deployment.get(deployment_id)
+    with request_user_dr_sdk(headers_auth_only=True):
+        deployment = dr.Deployment.get(deployment_id)
     registered_tool = await register_tool_of_datarobot_deployment(deployment)
     if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
         try:

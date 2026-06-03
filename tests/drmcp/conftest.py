@@ -14,6 +14,7 @@
 import os
 from collections.abc import Generator
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -84,12 +85,20 @@ def test_data_dir() -> Path:
 
 
 # Only used for fixtures, the tests use the MCP session directly. No HTTP context in pytest,
-# so build the client from credentials (env). Patch get_sdk_client so code under test gets it too.
+# so build the client from credentials (env). Patch request_user_dr_sdk for code under test.
 @pytest.fixture(scope="session")
 def dr_client() -> Any:
     """Get DataRobot client for integration tests."""
     client = _make_dr_client()
-    with patch("datarobot_genai.drmcp.core.clients.get_sdk_client", return_value=client):
+
+    @contextmanager
+    def _request_user_dr_sdk(*args: Any, **kwargs: Any) -> Any:
+        yield client
+
+    with patch(
+        "datarobot_genai.drtools.core.clients.datarobot.request_user_dr_sdk",
+        side_effect=_request_user_dr_sdk,
+    ):
         yield client
 
 

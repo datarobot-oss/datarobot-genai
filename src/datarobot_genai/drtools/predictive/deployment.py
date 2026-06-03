@@ -17,11 +17,11 @@ import os
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.deployment_utils import MODEL_EXTENSIONS
 from datarobot_genai.drtools.core.deployment_utils import REQUIRED_FILES
 from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
@@ -43,13 +43,12 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_deployments() -> dict[str, Any]:
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    deployments = client.Deployment.list()
-    if not deployments:
-        return {"deployments": []}
-    deployments_dict = {d.id: d.label for d in deployments}
-    return {"deployments": deployments_dict}
+    with ThreadSafeDataRobotClient().request_user_client():
+        deployments = dr.Deployment.list()
+        if not deployments:
+            return {"deployments": []}
+        deployments_dict = {d.id: d.label for d in deployments}
+        return {"deployments": deployments_dict}
 
 
 @tool_metadata(
@@ -67,13 +66,12 @@ async def get_model_info_from_deployment(
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        deployment = client.Deployment.get(deployment_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    return deployment.model
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            deployment = dr.Deployment.get(deployment_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        return deployment.model
 
 
 @tool_metadata(
@@ -97,26 +95,25 @@ async def deploy_model(
     if not label:
         raise ToolError("Model label must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    prediction_servers = client.PredictionServer.list()
-    if not prediction_servers:
-        raise ToolError(
-            "No prediction servers available for deployment.", kind=ToolErrorKind.UPSTREAM
-        )
-    try:
-        deployment = client.Deployment.create_from_learning_model(
-            model_id=model_id,
-            label=label,
-            description=description,
-            default_prediction_server_id=prediction_servers[0].id,
-        )
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    return {
-        "deployment_id": deployment.id,
-        "label": label,
-    }
+    with ThreadSafeDataRobotClient().request_user_client():
+        prediction_servers = dr.PredictionServer.list()
+        if not prediction_servers:
+            raise ToolError(
+                "No prediction servers available for deployment.", kind=ToolErrorKind.UPSTREAM
+            )
+        try:
+            deployment = dr.Deployment.create_from_learning_model(
+                model_id=model_id,
+                label=label,
+                description=description,
+                default_prediction_server_id=prediction_servers[0].id,
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        return {
+            "deployment_id": deployment.id,
+            "label": label,
+        }
 
 
 # TODO: MODEL-23163 - This tool does not support remote MCP deployments, update or remove.
@@ -181,23 +178,22 @@ async def deploy_custom_model(
             "Add a model file to the folder or pass model_file_path.",
             kind=ToolErrorKind.VALIDATION,
         )
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    out = deploy_custom_model_impl(
-        client,
-        model_folder=model_folder,
-        model_file_path=resolved_path,
-        name=name,
-        target_type=target_type,
-        target_name=target_name,
-        positive_class_label=positive_class_label,
-        negative_class_label=negative_class_label,
-        class_labels=class_labels,
-        deployment_label=deployment_label,
-        execution_environment_id=execution_environment_id,
-        description=description,
-    )
-    return out
+    with ThreadSafeDataRobotClient().request_user_client():
+        out = deploy_custom_model_impl(
+            dr,
+            model_folder=model_folder,
+            model_file_path=resolved_path,
+            name=name,
+            target_type=target_type,
+            target_name=target_name,
+            positive_class_label=positive_class_label,
+            negative_class_label=negative_class_label,
+            class_labels=class_labels,
+            deployment_label=deployment_label,
+            execution_environment_id=execution_environment_id,
+            description=description,
+        )
+        return out
 
 
 @tool_metadata(
@@ -220,27 +216,28 @@ async def get_prediction_history(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
+    with ThreadSafeDataRobotClient().request_user_client():
+        rest_client = dr.client.get_client()
 
-    params: dict = {"limit": limit, "offset": offset}
-    if start_time:
-        params["startTime"] = start_time
-    if end_time:
-        params["endTime"] = end_time
+        params: dict = {"limit": limit, "offset": offset}
+        if start_time:
+            params["startTime"] = start_time
+        if end_time:
+            params["endTime"] = end_time
 
-    try:
-        response = rest_client.get(f"deployments/{deployment_id}/predictionResults/", params=params)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    data = response.json()
-    rows = data.get("data", [])
-    next_page = data.get("next")
+        try:
+            response = rest_client.get(
+                f"deployments/{deployment_id}/predictionResults/", params=params
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        data = response.json()
+        rows = data.get("data", [])
+        next_page = data.get("next")
 
-    return {
-        "deployment_id": deployment_id,
-        "row_count": len(rows),
-        "rows": rows,
-        "has_more": next_page is not None,
-    }
+        return {
+            "deployment_id": deployment_id,
+            "row_count": len(rows),
+            "rows": rows,
+            "has_more": next_page is not None,
+        }

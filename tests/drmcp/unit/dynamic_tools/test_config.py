@@ -14,6 +14,7 @@
 
 """Tests for deployment configuration assembly."""
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 import pytest
@@ -77,9 +78,14 @@ def _setup_mocks(monkeypatch, mock_metadata, mock_api_client):
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.config.get_mcp_tool_metadata",
         lambda *args, **kwargs: mock_metadata,
     )
+
+    @contextmanager
+    def _request_user_dr_client(*args, **kwargs):
+        yield mock_api_client
+
     monkeypatch.setattr(
-        "datarobot_genai.drmcp.core.dynamic_tools.deployment.config.get_api_client",
-        lambda *args, **kwargs: mock_api_client,
+        "datarobot_genai.drmcp.core.dynamic_tools.deployment.config.request_user_dr_client",
+        _request_user_dr_client,
     )
 
 

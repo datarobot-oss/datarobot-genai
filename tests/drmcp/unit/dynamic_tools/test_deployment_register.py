@@ -18,9 +18,11 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
 )
 
 
-@patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.register.get_api_client")
+@patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.register.request_user_dr_client")
 @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.register.dr")
-def test_get_datarobot_tool_deployments_filters_tags_correctly(mock_dr, mock_get_api_client):
+def test_get_datarobot_tool_deployments_filters_tags_correctly(
+    mock_dr, mock_request_user_dr_client
+):
     """Test get_datarobot_tool_deployments accurately filters tags with AND logic."""
     mock_deployments_data = [
         # Should be included (has name="tool" and value="tool")
@@ -55,6 +57,7 @@ def test_get_datarobot_tool_deployments_filters_tags_correctly(mock_dr, mock_get
     ]
 
     mock_dr.utils.pagination.unpaginate.return_value = mock_deployments_data
+    mock_rest_client = mock_request_user_dr_client.return_value.__enter__.return_value
 
     result = get_datarobot_tool_deployments()
 
@@ -62,7 +65,8 @@ def test_get_datarobot_tool_deployments_filters_tags_correctly(mock_dr, mock_get
     mock_dr.utils.pagination.unpaginate.assert_called_once_with(
         initial_url="deployments/",
         initial_params={"tag_values": "tool", "tag_keys": "tool"},
-        client=mock_get_api_client(),
+        client=mock_rest_client,
     )
+    mock_request_user_dr_client.assert_called_once_with(headers_auth_only=False)
 
     assert result == ["deployment_1", "deployment_5"]

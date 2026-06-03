@@ -16,10 +16,10 @@ import logging
 import datarobot as dr
 from fastmcp.tools.tool import Tool
 
-from datarobot_genai.drmcp.core.clients import get_api_client
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcp.core.exceptions import DynamicToolRegistrationError
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +78,12 @@ def get_datarobot_tool_deployments() -> list[str]:
     """Fetch deployments from DataRobot that are tagged as 'tool'."""
     # Replace this with dr.Deployment.list when the 3.9.0 version
     # of datarobot python SDK is released.
-    deployments_data = dr.utils.pagination.unpaginate(
-        initial_url="deployments/",
-        initial_params={"tag_values": "tool", "tag_keys": "tool"},
-        client=get_api_client(),
-    )
+    with request_user_dr_client(headers_auth_only=False) as client:
+        deployments_data = dr.utils.pagination.unpaginate(
+            initial_url="deployments/",
+            initial_params={"tag_values": "tool", "tag_keys": "tool"},
+            client=client,
+        )
 
     # The API filters with OR logic for tags, so we need to filter for AND logic
     valid_deployment_ids = []

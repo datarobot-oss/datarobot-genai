@@ -4,9 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.92
+## 0.15.94
 - Surface reasoning/thinking from reasoning models as AG-UI Reasoning events (LangGraph, LlamaIndex DRAgent adapters) and fix the LangGraph crash on list-form `AIMessage.content`.
 - Added `ENABLE_THINKING` / `THINKING_BUDGET_TOKENS` config to opt into extended thinking on thinking-capable models (the LlamaIndex adapter pins `temperature` to 1 when thinking is active, as Anthropic requires), covered by reasoning end-to-end tests and an `e2e-dragent-reasoning` CI job exercising the LangGraph and LlamaIndex agents on `claude-sonnet-4`.
+
+## 0.15.93
+- Per-user DataRobot API access (MODEL-23521): added `request_user_dr_client` and `request_user_dr_sdk` in `drtools.core.clients.datarobot`, both scoped via `client_configuration()` (ContextVar) instead of the global `dr.Client()`, so concurrent MCP tool requests do not share tokens.
+- Removed `drtools.core.rest_client`; consolidated token resolution into `get_datarobot_access_token(*, headers_auth_only=...)` alongside the new context managers.
+- `ThreadSafeDataRobotClient.request_user_client()` replaces `get_client_context_with_token_from_request_header`; predictive, use case, and VDB tools now call the scoped client context.
+- Removed `drmcp.core.clients.get_sdk_client()` and `get_api_client()`; drmcp dynamic tool/prompt registration and deployment controllers use `request_user_dr_sdk` / `request_user_dr_client` from drtools. Public export is `request_user_dr_sdk` (was `get_sdk_client`). `drmcp.core.clients` still provides `RequestHeadersMiddleware` and `setup_and_return_dr_api_client_with_static_config_in_container()` for the container application account (lineage).
+- Refactored `DataRobotClient.get_client()` to use `client_configuration()` (ContextVar-based) instead of the global `dr.Client()`, preventing token mixing between concurrent MCP tool invocations.
+- Added `dr_client()` async context manager to eliminate repeated two-line boilerplate across predictive tool functions.
+
+## 0.15.92
+- `nat/datarobot_moderation_middleware`: `DataRobotModerationMiddleware` loads guard configuration from the inline `moderation` block in `workflow.yaml` when present, otherwise from `moderation_config.yaml` in `model_dir` (defaults to the process working directory). The middleware is a no-op when neither source has guards configured.
 
 ## 0.15.91
 - LangGraph `dr_fs_checkpointer`: renamed `DataRobotFileSystemSaver` to `DataRobotFileSystemCheckpointSaver`.

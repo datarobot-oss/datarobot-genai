@@ -20,13 +20,15 @@ Integration test MCP server.
 This server works standalone (base tools only) or detects and loads
 user modules if they exist in the project structure.
 
-When running under stdio there are no HTTP headers, so get_sdk_client() and
-get_datarobot_access_token() would raise. We patch both to fall back to
-credentials (from env) so integration tests can use DATAROBOT_API_TOKEN
+When running under stdio there are no HTTP headers, so request_user_dr_sdk()
+and get_datarobot_access_token() would raise. We patch token resolution to fall
+back to credentials (from env) so integration tests can use DATAROBOT_API_TOKEN
 without injecting headers.
 """
 
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -35,11 +37,8 @@ from unittest.mock import Mock
 
 import datarobot as dr
 import datarobot_predict.deployment as _dr_predict_deployment
-from datarobot.context import Context as DRContext
 
 from datarobot_genai.drmcp import create_mcp_server
-from datarobot_genai.drmcp.core import clients
-from datarobot_genai.drmcp.core.clients import get_sdk_client as _original_get_sdk_client
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
 from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
@@ -117,8 +116,9 @@ def detect_user_modules() -> Any:
     return None
 
 
-async def _get_datarobot_access_token_stdio_fallback() -> str:
+def _get_datarobot_access_token_stdio_fallback(*, headers_auth_only: bool = True) -> str:
     """Return DataRobot token from credentials for stdio (no headers)."""
+    del headers_auth_only  # stdio has no headers; always use application credentials.
     creds = get_credentials()
     token = creds.datarobot.application_api_token
     if not token:
@@ -128,24 +128,28 @@ async def _get_datarobot_access_token_stdio_fallback() -> str:
     return token
 
 
-def _patch_get_sdk_client_for_stdio() -> None:
-    """Patch get_sdk_client and get_datarobot_access_token for stdio (no headers)."""
-    from datarobot_genai.drmcp.core import clients
-    from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
+@contextmanager
+def _stub_thread_safe_request_user_client(
+    self: Any, *, headers_auth_only: bool = True
+) -> Generator[MagicMock, None, None]:
+    del headers_auth_only
+    """No-op stub for ThreadSafeDataRobotClient.request_user_client.
 
-    def get_sdk_client_with_credentials_fallback(headers_auth_only: bool = False) -> Any:
-        try:
-            return _original_get_sdk_client(headers_auth_only=headers_auth_only)
-        except ValueError:
-            creds = get_credentials()
-            token = creds.datarobot.application_api_token
-            if not token:
-                raise
-            dr.Client(token=token, endpoint=creds.datarobot.endpoint)
-            DRContext.use_case = None
-            return dr
+    Tools use dr.X.Y() directly inside the with block; the real SDK classes are
+    monkey-patched in _apply_dr_client_stubs so no actual HTTP calls are made.
+    """
+    yield MagicMock()
 
-    clients.get_sdk_client = get_sdk_client_with_credentials_fallback
+
+@contextmanager
+def _stub_request_user_dr_sdk(*, headers_auth_only: bool = True) -> Generator[Any, None, None]:
+    del headers_auth_only
+    """No-op stub for request_user_dr_sdk; SDK classes are stubbed globally."""
+    yield dr
+
+
+def _patch_datarobot_token_for_stdio() -> None:
+    """Patch get_datarobot_access_token for stdio (no headers)."""
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
 
 
@@ -167,10 +171,24 @@ def apply_lineage_manager_stubs() -> None:
     FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user = AsyncMock()  # type: ignore[assignment]
 
 
+def _apply_dr_sdk_stubs(stub_dr: Any, mock_rest: MagicMock) -> None:
+    """Monkey-patch datarobot SDK entry points used by ThreadSafeDataRobotClient tools."""
+    dr.Project.get = stub_dr.Project.get  # type: ignore[method-assign]
+    dr.Model.get = stub_dr.Model.get  # type: ignore[method-assign]
+    dr.Deployment.get = stub_dr.Deployment.get  # type: ignore[method-assign]
+    dr.Dataset.get = stub_dr.Dataset.get  # type: ignore[method-assign]
+    dr.Dataset.list = stub_dr.Dataset.list  # type: ignore[method-assign]
+    dr.Dataset.iterate = stub_dr.Dataset.iterate  # type: ignore[method-assign]
+    dr.DataStore.list = stub_dr.DataStore.list  # type: ignore[method-assign]
+    dr.UseCase.get = stub_dr.UseCase.get  # type: ignore[method-assign]
+    dr.BatchPredictionJob = stub_dr.BatchPredictionJob  # type: ignore[misc]
+    dr.client.get_client = lambda: mock_rest  # type: ignore[method-assign]
+
+
 def _apply_dr_client_stubs() -> None:
     """Replace the real DataRobot client with stubs (patches token + client for stdio)."""
     stub_dr = test_create_dr_client()
-    # get_api_client() does dr.client.get_client(); stub must have that for prompt registration.
+    # request_user_dr_client() uses dr.client.get_client(); stub needs that for prompts.
     # dr.utils.pagination.unpaginate expects client.get(...).json()
     # to return {"data": [...], "next": url or None}.
     # Return empty page so registration finishes immediately instead of hanging.
@@ -184,9 +202,11 @@ def _apply_dr_client_stubs() -> None:
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
-    clients.get_sdk_client = lambda *args, **kwargs: stub_dr
-    tools_datarobot_client.DataRobotClient.get_client = lambda self: stub_dr  # type: ignore[method-assign]
-    # Tools call get_datarobot_access_token() before DataRobotClient; patch for stdio (no headers).
+    _apply_dr_sdk_stubs(stub_dr, mock_rest)
+
+    tools_datarobot_client.request_user_dr_sdk = _stub_request_user_dr_sdk
+    thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
+    thread_safe_client.request_user_client = _stub_thread_safe_request_user_client  # type: ignore[method-assign]
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()
     _apply_prompt_stubs()
@@ -198,7 +218,7 @@ def main() -> None:
         _apply_dr_client_stubs()
         apply_lineage_manager_stubs()
     elif os.environ.get("MCP_SERVER_NAME") == "integration":
-        _patch_get_sdk_client_for_stdio()
+        _patch_datarobot_token_for_stdio()
 
     # Try to detect and load user modules
     user_components = detect_user_modules()
