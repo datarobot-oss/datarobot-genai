@@ -18,11 +18,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
@@ -58,22 +58,20 @@ async def list_vector_databases(
 
     limit, message = clamp_limit(limit)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
-
     params: dict[str, Any] = {"limit": limit, "modelTargetType": "VectorDatabase"}
     if offset is not None:
         params["offset"] = offset
 
-    try:
-        response = rest_client.get("deployments/", params=params)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    api_response = response.json()
-    vdbs = api_response.get("data", [])
-    if not isinstance(vdbs, list):
-        vdbs = []
+    with ThreadSafeDataRobotClient().request_user_client():
+        rest_client = dr.client.get_client()
+        try:
+            response = rest_client.get("deployments/", params=params)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        api_response = response.json()
+        vdbs = api_response.get("data", [])
+        if not isinstance(vdbs, list):
+            vdbs = []
 
     final_results: dict[str, Any] = {
         "vector_databases": [
@@ -118,24 +116,23 @@ async def query_vector_database(
     if not query:
         raise ToolError("Query must be provided", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    dr_module = DataRobotClient(token).get_client()
-    rest_client = dr_module.client.get_client()
-
     payload: dict[str, Any] = {
         "query": query,
         "num_results": num_results,
         "retrieval_mode": retrieval_mode,
     }
-    try:
-        response = rest_client.post(
-            f"deployments/{deployment_id}/predictions/",
-            json=payload,
-        )
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    data = response.json()
-    documents = data if isinstance(data, list) else data.get("data", [])
+
+    with ThreadSafeDataRobotClient().request_user_client():
+        rest_client = dr.client.get_client()
+        try:
+            response = rest_client.post(
+                f"deployments/{deployment_id}/predictions/",
+                json=payload,
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        data = response.json()
+        documents = data if isinstance(data, list) else data.get("data", [])
 
     return {
         "deployment_id": deployment_id,

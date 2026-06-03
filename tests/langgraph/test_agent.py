@@ -849,3 +849,174 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
     # ToolMessage filtered out; order preserved
     msgs = sample.user_input
     assert len(msgs) == 2
+
+
+def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
+    # AIMessage with list-form content (thinking + text) previously crashed ragas
+    # with TypeError("AIMessage content must be a string, got list").
+    ai_with_thinking = AIMessage(
+        content=[
+            {"type": "thinking", "thinking": "let me think about it"},
+            {"type": "text", "text": "here is the answer"},
+        ]
+    )
+    human = HumanMessage(content="hi")
+    events: list[dict[str, Any]] = [
+        {"node1": {"messages": [human, ai_with_thinking]}},
+    ]
+
+    sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
+
+    assert sample is not None
+    # Thinking content is stripped before ragas validates; only the text portion remains.
+    serialized = " ".join(str(getattr(m, "content", "")) for m in sample.user_input)
+    assert "let me think about it" not in serialized
+    assert "here is the answer" in serialized
+
+
+def _agent_yielding(chunks):
+    """Return an agent whose graph emits the given list of message-mode payloads."""
+
+    class _Agent(SimpleLangGraphAgent):
+        @cached_property
+        def workflow(self) -> StateGraph[MessagesState]:
+            async def gen():
+                for chunk in chunks:
+                    yield ("node", "messages", (chunk, {}))
+
+            return Mock(compile=Mock(return_value=Mock(astream=Mock(return_value=gen()))))
+
+    return _Agent()
+
+
+async def _collect_events(agent, run_agent_input):
+    out = []
+    async for response_event, _, _ in agent.invoke(run_agent_input):
+        if isinstance(response_event, BaseEvent):
+            out.append(response_event)
+    return out
+
+
+@pytest.mark.asyncio
+async def test_stream_thinking_blocks_emit_reasoning_chunks(run_agent_input):
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(content=[{"type": "thinking", "thinking": "step 1 "}], id="m1"),
+            AIMessageChunk(content=[{"type": "thinking", "thinking": "step 2 "}], id="m1"),
+            AIMessageChunk(content=[{"type": "thinking", "thinking": "step 3"}], id="m1"),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    # One self-contained chunk event per thinking delta; no lifecycle wrapping.
+    assert types.count(EventType.REASONING_MESSAGE_CHUNK) == 3
+    # No text events.
+    assert EventType.TEXT_MESSAGE_START not in types
+    assert EventType.TEXT_MESSAGE_CONTENT not in types
+
+    deltas = [e.delta for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK]
+    assert deltas == ["step 1 ", "step 2 ", "step 3"]
+    # Each chunk carries the message id.
+    message_ids = {e.message_id for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK}
+    assert message_ids == {"m1"}
+
+
+@pytest.mark.asyncio
+async def test_stream_thinking_then_text(run_agent_input):
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(content=[{"type": "thinking", "thinking": "thinking..."}], id="m1"),
+            AIMessageChunk(content=[{"type": "text", "text": "answer"}], id="m1"),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    # Reasoning chunks appear before the text lifecycle opens.
+    assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
+        EventType.TEXT_MESSAGE_START
+    )
+
+    text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
+    assert text_deltas == ["answer"]
+
+
+@pytest.mark.asyncio
+async def test_stream_text_then_thinking(run_agent_input):
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(content=[{"type": "text", "text": "speaking..."}], id="m1"),
+            AIMessageChunk(content=[{"type": "thinking", "thinking": "now reasoning"}], id="m1"),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    # Text lifecycle opens before the reasoning chunk appears.
+    assert types.index(EventType.TEXT_MESSAGE_START) < types.index(
+        EventType.REASONING_MESSAGE_CHUNK
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_mixed_blocks_in_one_chunk(run_agent_input):
+    # Iteration order within a chunk preserves block order: thinking then text.
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(
+                content=[
+                    {"type": "thinking", "thinking": "thought"},
+                    {"type": "text", "text": "reply"},
+                ],
+                id="m1",
+            ),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
+        EventType.TEXT_MESSAGE_START
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_reasoning_content_kwarg_emits_reasoning_chunks(run_agent_input):
+    # Case B: OpenAI-compatible flat shape produced by the DR LLM gateway.
+    # Pure-reasoning chunks arrive with empty content and reasoning_content in
+    # additional_kwargs. The streaming guard must enter the branch for these.
+    agent = _agent_yielding(
+        [
+            AIMessageChunk(
+                content="",
+                additional_kwargs={"reasoning_content": "step 1 "},
+                id="m1",
+            ),
+            AIMessageChunk(
+                content="",
+                additional_kwargs={"reasoning_content": "step 2"},
+                id="m1",
+            ),
+            AIMessageChunk(content="answer", id="m1"),
+        ]
+    )
+
+    events = await _collect_events(agent, run_agent_input)
+    types = [e.type for e in events]
+
+    assert types.count(EventType.REASONING_MESSAGE_CHUNK) == 2
+    reasoning_deltas = [e.delta for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK]
+    assert reasoning_deltas == ["step 1 ", "step 2"]
+
+    # Reasoning is emitted before the text lifecycle opens.
+    assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
+        EventType.TEXT_MESSAGE_START
+    )
+
+    text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
+    assert text_deltas == ["answer"]

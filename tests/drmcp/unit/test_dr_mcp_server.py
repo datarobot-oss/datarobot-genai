@@ -108,12 +108,12 @@ class TestDataRobotMCPServer:
         "datarobot_genai.drmcp.core.dynamic_tools.deployment.register.get_datarobot_tool_deployments"
     )
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.register.dr.Deployment.get")
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.config.get_api_client")
+    @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.config.request_user_dr_client")
     @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.config.get_mcp_tool_metadata")
     def test_run_with_dynamic_tool_registration(
         self,
         mock_get_mcp_tool_metadata,
-        mock_get_api_client,
+        mock_request_user_dr_client,
         mock_deployment_get,
         mock_get_mcp_tool_deployments,
         mock_get_config,
@@ -125,10 +125,11 @@ class TestDataRobotMCPServer:
         mock_config.mcp_server_register_dynamic_tools_on_startup = True
         mock_config.mcp_server_register_dynamic_prompts_on_startup = False
         mock_get_config.return_value = mock_config
-        mock_get_api_client.return_value = MagicMock(
+        mock_request_user_dr_client.return_value.__enter__.return_value = MagicMock(
             endpoint="https://test.datarobot.com/api/v2/",
             token="fake-test-token",
         )
+        mock_request_user_dr_client.return_value.__exit__.return_value = False
 
         # setup mock deployment objects
         mock_deployment1 = MagicMock(

@@ -24,6 +24,7 @@ from typing import Any
 from typing import cast
 
 from ag_ui.core import EventType
+from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -55,6 +56,32 @@ if TYPE_CHECKING:
     from ragas import MultiTurnSample
 
 logger = logging.getLogger(__name__)
+
+
+def _thinking_delta_from_raw(raw: Any) -> str | None:
+    """Extract this chunk's incremental ``reasoning_content`` from a LiteLLM stream chunk.
+
+    LlamaIndex's stock ``llama_index.llms.litellm`` wrapper copies only ``content`` and
+    ``tool_calls`` off the streaming delta, dropping ``reasoning_content``. We recover it
+    from the raw chunk — handling both the live object form and a ``model_dump``'d dict —
+    so reasoning models (Qwen extended thinking, Claude, etc.) surface their thinking.
+    Returns ``None`` when no (non-empty) reasoning is present.
+    """
+    if raw is None:
+        return None
+    choices = raw.get("choices") if isinstance(raw, dict) else getattr(raw, "choices", None)
+    if not choices:
+        return None
+    first = choices[0]
+    delta = first.get("delta") if isinstance(first, dict) else getattr(first, "delta", None)
+    if delta is None:
+        return None
+    reasoning = (
+        delta.get("reasoning_content")
+        if isinstance(delta, dict)
+        else getattr(delta, "reasoning_content", None)
+    )
+    return reasoning or None
 
 
 class DataRobotLiteLLM(LiteLLM):
@@ -197,6 +224,24 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 # Fresh id for the new step's first text bubble.
                 message_id = str(uuid.uuid4())
                 logger.info(f"Agent: {current_agent_name}")
+
+            # Reasoning models surface incremental thinking on AgentStream.thinking_delta
+            # when the LLM integration populates it; the stock litellm wrapper does not, so
+            # fall back to the raw LiteLLM chunk (event.raw). Emit as a self-contained AG-UI
+            # reasoning chunk before any text for this event.
+            thinking_delta = getattr(event, "thinking_delta", None) or _thinking_delta_from_raw(
+                getattr(event, "raw", None)
+            )
+            if thinking_delta:
+                yield (
+                    ReasoningMessageChunkEvent(
+                        type=EventType.REASONING_MESSAGE_CHUNK,
+                        message_id=message_id,
+                        delta=thinking_delta,
+                    ),
+                    None,
+                    usage_metrics,
+                )
 
             # Best-effort extraction of incremental text from LlamaIndex events
             delta: str | None = None

@@ -13,15 +13,16 @@
 # limitations under the License.
 
 import json
-from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import datarobot as dr
 import polars as pl
 import pytest
 from datarobot.errors import ClientError
 
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import model
@@ -29,33 +30,16 @@ from datarobot_genai.drtools.predictive.model import ModelEncoder
 from datarobot_genai.drtools.predictive.model import model_to_dict
 
 
-def _patch_model_client(mock_client: MagicMock):
-    """Return (patch get_datarobot_access_token, patch DataRobotClient).
-    Use: with p1, p2 as mock_drc.
-    """
-    return (
-        patch(
-            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.model.DataRobotClient"),
-    )
-
-
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_success() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
     mock_model2 = MagicMock(
         id="m2", model_type="Random Forest", metrics={"AUC": {"validation": 0.8}}
     )
     mock_project.get_models.return_value = [mock_model1, mock_model2]
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=mock_project):
         result = await model.get_best_model(project_id="pid", metric="AUC")
     assert isinstance(result, dict)
     assert result["project_id"] == "pid"
@@ -65,40 +49,35 @@ async def test_get_best_model_success() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_no_models() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=mock_project):
         with pytest.raises(ToolError, match="No models found for this project."):
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_project_not_found() -> None:
-    mock_client = MagicMock()
-    mock_client.Project.get.return_value = None
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=None):
         with pytest.raises(ToolError, match="Project with ID pid not found."):
             await model.get_best_model(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_best_model_project_client_error_404() -> None:
-    mock_client = MagicMock()
-    mock_client.Project.get.side_effect = ClientError(
-        "404 client error: {'message': 'Not Found'}",
-        status_code=404,
-        json={"message": "Not Found"},
-    )
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(
+        dr.Project,
+        "get",
+        side_effect=ClientError(
+            "404 client error: {'message': 'Not Found'}",
+            status_code=404,
+            json={"message": "Not Found"},
+        ),
+    ):
         with pytest.raises(ToolError) as exc_info:
             await model.get_best_model(project_id="missing-proj", metric="AUC")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
@@ -107,9 +86,9 @@ async def test_get_best_model_project_client_error_404() -> None:
 
 @pytest.mark.asyncio
 async def test_get_best_model_error() -> None:
-    with patch(
-        "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-        new_callable=AsyncMock,
+    with patch.object(
+        ThreadSafeDataRobotClient,
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -118,18 +97,15 @@ async def test_get_best_model_error() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_success() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
     mock_model2 = MagicMock(
         id="m2", model_type="Random Forest", metrics={"AUC": {"validation": 0.8}}
     )
     mock_project.get_model_records.return_value = [mock_model1, mock_model2]
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=mock_project):
         result = await model.list_models(project_id="pid")
     mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
     assert result["project_id"] == "pid"
@@ -141,14 +117,11 @@ async def test_list_models_success() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_pagination_offset_limit() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = []
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=mock_project):
         result = await model.list_models(project_id="pid", offset=25, limit=10)
     mock_project.get_model_records.assert_called_once_with(limit=10, offset=25)
     assert result["offset"] == 25
@@ -164,14 +137,11 @@ async def test_list_models_negative_offset() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_list_models_clamp_limit_applies_note() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = [MagicMock(id="m1", model_type="T", metrics={})]
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Project, "get", return_value=mock_project):
         result = await model.list_models(project_id="pid", limit=500)
     mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
     assert result["limit"] == 100
@@ -180,8 +150,8 @@ async def test_list_models_clamp_limit_applies_note() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_success() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_dr_model = MagicMock()
     mock_job = MagicMock(id="jobid")
@@ -189,23 +159,22 @@ async def test_score_dataset_with_model_success() -> None:
     mock_catalog_ds.id = "catalog_ds"
     mock_prediction_ds = MagicMock()
     mock_prediction_ds.id = "pred_ds_uploaded"
-    mock_client.Dataset.get.return_value = mock_catalog_ds
     mock_project.upload_dataset_from_catalog.return_value = mock_prediction_ds
     mock_dr_model.request_predictions.return_value = mock_job
     mock_dr_model.model_type = "type1"
     mock_dr_model.metrics = {"AUC": 0.9}
-    mock_client.Model.get.return_value = mock_dr_model
-    mock_client.Project.get.return_value = mock_project
-    p1, p2 = _patch_model_client(mock_client)
     ds_id = "catalog_ds"
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project) as mock_project_get,
+        patch.object(dr.Model, "get", return_value=mock_dr_model) as mock_model_get,
+        patch.object(dr.Dataset, "get", return_value=mock_catalog_ds) as mock_dataset_get,
+    ):
         result = await model.score_dataset_with_model(
             project_id="pid", model_id="mid", dataset_id=ds_id
         )
-    mock_client.Project.get.assert_called_once_with("pid")
-    mock_client.Model.get.assert_called_once_with(mock_project, "mid")
-    mock_client.Dataset.get.assert_called_once_with(ds_id)
+    mock_project_get.assert_called_once_with("pid")
+    mock_model_get.assert_called_once_with(mock_project, "mid")
+    mock_dataset_get.assert_called_once_with(ds_id)
     mock_project.upload_dataset_from_catalog.assert_called_once_with(dataset_id="catalog_ds")
     mock_dr_model.request_predictions.assert_called_once_with(dataset_id="pred_ds_uploaded")
     assert isinstance(result, dict)
@@ -225,17 +194,18 @@ async def test_score_dataset_with_model_empty_dataset_id() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_project_not_found() -> None:
     project_id = "pid"
-    mock_client = MagicMock()
-    mock_client.Project.get.side_effect = ClientError(
-        "404 client error: {'message': 'Not Found'}",
-        status_code=404,
-        json={"message": "Not Found"},
-    )
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(
+        dr.Project,
+        "get",
+        side_effect=ClientError(
+            "404 client error: {'message': 'Not Found'}",
+            status_code=404,
+            json={"message": "Not Found"},
+        ),
+    ):
         with pytest.raises(ToolError) as exc_info:
             await model.score_dataset_with_model(
                 project_id=project_id,
@@ -247,19 +217,22 @@ async def test_score_dataset_with_model_project_not_found() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_model_not_found() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
-    mock_client.Project.get.return_value = mock_project
-    mock_client.Model.get.side_effect = ClientError(
-        "404 client error: {'message': 'Leaderboard Item Not Found'}",
-        status_code=404,
-        json={"message": "Leaderboard Item Not Found"},
-    )
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(
+            dr.Model,
+            "get",
+            side_effect=ClientError(
+                "404 client error: {'message': 'Leaderboard Item Not Found'}",
+                status_code=404,
+                json={"message": "Leaderboard Item Not Found"},
+            ),
+        ),
+    ):
         with pytest.raises(ToolError) as exc_info:
             await model.score_dataset_with_model(
                 project_id="pid",
@@ -270,16 +243,17 @@ async def test_score_dataset_with_model_model_not_found() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> None:
-    mock_client = MagicMock()
-    mock_client.Project.get.side_effect = ClientError(
-        "503: service unavailable",
-        status_code=503,
-        json={},
-    )
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(
+        dr.Project,
+        "get",
+        side_effect=ClientError(
+            "503: service unavailable",
+            status_code=503,
+            json={},
+        ),
+    ):
         with pytest.raises(ToolError) as exc_info:
             await model.score_dataset_with_model(
                 project_id="pid",
@@ -291,9 +265,9 @@ async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> No
 
 @pytest.mark.asyncio
 async def test_score_dataset_with_model_error() -> None:
-    with patch(
-        "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-        new_callable=AsyncMock,
+    with patch.object(
+        ThreadSafeDataRobotClient,
+        "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
@@ -306,8 +280,8 @@ async def test_score_dataset_with_model_error() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_model_details_success() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
@@ -319,11 +293,10 @@ async def test_get_model_details_success() -> None:
         sample_pct=64,
     )
     mock_model.get_or_request_feature_impact.return_value = [{"feature": "f1", "impact": 0.8}]
-    mock_client.Project.get.return_value = mock_project
-    mock_client.Model.get.return_value = mock_model
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(dr.Model, "get", return_value=mock_model),
+    ):
         result = await model.get_model_details(project_id="pid", model_id="mid")
     assert isinstance(result, dict)
     assert result["model_id"] == "mid"
@@ -346,18 +319,17 @@ async def test_get_model_details_missing_model_id() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_get_model_details_feature_impact_error() -> None:
-    mock_client = MagicMock()
     mock_project = MagicMock()
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
     mock_model = MagicMock(id="mid", model_type="XGBoost", metrics={}, sample_pct=64)
     mock_model.get_or_request_feature_impact.side_effect = Exception("not available")
-    mock_client.Project.get.return_value = mock_project
-    mock_client.Model.get.return_value = mock_model
-    p1, p2 = _patch_model_client(mock_client)
-    with p1, p2 as mock_drc:
-        mock_drc.return_value.get_client.return_value = mock_client
+    with (
+        patch.object(dr.Project, "get", return_value=mock_project),
+        patch.object(dr.Model, "get", return_value=mock_model),
+    ):
         result = await model.get_model_details(
             project_id="pid", model_id="mid", include_feature_impact=True
         )
@@ -365,8 +337,8 @@ async def test_get_model_details_feature_impact_error() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_is_eligible_for_timeseries_training_success() -> None:
-    mock_client = MagicMock()
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
     dates = pl.date_range(
@@ -380,16 +352,7 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
         }
     ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
-    mock_client.Dataset.get.return_value = mock_dataset
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await model.is_eligible_for_timeseries_training(
             dataset_id="ds1", datetime_column="date", target_column="target"
         )
@@ -398,8 +361,8 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_request_user_client")
 async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
-    mock_client = MagicMock()
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
     dates = pl.date_range(
@@ -412,16 +375,7 @@ async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
         }
     ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
-    mock_client.Dataset.get.return_value = mock_dataset
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
+    with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         result = await model.is_eligible_for_timeseries_training(
             dataset_id="ds1", datetime_column="date", target_column="target"
         )
@@ -438,32 +392,23 @@ async def test_is_eligible_for_timeseries_training_missing_params() -> None:
 
 
 def _build_dataset_mock(pandas_df) -> MagicMock:
-    mock_client = MagicMock()
     mock_dataset = MagicMock()
     mock_dataset.get_as_dataframe.return_value = pandas_df
-    mock_client.Dataset.get.return_value = mock_dataset
-    return mock_client
+    return mock_dataset
 
 
 async def _run_eligibility(
     pandas_df, *, datetime_column="date", target_column="target", series_id_column=None
 ):
-    mock_client = _build_dataset_mock(pandas_df)
-    with (
-        patch(
-            "datarobot_genai.drtools.predictive.model.get_datarobot_access_token",
-            new_callable=AsyncMock,
-            return_value="token",
-        ),
-        patch("datarobot_genai.drtools.predictive.model.DataRobotClient") as mock_drc,
-    ):
-        mock_drc.return_value.get_client.return_value = mock_client
-        return await model.is_eligible_for_timeseries_training(
-            dataset_id="ds1",
-            datetime_column=datetime_column,
-            target_column=target_column,
-            series_id_column=series_id_column,
-        )
+    mock_dataset = _build_dataset_mock(pandas_df)
+    with patch.object(ThreadSafeDataRobotClient, "request_user_client"):
+        with patch.object(dr.Dataset, "get", return_value=mock_dataset):
+            return await model.is_eligible_for_timeseries_training(
+                dataset_id="ds1",
+                datetime_column=datetime_column,
+                target_column=target_column,
+                series_id_column=series_id_column,
+            )
 
 
 @pytest.mark.asyncio

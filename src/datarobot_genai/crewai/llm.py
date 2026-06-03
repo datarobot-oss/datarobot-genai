@@ -21,6 +21,7 @@ from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.core.config import apply_default_thinking
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
@@ -52,6 +53,7 @@ class LitellmStopWordLLM(LLM):
 
 
 def _crewai_model_factory(config: dict) -> LLM:
+    apply_default_thinking(config)
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
     # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
     # Multiple config types (Deployment, Component, Litellm) flow through here.

@@ -17,11 +17,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
@@ -112,21 +112,20 @@ async def predict_by_ai_catalog(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        dataset = client.Dataset.get(dataset_id)
-        job = client.BatchPredictionJob.score(
-            deployment=deployment_id,
-            intake_settings={  # type: ignore[arg-type]
-                "type": "dataset",
-                "dataset": dataset,
-            },
-            output_settings=None,
-        )
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    return _batch_job_submitted_payload(job, deployment_id, f"Scoring dataset {dataset_id}.")
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            dataset = dr.Dataset.get(dataset_id)
+            job = dr.BatchPredictionJob.score(
+                deployment=deployment_id,
+                intake_settings={  # type: ignore[arg-type]
+                    "type": "dataset",
+                    "dataset": dataset,
+                },
+                output_settings=None,
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        return _batch_job_submitted_payload(job, deployment_id, f"Scoring dataset {dataset_id}.")
 
 
 @tool_metadata(
@@ -175,25 +174,24 @@ async def predict_from_project_data(
             "Argument validation error: 'partition' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    intake_settings: dict[str, Any] = {
-        "type": "dss",
-        "project_id": project_id,
-    }
-    if partition:
-        intake_settings["partition"] = partition
-    if dataset_id:
-        intake_settings["dataset_id"] = dataset_id
-    try:
-        job = client.BatchPredictionJob.score(
-            deployment=deployment_id,
-            intake_settings=intake_settings,  # type: ignore[arg-type]
-            output_settings=None,
-        )
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    return _batch_job_submitted_payload(job, deployment_id, f"Scoring project {project_id}.")
+    with ThreadSafeDataRobotClient().request_user_client():
+        intake_settings: dict[str, Any] = {
+            "type": "dss",
+            "project_id": project_id,
+        }
+        if partition:
+            intake_settings["partition"] = partition
+        if dataset_id:
+            intake_settings["dataset_id"] = dataset_id
+        try:
+            job = dr.BatchPredictionJob.score(
+                deployment=deployment_id,
+                intake_settings=intake_settings,  # type: ignore[arg-type]
+                output_settings=None,
+            )
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        return _batch_job_submitted_payload(job, deployment_id, f"Scoring project {project_id}.")
 
 
 @tool_metadata(
@@ -219,37 +217,36 @@ async def get_batch_prediction_job_status(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        job = client.BatchPredictionJob.get(job_id.strip())
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    status = job.get_status()
-    st = status.get("status")
-    if st in _TERMINAL_FAILURE_STATUSES:
-        details = status.get("status_details", "")
-        raise ToolError(
-            f"Batch prediction job failed: status={st!r} details={details!r}",
-            kind=ToolErrorKind.UPSTREAM,
-        )
-    download_url = status.get("links", {}).get("download")
-    output_settings = (status.get("job_spec") or {}).get("output_settings") or {}
-    out_type = output_settings.get("type")
-    if out_type and out_type != "localFile":
-        raise ToolError(
-            "Batch job output is not local file streaming; there is no download URL for this "
-            f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
-            kind=ToolErrorKind.UPSTREAM,
-        )
-    return {
-        "job_id": job.id,
-        "batch_job_status": st,
-        "url": download_url,
-        "percentage_completed": status.get("percentage_completed"),
-        "elapsed_time_sec": status.get("elapsed_time_sec"),
-        "status_details": status.get("status_details"),
-    }
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            job = dr.BatchPredictionJob.get(job_id.strip())
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        status = job.get_status()
+        st = status.get("status")
+        if st in _TERMINAL_FAILURE_STATUSES:
+            details = status.get("status_details", "")
+            raise ToolError(
+                f"Batch prediction job failed: status={st!r} details={details!r}",
+                kind=ToolErrorKind.UPSTREAM,
+            )
+        download_url = status.get("links", {}).get("download")
+        output_settings = (status.get("job_spec") or {}).get("output_settings") or {}
+        out_type = output_settings.get("type")
+        if out_type and out_type != "localFile":
+            raise ToolError(
+                "Batch job output is not local file streaming; there is no download URL for this "
+                f"output type ({out_type!r}). Use the configured sink (e.g. JDBC/S3) instead.",
+                kind=ToolErrorKind.UPSTREAM,
+            )
+        return {
+            "job_id": job.id,
+            "batch_job_status": st,
+            "url": download_url,
+            "percentage_completed": status.get("percentage_completed"),
+            "elapsed_time_sec": status.get("elapsed_time_sec"),
+            "status_details": status.get("status_details"),
+        }
 
 
 @tool_metadata(
@@ -275,45 +272,44 @@ async def get_batch_prediction_results(
             "Argument validation error: 'job_id' cannot be empty.", kind=ToolErrorKind.VALIDATION
         )
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        job = client.BatchPredictionJob.get(job_id.strip())
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    download_url = _batch_job_download_url(job)
-    buf = io.BytesIO()
-    try:
-        job.download(buf, timeout=download_timeout, read_timeout=download_read_timeout)
-    except RuntimeError as e:
-        raise _tool_error_with_batch_url(
-            str(e), download_url or _batch_job_download_url(job)
-        ) from e
-    except Exception as e:
-        raise _tool_error_with_batch_url(
-            f"Failed to download batch prediction results: {e}",
-            download_url or _batch_job_download_url(job),
-        ) from e
-    raw = buf.getvalue()
-    if len(raw) > MAX_INLINE_SIZE:
-        url = download_url or _batch_job_download_url(job)
-        raise _tool_error_with_batch_url(
-            f"Downloaded CSV is {len(raw)} bytes, exceeding the inline limit "
-            f"of {MAX_INLINE_SIZE} bytes. "
-            "Fetch with DataRobot API authentication or run batch scoring with smaller data.",
-            url,
-        )
-    try:
-        data = raw.decode("utf-8")
-    except UnicodeDecodeError as e:
-        raise _tool_error_with_batch_url(
-            "Batch prediction CSV is not valid UTF-8.",
-            download_url or _batch_job_download_url(job),
-        ) from e
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            job = dr.BatchPredictionJob.get(job_id.strip())
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        download_url = _batch_job_download_url(job)
+        buf = io.BytesIO()
+        try:
+            job.download(buf, timeout=download_timeout, read_timeout=download_read_timeout)
+        except RuntimeError as e:
+            raise _tool_error_with_batch_url(
+                str(e), download_url or _batch_job_download_url(job)
+            ) from e
+        except Exception as e:
+            raise _tool_error_with_batch_url(
+                f"Failed to download batch prediction results: {e}",
+                download_url or _batch_job_download_url(job),
+            ) from e
+        raw = buf.getvalue()
+        if len(raw) > MAX_INLINE_SIZE:
+            url = download_url or _batch_job_download_url(job)
+            raise _tool_error_with_batch_url(
+                f"Downloaded CSV is {len(raw)} bytes, exceeding the inline limit "
+                f"of {MAX_INLINE_SIZE} bytes. "
+                "Fetch with DataRobot API authentication or run batch scoring with smaller data.",
+                url,
+            )
+        try:
+            data = raw.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise _tool_error_with_batch_url(
+                "Batch prediction CSV is not valid UTF-8.",
+                download_url or _batch_job_download_url(job),
+            ) from e
 
-    return {
-        "job_id": job.id,
-        "mime_type": "text/csv",
-        "size_bytes": len(raw),
-        "data": data,
-    }
+        return {
+            "job_id": job.id,
+            "mime_type": "text/csv",
+            "size_bytes": len(raw),
+            "data": data,
+        }
