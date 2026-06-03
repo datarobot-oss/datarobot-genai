@@ -18,8 +18,8 @@ The runner that executes user code *inside* the sandbox image is owned by
 ``datarobot/datarobot-user-models`` (``public_dropin_environments/
 dr_mcp_execute_sandbox_minimal/runner.py``, PR
 datarobot/datarobot-user-models#2137). That runner and this module are the
-two ends of a small protocol shared by every container-backed sandbox
-(:class:`DataRobotWorkloadSandbox`, :class:`LocalDockerSandbox`):
+two ends of a small protocol used by the container-backed sandbox
+(:class:`DataRobotWorkloadSandbox`):
 
 - The runner emits its return value as a final stdout line prefixed with
   :data:`RESULT_MARKER`; :func:`parse_result_marker` strips and decodes it.

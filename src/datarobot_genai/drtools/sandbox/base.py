@@ -115,37 +115,14 @@ class SandboxSecurityContext(BaseModel):
 
         return payload
 
-    def to_docker_run_args(self) -> list[str]:
-        """Translate to ``docker run`` flags (mirrors :meth:`to_workload_api_dict`).
-
-        Returns a flat arg list so a local container sandbox
-        (:class:`LocalDockerSandbox`) can apply the same hardening the
-        workload-api enforces: read-only rootfs, dropped/added capabilities,
-        no-new-privileges, and a seccomp profile. ``RuntimeDefault`` maps to
-        Docker's built-in default profile (no flag); ``Localhost`` is treated
-        as the default here since a local profile path isn't available.
-        """
-        args: list[str] = []
-        if self.read_only_root_filesystem:
-            args.append("--read-only")
-        for cap in self.capabilities_drop:
-            args += ["--cap-drop", cap]
-        for cap in self.capabilities_add:
-            args += ["--cap-add", cap]
-        if not self.allow_privilege_escalation:
-            args += ["--security-opt", "no-new-privileges=true"]
-        if self.seccomp_profile_type == "Unconfined":
-            args += ["--security-opt", "seccomp=unconfined"]
-        return args
-
 
 @runtime_checkable
 class Sandbox(Protocol):
     """Protocol for sandboxed Python code execution.
 
-    Implementations include :class:`LocalDockerSandbox` (dev/test; runs the
-    sandbox image in a local Docker container) and
-    :class:`DataRobotWorkloadSandbox` (production, runs in workload-api).
+    The production implementation is :class:`DataRobotWorkloadSandbox`
+    (runs in the DataRobot workload-api). A local-Docker dev/test
+    implementation is planned as a follow-up.
     """
 
     async def run(

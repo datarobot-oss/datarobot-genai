@@ -15,8 +15,8 @@
 """Sandbox abstraction for offloading code execution to isolated containers.
 
 The :class:`Sandbox` Protocol is the only thing call sites should depend on,
-allowing implementations to swap freely (local Docker for dev/test,
-workload-api for production, future remote backends) without code churn.
+allowing implementations to swap freely (workload-api for production, and
+future backends — e.g. a local-Docker dev/test sandbox) without code churn.
 """
 
 from datarobot_genai.drtools.sandbox.base import Sandbox
@@ -24,7 +24,6 @@ from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.local_docker import LocalDockerSandbox
 from datarobot_genai.drtools.sandbox.tools import MCP_SANDBOX_FEATURE_FLAG
 from datarobot_genai.drtools.sandbox.tools import execute_code
 from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
@@ -32,7 +31,6 @@ from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
 __all__ = [
     "MCP_SANDBOX_FEATURE_FLAG",
     "DataRobotWorkloadSandbox",
-    "LocalDockerSandbox",
     "Sandbox",
     "SandboxError",
     "SandboxResult",
