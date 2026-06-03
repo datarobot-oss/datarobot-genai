@@ -33,24 +33,23 @@ def _vdb_server_params():
 
 @pytest.mark.asyncio
 class TestMCPVDBToolsIntegration:
-    """Integration tests for MCP VDB tools (list_vector_databases, query_vector_database)."""
+    """Integration tests for MCP VDB tools (vdb_list, vdb_query)."""
 
     async def test_tools_registered(self) -> None:
         """Verify that VDB tools are registered and visible in the MCP session."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.list_tools()
             tool_names = [t.name for t in result.tools]
-            assert "list_vector_databases" in tool_names
-            assert "query_vector_database" in tool_names
+            assert "vdb_list" in tool_names
+            assert "vdb_query" in tool_names
 
-    async def test_list_vector_databases_returns_vdbs(self) -> None:
-        """list_vector_databases should return only VDB-capable deployments."""
+    async def test_vdb_list_returns_vdbs(self) -> None:
+        """vdb_list should return only VDB-capable deployments."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
-            result = await session.call_tool("list_vector_databases", {})
+            result = await session.call_tool("vdb_list", {})
 
             assert not result.isError, (
-                f"list_vector_databases failed: "
-                f"{result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
+                f"vdb_list failed: {result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
             )
             assert len(result.content) > 0
             assert isinstance(result.content[0], TextContent)
@@ -67,10 +66,10 @@ class TestMCPVDBToolsIntegration:
             assert vdb["label"] == "Stub VDB Deployment"
             assert vdb["status"] == "active"
 
-    async def test_list_vector_databases_structure(self) -> None:
-        """list_vector_databases result must have the expected keys per VDB entry."""
+    async def test_vdb_list_structure(self) -> None:
+        """vdb_list result must have the expected keys per VDB entry."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
-            result = await session.call_tool("list_vector_databases", {})
+            result = await session.call_tool("vdb_list", {})
 
             assert not result.isError
             data = json.loads(result.content[0].text)  # type: ignore[union-attr]
@@ -80,11 +79,11 @@ class TestMCPVDBToolsIntegration:
                 assert "label" in vdb
                 assert "status" in vdb
 
-    async def test_query_vector_database_returns_documents(self) -> None:
-        """query_vector_database should return a list of matching documents."""
+    async def test_vdb_query_returns_documents(self) -> None:
+        """vdb_query should return a list of matching documents."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.call_tool(
-                "query_vector_database",
+                "vdb_query",
                 {
                     "deployment_id": STUB_VDB_DEPLOYMENT_ID,
                     "query": "What is DataRobot?",
@@ -93,8 +92,7 @@ class TestMCPVDBToolsIntegration:
             )
 
             assert not result.isError, (
-                f"query_vector_database failed: "
-                f"{result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
+                f"vdb_query failed: {result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
             )
             assert len(result.content) > 0
             assert isinstance(result.content[0], TextContent)
@@ -107,11 +105,11 @@ class TestMCPVDBToolsIntegration:
             assert data["count"] == 2
             assert len(data["documents"]) == 2
 
-    async def test_query_vector_database_document_structure(self) -> None:
+    async def test_vdb_query_document_structure(self) -> None:
         """Returned documents should include page_content and metadata fields."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.call_tool(
-                "query_vector_database",
+                "vdb_query",
                 {
                     "deployment_id": STUB_VDB_DEPLOYMENT_ID,
                     "query": "AutoML",
@@ -126,11 +124,11 @@ class TestMCPVDBToolsIntegration:
             assert "page_content" in doc
             assert "metadata" in doc
 
-    async def test_query_vector_database_missing_deployment_id(self) -> None:
-        """query_vector_database without deployment_id must return an error."""
+    async def test_vdb_query_missing_deployment_id(self) -> None:
+        """vdb_query without deployment_id must return an error."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.call_tool(
-                "query_vector_database",
+                "vdb_query",
                 {"query": "What is DataRobot?"},
             )
 
@@ -139,11 +137,11 @@ class TestMCPVDBToolsIntegration:
             error_text = result.content[0].text  # type: ignore[union-attr]
             assert "Deployment ID" in error_text or "deployment_id" in error_text.lower()
 
-    async def test_query_vector_database_missing_query(self) -> None:
-        """query_vector_database without a query string must return an error."""
+    async def test_vdb_query_missing_query(self) -> None:
+        """vdb_query without a query string must return an error."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.call_tool(
-                "query_vector_database",
+                "vdb_query",
                 {"deployment_id": STUB_VDB_DEPLOYMENT_ID},
             )
 
@@ -152,11 +150,11 @@ class TestMCPVDBToolsIntegration:
             error_text = result.content[0].text  # type: ignore[union-attr]
             assert "Query" in error_text or "query" in error_text.lower()
 
-    async def test_query_vector_database_with_retrieval_mode(self) -> None:
-        """query_vector_database should accept retrieval_mode parameter."""
+    async def test_vdb_query_with_retrieval_mode(self) -> None:
+        """vdb_query should accept retrieval_mode parameter."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.call_tool(
-                "query_vector_database",
+                "vdb_query",
                 {
                     "deployment_id": STUB_VDB_DEPLOYMENT_ID,
                     "query": "machine learning",

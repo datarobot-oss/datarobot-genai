@@ -163,13 +163,13 @@ def _get_additional_prediction_instructions(deployment_id: str) -> str:
 Follow these steps in order:
 1. Get deployment info: Call tools with the deployment_id="{deployment_id}" to learn about
    features and requirements.
-2. Retrieve features: Use `get_deployment_features` to see all required and optional features
+2. Retrieve features: Use `deployment_get_features` to see all required and optional features
    with their importance scores.
-3. Prepare data: Use `generate_prediction_data_template` to create the correctly structured
+3. Prepare data: Use `deployment_generate_prediction_sample` to create the correctly structured
    CSV format.
 4. Consider feature importance: For high-importance features, always provide values (infer or
    ask). Low-importance features can be left blank.
-5. Validate: Run `validate_prediction_data` before submission to catch errors early.
+5. Validate: Run `deployment_validate_prediction_data` before submission to catch errors early.
 6. Time series note: Ensure `datetime_column` and `series_id_columns` are properly formatted
    if applicable.
 

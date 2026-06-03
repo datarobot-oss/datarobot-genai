@@ -47,7 +47,8 @@ def predictions_result_response(df: Any, show_explanations: bool = False) -> Pre
     raise ToolError(
         f"Prediction CSV is {encoded_len} bytes, which exceeds the inline limit "
         f"of {MAX_INLINE_SIZE} bytes. "
-        "Use batch prediction (for example predict_by_ai_catalog) for large outputs, "
+        "Use batch prediction (for example predict_batch_predictions_from_dataset) "
+        "for large outputs, "
         "or reduce rows or explanations.",
         kind=ToolErrorKind.VALIDATION,
     )

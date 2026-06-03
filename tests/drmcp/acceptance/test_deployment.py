@@ -25,11 +25,11 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_deployments_success() -> ETETestExpectations:
+def expectations_for_deployment_get_list_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_deployments",
+                name="deployment_get_list",
                 parameters={},
                 result={"deployments": {}},
             ),
@@ -43,13 +43,13 @@ def expectations_for_list_deployments_success() -> ETETestExpectations:
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_model_info_from_deployment_success(
+def expectations_for_deployment_get_model_info_success(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_model_info_from_deployment",
+                name="deployment_get_model_info",
                 parameters={"deployment_id": deployment_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -59,13 +59,13 @@ def expectations_for_get_model_info_from_deployment_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_model_info_from_deployment_failure(
+def expectations_for_deployment_get_model_info_failure(
     nonexistent_deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_model_info_from_deployment",
+                name="deployment_get_model_info",
                 parameters={"deployment_id": nonexistent_deployment_id},
                 result="[not_found] DataRobot API error (404):",
             ),
@@ -94,22 +94,22 @@ class TestDeploymentE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_list_deployments_success(
+    async def test_deployment_get_list_success(
         self,
         llm_client: Any,
-        expectations_for_list_deployments_success: ETETestExpectations,
+        expectations_for_deployment_get_list_success: ETETestExpectations,
         prompt: str,
     ) -> None:
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_deployments_success,
+                expectations_for_deployment_get_list_success,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_list_deployments_success"
+                    else "test_deployment_get_list_success"
                 ),
             )
 
@@ -123,10 +123,10 @@ class TestDeploymentE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_model_info_from_deployment_success(
+    async def test_deployment_get_model_info_success(
         self,
         llm_client: Any,
-        expectations_for_get_model_info_from_deployment_success: ETETestExpectations,
+        expectations_for_deployment_get_model_info_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -135,13 +135,13 @@ class TestDeploymentE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_model_info_from_deployment_success,
+                expectations_for_deployment_get_model_info_success,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_get_model_info_from_deployment_success"
+                    else "test_deployment_get_model_info_success"
                 ),
             )
 
@@ -155,10 +155,10 @@ class TestDeploymentE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_model_info_from_deployment_failure(
+    async def test_deployment_get_model_info_failure(
         self,
         llm_client: Any,
-        expectations_for_get_model_info_from_deployment_failure: ETETestExpectations,
+        expectations_for_deployment_get_model_info_failure: ETETestExpectations,
         nonexistent_deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -167,12 +167,12 @@ class TestDeploymentE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_model_info_from_deployment_failure,
+                expectations_for_deployment_get_model_info_failure,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_get_model_info_from_deployment_failure"
+                    else "test_deployment_get_model_info_failure"
                 ),
             )

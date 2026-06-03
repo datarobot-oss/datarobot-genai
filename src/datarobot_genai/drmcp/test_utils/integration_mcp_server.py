@@ -154,7 +154,7 @@ def _patch_datarobot_token_for_stdio() -> None:
 
 
 def _apply_predict_stubs() -> None:
-    """Patch datarobot_predict.deployment.predict so predict_realtime works with StubDeployment."""
+    """Patch datarobot_predict.deployment.predict for inline scoring with StubDeployment."""
     _dr_predict_deployment.predict = test_create_prediction_result
 
 

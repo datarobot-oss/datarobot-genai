@@ -18,7 +18,7 @@ import pytest
 
 from datarobot_genai.drtools.confluence.tools import confluence_add_comment
 from datarobot_genai.drtools.confluence.tools import confluence_get_page
-from datarobot_genai.drtools.confluence.tools import confluence_search
+from datarobot_genai.drtools.confluence.tools import confluence_search_space
 from datarobot_genai.drtools.confluence.tools import confluence_update_page
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceComment
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
@@ -279,7 +279,7 @@ class TestConfluenceSearch:
     """Confluence search tool tests."""
 
     @pytest.mark.asyncio
-    async def test_confluence_search_happy_path(
+    async def test_confluence_search_space_happy_path(
         self,
         get_atlassian_access_token_mock: None,
         confluence_client_search_mock: list[ContentSearchResult],
@@ -287,7 +287,7 @@ class TestConfluenceSearch:
         """Confluence search -- happy path."""
         cql_query = "type=page AND space=TEST"
 
-        tool_result = await confluence_search(cql_query=cql_query)
+        tool_result = await confluence_search_space(cql_query=cql_query)
 
         content = tool_result
         expected = {
@@ -319,38 +319,38 @@ class TestConfluenceSearch:
         assert content == expected
 
     @pytest.mark.asyncio
-    async def test_confluence_search_when_error_in_client(
+    async def test_confluence_search_space_when_error_in_client(
         self, get_atlassian_access_token_mock: None, confluence_client_search_error_mock: None
     ) -> None:
         """Confluence search -- error in client."""
         cql_query = "type=page AND space=TEST"
 
         with pytest.raises(ConfluenceError, match="Search failed"):
-            await confluence_search(cql_query=cql_query)
+            await confluence_search_space(cql_query=cql_query)
 
     @pytest.mark.asyncio
-    async def test_confluence_search_empty_query(
+    async def test_confluence_search_space_empty_query(
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- empty query validation."""
         with pytest.raises(ToolError, match="cannot be empty"):
-            await confluence_search(cql_query="")
+            await confluence_search_space(cql_query="")
 
     @pytest.mark.asyncio
-    async def test_confluence_search_max_results_too_low(
+    async def test_confluence_search_space_max_results_too_low(
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- max_results below 1 should raise error."""
         with pytest.raises(ToolError, match="max_results.*must be between 1 and 100"):
-            await confluence_search(cql_query="type=page", max_results=0)
+            await confluence_search_space(cql_query="type=page", max_results=0)
 
     @pytest.mark.asyncio
-    async def test_confluence_search_max_results_too_high(
+    async def test_confluence_search_space_max_results_too_high(
         self, get_atlassian_access_token_mock: None
     ) -> None:
         """Confluence search -- max_results above 100 should raise error."""
         with pytest.raises(ToolError, match="max_results.*must be between 1 and 100"):
-            await confluence_search(cql_query="type=page", max_results=101)
+            await confluence_search_space(cql_query="type=page", max_results=101)
 
 
 @pytest.fixture
@@ -374,7 +374,7 @@ class TestConfluenceSearchIncludeBody:
     """Confluence search with include_body parameter tests."""
 
     @pytest.mark.asyncio
-    async def test_confluence_search_with_include_body(
+    async def test_confluence_search_space_with_include_body(
         self,
         get_atlassian_access_token_mock: None,
         confluence_client_search_mock: list[ContentSearchResult],
@@ -383,7 +383,7 @@ class TestConfluenceSearchIncludeBody:
         """Confluence search with include_body=True fetches full page content."""
         cql_query = "type=page AND space=TEST"
 
-        tool_result = await confluence_search(cql_query=cql_query, include_body=True)
+        tool_result = await confluence_search_space(cql_query=cql_query, include_body=True)
 
         content = tool_result
         assert content["count"] == 2
@@ -393,7 +393,7 @@ class TestConfluenceSearchIncludeBody:
         assert content["data"][0]["excerpt"] == "<p>Content</p>"
 
     @pytest.mark.asyncio
-    async def test_confluence_search_without_include_body(
+    async def test_confluence_search_space_without_include_body(
         self,
         get_atlassian_access_token_mock: None,
         confluence_client_search_mock: list[ContentSearchResult],
@@ -401,7 +401,7 @@ class TestConfluenceSearchIncludeBody:
         """Confluence search without include_body does not have body field."""
         cql_query = "type=page AND space=TEST"
 
-        tool_result = await confluence_search(cql_query=cql_query, include_body=False)
+        tool_result = await confluence_search_space(cql_query=cql_query, include_body=False)
 
         content = tool_result
         # body field should NOT be present when include_body=False

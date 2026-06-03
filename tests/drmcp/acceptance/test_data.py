@@ -29,11 +29,11 @@ TINY_UPLOAD_CSV_BASE64 = base64.b64encode(_TINY_UPLOAD_CSV.encode("utf-8")).deco
 
 
 @pytest.fixture(scope="session")
-def expectations_for_upload_dataset_to_ai_catalog_success_from_base64() -> ETETestExpectations:
+def expectations_for_catalog_upload_dataset_success_from_base64() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="upload_dataset_to_ai_catalog",
+                name="catalog_upload_dataset",
                 parameters={
                     "file_content_base64": TINY_UPLOAD_CSV_BASE64,
                     "dataset_filename": "ete_tiny.csv",
@@ -56,11 +56,11 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_base64() -> ETETe
 
 
 @pytest.fixture(scope="session")
-def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestExpectations:
+def expectations_for_catalog_upload_dataset_success_from_url() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="upload_dataset_to_ai_catalog",
+                name="catalog_upload_dataset",
                 parameters={
                     "file_url": "https://s3.amazonaws.com/datarobot_public_datasets/10k_diabetes.csv"
                 },
@@ -79,11 +79,11 @@ def expectations_for_upload_dataset_to_ai_catalog_success_from_url() -> ETETestE
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_ai_catalog_items_success() -> ETETestExpectations:
+def expectations_for_catalog_list_datasets_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_ai_catalog_items",
+                name="catalog_list_datasets",
                 parameters={},
                 result={"datasets": {}, "count": 0},
             )
@@ -109,10 +109,10 @@ class TestDataE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_upload_dataset_to_ai_catalog_success_from_url(
+    async def test_catalog_upload_dataset_success_from_url(
         self,
         llm_client: Any,
-        expectations_for_upload_dataset_to_ai_catalog_success_from_url: ETETestExpectations,
+        expectations_for_catalog_upload_dataset_success_from_url: ETETestExpectations,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(
@@ -121,13 +121,13 @@ class TestDataE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_upload_dataset_to_ai_catalog_success_from_url,
+                expectations_for_catalog_upload_dataset_success_from_url,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_upload_dataset_to_ai_catalog_success_from_url"
+                    else "test_catalog_upload_dataset_success_from_url"
                 ),
             )
 
@@ -142,23 +142,23 @@ class TestDataE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_upload_dataset_to_ai_catalog_success_from_base64(
+    async def test_catalog_upload_dataset_success_from_base64(
         self,
         llm_client: Any,
-        expectations_for_upload_dataset_to_ai_catalog_success_from_base64: ETETestExpectations,
+        expectations_for_catalog_upload_dataset_success_from_base64: ETETestExpectations,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(b64=TINY_UPLOAD_CSV_BASE64)
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_upload_dataset_to_ai_catalog_success_from_base64,
+                expectations_for_catalog_upload_dataset_success_from_base64,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_upload_dataset_to_ai_catalog_success_from_base64"
+                    else "test_catalog_upload_dataset_success_from_base64"
                 ),
             )
 
@@ -172,21 +172,21 @@ class TestDataE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_list_ai_catalog_items_success(
+    async def test_catalog_list_datasets_success(
         self,
         llm_client: Any,
-        expectations_for_list_ai_catalog_items_success: ETETestExpectations,
+        expectations_for_catalog_list_datasets_success: ETETestExpectations,
         prompt: str,
     ) -> None:
         async with ete_test_mcp_session() as session:
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_ai_catalog_items_success,
+                expectations_for_catalog_list_datasets_success,
                 llm_client,
                 session,
                 (
                     inspect.currentframe().f_code.co_name  # type: ignore[union-attr]
                     if inspect.currentframe()
-                    else "test_list_ai_catalog_items_success"
+                    else "test_catalog_list_datasets_success"
                 ),
             )

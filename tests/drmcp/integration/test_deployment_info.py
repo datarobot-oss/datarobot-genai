@@ -25,33 +25,33 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_t
 class TestMCPDeploymentInfoIntegration:
     """Integration tests for MCP deployment info tools (multiclass project)."""
 
-    async def test_get_deployment_features_and_template(
+    async def test_deployment_get_features_and_template(
         self, classification_project: dict[str, Any]
     ) -> None:
-        """Integration test for get_deployment_features and generate_prediction_data_template
+        """Integration test for deployment_get_features and deployment_generate_prediction_sample
         on a multiclass deployment.
         """
         async with integration_test_mcp_session() as session:
             deployment_id = classification_project["deployment_id"]
-            # Test get_deployment_features
+            # Test deployment_get_features
             result = await session.call_tool(
-                "get_deployment_features",
+                "deployment_get_features",
                 {"deployment_id": deployment_id},
             )
             assert not result.isError, (
-                f"get_deployment_features failed: {result.content[0].text}"  # type: ignore[union-attr]
+                f"deployment_get_features failed: {result.content[0].text}"  # type: ignore[union-attr]
             )
             result_content = result.content[0]
             assert isinstance(result_content, TextContent)
             assert "error" not in result_content.text.lower()
 
-            # Test generate_prediction_data_template (returns JSON structured content)
+            # Test deployment_generate_prediction_sample (returns JSON structured content)
             result = await session.call_tool(
-                "generate_prediction_data_template",
+                "deployment_generate_prediction_sample",
                 {"deployment_id": deployment_id, "n_rows": 3},
             )
             assert not result.isError, (
-                f"generate_prediction_data_template failed: {result.content[0].text}"  # type: ignore[union-attr]
+                f"deployment_generate_prediction_sample failed: {result.content[0].text}"  # type: ignore[union-attr]
             )
             result_content = result.content[0]
             assert isinstance(result_content, TextContent)
@@ -65,19 +65,19 @@ class TestMCPDeploymentInfoIntegration:
             assert "text_review" in data["template_data"][0]
             assert "product_category" in data["template_data"][0]
 
-    async def test_validate_prediction_data_valid(
+    async def test_deployment_validate_prediction_data_valid(
         self, classification_project: dict[str, Any], test_data_dir: Any
     ) -> None:
-        """Integration test for validate_prediction_data with valid scoring file."""
+        """Integration test for deployment_validate_prediction_data with valid scoring file."""
         async with integration_test_mcp_session() as session:
             deployment_id = classification_project["deployment_id"]
             predict_file = test_data_dir / "text_classification_predict.csv"
             result = await session.call_tool(
-                "validate_prediction_data",
+                "deployment_validate_prediction_data",
                 {"deployment_id": deployment_id, "csv_string": predict_file.read_text()},
             )
             assert not result.isError, (
-                f"validate_prediction_data failed: {result.content[0].text}"  # type: ignore[union-attr]
+                f"deployment_validate_prediction_data failed: {result.content[0].text}"  # type: ignore[union-attr]
             )
             result_content = result.content[0]
             assert isinstance(result_content, TextContent)
@@ -88,14 +88,14 @@ class TestMCPDeploymentInfoIntegration:
             assert data["summary"]["rows"] > 0
             assert data["summary"]["columns"] > 0
 
-    async def test_validate_prediction_data_empty_csv(
+    async def test_deployment_validate_prediction_data_empty_csv(
         self, classification_project: dict[str, Any]
     ) -> None:
-        """Integration test for validate_prediction_data with empty csv_string."""
+        """Integration test for deployment_validate_prediction_data with empty csv_string."""
         async with integration_test_mcp_session() as session:
             deployment_id = classification_project["deployment_id"]
             result = await session.call_tool(
-                "validate_prediction_data",
+                "deployment_validate_prediction_data",
                 {
                     "deployment_id": deployment_id,
                     "csv_string": "   ",

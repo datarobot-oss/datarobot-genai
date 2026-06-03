@@ -35,11 +35,12 @@ logger = logging.getLogger(__name__)
     description=(
         "[Use case—list] Use when the user needs DataRobot use cases (workspace bundles) as "
         "id+name, optionally filtered by name search. Read-only. Not assets inside a known case "
-        "(list_use_case_assets), not modeling project ids (list_projects), not deployments alone "
-        "(list_deployments)."
+        "(usecases_list_assets), not modeling project ids (modeling_list_projects), "
+        "not deployments alone "
+        "(deployment_get_list)."
     ),
 )
-async def list_use_cases(
+async def datarobot_usecases_list(
     *,
     search: Annotated[str | None, "Optional search filter for use case names"] = None,
     limit: Annotated[int, "Maximum number of use cases to return"] = 100,
@@ -72,10 +73,10 @@ async def list_use_cases(
     description=(
         "[Use case—assets] Use when you have one or more use_case_id values and need what is "
         "linked: datasets, deployments, and experiments as id+name per case. Read-only. Not "
-        "discovering use case ids (list_use_cases), not Jira/Confluence content."
+        "discovering use case ids (datarobot_usecases_list), not Jira/Confluence content."
     ),
 )
-async def list_use_case_assets(
+async def usecases_list_assets(
     *,
     use_case_id: Annotated[str | None, "The ID of a single DataRobot use case"] = None,
     use_case_ids: Annotated[list[str] | None, "List of use case IDs to fetch assets for"] = None,

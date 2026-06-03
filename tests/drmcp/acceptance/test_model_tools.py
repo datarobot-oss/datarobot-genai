@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Acceptance tests for get_model_details, is_eligible_for_timeseries_training tools."""
+"""Acceptance tests for modeling_get_modeldetails, catalog_check_timeseries_eligibility tools."""
 
 import inspect
 from typing import Any
@@ -29,19 +29,19 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 @pytest.mark.skip(reason="MODEL-22978 - TODO: Fix tests")
 @pytest.mark.asyncio
 class TestGetModelDetailsE2E(ToolBaseE2E):
-    """End-to-end acceptance tests for get_model_details tool."""
+    """End-to-end acceptance tests for modeling_get_modeldetails tool."""
 
-    async def test_get_model_details_callable(
+    async def test_modeling_get_modeldetails_callable(
         self,
         llm_client: Any,
         classification_project_id: str,
         model_id: str,
     ) -> None:
-        """Smoke test: LLM calls get_model_details and returns model info."""
+        """Smoke test: LLM calls modeling_get_modeldetails and returns model info."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="get_model_details",
+                    name="modeling_get_modeldetails",
                     parameters={
                         "project_id": classification_project_id,
                         "model_id": model_id,
@@ -58,7 +58,7 @@ class TestGetModelDetailsE2E(ToolBaseE2E):
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_model_details_callable"
+            test_name = frame.f_code.co_name if frame else "test_modeling_get_modeldetails_callable"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
@@ -67,17 +67,17 @@ class TestGetModelDetailsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_get_model_details_with_roc_curve(
+    async def test_modeling_get_modeldetails_with_roc_curve(
         self,
         llm_client: Any,
         classification_project_id: str,
         model_id: str,
     ) -> None:
-        """LLM calls get_model_details with ROC curve and returns curve data."""
+        """LLM calls modeling_get_modeldetails with ROC curve and returns curve data."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="get_model_details",
+                    name="modeling_get_modeldetails",
                     parameters={
                         "project_id": classification_project_id,
                         "model_id": model_id,
@@ -95,7 +95,9 @@ class TestGetModelDetailsE2E(ToolBaseE2E):
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_model_details_with_roc_curve"
+            test_name = (
+                frame.f_code.co_name if frame else "test_modeling_get_modeldetails_with_roc_curve"
+            )
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
@@ -107,18 +109,18 @@ class TestGetModelDetailsE2E(ToolBaseE2E):
 
 @pytest.mark.asyncio
 class TestIsEligibleForTimeseriesTrainingE2E(ToolBaseE2E):
-    """End-to-end acceptance tests for is_eligible_for_timeseries_training tool."""
+    """End-to-end acceptance tests for catalog_check_timeseries_eligibility tool."""
 
     async def test_timeseries_eligibility_check(
         self,
         llm_client: Any,
         classification_dataset_id: str,
     ) -> None:
-        """LLM calls is_eligible_for_timeseries_training and reports eligibility."""
+        """LLM calls catalog_check_timeseries_eligibility and reports eligibility."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="is_eligible_for_timeseries_training",
+                    name="catalog_check_timeseries_eligibility",
                     parameters={
                         "dataset_id": classification_dataset_id,
                         "datetime_column": "date",

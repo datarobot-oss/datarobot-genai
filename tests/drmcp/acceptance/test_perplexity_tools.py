@@ -75,13 +75,13 @@ def expectations_for_perplexity_search_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_perplexity_think_success(
+def expectations_for_perplexity_sonar_success(
     research_prompt: str, research_model: int
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="perplexity_think",
+                name="perplexity_sonar",
                 parameters={"prompt": research_prompt, "model": research_model},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -139,10 +139,10 @@ class TestPerplexityToolsE2E(ToolBaseE2E):
             "Use model '{model}'."
         ],
     )
-    async def test_perplexity_think_success(
+    async def test_perplexity_sonar_success(
         self,
         llm_client: Any,
-        expectations_for_perplexity_think_success: ETETestExpectations,
+        expectations_for_perplexity_sonar_success: ETETestExpectations,
         research_prompt: str,
         research_model: str,
         prompt_template: str,
@@ -151,10 +151,10 @@ class TestPerplexityToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_perplexity_think_success"
+            test_name = frame.f_code.co_name if frame else "test_perplexity_sonar_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_perplexity_think_success,
+                expectations_for_perplexity_sonar_success,
                 llm_client,
                 session,
                 test_name,
