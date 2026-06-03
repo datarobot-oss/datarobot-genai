@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.99
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
 - Excluded `leptonai` (Lepton AI cloud backend pulled in by `nemo-evaluator-launcher`); it is unused and pins `httpx==0.27.2`, which conflicts with the `auth` extra.
+- Added `eval` to the CI per-module test matrix with a temporary stub test (`tests/eval/`); the full eval implementation will follow in a separate PR.
 
 ## 0.15.98
 - Added `datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode.ConditionalCodeMode`: This allows users to switch to fast mcp's CodeMode (tools are limited to {"search", "get_schema", "execute"}) if they pass the header: `x-datarobot-mcp-mode=code_execute`
