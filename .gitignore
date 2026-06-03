@@ -77,9 +77,6 @@ dist/
 .mypy_cache/
 .cache/
 
-# Cursor local hook state (rules/BUGBOT.md are intentionally tracked)
-.cursor/hooks/state/
-
 # Test environment
 .venv-ci-test
 
