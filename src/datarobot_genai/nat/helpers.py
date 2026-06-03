@@ -31,7 +31,7 @@ from nat.utils.type_utils import StrPath
 
 from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
-from datarobot_genai.nat.datarobot_moderation_middleware import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:

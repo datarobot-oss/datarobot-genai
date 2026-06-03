@@ -117,6 +117,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function as Open
 from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_openai_chat_completion_chunk,
 )
@@ -169,9 +170,6 @@ class DataRobotModerationConfig(
 def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     """Return whether ``moderation`` defines at least one guard across all targets."""
     return any(target.guards for target in moderation.targets)
-
-
-DRAGENT_CONFIG_FILE_ENV = "DRAGENT_CONFIG_FILE"
 
 
 def _default_moderation_model_dir() -> str:

@@ -22,7 +22,7 @@ import click
 from nat.cli.commands.start import StartCommandGroup
 from nat.cli.type_registry import RegisteredFrontEndInfo
 
-from datarobot_genai.nat.datarobot_moderation_middleware import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 
 from .remote import build_agui_payload
 from .remote import get_auth_context_headers

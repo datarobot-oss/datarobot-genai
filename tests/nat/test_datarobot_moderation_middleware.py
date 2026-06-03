@@ -71,9 +71,9 @@ from openai.types.chat.chat_completion_chunk import (
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.verify import validate_sequence
+from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat.datarobot_moderation_middleware import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
 from datarobot_genai.nat.datarobot_moderation_middleware import (
