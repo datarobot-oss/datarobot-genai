@@ -29,6 +29,7 @@ from nat.utils.type_utils import StrPath
 
 from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
+from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
@@ -109,6 +110,10 @@ async def load_workflow(
         The maximum number of parallel workflow invocations to support. Specifying 0 or -1 will
         allow an unlimited count, by default -1
     """
+    # Publish the workflow path so middleware (e.g. datarobot_moderation) can locate
+    # ``moderation_config.yaml`` next to ``workflow.yaml`` without relying on CWD.
+    publish_dragent_config_file_env(config_file)
+
     # Load the config object
     config = load_config(config_file, headers=headers)
 

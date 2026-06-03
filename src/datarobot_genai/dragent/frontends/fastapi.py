@@ -224,5 +224,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
 
 class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
+    async def run(self) -> None:
+        # Resolve ``workflow.yaml`` before NAT builds the app (gunicorn calls ``get_app()`` in
+        # the parent process, which initializes middleware including datarobot_moderation).
+        from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
+
+        publish_dragent_config_file_env()
+        await super().run()
+
     def get_worker_class(self) -> type[FastApiFrontEndPluginWorker]:
         return DRAgentFastApiFrontEndPluginWorker
