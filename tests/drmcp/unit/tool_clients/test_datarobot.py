@@ -68,5 +68,5 @@ class TestGetDatarobotAccessToken:
                 "datarobot_genai.drtools.core.clients.datarobot.get_credentials",
             ) as mock_get_credentials,
         ):
-            mock_get_credentials.return_value.datarobot.application_api_token = "app-tok"
+            mock_get_credentials.return_value.datarobot.datarobot_api_token = "app-tok"
             assert get_datarobot_access_token(headers_auth_only=False) == "app-tok"

@@ -45,7 +45,7 @@ def test_setup_otel_env_variables() -> None:
     mock_config.otel_exporter_otlp_headers = ""
 
     mock_credentials = MagicMock()
-    mock_credentials.datarobot.application_api_token = "test-app-token"
+    mock_credentials.datarobot.datarobot_api_token = "test-app-token"
 
     with (
         patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),

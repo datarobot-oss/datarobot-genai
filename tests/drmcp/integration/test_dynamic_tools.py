@@ -194,7 +194,7 @@ def expected_input_schema() -> dict:
 
 @pytest.fixture
 def datarobot_endpoint() -> str:
-    return get_credentials().datarobot.endpoint
+    return get_credentials().datarobot.datarobot_endpoint
 
 
 @pytest.fixture

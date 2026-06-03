@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.101
+- `drtools`: refactored tool credentials to `ToolsAuthCredentials` and nested `DataRobotCredentials` using `DataRobotAppFrameworkBaseSettings` (env, runtime params, `.env`, file secrets, `pulumi_config.json`). Renamed fields to `datarobot_api_token` and `datarobot_endpoint` (`DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`). Replaced `MCPServerCredentials`; added third-party config fields (`tavily_api_key`, `perplexity_api_key`, `atlassian_api_token`, `atlassian_email`, `atlassian_site_url`). Public export is `ToolsAuthCredentials`.
+
 ## 0.15.99
 - `dragent/workflow_paths`: added `discover_workflow_yaml()` and `publish_dragent_config_file_env()` to locate `workflow.yaml` and set `DRAGENT_CONFIG_FILE` (from the env var, `$CODE_DIR/workflow.yaml`, or a walk up from CWD). Wired into the DRAgent CLI, FastAPI frontend startup, and `load_workflow()` so middleware can resolve guard assets without relying on the process working directory.
 - `nat/datarobot_moderation_middleware`: default `model_dir` is now the directory containing `workflow.yaml` (via `DRAGENT_CONFIG_FILE`) instead of CWD, so `moderation_config.yaml` loads correctly in DataRobot custom-model deployments where CWD is not the agent code root. The middleware retries discovery on first use if `workflow.yaml` was not available at startup (e.g. gunicorn parent process).
