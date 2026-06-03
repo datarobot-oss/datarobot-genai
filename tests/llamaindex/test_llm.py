@@ -190,6 +190,23 @@ def test_factory_does_not_add_extra_body_when_absent() -> None:
     assert "extra_body" not in (llm.additional_kwargs or {})
 
 
+def test_gateway_llm_pins_temperature_to_one_when_thinking_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The LlamaIndex LiteLLM wrapper defaults temperature to 0.1, which the gateway
+    # rejects under thinking; the factory must pin it to 1.
+    monkeypatch.setenv("ENABLE_THINKING", "true")
+    llm = llama_index_llm.get_datarobot_gateway_llm()
+    assert llm.temperature == 1
+    assert llm.additional_kwargs["extra_body"]["thinking"]["type"] == "enabled"
+
+
+def test_thinking_does_not_override_caller_temperature(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_THINKING", "true")
+    llm = llama_index_llm.get_datarobot_gateway_llm(parameters={"temperature": 0.3})
+    assert llm.temperature == 0.3
+
+
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY

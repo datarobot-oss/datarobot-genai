@@ -95,6 +95,7 @@ def spawn_runner(
         check=False,
     )
 
+
 # Prompt/response OOTB token_count guards only in e2e dragent workflow moderation blocks.
 EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS = frozenset(
     {
@@ -147,6 +148,38 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
     return "".join(parts)
 
 
+# AG-UI event types that carry a reasoning/thinking step from a reasoning-capable model.
+REASONING_EVENT_TYPES = frozenset(
+    {
+        EventType.REASONING_MESSAGE_START,
+        EventType.REASONING_MESSAGE_CONTENT,
+        EventType.REASONING_MESSAGE_CHUNK,
+        EventType.REASONING_MESSAGE_END,
+        EventType.THINKING_TEXT_MESSAGE_CONTENT,
+    }
+)
+
+
+def collect_reasoning(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
+    """Join reasoning/thinking deltas from AG-UI reasoning events.
+
+    langgraph and llama_index both emit incremental reasoning as
+    ``REASONING_MESSAGE_CHUNK`` events; ``*_CONTENT`` variants are included so
+    the helper stays correct if an agent emits the start/content/end form.
+    """
+    parts = []
+    for event in ag_ui_events:
+        if event.type in (
+            EventType.REASONING_MESSAGE_CONTENT,
+            EventType.REASONING_MESSAGE_CHUNK,
+            EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        ):
+            delta = getattr(event, "delta", None)
+            if delta:
+                parts.append(delta)
+    return "".join(parts)
+
+
 def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
     """Build a JSON-RPC 2.0 ``message/send`` request body for the A2A protocol."""
     uid = uuid.uuid4().hex[:8]
@@ -163,4 +196,3 @@ def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> d
             },
         },
     }
-
