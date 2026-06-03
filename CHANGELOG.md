@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.103
+- `drtools`: refactored tool credentials to `ToolsAuthCredentials` and nested `DataRobotCredentials` using `DataRobotAppFrameworkBaseSettings` (env, runtime params, `.env`, file secrets, `pulumi_config.json`). Renamed fields to `datarobot_api_token` and `datarobot_endpoint` (`DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`). Replaced `MCPServerCredentials`; added third-party config fields (`tavily_api_key`, `perplexity_api_key`, `atlassian_api_token`, `atlassian_email`, `atlassian_site_url`). Public export is `ToolsAuthCredentials`.
+
 ## 0.15.102
 - `drtools` Jira: `Issue` model tolerates real Jira payloads—optional `emailAddress`, optional unassigned `assignee`, and `as_flat_dict()` falls back to `displayName` or `accountId` when email is missing.
 

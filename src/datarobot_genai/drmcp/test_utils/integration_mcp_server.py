@@ -37,6 +37,7 @@ from unittest.mock import Mock
 
 import datarobot as dr
 import datarobot_predict.deployment as _dr_predict_deployment
+from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
@@ -120,10 +121,8 @@ def _get_datarobot_access_token_stdio_fallback(*, headers_auth_only: bool = True
     """Return DataRobot token from credentials for stdio (no headers)."""
     del headers_auth_only  # stdio has no headers; always use application credentials.
     creds = get_credentials()
-    token = creds.datarobot.application_api_token
+    token = creds.datarobot.datarobot_api_token
     if not token:
-        from fastmcp.exceptions import ToolError
-
         raise ToolError("DataRobot API token not available (stdio and no DATAROBOT_API_TOKEN).")
     return token
 

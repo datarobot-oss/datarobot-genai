@@ -52,5 +52,6 @@ def setup_and_return_dr_api_client_with_static_config_in_container() -> RESTClie
     credentials = get_credentials()
 
     return dr.Client(
-        token=credentials.datarobot.application_api_token, endpoint=credentials.datarobot.endpoint
+        token=credentials.datarobot.datarobot_api_token,
+        endpoint=credentials.datarobot.datarobot_endpoint,
     )

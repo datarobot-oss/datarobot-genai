@@ -35,7 +35,7 @@ from datarobot_genai.drtools.core.config_utils import (
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
 from datarobot_genai.drtools.core.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
-from datarobot_genai.drtools.core.credentials import MCPServerCredentials
+from datarobot_genai.drtools.core.credentials import ToolsAuthCredentials
 from datarobot_genai.drtools.core.credentials import get_credentials
 
 from .core.config import MCPServerConfig
@@ -59,7 +59,7 @@ __all__ = [
     "MCPServerConfig",
     # Credentials
     "get_credentials",
-    "MCPServerCredentials",
+    "ToolsAuthCredentials",
     # Constants
     "RUNTIME_PARAM_ENV_VAR_NAME_PREFIX",
     # User extensibility
