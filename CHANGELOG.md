@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.99
+## 0.15.100
 - `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` — a production sandbox that submits a short-lived workload to the DataRobot workload-api, runs the DRUM-built sandbox image, and parses the `__DR_SANDBOX_RESULT__:` marker (the caller↔runner wire-contract lives in `sandbox/protocol.py`; the runner ships in datarobot-user-models#2137). `execute_code` is exposed as a plain async function (not an MCP tool yet — kept separate so it doesn't override FastMCP CodeMode's `execute` tool; a later PR adds the `MCP_SANDBOX`-gated tool layer that calls it, plus a local-Docker dev/test sandbox and FastMCP CodeMode integration). Workload security context (read-only rootfs, drop ALL caps, RuntimeDefault seccomp, no privilege escalation) is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`, evaluated per-user via the thread-safe `request_user_dr_client()` + `FeatureFlag` (`drtools.core`); fails safe to cluster defaults on FF lookup error.
 - `drtools.core.feature_flags`: added `is_tool_feature_enabled(flag, *, evaluator)` — the shared "no flag → expose; flag set → evaluate; lookup error → fail closed" tool-gating policy. It lives in `drtools.core` so both `drmcp`'s registration-time registry (static container account) and global-mcp's per-user registry reuse one implementation; each supplies only the client via the `evaluator` closure. `drmcp/core/drtools_registry.py` now calls it with a static-account evaluator instead of carrying its own gating logic, so `drmcp/core/feature_flags.py` is back to just the static tools-gallery check (no per-user shim).
+
+## 0.15.99
+- `dragent/workflow_paths`: added `discover_workflow_yaml()` and `publish_dragent_config_file_env()` to locate `workflow.yaml` and set `DRAGENT_CONFIG_FILE` (from the env var, `$CODE_DIR/workflow.yaml`, or a walk up from CWD). Wired into the DRAgent CLI, FastAPI frontend startup, and `load_workflow()` so middleware can resolve guard assets without relying on the process working directory.
+- `nat/datarobot_moderation_middleware`: default `model_dir` is now the directory containing `workflow.yaml` (via `DRAGENT_CONFIG_FILE`) instead of CWD, so `moderation_config.yaml` loads correctly in DataRobot custom-model deployments where CWD is not the agent code root. The middleware retries discovery on first use if `workflow.yaml` was not available at startup (e.g. gunicorn parent process).
 
 ## 0.15.98
 - Added `datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode.ConditionalCodeMode`: This allows users to switch to fast mcp's CodeMode (tools are limited to {"search", "get_schema", "execute"}) if they pass the header: `x-datarobot-mcp-mode=code_execute`
