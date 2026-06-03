@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.98
+- Added `datarobot_genai.drmcpbase.fastmcp_transforms.conditional_code_mode.ConditionalCodeMode`: This allows users to switch to fast mcp's CodeMode (tools are limited to {"search", "get_schema", "execute"}) if they pass the header: `x-datarobot-mcp-mode=code_execute`
+
 ## 0.15.97
 - `nat/datarobot_moderation_middleware`: fixed moderated DRAgent streams that ended on a moderation `content_filter` without emitting `TEXT_MESSAGE_END` for open assistant text segments; the middleware now synthesizes those end events so AG-UI clients can close text messages cleanly.
 - `nat/datarobot_moderation_middleware`: closed upstream and moderation async generators when the consumer stopped early (e.g. client disconnect), avoiding leaked iterators during stream teardown.
