@@ -28,7 +28,8 @@ Guard configuration (``_type: datarobot_moderation``):
 * **Inline (preferred)** — nest guards under ``middleware.<name>.moderation`` in ``workflow.yaml``.
   When present, this block is used even if ``moderation_config.yaml`` also exists.
 * **DRUM-style file (fallback)** — when ``moderation`` is omitted, load ``moderation_config.yaml``
-  from ``model_dir`` (defaults to the process working directory).
+  from ``model_dir`` (defaults to the directory containing ``workflow.yaml``, resolved from
+  ``DRAGENT_CONFIG_FILE`` when set, otherwise the process working directory).
 * If neither source is present or both are empty, the middleware is a no-op.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
@@ -152,7 +153,8 @@ class DataRobotModerationConfig(
         description=(
             "Directory containing ``moderation_config.yaml`` and guard assets (DRUM custom model "
             "layout). Used for the inline ``moderation`` block and as the fallback file location. "
-            "Defaults to the process working directory."
+            "Defaults to the directory containing ``workflow.yaml`` (``DRAGENT_CONFIG_FILE``), "
+            "or the process working directory when that env var is unset."
         ),
     )
     moderation: ModerationConfig | None = Field(
@@ -169,13 +171,26 @@ def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     return any(target.guards for target in moderation.targets)
 
 
+DRAGENT_CONFIG_FILE_ENV = "DRAGENT_CONFIG_FILE"
+
+
+def _default_moderation_model_dir() -> str:
+    """Return the directory that holds ``workflow.yaml`` when known, else CWD."""
+    config_file = os.environ.get(DRAGENT_CONFIG_FILE_ENV)
+    if config_file:
+        return str(Path(config_file).expanduser().resolve().parent)
+    return os.path.abspath(os.getcwd())
+
+
 def resolve_moderation_model_dir(model_dir: str | None) -> str:
     """Resolve the base directory for guard assets and ``moderation_config.yaml``."""
-    return os.path.abspath(model_dir if model_dir is not None else os.getcwd())
+    if model_dir is not None:
+        return os.path.abspath(model_dir)
+    return _default_moderation_model_dir()
 
 
 def moderation_config_file_path(model_dir: str | None) -> Path:
-    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or CWD)."""
+    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or workflow dir)."""
     return Path(resolve_moderation_model_dir(model_dir)) / MODERATION_CONFIG_FILE_NAME
 
 

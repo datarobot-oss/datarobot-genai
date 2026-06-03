@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from nat.builder.workflow import Workflow
@@ -29,6 +31,7 @@ from nat.utils.type_utils import StrPath
 
 from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
+from datarobot_genai.nat.datarobot_moderation_middleware import DRAGENT_CONFIG_FILE_ENV
 
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
@@ -109,6 +112,10 @@ async def load_workflow(
         The maximum number of parallel workflow invocations to support. Specifying 0 or -1 will
         allow an unlimited count, by default -1
     """
+    # Publish the workflow path so middleware (e.g. datarobot_moderation) can locate
+    # ``moderation_config.yaml`` next to ``workflow.yaml`` without relying on CWD.
+    os.environ[DRAGENT_CONFIG_FILE_ENV] = str(Path(config_file).expanduser().resolve())
+
     # Load the config object
     config = load_config(config_file, headers=headers)
 

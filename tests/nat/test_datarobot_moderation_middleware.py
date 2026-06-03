@@ -73,6 +73,7 @@ from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.nat.datarobot_moderation_middleware import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
 from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
 from datarobot_genai.nat.datarobot_moderation_middleware import (
@@ -87,6 +88,7 @@ from datarobot_genai.nat.datarobot_moderation_middleware import moderation_confi
 from datarobot_genai.nat.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
+from datarobot_genai.nat.datarobot_moderation_middleware import resolve_moderation_model_dir
 from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
 
 
@@ -464,6 +466,45 @@ def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() ->
         assert load_llm_moderation_pipeline(cfg) is None
     from_config.assert_not_called()
     from_yaml.assert_not_called()
+
+
+def test_resolve_moderation_model_dir_explicit() -> None:
+    assert resolve_moderation_model_dir("/tmp/model") == os.path.abspath("/tmp/model")
+
+
+def test_resolve_moderation_model_dir_from_dragent_config_file(tmp_path: Path) -> None:
+    workflow = tmp_path / "agent" / "workflow.yaml"
+    workflow.parent.mkdir()
+    workflow.write_text("workflow: {}\n", encoding="utf-8")
+    with patch.dict(os.environ, {DRAGENT_CONFIG_FILE_ENV: str(workflow)}, clear=False):
+        assert resolve_moderation_model_dir(None) == str(workflow.parent.resolve())
+
+
+def test_resolve_moderation_model_dir_falls_back_to_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DRAGENT_CONFIG_FILE_ENV, raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert resolve_moderation_model_dir(None) == str(tmp_path.resolve())
+
+
+def test_load_llm_moderation_pipeline_default_model_dir_from_dragent_config_file(
+    tmp_path: Path,
+) -> None:
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    workflow = agent_dir / "workflow.yaml"
+    workflow.write_text("workflow: {}\n", encoding="utf-8")
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    (agent_dir / "moderation_config.yaml").write_text(
+        (fixture_dir / "moderation_config.yaml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    cfg = DataRobotModerationConfig()
+    with patch.dict(os.environ, {**_CREDENTIAL_ENV, DRAGENT_CONFIG_FILE_ENV: str(workflow)}):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
 
 
 def test_load_llm_moderation_pipeline_config_file_missing_is_noop(tmp_path: Path) -> None:
