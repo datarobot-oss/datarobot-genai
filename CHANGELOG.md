@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.94
+## 0.15.95
 - Surface reasoning/thinking from reasoning models as AG-UI Reasoning events (LangGraph, LlamaIndex DRAgent adapters) and fix the LangGraph crash on list-form `AIMessage.content`.
 - Added `ENABLE_THINKING` / `THINKING_BUDGET_TOKENS` config to opt into extended thinking on thinking-capable models (the LlamaIndex adapter pins `temperature` to 1 when thinking is active, as Anthropic requires), covered by reasoning end-to-end tests and an `e2e-dragent-reasoning` CI job exercising the LangGraph and LlamaIndex agents on `claude-sonnet-4`.
+
+## 0.15.94
+- CI: cache only `~/.cache/uv`, not `.venv`, so each job rebuilds a clean venv. Caching `.venv` under a shared key could restore a stale environment, intermittently breaking the `drmcpbase` test job (`ModuleNotFoundError: No module named 'datarobot'`).
 
 ## 0.15.93
 - Per-user DataRobot API access (MODEL-23521): added `request_user_dr_client` and `request_user_dr_sdk` in `drtools.core.clients.datarobot`, both scoped via `client_configuration()` (ContextVar) instead of the global `dr.Client()`, so concurrent MCP tool requests do not share tokens.
