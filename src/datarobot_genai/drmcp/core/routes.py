@@ -92,16 +92,9 @@ def register_routes(mcp: DataRobotMCP) -> None:
             for tool_type in ToolType:
                 tool_config = TOOL_CONFIGS[tool_type]
                 is_enabled = getattr(config.tool_config, tool_config["config_field_name"], False)
-                oauth_check_fn = tool_config["oauth_check"]
-                oauth_required = oauth_check_fn is not None
-                oauth_configured = None
-                if oauth_required and oauth_check_fn is not None:
-                    oauth_configured = oauth_check_fn(config)
 
                 tool_config_status[tool_type.value] = {
                     "enabled": is_enabled,
-                    "oauth_required": oauth_required,
-                    "oauth_configured": oauth_configured,
                 }
 
             # Safe config details (excluding sensitive information)

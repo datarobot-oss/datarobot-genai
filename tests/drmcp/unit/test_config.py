@@ -54,7 +54,7 @@ def test_config_defaults() -> None:
         assert config.prompt_registration_duplicate_behavior == "warn"
 
         # Tool enablement defaults
-        assert config.tool_config.enable_predictive_tools is True
+        assert config.tool_config.enable_predictive_tools is False
         assert config.tool_config.enable_jira_tools is False
         assert config.tool_config.enable_confluence_tools is False
         assert config.tool_config.enable_microsoft_graph_tools is False
@@ -63,10 +63,6 @@ def test_config_defaults() -> None:
         assert config.tool_config.enable_vdb_tools is False
         assert config.tool_config.enable_code_execution_tools is False
         assert config.tool_config.enable_optimization_tools is False
-
-        # OAuth provider configuration defaults
-        assert config.tool_config.is_atlassian_oauth_provider_configured is False
-        assert config.tool_config.is_microsoft_oauth_provider_configured is False
 
         # Clean up the cached config after the test
         config_module._config = None
@@ -111,7 +107,7 @@ class TestDuplicateBehavior:
 
 
 class TestToolConfiguration:
-    """Test tool enablement and OAuth configuration."""
+    """Test tool enablement configuration."""
 
     def test_tool_enablement_defaults(self) -> None:
         """Test that tool enablement defaults are correct."""
@@ -119,7 +115,7 @@ class TestToolConfiguration:
             config_module._config = None
             config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
 
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
             assert config.tool_config.enable_microsoft_graph_tools is False
@@ -155,100 +151,6 @@ class TestToolConfiguration:
         with patch.dict(os.environ, {env_var: "false"}, clear=False):
             config = MCPServerConfig()
             assert getattr(config.tool_config, tool_name) is False
-
-    def test_atlassian_oauth_configured_via_provider_flag(self) -> None:
-        """Test is_atlassian_oauth_configured when provider flag is set."""
-        with patch.dict(
-            os.environ, {"IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true"}, clear=False
-        ):
-            config = MCPServerConfig()
-            assert config.tool_config.is_atlassian_oauth_configured is True
-
-    def test_atlassian_oauth_configured_via_env_vars(self) -> None:
-        """Test is_atlassian_oauth_configured when env vars are set."""
-        with patch.dict(
-            os.environ,
-            {"ATLASSIAN_CLIENT_ID": "test_id", "ATLASSIAN_CLIENT_SECRET": "test_secret"},
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert config.tool_config.is_atlassian_oauth_configured is True
-
-    def test_atlassian_oauth_not_configured(self) -> None:
-        """Test is_atlassian_oauth_configured when not configured."""
-        with patch.dict(os.environ, clear=True):
-            config_module._config = None
-            config = MCPServerConfig(_env_file=None)
-            assert config.tool_config.is_atlassian_oauth_configured is False
-            config_module._config = None
-
-    def test_atlassian_oauth_partial_env_vars(self) -> None:
-        """Test is_atlassian_oauth_configured with only one env var set."""
-        with patch.dict(os.environ, {"ATLASSIAN_CLIENT_ID": "test_id"}, clear=False):
-            config = MCPServerConfig()
-            assert config.tool_config.is_atlassian_oauth_configured is False
-
-    def test_gdrive_oauth_configured_via_provider_flag(self) -> None:
-        """Test is_google_oauth_configured when provider flag is set."""
-        with patch.dict(os.environ, {"IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED": "true"}, clear=False):
-            config = MCPServerConfig()
-            assert config.tool_config.is_google_oauth_configured is True
-
-    def test_gdrive_oauth_configured_via_env_vars(self) -> None:
-        """Test is_google_oauth_configured when env vars are set."""
-        with patch.dict(
-            os.environ,
-            {"GOOGLE_CLIENT_ID": "test_id", "GOOGLE_CLIENT_SECRET": "test_secret"},
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert config.tool_config.is_google_oauth_configured is True
-
-    def test_gdrive_oauth_not_configured(self) -> None:
-        """Test is_google_oauth_configured when not configured."""
-        with patch.dict(os.environ, clear=True):
-            config_module._config = None
-            config = MCPServerConfig(_env_file=None)
-            assert config.tool_config.is_google_oauth_configured is False
-            config_module._config = None
-
-    def test_gdrive_oauth_partial_env_vars(self) -> None:
-        """Test is_google_oauth_configured with only one env var set."""
-        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "test_id"}, clear=False):
-            config = MCPServerConfig()
-            assert config.tool_config.is_google_oauth_configured is False
-
-    def test_microsoft_oauth_configured_via_provider_flag(self) -> None:
-        """Test is_microsoft_oauth_configured when provider flag is set."""
-        with patch.dict(
-            os.environ, {"IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED": "true"}, clear=False
-        ):
-            config = MCPServerConfig()
-            assert config.tool_config.is_microsoft_oauth_configured is True
-
-    def test_microsoft_oauth_configured_via_env_vars(self) -> None:
-        """Test is_microsoft_oauth_configured when env vars are set."""
-        with patch.dict(
-            os.environ,
-            {"MICROSOFT_CLIENT_ID": "test_id", "MICROSOFT_CLIENT_SECRET": "test_secret"},
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert config.tool_config.is_microsoft_oauth_configured is True
-
-    def test_microsoft_oauth_not_configured(self) -> None:
-        """Test is_microsoft_oauth_configured when not configured."""
-        with patch.dict(os.environ, clear=True):
-            config_module._config = None
-            config = MCPServerConfig(_env_file=None)
-            assert config.tool_config.is_microsoft_oauth_configured is False
-            config_module._config = None
-
-    def test_microsoft_oauth_partial_env_vars(self) -> None:
-        """Test is_microsoft_oauth_configured with only one env var set."""
-        with patch.dict(os.environ, {"MICROSOFT_CLIENT_ID": "test_id"}, clear=False):
-            config = MCPServerConfig()
-            assert config.tool_config.is_microsoft_oauth_configured is False
 
 
 class _MCPToolConfigNoEnvFile(MCPToolConfig):
@@ -289,7 +191,7 @@ class TestMCPCLIConfigs:
             assert config.mcp_cli_configs is None
             assert config.mcp_server_register_dynamic_tools_on_startup is False
             assert config.mcp_server_register_dynamic_prompts_on_startup is False
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             assert config.tool_config.enable_gdrive_tools is False
             assert config.tool_config.enable_jira_tools is False
             assert config.tool_config.enable_confluence_tools is False
@@ -457,16 +359,16 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
-    def test_predictive_tools_default_true_without_env_file(self) -> None:
-        """Regression: without loading .env, enable_predictive_tools keeps model default True."""
+    def test_predictive_tools_default_false_without_env_file(self) -> None:
+        """Regression: without loading .env, enable_predictive_tools keeps model default False."""
         with patch.dict(os.environ, {}, clear=True):
             self._reset_config()
             config = get_config()
-            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_predictive_tools is False
             self._reset_config()
 
-    def test_predictive_default_true_stays_true_when_in_mcp_cli_configs(self) -> None:
-        """Predictive has default True; when in MCP_CLI_CONFIGS and no env, stays True."""
+    def test_predictive_enabled_when_in_mcp_cli_configs(self) -> None:
+        """Predictive has default False; when in MCP_CLI_CONFIGS and no env, becomes True."""
         with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "predictive"}, clear=True):
             self._reset_config()
             config = get_config()

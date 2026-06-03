@@ -39,7 +39,7 @@ class MCPToolConfig(BaseSettings):
     """Tool configuration for MCP server."""
 
     enable_predictive_tools: bool = Field(
-        default=True,
+        default=False,
         validation_alias=AliasChoices(
             RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
             "ENABLE_PREDICTIVE_TOOLS",
@@ -146,52 +146,6 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable vector database tools",
     )
 
-    is_atlassian_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
-            "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether Atlassian OAuth provider is configured for Atlassian integration",
-    )
-
-    @property
-    def is_atlassian_oauth_configured(self) -> bool:
-        """Check if Atlassian OAuth is configured via provider flag or environment variables."""
-        return self.is_atlassian_oauth_provider_configured or bool(
-            os.getenv("ATLASSIAN_CLIENT_ID") and os.getenv("ATLASSIAN_CLIENT_SECRET")
-        )
-
-    is_google_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
-            "IS_GOOGLE_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether Google OAuth provider is configured for Google integration",
-    )
-
-    @property
-    def is_google_oauth_configured(self) -> bool:
-        return self.is_google_oauth_provider_configured or bool(
-            os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")
-        )
-
-    is_microsoft_oauth_provider_configured: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
-            "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED",
-        ),
-        description="Whether Microsoft OAuth provider is configured for Microsoft integration",
-    )
-
-    @property
-    def is_microsoft_oauth_configured(self) -> bool:
-        return self.is_microsoft_oauth_provider_configured or bool(
-            os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")
-        )
-
     @field_validator(
         "enable_predictive_tools",
         "enable_jira_tools",
@@ -205,9 +159,6 @@ class MCPToolConfig(BaseSettings):
         "enable_code_execution_tools",
         "enable_optimization_tools",
         "enable_vdb_tools",
-        "is_atlassian_oauth_provider_configured",
-        "is_google_oauth_provider_configured",
-        "is_microsoft_oauth_provider_configured",
         mode="before",
     )
     @classmethod

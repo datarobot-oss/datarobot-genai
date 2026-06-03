@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.100
+- `drmcp`: removed OAuth provider startup gating (`IS_*_OAUTH_PROVIDER_CONFIGURED`, `is_*_oauth_configured`, and `oauth_check` in `tool_config`). Tool enablement is controlled only by `ENABLE_*_TOOLS` flags; OAuth tokens are resolved at request time.
+- `drmcp`: `enable_predictive_tools` default is now `false` (opt in via env, `MCP_CLI_CONFIGS`, or runtime params). Integration and acceptance test harnesses set `ENABLE_PREDICTIVE_TOOLS=true` so predictive tool suites keep running.
+- `drmcp`: `/metadata` tool config reports `enabled` only (dropped `oauth_required` / `oauth_configured`).
+
 ## 0.15.99
 - `dragent/workflow_paths`: added `discover_workflow_yaml()` and `publish_dragent_config_file_env()` to locate `workflow.yaml` and set `DRAGENT_CONFIG_FILE` (from the env var, `$CODE_DIR/workflow.yaml`, or a walk up from CWD). Wired into the DRAgent CLI, FastAPI frontend startup, and `load_workflow()` so middleware can resolve guard assets without relying on the process working directory.
 - `nat/datarobot_moderation_middleware`: default `model_dir` is now the directory containing `workflow.yaml` (via `DRAGENT_CONFIG_FILE`) instead of CWD, so `moderation_config.yaml` loads correctly in DataRobot custom-model deployments where CWD is not the agent code root. The middleware retries discovery on first use if `workflow.yaml` was not available at startup (e.g. gunicorn parent process).
