@@ -237,8 +237,16 @@ class TestProjectsE2E(ToolBaseE2E):
         "prompt_template",
         [
             """
-        I'm working on a machine learning project {project_name} and I need to get the
-        dataset by name '{dataset_name}'. Can you help me get the dataset by name?
+        I only know the DataRobot project name '{project_name}' (not the project id).
+        I need the dataset '{dataset_name}' from that project.
+
+        Use tools before answering:
+        1. Call list_projects to find the project id for '{project_name}'.
+        2. Call get_project_dataset_by_name with that project id and dataset name
+           '{dataset_name}'.
+
+        You may call both tools in the same assistant turn. Do not reply with a final
+        answer until both tools have completed.
         """
         ],
     )

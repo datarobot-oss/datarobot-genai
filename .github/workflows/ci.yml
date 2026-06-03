@@ -43,12 +43,15 @@ jobs:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache uv and virtualenv
+      - name: Cache uv download cache
         uses: actions/cache@v4
         with:
-          path: |
-            .venv
-            ~/.cache/uv
+          # Cache only uv's content-addressed download cache, not .venv. Caching
+          # .venv across the shared key let a stale/cross-module environment be
+          # restored, which `uv sync` then reconciled incorrectly (e.g. the
+          # drmcpbase extra losing the datarobot SDK). The venv is rebuilt from
+          # this cache by `uv sync` on every run, which is fast and always correct.
+          path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-${{ matrix.python-version }}-
@@ -99,12 +102,15 @@ jobs:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache uv and virtualenv
+      - name: Cache uv download cache
         uses: actions/cache@v4
         with:
-          path: |
-            .venv
-            ~/.cache/uv
+          # Cache only uv's content-addressed download cache, not .venv. Caching
+          # .venv across the shared key let a stale/cross-module environment be
+          # restored, which `uv sync` then reconciled incorrectly (e.g. the
+          # drmcpbase extra losing the datarobot SDK). The venv is rebuilt from
+          # this cache by `uv sync` on every run, which is fast and always correct.
+          path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-${{ matrix.python-version }}-
@@ -153,12 +159,15 @@ jobs:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache uv and virtualenv
+      - name: Cache uv download cache
         uses: actions/cache@v4
         with:
-          path: |
-            .venv
-            ~/.cache/uv
+          # Cache only uv's content-addressed download cache, not .venv. Caching
+          # .venv across the shared key let a stale/cross-module environment be
+          # restored, which `uv sync` then reconciled incorrectly (e.g. the
+          # drmcpbase extra losing the datarobot SDK). The venv is rebuilt from
+          # this cache by `uv sync` on every run, which is fast and always correct.
+          path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-${{ matrix.python-version }}-
@@ -219,12 +228,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Cache uv and virtualenv
+      - name: Cache uv download cache
         uses: actions/cache@v4
         with:
-          path: |
-            .venv
-            ~/.cache/uv
+          # Cache only uv's content-addressed download cache, not .venv (see note above).
+          path: ~/.cache/uv
           key: uv-${{ runner.os }}-3.12-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-3.12-

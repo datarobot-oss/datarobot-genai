@@ -16,11 +16,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import DataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
@@ -38,12 +38,11 @@ logger = logging.getLogger(__name__)
     ),
 )
 async def list_projects() -> dict[str, Any]:
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    projects = client.Project.list()
-    projects = {p.id: p.project_name for p in projects}
+    with ThreadSafeDataRobotClient().request_user_client():
+        projects = dr.Project.list()
+        projects = {p.id: p.project_name for p in projects}
 
-    return projects
+        return projects
 
 
 @tool_metadata(
@@ -67,26 +66,27 @@ async def get_project_dataset_by_name(
     if not dataset_name:
         raise ToolError("Dataset name is required.", kind=ToolErrorKind.VALIDATION)
 
-    token = await get_datarobot_access_token()
-    client = DataRobotClient(token).get_client()
-    try:
-        project = client.Project.get(project_id)
-    except ClientError as e:
-        raise_tool_error_for_client_error(e)
-    all_datasets = []
-    source_dataset = project.get_dataset()
-    if source_dataset:
-        all_datasets.append({"type": "source", "dataset": source_dataset})
-    prediction_datasets = project.get_datasets()
-    if prediction_datasets:
-        all_datasets.extend([{"type": "prediction", "dataset": ds} for ds in prediction_datasets])
-    for ds in all_datasets:
-        if dataset_name.lower() in ds["dataset"].name.lower():
-            return {
-                "dataset_id": ds["dataset"].id,
-                "dataset_type": ds["type"],
-            }
-    raise ToolError(
-        f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
-        kind=ToolErrorKind.NOT_FOUND,
-    )
+    with ThreadSafeDataRobotClient().request_user_client():
+        try:
+            project = dr.Project.get(project_id)
+        except ClientError as e:
+            raise_tool_error_for_client_error(e)
+        all_datasets = []
+        source_dataset = project.get_dataset()
+        if source_dataset:
+            all_datasets.append({"type": "source", "dataset": source_dataset})
+        prediction_datasets = project.get_datasets()
+        if prediction_datasets:
+            all_datasets.extend(
+                [{"type": "prediction", "dataset": ds} for ds in prediction_datasets]
+            )
+        for ds in all_datasets:
+            if dataset_name.lower() in ds["dataset"].name.lower():
+                return {
+                    "dataset_id": ds["dataset"].id,
+                    "dataset_type": ds["type"],
+                }
+        raise ToolError(
+            f"Dataset with name containing '{dataset_name}' not found in project {project_id}.",
+            kind=ToolErrorKind.NOT_FOUND,
+        )

@@ -13,12 +13,14 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
+from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -50,6 +52,7 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
+from datarobot_genai.llama_index.agent import _thinking_delta_from_raw
 from datarobot_genai.llama_index.agent import datarobot_agent_class_from_llamaindex
 
 
@@ -182,6 +185,32 @@ def test_datarobot_litellm_metadata_properties() -> None:
     assert meta.is_chat_model is True
     assert meta.is_function_calling_model is True
     assert meta.model_name == "dr/model"
+
+
+# --- Tests for reasoning_content extraction ---
+
+
+def test_thinking_delta_from_raw_object_form() -> None:
+    """Reasoning is read from a LiteLLM streaming chunk object (delta.reasoning_content)."""
+    raw = SimpleNamespace(
+        choices=[SimpleNamespace(delta=SimpleNamespace(reasoning_content="step "))]
+    )
+    assert _thinking_delta_from_raw(raw) == "step "
+
+
+def test_thinking_delta_from_raw_dict_form() -> None:
+    """Reasoning is read from a model_dump'd chunk dict as well."""
+    raw = {"choices": [{"delta": {"reasoning_content": "step "}}]}
+    assert _thinking_delta_from_raw(raw) == "step "
+
+
+def test_thinking_delta_from_raw_absent_or_empty_is_none() -> None:
+    assert _thinking_delta_from_raw(None) is None
+    assert _thinking_delta_from_raw(SimpleNamespace(choices=[])) is None
+    assert _thinking_delta_from_raw({"choices": [{"delta": {"reasoning_content": ""}}]}) is None
+    # A content-only delta (no reasoning_content attribute) yields None, not an error.
+    raw = SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="hi"))])
+    assert _thinking_delta_from_raw(raw) is None
 
 
 # --- Tests for create_pipeline_interactions_from_events ---
@@ -550,6 +579,99 @@ async def test_invoke_agent_stream_multiple_agents(
         assert {e.step_name for e in step_finished} <= {"Agent1", "Agent2"}
 
     assert isinstance(ag_events[-1], RunFinishedEvent)
+
+
+# --- Tests for reasoning models ---
+
+
+async def test_invoke_emits_reasoning_chunks_from_thinking_delta(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """AgentStream.thinking_delta surfaces as self-contained AG-UI reasoning chunks.
+
+    Reasoning models (Qwen extended thinking, Claude, etc.) stream incremental
+    reasoning on ``AgentStream.thinking_delta``. Each delta becomes one
+    ``REASONING_MESSAGE_CHUNK`` event with no lifecycle wrapping, mirroring the
+    langgraph adapter.
+    """
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(delta="", thinking_delta="step 1 ", response="", current_agent_name="A"),
+            AgentStream(delta="", thinking_delta="step 2", response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    validate_sequence(ag_events)
+    reasoning = [e for e in ag_events if isinstance(e, ReasoningMessageChunkEvent)]
+    assert [e.delta for e in reasoning] == ["step 1 ", "step 2"]
+    # Reasoning is routed to REASONING events, never leaked into text content.
+    text_deltas = [e.delta for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert "step 1 " not in text_deltas
+    assert "step 2" not in text_deltas
+
+
+async def test_invoke_emits_reasoning_before_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Reasoning is emitted before the text lifecycle opens for the same step."""
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(
+                delta="", thinking_delta="thinking...", response="", current_agent_name="A"
+            ),
+            AgentStream(delta="answer", thinking_delta=None, response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    validate_sequence(ag_events)
+    types = [e.type for e in ag_events]
+    assert types.index(EventType.REASONING_MESSAGE_CHUNK) < types.index(
+        EventType.TEXT_MESSAGE_START
+    )
+    text = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in text] == ["answer"]
+
+
+async def test_invoke_emits_reasoning_from_raw_chunk(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """When the LLM doesn't populate thinking_delta, reasoning is recovered from the
+    raw LiteLLM chunk on ``AgentStream.raw`` (the stock litellm wrapper drops it from
+    ``thinking_delta`` but still exposes it on the raw chunk).
+    """
+    raw = {"choices": [{"delta": {"reasoning_content": "hmm"}}]}
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentStream(
+                delta="", thinking_delta=None, response="", current_agent_name="A", raw=raw
+            ),
+            AgentStream(delta="answer", thinking_delta=None, response="", current_agent_name="A"),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    events_out = [e async for e in agent.invoke(run_agent_input)]
+    ag_events, _, _ = zip(*events_out)
+
+    validate_sequence(ag_events)
+    reasoning = [e for e in ag_events if isinstance(e, ReasoningMessageChunkEvent)]
+    assert [e.delta for e in reasoning] == ["hmm"]
+    text = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert [e.delta for e in text] == ["answer"]
 
 
 async def test_invoke_replaces_chat_history_placeholder() -> None:

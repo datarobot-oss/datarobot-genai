@@ -58,7 +58,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Context variable for request headers. Set by RequestHeadersMiddleware for every
-# HTTP request so get_sdk_client() can resolve the API token in custom routes and tools.
+# HTTP request so drtools clients can resolve the API token in custom routes and tools.
 _request_headers_ctx: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
     "request_headers", default=None
 )
@@ -336,7 +336,7 @@ def initialize_oauth_middleware(mcp: Any) -> None:
 
 
 def set_request_headers_for_context(headers: dict[str, str]) -> None:
-    """Set request headers in context so get_sdk_client() can use them (e.g. in tests)."""
+    """Set request headers in context so drtools clients can use them (e.g. in tests)."""
     _request_headers_ctx.set(headers)
 
 

@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import datarobot as dr
 
-from datarobot_genai.drmcp.core.clients import get_api_client
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
 
 
 def get_datarobot_prompt_templates() -> list[dr.genai.PromptTemplate]:
@@ -30,13 +30,14 @@ def get_datarobot_prompt_template_versions(
     headers_auth_only: bool = False,
 ) -> dict[str, list[dr.genai.PromptTemplateVersion]]:
     # Still missing in SDK
-    prompt_template_versions_data = dr.utils.pagination.unpaginate(
-        initial_url="genai/promptTemplates/versions/",
-        initial_params={
-            "promptTemplateIds": prompt_template_ids,
-        },
-        client=get_api_client(headers_auth_only=headers_auth_only),
-    )
+    with request_user_dr_client(headers_auth_only=headers_auth_only) as client:
+        prompt_template_versions_data = dr.utils.pagination.unpaginate(
+            initial_url="genai/promptTemplates/versions/",
+            initial_params={
+                "promptTemplateIds": prompt_template_ids,
+            },
+            client=client,
+        )
     prompt_template_versions = defaultdict(list)
     for prompt_template_version in prompt_template_versions_data:
         prompt_template_versions[prompt_template_version["promptTemplateId"]].append(

@@ -119,6 +119,35 @@ def _moderation_config_from_fixture_dir(model_dir: Path) -> ModerationConfig:
     return ModerationConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
+_CREDENTIAL_ENV = {
+    "DATAROBOT_API_TOKEN": "test-token",
+    "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+}
+
+
+@pytest.fixture(params=["inline", "config_file"], ids=["inline", "config_file"])
+def moderation_config_mode(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+def _moderation_middleware_for_fixture_dir(
+    model_dir: Path,
+    builder_mock: MagicMock,
+    *,
+    config_mode: str,
+) -> DataRobotModerationMiddleware:
+    """Build inline or file-backed moderation middleware from a fixture model directory."""
+    if config_mode == "inline":
+        cfg = DataRobotModerationConfig(
+            moderation=_moderation_config_from_fixture_dir(model_dir),
+        )
+    else:
+        cfg = DataRobotModerationConfig(model_dir=str(model_dir))
+    mw = DataRobotModerationMiddleware(cfg, builder_mock)
+    assert mw.enabled is True
+    return mw
+
+
 # ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
 # is greater than 32 (81 tokens for this string).
 _LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD = " ".join(["moderation"] * 80)
@@ -281,6 +310,39 @@ async def _passthrough_stream_response_async(
         current = peek
 
 
+async def _content_filter_on_last_stream_response_async(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Echo streamed chunks; mark the final chunk with ``finish_reason=content_filter``."""
+    aiter = completion.__aiter__()
+    try:
+        current = await aiter.__anext__()
+    except StopAsyncIteration:
+        return
+    while True:
+        try:
+            peek = await aiter.__anext__()
+        except StopAsyncIteration:
+            choice = current.choices[0]
+            yield ChatCompletionChunk(
+                id=current.id,
+                choices=[
+                    OpenAIChunkChoice(
+                        index=0,
+                        delta=choice.delta,
+                        finish_reason="content_filter",
+                    )
+                ],
+                created=current.created,
+                model=current.model,
+                object="chat.completion.chunk",
+            )
+            return
+        yield current
+        current = peek
+
+
 def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -387,23 +449,106 @@ def test_moderation_config_has_guards() -> None:
 
 
 def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() -> None:
-    cfg = DataRobotModerationConfig(moderation=ModerationConfig.model_validate({"guards": []}))
+    cfg = DataRobotModerationConfig(
+        moderation=ModerationConfig.model_validate({"guards": []}),
+    )
     with (
         patch.dict(os.environ, {}, clear=True),
         patch(
             "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
         ) as from_config,
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
     ):
         assert load_llm_moderation_pipeline(cfg) is None
     from_config.assert_not_called()
+    from_yaml.assert_not_called()
 
 
-def test_load_llm_moderation_pipeline_missing_moderation_block_is_noop() -> None:
+def test_load_llm_moderation_pipeline_config_file_missing_is_noop(tmp_path: Path) -> None:
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
-    ) as from_config:
-        assert load_llm_moderation_pipeline(DataRobotModerationConfig()) is None
-    from_config.assert_not_called()
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert (
+            load_llm_moderation_pipeline(DataRobotModerationConfig(model_dir=str(tmp_path))) is None
+        )
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_no_moderation_falls_back_to_config_file(
+    tmp_path: Path,
+) -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    (tmp_path / "moderation_config.yaml").write_text(
+        (fixture_dir / "moderation_config.yaml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
+    with patch.dict(os.environ, _CREDENTIAL_ENV):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
+def test_load_llm_moderation_pipeline_config_file_empty_guards_in_yaml_is_noop(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "moderation_config.yaml").write_text("guards: []\n", encoding="utf-8")
+    cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_inline_does_not_fallback_to_config_file() -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    cfg = DataRobotModerationConfig(
+        model_dir=str(fixture_dir),
+        moderation=ModerationConfig.model_validate({"guards": []}),
+    )
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_inline_takes_priority_over_config_file() -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    inline = _moderation_config_from_fixture_dir(fixture_dir)
+    cfg = DataRobotModerationConfig(
+        model_dir=str(fixture_dir),
+        moderation=inline,
+    )
+    with (
+        patch.dict(os.environ, _CREDENTIAL_ENV),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
+    ):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    from_yaml.assert_not_called()
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
+@pytest.mark.parametrize(
+    "cfg_kwargs",
+    [
+        {"model_dir": "/nonexistent/model/dir"},
+        {"moderation": ModerationConfig.model_validate({"guards": []})},
+    ],
+    ids=["missing-sources", "inline-empty-guards"],
+)
+def test_moderation_middleware_disabled_when_no_guards(
+    builder_mock: MagicMock,
+    cfg_kwargs: dict[str, Any],
+) -> None:
+    mw = DataRobotModerationMiddleware(DataRobotModerationConfig(**cfg_kwargs), builder_mock)
+    assert mw.enabled is False
 
 
 def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
@@ -435,6 +580,55 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
         pipeline = load_llm_moderation_pipeline(cfg)
     assert pipeline is not None
     assert pipeline._pipeline.get_prescore_guards()
+
+
+def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    cfg = DataRobotModerationConfig(model_dir=str(model_dir))
+    with patch.dict(os.environ, _CREDENTIAL_ENV):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
+def test_load_llm_moderation_pipeline_from_config_file_missing_is_noop(tmp_path: Path) -> None:
+    cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+    ) as from_yaml:
+        assert load_llm_moderation_pipeline(cfg) is None
+    from_yaml.assert_not_called()
+
+
+def test_load_llm_moderation_pipeline_inline_uses_moderation_field() -> None:
+    fixture_dir = INTEGRATION_MODERATION_MODEL_DIR
+    inline = _moderation_config_from_fixture_dir(fixture_dir)
+    cfg = DataRobotModerationConfig(
+        model_dir=str(fixture_dir),
+        moderation=inline,
+    )
+    with (
+        patch.dict(os.environ, _CREDENTIAL_ENV),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        ) as from_yaml,
+    ):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    from_yaml.assert_not_called()
+    assert pipeline is not None
+    assert pipeline._pipeline.get_prescore_guards()
+
+
+def test_moderation_middleware_enabled_when_fixture_config_present(
+    builder_mock: MagicMock,
+    moderation_config_mode: str,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    with patch.dict(os.environ, _CREDENTIAL_ENV):
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
+        )
+    assert mw.enabled is True
 
 
 @pytest.fixture
@@ -1060,6 +1254,7 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
 
 async def test_function_middleware_invoke_integration_executes_real_moderations(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     # GIVEN a real moderation config with token-count, cost, and ROUGE-1 guards (ROUGE-1 needs
     # citation columns; this path only asserts metrics that are always emitted here)
@@ -1072,11 +1267,9 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
 
         async def call_next(*_a: Any, **_k: Any) -> DRAgentEventResponse:
             return _text_response("This is a test response.")
@@ -1102,6 +1295,7 @@ async def test_function_middleware_invoke_integration_executes_real_moderations(
 
 async def test_function_middleware_invoke_integration_nat_chat_input_chat_response_real_moderations(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     # GIVEN NAT ``ChatRequestOrMessage`` (not AG-UI ``RunAgentInput``) and ``call_next`` returns
     # ``ChatResponse`` (single_fn / LLM Gateway style), with real moderation loaded from disk
@@ -1119,11 +1313,9 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
 
         async def call_next(*_a: Any, **_k: Any) -> ChatResponse:
             return _nat_chat_response_assistant_text("This is a test response.")
@@ -1148,6 +1340,7 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
 
 async def test_function_middleware_stream_integration_executes_real_moderations(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     # GIVEN a real moderation config with token-count, cost, and ROUGE-1 guards for streaming
     model_dir = INTEGRATION_MODERATION_MODEL_DIR
@@ -1164,11 +1357,9 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
 
         # WHEN middleware stream runs end-to-end without patched moderation internals
         chunks = [
@@ -1196,6 +1387,7 @@ async def test_function_middleware_stream_integration_executes_real_moderations(
 
 async def test_function_middleware_invoke_prompt_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
     call_next = AsyncMock()
@@ -1206,11 +1398,9 @@ async def test_function_middleware_invoke_prompt_token_limit_blocks(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             _make_run_input(_LONG_PROMPT_FOR_TOKEN_BLOCK_GUARD),
             call_next=call_next,
@@ -1231,6 +1421,7 @@ async def test_function_middleware_invoke_prompt_token_limit_blocks(
 
 async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
     crm = ChatRequestOrMessage(
@@ -1246,11 +1437,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_to
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             crm,
             call_next=call_next,
@@ -1270,6 +1459,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_to
 
 async def test_function_middleware_stream_prompt_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_PROMPT_LENGTH_BLOCK_DIR
 
@@ -1284,11 +1474,9 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1313,6 +1501,7 @@ async def test_function_middleware_stream_prompt_token_limit_blocks(
 
 async def test_function_middleware_invoke_response_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
     call_next = AsyncMock(return_value=_text_response(_LONG_RESPONSE_FOR_TOKEN_BLOCK_GUARD))
@@ -1323,11 +1512,9 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             _make_run_input(_SHORT_USER_PROMPT_FOR_RESPONSE_BLOCK),
             call_next=call_next,
@@ -1351,6 +1538,7 @@ async def test_function_middleware_invoke_response_token_limit_blocks(
 
 async def test_function_middleware_invoke_nat_chat_input_chat_response_response_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
     crm = ChatRequestOrMessage(
@@ -1368,11 +1556,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             crm,
             call_next=call_next,
@@ -1395,6 +1581,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
 
 async def test_function_middleware_stream_response_token_limit_blocks(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     model_dir = INTEGRATION_MODERATION_RESPONSE_LENGTH_BLOCK_DIR
 
@@ -1409,11 +1596,9 @@ async def test_function_middleware_stream_response_token_limit_blocks(
             "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
         },
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1424,7 +1609,9 @@ async def test_function_middleware_stream_response_token_limit_blocks(
         ]
 
     stream_next.assert_called_once()
-    assert len(chunks) == 1
+    assert len(chunks) >= 1
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
     chunk = chunks[0]
     assert isinstance(chunk, DRAgentEventResponse)
     assert _assistant_text_joined_from_dragent_response(chunk) == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
@@ -1439,6 +1626,7 @@ async def test_function_middleware_stream_response_token_limit_blocks(
 
 async def test_function_middleware_invoke_prompt_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
@@ -1461,11 +1649,9 @@ async def test_function_middleware_invoke_prompt_replace(
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             run_input,
             call_next=call_next,
@@ -1481,6 +1667,7 @@ async def test_function_middleware_invoke_prompt_replace(
 
 async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
@@ -1505,11 +1692,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             crm,
             call_next=call_next,
@@ -1525,6 +1710,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
 
 async def test_function_middleware_stream_prompt_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR
@@ -1551,11 +1737,9 @@ async def test_function_middleware_stream_prompt_replace(
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1568,12 +1752,19 @@ async def test_function_middleware_stream_prompt_replace(
     stream_next.assert_called_once()
     assert predict_inputs
     assert run_input.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
-    assert len(chunks) == 1
-    assert _assistant_text_joined_from_dragent_response(chunks[0]) == "streamed-model-out"
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=default_usage_metrics())
+        )
+        == "streamed-model-out"
+    )
 
 
 async def test_function_middleware_invoke_response_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
@@ -1595,11 +1786,9 @@ async def test_function_middleware_invoke_response_replace(
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             _make_run_input("hi"),
             call_next=call_next,
@@ -1617,6 +1806,7 @@ async def test_function_middleware_invoke_response_replace(
 
 async def test_function_middleware_invoke_nat_chat_input_chat_response_response_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
@@ -1639,11 +1829,9 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         result = await mw.function_middleware_invoke(
             crm,
             call_next=call_next,
@@ -1660,6 +1848,7 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
 
 async def test_function_middleware_stream_response_replace(
     builder_mock: MagicMock,
+    moderation_config_mode: str,
 ) -> None:
     pytest.importorskip("datarobot")
     model_dir = INTEGRATION_MODERATION_MODEL_RESPONSE_REPLACE_DIR
@@ -1685,11 +1874,9 @@ async def test_function_middleware_stream_response_replace(
         patch("datarobot.Deployment.get", return_value=_model_guard_deployment_stub()),
         patch.object(AsyncHTTPClient, "predict", fake_predict),
     ):
-        mw = DataRobotModerationMiddleware(
-            DataRobotModerationConfig(moderation=_moderation_config_from_fixture_dir(model_dir)),
-            builder_mock,
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        assert mw.enabled is True
         chunks = [
             item
             async for item in mw.function_middleware_stream(
@@ -1701,8 +1888,14 @@ async def test_function_middleware_stream_response_replace(
 
     stream_next.assert_called_once()
     assert predict_inputs
-    assert len(chunks) == 1
-    assert _assistant_text_joined_from_dragent_response(chunks[0]) == _MODEL_RESPONSE_REPLACEMENT
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for ev in flat)
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=default_usage_metrics())
+        )
+        == _MODEL_RESPONSE_REPLACEMENT
+    )
 
 
 async def test_function_middleware_stream_yields_blocked_pre_invoke(
@@ -1770,10 +1963,106 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
             )
         ]
 
-    assert len(chunks) == 1
+    assert len(chunks) == 2
     assert isinstance(chunks[0], DRAgentEventResponse)
-    deltas = "".join(ev.delta for ev in chunks[0].events if isinstance(ev, TextMessageContentEvent))
+    assert isinstance(chunks[1], DRAgentEventResponse)
+    deltas = "".join(
+        ev.delta for resp in chunks for ev in resp.events if isinstance(ev, TextMessageContentEvent)
+    )
     assert deltas == "delta-one"
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for resp in chunks for ev in resp.events)
+
+
+async def test_function_middleware_stream_synthesizes_text_message_end_on_content_filter(
+    builder_mock: MagicMock,
+) -> None:
+    """Moderation content_filter can end the stream without upstream TEXT_MESSAGE_END."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _content_filter_on_last_stream_response_async
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    msg_id = "msg-blocked"
+    zero = default_usage_metrics()
+    blocked_text = "Agent did not complete the requested task."
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=msg_id, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=msg_id, delta=blocked_text)],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(isinstance(ev, TextMessageEndEvent) and ev.message_id == msg_id for ev in flat), (
+        f"expected TEXT_MESSAGE_END for {msg_id!r}, got {[e.type for e in flat]}"
+    )
+    assert (
+        _assistant_text_joined_from_dragent_response(
+            DRAgentEventResponse(events=flat, usage_metrics=zero)
+        )
+        == blocked_text
+    )
+
+
+async def test_function_middleware_stream_closes_generators_on_early_consumer_exit(
+    builder_mock: MagicMock,
+) -> None:
+    """Closing the consumer must aclose moderation and upstream iterators."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+
+    async def upstream():
+        yield _text_response("delta-one")
+        yield _text_response("delta-two")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.nat.datarobot_moderation_middleware._aclose_async_iterator",
+            new_callable=AsyncMock,
+        ) as aclose_mock,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        stream = mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=stream_next,
+            context=_fn_context(),
+        )
+        agen = stream.__aiter__()
+        first = await agen.__anext__()
+        assert isinstance(first, DRAgentEventResponse)
+        await agen.aclose()
+
+    aclose_mock.assert_awaited()
 
 
 async def test_function_middleware_stream_passthrough_when_no_run_agent_input(

@@ -31,6 +31,8 @@ from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
 from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
+from datarobot_genai.dragent.frontends.tool_call_registry import defer_tool_end
+from datarobot_genai.dragent.frontends.tool_call_registry import is_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
 
@@ -337,3 +339,63 @@ class TestToolCallRegistry:
         assert bind_tool_call("planner", "nat-uuid-1") == "tc-1"
         assert pop_tool_call("nat-uuid-1") == "tc-1"
         assert bind_tool_call("planner", "nat-uuid-2") is None
+
+    @pytest.mark.asyncio
+    async def test_content_after_tool_call_marks_args_done(self):
+        """When text content follows tool calls, args are marked done."""
+        tool_chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments='{"q":"hi"}'),
+                )
+            ]
+        )
+        text_chunk = _make_chunk(content="Here are the results.", chunk_id="msg-2")
+        await _collect(convert_chunks_to_agui_events(_async_iter(tool_chunk, text_chunk)))
+
+        assert is_args_done("tc-1")
+
+    @pytest.mark.asyncio
+    async def test_content_after_tool_call_flushes_deferred_end_events(self):
+        """Deferred end/result events are flushed when content arrives."""
+        tool_chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        # Simulate the step adaptor deferring end events while args stream
+        sentinel_end = ToolCallEndEvent(tool_call_id="tc-1")
+        defer_tool_end("tc-1", [sentinel_end])
+
+        text_chunk = _make_chunk(content="Done.", chunk_id="msg-2")
+        responses = await _collect(
+            convert_chunks_to_agui_events(_async_iter(tool_chunk, text_chunk))
+        )
+        events = _flat_events(responses)
+
+        # The deferred ToolCallEndEvent should appear before the text content.
+        end_events = [e for e in events if isinstance(e, ToolCallEndEvent)]
+        assert len(end_events) == 1
+        assert end_events[0].tool_call_id == "tc-1"
+
+    @pytest.mark.asyncio
+    async def test_stream_end_marks_remaining_tool_calls_args_done(self):
+        """When the stream ends with active tool calls, they are marked args-done."""
+        chunk = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id="tc-1",
+                    function=ChoiceDeltaToolCallFunction(name="search", arguments="{}"),
+                )
+            ]
+        )
+        await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
+
+        assert is_args_done("tc-1")

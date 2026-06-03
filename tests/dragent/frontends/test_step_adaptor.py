@@ -47,6 +47,7 @@ from nat.data_models.step_adaptor import StepAdaptorMode
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+from datarobot_genai.dragent.frontends.tool_call_registry import mark_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
 
@@ -809,6 +810,7 @@ class TestFunctionToolCorrelation:
         llm_tool_call_id = "toolu_vrtx_planner"
         nat_uuid = "nat-planner-1"
         register_tool_call("planner", llm_tool_call_id)
+        mark_args_done(llm_tool_call_id)
 
         start = step_adaptor.process(
             self._function_step(
@@ -840,6 +842,8 @@ class TestFunctionToolCorrelation:
     ) -> None:
         register_tool_call("search", "tc-A")
         register_tool_call("search", "tc-B")
+        mark_args_done("tc-A")
+        mark_args_done("tc-B")
 
         step_adaptor.process(
             self._function_step(
@@ -876,6 +880,39 @@ class TestFunctionToolCorrelation:
         assert end_a.events[0].tool_call_id == "tc-A"
         assert end_a.events[1].tool_call_id == "tc-A"
         assert end_a.events[1].content == '"result A"'
+
+    def test_function_end_defers_when_args_still_streaming(
+        self, step_adaptor: DRAgentNestedReasoningStepAdaptor
+    ) -> None:
+        """FUNCTION_END defers End/Result when the converter hasn't finished args."""
+        llm_tool_call_id = "toolu_vrtx_planner"
+        nat_uuid = "nat-planner-1"
+        register_tool_call("planner", llm_tool_call_id)
+        # Deliberately do NOT call mark_args_done — args still in flight.
+
+        step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_START, "planner", output=None, nat_uuid=nat_uuid
+            )
+        )
+        end = step_adaptor.process(
+            self._function_step(
+                IntermediateStepType.FUNCTION_END,
+                "planner",
+                output="planner output",
+                nat_uuid=nat_uuid,
+            )
+        )
+
+        assert end is None
+
+        deferred = mark_args_done(llm_tool_call_id)
+        assert len(deferred) == 2
+        assert isinstance(deferred[0], ToolCallEndEvent)
+        assert deferred[0].tool_call_id == llm_tool_call_id
+        assert isinstance(deferred[1], ToolCallResultEvent)
+        assert deferred[1].tool_call_id == llm_tool_call_id
+        assert deferred[1].content == '"planner output"'
 
     def test_function_end_returns_none_when_unmatched(
         self, step_adaptor: DRAgentNestedReasoningStepAdaptor

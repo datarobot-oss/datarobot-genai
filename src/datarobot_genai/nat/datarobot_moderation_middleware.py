@@ -23,6 +23,14 @@ Expected workflow contracts:
 * **Native NAT chat** (LLM Gateway agents): input ``ChatRequest`` / ``ChatRequestOrMessage``,
   non-streaming output ``ChatResponse``.
 
+Guard configuration (``_type: datarobot_moderation``):
+
+* **Inline (preferred)** — nest guards under ``middleware.<name>.moderation`` in ``workflow.yaml``.
+  When present, this block is used even if ``moderation_config.yaml`` also exists.
+* **DRUM-style file (fallback)** — when ``moderation`` is omitted, load ``moderation_config.yaml``
+  from ``model_dir`` (defaults to the process working directory).
+* If neither source is present or both are empty, the middleware is a no-op.
+
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
 boundary, then reverses to AG-UI on the way out.
@@ -30,15 +38,18 @@ boundary, then reverses to AG-UI on the way out.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import logging
 import math
 import os
 import uuid
+from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from typing import Literal
 from typing import TypeAlias
@@ -46,6 +57,7 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
+import yaml
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -67,6 +79,7 @@ from datarobot_dome.api import _from_dataframe
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
+from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.runtime import get_runtime_parameter_value_bool
@@ -128,11 +141,26 @@ class DataRobotModerationConfig(
     FunctionMiddlewareBaseConfig,  # type: ignore[misc]
     name="datarobot_moderation",  # type: ignore[call-arg]
 ):
-    """NAT middleware: DataRobot prescore / postscore guards."""
+    """NAT middleware: DataRobot prescore / postscore guards.
 
+    The middleware is a no-op (``enabled`` is ``False``) when no guards are configured in the
+    inline ``moderation`` block or in ``moderation_config.yaml``.
+    """
+
+    model_dir: str | None = Field(
+        default=None,
+        description=(
+            "Directory containing ``moderation_config.yaml`` and guard assets (DRUM custom model "
+            "layout). Used for the inline ``moderation`` block and as the fallback file location. "
+            "Defaults to the process working directory."
+        ),
+    )
     moderation: ModerationConfig | None = Field(
         default=None,
-        description="Guard configuration (validated as ``ModerationConfig`` from datarobot_dome).",
+        description=(
+            "Inline guard configuration (``ModerationConfig`` from datarobot_dome). When set, "
+            "takes priority over ``moderation_config.yaml``."
+        ),
     )
 
 
@@ -141,26 +169,84 @@ def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     return any(target.guards for target in moderation.targets)
 
 
-def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
-    """Build an LLM moderation pipeline via ``ModerationPipeline.from_config``.
+def resolve_moderation_model_dir(model_dir: str | None) -> str:
+    """Resolve the base directory for guard assets and ``moderation_config.yaml``."""
+    return os.path.abspath(model_dir if model_dir is not None else os.getcwd())
 
-    Returns ``None`` when moderation is disabled, omitted, or has no guards configured so the
-    middleware is a no-op and can be listed unconditionally in ``workflow.yaml``.
+
+def moderation_config_file_path(model_dir: str | None) -> Path:
+    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or CWD)."""
+    return Path(resolve_moderation_model_dir(model_dir)) / MODERATION_CONFIG_FILE_NAME
+
+
+def load_moderation_config_from_file(model_dir: str | None) -> ModerationConfig | None:
+    """Load and validate ``moderation_config.yaml`` from a model directory (DRUM layout)."""
+    config_path = moderation_config_file_path(model_dir)
+    if not config_path.is_file():
+        return None
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return None
+    return ModerationConfig.model_validate(raw)
+
+
+def _load_llm_moderation_pipeline_from_inline(
+    config: DataRobotModerationConfig,
+) -> ModerationPipeline | None:
+    """Load guards from the inline ``moderation`` block."""
+    assert config.moderation is not None
+    if not moderation_config_has_guards(config.moderation):
+        _logger.debug("Inline ``moderation`` has no guards; moderation middleware is a no-op")
+        return None
+    resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
+    return ModerationPipeline.from_config(config.moderation, model_dir=resolved_model_dir)
+
+
+def _load_llm_moderation_pipeline_from_config_file(
+    config: DataRobotModerationConfig,
+) -> ModerationPipeline | None:
+    """Load guards from ``moderation_config.yaml`` when no inline ``moderation`` block is set."""
+    config_path = moderation_config_file_path(config.model_dir)
+    if not config_path.is_file():
+        _logger.debug(
+            "No inline ``moderation`` block and no %s at %s; moderation middleware is a no-op",
+            MODERATION_CONFIG_FILE_NAME,
+            config_path,
+        )
+        return None
+
+    moderation = load_moderation_config_from_file(config.model_dir)
+    if moderation is None:
+        _logger.debug(
+            "No inline ``moderation`` block and %s could not be parsed; "
+            "moderation middleware is a no-op",
+            config_path,
+        )
+        return None
+    if not moderation_config_has_guards(moderation):
+        _logger.debug(
+            "No inline ``moderation`` block and %s has no guards; moderation middleware is a no-op",
+            config_path,
+        )
+        return None
+
+    return ModerationPipeline.from_yaml(str(config_path))
+
+
+def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
+    """Build an LLM moderation pipeline from inline ``moderation`` or ``moderation_config.yaml``.
+
+    Returns ``None`` when moderation is disabled, no configuration source is available, or the
+    resolved source has no guards, so the middleware is a no-op and can be listed unconditionally
+    in ``workflow.yaml``. The inline ``moderation`` block takes priority over the YAML file.
     """
     if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
-    if config.moderation is None:
-        _logger.debug("No ``moderation`` block configured; moderation middleware is a no-op")
-        return None
-
-    if not moderation_config_has_guards(config.moderation):
-        _logger.debug("Moderation config has no guards; moderation middleware is a no-op")
-        return None
-
-    model_dir = os.path.abspath(os.getcwd())
-    return ModerationPipeline.from_config(config.moderation, model_dir=model_dir)
+    if config.moderation is not None:
+        return _load_llm_moderation_pipeline_from_inline(config)
+    return _load_llm_moderation_pipeline_from_config_file(config)
 
 
 def _tool_calls_from_ag_ui_events(
@@ -924,6 +1010,44 @@ def skip_event_type(event: Event) -> bool:
     }
 
 
+def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
+    """Track assistant text segments that started or received content but did not end."""
+    if isinstance(event, TextMessageStartEvent):
+        open_message_ids.add(event.message_id)
+    elif isinstance(event, TextMessageEndEvent):
+        open_message_ids.discard(event.message_id)
+    elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+        if event.message_id:
+            open_message_ids.add(event.message_id)
+
+
+def _synthetic_text_message_end_events(
+    open_message_ids: set[str],
+) -> list[TextMessageEndEvent]:
+    """Close dangling text segments when upstream ends the stream without TEXT_MESSAGE_END."""
+    end_events = [TextMessageEndEvent(message_id=message_id) for message_id in open_message_ids]
+    open_message_ids.clear()
+    return end_events
+
+
+def _synthetic_text_message_end_responses(
+    open_message_ids: set[str],
+) -> list[DRAgentEventResponse]:
+    """Wrap synthetic ``TEXT_MESSAGE_END`` events as ``DRAgentEventResponse`` batches."""
+    zero = default_usage_metrics()
+    return [
+        DRAgentEventResponse(events=[end_event], usage_metrics=zero)
+        for end_event in _synthetic_text_message_end_events(open_message_ids)
+    ]
+
+
+def _track_dragent_response_events(
+    open_message_ids: set[str], response: DRAgentEventResponse
+) -> None:
+    for event in response.events:
+        _track_open_text_message(open_message_ids, event)
+
+
 def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     """Check if the payload includes assistant text AG-UI deltas
     (possibly after lifecycle events).
@@ -998,12 +1122,20 @@ def _drain_pending_after_moderated_chunk(
     return ordered
 
 
+async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
+    """Close an async generator, ignoring errors from double-close or partial consumption."""
+    try:
+        await iterator.aclose()
+    except Exception:
+        _logger.debug("Error closing async iterator during stream teardown", exc_info=True)
+
+
 async def _moderated_dragent_stream(
-    upstream: AsyncIterator[DRAgentEventResponse],
+    upstream: AsyncGenerator[DRAgentEventResponse],
     *,
     moderation: ModerationPipeline,
     stream_state: _ModerationInvokeState,
-) -> AsyncIterator[DRAgentEventResponse]:
+) -> AsyncGenerator[DRAgentEventResponse]:
     """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
 
     Non-text upstream events pass through immediately until the first text delta. Text deltas are
@@ -1011,9 +1143,11 @@ async def _moderated_dragent_stream(
     during peek-ahead are buffered and emitted after each moderated chunk.
     """
     stream_tool_index_map: dict[int, str] = {}
+    open_text_message_ids: set[str] = set()
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
+    stopped_for_content_filter = False
 
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
         if response.events and _defer_until_after_moderated_chunk(response.events[0]):
@@ -1039,34 +1173,57 @@ async def _moderated_dragent_stream(
             current = await next_text_response()
 
     first_text: DRAgentEventResponse | None = None
-    async for response in upstream:
-        if response.events and not skip_event_type(response.events[0]):
-            first_text = response
-            break
-        yield response
-    if first_text is None:
-        return
-
-    async for moderated in moderation.stream_response_async(
-        completion_chunks(first_text),
-        prompt=stream_state.prompt,
-        prescore_df=stream_state.prescore_df,
-        prescore_latency=stream_state.latency_so_far,
-    ):
-        source_response = moderation_source_responses.pop(0)
-        yield dome_chunk_to_dragent_event_response(
-            moderated,
-            source_ag_ui_events=source_response.events,
-            stream_tool_index_map=stream_tool_index_map,
-        )
-        for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-            yield item
-        finish = moderated.choices[0].finish_reason if moderated.choices else None
-        if finish == "content_filter":
+    try:
+        async for response in upstream:
+            if response.events and not skip_event_type(response.events[0]):
+                first_text = response
+                break
+            _track_dragent_response_events(open_text_message_ids, response)
+            yield response
+        if first_text is None:
             return
 
-    for item in _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through):
-        yield item
+        async with contextlib.aclosing(
+            moderation.stream_response_async(
+                completion_chunks(first_text),
+                prompt=stream_state.prompt,
+                prescore_df=stream_state.prescore_df,
+                prescore_latency=stream_state.latency_so_far,
+            )
+        ) as moderation_stream:
+            async for moderated in moderation_stream:
+                source_response = moderation_source_responses.pop(0)
+                moderated_response = dome_chunk_to_dragent_event_response(
+                    moderated,
+                    source_ag_ui_events=source_response.events,
+                    stream_tool_index_map=stream_tool_index_map,
+                )
+                _track_dragent_response_events(open_text_message_ids, moderated_response)
+                yield moderated_response
+                for item in _drain_pending_after_moderated_chunk(
+                    pending_deferred, pending_pass_through
+                ):
+                    _track_dragent_response_events(open_text_message_ids, item)
+                    yield item
+                finish = moderated.choices[0].finish_reason if moderated.choices else None
+                if finish == "content_filter":
+                    for end_response in _synthetic_text_message_end_responses(
+                        open_text_message_ids
+                    ):
+                        yield end_response
+                    stopped_for_content_filter = True
+                    break
+
+        if not stopped_for_content_filter:
+            for item in _drain_pending_after_moderated_chunk(
+                pending_deferred, pending_pass_through
+            ):
+                _track_dragent_response_events(open_text_message_ids, item)
+                yield item
+            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+                yield end_response
+    finally:
+        await _aclose_async_iterator(upstream)
 
 
 @dataclass
@@ -1116,6 +1273,10 @@ class DataRobotModerationMiddleware(
       dome boundary.
     * **NAT chat** (``ChatRequest`` / ``ChatRequestOrMessage`` in, ``ChatResponse`` out): same
       guard pipeline with NAT message models instead of AG-UI.
+
+    When no guards are configured (missing inline block and YAML file, or empty guard list),
+    ``load_llm_moderation_pipeline`` returns ``None`` and this middleware is a no-op
+    (``enabled`` is ``False``) without requiring DataRobot credentials.
     """
 
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
@@ -1348,19 +1509,31 @@ class DataRobotModerationMiddleware(
             # workflow input / prescore skipped), pass the stream through unchanged.
             stream_state = _moderation_invoke_state_ctx.get()
             if stream_state is None:
-                async for chunk in call_next(*ctx.modified_args, **ctx.modified_kwargs):
-                    yield chunk
+                async with contextlib.aclosing(
+                    cast(
+                        AsyncGenerator[DRAgentEventResponse, None],
+                        call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    )
+                ) as upstream:
+                    async for chunk in upstream:
+                        yield chunk
                 return
 
             moderation = self._moderation
             assert moderation is not None
 
-            async for response in _moderated_dragent_stream(
-                call_next(*ctx.modified_args, **ctx.modified_kwargs),
-                moderation=moderation,
-                stream_state=stream_state,
-            ):
-                yield response
+            async with contextlib.aclosing(
+                _moderated_dragent_stream(
+                    cast(
+                        AsyncGenerator[DRAgentEventResponse, None],
+                        call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    ),
+                    moderation=moderation,
+                    stream_state=stream_state,
+                )
+            ) as moderated_stream:
+                async for response in moderated_stream:
+                    yield response
         finally:
             _clear_moderation_invoke_state_if_set()
 
