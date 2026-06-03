@@ -20,6 +20,7 @@ from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.core.config import apply_default_thinking
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
@@ -62,6 +63,13 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
                 result.pop("tool_choice", None)
                 result.pop("parallel_tool_calls", None)
             return result
+
+    # With thinking enabled, Anthropic accepts temperature unset or == 1; any other value is
+    # rejected by the gateway. langchain's ChatLiteLLM sends no temperature by default, so it's
+    # fine; the LlamaIndex LiteLLM wrapper defaults temperature to 0.1, which gets rejected. Pin
+    # it to 1 when thinking is active and the caller hasn't chosen a temperature.
+    if apply_default_thinking(config):
+        config.setdefault("temperature", 1)
 
     extra_body = config.pop("extra_body", None)
     if extra_body is not None:

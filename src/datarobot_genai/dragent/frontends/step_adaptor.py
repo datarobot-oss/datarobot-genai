@@ -14,10 +14,12 @@
 
 import json
 import logging
+from typing import Any
 
 from ag_ui.core import CustomEvent
 from ag_ui.core import Event
 from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
@@ -44,6 +46,8 @@ from nat.data_models.step_adaptor import StepAdaptorConfig
 from nat.data_models.step_adaptor import StepAdaptorMode
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.retriever.models import GlobalTypeConverter
+
+from datarobot_genai.core.agents.reasoning import iter_content_blocks
 
 from .response import DRAgentEventResponse
 from .tool_call_registry import bind_tool_call
@@ -135,6 +139,39 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
             f"Unsupported intermediate step type: {payload.event_type}, payload: {payload}"
         )
 
+    @staticmethod
+    def _primary_content_events(content: str | list[Any] | None, message_id: str) -> list[Event]:
+        """Map a root-level LLM chunk/text to AG-UI events.
+
+        Reasoning models stream list-form content
+        (``[{"type": "thinking", ...}, {"type": "text", ...}]``); passing that
+        verbatim into a string-typed ``delta`` is what crashes the adaptor. We
+        normalize it: text becomes ``TextMessageContentEvent`` and thinking
+        becomes a self-contained ``ReasoningMessageChunkEvent`` (the shape the
+        CLI/web renderers already understand).
+        """
+        events: list[Event] = []
+        for kind, delta in iter_content_blocks(content):
+            if kind == "thinking":
+                events.append(ReasoningMessageChunkEvent(message_id=message_id, delta=delta))
+            else:
+                events.append(TextMessageContentEvent(message_id=message_id, delta=delta))
+        return events
+
+    @staticmethod
+    def _reasoning_content_events(content: str | list[Any] | None, message_id: str) -> list[Event]:
+        """Map a nested (sub-agent) LLM chunk/text to reasoning events.
+
+        Downstream LLM output renders entirely as reasoning, so both text and
+        thinking blocks become ``ReasoningMessageContentEvent``s inside the
+        surrounding reasoning envelope. Normalizing also flattens list-form
+        content so it is never passed verbatim into a string ``delta``.
+        """
+        return [
+            ReasoningMessageContentEvent(message_id=message_id, delta=delta)
+            for _kind, delta in iter_content_blocks(content)
+        ]
+
     def _handle_llm(
         self, payload: IntermediateStepPayload, ancestry: InvocationNode
     ) -> ResponseSerializable | None:
@@ -163,41 +200,37 @@ class DRAgentNestedReasoningStepAdaptor(StepAdaptor):
         # we need to send content only once
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
-                text = self._extract_payload_text(payload)
-                if text:
-                    events.append(TextMessageContentEvent(message_id=payload.UUID, delta=text))
+                events.extend(
+                    self._primary_content_events(self._extract_payload_text(payload), payload.UUID)
+                )
 
             events.append(TextMessageEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
             self.seen_llm_new_token = True
-            if payload.data.chunk != "":
-                events.append(
-                    TextMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-                )
+            events.extend(self._primary_content_events(payload.data.chunk, payload.UUID))
         else:
             raise self._unknown_step_type(payload)
 
         return events
 
     def _handle_llm_nested_function(self, payload: IntermediateStepPayload) -> list[Event]:
-        events = []
+        events: list[Event] = []
         if payload.event_type == IntermediateStepType.LLM_START:
             events.append(ReasoningStartEvent(message_id=payload.UUID))
             events.append(ReasoningMessageStartEvent(message_id=payload.UUID, role="reasoning"))
             self.seen_llm_new_token = False
         elif payload.event_type == IntermediateStepType.LLM_END:
             if not self.seen_llm_new_token:
-                text = self._extract_payload_text(payload)
-                if text:
-                    events.append(ReasoningMessageContentEvent(message_id=payload.UUID, delta=text))
+                events.extend(
+                    self._reasoning_content_events(
+                        self._extract_payload_text(payload), payload.UUID
+                    )
+                )
             events.append(ReasoningMessageEndEvent(message_id=payload.UUID))
             events.append(ReasoningEndEvent(message_id=payload.UUID))
         elif payload.event_type == IntermediateStepType.LLM_NEW_TOKEN:
             self.seen_llm_new_token = True
-            if payload.data.chunk != "":
-                events.append(
-                    ReasoningMessageContentEvent(message_id=payload.UUID, delta=payload.data.chunk)
-                )
+            events.extend(self._reasoning_content_events(payload.data.chunk, payload.UUID))
         else:
             raise self._unknown_step_type(payload)
 

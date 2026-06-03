@@ -25,6 +25,7 @@ from typing import Any
 from typing import cast
 
 from ag_ui.core import EventType
+from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
@@ -51,7 +52,9 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -420,38 +423,49 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                                     None,
                                     usage_metrics,
                                 )
-                    elif message.content:
-                        # Its a text message
-                        # Handle the start and end of the text message
-                        if message.id != current_message_id:
-                            if current_message_id:
+                    elif message.content or message.additional_kwargs.get("reasoning_content"):
+                        for kind, delta in iter_message_blocks(message):
+                            if kind == "thinking":
                                 yield (
-                                    TextMessageEndEvent(
-                                        type=EventType.TEXT_MESSAGE_END,
-                                        message_id=current_message_id,
+                                    ReasoningMessageChunkEvent(
+                                        type=EventType.REASONING_MESSAGE_CHUNK,
+                                        message_id=str(message.id or ""),
+                                        delta=delta,
                                     ),
                                     None,
                                     usage_metrics,
                                 )
-                            current_message_id = str(message.id or "")
+                                continue
+                            # kind == "text": existing text lifecycle
+                            if message.id != current_message_id:
+                                if current_message_id:
+                                    yield (
+                                        TextMessageEndEvent(
+                                            type=EventType.TEXT_MESSAGE_END,
+                                            message_id=current_message_id,
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                current_message_id = str(message.id or "")
+                                yield (
+                                    TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=current_message_id,
+                                        role="assistant",
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
                             yield (
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
+                                TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
                                     message_id=current_message_id,
-                                    role="assistant",
+                                    delta=delta,
                                 ),
                                 None,
                                 usage_metrics,
                             )
-                        yield (
-                            TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=current_message_id,
-                                delta=str(message.content),
-                            ),
-                            None,
-                            usage_metrics,
-                        )
                 elif isinstance(message, HumanMessage):
                     # Intermediate relay nodes (e.g. planner-to-writer handoffs) may emit
                     # HumanMessages as state updates. These are not streamed to the caller.
@@ -579,11 +593,21 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if v is not None:
                     messages.extend(v.get("messages", []))
         messages = [m for m in messages if not isinstance(m, ToolMessage)]
+        # Flatten list-form content (reasoning models emit blocks) so ragas's
+        # string-only validation does not raise. Thinking blocks are dropped
+        # from the evaluation trace; the AG-UI stream still carries them as
+        # structured Thinking* events.
+        flattened: list[Any] = []
+        for m in messages:
+            if isinstance(m.content, list):
+                flattened.append(m.model_copy(update={"content": flatten_to_text(m.content)}))
+            else:
+                flattened.append(m)
         # Lazy import to reduce memory overhead when ragas is not used
         from ragas import MultiTurnSample
         from ragas.integrations.langgraph import convert_to_ragas_messages
 
-        ragas_trace = convert_to_ragas_messages(messages)
+        ragas_trace = convert_to_ragas_messages(flattened)
         return MultiTurnSample(user_input=ragas_trace)
 
 
