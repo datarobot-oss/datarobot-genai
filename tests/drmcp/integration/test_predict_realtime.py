@@ -54,7 +54,7 @@ class TestMCPRealtimePredictToolsIntegration:
                 dataset_str = f.read()
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": dataset_str,
@@ -89,7 +89,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -122,7 +122,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "multiseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -155,7 +155,7 @@ class TestMCPRealtimePredictToolsIntegration:
 
             # Use the unified predict_realtime function for regular (non-time series) predictions
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -182,7 +182,7 @@ class TestMCPRealtimePredictToolsIntegration:
 
             # Test with invalid series_id_column
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -194,7 +194,7 @@ class TestMCPRealtimePredictToolsIntegration:
             assert result.isError
             assert (
                 result.content[0].text  # type: ignore[union-attr]
-                == "[internal] Error in predict_realtime: "
+                == "[internal] Error in predict_score_inline_realtime: "
                 "ValueError: series_id_column 'invalid_column' not found in input data."
             )
 
@@ -232,7 +232,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -278,7 +278,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -329,7 +329,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "text_classification_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -368,7 +368,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -425,7 +425,7 @@ class TestMCPRealtimePredictToolsIntegration:
             input_columns = {col.strip() for col in input_df.columns}
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),
@@ -473,7 +473,7 @@ class TestMCPRealtimePredictToolsIntegration:
             predict_file = test_data_dir / "timeseries_regression_predict.csv"
 
             result = await session.call_tool(
-                "predict_realtime",
+                "predict_score_inline_realtime",
                 {
                     "deployment_id": deployment_id,
                     "dataset": predict_file.read_text(),

@@ -3,7 +3,7 @@
   "properties": {
     "data": {
       "type": "string",
-      "description": "CSV-formatted data for prediction. Each row represents one prediction request. Column names must match the feature names from get_deployment_features tool."
+      "description": "CSV-formatted data for prediction. Each row represents one prediction request. Column names must match the feature names from deployment_get_features tool."
     }
   },
   "required": ["data"]

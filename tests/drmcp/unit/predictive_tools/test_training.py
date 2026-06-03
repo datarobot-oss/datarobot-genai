@@ -25,7 +25,7 @@ from datarobot_genai.drtools.predictive import training
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_analyze_dataset() -> None:
+async def test_catalog_analyze_dataset() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
         {
@@ -39,7 +39,7 @@ async def test_analyze_dataset() -> None:
     mock_dataset.get_as_dataframe.return_value = mock_df
 
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await training.analyze_dataset(dataset_id="test_dataset_id")
+        result = await training.catalog_analyze_dataset(dataset_id="test_dataset_id")
         assert isinstance(result, dict)
         insights = result
 
@@ -54,7 +54,7 @@ async def test_analyze_dataset() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_suggest_use_cases() -> None:
+async def test_catalog_suggest_ml_problems() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame(
         {
@@ -67,7 +67,7 @@ async def test_suggest_use_cases() -> None:
     mock_dataset.get_as_dataframe.return_value = mock_df
 
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await training.suggest_use_cases(dataset_id="test_dataset_id")
+        result = await training.catalog_suggest_ml_problems(dataset_id="test_dataset_id")
         assert isinstance(result, dict)
         suggestions = result["use_case_suggestions"]
 
@@ -79,13 +79,13 @@ async def test_suggest_use_cases() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_exploratory_insights() -> None:
+async def test_catalog_get_eda_insights() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await training.get_exploratory_insights(
+        result = await training.catalog_get_eda_insights(
             dataset_id="test_dataset_id", target_col="target"
         )
         assert isinstance(result, dict)
@@ -100,7 +100,7 @@ async def test_get_exploratory_insights() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_exploratory_insights_catalog_feature_profile() -> None:
+async def test_catalog_get_eda_insights_catalog_feature_profile() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"features": [1, 2, 3], "target": [0, 1, 0]})
     mock_dataset.get_as_dataframe.return_value = mock_df
@@ -125,7 +125,7 @@ async def test_get_exploratory_insights_catalog_feature_profile() -> None:
     mock_dataset.iterate_all_features.return_value = iter([mock_api_feat, MagicMock(name="other")])
 
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await training.get_exploratory_insights(
+        result = await training.catalog_get_eda_insights(
             dataset_id="test_dataset_id",
             feature_col="features",
             include_feature_histogram=True,
@@ -142,14 +142,14 @@ async def test_get_exploratory_insights_catalog_feature_profile() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
+async def test_catalog_get_eda_insights_feature_col_unknown_column() -> None:
     mock_dataset = MagicMock()
     mock_df = pd.DataFrame({"a": [1]})
     mock_dataset.get_as_dataframe.return_value = mock_df
 
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
         with pytest.raises(ToolError, match="feature_col"):
-            await training.get_exploratory_insights(
+            await training.catalog_get_eda_insights(
                 dataset_id="test_dataset_id",
                 feature_col="missing",
             )
@@ -157,7 +157,7 @@ async def test_get_exploratory_insights_feature_col_unknown_column() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_start_autopilot_new_project() -> None:
+async def test_modeling_start_autopilot_new_project() -> None:
     mock_dataset = MagicMock()
     mock_dataset.id = "test_dataset_id"
     mock_project = MagicMock()
@@ -169,7 +169,7 @@ async def test_start_autopilot_new_project() -> None:
         patch.object(dr.Dataset, "create_from_url", return_value=mock_dataset),
         patch.object(dr.Project, "create_from_dataset", return_value=mock_project),
     ):
-        result = await training.start_autopilot(
+        result = await training.modeling_start_autopilot(
             target="target",
             dataset_url="http://test.com/data.csv",
             project_name="Test Project",
@@ -185,14 +185,14 @@ async def test_start_autopilot_new_project() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_start_autopilot_existing_project() -> None:
+async def test_modeling_start_autopilot_existing_project() -> None:
     mock_project = MagicMock()
     mock_project.id = "test_project_id"
     mock_project.get_status.return_value = "running"
     mock_project.use_case_id = None
 
     with patch.object(dr.Project, "get", return_value=mock_project):
-        result = await training.start_autopilot(
+        result = await training.modeling_start_autopilot(
             target="target", project_id="test_project_id", mode="comprehensive"
         )
         assert isinstance(result, dict)
@@ -206,7 +206,7 @@ async def test_start_autopilot_existing_project() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_model_roc_curve() -> None:
+async def test_modeling_get_model_roc() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
     mock_roc_curve = MagicMock()
@@ -227,7 +227,7 @@ async def test_get_model_roc_curve() -> None:
         patch.object(dr.Project, "get", return_value=mock_project),
         patch.object(dr.Model, "get", return_value=mock_model),
     ):
-        result = await training.get_model_roc_curve(
+        result = await training.modeling_get_model_roc(
             project_id="test_project_id", model_id="test_model_id"
         )
         assert isinstance(result, dict)
@@ -240,7 +240,7 @@ async def test_get_model_roc_curve() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_model_feature_impact() -> None:
+async def test_modeling_get_model_feature_impact() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
     mock_feature_impact = [
@@ -253,7 +253,7 @@ async def test_get_model_feature_impact() -> None:
         patch.object(dr.Project, "get", return_value=mock_project),
         patch.object(dr.Model, "get", return_value=mock_model),
     ):
-        result = await training.get_model_feature_impact(
+        result = await training.modeling_get_model_feature_impact(
             project_id="test_project_id", model_id="test_model_id"
         )
         assert isinstance(result, dict)
@@ -265,7 +265,7 @@ async def test_get_model_feature_impact() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_model_lift_chart() -> None:
+async def test_modeling_get_model_lift_chart() -> None:
     mock_project = MagicMock()
     mock_model = MagicMock()
     mock_lift_chart = MagicMock()
@@ -281,7 +281,7 @@ async def test_get_model_lift_chart() -> None:
         patch.object(dr.Project, "get", return_value=mock_project),
         patch.object(dr.Model, "get", return_value=mock_model),
     ):
-        result = await training.get_model_lift_chart(
+        result = await training.modeling_get_model_lift_chart(
             project_id="test_project_id", model_id="test_model_id"
         )
         assert isinstance(result, dict)
@@ -294,21 +294,21 @@ async def test_get_model_lift_chart() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_start_autopilot_validation() -> None:
-    """Test validation of input parameters for start_autopilot."""
+async def test_modeling_start_autopilot_validation() -> None:
+    """Test validation of input parameters for modeling_start_autopilot."""
     # Test missing dataset info for new project
     with pytest.raises(
         ToolError,
         match="Either dataset_url or dataset_id must be provided",
     ):
-        await training.start_autopilot(target="target")
+        await training.modeling_start_autopilot(target="target")
 
     # Test conflicting dataset inputs
     with pytest.raises(
         ToolError,
         match="Please provide either dataset_url or dataset_id, not both",
     ):
-        await training.start_autopilot(
+        await training.modeling_start_autopilot(
             target="target",
             dataset_url="http://test.com/data.csv",
             dataset_id="test_dataset_id",
@@ -319,13 +319,13 @@ async def test_start_autopilot_validation() -> None:
         ToolError,
         match="Target variable must be specified",
     ):
-        await training.start_autopilot(target="", dataset_url="http://test.com/data.csv")
+        await training.modeling_start_autopilot(target="", dataset_url="http://test.com/data.csv")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_suggest_use_cases_dataset_not_found() -> None:
-    """Test that suggest_use_cases provides a clear error message when dataset is not found."""
+async def test_catalog_suggest_ml_problems_dataset_not_found() -> None:
+    """catalog_suggest_ml_problems raises a clear error when the dataset is not found."""
 
     # Create a mock ClientError that matches the DataRobot SDK error format
     class MockClientError(Exception):
@@ -343,4 +343,4 @@ async def test_suggest_use_cases_dataset_not_found() -> None:
             ToolError,
             match=r"Dataset 'nonexistent_dataset_id' not found",
         ):
-            await training.suggest_use_cases(dataset_id="nonexistent_dataset_id")
+            await training.catalog_suggest_ml_problems(dataset_id="nonexistent_dataset_id")

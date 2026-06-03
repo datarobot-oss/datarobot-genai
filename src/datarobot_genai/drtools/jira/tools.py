@@ -39,7 +39,7 @@ _JIRA_ISSUES_REST = "https://developer.atlassian.com/cloud/jira/platform/rest/v3
     description=(
         "[Jira—search issues] Use when filtering many issues with JQL (project, status, text, "
         "dates, assignee, etc.). Returns matching issues as summaries. Not one known issue key "
-        "(jira_get_issue), not Confluence (confluence_search).\n\n"
+        "(jira_get_issue), not Confluence (confluence_search_space).\n\n"
         'Example: jql_query="project = PROJ AND status = Open", max_results=50.\n\n'
         "JQL references: "
         f"{_JQL_FUNCTIONS} {_JQL_FIELDS} {_JQL_KEYWORDS} {_JQL_OPERATORS}"
