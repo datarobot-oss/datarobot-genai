@@ -42,7 +42,7 @@ def mock_get_client_context_with_token_from_request_header(
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_cases_success() -> None:
+async def test_datarobot_usecases_list_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "data": [
@@ -53,7 +53,7 @@ async def test_list_use_cases_success() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_use_cases()
+        result = await tools.datarobot_usecases_list()
         assert isinstance(result, dict)
         assert result["count"] == 2
         assert result["use_cases"][0]["id"] == "uc1"
@@ -61,13 +61,13 @@ async def test_list_use_cases_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_cases_with_search() -> None:
+async def test_datarobot_usecases_list_with_search() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": [{"id": "uc1", "name": "Matching Case"}]}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_use_cases(search="Matching")
+        result = await tools.datarobot_usecases_list(search="Matching")
         mock_rest_client.get.assert_called_once_with(
             "useCases/", params={"limit": 100, "search": "Matching"}
         )
@@ -76,20 +76,20 @@ async def test_list_use_cases_with_search() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_cases_empty() -> None:
+async def test_datarobot_usecases_list_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_use_cases()
+        result = await tools.datarobot_usecases_list()
         assert result["count"] == 0
         assert result["use_cases"] == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_case_assets_success() -> None:
+async def test_usecases_list_assets_success() -> None:
     mock_use_case = MagicMock()
     mock_use_case.name = "Test UC"
 
@@ -103,7 +103,7 @@ async def test_list_use_case_assets_success() -> None:
     mock_use_case.list_projects.return_value = [mock_proj]
 
     with patch.object(dr.UseCase, "get", return_value=mock_use_case):
-        result = await tools.list_use_case_assets(use_case_id="uc1")
+        result = await tools.usecases_list_assets(use_case_id="uc1")
         assert isinstance(result, dict)
         assert result["count"] == 1
         use_case_data = result["use_cases"][0]
@@ -115,7 +115,7 @@ async def test_list_use_case_assets_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_case_assets_multiple_ids() -> None:
+async def test_usecases_list_assets_multiple_ids() -> None:
     mock_uc1 = MagicMock()
     mock_uc1.name = "UC 1"
     mock_uc1.list_datasets.return_value = [MagicMock(id="ds1", name="DS 1")]
@@ -131,7 +131,7 @@ async def test_list_use_case_assets_multiple_ids() -> None:
     with patch.object(
         dr.UseCase, "get", side_effect=lambda uid: {"uc1": mock_uc1, "uc2": mock_uc2}[uid]
     ):
-        result = await tools.list_use_case_assets(use_case_ids=["uc1", "uc2"])
+        result = await tools.usecases_list_assets(use_case_ids=["uc1", "uc2"])
         assert isinstance(result, dict)
         assert result["count"] == 2
         assert result["use_cases"][0]["name"] == "UC 1"
@@ -139,14 +139,14 @@ async def test_list_use_case_assets_multiple_ids() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_use_case_assets_missing_id() -> None:
+async def test_usecases_list_assets_missing_id() -> None:
     with pytest.raises(ToolError, match="use_case_id.*or.*use_case_ids.*must be provided"):
-        await tools.list_use_case_assets()
+        await tools.usecases_list_assets()
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_cases_client_error_404() -> None:
+async def test_datarobot_usecases_list_client_error_404() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.side_effect = ClientError(
         "404 client error: {'message': 'Not Found'}",
@@ -155,14 +155,14 @@ async def test_list_use_cases_client_error_404() -> None:
     )
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         with pytest.raises(ToolError) as exc_info:
-            await tools.list_use_cases()
+            await tools.datarobot_usecases_list()
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_case_assets_client_error_404() -> None:
+async def test_usecases_list_assets_client_error_404() -> None:
     with patch.object(
         dr.UseCase,
         "get",
@@ -172,7 +172,7 @@ async def test_list_use_case_assets_client_error_404() -> None:
             json={"message": "Not Found"},
         ),
     ):
-        result = await tools.list_use_case_assets(use_case_id="missing-uc")
+        result = await tools.usecases_list_assets(use_case_id="missing-uc")
 
     assert result["count"] == 1
     use_case_data = result["use_cases"][0]
@@ -183,7 +183,7 @@ async def test_list_use_case_assets_client_error_404() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_use_case_assets_partial_error() -> None:
+async def test_usecases_list_assets_partial_error() -> None:
     mock_use_case = MagicMock()
     mock_use_case.name = "Test UC"
 
@@ -192,7 +192,7 @@ async def test_list_use_case_assets_partial_error() -> None:
     mock_use_case.list_projects.return_value = []
 
     with patch.object(dr.UseCase, "get", return_value=mock_use_case):
-        result = await tools.list_use_case_assets(use_case_id="uc1")
+        result = await tools.usecases_list_assets(use_case_id="uc1")
         use_case_data = result["use_cases"][0]
         assert "datasets_error" in use_case_data
         assert use_case_data["deployments"] == []

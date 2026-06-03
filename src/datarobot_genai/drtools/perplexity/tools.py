@@ -42,9 +42,9 @@ _PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
     description=(
         "[Perplexity—web search] Use when the user needs ranked web sources/snippets for a "
         "question or multi-part research (string or list of sub-queries), with optional domain "
-        "allow/deny and recency. Not long-form single narrative answers (perplexity_think), not "
+        "allow/deny and recency. Not long-form single narrative answers (perplexity_sonar), not "
         "DataRobot docs (search_datarobot_agentic_docs), not raw URL extraction "
-        "(tavily_extract).\n\n"
+        "(tavily_extract_text).\n\n"
         f"query may be a string or up to {MAX_QUERIES} strings; tune max_results (1-{MAX_RESULTS}) "
         f"and max_tokens_per_page (1-{MAX_TOKENS_PER_PAGE}).\n\n"
         f"Reference: {_PPLX_SEARCH_GUIDE}"
@@ -173,7 +173,7 @@ async def perplexity_search(
         f"Reference: {_PPLX_STRUCTURED}"
     ),
 )
-async def perplexity_think(
+async def perplexity_sonar(
     *,
     prompt: Annotated[str, "The research prompt or instruction."],
     model: Annotated[

@@ -29,7 +29,7 @@ from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotCl
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.predictive import predict_realtime
-from datarobot_genai.drtools.predictive.predict_realtime import predict_by_ai_catalog_rt
+from datarobot_genai.drtools.predictive.predict_realtime import predict_score_catalog_realtime
 
 THRESHOLD_HIGH = 0.8
 THRESHOLD_LOW = 0.2
@@ -60,7 +60,7 @@ async def test_predict_realtime_forecast_point(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset="file.csv",
         forecast_point="2024-06-01",
@@ -90,7 +90,7 @@ async def test_predict_realtime_forecast_range_oversize_raises(
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
     with pytest.raises(ToolError, match="exceeds the inline limit"):
-        await predict_realtime.predict_realtime(
+        await predict_realtime.predict_score_inline_realtime(
             deployment_id="dep",
             dataset="file.csv",
             forecast_range_start="2024-06-01",
@@ -144,7 +144,7 @@ async def test_predict_timeseries_regression_forecast_point_with_intervals(
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="regression_dep_123",
         dataset="regression_data.csv",
         forecast_point="2024-06-01",
@@ -200,7 +200,7 @@ async def test_predict_timeseries_regression_historical_range(
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="regression_dep_456",
         dataset="historical_regression_data.csv",
         forecast_range_start="2024-05-01",
@@ -259,7 +259,7 @@ async def test_predict_timeseries_regression_multiseries(
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="multiseries_regression_dep",
         dataset="multiseries_data.csv",
         forecast_point="2024-06-01",
@@ -314,7 +314,7 @@ async def test_predict_timeseries_regression_large_dataset_raises(
     mock_result.dataframe = large_predictions
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
     with pytest.raises(ToolError, match="exceeds the inline limit"):
-        await predict_realtime.predict_realtime(
+        await predict_realtime.predict_score_inline_realtime(
             deployment_id="large_regression_dep",
             dataset="large_regression_data.csv",
             forecast_point="2024-06-01",
@@ -343,7 +343,7 @@ async def test_predict_timeseries_regression_series_id_validation_error(
 
     # Test with non-existent series_id_column
     with pytest.raises(ValueError) as exc_info:
-        await predict_realtime.predict_realtime(
+        await predict_realtime.predict_score_inline_realtime(
             deployment_id="regression_dep",
             dataset="data.csv",
             forecast_point="2024-06-01",
@@ -378,7 +378,7 @@ async def test_predict_timeseries_regression_no_prediction_intervals(
     mock_result = MagicMock()
     mock_result.dataframe = regression_predictions
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="regression_dep",
         dataset="data.csv",
         forecast_point="2024-06-01",
@@ -411,7 +411,7 @@ async def test_predict_realtime_with_all_explanation_parameters(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="text_dep",
         dataset="text_data.csv",
         max_explanations=10,
@@ -450,7 +450,7 @@ async def test_predict_realtime_with_passthrough_columns_all(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    await predict_realtime.predict_realtime(
+    await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset="data.csv",
         passthrough_columns="all",
@@ -473,7 +473,7 @@ async def test_predict_realtime_with_passthrough_columns_specific(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    await predict_realtime.predict_realtime(
+    await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset="data.csv",
         passthrough_columns="id,feature1",
@@ -497,7 +497,7 @@ async def test_predict_realtime_with_custom_endpoint(
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
     custom_endpoint = "https://custom-prediction-server.com/predict"
-    await predict_realtime.predict_realtime(
+    await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset="data.csv",
         prediction_endpoint=custom_endpoint,
@@ -520,7 +520,7 @@ async def test_predict_realtime_regular_prediction_no_time_series_params(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    await predict_realtime.predict_realtime(
+    await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset="data.csv",
         max_explanations=5,
@@ -549,7 +549,7 @@ async def test_predict_realtime_with_dataset_csv(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset=csv_str,
         timeout=5,
@@ -579,7 +579,7 @@ async def test_predict_realtime_with_dataset_json(
     mock_result = MagicMock()
     mock_result.dataframe = df
     patch_realtime_dependencies["mock_dr_predict"].return_value = mock_result
-    result = await predict_realtime.predict_realtime(
+    result = await predict_realtime.predict_score_inline_realtime(
         deployment_id="dep",
         dataset=json_str,
         timeout=5,
@@ -599,17 +599,17 @@ async def test_predict_realtime_with_dataset_json(
 
 
 class TestPredictByAiCatalogRt:
-    """Test cases for predict_by_ai_catalog_rt function."""
+    """Test cases for predict_score_catalog_realtime function."""
 
     @pytest.mark.asyncio
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
-    async def test_predict_by_ai_catalog_rt_with_get_as_dataframe(
+    async def test_predict_score_catalog_realtime_with_get_as_dataframe(
         self,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
-        """Test predict_by_ai_catalog_rt with get_as_dataframe method."""
+        """Test predict_score_catalog_realtime with get_as_dataframe method."""
         # Setup mocks
         mock_dataset = Mock()
         mock_dataset.get_as_dataframe.return_value = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
@@ -627,7 +627,7 @@ class TestPredictByAiCatalogRt:
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
             # Call function
-            result = await predict_by_ai_catalog_rt(
+            result = await predict_score_catalog_realtime(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
@@ -651,13 +651,13 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    async def test_predict_by_ai_catalog_rt_with_download(
+    async def test_predict_score_catalog_realtime_with_download(
         self,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
-        """Test predict_by_ai_catalog_rt with download method."""
+        """Test predict_score_catalog_realtime with download method."""
         # Setup mocks
         mock_dataset = Mock()
         # Remove get_as_dataframe attribute entirely
@@ -680,7 +680,7 @@ class TestPredictByAiCatalogRt:
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
             # Call function
-            result = await predict_by_ai_catalog_rt(
+            result = await predict_score_catalog_realtime(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
@@ -706,13 +706,13 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    async def test_predict_by_ai_catalog_rt_with_get_file(
+    async def test_predict_score_catalog_realtime_with_get_file(
         self,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
-        """Test predict_by_ai_catalog_rt with get_file method."""
+        """Test predict_score_catalog_realtime with get_file method."""
         mock_dataset = Mock()
         del mock_dataset.get_as_dataframe
         del mock_dataset.download
@@ -733,7 +733,7 @@ class TestPredictByAiCatalogRt:
             patch.object(dr.Dataset, "get", return_value=mock_dataset) as mock_ds_get,
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
-            result = await predict_by_ai_catalog_rt(
+            result = await predict_score_catalog_realtime(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
@@ -758,13 +758,13 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    async def test_predict_by_ai_catalog_rt_with_get_bytes(
+    async def test_predict_score_catalog_realtime_with_get_bytes(
         self,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
-        """Test predict_by_ai_catalog_rt with get_bytes method."""
+        """Test predict_score_catalog_realtime with get_bytes method."""
         # Setup mocks
         mock_dataset = Mock()
         # Remove get_as_dataframe, download, and get_file attributes entirely
@@ -789,7 +789,7 @@ class TestPredictByAiCatalogRt:
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
             # Call function
-            result = await predict_by_ai_catalog_rt(
+            result = await predict_score_catalog_realtime(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 
@@ -814,13 +814,13 @@ class TestPredictByAiCatalogRt:
     @patch("datarobot_genai.drtools.predictive.predict_realtime.predictions_result_response")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.dr_predict")
     @patch("datarobot_genai.drtools.predictive.predict_realtime.pl.read_csv")
-    async def test_predict_by_ai_catalog_rt_with_url_fallback(
+    async def test_predict_score_catalog_realtime_with_url_fallback(
         self,
         mock_read_csv,
         mock_dr_predict,
         mock_predictions_result_response,
     ):
-        """Test predict_by_ai_catalog_rt with URL fallback."""
+        """Test predict_score_catalog_realtime with URL fallback."""
         # Setup mocks
         mock_dataset = Mock()
         # Remove get_as_dataframe, download, get_file, and get_bytes attributes entirely
@@ -846,7 +846,7 @@ class TestPredictByAiCatalogRt:
             patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get,
         ):
             # Call function
-            result = await predict_by_ai_catalog_rt(
+            result = await predict_score_catalog_realtime(
                 deployment_id="deployment123", dataset_id="dataset123"
             )
 

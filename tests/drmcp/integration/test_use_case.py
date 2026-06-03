@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Integration tests for use case MCP tools (list_use_cases, list_use_case_assets)."""
+"""Integration tests for use case MCP tools (datarobot_usecases_list, usecases_list_assets)."""
 
 import json
 
@@ -36,17 +36,17 @@ class TestMCPUseCaseToolsIntegration:
     """Integration tests for MCP use case tools via stub DataRobot client."""
 
     async def test_tools_registered(self) -> None:
-        """Verify list_use_cases and list_use_case_assets are registered in the MCP server."""
+        """Verify use case list tools are registered in the MCP server."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
             result = await session.list_tools()
             tool_names = [t.name for t in result.tools]
-            assert "list_use_cases" in tool_names
-            assert "list_use_case_assets" in tool_names
+            assert "datarobot_usecases_list" in tool_names
+            assert "usecases_list_assets" in tool_names
 
-    async def test_list_use_cases_success(self) -> None:
-        """list_use_cases returns a list of use cases from the stub."""
+    async def test_datarobot_usecases_list_success(self) -> None:
+        """datarobot_usecases_list returns a list of use cases from the stub."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool("list_use_cases", {})
+            result = await session.call_tool("datarobot_usecases_list", {})
             assert not result.isError
             assert len(result.content) > 0
             assert isinstance(result.content[0], TextContent)
@@ -57,10 +57,10 @@ class TestMCPUseCaseToolsIntegration:
             use_case_ids = [uc["id"] for uc in data["use_cases"]]
             assert STUB_USE_CASE_ID in use_case_ids
 
-    async def test_list_use_cases_with_search_filter(self) -> None:
-        """list_use_cases with a search filter narrows the results."""
+    async def test_datarobot_usecases_list_with_search_filter(self) -> None:
+        """datarobot_usecases_list with a search filter narrows the results."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool("list_use_cases", {"search": "Stub"})
+            result = await session.call_tool("datarobot_usecases_list", {"search": "Stub"})
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert "use_cases" in data
@@ -68,28 +68,30 @@ class TestMCPUseCaseToolsIntegration:
             for uc in data["use_cases"]:
                 assert "stub" in uc["name"].lower()
 
-    async def test_list_use_cases_with_search_no_results(self) -> None:
-        """list_use_cases with a non-matching search filter returns empty list."""
+    async def test_datarobot_usecases_list_with_search_no_results(self) -> None:
+        """datarobot_usecases_list with a non-matching search filter returns empty list."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool("list_use_cases", {"search": "zzz_nonexistent_zzz"})
+            result = await session.call_tool(
+                "datarobot_usecases_list", {"search": "zzz_nonexistent_zzz"}
+            )
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert data["use_cases"] == []
             assert data["count"] == 0
 
-    async def test_list_use_cases_with_limit(self) -> None:
-        """list_use_cases respects the limit parameter."""
+    async def test_datarobot_usecases_list_with_limit(self) -> None:
+        """datarobot_usecases_list respects the limit parameter."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool("list_use_cases", {"limit": 1})
+            result = await session.call_tool("datarobot_usecases_list", {"limit": 1})
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert "use_cases" in data
 
-    async def test_list_use_case_assets_success(self) -> None:
-        """list_use_case_assets returns datasets, deployments, and experiments for a use case."""
+    async def test_usecases_list_assets_success(self) -> None:
+        """usecases_list_assets returns datasets, deployments, and experiments for a use case."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
             result = await session.call_tool(
-                "list_use_case_assets", {"use_case_id": STUB_USE_CASE_ID}
+                "usecases_list_assets", {"use_case_id": STUB_USE_CASE_ID}
             )
             assert not result.isError
             assert len(result.content) > 0
@@ -105,11 +107,11 @@ class TestMCPUseCaseToolsIntegration:
             assert "deployments" in use_case or "deployments_error" in use_case
             assert "experiments" in use_case or "experiments_error" in use_case
 
-    async def test_list_use_case_assets_has_datasets(self) -> None:
-        """list_use_case_assets includes datasets list from stub."""
+    async def test_usecases_list_assets_has_datasets(self) -> None:
+        """usecases_list_assets includes datasets list from stub."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
             result = await session.call_tool(
-                "list_use_case_assets", {"use_case_id": STUB_USE_CASE_ID}
+                "usecases_list_assets", {"use_case_id": STUB_USE_CASE_ID}
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
@@ -120,11 +122,11 @@ class TestMCPUseCaseToolsIntegration:
             assert "id" in use_case["datasets"][0]
             assert "name" in use_case["datasets"][0]
 
-    async def test_list_use_case_assets_has_deployments(self) -> None:
-        """list_use_case_assets includes deployments list from stub."""
+    async def test_usecases_list_assets_has_deployments(self) -> None:
+        """usecases_list_assets includes deployments list from stub."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
             result = await session.call_tool(
-                "list_use_case_assets", {"use_case_id": STUB_USE_CASE_ID}
+                "usecases_list_assets", {"use_case_id": STUB_USE_CASE_ID}
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
@@ -134,11 +136,11 @@ class TestMCPUseCaseToolsIntegration:
             assert len(use_case["deployments"]) >= 1
             assert "id" in use_case["deployments"][0]
 
-    async def test_list_use_case_assets_has_experiments(self) -> None:
-        """list_use_case_assets includes experiments list from stub."""
+    async def test_usecases_list_assets_has_experiments(self) -> None:
+        """usecases_list_assets includes experiments list from stub."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
             result = await session.call_tool(
-                "list_use_case_assets", {"use_case_id": STUB_USE_CASE_ID}
+                "usecases_list_assets", {"use_case_id": STUB_USE_CASE_ID}
             )
             assert not result.isError
             data = json.loads(result.content[0].text)
@@ -149,10 +151,10 @@ class TestMCPUseCaseToolsIntegration:
             assert "id" in use_case["experiments"][0]
             assert "name" in use_case["experiments"][0]
 
-    async def test_list_use_case_assets_missing_use_case_id(self) -> None:
-        """list_use_case_assets raises ToolError when use_case_id is not provided."""
+    async def test_usecases_list_assets_missing_use_case_id(self) -> None:
+        """usecases_list_assets raises ToolError when use_case_id is not provided."""
         async with integration_test_mcp_session(server_params=_use_case_server_params()) as session:
-            result = await session.call_tool("list_use_case_assets", {})
+            result = await session.call_tool("usecases_list_assets", {})
             assert result.isError
             assert len(result.content) > 0
             error_text = (

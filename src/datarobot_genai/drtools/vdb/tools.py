@@ -38,11 +38,11 @@ logger = logging.getLogger(__name__)
     description=(
         "[VDB—discover deployments] Use when the user needs deployed Vector Databases (VDBs) as "
         "id/label/status records. Read-only. Filters DataRobot deployments to "
-        "modelTargetType=VectorDatabase. Not predictive deployments (list_deployments), not "
-        "AI Catalog datasets (list_ai_catalog_items). Next step: query_vector_database."
+        "modelTargetType=VectorDatabase. Not predictive deployments (deployment_get_list), not "
+        "AI Catalog datasets (catalog_list_datasets). Next step: vdb_query."
     ),
 )
-async def list_vector_databases(
+async def vdb_list(
     *,
     offset: Annotated[
         int | None,
@@ -97,12 +97,12 @@ async def list_vector_databases(
     tags={"vdb", "read", "query", "search", "daria"},
     description=(
         "[VDB—semantic search] Use when the user wants to retrieve documents from a deployed "
-        "Vector Database via semantic similarity (deployment_id from list_vector_databases). "
+        "Vector Database via semantic similarity (deployment_id from vdb_list). "
         "Returns matched documents with metadata. Read-only. Not deployment metadata "
-        "(get_deployment_info), not predictive scoring (predict_*)."
+        "(deployment_get_info), not predictive scoring (predict_*)."
     ),
 )
-async def query_vector_database(
+async def vdb_query(
     *,
     deployment_id: Annotated[str, "The deployment ID of the Vector Database"] | None = None,
     query: Annotated[str, "The search query"] | None = None,

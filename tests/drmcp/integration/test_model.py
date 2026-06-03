@@ -37,12 +37,12 @@ class TestMCPToolsIntegration:
             tools_result: ListToolsResult = await session.list_tools()
             tool_names = [tool.name for tool in tools_result.tools]
 
-            assert "get_best_model" in tool_names
-            assert "score_dataset_with_model" in tool_names
+            assert "models_get_bestmodel" in tool_names
+            assert "modeling_score_dataset" in tool_names
 
             # 2 Test getting best model with specified metric
             result: CallToolResult = await session.call_tool(
-                "get_best_model",
+                "models_get_bestmodel",
                 {
                     "project_id": project_id,
                     "metric": "AUC",
@@ -69,7 +69,7 @@ class TestMCPToolsIntegration:
 
             # 3 Test getting best model without specifying metric
             result = await session.call_tool(
-                "get_best_model",
+                "models_get_bestmodel",
                 {"project_id": project_id},
             )
 
@@ -88,7 +88,7 @@ class TestMCPToolsIntegration:
 
             # 4 Test error handling for nonexistent project
             result = await session.call_tool(
-                "get_best_model", {"project_id": "nonexistent_project"}
+                "models_get_bestmodel", {"project_id": "nonexistent_project"}
             )
 
             assert result.isError
@@ -103,7 +103,7 @@ class TestMCPToolsIntegration:
 
             # 5 Test metric-based sorting of models
             result = await session.call_tool(
-                "get_best_model",
+                "models_get_bestmodel",
                 {"project_id": project_id, "metric": "LogLoss"},
             )
 
@@ -122,7 +122,7 @@ class TestMCPToolsIntegration:
 
             # 6 Test scoring: unknown AI Catalog dataset id (stub Dataset.get raises)
             result = await session.call_tool(
-                "score_dataset_with_model",
+                "modeling_score_dataset",
                 {
                     "project_id": project_id,
                     "model_id": "standalone_model",
@@ -136,5 +136,5 @@ class TestMCPToolsIntegration:
                 if hasattr(result.content[0], "text")
                 else str(result.content[0])
             )
-            assert "Error in score_dataset_with_model" in result_text
+            assert "Error in modeling_score_dataset" in result_text
             assert "Not Found" in result_text or "404" in result_text
