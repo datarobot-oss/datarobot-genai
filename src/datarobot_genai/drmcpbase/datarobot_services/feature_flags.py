@@ -23,3 +23,13 @@ async def is_mcp_tools_gallery_support_enabled(
             "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
             datarobot_user_bear_token,
         )
+
+
+async def is_mcp_tools_gallery_support_enabled_evaluated_with_existing_datarobot_client(
+    datarobot_api_client: DataRobotClientWithAsyncAPI,
+    datarobot_user_bear_token: str,
+) -> bool:
+    return await datarobot_api_client._is_feature_flag_enabled(
+        "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
+        datarobot_user_bear_token,
+    )
