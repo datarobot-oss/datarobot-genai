@@ -484,8 +484,23 @@ def test_resolve_moderation_model_dir_falls_back_to_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv(DRAGENT_CONFIG_FILE_ENV, raising=False)
+    monkeypatch.delenv("CODE_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
     assert resolve_moderation_model_dir(None) == str(tmp_path.resolve())
+
+
+def test_resolve_moderation_model_dir_from_code_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_dir = tmp_path / "opt" / "code"
+    agent_dir.mkdir(parents=True)
+    workflow = agent_dir / "workflow.yaml"
+    workflow.write_text("workflow: {}\n", encoding="utf-8")
+    (agent_dir / "moderation_config.yaml").write_text("targets: []\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(DRAGENT_CONFIG_FILE_ENV, raising=False)
+    with patch.dict(os.environ, {"CODE_DIR": str(agent_dir)}, clear=False):
+        assert resolve_moderation_model_dir(None) == str(agent_dir.resolve())
 
 
 def test_load_llm_moderation_pipeline_default_model_dir_from_dragent_config_file(

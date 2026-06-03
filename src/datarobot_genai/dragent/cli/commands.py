@@ -22,7 +22,7 @@ import click
 from nat.cli.commands.start import StartCommandGroup
 from nat.cli.type_registry import RegisteredFrontEndInfo
 
-from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
 from .remote import build_agui_payload
 from .remote import get_auth_context_headers
@@ -93,7 +93,7 @@ class DRAgentCommandGroup(StartCommandGroup):
                 "No config file provided. "
                 "Pass --config_file <path> or set the DRAGENT_CONFIG_FILE env var."
             )
-        os.environ[DRAGENT_CONFIG_FILE_ENV] = str(config_file.expanduser().resolve())
+        publish_dragent_config_file_env(config_file)
         _bridge_pulumi_otel_env()
         return super().invoke_subcommand(ctx, cmd_name, config_file, override, **kwargs)
 

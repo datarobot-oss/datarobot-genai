@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from nat.builder.workflow import Workflow
@@ -31,7 +29,7 @@ from nat.utils.type_utils import StrPath
 
 from datarobot_genai.core.chat.auth import get_authorization_context_from_headers
 from datarobot_genai.core.utils.auth import prepare_identity_header
-from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
 
 def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
@@ -114,7 +112,7 @@ async def load_workflow(
     """
     # Publish the workflow path so middleware (e.g. datarobot_moderation) can locate
     # ``moderation_config.yaml`` next to ``workflow.yaml`` without relying on CWD.
-    os.environ[DRAGENT_CONFIG_FILE_ENV] = str(Path(config_file).expanduser().resolve())
+    publish_dragent_config_file_env(config_file)
 
     # Load the config object
     config = load_config(config_file, headers=headers)
