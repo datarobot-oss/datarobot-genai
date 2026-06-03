@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.101
+- `drmcp`: removed OAuth provider startup gating (`IS_*_OAUTH_PROVIDER_CONFIGURED`, `is_*_oauth_configured`, and `oauth_check` in `tool_config`). Tool enablement is controlled only by `ENABLE_*_TOOLS` flags; OAuth tokens are resolved at request time.
+- `drmcp`: `enable_predictive_tools` default is now `false` (opt in via env, `MCP_CLI_CONFIGS`, or runtime params). Integration and acceptance test harnesses set `ENABLE_PREDICTIVE_TOOLS=true` so predictive tool suites keep running.
+- `drmcp`: `/metadata` tool config reports `enabled` only (dropped `oauth_required` / `oauth_configured`).
+
 ## 0.15.100
 - Renamed MCP tools and updated unit, integration and acceptance tests
 
