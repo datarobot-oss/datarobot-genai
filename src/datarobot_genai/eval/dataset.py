@@ -20,7 +20,9 @@ def load_dataset(path: str) -> list[dict[str, Any]]:
     text = Path(path).read_text()
     if path.endswith(".jsonl"):
         return [json.loads(line) for line in text.splitlines() if line.strip()]
-    result: list[dict[str, Any]] = json.loads(text)
+    result = json.loads(text)
+    if not isinstance(result, list):
+        raise TypeError(f"{path}: expected a JSON array, got {type(result).__name__}")
     return result
 
 

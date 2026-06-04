@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import warnings
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
@@ -21,8 +22,8 @@ PASS_THRESHOLD = 0.5
 
 
 def _find_artifact(output_dir: str, filename: str) -> Path | None:
-    matches = sorted(Path(output_dir).rglob(filename))
-    return matches[0] if matches else None
+    matches = list(Path(output_dir).rglob(filename))
+    return max(matches, key=lambda p: p.stat().st_mtime) if matches else None
 
 
 def normalize_output(
@@ -32,7 +33,11 @@ def normalize_output(
     pipeline: str,
     run_id: str,
 ) -> dict[str, Any]:
-    dataset_by_id = {c["id"]: c for c in dataset}
+    dataset_by_id: dict[str, dict[str, Any]] = {}
+    for c in dataset:
+        if c["id"] in dataset_by_id:
+            warnings.warn(f"Duplicate dataset id {c['id']!r}; later entry overwrites earlier", UserWarning, stacklevel=2)
+        dataset_by_id[c["id"]] = c
 
     predictions_path = _find_artifact(output_dir, "byob_predictions.jsonl")
     results_path = _find_artifact(output_dir, "byob_results.json")
@@ -82,6 +87,26 @@ def normalize_output(
                     "answer_match_score": None,
                     "notes": original.get("notes", meta.get("notes", "")),
                     "source": original.get("source", meta.get("source", "")),
+                }
+            )
+
+    # Dataset cases with no prediction entry are surfaced as inconclusive so
+    # partial runs don't silently appear complete in the summary.
+    predicted_ids = {c["id"] for c in cases}
+    for c in dataset:
+        if c["id"] not in predicted_ids:
+            cases.append(
+                {
+                    "id": c["id"],
+                    "input": c.get("input", ""),
+                    "expected_behavior": c.get("expected_behavior"),
+                    "agent_response": "",
+                    "quality_score": None,
+                    "judge_reason": "inconclusive — no prediction",
+                    "passed": None,
+                    "answer_match_score": None,
+                    "notes": c.get("notes", ""),
+                    "source": c.get("source", ""),
                 }
             )
 

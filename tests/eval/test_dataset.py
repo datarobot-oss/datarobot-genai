@@ -15,6 +15,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from datarobot_genai.eval.dataset import load_dataset
 from datarobot_genai.eval.dataset import to_byob_jsonl
 
@@ -44,6 +46,13 @@ def test_load_dataset_jsonl_ignores_blank_lines(tmp_path: Path) -> None:
     p.write_text('{"id": "a"}\n\n{"id": "b"}\n')
     loaded = load_dataset(str(p))
     assert len(loaded) == 2
+
+
+def test_load_dataset_json_non_list_raises(tmp_path: Path) -> None:
+    p = tmp_path / "cases.json"
+    p.write_text('{"id": "a"}')
+    with pytest.raises(TypeError, match="expected a JSON array"):
+        load_dataset(str(p))
 
 
 # ---------------------------------------------------------------------------

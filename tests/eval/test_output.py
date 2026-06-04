@@ -232,3 +232,57 @@ def test_normalize_output_missing_files(tmp_path: Path) -> None:
     result = normalize_output(str(tmp_path), [], "http://x", "p.yaml", "r1")
     assert result["cases"] == []
     assert result["summary"]["scored_cases"] == 0
+
+
+def test_normalize_output_missing_prediction_surfaced_as_inconclusive(
+    tmp_path: Path,
+) -> None:
+    subdir = tmp_path / "run"
+    # Only one of the two dataset cases has a prediction.
+    _write_predictions(subdir, [_scored_row("good-001", "good", 1.0, "5")])
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [
+        {"id": "good-001", "input": "q1", "expected_behavior": "good"},
+        {"id": "good-002", "input": "q2", "expected_behavior": "good"},
+    ]
+    result = normalize_output(str(tmp_path), dataset, "http://x", "p.yaml", "r1")
+
+    assert result["total_cases"] == 2
+    assert result["summary"]["scored_cases"] == 1
+    assert result["summary"]["inconclusive_cases"] == 1
+    missing = next(c for c in result["cases"] if c["id"] == "good-002")
+    assert missing["quality_score"] is None
+    assert missing["passed"] is None
+    assert "no prediction" in missing["judge_reason"]
+
+
+def test_normalize_output_duplicate_dataset_id_warns(tmp_path: Path) -> None:
+    subdir = tmp_path / "run"
+    _write_predictions(subdir, [_scored_row("good-001", "good", 1.0, "5")])
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [
+        {"id": "good-001", "input": "q1", "expected_behavior": "good"},
+        {"id": "good-001", "input": "q1-dup", "expected_behavior": "good"},
+    ]
+    import warnings as _warnings
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        normalize_output(str(tmp_path), dataset, "http://x", "p.yaml", "r1")
+    assert any("good-001" in str(w.message) for w in caught)
+
+
+def test_find_artifact_prefers_most_recently_modified(tmp_path: Path) -> None:
+    import time
+
+    old = tmp_path / "old" / "byob_results.json"
+    new = tmp_path / "new" / "byob_results.json"
+    old.parent.mkdir(parents=True)
+    new.parent.mkdir(parents=True)
+    old.write_text('{"old": true}')
+    time.sleep(0.01)
+    new.write_text('{"new": true}')
+
+    result = _find_artifact(str(tmp_path), "byob_results.json")
+    assert result == new

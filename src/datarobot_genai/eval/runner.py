@@ -40,6 +40,11 @@ def run_byob(
         env["JUDGE_URL"] = str(judge["url"])
         env["JUDGE_MODEL_ID"] = str(judge["model_id"])
         env["JUDGE_API_KEY_NAME"] = str(judge.get("api_key_name", "DATAROBOT_API_TOKEN"))
+    else:
+        # Explicitly clear any inherited JUDGE_* vars so a judge-free pipeline
+        # is not accidentally activated by a pre-existing shell environment.
+        for _key in ("JUDGE_URL", "JUDGE_MODEL_ID", "JUDGE_API_KEY_NAME"):
+            env.pop(_key, None)
 
     cmd = [
         sys.executable,

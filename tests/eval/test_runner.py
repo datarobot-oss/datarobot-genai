@@ -100,6 +100,30 @@ def test_run_byob_omits_judge_env_when_judge_free(tmp_path: Path) -> None:
     assert "JUDGE_API_KEY_NAME" not in env
 
 
+def test_run_byob_clears_inherited_judge_env_when_judge_free(tmp_path: Path) -> None:
+    """Inherited JUDGE_* vars are scrubbed so a judge-free pipeline can't be accidentally activated."""
+    cfg = _cfg()
+    del cfg["judge"]
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+
+    inherited = {
+        "JUDGE_URL": "https://old-judge.example.com",
+        "JUDGE_MODEL_ID": "old-model",
+        "JUDGE_API_KEY_NAME": "OLD_KEY",
+    }
+    with (
+        patch("datarobot_genai.eval.runner.subprocess.run", return_value=mock_result) as mock_run,
+        patch.dict("os.environ", inherited),
+    ):
+        run_byob(cfg, "http://agent/v1", "/tmp/ds.jsonl", "/tmp/out", tmp_path)
+
+    env = mock_run.call_args[1]["env"]
+    assert "JUDGE_URL" not in env
+    assert "JUDGE_MODEL_ID" not in env
+    assert "JUDGE_API_KEY_NAME" not in env
+
+
 def test_run_byob_raises_on_nonzero_exit(tmp_path: Path) -> None:
     mock_result = MagicMock()
     mock_result.returncode = 1
