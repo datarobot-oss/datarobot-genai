@@ -342,7 +342,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        framework: [langgraph, crewai, llamaindex]
+        agent: [langgraph, crewai, llamaindex]
     permissions:
       contents: read
     env:
@@ -351,8 +351,9 @@ jobs:
       DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
-      AGENT: ${{ matrix.framework }}
+      AGENT: ${{ matrix.agent }}
       LLM: llmgw
+      WORKFLOW_FILE: workflow-router-fallback-used.yaml
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -391,7 +392,7 @@ jobs:
         uses: JarvusInnovations/background-action@v1
         with:
           working-directory: e2e-tests
-          run: task dragent:run-router &
+          run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
           wait-for: 60s
 

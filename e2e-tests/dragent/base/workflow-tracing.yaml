@@ -25,24 +25,11 @@
 #     returns a static response and never actually invokes the LLM, so the stub
 #     is sufficient for exercising the workflow lifecycle that emits NAT
 #     ``<workflow>`` spans.
+base: workflow.yaml
+
 general:
-  front_end:
-    _type: dragent_fastapi
-    step_adaptor:
-      mode: "off"
   telemetry:
     tracing:
       otelcollector:
         _type: datarobot_otelcollector
         project: "base"
-
-llms:
-  stub_llm:
-    _type: openai
-    api_key: "stub-not-used"
-    model_name: "gpt-4o-mini"
-
-workflow:
-  _type: base_agent
-  llm_name: stub_llm
-  description: Base agent example (tracing variant)
