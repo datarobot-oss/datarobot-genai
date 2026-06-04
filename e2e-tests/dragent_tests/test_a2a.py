@@ -23,6 +23,8 @@ run for all agent types (NAT, LangGraph, CrewAI, LlamaIndex, base).
 
 from __future__ import annotations
 
+import uuid
+
 import httpx
 import pytest
 
