@@ -56,6 +56,7 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_telemetry_exporter
 from nat.data_models.common import SerializableSecretStr
 from nat.data_models.common import get_secret_value
+from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.telemetry_exporter import TelemetryExporterBaseConfig
 from nat.observability.mixin.batch_config_mixin import BatchConfigMixin
 from nat.observability.mixin.collector_config_mixin import CollectorConfigMixin
@@ -68,8 +69,35 @@ from datarobot_genai.core.datarobot_otel import ENTITY_ID_PREFIX
 from datarobot_genai.core.datarobot_otel import resolve_api_key_from_env
 from datarobot_genai.core.datarobot_otel import resolve_entity_id_from_env
 from datarobot_genai.core.datarobot_otel import resolve_otel_endpoint_from_env
+from datarobot_genai.core.telemetry_nat_context import pop_nat_span_context
+from datarobot_genai.core.telemetry_nat_context import push_nat_span_context
+from datarobot_genai.core.telemetry_nat_context import reset_nat_span_context
 
 logger = logging.getLogger(__name__)
+
+
+class DataRobotOTLPSpanAdapterExporter(OTLPSpanAdapterExporter):
+    """OTLP exporter that mirrors NAT span hierarchy into the OTel SDK context.
+
+    NAT lifecycle spans and SDK spans (memory, framework auto-instrumentors)
+    otherwise export as separate trace trees. This bridge keeps the SDK context
+    aligned with NAT intermediate steps so memory spans nest under the active
+    workflow span.
+    """
+
+    def _process_start_event(self, event: IntermediateStep) -> None:
+        super()._process_start_event(event)
+        span = self._span_stack.get(event.UUID)
+        if span and span.context:
+            push_nat_span_context(trace_id=span.context.trace_id, span_id=span.context.span_id)
+
+    def _process_end_event(self, event: IntermediateStep) -> None:
+        pop_nat_span_context()
+        super()._process_end_event(event)
+
+    def on_complete(self) -> None:
+        reset_nat_span_context()
+        super().on_complete()
 
 
 class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
@@ -148,7 +176,7 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
 async def datarobot_otelcollector_telemetry_exporter(
     config: DataRobotOtelCollectorTelemetryExporter,
     builder: Builder,
-) -> AsyncGenerator[OTLPSpanAdapterExporter, None]:
+) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
     headers: dict[str, str] = {
         "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
@@ -180,7 +208,7 @@ async def datarobot_otelcollector_telemetry_exporter(
         sorted(headers.keys()),
     )
 
-    yield OTLPSpanAdapterExporter(
+    yield DataRobotOTLPSpanAdapterExporter(
         endpoint=config.endpoint,
         headers=headers,
         resource_attributes=merged_resource_attributes,

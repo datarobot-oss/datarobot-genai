@@ -27,6 +27,8 @@ from opentelemetry.trace import SpanKind
 from opentelemetry.trace import Status
 from opentelemetry.trace import StatusCode
 
+from datarobot_genai.core.telemetry_nat_context import use_nat_workflow_trace_context
+
 _tracer = trace.get_tracer(__name__)
 
 MemoryOperationName = Literal["update_memory", "search_memory", "delete_memory"]
@@ -58,23 +60,24 @@ def trace_memory_operation(
     attributes: dict[str, Any] | None = None,
 ) -> Iterator[Span]:
     """Create a GenAI memory span following OTel semantic conventions."""
-    with _tracer.start_as_current_span(
-        operation_name,
-        kind=SpanKind.CLIENT,
-    ) as span:
-        attrs = {
-            "gen_ai.operation.name": operation_name,
-            "gen_ai.memory.store.name": store_name,
-            **(attributes or {}),
-        }
-        if store_id:
-            attrs["gen_ai.memory.store.id"] = store_id
-        _set_span_attributes(span, attrs)
-        try:
-            yield span
-            span.set_status(Status(StatusCode.OK))
-        except Exception as exc:
-            span.set_attribute("error.type", type(exc).__name__)
-            span.set_status(Status(StatusCode.ERROR, str(exc)))
-            span.record_exception(exc)
-            raise
+    with use_nat_workflow_trace_context():
+        with _tracer.start_as_current_span(
+            operation_name,
+            kind=SpanKind.CLIENT,
+        ) as span:
+            attrs = {
+                "gen_ai.operation.name": operation_name,
+                "gen_ai.memory.store.name": store_name,
+                **(attributes or {}),
+            }
+            if store_id:
+                attrs["gen_ai.memory.store.id"] = store_id
+            _set_span_attributes(span, attrs)
+            try:
+                yield span
+                span.set_status(Status(StatusCode.OK))
+            except Exception as exc:
+                span.set_attribute("error.type", type(exc).__name__)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise
