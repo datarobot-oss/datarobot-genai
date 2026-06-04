@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.108
+- `drtools/panels`: added connector-sourced Dataset panels — `create_dataset_panel_from_connector` runs SQL against any DataRobot connector/datastore (source-side filtering via `catalog_query_datastore`) and materializes the result to a Parquet payload stored via the Files API, recording datastore_id + sql in the panel's execution context for lineage/refresh. Gated on the `MCP_SANDBOX` entitlement.
+
 ## 0.15.107
 - `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
 

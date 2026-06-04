@@ -1,0 +1,87 @@
+# Copyright 2026 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Unit tests for connector-sourced Dataset panels."""
+
+import io
+from typing import Any
+
+import polars as pl
+import pytest
+
+from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drtools.panels import datasource as ds_mod
+from datarobot_genai.drtools.panels.store import PanelStore
+
+from .conftest import FakeBlobStore
+
+
+def test_rows_to_parquet_roundtrips() -> None:
+    rows = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
+    parquet = ds_mod._rows_to_parquet(rows)
+    frame = pl.read_parquet(io.BytesIO(parquet))
+    assert frame.columns == ["a", "b"]
+    assert frame.to_dicts() == rows
+
+
+@pytest.fixture
+def patched_datasource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[FakeBlobStore, list[dict[str, Any]]]:
+    """Skip the entitlement guard, inject an in-memory store, and stub the connector query."""
+    blobs = FakeBlobStore()
+    rows = [{"region": "EMEA", "rev": 10}, {"region": "AMER", "rev": 20}]
+    monkeypatch.setattr(ds_mod, "_require_mcp_sandbox", lambda: None)
+    monkeypatch.setattr(ds_mod, "_get_store", lambda: PanelStore(blobs))
+
+    async def _fake_query(*, datastore_id: str, sql: str, limit: int = 100) -> dict[str, Any]:
+        return {"rows": rows, "columns": ["region", "rev"], "row_count": len(rows)}
+
+    monkeypatch.setattr(ds_mod, "catalog_query_datastore", _fake_query)
+    return blobs, rows
+
+
+async def test_create_dataset_panel_from_connector(
+    patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
+) -> None:
+    blobs, rows = patched_datasource
+    created = await ds_mod.create_dataset_panel_from_connector(
+        datastore_id="ds-1",
+        sql="SELECT region, rev FROM sales WHERE rev > 5",
+        title="Sales",
+        source="staging",
+    )
+
+    assert created["type"] == "dataset"
+    assert created["row_count"] == 2
+    assert created["columns"] == ["region", "rev"]
+    assert created["execution_context"] == {
+        "kind": "connector_query",
+        "datastore_id": "ds-1",
+        "sql": "SELECT region, rev FROM sales WHERE rev > 5",
+    }
+    # The Parquet payload was stored and is readable back as the queried rows.
+    payload_id = created["payload_files_id"]
+    assert payload_id is not None
+    frame = pl.read_parquet(io.BytesIO(blobs.blobs[payload_id][0]))
+    assert frame.to_dicts() == rows
+
+
+async def test_create_dataset_panel_requires_sql(
+    patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
+) -> None:
+    with pytest.raises(ToolError):
+        await ds_mod.create_dataset_panel_from_connector(
+            datastore_id="ds-1", sql="", title="X"
+        )
