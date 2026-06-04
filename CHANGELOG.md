@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.105
+- `drtools`: added `auth_resolution_strategy` on `ToolsAuthCredentials` (`AUTH_RESOLUTION_STRATEGY`: `http` or `config`, default `http`). `AuthResolutionStrategy` is a `StrEnum` so env values parse correctly.
+- `drtools.core.auth`: runtime adapters inject per-request data via `set_request_headers` / `set_auth_context`; resolvers `resolve_datarobot_token`, `resolve_secret`, and `get_oauth_access_token_with_header_fallback` honor the strategy. Removed legacy helpers `set_request_headers_for_context`, `resolve_token_from_headers`, and `get_api_key_from_headers`. `get_oauth_access_token_with_header_fallback` is HTTP-only (OBO + header fallback); under `config` it returns a clear error for providers that do not support config (Google Drive, Microsoft Graph).
+- `drmcpbase`: added FastMCP middleware (`read_http_headers`, `OAuthMiddleWare`, `RequestHeadersMiddleware`, `register_oauth_middleware`) with injectable callbacks so `drmcpbase` stays free of `drtools` imports.
+- `drmcp`: thin `core.middleware` wires `drmcpbase` middleware to `drtools.core.auth` (`initialize_oauth_middleware`, `create_oauth_middleware`). Tool clients use `resolve_datarobot_token` / `resolve_secret`.
+- Docs: added `docs/drtools/auth.md` (FastMCP and LangChain auth injection patterns) and `AUTH_RESOLUTION_STRATEGY` to `docs/README.md`.
+- Tests: added `tests/drmcp/unit/test_resolve_auth.py` for strategy-aware token/secret resolution; updated middleware, config, and OAuth fallback tests for the new injection model.
+
 ## 0.15.104
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
 - Excluded `leptonai` (Lepton AI cloud backend pulled in by `nemo-evaluator-launcher`); it is unused and pins `httpx==0.27.2`, which conflicts with the `auth` extra.

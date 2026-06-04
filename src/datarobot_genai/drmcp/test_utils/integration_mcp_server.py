@@ -37,7 +37,6 @@ from unittest.mock import Mock
 
 import datarobot as dr
 import datarobot_predict.deployment as _dr_predict_deployment
-from fastmcp.exceptions import ToolError
 
 from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
@@ -51,6 +50,7 @@ from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_templates
 from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
 from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drtools.core.exceptions import ToolError
 
 # Import elicitation test tool to register it with the MCP server
 try:
@@ -153,7 +153,7 @@ def _patch_datarobot_token_for_stdio() -> None:
 
 
 def _apply_predict_stubs() -> None:
-    """Patch datarobot_predict.deployment.predict for inline scoring with StubDeployment."""
+    """Patch datarobot_predict.deployment.predict so predict_realtime works with StubDeployment."""
     _dr_predict_deployment.predict = test_create_prediction_result
 
 

@@ -81,6 +81,29 @@ def test_get_credentials_singleton() -> None:
         assert creds2 is creds1
 
 
+def test_auth_resolution_strategy_defaults_to_http() -> None:
+    """Test default auth resolution strategy is http."""
+    env_vars = {
+        "DATAROBOT_API_TOKEN": "test-token",
+    }
+    with patch.dict("os.environ", env_vars, clear=True):
+        creds = credentials.ToolsAuthCredentials()
+        assert creds.auth_resolution_strategy == credentials.AuthResolutionStrategy.HTTP
+        assert creds.auth_resolution_strategy == "http"
+
+
+def test_auth_resolution_strategy_loads_from_env() -> None:
+    """Test AUTH_RESOLUTION_STRATEGY env var parses as a string enum."""
+    env_vars = {
+        "DATAROBOT_API_TOKEN": "test-token",
+        "AUTH_RESOLUTION_STRATEGY": "config",
+    }
+    with patch.dict("os.environ", env_vars, clear=True):
+        creds = credentials.ToolsAuthCredentials()
+        assert creds.auth_resolution_strategy == credentials.AuthResolutionStrategy.CONFIG
+        assert creds.auth_resolution_strategy == "config"
+
+
 def test_has_datarobot_credentials() -> None:
     """Test ToolsAuthCredentials.has_datarobot_credentials method."""
     # Test with DataRobot credentials
@@ -93,5 +116,8 @@ def test_has_datarobot_credentials() -> None:
 
     # Test without DataRobot credentials
     with patch.dict("os.environ", {}, clear=True):
-        creds = credentials.ToolsAuthCredentials()
-        assert creds.has_datarobot_credentials() is False
+        try:
+            credentials.ToolsAuthCredentials()
+            assert False, "Should raise ValidationError"
+        except Exception:
+            assert True

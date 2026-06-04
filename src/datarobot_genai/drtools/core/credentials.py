@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from enum import StrEnum
+
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
 
 from .constants import DEFAULT_DATAROBOT_ENDPOINT
+
+
+class AuthResolutionStrategy(StrEnum):
+    """How tool authentication secrets are resolved."""
+
+    HTTP = "http"
+    CONFIG = "config"
 
 
 class DataRobotCredentials(DataRobotAppFrameworkBaseSettings):
@@ -31,8 +40,13 @@ class DataRobotCredentials(DataRobotAppFrameworkBaseSettings):
 
 
 class ToolsAuthCredentials(DataRobotAppFrameworkBaseSettings):
-    """Application credentials for tools (DataRobot and third-party API keys)."""
+    """Application credentials and auth resolution settings for tools.
 
+    Config fields are used when ``auth_resolution_strategy`` is ``config``.
+    See ``docs/drtools/auth.md`` for strategy details.
+    """
+
+    auth_resolution_strategy: AuthResolutionStrategy = AuthResolutionStrategy.HTTP
     datarobot: DataRobotCredentials = Field(default_factory=DataRobotCredentials)
     tavily_api_key: str = ""
     perplexity_api_key: str = ""

@@ -22,7 +22,7 @@ import httpx
 import pytest
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 
-from datarobot_genai.drtools.core.auth import set_request_headers_for_context
+from datarobot_genai.drtools.core.auth import set_request_headers
 from datarobot_genai.drtools.core.clients.atlassian import ATLASSIAN_API_BASE
 from datarobot_genai.drtools.core.clients.atlassian import OAUTH_ACCESSIBLE_RESOURCES_PATH
 from datarobot_genai.drtools.core.clients.atlassian import _find_first_resource_with_id
@@ -51,8 +51,9 @@ class TestGetAtlassianServiceAccessToken:
 
     @pytest.fixture(autouse=True)
     def _clear_header_ctx(self) -> None:
+        set_request_headers({})
         yield
-        set_request_headers_for_context({})
+        set_request_headers({})
 
     @pytest.mark.asyncio
     async def test_get_access_token_success(
@@ -85,8 +86,7 @@ class TestGetAtlassianServiceAccessToken:
             new_callable=AsyncMock,
             return_value="",
         ):
-            with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-                result = await get_token()
+            result = await get_token()
         assert isinstance(result, ToolError)
         assert result.kind == ToolErrorKind.AUTHENTICATION
         assert "empty access token" in str(result).lower()
@@ -106,8 +106,7 @@ class TestGetAtlassianServiceAccessToken:
             new_callable=AsyncMock,
             side_effect=oauth_error,
         ):
-            with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-                result = await get_token()
+            result = await get_token()
         assert isinstance(result, ToolError)
         assert "Could not obtain access token" in str(result)
         assert access_token_header in str(result)
@@ -144,7 +143,7 @@ class TestGetAtlassianServiceAccessToken:
             new_callable=AsyncMock,
             side_effect=RuntimeError("no auth ctx"),
         ):
-            set_request_headers_for_context({access_token_header: "from-header"})
+            set_request_headers({access_token_header: "from-header"})
             result = await get_token()
         assert result == "from-header"
 

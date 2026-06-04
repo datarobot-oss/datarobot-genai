@@ -32,7 +32,7 @@ from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 
-from datarobot_genai.drtools.core.auth import resolve_token_from_headers
+from datarobot_genai.drtools.core.auth import resolve_datarobot_token
 from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
@@ -45,7 +45,7 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
 
     Resolution order:
 
-    1. Token from request headers (via :func:`resolve_token_from_headers`).
+    1. Token from request headers (via :func:`resolve_datarobot_token`).
     2. If unset and ``headers_auth_only=False``, the application API token
        from credentials (e.g. dynamic registration / non-HTTP contexts).
 
@@ -54,7 +54,7 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
     ToolError
         If ``headers_auth_only=True`` and no token is present in the headers.
     """
-    token = resolve_token_from_headers()
+    token = resolve_datarobot_token(http_only=True)
     if not token:
         if headers_auth_only:
             raise ToolError(
