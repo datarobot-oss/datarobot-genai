@@ -267,6 +267,7 @@ def test_normalize_output_duplicate_dataset_id_warns(tmp_path: Path) -> None:
         {"id": "good-001", "input": "q1-dup", "expected_behavior": "good"},
     ]
     import warnings as _warnings
+
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
         normalize_output(str(tmp_path), dataset, "http://x", "p.yaml", "r1")

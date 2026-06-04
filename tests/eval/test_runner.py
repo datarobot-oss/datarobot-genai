@@ -101,7 +101,9 @@ def test_run_byob_omits_judge_env_when_judge_free(tmp_path: Path) -> None:
 
 
 def test_run_byob_clears_inherited_judge_env_when_judge_free(tmp_path: Path) -> None:
-    """Inherited JUDGE_* vars are scrubbed so a judge-free pipeline can't be accidentally activated."""
+    """Inherited JUDGE_* vars are scrubbed so a judge-free pipeline can't be accidentally
+    activated.
+    """
     cfg = _cfg()
     del cfg["judge"]
     mock_result = MagicMock()
