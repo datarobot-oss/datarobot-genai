@@ -52,7 +52,7 @@ llms:
       mock_response: "this is a mock response"
 ```
 
-Enable LLM extended reasoing (parameters format for Anthropic model before version 4.6).
+Enable LLM extended reasoning (parameters format for Anthropic model before version 4.6).
 
 ```yaml
 llms:
