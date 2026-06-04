@@ -24,8 +24,8 @@ from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.tools import MCP_SANDBOX_FEATURE_FLAG
-from datarobot_genai.drtools.sandbox.tools import execute_code
+from datarobot_genai.drtools.sandbox.utils import MCP_SANDBOX_FEATURE_FLAG
+from datarobot_genai.drtools.sandbox.utils import execute_code
 from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
 
 __all__ = [
