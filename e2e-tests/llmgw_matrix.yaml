@@ -13,7 +13,7 @@ model:
     reasoning_tests: true
     workflow_file: workflow-reasoning.yaml
   - label: gpt
-    id: "datarobot/azure/gpt-5-1-2025-11-13"
+    id: "datarobot/azure/gpt-5-2-2025-12-11"
     workflow_file: workflow.yaml
   - label: sonnet
     id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
