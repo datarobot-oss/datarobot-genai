@@ -151,10 +151,10 @@ class UserMCPProvider(Provider):
     def get_or_create_mcp_proxy_provider(self, user_mcp_deployment_id: str) -> ProxyProvider:
         return self.user_mcp_proxy_provider_cache.get(user_mcp_deployment_id)
 
-    async def get_user_mcp_proxy_providers_for_user(self) -> Sequence[ProxyProvider]:
+    async def get_user_mcp_deployment_ids(self) -> Sequence[str]:
         try:
             datarobot_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
-            user_mcp_deployment_ids = await self.datarobot_api_client._list_mcp_deployment_ids(  # type: ignore[union-attr]
+            return await self.datarobot_api_client._list_mcp_deployment_ids(  # type: ignore[union-attr]
                 datarobot_token
             )
         except (
@@ -166,9 +166,11 @@ class UserMCPProvider(Provider):
         ) as ex:
             logger.warning("Failed to list MCP deployments: %s. No user MCP provider returned.", ex)
             return []
+
+    async def get_user_mcp_proxy_providers_for_user(self) -> Sequence[ProxyProvider]:
         return [
             self.get_or_create_mcp_proxy_provider(user_mcp_deployment_id)
-            for user_mcp_deployment_id in user_mcp_deployment_ids
+            for user_mcp_deployment_id in await self.get_user_mcp_deployment_ids()
         ]
 
     async def _list_tools(self) -> Sequence[Tool]:

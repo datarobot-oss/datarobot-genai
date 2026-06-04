@@ -110,6 +110,11 @@ class TestUserMCPProvider:
             yield mock_func
 
     @pytest.fixture
+    def mock_get_user_mcp_deployment_ids(self) -> Iterator[AsyncMock]:
+        with patch.object(UserMCPProvider, "get_user_mcp_deployment_ids") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
     def mock_get_user_mcp_proxy_providers_for_user(self) -> Iterator[Mock]:
         with patch.object(
             UserMCPProvider,
@@ -197,26 +202,24 @@ class TestUserMCPProvider:
         assert output == mcp_provider.user_mcp_proxy_provider_cache.get.return_value
 
     @pytest.mark.asyncio
-    async def test_get_user_mcp_proxy_providers_for_user(
+    async def test_get_user_mcp_deployment_ids(
         self,
         mock_datarobot_api_client: Mock,
         mock_get_datarobot_bearer_token_from_mcp_request: Mock,
-        mock_get_or_create_mcp_proxy_provider: Mock,
     ) -> None:
         user_mcp_deployment_id = Mock()
         mcp_provider = UserMCPProvider(Mock())
         mcp_provider.datarobot_api_client = mock_datarobot_api_client
         mock_datarobot_api_client._list_mcp_deployment_ids.return_value = [user_mcp_deployment_id]
 
-        outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
+        outputs = await mcp_provider.get_user_mcp_deployment_ids()
 
         mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
         mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token
         )
-        mock_get_or_create_mcp_proxy_provider.assert_called_once_with(user_mcp_deployment_id)
-        assert outputs == [mock_get_or_create_mcp_proxy_provider.return_value]
+        assert outputs == [user_mcp_deployment_id]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -229,7 +232,7 @@ class TestUserMCPProvider:
         ],
         ids=str,
     )
-    async def test_get_user_mcp_proxy_providers_for_user_return_empty_if_errored(
+    async def test_test_get_user_mcp_deployment_ids_return_empty_if_errored(
         self,
         raised_error: NoHeadersFoundInRequestContextError
         | NoDataRobotBearerTokenFoundInRequestContextError
@@ -237,21 +240,35 @@ class TestUserMCPProvider:
         | ClientResponseError,
         mock_datarobot_api_client: Mock,
         mock_get_datarobot_bearer_token_from_mcp_request: Mock,
-        mock_get_or_create_mcp_proxy_provider: Mock,
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
         mcp_provider.datarobot_api_client = mock_datarobot_api_client
         mock_datarobot_api_client._list_mcp_deployment_ids.side_effect = raised_error
 
-        outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
+        outputs = await mcp_provider.get_user_mcp_deployment_ids()
 
         mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
         mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token,
         )
-        mock_get_or_create_mcp_proxy_provider.assert_not_called()
         assert outputs == []
+
+    @pytest.mark.asyncio
+    async def test_get_user_mcp_proxy_providers_for_user(
+        self,
+        mock_get_or_create_mcp_proxy_provider: Mock,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+    ) -> None:
+        user_mcp_deployment_id = Mock()
+        mock_get_user_mcp_deployment_ids.return_value = [user_mcp_deployment_id]
+
+        mcp_provider = UserMCPProvider(Mock())
+        outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
+
+        mock_get_user_mcp_deployment_ids.assert_called_once_with()
+        mock_get_or_create_mcp_proxy_provider.assert_called_once_with(user_mcp_deployment_id)
+        assert outputs == [mock_get_or_create_mcp_proxy_provider.return_value]
 
     def test_get_user_mcp_endpoint(self) -> None:
         mock_datarobot_endpoint = Mock()
