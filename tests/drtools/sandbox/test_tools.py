@@ -42,7 +42,7 @@ def dr_env() -> Iterator[None]:
         ),
         patch("datarobot_genai.drtools.sandbox.tools.get_credentials") as mock_creds,
     ):
-        mock_creds.return_value.datarobot.endpoint = "https://app.example.com/api/v2"
+        mock_creds.return_value.datarobot.datarobot_endpoint = "https://app.example.com/api/v2"
         yield
 
 

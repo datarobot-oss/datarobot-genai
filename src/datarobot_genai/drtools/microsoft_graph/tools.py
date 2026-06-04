@@ -233,14 +233,14 @@ async def microsoft_graph_share_item(
     description=(
         "[M365—create text file] Use when the user wants a new plain-text file in personal "
         "OneDrive or a SharePoint library (library id from search). Not metadata updates "
-        "(microsoft_update_metadata), not sharing (microsoft_graph_share_item).\n\n"
+        "(microsoft_graph_update_metadata), not sharing (microsoft_graph_share_item).\n\n"
         "Personal OneDrive: file_name + content_text only (saves to root). SharePoint: set "
         "document_library_id from microsoft_graph_search_content (documentLibraryId). "
         "Duplicate names are auto-renamed (e.g. report (1).txt).\n\n"
         f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
 )
-async def microsoft_create_file(
+async def microsoft_graph_create_file(
     *,
     file_name: Annotated[str, "The name of the file to create (e.g., 'report.txt')."],
     content_text: Annotated[str, "The raw text content to be stored in the file."],
@@ -304,7 +304,7 @@ async def microsoft_create_file(
         f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
 )
-async def microsoft_update_metadata(
+async def microsoft_graph_update_metadata(
     *,
     item_id: Annotated[str, "The ID of the file or list item to update."],
     fields_to_update: Annotated[

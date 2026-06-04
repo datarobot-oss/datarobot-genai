@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Acceptance tests for deployment MCP tools (list_deployments, deploy_model, deploy_custom_model)."""  # noqa: E501
+"""Acceptance tests for deployment MCP tools (deployment_get_list, deployment_create_deployment, deploy_custom_model)."""  # noqa: E501
 
 import inspect
 from pathlib import Path

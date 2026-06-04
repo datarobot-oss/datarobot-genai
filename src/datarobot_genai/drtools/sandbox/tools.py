@@ -94,7 +94,7 @@ async def execute_code(
     # from configured credentials. `get_datarobot_access_token` raises
     # ToolError(AUTHENTICATION) when no token is available.
     token = get_datarobot_access_token()
-    endpoint = get_credentials().datarobot.endpoint
+    endpoint = get_credentials().datarobot.datarobot_endpoint
 
     sandbox = DataRobotWorkloadSandbox(
         image=image,

@@ -54,13 +54,13 @@ def _feature_importance_value(feature: Any) -> float:
         "[Deploy—scoring contract] Use first when building or validating payloads for a "
         "deployment: target name/type, model family, all input features (name, type, "
         "importance), plus time-series settings when relevant. Read-only. Narrower feature-only "
-        "view is get_deployment_features; model training diagnostics stay on the project "
-        "(get_model_details)."
+        "view is deployment_get_features; model training diagnostics stay on the project "
+        "(modeling_get_modeldetails)."
     ),
 )
-async def get_deployment_info(
+async def deployment_get_info(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id (from list_deployments or product UI)."],
+    deployment_id: Annotated[str, "MLOps deployment id (from deployment_get_list or product UI)."],
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -129,11 +129,12 @@ async def get_deployment_info(
     description=(
         "[Deploy—sample prediction rows] Use when the user needs example rows with correct "
         "column names and types for one deployment (placeholder values only). Read-only. "
-        "Pair with get_deployment_info for semantics; output is meant as a skeleton for "
-        "predict_realtime CSV/JSON, not for batch catalog jobs or project model scoring."
+        "Pair with deployment_get_info for semantics; output is meant as a skeleton for "
+        "predict_score_inline_realtime CSV/JSON, not for batch catalog jobs "
+        "or project model scoring."
     ),
 )
-async def generate_prediction_data_template(
+async def deployment_generate_prediction_sample(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     n_rows: Annotated[int, "How many identical-length template rows to generate (≥1)."] = 1,
@@ -144,7 +145,7 @@ async def generate_prediction_data_template(
         n_rows = 1
 
     # Get feature information
-    features_info = await get_deployment_features(deployment_id=deployment_id)
+    features_info = await deployment_get_features(deployment_id=deployment_id)
     # Check if we got a valid result
     if not isinstance(features_info, dict) or "features" not in features_info:
         raise ToolError(
@@ -229,15 +230,17 @@ async def generate_prediction_data_template(
         "[Deploy—validate CSV only] Use when the user has inline CSV text and wants a schema "
         "check against one deployment before scoring (columns, basic types, time-series "
         "datetime and series id columns). Does not score; returns valid/invalid plus "
-        "errors/warnings. Same csv_string shape as predict_realtime dataset when CSV; not for "
+        "errors/warnings. Same csv_string shape as predict_score_inline_realtime "
+        "dataset when CSV; not for "
         "catalog dataset_id flows or JSON-only payloads."
     ),
 )
-async def validate_prediction_data(
+async def deployment_validate_prediction_data(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     csv_string: Annotated[
-        str, "Single CSV document (header + rows), same shape as predict_realtime dataset."
+        str,
+        "Single CSV document (header + rows), same shape as predict_score_inline_realtime dataset.",
     ],
 ) -> dict[str, Any]:
     if not csv_string or not csv_string.strip():
@@ -258,7 +261,7 @@ async def validate_prediction_data(
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
     # Get deployment features
-    features_info = await get_deployment_features(deployment_id=deployment_id)
+    features_info = await deployment_get_features(deployment_id=deployment_id)
 
     validation_report: dict[str, Any] = {
         "status": "valid",
@@ -372,18 +375,18 @@ async def validate_prediction_data(
     description=(
         "[Deploy—features slice] Use when you only need feature list, target summary, and "
         "optional time_series_config for a deployment without the full scoring contract "
-        "narrative. Read-only; subset of get_deployment_info (which remains the default first "
-        "call for predict_realtime prep)."
+        "narrative. Read-only; subset of deployment_get_info (which remains the default first "
+        "call for predict_score_inline_realtime prep)."
     ),
 )
-async def get_deployment_features(
+async def deployment_get_features(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
 
-    info = await get_deployment_info(deployment_id=deployment_id)
+    info = await deployment_get_info(deployment_id=deployment_id)
     # Only keep features, time_series_config, and total_features
     result = {
         "features": info.get("features", []),

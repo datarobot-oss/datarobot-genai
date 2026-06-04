@@ -62,7 +62,7 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
                 "Please provide it via 'Authorization' (Bearer), 'x-datarobot-api-token' headers.",
                 kind=ToolErrorKind.AUTHENTICATION,
             )
-        token = get_credentials().datarobot.application_api_token
+        token = get_credentials().datarobot.datarobot_api_token
     return token
 
 
@@ -80,7 +80,7 @@ def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTCl
     concurrent requests.
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
-    endpoint = get_credentials().datarobot.endpoint
+    endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
         # Avoid use-case context from trafaret affecting tool calls.
         DRContext.use_case = None
@@ -100,7 +100,7 @@ def request_user_dr_sdk(*, headers_auth_only: bool = True) -> Iterator[Any]:
     :func:`request_user_dr_client`.
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
-    endpoint = get_credentials().datarobot.endpoint
+    endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
         DRContext.use_case = None
         yield dr
@@ -110,7 +110,7 @@ class ThreadSafeDataRobotClient:
     """Configure a per-request DataRobot SDK client from the caller's headers."""
 
     def __init__(self) -> None:
-        self.endpoint = get_credentials().datarobot.endpoint
+        self.endpoint = get_credentials().datarobot.datarobot_endpoint
 
     @contextmanager
     def request_user_client(self, *, headers_auth_only: bool = True) -> Iterator[RESTClientObject]:

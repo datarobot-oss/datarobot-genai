@@ -15,7 +15,6 @@
 """Tests for tool configuration and enablement logic."""
 
 import os
-from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from datarobot_genai.drmcp.core.config import MCPServerConfig
@@ -41,9 +40,7 @@ class TestToolType:
 
     def test_tool_type_is_string_enum(self) -> None:
         """Test that ToolType is a string enum."""
-        # ToolType inherits from str and Enum, so the value is a string
         assert ToolType.PREDICTIVE.value == "predictive"
-        # The enum member itself can be compared to string
         assert ToolType.PREDICTIVE == "predictive"
 
 
@@ -59,7 +56,6 @@ class TestToolConfigs:
         """Test predictive tool configuration."""
         config = TOOL_CONFIGS[ToolType.PREDICTIVE]
         assert config["name"] == "predictive"
-        assert config["oauth_check"] is None
         assert config["directory"] == "predictive"
         assert config["package_prefix"] == "datarobot_genai.drtools.predictive"
         assert config["config_field_name"] == "enable_predictive_tools"
@@ -68,7 +64,6 @@ class TestToolConfigs:
         """Test Jira tool configuration."""
         config = TOOL_CONFIGS[ToolType.JIRA]
         assert config["name"] == "jira"
-        assert config["oauth_check"] is not None
         assert config["directory"] == "jira"
         assert config["package_prefix"] == "datarobot_genai.drtools.jira"
         assert config["config_field_name"] == "enable_jira_tools"
@@ -77,7 +72,6 @@ class TestToolConfigs:
         """Test Confluence tool configuration."""
         config = TOOL_CONFIGS[ToolType.CONFLUENCE]
         assert config["name"] == "confluence"
-        assert config["oauth_check"] is not None
         assert config["directory"] == "confluence"
         assert config["package_prefix"] == "datarobot_genai.drtools.confluence"
         assert config["config_field_name"] == "enable_confluence_tools"
@@ -86,91 +80,9 @@ class TestToolConfigs:
         """Test Microsoft Graph tool configuration."""
         config = TOOL_CONFIGS[ToolType.MICROSOFT_GRAPH]
         assert config["name"] == "microsoft_graph"
-        assert config["oauth_check"] is not None
         assert config["directory"] == "microsoft_graph"
         assert config["package_prefix"] == "datarobot_genai.drtools.microsoft_graph"
         assert config["config_field_name"] == "enable_microsoft_graph_tools"
-
-    def test_use_case_tool_config(self) -> None:
-        """Test use case tool configuration."""
-        config = TOOL_CONFIGS[ToolType.USE_CASE]
-        assert config["name"] == "use_case"
-        assert config["oauth_check"] is None
-        assert config["directory"] == "use_case"
-        assert config["package_prefix"] == "datarobot_genai.drtools.use_case"
-        assert config["config_field_name"] == "enable_use_case_tools"
-
-    def test_vdb_tool_config(self) -> None:
-        """Test VDB tool configuration."""
-        config = TOOL_CONFIGS[ToolType.VDB]
-        assert config["name"] == "vdb"
-        assert config["oauth_check"] is None
-        assert config["directory"] == "vdb"
-        assert config["package_prefix"] == "datarobot_genai.drtools.vdb"
-        assert config["config_field_name"] == "enable_vdb_tools"
-
-    def test_code_execution_tool_config(self) -> None:
-        """Test code execution tool configuration."""
-        config = TOOL_CONFIGS[ToolType.CODE_EXECUTION]
-        assert config["name"] == "code_execution"
-        assert config["oauth_check"] is None
-        assert config["directory"] == "code_execution"
-        assert config["package_prefix"] == "datarobot_genai.drtools.code_execution"
-        assert config["config_field_name"] == "enable_code_execution_tools"
-
-    def test_optimization_tool_config(self) -> None:
-        """Test optimization tool configuration."""
-        config = TOOL_CONFIGS[ToolType.OPTIMIZATION]
-        assert config["name"] == "optimization"
-        assert config["oauth_check"] is None
-        assert config["directory"] == "optimization"
-        assert config["package_prefix"] == "datarobot_genai.drtools.optimization"
-        assert config["config_field_name"] == "enable_optimization_tools"
-
-    def test_jira_oauth_check_callable(self) -> None:
-        """Test that Jira OAuth check is a callable."""
-        config = TOOL_CONFIGS[ToolType.JIRA]
-        assert callable(config["oauth_check"])
-
-        # Test that it calls the config method
-        mock_config = MagicMock(spec=MCPServerConfig)
-        mock_tool_config = MagicMock()
-        mock_tool_config.is_atlassian_oauth_configured = True
-        mock_config.tool_config = mock_tool_config
-        assert config["oauth_check"](mock_config) is True
-
-        mock_tool_config.is_atlassian_oauth_configured = False
-        assert config["oauth_check"](mock_config) is False
-
-    def test_confluence_oauth_check_callable(self) -> None:
-        """Test that Confluence OAuth check is a callable."""
-        config = TOOL_CONFIGS[ToolType.CONFLUENCE]
-        assert callable(config["oauth_check"])
-
-        # Test that it calls the config method
-        mock_config = MagicMock(spec=MCPServerConfig)
-        mock_tool_config = MagicMock()
-        mock_tool_config.is_atlassian_oauth_configured = True
-        mock_config.tool_config = mock_tool_config
-        assert config["oauth_check"](mock_config) is True
-
-        mock_tool_config.is_atlassian_oauth_configured = False
-        assert config["oauth_check"](mock_config) is False
-
-    def test_microsoft_graph_oauth_check_callable(self) -> None:
-        """Test that Microsoft Graph OAuth check is a callable."""
-        config = TOOL_CONFIGS[ToolType.MICROSOFT_GRAPH]
-        assert callable(config["oauth_check"])
-
-        # Test that it calls the config method
-        mock_config = MagicMock(spec=MCPServerConfig)
-        mock_tool_config = MagicMock()
-        mock_tool_config.is_microsoft_oauth_configured = True
-        mock_config.tool_config = mock_tool_config
-        assert config["oauth_check"](mock_config) is True
-
-        mock_tool_config.is_microsoft_oauth_configured = False
-        assert config["oauth_check"](mock_config) is False
 
 
 class TestGetToolEnableConfigName:
@@ -210,152 +122,32 @@ class TestIsToolEnabled:
             config = MCPServerConfig()
             assert is_tool_enabled(ToolType.PREDICTIVE, config) is False
 
-    def test_predictive_tool_default_enabled(self) -> None:
-        """Test predictive tool default is enabled."""
+    def test_predictive_tool_default_disabled(self) -> None:
+        """Test predictive tool default is disabled."""
         with patch.dict(os.environ, clear=True):
             config = MCPServerConfig(_env_file=None)
-            assert is_tool_enabled(ToolType.PREDICTIVE, config) is True
+            assert is_tool_enabled(ToolType.PREDICTIVE, config) is False
 
-    def test_jira_tool_enabled_with_oauth(self) -> None:
-        """Test Jira tool when enabled and OAuth is configured."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_JIRA_TOOLS": "true",
-                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert is_tool_enabled(ToolType.JIRA, config) is True
-
-    def test_jira_tool_enabled_without_oauth(self) -> None:
-        """Test Jira tool when enabled but OAuth is not configured."""
+    def test_jira_tool_enabled(self) -> None:
+        """Test Jira tool when enabled."""
         with patch.dict(os.environ, {"ENABLE_JIRA_TOOLS": "true"}, clear=False):
-            config = MCPServerConfig()
-            # No OAuth configured
-            assert is_tool_enabled(ToolType.JIRA, config) is False
-
-    def test_jira_tool_enabled_with_env_vars(self) -> None:
-        """Test Jira tool when enabled and OAuth via env vars."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_JIRA_TOOLS": "true",
-                "ATLASSIAN_CLIENT_ID": "test_id",
-                "ATLASSIAN_CLIENT_SECRET": "test_secret",
-            },
-            clear=False,
-        ):
             config = MCPServerConfig()
             assert is_tool_enabled(ToolType.JIRA, config) is True
 
     def test_jira_tool_disabled(self) -> None:
         """Test Jira tool when disabled."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_JIRA_TOOLS": "false",
-                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
+        with patch.dict(os.environ, {"ENABLE_JIRA_TOOLS": "false"}, clear=False):
             config = MCPServerConfig()
-            # Even with OAuth configured, tool should be disabled
             assert is_tool_enabled(ToolType.JIRA, config) is False
 
-    def test_confluence_tool_enabled_with_oauth(self) -> None:
-        """Test Confluence tool when enabled and OAuth is configured."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_CONFLUENCE_TOOLS": "true",
-                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert is_tool_enabled(ToolType.CONFLUENCE, config) is True
-
-    def test_confluence_tool_enabled_without_oauth(self) -> None:
-        """Test Confluence tool when enabled but OAuth is not configured."""
+    def test_confluence_tool_enabled(self) -> None:
+        """Test Confluence tool when enabled."""
         with patch.dict(os.environ, {"ENABLE_CONFLUENCE_TOOLS": "true"}, clear=False):
             config = MCPServerConfig()
-            # No OAuth configured
-            assert is_tool_enabled(ToolType.CONFLUENCE, config) is False
-
-    def test_confluence_tool_enabled_with_env_vars(self) -> None:
-        """Test Confluence tool when enabled and OAuth via env vars."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_CONFLUENCE_TOOLS": "true",
-                "ATLASSIAN_CLIENT_ID": "test_id",
-                "ATLASSIAN_CLIENT_SECRET": "test_secret",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
             assert is_tool_enabled(ToolType.CONFLUENCE, config) is True
 
-    def test_confluence_tool_disabled(self) -> None:
-        """Test Confluence tool when disabled."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_CONFLUENCE_TOOLS": "false",
-                "IS_ATLASSIAN_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            # Even with OAuth configured, tool should be disabled
-            assert is_tool_enabled(ToolType.CONFLUENCE, config) is False
-
-    def test_microsoft_graph_tool_enabled_with_oauth(self) -> None:
-        """Test Microsoft Graph tool when enabled and OAuth is configured."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_MICROSOFT_GRAPH_TOOLS": "true",
-                "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is True
-
-    def test_microsoft_graph_tool_enabled_without_oauth(self) -> None:
-        """Test Microsoft Graph tool when enabled but OAuth is not configured."""
+    def test_microsoft_graph_tool_enabled(self) -> None:
+        """Test Microsoft Graph tool when enabled."""
         with patch.dict(os.environ, {"ENABLE_MICROSOFT_GRAPH_TOOLS": "true"}, clear=False):
             config = MCPServerConfig()
-            # No OAuth configured
-            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is False
-
-    def test_microsoft_graph_tool_enabled_with_env_vars(self) -> None:
-        """Test Microsoft Graph tool when enabled and OAuth via env vars."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_MICROSOFT_GRAPH_TOOLS": "true",
-                "MICROSOFT_CLIENT_ID": "test_id",
-                "MICROSOFT_CLIENT_SECRET": "test_secret",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
             assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is True
-
-    def test_microsoft_graph_tool_disabled(self) -> None:
-        """Test Microsoft Graph tool when disabled."""
-        with patch.dict(
-            os.environ,
-            {
-                "ENABLE_MICROSOFT_GRAPH_TOOLS": "false",
-                "IS_MICROSOFT_OAUTH_PROVIDER_CONFIGURED": "true",
-            },
-            clear=False,
-        ):
-            config = MCPServerConfig()
-            # Even with OAuth configured, tool should be disabled
-            assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is False

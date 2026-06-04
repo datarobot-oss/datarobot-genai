@@ -32,6 +32,7 @@ tasks:
       - |
         OTEL_ENABLED=false \
         OTEL_SDK_DISABLED=true \
+        ENABLE_PREDICTIVE_TOOLS=true \
         MCP_SERVER_PORT={{.PORT}} uv run tests/drmcp/acceptance/ete_test_server.py &
       - |
         for i in {1..30}; do

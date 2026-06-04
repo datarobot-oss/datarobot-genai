@@ -37,7 +37,7 @@ class TestRequestUserDrSdk:
     ) -> None:
         mock_get_headers.return_value = {"authorization": "Bearer header-token"}
         mock_creds = MagicMock()
-        mock_creds.datarobot.endpoint = "https://test.datarobot.com/api/v2"
+        mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
 
         with request_user_dr_sdk(headers_auth_only=False) as sdk:
@@ -54,7 +54,7 @@ class TestRequestUserDrSdk:
     ) -> None:
         mock_get_headers.return_value = {}
         mock_creds = MagicMock()
-        mock_creds.datarobot.application_api_token = "credential-token"
+        mock_creds.datarobot.datarobot_api_token = "credential-token"
         mock_get_creds.return_value = mock_creds
 
         with pytest.raises(ToolError, match="DataRobot API token not found"):
@@ -64,13 +64,13 @@ class TestRequestUserDrSdk:
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
     @patch("datarobot_genai.drtools.core.auth._get_http_headers")
-    def test_uses_application_api_token_when_no_headers(
+    def test_uses_datarobot_api_token_when_no_headers(
         self, mock_get_headers, mock_get_creds, mock_client_configuration
     ) -> None:
         mock_get_headers.return_value = {}
         mock_creds = MagicMock()
-        mock_creds.datarobot.application_api_token = "env-api-token"
-        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_creds.datarobot.datarobot_api_token = "env-api-token"
+        mock_creds.datarobot.datarobot_endpoint = "https://app.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
 
         with request_user_dr_sdk(headers_auth_only=False) as sdk:
@@ -88,7 +88,7 @@ class TestRequestUserDrSdk:
     ) -> None:
         with patch(f"{_MODULE}.resolve_token_from_headers", return_value="tok"):
             mock_creds = MagicMock()
-            mock_creds.datarobot.endpoint = "https://test.datarobot.com/api/v2"
+            mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
             mock_get_creds.return_value = mock_creds
             mock_dr_context.use_case = "some-use-case"
 
@@ -134,7 +134,7 @@ class TestRequestUserDrSdk:
         jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
         mock_get_headers.return_value = {"x-datarobot-authorization-context": jwt}
         mock_creds = MagicMock()
-        mock_creds.datarobot.endpoint = "https://app.datarobot.com/api/v2"
+        mock_creds.datarobot.datarobot_endpoint = "https://app.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
 
         with request_user_dr_sdk(headers_auth_only=False):

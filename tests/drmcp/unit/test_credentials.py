@@ -36,7 +36,7 @@ def isolate_credentials(monkeypatch):
 
     # Apply to both credential classes
     monkeypatch.setattr(credentials.DataRobotCredentials, "model_config", config_without_env)
-    monkeypatch.setattr(credentials.MCPServerCredentials, "model_config", config_without_env)
+    monkeypatch.setattr(credentials.ToolsAuthCredentials, "model_config", config_without_env)
 
 
 def test_datarobot_credentials_default_endpoint() -> None:
@@ -46,11 +46,9 @@ def test_datarobot_credentials_default_endpoint() -> None:
     }
     with patch.dict("os.environ", env_vars, clear=True):  # Clear all env vars
         creds = credentials.DataRobotCredentials()
-        assert creds.application_api_token == "test-token"
-        # The endpoint will be whatever is in the .env file or the default
-        # We just check that it's a valid endpoint
-        assert creds.endpoint is not None
-        assert creds.endpoint.startswith("https://")
+        assert creds.datarobot_api_token == "test-token"
+        assert creds.datarobot_endpoint is not None
+        assert creds.datarobot_endpoint.startswith("https://")
 
 
 def test_datarobot_credentials_custom_endpoint() -> None:
@@ -61,9 +59,8 @@ def test_datarobot_credentials_custom_endpoint() -> None:
     }
     with patch.dict("os.environ", env_vars, clear=True):
         creds = credentials.DataRobotCredentials()
-        assert creds.application_api_token == "test-token"
-        # The endpoint will be the custom one we set in env vars
-        assert creds.endpoint == "https://custom.endpoint.com/api/v2"
+        assert creds.datarobot_api_token == "test-token"
+        assert creds.datarobot_endpoint == "https://custom.endpoint.com/api/v2"
 
 
 def test_get_credentials_singleton() -> None:
@@ -77,7 +74,7 @@ def test_get_credentials_singleton() -> None:
 
         # First call should create new instance
         creds1 = credentials.get_credentials()
-        assert isinstance(creds1, credentials.MCPServerCredentials)
+        assert isinstance(creds1, credentials.ToolsAuthCredentials)
 
         # Second call should return same instance
         creds2 = credentials.get_credentials()
@@ -85,19 +82,16 @@ def test_get_credentials_singleton() -> None:
 
 
 def test_has_datarobot_credentials() -> None:
-    """Test MCPServerCredentials.has_datarobot_credentials method."""
+    """Test ToolsAuthCredentials.has_datarobot_credentials method."""
     # Test with DataRobot credentials
     env_vars = {
         "DATAROBOT_API_TOKEN": "test-token",
     }
     with patch.dict("os.environ", env_vars, clear=True):
-        creds = credentials.MCPServerCredentials()
+        creds = credentials.ToolsAuthCredentials()
         assert creds.has_datarobot_credentials() is True
 
     # Test without DataRobot credentials
     with patch.dict("os.environ", {}, clear=True):
-        try:
-            credentials.MCPServerCredentials()
-            assert False, "Should raise ValidationError"
-        except Exception:
-            assert True
+        creds = credentials.ToolsAuthCredentials()
+        assert creds.has_datarobot_credentials() is False

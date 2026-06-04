@@ -37,42 +37,42 @@ def test_load_dotenv() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_deployments_success() -> None:
+async def test_deployment_get_list_success() -> None:
     mock_dep1 = MagicMock(id="1", label="dep1")
     mock_dep2 = MagicMock(id="2", label="dep2")
     with patch.object(dr.Deployment, "list", return_value=[mock_dep1, mock_dep2]):
-        result = await deployment.list_deployments()
+        result = await deployment.deployment_get_list()
         assert result["deployments"]["1"] == "dep1"
         assert result["deployments"]["2"] == "dep2"
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_deployments_empty() -> None:
+async def test_deployment_get_list_empty() -> None:
     with patch.object(dr.Deployment, "list", return_value=[]):
-        result = await deployment.list_deployments()
+        result = await deployment.deployment_get_list()
         assert result["deployments"] == []
 
 
 @pytest.mark.asyncio
-async def test_list_deployments_error() -> None:
+async def test_deployment_get_list_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await deployment.list_deployments()
+            await deployment.deployment_get_list()
         assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_model_info_from_deployment_success() -> None:
+async def test_deployment_get_model_info_success() -> None:
     mock_deployment = MagicMock()
     mock_deployment.model = {"project_id": "pid", "model_id": "mid"}
     with patch.object(dr.Deployment, "get", return_value=mock_deployment) as mock_dep_get:
-        result = await deployment.get_model_info_from_deployment(deployment_id="dep_id")
+        result = await deployment.deployment_get_model_info(deployment_id="dep_id")
         mock_dep_get.assert_called_once_with("dep_id")
         assert result["project_id"] == "pid"
         assert result["model_id"] == "mid"
@@ -80,7 +80,7 @@ async def test_get_model_info_from_deployment_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_model_info_from_deployment_not_found() -> None:
+async def test_deployment_get_model_info_not_found() -> None:
     with patch.object(
         dr.Deployment,
         "get",
@@ -91,33 +91,33 @@ async def test_get_model_info_from_deployment_not_found() -> None:
         ),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await deployment.get_model_info_from_deployment(deployment_id="dep_id")
+            await deployment.deployment_get_model_info(deployment_id="dep_id")
         assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
         assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
-async def test_get_model_info_from_deployment_error() -> None:
+async def test_deployment_get_model_info_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await deployment.get_model_info_from_deployment(deployment_id="dep_id")
+            await deployment.deployment_get_model_info(deployment_id="dep_id")
         assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_deploy_model_success() -> None:
+async def test_deployment_create_deployment_success() -> None:
     mock_server = MagicMock(id="srv1")
     mock_dep = MagicMock(id="dep123")
     with (
         patch.object(dr.PredictionServer, "list", return_value=[mock_server]),
         patch.object(dr.Deployment, "create_from_learning_model", return_value=mock_dep),
     ):
-        result = await deployment.deploy_model(
+        result = await deployment.deployment_create_deployment(
             model_id="model123", label="Test Deployment", description="desc"
         )
         assert result["deployment_id"] == "dep123"
@@ -126,25 +126,29 @@ async def test_deploy_model_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_deploy_model_no_prediction_servers() -> None:
+async def test_deployment_create_deployment_no_prediction_servers() -> None:
     with patch.object(dr.PredictionServer, "list", return_value=[]):
         with pytest.raises(ToolError) as exc_info:
-            await deployment.deploy_model(model_id="model123", label="Test Deployment")
+            await deployment.deployment_create_deployment(
+                model_id="model123", label="Test Deployment"
+            )
         assert "No prediction servers available" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_deploy_model_error() -> None:
+async def test_deployment_create_deployment_error() -> None:
     with patch.object(dr.PredictionServer, "list", side_effect=Exception("fail servers")):
         with pytest.raises(Exception) as exc_info:
-            await deployment.deploy_model(model_id="model123", label="Test Deployment")
+            await deployment.deployment_create_deployment(
+                model_id="model123", label="Test Deployment"
+            )
         assert "fail servers" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_prediction_history_success() -> None:
+async def test_deployment_get_prediction_history_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "data": [
@@ -155,26 +159,26 @@ async def test_get_prediction_history_success() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await deployment.get_prediction_history(deployment_id="dep1")
+        result = await deployment.deployment_get_prediction_history(deployment_id="dep1")
         assert result["deployment_id"] == "dep1"
         assert result["row_count"] == 2
 
 
 @pytest.mark.asyncio
-async def test_get_prediction_history_missing_id() -> None:
+async def test_deployment_get_prediction_history_missing_id() -> None:
     with pytest.raises(TypeError, match="deployment_id"):
-        await deployment.get_prediction_history()
+        await deployment.deployment_get_prediction_history()
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_prediction_history_with_time_range() -> None:
+async def test_deployment_get_prediction_history_with_time_range() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await deployment.get_prediction_history(
+        result = await deployment.deployment_get_prediction_history(
             deployment_id="dep1",
             start_time="2025-01-01T00:00:00Z",
             end_time="2025-01-31T00:00:00Z",

@@ -174,7 +174,7 @@ def _setup_otel_env_variables() -> None:
     entity_id = config.otel_entity_id
 
     otlp_headers = (
-        f"X-DataRobot-Api-Key={credentials.datarobot.application_api_token},"
+        f"X-DataRobot-Api-Key={credentials.datarobot.datarobot_api_token},"
         f"X-DataRobot-Entity-Id={entity_id}"
     )
     os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint

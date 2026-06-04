@@ -38,13 +38,13 @@ INLINE_JSON_DATASET = (
 
 
 @pytest.fixture(scope="session")
-def expectations_for_predict_by_ai_catalog_rt_success(
+def expectations_for_predict_score_catalog_realtime_success(
     deployment_id: str, classification_predict_dataset: Any
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_by_ai_catalog_rt",
+                name="predict_score_catalog_realtime",
                 parameters={
                     "deployment_id": deployment_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
@@ -65,7 +65,7 @@ def expectations_for_predict_realtime_dataset_string_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_realtime",
+                name="predict_score_inline_realtime",
                 parameters={
                     "deployment_id": deployment_id,
                     "dataset": INLINE_CSV_DATASET,
@@ -80,12 +80,12 @@ def expectations_for_predict_realtime_dataset_string_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_deployment_info_success(deployment_id: str) -> ETETestExpectations:
+def expectations_for_deployment_get_info_success(deployment_id: str) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_deployment_info",
-                acceptable_tool_names=["get_deployment_features"],
+                name="deployment_get_info",
+                acceptable_tool_names=["deployment_get_features"],
                 parameters={"deployment_id": deployment_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -99,11 +99,11 @@ def expectations_for_get_deployment_info_success(deployment_id: str) -> ETETestE
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_deployment_features_success(deployment_id: str) -> ETETestExpectations:
+def expectations_for_deployment_get_features_success(deployment_id: str) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_deployment_features",
+                name="deployment_get_features",
                 parameters={"deployment_id": deployment_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -116,13 +116,13 @@ def expectations_for_get_deployment_features_success(deployment_id: str) -> ETET
 
 
 @pytest.fixture(scope="session")
-def expectations_for_generate_prediction_data_template_success(
+def expectations_for_deployment_generate_prediction_sample_success(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="generate_prediction_data_template",
+                name="deployment_generate_prediction_sample",
                 parameters={"deployment_id": deployment_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -136,13 +136,13 @@ def expectations_for_generate_prediction_data_template_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_validate_prediction_data_success(
+def expectations_for_deployment_validate_prediction_data_success(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="validate_prediction_data",
+                name="deployment_validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
                     "csv_string": INLINE_CSV_DATASET,
@@ -166,7 +166,7 @@ def expectations_for_predict_realtime_json_dataset_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_realtime",
+                name="predict_score_inline_realtime",
                 parameters={
                     "deployment_id": deployment_id,
                     "dataset": ANY_NONEMPTY_STRING,
@@ -193,10 +193,10 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_predict_by_ai_catalog_rt_success(
+    async def test_predict_score_catalog_realtime_success(
         self,
         llm_client: Any,
-        expectations_for_predict_by_ai_catalog_rt_success: ETETestExpectations,
+        expectations_for_predict_score_catalog_realtime_success: ETETestExpectations,
         deployment_id: str,
         classification_predict_dataset: Any,
         prompt_template: str,
@@ -208,10 +208,12 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_by_ai_catalog_rt_success"
+            test_name = (
+                frame.f_code.co_name if frame else "test_predict_score_catalog_realtime_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_predict_by_ai_catalog_rt_success,
+                expectations_for_predict_score_catalog_realtime_success,
                 llm_client,
                 session,
                 test_name,
@@ -298,20 +300,20 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_deployment_info_success(
+    async def test_deployment_get_info_success(
         self,
         llm_client: Any,
-        expectations_for_get_deployment_info_success: ETETestExpectations,
+        expectations_for_deployment_get_info_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(deployment_id=deployment_id)
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_deployment_info_success"
+            test_name = frame.f_code.co_name if frame else "test_deployment_get_info_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_deployment_info_success,
+                expectations_for_deployment_get_info_success,
                 llm_client,
                 session,
                 test_name,
@@ -326,20 +328,20 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_deployment_features_success(
+    async def test_deployment_get_features_success(
         self,
         llm_client: Any,
-        expectations_for_get_deployment_features_success: ETETestExpectations,
+        expectations_for_deployment_get_features_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(deployment_id=deployment_id)
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_deployment_features_success"
+            test_name = frame.f_code.co_name if frame else "test_deployment_get_features_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_deployment_features_success,
+                expectations_for_deployment_get_features_success,
                 llm_client,
                 session,
                 test_name,
@@ -354,10 +356,10 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_generate_prediction_data_template_success(
+    async def test_deployment_generate_prediction_sample_success(
         self,
         llm_client: Any,
-        expectations_for_generate_prediction_data_template_success: ETETestExpectations,
+        expectations_for_deployment_generate_prediction_sample_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -365,11 +367,13 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = (
-                frame.f_code.co_name if frame else "test_generate_prediction_data_template_success"
+                frame.f_code.co_name
+                if frame
+                else "test_deployment_generate_prediction_sample_success"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_generate_prediction_data_template_success,
+                expectations_for_deployment_generate_prediction_sample_success,
                 llm_client,
                 session,
                 test_name,
@@ -386,20 +390,24 @@ class TestPredictRealtimeE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_validate_prediction_data_success(
+    async def test_deployment_validate_prediction_data_success(
         self,
         llm_client: Any,
-        expectations_for_validate_prediction_data_success: ETETestExpectations,
+        expectations_for_deployment_validate_prediction_data_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
         prompt = prompt_template.format(deployment_id=deployment_id, csv=INLINE_CSV_DATASET)
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_validate_prediction_data_success"
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_deployment_validate_prediction_data_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_validate_prediction_data_success,
+                expectations_for_deployment_validate_prediction_data_success,
                 llm_client,
                 session,
                 test_name,

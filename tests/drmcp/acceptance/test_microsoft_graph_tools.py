@@ -74,7 +74,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
             )
 
     @pytest.mark.skip(reason="Creates real files in OneDrive without cleanup - run manually")
-    async def test_microsoft_create_file_success(
+    async def test_microsoft_graph_create_file_success(
         self,
         openai_llm_client: Any,
     ) -> None:
@@ -90,7 +90,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="microsoft_create_file",
+                    name="microsoft_graph_create_file",
                     parameters={
                         "file_name": unique_filename,
                         "content_text": content,
@@ -108,7 +108,9 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_microsoft_create_file_success"
+            test_name = (
+                frame.f_code.co_name if frame else "test_microsoft_graph_create_file_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
@@ -176,7 +178,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
             )
 
     @pytest.mark.skip(reason="Modifies real data in SharePoint/OneDrive - run manually")
-    async def test_microsoft_update_metadata_success(
+    async def test_microsoft_graph_update_metadata_success(
         self,
         openai_llm_client: Any,
     ) -> None:
@@ -194,7 +196,7 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="microsoft_update_metadata",
+                    name="microsoft_graph_update_metadata",
                     parameters={
                         "item_id": test_item_id,
                         "fields_to_update": {"description": new_description},
@@ -215,7 +217,9 @@ class TestMicrosoftGraphToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_microsoft_update_metadata_success"
+            test_name = (
+                frame.f_code.co_name if frame else "test_microsoft_graph_update_metadata_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
