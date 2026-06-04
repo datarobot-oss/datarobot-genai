@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.106
+- `drtools`: added `auth_resolution_strategy` on `ToolsAuthCredentials` (`AUTH_RESOLUTION_STRATEGY`: `http` or `config`, default `http`). `AuthResolutionStrategy` is a `StrEnum` so env values parse correctly.
+- `drtools.core.auth`: runtime adapters inject per-request data via `set_request_headers` / `set_auth_context`; resolvers `resolve_datarobot_token`, `resolve_secret`, and `get_oauth_access_token_with_header_fallback` honor `auth_resolution_strategy`. Removed legacy helpers `set_request_headers_for_context`, `resolve_token_from_headers`, and `get_api_key_from_headers`. `get_datarobot_access_token(headers_auth_only=False)` falls back to the server `DATAROBOT_API_TOKEN` when strategy is `http` and no request headers are present (dynamic tool/prompt registration at startup).
+- `drmcpbase`: added FastMCP middleware (`read_http_headers`, `OAuthMiddleWare`, `RequestHeadersMiddleware`, `register_oauth_middleware`) with injectable callbacks so `drmcpbase` stays free of `drtools` imports.
+- `drmcp`: thin `core.middleware` wires `drmcpbase` middleware to `drtools.core.auth` (`initialize_oauth_middleware`, `create_oauth_middleware`). Tool clients use `resolve_datarobot_token` / `resolve_secret`.
+- Docs: added `docs/drtools/auth.md` (MCP/http, LangChain/http, LangChain/config examples) and `AUTH_RESOLUTION_STRATEGY` to `docs/README.md`.
+- Tests: added `tests/drmcp/unit/test_resolve_auth.py` for strategy-aware token/secret resolution; updated middleware, config, and OAuth fallback tests for the new injection model.
+
 ## 0.15.105
 - `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.
 - `langgraph`/`llamaindex`: emit AG-UI Reasoning chunks under their own message id (derived from the text id) so frontends render reasoning as its own block instead of folding it into the assistant text bubble.

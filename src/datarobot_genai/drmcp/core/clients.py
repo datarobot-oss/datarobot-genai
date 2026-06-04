@@ -21,7 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from datarobot_genai.drtools.core.auth import set_request_headers_for_context
+from datarobot_genai.drtools.core.auth import set_request_headers
 from datarobot_genai.drtools.core.credentials import get_credentials
 
 from .constants import MCP_PATH_ENDPOINT
@@ -44,7 +44,7 @@ class RequestHeadersMiddleware(BaseHTTPMiddleware):
         if path == mcp_path or path.startswith(mcp_path + "/"):
             return await call_next(request)
         headers = {k.lower(): v for k, v in request.headers.items()}
-        set_request_headers_for_context(headers)
+        set_request_headers(headers)
         return await call_next(request)
 
 
