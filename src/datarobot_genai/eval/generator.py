@@ -68,9 +68,7 @@ class CaseGenerator:
         self._client = client or anthropic.Anthropic()
         self.model = model
 
-    def generate(
-        self, agent_description: str, n_good: int, n_bad: int
-    ) -> list[dict[str, Any]]:
+    def generate(self, agent_description: str, n_good: int, n_bad: int) -> list[dict[str, Any]]:
         response = self._client.messages.create(
             model=self.model,
             max_tokens=4096,

@@ -13,8 +13,10 @@
 # limitations under the License.
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.error import URLError
+from urllib.request import Request
+from urllib.request import urlopen
 
 import yaml
 
@@ -49,9 +51,7 @@ def load_pipeline(pipeline_path: Path) -> dict[str, Any]:
     # keys off its presence/absence to show whether a run needs a judge model.
     for key in ("benchmark", "target"):
         if key not in cfg:
-            raise ValueError(
-                f"Pipeline {pipeline_path} missing required section: {key}"
-            )
+            raise ValueError(f"Pipeline {pipeline_path} missing required section: {key}")
     return cfg
 
 

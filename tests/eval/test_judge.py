@@ -28,7 +28,7 @@ from datarobot_genai.eval import judge
 
 @pytest.fixture(autouse=True)
 def _reset_warn_guard() -> Any:
-    """The "warn once" guard is module-level; reset it around each test."""
+    """Warn once guard is module-level and resets for each test."""
     judge._warned = False
     yield
     judge._warned = False
@@ -84,9 +84,7 @@ def test_session_strips_top_p_before_send() -> None:
     session = _RecordingSession()
     with warnings.catch_warnings(record=True):  # warning path covered separately
         warnings.simplefilter("always")
-        session.post(
-            "https://judge/chat/completions", json={"temperature": 0.0, "top_p": 0.5}
-        )
+        session.post("https://judge/chat/completions", json={"temperature": 0.0, "top_p": 0.5})
     assert "top_p" not in session.sent
     assert session.sent["temperature"] == 0.0
 
@@ -94,18 +92,14 @@ def test_session_strips_top_p_before_send() -> None:
 def test_session_warns_on_meaningful_top_p() -> None:
     session = _RecordingSession()
     with pytest.warns(UserWarning, match="dropped top_p"):
-        session.post(
-            "https://judge/chat/completions", json={"temperature": 0.0, "top_p": 0.5}
-        )
+        session.post("https://judge/chat/completions", json={"temperature": 0.0, "top_p": 0.5})
 
 
 def test_session_silent_for_noop_top_p() -> None:
     session = _RecordingSession()
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # any warning becomes an exception
-        session.post(
-            "https://judge/chat/completions", json={"temperature": 0.0, "top_p": 1.0}
-        )
+        session.post("https://judge/chat/completions", json={"temperature": 0.0, "top_p": 1.0})
     assert "top_p" not in session.sent  # still stripped, just not warned about
 
 

@@ -13,12 +13,15 @@
 # limitations under the License.
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
+from urllib.error import URLError
 
 import pytest
 import yaml
 
-from datarobot_genai.eval.validation import health_check, load_pipeline, validate_inputs
+from datarobot_genai.eval.validation import health_check
+from datarobot_genai.eval.validation import load_pipeline
+from datarobot_genai.eval.validation import validate_inputs
 
 # ---------------------------------------------------------------------------
 # health_check
@@ -148,9 +151,7 @@ def test_validate_inputs_missing_pipeline(tmp_path: Path, dataset_path: Path) ->
     assert any("not found" in e for e in errors)
 
 
-def test_validate_inputs_missing_dataset(
-    tmp_path: Path, pipeline_yaml_path: Path
-) -> None:
+def test_validate_inputs_missing_dataset(tmp_path: Path, pipeline_yaml_path: Path) -> None:
     pipelines_dir = pipeline_yaml_path.parent
     with patch("datarobot_genai.eval.validation.health_check", return_value=None):
         errors = validate_inputs(
@@ -163,9 +164,7 @@ def test_validate_inputs_missing_dataset(
     assert any("Dataset not found" in e for e in errors)
 
 
-def test_validate_inputs_missing_benchmark_module(
-    tmp_path: Path, dataset_path: Path
-) -> None:
+def test_validate_inputs_missing_benchmark_module(tmp_path: Path, dataset_path: Path) -> None:
     # Pipeline references a benchmark module that doesn't exist
     import yaml as _yaml
 

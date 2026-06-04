@@ -41,7 +41,8 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import Any, cast
+from typing import Any
+from typing import cast
 
 import requests
 from nemo_evaluator.contrib.byob.judge import judge_score as _judge_score

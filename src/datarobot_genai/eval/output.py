@@ -36,15 +36,11 @@ def normalize_output(
     dataset_by_id: dict[str, dict[str, Any]] = {}
     for c in dataset:
         if c["id"] in dataset_by_id:
-<<<<<<< HEAD
             warnings.warn(
                 f"Duplicate dataset id {c['id']!r}; later entry overwrites earlier",
                 UserWarning,
                 stacklevel=2,
             )
-=======
-            warnings.warn(f"Duplicate dataset id {c['id']!r}; later entry overwrites earlier", UserWarning, stacklevel=2)
->>>>>>> 19493019 (Squash commits from PR1)
         dataset_by_id[c["id"]] = c
 
     predictions_path = _find_artifact(output_dir, "byob_predictions.jsonl")
