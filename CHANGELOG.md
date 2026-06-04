@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.110
+- `drtools/panels` + `drmcp`: exposed panels as MCP **resources** (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) via the `@resource_metadata` primitive, and taught the drmcp registry to register drtools resources (`dr_mcp_resource` + a new `DataRobotMCPResourceCategory.BUILT_IN_RESOURCE`). Registered the panels domain (`ToolType.PANELS` + `enable_panels_tools`) so the panel CRUD/connector/transform tools (0.15.107–0.15.109) are served by DRMCP. Resources are read-only and `MCP_SANDBOX`-gated.
+
 ## 0.15.109
 - `drtools/panels`: added sandbox-backed `transform_panel` and `filter_panel` — run filtering/transform code over a Dataset panel inside the workload sandbox (`execute_code`) and save the result as a derived child panel with lineage (`execution_context.kind = "sandbox_transform"`). `execute_code` is imported defensively so the module loads even where the sandbox backend is absent (tools then fail closed). Added `PanelStore.get_payload` to hydrate a panel's stored payload. Gated on the `MCP_SANDBOX` entitlement.
 
@@ -12,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.107
 - `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
+
+## 0.15.106
+- `drtools/core`: added the `resource_metadata` decorator and `get_registered_resources()` — the MCP-*resource* mirror of `tool_metadata`. Lets drtools declare MCP resources (with a required `uri` plus optional name/title/description/mime_type/tags) without depending on `drmcp`/`fastmcp`, so both DRMCP and global-mcp can discover and register them. The server-side wiring + first panel resources land in a follow-up (MODEL-23663).
 
 ## 0.15.105
 - `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend.
