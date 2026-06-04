@@ -21,10 +21,8 @@ import pytest
 from ag_ui.core import EventType
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 
-from dragent.langgraph.myagent import (
-    E2E_INTERRUPT_CANCELLED,
-    E2E_INTERRUPT_CONTINUING,
-)
+from dragent.langgraph.myagent import E2E_INTERRUPT_CANCELLED
+from dragent.langgraph.myagent import E2E_INTERRUPT_CONTINUING
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
@@ -32,14 +30,15 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import parse_sse_responses
 
-pytestmark = pytest.mark.skipif(
-    AGENT != "langgraph",
-    reason="Interrupt/resume E2E uses dragent/langgraph (set AGENT=langgraph).",
-)
-
 if not ALL_TEST_CASES:
     pytest.skip(
         "Running minimal test set for non-LLM Gateway LLM, skipping interrupt E2E",
+        allow_module_level=True,
+    )
+
+if AGENT != "langgraph":
+    pytest.skip(
+        "Interrupt/resume E2E uses dragent/langgraph (set AGENT=langgraph).",
         allow_module_level=True,
     )
 

@@ -45,25 +45,25 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
 
     Resolution order:
 
-    1. Token from request headers (via :func:`resolve_datarobot_token`).
-    2. If unset and ``headers_auth_only=False``, the application API token
-       from credentials (e.g. dynamic registration / non-HTTP contexts).
+    1. Token per ``auth_resolution_strategy`` (via :func:`resolve_datarobot_token`).
+    2. If unset and ``headers_auth_only=False``, the application API token from
+       credentials (e.g. dynamic tool/prompt registration at server startup).
 
     Raises
     ------
     ToolError
-        If ``headers_auth_only=True`` and no token is present in the headers.
+        If no token is resolved and ``headers_auth_only=True``.
     """
-    token = resolve_datarobot_token(http_only=True)
-    if not token:
-        if headers_auth_only:
-            raise ToolError(
-                "DataRobot API token not found in headers. "
-                "Please provide it via 'Authorization' (Bearer), 'x-datarobot-api-token' headers.",
-                kind=ToolErrorKind.AUTHENTICATION,
-            )
-        token = get_credentials().datarobot.datarobot_api_token
-    return token
+    token = resolve_datarobot_token()
+    if token:
+        return token
+    if headers_auth_only:
+        raise ToolError(
+            "DataRobot API token not found in headers. "
+            "Please provide it via 'Authorization' (Bearer), 'x-datarobot-api-token' headers.",
+            kind=ToolErrorKind.AUTHENTICATION,
+        )
+    return get_credentials().datarobot.datarobot_api_token
 
 
 @contextmanager

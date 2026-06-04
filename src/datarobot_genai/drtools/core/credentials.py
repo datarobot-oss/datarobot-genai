@@ -43,6 +43,8 @@ class ToolsAuthCredentials(DataRobotAppFrameworkBaseSettings):
     """Application credentials and auth resolution settings for tools.
 
     Config fields are used when ``auth_resolution_strategy`` is ``config``.
+    Use ``config`` only for personal, single-user agents; shared deployments should
+    use ``http`` so each caller supplies their own credentials via request headers.
     See ``docs/drtools/auth.md`` for strategy details.
     """
 

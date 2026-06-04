@@ -90,27 +90,6 @@ class TestResolveDatarobotToken:
 
         assert resolve_datarobot_token() == "config-token"
 
-    def test_http_only_reads_headers_under_config_strategy(
-        self, credentials_holder: dict[str, MagicMock]
-    ) -> None:
-        credentials_holder["creds"] = _mock_tools_credentials(
-            token="config-token",
-            strategy=AuthResolutionStrategy.CONFIG,
-        )
-        set_request_headers({"authorization": "Bearer header-token"})
-
-        assert resolve_datarobot_token(http_only=True) == "header-token"
-
-    def test_http_only_ignores_config_under_http_strategy(
-        self, credentials_holder: dict[str, MagicMock]
-    ) -> None:
-        credentials_holder["creds"] = _mock_tools_credentials(
-            token="config-token",
-            strategy=AuthResolutionStrategy.HTTP,
-        )
-
-        assert resolve_datarobot_token(http_only=True) is None
-
     @patch("datarobot_genai.drtools.core.auth.get_request_headers")
     def test_safe_request_headers_on_exception(
         self,

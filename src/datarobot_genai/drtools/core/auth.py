@@ -125,35 +125,24 @@ def _safe_request_headers() -> dict[str, str]:
 def _resolve_by_strategy(
     *,
     strategy: AuthResolutionStrategy,
-    http_only: bool,
     header_value: str | None,
     config_value: str | None,
 ) -> str | None:
     """Return header or config value per ``auth_resolution_strategy``."""
-    if http_only or strategy == AuthResolutionStrategy.HTTP:
+    if strategy == AuthResolutionStrategy.HTTP:
         return header_value
     return config_value
 
 
-def resolve_datarobot_token(*, http_only: bool = False) -> str | None:
+def resolve_datarobot_token() -> str | None:
     """Resolve the DataRobot API token according to ``auth_resolution_strategy``."""
     creds = get_credentials()
     strategy = creds.auth_resolution_strategy
 
-    use_headers = http_only or strategy != AuthResolutionStrategy.CONFIG
-    header_token = (
-        _extract_token_from_headers_with_fallback(_safe_request_headers()) if use_headers else None
-    )
+    if strategy == AuthResolutionStrategy.HTTP:
+        return _extract_token_from_headers_with_fallback(_safe_request_headers())
 
-    use_config = not http_only and strategy != AuthResolutionStrategy.HTTP
-    config_token = (creds.datarobot.datarobot_api_token or None) if use_config else None
-
-    return _resolve_by_strategy(
-        strategy=strategy,
-        http_only=http_only,
-        header_value=header_token,
-        config_value=config_token,
-    )
+    return creds.datarobot.datarobot_api_token or None
 
 
 def resolve_secret(header_name: str, config_value: str) -> str | None:
@@ -171,7 +160,6 @@ def resolve_secret(header_name: str, config_value: str) -> str | None:
 
     return _resolve_by_strategy(
         strategy=strategy,
-        http_only=False,
         header_value=header_value,
         config_value=config_secret,
     )

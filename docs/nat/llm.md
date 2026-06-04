@@ -42,7 +42,7 @@ The exact fields inside each block mirror what you would set in env for routing 
 
 ## Passing extra kwargs with `extra_body`
 
-Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`.
+Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`. This is a **dedicated** top-level field; LangGraph clients move it into `model_kwargs.extra_body` automatically.
 
 ```yaml
 llms:
@@ -51,6 +51,20 @@ llms:
     extra_body:
       mock_response: "this is a mock response"
 ```
+
+Enable LLM extended reasoning (parameters format for Anthropic model before version 4.6).
+
+```yaml
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-component
+    extra_body:
+      thinking:
+        type: enabled
+        budget_tokens: 1024
+```
+
+See [litellm documentation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
 
 ## Linking workflows to an LLM
 

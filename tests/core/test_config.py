@@ -20,7 +20,6 @@ from datarobot_genai.core import config as config_mod
 from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
-from datarobot_genai.core.config import apply_default_thinking
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
@@ -231,38 +230,3 @@ def test_default_nim_deployment_id_returns_none_when_unset() -> None:
     cfg = _make_config(nim_deployment_id=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_nim_deployment_id() is None
-
-
-# --- extended thinking (apply_default_thinking) ---
-
-
-def test_apply_default_thinking_noop_when_disabled() -> None:
-    cfg = _make_config(enable_thinking=False)
-    config: dict = {"model": "x"}
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert apply_default_thinking(config) is False
-    assert "extra_body" not in config
-
-
-def test_apply_default_thinking_injects_when_enabled() -> None:
-    cfg = _make_config(enable_thinking=True, thinking_budget_tokens=2048)
-    config: dict = {"model": "x"}
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert apply_default_thinking(config) is True
-    assert config["extra_body"]["thinking"] == {"type": "enabled", "budget_tokens": 2048}
-
-
-def test_apply_default_thinking_respects_caller_extra_body_thinking() -> None:
-    cfg = _make_config(enable_thinking=True)
-    config: dict = {"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 99}}}
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert apply_default_thinking(config) is True
-    assert config["extra_body"]["thinking"]["budget_tokens"] == 99
-
-
-def test_apply_default_thinking_respects_top_level_thinking() -> None:
-    cfg = _make_config(enable_thinking=True)
-    config: dict = {"thinking": {"type": "disabled"}}
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert apply_default_thinking(config) is True
-    assert "extra_body" not in config

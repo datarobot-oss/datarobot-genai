@@ -18,27 +18,22 @@ import os
 
 import httpx
 import pytest
+from ag_ui.core import Event
+from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
-from dragent_tests.helpers import REASONING_EVENT_TYPES
 from dragent_tests.helpers import collect_ag_ui_events
-from dragent_tests.helpers import collect_reasoning
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
+REASONING_TESTS = os.environ.get("REASONING_TESTS") == "true"
 
-def _thinking_enabled() -> bool:
-    return os.environ.get("ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")
-
-
-# Reasoning is only emitted by the langgraph and llama_index agents, and only when the
-# agent runs against a thinking-capable model with ENABLE_THINKING set. Skip otherwise so
-# the module stays inert in the normal matrix (crewai/nat/base, deployment/external runs).
-if not ALL_TEST_CASES:
+# Reasoning is only emitted by the langgraph and llama_index agents, and only with a specific model.
+# Skip otherwise
+if not REASONING_TESTS:
     pytest.skip(
         "Reasoning tests run only against the LLM Gateway.",
         allow_module_level=True,
@@ -50,11 +45,35 @@ if AGENT not in ("langgraph", "llamaindex"):
         allow_module_level=True,
     )
 
-if not _thinking_enabled():
-    pytest.skip(
-        "ENABLE_THINKING is not set; skipping reasoning tests.",
-        allow_module_level=True,
-    )
+# AG-UI event types that carry a reasoning/thinking step from a reasoning-capable model.
+REASONING_EVENT_TYPES = frozenset(
+    {
+        EventType.REASONING_MESSAGE_START,
+        EventType.REASONING_MESSAGE_CONTENT,
+        EventType.REASONING_MESSAGE_CHUNK,
+        EventType.REASONING_MESSAGE_END,
+    }
+)
+
+
+def collect_reasoning(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
+    """Join reasoning/thinking deltas from AG-UI reasoning events.
+
+    langgraph and llama_index both emit incremental reasoning as
+    ``REASONING_MESSAGE_CHUNK`` events; ``*_CONTENT`` variants are included so
+    the helper stays correct if an agent emits the start/content/end form.
+    """
+    parts = []
+    for event in ag_ui_events:
+        if event.type in (
+            EventType.REASONING_MESSAGE_CONTENT,
+            EventType.REASONING_MESSAGE_CHUNK,
+            EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        ):
+            delta = getattr(event, "delta", None)
+            if delta:
+                parts.append(delta)
+    return "".join(parts)
 
 
 def test_generate_streaming_emits_reasoning(http_client: httpx.Client) -> None:
