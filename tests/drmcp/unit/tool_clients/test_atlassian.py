@@ -14,6 +14,7 @@
 
 """Tests for Atlassian API client utilities."""
 
+import base64
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -25,13 +26,40 @@ from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from datarobot_genai.drtools.core.auth import set_request_headers
 from datarobot_genai.drtools.core.clients.atlassian import ATLASSIAN_API_BASE
 from datarobot_genai.drtools.core.clients.atlassian import OAUTH_ACCESSIBLE_RESOURCES_PATH
+from datarobot_genai.drtools.core.clients.atlassian import TENANT_INFO_PATH
+from datarobot_genai.drtools.core.clients.atlassian import AtlassianAuth
+from datarobot_genai.drtools.core.clients.atlassian import AtlassianAuthMode
 from datarobot_genai.drtools.core.clients.atlassian import _find_first_resource_with_id
 from datarobot_genai.drtools.core.clients.atlassian import _find_resource_by_service
 from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_cloud_id
+from datarobot_genai.drtools.core.clients.atlassian import get_atlassian_cloud_id_from_site
 from datarobot_genai.drtools.core.clients.atlassian import get_confluence_access_token
 from datarobot_genai.drtools.core.clients.atlassian import get_jira_access_token
+from datarobot_genai.drtools.core.clients.atlassian import normalize_atlassian_site_url
+from datarobot_genai.drtools.core.clients.atlassian import resolve_config_atlassian_auth
+from datarobot_genai.drtools.core.credentials import AuthResolutionStrategy
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+
+
+def _mock_creds(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    strategy: AuthResolutionStrategy = AuthResolutionStrategy.HTTP,
+    api_key: str = "",
+    email: str = "",
+    site_url: str = "",
+) -> MagicMock:
+    mock_creds = MagicMock()
+    mock_creds.auth_resolution_strategy = strategy
+    mock_creds.atlassian_api_token = api_key
+    mock_creds.atlassian_email = email
+    mock_creds.atlassian_site_url = site_url
+    monkeypatch.setattr(
+        "datarobot_genai.drtools.core.clients.atlassian.get_credentials",
+        lambda: mock_creds,
+    )
+    return mock_creds
 
 
 @pytest.mark.parametrize(
@@ -62,7 +90,7 @@ class TestGetAtlassianServiceAccessToken:
         provider_type: str,
         access_token_header: str,
     ) -> None:
-        """Test successful access token retrieval."""
+        """Test successful OAuth Bearer access token retrieval."""
         mock_token = "test_access_token_123"
         mock_get_access_token = AsyncMock(return_value=mock_token)
         with patch(
@@ -70,7 +98,10 @@ class TestGetAtlassianServiceAccessToken:
             mock_get_access_token,
         ):
             result = await get_token()
-        assert result == mock_token
+        assert isinstance(result, AtlassianAuth)
+        assert result.mode == AtlassianAuthMode.OAUTH_BEARER
+        assert result.token == mock_token
+        assert result.authorization_header() == f"Bearer {mock_token}"
         mock_get_access_token.assert_awaited_once_with(provider_type)
 
     @pytest.mark.asyncio
@@ -86,7 +117,8 @@ class TestGetAtlassianServiceAccessToken:
             new_callable=AsyncMock,
             return_value="",
         ):
-            result = await get_token()
+            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
+                result = await get_token()
         assert isinstance(result, ToolError)
         assert result.kind == ToolErrorKind.AUTHENTICATION
         assert "empty access token" in str(result).lower()
@@ -106,7 +138,8 @@ class TestGetAtlassianServiceAccessToken:
             new_callable=AsyncMock,
             side_effect=oauth_error,
         ):
-            result = await get_token()
+            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
+                result = await get_token()
         assert isinstance(result, ToolError)
         assert "Could not obtain access token" in str(result)
         assert access_token_header in str(result)
@@ -145,7 +178,84 @@ class TestGetAtlassianServiceAccessToken:
         ):
             set_request_headers({access_token_header: "from-header"})
             result = await get_token()
-        assert result == "from-header"
+        assert isinstance(result, AtlassianAuth)
+        assert result.mode == AtlassianAuthMode.OAUTH_BEARER
+        assert result.token == "from-header"
+
+
+class TestResolveConfigAtlassianAuth:
+    def test_api_token_basic_when_email_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _mock_creds(
+            monkeypatch,
+            strategy=AuthResolutionStrategy.CONFIG,
+            api_key="atlassian-api-token",
+            email="user@example.com",
+            site_url="acme.atlassian.net",
+        )
+        auth = resolve_config_atlassian_auth()
+        assert isinstance(auth, AtlassianAuth)
+        assert auth.mode == AtlassianAuthMode.API_TOKEN_BASIC
+        assert auth.email == "user@example.com"
+        assert auth.token == "atlassian-api-token"
+        assert auth.site_url == "https://acme.atlassian.net"
+
+    def test_oauth_bearer_when_email_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _mock_creds(
+            monkeypatch,
+            strategy=AuthResolutionStrategy.CONFIG,
+            api_key="oauth-access-token",
+        )
+        auth = resolve_config_atlassian_auth()
+        assert isinstance(auth, AtlassianAuth)
+        assert auth.mode == AtlassianAuthMode.OAUTH_BEARER
+        assert auth.token == "oauth-access-token"
+
+    def test_missing_api_key_returns_tool_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _mock_creds(monkeypatch, strategy=AuthResolutionStrategy.CONFIG)
+        result = resolve_config_atlassian_auth()
+        assert isinstance(result, ToolError)
+        assert result.kind == ToolErrorKind.AUTHENTICATION
+
+    def test_email_without_site_url_returns_tool_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_creds(
+            monkeypatch,
+            strategy=AuthResolutionStrategy.CONFIG,
+            api_key="atlassian-api-token",
+            email="user@example.com",
+        )
+        result = resolve_config_atlassian_auth()
+        assert isinstance(result, ToolError)
+        assert "ATLASSIAN_SITE_URL" in str(result)
+
+    @pytest.mark.asyncio
+    async def test_config_strategy_uses_api_token_basic(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_creds(
+            monkeypatch,
+            strategy=AuthResolutionStrategy.CONFIG,
+            api_key="atlassian-api-token",
+            email="user@example.com",
+            site_url="https://acme.atlassian.net",
+        )
+        auth = await get_jira_access_token()
+        assert isinstance(auth, AtlassianAuth)
+        assert auth.mode == AtlassianAuthMode.API_TOKEN_BASIC
+        expected = base64.b64encode(b"user@example.com:atlassian-api-token").decode("ascii")
+        assert auth.authorization_header() == f"Basic {expected}"
+
+
+class TestAtlassianAuthHelpers:
+    def test_normalize_site_url_adds_https(self) -> None:
+        assert normalize_atlassian_site_url("acme.atlassian.net") == "https://acme.atlassian.net"
+
+    def test_normalize_site_url_strips_trailing_slash(self) -> None:
+        assert (
+            normalize_atlassian_site_url("https://acme.atlassian.net/")
+            == "https://acme.atlassian.net"
+        )
 
 
 class TestFindResourceByService:
@@ -240,6 +350,35 @@ class TestFindFirstResourceWithId:
         assert result is None
 
 
+class TestGetAtlassianCloudIdFromSite:
+    @pytest.mark.asyncio
+    async def test_resolves_cloud_id_from_tenant_info(self) -> None:
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"cloudId": "tenant-cloud-789"}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        cloud_id = await get_atlassian_cloud_id_from_site(mock_client, "https://acme.atlassian.net")
+        assert cloud_id == "tenant-cloud-789"
+        mock_client.get.assert_awaited_once_with(f"https://acme.atlassian.net{TENANT_INFO_PATH}")
+
+    @pytest.mark.asyncio
+    async def test_tenant_info_401(self) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=mock_response
+        )
+
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(ValueError, match="Authentication failed for Atlassian API token"):
+            await get_atlassian_cloud_id_from_site(mock_client, "https://acme.atlassian.net")
+
+
 class TestGetAtlassianCloudId:
     """Test get_atlassian_cloud_id function."""
 
@@ -261,6 +400,24 @@ class TestGetAtlassianCloudId:
         assert cloud_id == "cloud-jira-123"
         mock_client.get.assert_awaited_once()
         assert ATLASSIAN_API_BASE in str(mock_client.get.call_args)
+
+    @pytest.mark.asyncio
+    async def test_get_cloud_id_api_token_uses_tenant_info(self) -> None:
+        auth = AtlassianAuth.api_token_basic(
+            email="user@example.com",
+            api_token="api-token",
+            site_url="https://acme.atlassian.net",
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"cloudId": "tenant-cloud-999"}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        cloud_id = await get_atlassian_cloud_id(mock_client, service_type="jira", auth=auth)
+        assert cloud_id == "tenant-cloud-999"
+        mock_client.get.assert_awaited_once_with(f"https://acme.atlassian.net{TENANT_INFO_PATH}")
 
     @pytest.mark.asyncio
     async def test_get_cloud_id_without_service_type(self) -> None:
@@ -377,11 +534,9 @@ class TestGetAtlassianCloudId:
 
         await get_atlassian_cloud_id(mock_client)
 
-        # Verify the URL was constructed correctly
         mock_client.get.assert_awaited_once()
         call_args = mock_client.get.call_args
         assert call_args is not None
-        # httpx.AsyncClient.get() is called with URL as first positional argument
         url = call_args[0][0] if call_args[0] else None
         expected_url = f"{ATLASSIAN_API_BASE}{OAUTH_ACCESSIBLE_RESOURCES_PATH}"
         assert url == expected_url
