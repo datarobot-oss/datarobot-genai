@@ -73,6 +73,18 @@ def _logs_response(message: str) -> httpx.Response:
     )
 
 
+def _logs_response_entries(entries: list[dict[str, object]]) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "count": len(entries),
+            "next": None,
+            "previous": None,
+            "data": entries,
+        },
+    )
+
+
 @respx.mock
 async def test_happy_path_returns_value_and_strips_marker() -> None:
     submit = respx.post(CREATE_URL).mock(return_value=_create_response())
@@ -308,6 +320,100 @@ async def test_externals_not_supported() -> None:
     )
     with pytest.raises(NotImplementedError):
         await sb.run("_return = 1", externals={"f": lambda: None})
+
+
+@respx.mock
+async def test_stderr_captured_from_error_level_entries() -> None:
+    """ERROR-level OTEL entries surface on stderr; stdout keeps the marker line."""
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(
+            200, json={"id": WORKLOAD_ID, "status": "failed", "exitCode": 1}
+        )
+    )
+    respx.get(LOGS_URL).mock(
+        return_value=_logs_response_entries(
+            [
+                {"level": "INFO", "message": "starting\n"},
+                {"level": "ERROR", "message": "RuntimeError: boom\n"},
+            ]
+        )
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxError) as excinfo:
+            await _sandbox(client).run("raise RuntimeError('boom')")
+
+    # The workload failed, so run() raises — but we still want to make sure the
+    # log partitioning routed the error text to stderr. Exercise it directly.
+    stdout, stderr = DataRobotWorkloadSandbox._partition_log_entries(
+        [
+            {"level": "INFO", "message": "starting\n"},
+            {"level": "ERROR", "message": "RuntimeError: boom\n"},
+        ]
+    )
+    assert stdout == "starting\n"
+    assert "RuntimeError: boom" in stderr
+    assert "failed" in str(excinfo.value)
+
+
+@respx.mock
+async def test_stderr_captured_and_marker_parsed_from_stdout() -> None:
+    """On success, stderr is populated and the marker is still parsed off stdout."""
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "succeeded"})
+    )
+    respx.get(LOGS_URL).mock(
+        return_value=_logs_response_entries(
+            [
+                {"level": "WARNING", "message": "deprecation notice\n"},
+                {"level": "ERROR", "message": "some diagnostic\n"},
+                {"level": "INFO", "message": "hello\n__DR_SANDBOX_RESULT__:7"},
+            ]
+        )
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("_return = 7")
+
+    assert result.return_value == 7
+    # INFO + WARNING stay on stdout (only ERROR/CRITICAL/FATAL route to stderr);
+    # the marker line is stripped from stdout by parse_result_marker.
+    assert result.stdout == "deprecation notice\nhello"
+    assert result.stderr == "some diagnostic\n"
+
+
+def test_partition_log_entries_captures_stacktrace() -> None:
+    """A ``stacktrace`` field (exception event) is always surfaced on stderr."""
+    stdout, stderr = DataRobotWorkloadSandbox._partition_log_entries(
+        [
+            {"level": "INFO", "message": "before\n"},
+            {
+                "level": "ERROR",
+                "message": "ValueError: bad",
+                "stacktrace": "Traceback (most recent call last):\n  ...\nValueError: bad",
+            },
+        ]
+    )
+    assert stdout == "before\n"
+    assert "ValueError: bad" in stderr
+    assert "Traceback (most recent call last):" in stderr
+
+
+def test_partition_log_entries_all_stdout_when_no_errors() -> None:
+    """No regression: with only normal entries, stderr stays empty."""
+    stdout, stderr = DataRobotWorkloadSandbox._partition_log_entries(
+        [
+            {"level": "INFO", "message": "a"},
+            {"level": "DEBUG", "message": "b"},
+            {"message": "c"},  # missing level defaults to stdout
+        ]
+    )
+    assert stdout == "abc"
+    assert stderr == ""
 
 
 def test_security_context_override_honored() -> None:

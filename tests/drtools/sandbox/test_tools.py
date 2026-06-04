@@ -31,9 +31,19 @@ from datarobot_genai.drtools.sandbox.tools import execute_code
 
 
 @pytest.fixture
-def dr_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.example.com/api/v2")
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "test-token")
+def dr_env() -> Iterator[None]:
+    # `execute_code` derives credentials via the shared request/config helpers,
+    # not os.environ — so stub the requesting user's token and the configured
+    # endpoint rather than setting env vars.
+    with (
+        patch(
+            "datarobot_genai.drtools.sandbox.tools.get_datarobot_access_token",
+            return_value="test-token",
+        ),
+        patch("datarobot_genai.drtools.sandbox.tools.get_credentials") as mock_creds,
+    ):
+        mock_creds.return_value.datarobot.endpoint = "https://app.example.com/api/v2"
+        yield
 
 
 def _result(return_value: Any = None) -> SandboxResult:
@@ -181,12 +191,49 @@ async def test_execute_code_omits_security_context_when_ff_check_raises(dr_env: 
 
 
 @pytest.mark.asyncio
-async def test_execute_code_missing_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
-    monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+async def test_execute_code_derives_credentials_from_request(
+    dr_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Credentials come from the request helpers, never os.environ."""
+    from datarobot_genai.drtools.sandbox import tools as sandbox_tools
 
-    with pytest.raises(ToolError) as excinfo:
+    # Bogus env vars to prove they are ignored.
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://env-must-not-be-used.example/api/v2")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token-must-not-be-used")
+
+    mock_run = AsyncMock(return_value=_result())
+    captured: dict[str, Any] = {}
+    real_init = sandbox_tools.DataRobotWorkloadSandbox.__init__
+
+    def _spy_init(self: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+        real_init(self, **kwargs)
+
+    with (
+        patch(
+            "datarobot_genai.drtools.sandbox.tools.DataRobotWorkloadSandbox.run",
+            new=mock_run,
+        ),
+        patch(
+            "datarobot_genai.drtools.sandbox.tools.DataRobotWorkloadSandbox.__init__",
+            new=_spy_init,
+        ),
+    ):
         await execute_code("_return = 1")
+
+    assert captured["datarobot_api_token"] == "test-token"
+    assert captured["datarobot_endpoint"] == "https://app.example.com/api/v2"
+
+
+@pytest.mark.asyncio
+async def test_execute_code_missing_token() -> None:
+    """A missing/unauthorized token surfaces as ToolError(AUTHENTICATION)."""
+    with patch(
+        "datarobot_genai.drtools.sandbox.tools.get_datarobot_access_token",
+        side_effect=ToolError("no token in headers", kind=ToolErrorKind.AUTHENTICATION),
+    ):
+        with pytest.raises(ToolError) as excinfo:
+            await execute_code("_return = 1")
 
     assert excinfo.value.kind == ToolErrorKind.AUTHENTICATION
 

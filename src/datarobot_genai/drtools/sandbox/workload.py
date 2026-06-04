@@ -15,8 +15,9 @@
 """DataRobot workload-api backed sandbox implementation.
 
 Submits a single-container workload to the DataRobot workload-api console
-endpoints, polls the workload until terminal, fetches container stdout
-from the OTEL log endpoint, and parses the ``__DR_SANDBOX_RESULT__:`` marker
+endpoints, polls the workload until terminal, fetches container output
+(stdout + stderr, split by OTEL severity) from the OTEL log endpoint, and
+parses the ``__DR_SANDBOX_RESULT__:`` marker
 (see :mod:`datarobot_genai.drtools.sandbox.protocol`) emitted by the
 container runner shipped in the sandbox image (datarobot-user-models#2137).
 
@@ -62,6 +63,15 @@ _TERMINAL_FAILURE = {"failed", "errored", "stopped"}
 _TERMINAL_TIMEOUT = {"timeout", "timedout", "timed_out"}
 _TERMINAL_STATES = _TERMINAL_SUCCESS | _TERMINAL_FAILURE | _TERMINAL_TIMEOUT
 
+# OTEL log severity levels we route to stderr. The DataRobot OTEL logs endpoint
+# (datavolt_to_dr_otel_log) returns no stdout/stderr stream attribute — only a
+# severity `level` and an optional `stacktrace`. The container runner
+# (datarobot-user-models#2137) writes its result marker + user prints to stdout
+# but emits tracebacks / diagnostics to stderr, which the collector surfaces at
+# these severities. Anything else (incl. the INFO result-marker line) stays in
+# stdout so marker parsing is unaffected.
+_STDERR_LEVELS = {"ERROR", "CRITICAL", "FATAL"}
+
 # Short, bounded timeout for best-effort DELETE in finally / cancellation
 # paths. We don't want a hung teardown to block caller cancellation.
 _TEARDOWN_TIMEOUT_S = 5.0
@@ -74,8 +84,9 @@ class DataRobotWorkloadSandbox:
     with the user code and inputs base64-encoded in env vars
     (``DR_SANDBOX_CODE_B64`` / ``DR_SANDBOX_INPUTS_B64``). Polls workload
     status with exponential backoff (capped at 2s) until terminal, fetches
-    container stdout from the OTEL log endpoint, and parses the final
-    ``__DR_SANDBOX_RESULT__:`` line for the return value.
+    container output from the OTEL log endpoint (splitting stdout from
+    stderr by log severity), and parses the final
+    ``__DR_SANDBOX_RESULT__:`` line on stdout for the return value.
 
     The workload is always deleted in a ``finally`` block (success,
     failure, timeout, cancellation), so callers don't leave orphan
@@ -243,22 +254,51 @@ class DataRobotWorkloadSandbox:
             await asyncio.sleep(delay)
             delay = min(delay * 2, 2.0)
 
+    @staticmethod
+    def _partition_log_entries(data: list[dict[str, Any]]) -> tuple[str, str]:
+        """Split OTEL log entries into ``(stdout, stderr)`` by severity.
+
+        Each entry has the shape produced by ``datavolt_to_dr_otel_log``:
+        ``{"level", "message", "stacktrace"?, ...}``. There is no
+        stdout/stderr stream attribute, so we route by severity: entries
+        at :data:`_STDERR_LEVELS` (and any ``stacktrace`` text) go to
+        stderr; everything else — including the INFO result-marker line —
+        stays in stdout so :func:`parse_result_marker` still sees it.
+        """
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        for entry in data:
+            message = str(entry.get("message", ""))
+            level = str(entry.get("level", "")).upper()
+            if level in _STDERR_LEVELS:
+                stderr_parts.append(message)
+            else:
+                stdout_parts.append(message)
+            # Exception events carry the traceback in a separate field that
+            # would otherwise be dropped; always surface it on stderr.
+            stacktrace = entry.get("stacktrace")
+            if stacktrace:
+                stderr_parts.append(str(stacktrace))
+        return "".join(stdout_parts), "".join(stderr_parts)
+
     async def _fetch_logs(
         self,
         client: httpx.AsyncClient,
         workload_id: str,
         terminal: dict[str, Any],
-    ) -> str:
-        """Return container stdout, preferring OTEL logs over ``logTail``.
+    ) -> tuple[str, str]:
+        """Return ``(stdout, stderr)``, preferring OTEL logs over ``logTail``.
 
         The OTEL endpoint returns the paginated shape
-        ``{"count", "next", "previous", "data": [{"message", ...}, ...]}``.
-        We concatenate the ``message`` fields in order. If the OTEL
-        pipeline hasn't flushed yet (empty data), we fall back to the
-        ``statusDetails.logTail`` array from the terminal workload
-        response.
+        ``{"count", "next", "previous", "data": [{"message", "level", ...}, ...]}``.
+        Entries are partitioned into stdout/stderr by severity (see
+        :meth:`_partition_log_entries`). If the OTEL pipeline hasn't flushed
+        yet (empty data), we fall back to the ``statusDetails.logTail`` array
+        from the terminal workload response (treated as stdout, since logTail
+        carries no per-line severity).
         """
         stdout = ""
+        stderr = ""
         try:
             resp = await client.get(
                 self._logs_url(workload_id),
@@ -267,7 +307,7 @@ class DataRobotWorkloadSandbox:
             if resp.status_code < 400:
                 body = resp.json()
                 data = body.get("data") or []
-                stdout = "".join(str(entry.get("message", "")) for entry in data)
+                stdout, stderr = self._partition_log_entries(data)
             else:
                 logger.warning(
                     "workload-api logs fetch failed: %s %s",
@@ -277,12 +317,13 @@ class DataRobotWorkloadSandbox:
         except Exception:  # pragma: no cover — defensive
             logger.exception("workload-api logs fetch raised; falling back to logTail")
 
-        if stdout.strip():
-            return stdout
+        if stdout.strip() or stderr.strip():
+            return stdout, stderr
 
         # Fallback: the workload response may carry a small tail of
         # container output in statusDetails.logTail for cases where the
-        # OTEL pipeline hasn't flushed yet.
+        # OTEL pipeline hasn't flushed yet. logTail has no per-line
+        # severity, so it all surfaces as stdout.
         log_tail = (terminal.get("statusDetails") or {}).get("logTail") or []
         if log_tail:
             tail_parts: list[str] = []
@@ -292,7 +333,7 @@ class DataRobotWorkloadSandbox:
                 elif isinstance(entry, dict):
                     tail_parts.append(str(entry.get("message", "")))
             stdout = "\n".join(p for p in tail_parts if p)
-        return stdout
+        return stdout, stderr
 
     async def _delete(self, workload_id: str) -> None:
         """Best-effort DELETE; swallow all errors and never raise."""
@@ -340,7 +381,7 @@ class DataRobotWorkloadSandbox:
         try:
             workload_id = await self._submit(client, payload)
             terminal = await self._poll(client, workload_id, deadline)
-            stdout_raw = await self._fetch_logs(client, workload_id, terminal)
+            stdout_raw, stderr = await self._fetch_logs(client, workload_id, terminal)
         except asyncio.CancelledError:
             # Make sure cleanup still fires even when the caller cancels
             # our task. The finally below will run; we just need to
@@ -375,7 +416,7 @@ class DataRobotWorkloadSandbox:
 
         return SandboxResult(
             stdout=stdout,
-            stderr="",
+            stderr=stderr,
             return_value=return_value,
             duration_s=duration,
             exit_code=exit_code,

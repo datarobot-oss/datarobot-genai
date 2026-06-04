@@ -23,11 +23,12 @@ datarobot/DataRobot#154256; pattern mirrors datarobot/global-mcp#120).
 
 import dataclasses
 import logging
-import os
 from typing import Annotated
 from typing import Any
 
+from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
+from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.feature_flags import FeatureFlag
@@ -86,14 +87,14 @@ async def execute_code(
     (gated by ``MCP_SANDBOX``), kept separate so it doesn't override FastMCP
     CodeMode's ``execute`` tool.
     """
-    endpoint = os.environ.get("DATAROBOT_ENDPOINT")
-    token = os.environ.get("DATAROBOT_API_TOKEN")
-    if not endpoint or not token:
-        raise ToolError(
-            "DATAROBOT_ENDPOINT and DATAROBOT_API_TOKEN must be set to execute "
-            "code in the DataRobot workload sandbox.",
-            kind=ToolErrorKind.AUTHENTICATION,
-        )
+    # Derive credentials the same way the rest of drtools / MCP does, rather
+    # than reading DATAROBOT_ENDPOINT / DATAROBOT_API_TOKEN off os.environ: the
+    # requesting user's token comes from the request headers (falling back to
+    # the application token only in non-HTTP contexts), and the endpoint comes
+    # from configured credentials. `get_datarobot_access_token` raises
+    # ToolError(AUTHENTICATION) when no token is available.
+    token = get_datarobot_access_token()
+    endpoint = get_credentials().datarobot.endpoint
 
     sandbox = DataRobotWorkloadSandbox(
         image=image,
