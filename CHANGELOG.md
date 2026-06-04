@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.106
 - `drmcpbase`: MCP catalog transforms live in `datarobot_genai.drmcpbase.fastmcp_transforms` (`DataRobotMCPCatalogTransform`, `register_mcp_catalog_transform`). Removed `conditional_code_mode` and `mcp_catalog_transform` modules.
-- `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped. Ignored in `code_execute` mode. FastMCP 3 `Visibility` is static-only and not used for per-request filtering.
+- `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped.
 
 ## 0.15.105
 - `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.
