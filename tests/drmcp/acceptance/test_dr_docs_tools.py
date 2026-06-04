@@ -56,13 +56,13 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_fetch_datarobot_doc_page_success(self, llm_client: Any) -> None:
+    async def test_datarobot_docs_fetch_page_success(self, llm_client: Any) -> None:
         """Test fetching a specific DataRobot agentic-ai documentation page."""
         _url = "https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="fetch_datarobot_doc_page",
+                    name="datarobot_docs_fetch_page",
                     parameters={"url": _url},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -72,7 +72,7 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_fetch_datarobot_doc_page_success"
+            test_name = frame.f_code.co_name if frame else "test_datarobot_docs_fetch_page_success"
             await self._run_test_with_expectations(
                 f"Fetch the content from '{_url}' and summarize what you find.",
                 expectations,
@@ -91,7 +91,7 @@ class TestDrDocsToolsE2E(ToolBaseE2E):
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
                 ToolCallTestExpectations(
-                    name="fetch_datarobot_doc_page",
+                    name="datarobot_docs_fetch_page",
                     parameters={
                         "url": "https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-authentication.html"
                     },

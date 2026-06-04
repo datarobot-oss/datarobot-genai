@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Integration tests for get_prediction_history deployment tool."""
+"""Integration tests for deployment_get_prediction_history deployment tool."""
 
 import json
 
@@ -26,13 +26,13 @@ STUB_DEPLOYMENT_ID = "stub_deployment_id"
 
 @pytest.mark.asyncio
 class TestGetPredictionHistoryIntegration:
-    """Integration tests for the get_prediction_history MCP tool."""
+    """Integration tests for the deployment_get_prediction_history MCP tool."""
 
-    async def test_get_prediction_history_basic(self) -> None:
-        """get_prediction_history returns prediction rows for a valid deployment."""
+    async def test_deployment_get_prediction_history_basic(self) -> None:
+        """deployment_get_prediction_history returns prediction rows for a valid deployment."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_prediction_history",
+                "deployment_get_prediction_history",
                 {
                     "deployment_id": STUB_DEPLOYMENT_ID,
                     "limit": 10,
@@ -49,11 +49,11 @@ class TestGetPredictionHistoryIntegration:
             assert "rows" in data
             assert isinstance(data["rows"], list)
 
-    async def test_get_prediction_history_returns_rows(self) -> None:
-        """get_prediction_history returns the expected stub prediction rows."""
+    async def test_deployment_get_prediction_history_returns_rows(self) -> None:
+        """deployment_get_prediction_history returns the expected stub prediction rows."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_prediction_history",
+                "deployment_get_prediction_history",
                 {
                     "deployment_id": STUB_DEPLOYMENT_ID,
                     "limit": 5,
@@ -71,11 +71,11 @@ class TestGetPredictionHistoryIntegration:
             assert "predictionValue" in first_row
             assert "timestamp" in first_row
 
-    async def test_get_prediction_history_with_time_filters(self) -> None:
-        """get_prediction_history passes time filters without error."""
+    async def test_deployment_get_prediction_history_with_time_filters(self) -> None:
+        """deployment_get_prediction_history passes time filters without error."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_prediction_history",
+                "deployment_get_prediction_history",
                 {
                     "deployment_id": STUB_DEPLOYMENT_ID,
                     "limit": 10,
@@ -89,11 +89,11 @@ class TestGetPredictionHistoryIntegration:
             assert data["deployment_id"] == STUB_DEPLOYMENT_ID
             assert "rows" in data
 
-    async def test_get_prediction_history_default_limit(self) -> None:
-        """get_prediction_history uses the default limit of 100."""
+    async def test_deployment_get_prediction_history_default_limit(self) -> None:
+        """deployment_get_prediction_history uses the default limit of 100."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_prediction_history",
+                "deployment_get_prediction_history",
                 {
                     "deployment_id": STUB_DEPLOYMENT_ID,
                 },
@@ -104,11 +104,11 @@ class TestGetPredictionHistoryIntegration:
             # stub returns min(100, 5) = 5 rows with default limit
             assert data["row_count"] >= 0
 
-    async def test_get_prediction_history_missing_deployment_id(self) -> None:
-        """get_prediction_history returns an error when deployment_id is not provided."""
+    async def test_deployment_get_prediction_history_missing_deployment_id(self) -> None:
+        """deployment_get_prediction_history returns an error when deployment_id is not provided."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_prediction_history",
+                "deployment_get_prediction_history",
                 {"limit": 10},
             )
 
@@ -116,9 +116,9 @@ class TestGetPredictionHistoryIntegration:
             text = result.content[0].text.lower()
             assert "deployment_id" in text or "error" in text
 
-    async def test_get_prediction_history_tool_registered(self) -> None:
-        """Verify get_prediction_history is registered in the MCP session."""
+    async def test_deployment_get_prediction_history_tool_registered(self) -> None:
+        """Verify deployment_get_prediction_history is registered in the MCP session."""
         async with integration_test_mcp_session() as session:
             tools_result = await session.list_tools()
             tool_names = [t.name for t in tools_result.tools]
-            assert "get_prediction_history" in tool_names
+            assert "deployment_get_prediction_history" in tool_names

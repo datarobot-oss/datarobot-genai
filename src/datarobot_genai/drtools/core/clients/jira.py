@@ -39,7 +39,13 @@ RESPONSE_JIRA_ISSUE_FIELDS_STR = ",".join(RESPONSE_JIRA_ISSUE_FIELDS)
 
 
 class _IssuePerson(BaseModel):
-    email_address: str = Field(alias="emailAddress")
+    email_address: str | None = Field(default=None, alias="emailAddress")
+    display_name: str | None = Field(default=None, alias="displayName")
+    account_id: str | None = Field(default=None, alias="accountId")
+
+    def contact_label(self) -> str | None:
+        """Best-effort user identifier when email is unavailable in the API payload."""
+        return self.email_address or self.display_name or self.account_id
 
 
 class _IssueStatus(BaseModel):
@@ -50,7 +56,7 @@ class _IssueFields(BaseModel):
     summary: str
     status: _IssueStatus
     reporter: _IssuePerson
-    assignee: _IssuePerson
+    assignee: _IssuePerson | None = None
     created: str
     updated: str
 
@@ -65,8 +71,10 @@ class Issue(BaseModel):
             "id": self.id,
             "key": self.key,
             "summary": self.fields.summary,
-            "reporterEmailAddress": self.fields.reporter.email_address,
-            "assigneeEmailAddress": self.fields.assignee.email_address,
+            "reporterEmailAddress": self.fields.reporter.contact_label(),
+            "assigneeEmailAddress": (
+                self.fields.assignee.contact_label() if self.fields.assignee else None
+            ),
             "created": self.fields.created,
             "updated": self.fields.updated,
             "status": self.fields.status.name,

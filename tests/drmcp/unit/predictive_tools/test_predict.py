@@ -44,7 +44,7 @@ def mock_batch_prediction_job() -> MagicMock:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_predict_by_ai_catalog(mock_batch_prediction_job: MagicMock) -> None:
+async def test_predict_batch_predictions_from_dataset(mock_batch_prediction_job: MagicMock) -> None:
     mock_job = _running_job()
     mock_batch_prediction_job.score.return_value = mock_job
     mock_dataset = MagicMock()
@@ -52,7 +52,9 @@ async def test_predict_by_ai_catalog(mock_batch_prediction_job: MagicMock) -> No
         patch.object(dr.Dataset, "get", return_value=mock_dataset),
         patch.object(dr.BatchPredictionJob, "score", mock_batch_prediction_job.score),
     ):
-        result = await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid")
+        result = await predict.predict_batch_predictions_from_dataset(
+            deployment_id="dep", dataset_id="dsid"
+        )
         mock_batch_prediction_job.score.assert_called_once_with(
             deployment="dep",
             intake_settings={"type": "dataset", "dataset": mock_dataset},
@@ -64,13 +66,13 @@ async def test_predict_by_ai_catalog(mock_batch_prediction_job: MagicMock) -> No
         assert "Scoring dataset dsid" in result["input_desc"]
         assert result["batch_job_status"] == "RUNNING"
         assert result["url"] is None
-        assert "get_batch_prediction_job_status" in result["note"]
+        assert "predict_get_batch_job_status" in result["note"]
         mock_job.wait_for_completion.assert_not_called()
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_predict_by_ai_catalog_submit_returns_url_when_ready(
+async def test_predict_batch_predictions_from_dataset_submit_returns_url_when_ready(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -86,14 +88,16 @@ async def test_predict_by_ai_catalog_submit_returns_url_when_ready(
         patch.object(dr.Dataset, "get", return_value=mock_dataset),
         patch.object(dr.BatchPredictionJob, "score", mock_batch_prediction_job.score),
     ):
-        result = await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid")
+        result = await predict.predict_batch_predictions_from_dataset(
+            deployment_id="dep", dataset_id="dsid"
+        )
     assert result["url"] == DOWNLOAD_URL
     assert result["batch_job_status"] == "COMPLETED"
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_predict_by_ai_catalog_immediate_failure(
+async def test_predict_batch_predictions_from_dataset_immediate_failure(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -110,12 +114,14 @@ async def test_predict_by_ai_catalog_immediate_failure(
         patch.object(dr.BatchPredictionJob, "score", mock_batch_prediction_job.score),
     ):
         with pytest.raises(ToolError, match="FAILED"):
-            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid")
+            await predict.predict_batch_predictions_from_dataset(
+                deployment_id="dep", dataset_id="dsid"
+            )
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_predict_by_ai_catalog_non_local_file_output_raises(
+async def test_predict_batch_predictions_from_dataset_non_local_file_output_raises(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -132,16 +138,20 @@ async def test_predict_by_ai_catalog_non_local_file_output_raises(
         patch.object(dr.BatchPredictionJob, "score", mock_batch_prediction_job.score),
     ):
         with pytest.raises(ToolError, match="not local file streaming"):
-            await predict.predict_by_ai_catalog(deployment_id="dep", dataset_id="dsid")
+            await predict.predict_batch_predictions_from_dataset(
+                deployment_id="dep", dataset_id="dsid"
+            )
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_predict_from_project_data(mock_batch_prediction_job: MagicMock) -> None:
+async def test_predict_batch_predictions_from_partition(
+    mock_batch_prediction_job: MagicMock,
+) -> None:
     mock_job = _running_job()
     mock_batch_prediction_job.score.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "score", mock_batch_prediction_job.score):
-        result = await predict.predict_from_project_data(
+        result = await predict.predict_batch_predictions_from_partition(
             deployment_id="dep",
             project_id="pid",
             dataset_id="dsid",
@@ -166,7 +176,7 @@ async def test_predict_from_project_data(mock_batch_prediction_job: MagicMock) -
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_job_status(mock_batch_prediction_job: MagicMock) -> None:
+async def test_predict_get_batch_job_status(mock_batch_prediction_job: MagicMock) -> None:
     mock_job = MagicMock()
     mock_job.id = "jid"
     mock_job.get_status.return_value = {
@@ -179,7 +189,7 @@ async def test_get_batch_prediction_job_status(mock_batch_prediction_job: MagicM
     }
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
-        result = await predict.get_batch_prediction_job_status(job_id="jid")
+        result = await predict.predict_get_batch_job_status(job_id="jid")
     assert result["job_id"] == "jid"
     assert result["batch_job_status"] == "COMPLETED"
     assert result["url"] == "https://example.com/dl"
@@ -188,7 +198,7 @@ async def test_get_batch_prediction_job_status(mock_batch_prediction_job: MagicM
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_job_status_non_local_file_raises(
+async def test_predict_get_batch_job_status_non_local_file_raises(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -201,12 +211,12 @@ async def test_get_batch_prediction_job_status_non_local_file_raises(
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
         with pytest.raises(ToolError, match="not local file streaming"):
-            await predict.get_batch_prediction_job_status(job_id="jid")
+            await predict.predict_get_batch_job_status(job_id="jid")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_job_status_terminal(
+async def test_predict_get_batch_job_status_terminal(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -219,18 +229,18 @@ async def test_get_batch_prediction_job_status_terminal(
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
         with pytest.raises(ToolError, match="FAILED"):
-            await predict.get_batch_prediction_job_status(job_id="jid")
+            await predict.predict_get_batch_job_status(job_id="jid")
 
 
 @pytest.mark.asyncio
-async def test_get_batch_prediction_job_status_empty_job_id() -> None:
+async def test_predict_get_batch_job_status_empty_job_id() -> None:
     with pytest.raises(ToolError, match="job_id"):
-        await predict.get_batch_prediction_job_status(job_id="  ")
+        await predict.predict_get_batch_job_status(job_id="  ")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_results_success(mock_batch_prediction_job: MagicMock) -> None:
+async def test_predict_get_batch_results_success(mock_batch_prediction_job: MagicMock) -> None:
     mock_job = MagicMock()
     mock_job.id = "abc123"
 
@@ -240,7 +250,7 @@ async def test_get_batch_prediction_results_success(mock_batch_prediction_job: M
     mock_job.download.side_effect = _download
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
-        result = await predict.get_batch_prediction_results(job_id="abc123")
+        result = await predict.predict_get_batch_results(job_id="abc123")
     assert result["job_id"] == "abc123"
     assert result["mime_type"] == "text/csv"
     assert result["data"] == "x,y\n1,2\n"
@@ -249,14 +259,14 @@ async def test_get_batch_prediction_results_success(mock_batch_prediction_job: M
 
 
 @pytest.mark.asyncio
-async def test_get_batch_prediction_results_empty_job_id() -> None:
+async def test_predict_get_batch_results_empty_job_id() -> None:
     with pytest.raises(ToolError, match="job_id"):
-        await predict.get_batch_prediction_results(job_id="   ")
+        await predict.predict_get_batch_results(job_id="   ")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_results_too_large(mock_batch_prediction_job: MagicMock) -> None:
+async def test_predict_get_batch_results_too_large(mock_batch_prediction_job: MagicMock) -> None:
     mock_job = MagicMock()
     mock_job.id = "jid"
     mock_job.get_status.return_value = {"links": {"download": "https://example.com/batch/dl"}}
@@ -268,13 +278,13 @@ async def test_get_batch_prediction_results_too_large(mock_batch_prediction_job:
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
         with pytest.raises(ToolError, match="exceeding the inline limit") as exc:
-            await predict.get_batch_prediction_results(job_id="jid")
+            await predict.predict_get_batch_results(job_id="jid")
         assert "https://example.com/batch/dl" in str(exc.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_get_batch_prediction_results_download_runtime_error(
+async def test_predict_get_batch_results_download_runtime_error(
     mock_batch_prediction_job: MagicMock,
 ) -> None:
     mock_job = MagicMock()
@@ -284,5 +294,5 @@ async def test_get_batch_prediction_results_download_runtime_error(
     mock_batch_prediction_job.get.return_value = mock_job
     with patch.object(dr.BatchPredictionJob, "get", mock_batch_prediction_job.get):
         with pytest.raises(ToolError, match="queue full") as exc:
-            await predict.get_batch_prediction_results(job_id="jid")
+            await predict.predict_get_batch_results(job_id="jid")
         assert "https://example.com/batch/dl2" in str(exc.value)

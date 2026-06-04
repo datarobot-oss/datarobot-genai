@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
     description=(
         "[DR docs—search] Use when the user asks about DataRobot agentic AI product behavior, "
         "setup, or APIs covered on the public agentic-AI documentation site. Returns page titles "
-        "and URLs (then fetch_datarobot_doc_page for full text). Not Confluence, not general web "
-        "(tavily_search / perplexity_search)."
+        "and URLs (then datarobot_docs_fetch_page for full text). Not Confluence, not general web "
+        "(tavily_search_web / perplexity_search)."
     ),
 )
 async def search_datarobot_agentic_docs(
@@ -109,7 +109,7 @@ async def search_datarobot_agentic_docs(
         "agentic docs index (search_datarobot_agentic_docs)."
     ),
 )
-async def fetch_datarobot_doc_page(
+async def datarobot_docs_fetch_page(
     *,
     url: Annotated[
         str,
