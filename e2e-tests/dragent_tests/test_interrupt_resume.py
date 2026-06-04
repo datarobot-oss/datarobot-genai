@@ -21,10 +21,8 @@ import pytest
 from ag_ui.core import EventType
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 
-from dragent.langgraph.myagent import (
-    E2E_INTERRUPT_CANCELLED,
-    E2E_INTERRUPT_CONTINUING,
-)
+from dragent.langgraph.myagent import E2E_INTERRUPT_CANCELLED
+from dragent.langgraph.myagent import E2E_INTERRUPT_CONTINUING
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH

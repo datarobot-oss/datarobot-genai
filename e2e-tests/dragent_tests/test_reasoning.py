@@ -21,24 +21,19 @@ import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import REASONING_EVENT_TYPES
+from dragent_tests.helpers import REASONING_TESTS
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_reasoning
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
-
-def _thinking_enabled() -> bool:
-    return os.environ.get("ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")
-
-
 # Reasoning is only emitted by the langgraph and llama_index agents, and only when the
 # agent runs against a thinking-capable model with ENABLE_THINKING set. Skip otherwise so
 # the module stays inert in the normal matrix (crewai/nat/base, deployment/external runs).
-if not ALL_TEST_CASES:
+if not REASONING_TESTS:
     pytest.skip(
         "Reasoning tests run only against the LLM Gateway.",
         allow_module_level=True,
@@ -50,11 +45,7 @@ if AGENT not in ("langgraph", "llamaindex"):
         allow_module_level=True,
     )
 
-if not _thinking_enabled():
-    pytest.skip(
-        "ENABLE_THINKING is not set; skipping reasoning tests.",
-        allow_module_level=True,
-    )
+REASONING_ENABLED = os.environ.get("LLM_DEFAULT_MODEL") == "true"
 
 
 def test_generate_streaming_emits_reasoning(http_client: httpx.Client) -> None:

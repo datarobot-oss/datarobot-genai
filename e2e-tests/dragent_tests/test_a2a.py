@@ -24,10 +24,18 @@ run for all agent types (NAT, LangGraph, CrewAI, LlamaIndex, base).
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from dragent_tests.helpers import A2A_AGENT_CARD_PATH
 from dragent_tests.helpers import A2A_PATH
+from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import make_a2a_message_send_payload
+
+if not ALL_TEST_CASES:
+    pytest.skip(
+        "Running minimal test set for non-LLM Gateway LLM, skipping A2A tests",
+        allow_module_level=True,
+    )
 
 
 def test_a2a_agent_card(http_client: httpx.Client) -> None:
@@ -76,5 +84,3 @@ def test_a2a_message_send(http_client: httpx.Client) -> None:
     parts = result.get("parts", [])
     text_parts = [p for p in parts if p.get("kind") == "text" and p.get("text")]
     assert text_parts, f"Expected at least one text part. Got: {parts}"
-
-

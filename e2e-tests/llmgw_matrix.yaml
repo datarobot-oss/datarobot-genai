@@ -11,17 +11,15 @@ model:
     id: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
     all_tests: true
     additional_model_params: '{"thinking": {"type": "enabled", "budget_tokens": 2048}}'
+    reasoning_tests: true
   - label: gpt
     id: "datarobot/azure/gpt-5-1-2025-11-13"
-    all_tests: false
     additional_model_params: '{}'
   - label: sonnet
     id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
-    all_tests: false
     additional_model_params: '{}'
   - label: gemini
     id: "datarobot/vertex_ai/gemini-3.1-pro-preview"
-    all_tests: false
     additional_model_params: '{}'
 # base is not model dependent
 exclude:
