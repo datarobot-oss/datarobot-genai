@@ -414,6 +414,17 @@ async def test_remove_items_without_memory_id_or_user_id_is_a_noop() -> None:
     assert mem0.delete_all_calls == []
 
 
+@pytest.mark.parametrize("memory_id", [None, ""])
+async def test_remove_items_with_falsy_memory_id_still_deletes(memory_id: Any) -> None:
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0))
+
+    await editor.remove_items(memory_id=memory_id)
+
+    assert mem0.delete_calls == [memory_id]
+    assert mem0.delete_all_calls == []
+
+
 async def test_registered_memory_client_forwards_default_ttl_to_editor(
     monkeypatch: Any,
 ) -> None:
@@ -928,3 +939,16 @@ async def test_remove_items_without_target_emits_no_span(
     await editor.remove_items()
 
     assert not memory_span_exporter.get_finished_spans()
+
+
+async def test_remove_items_with_falsy_memory_id_emits_delete_span_without_record_id(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), store_name="mem0")
+
+    await editor.remove_items(memory_id="")
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.name == "delete_memory"
+    assert "gen_ai.memory.record.id" not in span.attributes

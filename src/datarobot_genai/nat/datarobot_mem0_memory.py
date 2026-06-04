@@ -318,11 +318,12 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         return memories
 
     async def remove_items(self, **kwargs: Any) -> None:
-        memory_id = kwargs.get("memory_id")
+        has_memory_id = "memory_id" in kwargs
         user_id = kwargs.get("user_id")
-        if not memory_id and not user_id:
+        if not has_memory_id and not user_id:
             return
 
+        memory_id = kwargs.get("memory_id") if has_memory_id else None
         with trace_memory_operation(
             "delete_memory",
             store_name=self._store_name,
@@ -331,7 +332,7 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
                 user_id=user_id,
                 extra={
                     **({"gen_ai.memory.record.id": memory_id} if memory_id else {}),
-                    **({"memory.delete_all": True} if user_id and not memory_id else {}),
+                    **({"memory.delete_all": True} if user_id and not has_memory_id else {}),
                 },
             ),
         ):
