@@ -380,13 +380,13 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-router-uv-${{ runner.os }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
-            e2e-router-uv-${{ runner.os }}-${{ matrix.framework }}-
+            e2e-router-uv-${{ runner.os }}-${{ matrix.agent }}-
 
       - name: Install dependencies
         working-directory: e2e-tests
-        run: uv sync --group dragent-${{ matrix.framework }}
+        run: uv sync --group dragent-${{ matrix.agent }}
 
       - name: Run router dragent in background
         uses: JarvusInnovations/background-action@v1
@@ -405,7 +405,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-router-results-${{ matrix.framework }}
+          name: e2e-router-results-${{ matrix.agent }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore
 
@@ -428,7 +428,7 @@ jobs:
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
 
-      AGENT: ${{ matrix.framework }}
+      AGENT: ${{ matrix.agent }}
       LLM: llmgw
 
       # Extended-thinking model (the enabled+budget_tokens surface) + thinking turned on.
@@ -461,19 +461,19 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-reasoning-uv-${{ runner.os }}-${{ matrix.framework }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-reasoning-uv-${{ runner.os }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
-            e2e-reasoning-uv-${{ runner.os }}-${{ matrix.framework }}-
+            e2e-reasoning-uv-${{ runner.os }}-${{ matrix.agent }}-
 
       - name: Install dependencies
         working-directory: e2e-tests
-        run: uv sync --group dragent-${{ matrix.framework }}
+        run: uv sync --group dragent-${{ matrix.agent }}
 
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1
         with:
           working-directory: e2e-tests
-          run: task dragent:run-${{ matrix.framework }} &
+          run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
           wait-for: 60s
 
@@ -486,6 +486,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-reasoning-results-${{ matrix.framework }}
+          name: e2e-reasoning-results-${{ matrix.agent }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore
