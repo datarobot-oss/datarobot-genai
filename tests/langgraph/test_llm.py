@@ -270,60 +270,53 @@ def test_get_llm_forwards_streaming_flag() -> None:
     assert llm.streaming is False
 
 
-def test_strip_thinking_from_history_collapses_list_content_to_text() -> None:
-    """Outgoing list-form content (reasoning thinking blocks) collapses to plain
-    text; string content passes through unchanged; originals are not mutated.
+def test_wrap_bare_text_blocks_wraps_strings_and_keeps_dicts() -> None:
+    """A bare string in list content (the answer langchain_litellm leaves behind after
+    dropping thinking blocks) is wrapped as a text block so litellm's request transform
+    never sees a non-dict item; existing dict blocks and plain-string content are kept.
     """
-    from langchain_core.messages import AIMessage
-    from langchain_core.messages import HumanMessage
+    message_dicts = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": ["answer", {"type": "text", "text": "more"}]},
+    ]
+    out = langgraph_llm._wrap_bare_text_blocks(message_dicts)
 
-    original = AIMessage(
-        content=[
-            {"type": "thinking", "thinking": "reasoning"},
-            {"type": "text", "text": "answer"},
-        ],
-        additional_kwargs={"reasoning_content": "reasoning"},
-    )
-    human = HumanMessage(content="hi")
-    cleaned = langgraph_llm._strip_thinking_from_history([human, original])
-
-    assert cleaned[0] is human
-    assert cleaned[1].content == "answer"
-    # the message held in graph state keeps its blocks (copy, not in-place mutate)
-    assert isinstance(original.content, list)
+    assert out[0]["content"] == "hi"  # scalar string content untouched
+    assert out[1]["content"] == [
+        {"type": "text", "text": "answer"},
+        {"type": "text", "text": "more"},
+    ]
 
 
-def test_strip_thinking_preserves_non_reasoning_list_content() -> None:
-    """List content with no thinking/reasoning blocks is left intact, so multimodal
-    parts (e.g. ``image_url``) survive the re-send instead of being flattened away.
-
-    Thinking/reasoning blocks only appear on assistant responses; multimodal parts
-    only appear on human input. Gating the collapse on the presence of thinking/
-    reasoning blocks keeps the two from colliding.
+def test_wrap_bare_text_blocks_preserves_multimodal_and_drops_empty() -> None:
+    """Multimodal dict parts (e.g. ``image_url``) pass through untouched; a bare text
+    string mixed in is wrapped as a text block; empty-string fragments are dropped.
+    Wrapping (not gating on reasoning) means multimodal turns are never flattened.
     """
-    from langchain_core.messages import HumanMessage
+    message_dicts = [
+        {
+            "role": "user",
+            "content": [
+                "",
+                "what is in this image?",
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG"}},
+            ],
+        }
+    ]
+    out = langgraph_llm._wrap_bare_text_blocks(message_dicts)
 
-    multimodal = HumanMessage(
-        content=[
-            {"type": "text", "text": "what is in this image?"},
-            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG"}},
-        ]
-    )
-    cleaned = langgraph_llm._strip_thinking_from_history([multimodal])
-
-    # untouched: still a list, image part preserved
-    assert cleaned[0].content == multimodal.content
-    assert any(
-        isinstance(block, dict) and block.get("type") == "image_url" for block in cleaned[0].content
-    )
+    assert out[0]["content"] == [
+        {"type": "text", "text": "what is in this image?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG"}},
+    ]
 
 
-def test_create_message_dicts_strips_reasoning_from_outgoing_history() -> None:
+def test_create_message_dicts_wraps_reasoning_answer_as_text_block() -> None:
     """All four generation paths (sync/async, stream/generate) build their wire
     request through ``_create_message_dicts``, so overriding that one chokepoint
-    collapses re-sent thinking blocks to plain text for every path — while the
-    caller's history (and thus the response held in graph state) is left intact,
-    so reasoning still renders.
+    covers every path. langchain_litellm drops the thinking blocks; the leftover
+    answer is wrapped as a valid text block. The caller's history (and thus the
+    response held in graph state) is left intact, so reasoning still renders.
     """
     from langchain_core.messages import AIMessage
 
@@ -338,15 +331,15 @@ def test_create_message_dicts_strips_reasoning_from_outgoing_history() -> None:
     llm = langgraph_llm.get_datarobot_deployment_llm("dep-1", model_name="m")
     message_dicts, _ = llm._create_message_dicts(history, None)
 
-    # outgoing wire content collapsed to plain text (valid for OpenAI-compatible backends)
-    assert message_dicts[0]["content"] == "prior"
+    # outgoing wire content is a valid text-block list (no bare string for litellm to choke on)
+    assert message_dicts[0]["content"] == [{"type": "text", "text": "prior"}]
     # caller's history object not mutated
     assert isinstance(history[0].content, list)
 
 
-def test_create_message_dicts_collapses_reasoning_only_message_to_empty() -> None:
+def test_create_message_dicts_reasoning_only_message_is_empty() -> None:
     """A reasoning-only turn (the real gpt-oss/NIM shape: ``['', {thinking}...]``
-    with no text block) collapses to an empty string on the wire instead of being
+    with no text block) serializes to an empty string on the wire instead of being
     re-sent as thinking blocks, which OpenAI-compatible backends reject.
     """
     from langchain_core.messages import AIMessage

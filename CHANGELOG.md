@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.104
-- `langgraph`: strip reasoning `thinking`/`reasoning` content blocks from the outgoing message history (re-sent turns only, via the `_create_message_dicts` chokepoint) so reasoning-model histories stay valid for OpenAI-compatible backends (vLLM/NIM); responses and graph state keep their blocks so reasoning still renders, and non-reasoning list content (e.g. multimodal parts) is left intact.
+- `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. After streaming, an assistant turn's content is a list mixing per-token `thinking` blocks with a bare answer string; `langchain_litellm` drops the thinking blocks on serialization but leaves the bare string, which litellm's OpenAI request transform rejects. Normalize the outgoing request (model and router, via the `_create_message_dicts` chokepoint) by wrapping any bare string in list content as a `{"type": "text"}` block; multimodal/dict parts and graph state are left untouched, so reasoning still renders.
 - `langgraph`/`llamaindex`: emit AG-UI Reasoning chunks under their own message id (derived from the text id) so frontends render reasoning as its own block instead of folding it into the assistant text bubble.
 
 ## 0.15.103
