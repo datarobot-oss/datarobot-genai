@@ -49,6 +49,7 @@ You can also install:
 * `datarobot-genai[drmcpbase]`&mdash;Base class to derive FastMCP servers.
 * `datarobot-genai[drmcp]`&mdash;host a custom MCP server in DataRobot (includes `drmcpbase`, `drtools`, and template-server dependencies).
 * `datarobot-genai[memory]`&mdash;use the Mem0-backed memory client and NAT memory provider.
+* `datarobot-genai[eval]`&mdash;agent evaluation utilities built on the NeMo Evaluator launcher.
 
 ## Credentials
 You need a DataRobot account to use DataRobot-backed features. Export these environment variables:
@@ -98,6 +99,7 @@ These are explicitly excluded via `[tool.uv] exclude-dependencies` in `pyproject
 | `kubernetes` | `crewai-tools` | K8s client; not used |
 | `lancedb` | `crewai` | Optional vector DB backend; not used |
 | `langchain-milvus` | `nvidia-nat-langchain` | Milvus vector DB adapter; not used |
+| `leptonai` | `nemo-evaluator-launcher` | Lepton AI cloud backend; not used, pins `httpx==0.27.2` which conflicts with the `auth` extra |
 | `llama-index-cli` | `llama-index` | CLI tool; not needed at runtime |
 | `openpyxl` | `crewai-tools` | Excel parser; not used |
 | `pymilvus` | `langchain-milvus` | Milvus client; not used |
