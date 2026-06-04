@@ -64,7 +64,7 @@ llms:
         budget_tokens: 1024
 ```
 
-See [litellm documetation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
+See [litellm documentation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
 
 ## Linking workflows to an LLM
 
