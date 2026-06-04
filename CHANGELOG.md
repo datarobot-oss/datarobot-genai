@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.108
+- `drtools` Atlassian (Jira/Confluence): added `AtlassianAuth` with OAuth Bearer (HTTP) and API token Basic auth (config). Config fields: `ATLASSIAN_API_TOKEN`, optional `ATLASSIAN_EMAIL` and `ATLASSIAN_SITE_URL` for Basic auth (cloud ID from `/_edge/tenant_info`); token alone is treated as a static OAuth Bearer token.
+- Docs: added `docs/drtools/auth-atlassian.md` for Atlassian config auth.
+- Tests: added Atlassian API token Basic auth tests for Jira/Confluence clients.
+
 ## 0.15.107
 - `drmcpbase`: MCP catalog transforms live in `datarobot_genai.drmcpbase.fastmcp_transforms` (`DataRobotMCPCatalogTransform`, `register_mcp_catalog_transform`). Removed `conditional_code_mode` and `mcp_catalog_transform` modules.
 - `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped.
