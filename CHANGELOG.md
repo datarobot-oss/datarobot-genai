@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.105
+## 0.15.106
 - `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` — a production sandbox that submits a short-lived workload to the DataRobot workload-api, runs the DRUM-built sandbox image, and parses the `__DR_SANDBOX_RESULT__:` marker (the caller↔runner wire-contract lives in `sandbox/protocol.py`; the runner ships in datarobot-user-models#2137). `execute_code` is exposed as a plain async function (not an MCP tool yet — kept separate so it doesn't override FastMCP CodeMode's `execute` tool; a later PR adds the `MCP_SANDBOX`-gated tool layer that calls it, plus a local-Docker dev/test sandbox and FastMCP CodeMode integration). `execute_code` derives credentials via the request/config helpers (`get_datarobot_access_token()` + `get_credentials()`), not `os.environ`. The workload backend surfaces container stderr (tracebacks/diagnostics) by partitioning OTEL log entries by severity instead of discarding it. Workload security context (read-only rootfs, drop ALL caps, RuntimeDefault seccomp, no privilege escalation) is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`, evaluated per-user via the thread-safe `request_user_dr_client()` + `FeatureFlag` (`drtools.core`); fails safe to cluster defaults on FF lookup error.
 - `drtools.core.feature_flags`: added `is_tool_feature_enabled(flag, *, evaluator)` — the shared "no flag → expose; flag set → evaluate; lookup error → fail closed" tool-gating policy. It lives in `drtools.core` so both `drmcp`'s registration-time registry (static container account) and global-mcp's per-user registry reuse one implementation; each supplies only the client via the `evaluator` closure. `drmcp/core/drtools_registry.py` now calls it with a static-account evaluator instead of carrying its own gating logic, so `drmcp/core/feature_flags.py` is back to just the static tools-gallery check (no per-user shim).
+
+## 0.15.105
 - `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.
 - `langgraph`/`llamaindex`: emit AG-UI Reasoning chunks under their own message id (derived from the text id) so frontends render reasoning as its own block instead of folding it into the assistant text bubble.
 
