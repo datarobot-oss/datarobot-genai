@@ -2,9 +2,11 @@
 # https://taskfile.dev
 version: '3'
 
+env:
+  WORKFLOW_FILE: '{{.WORKFLOW_FILE | default "workflow.yaml"}}'
+
 vars:
   AGENT_PORT: 8080
-  WORKFLOW_FILE: workflow.yaml
 
 tasks:
   wait:
