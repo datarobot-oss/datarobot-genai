@@ -101,9 +101,7 @@ def test_print_summary_shows_run_metadata(
     assert "test.yaml" in out
 
 
-def test_print_summary_shows_scores(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_print_summary_shows_scores(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_results(tmp_path / "eval_results.json", _minimal_results())
     ResultsSummarizer(tmp_path).print_summary()
     out = capsys.readouterr().out

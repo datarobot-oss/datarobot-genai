@@ -60,11 +60,7 @@ class ResultsSummarizer:
             for c in cases:
                 score = c.get("quality_score")
                 score_str = f"{score:.2f}" if isinstance(score, float) else str(score)
-                passed = (
-                    "✓"
-                    if c.get("passed")
-                    else ("✗" if c.get("passed") is False else "?")
-                )
+                passed = "✓" if c.get("passed") else ("✗" if c.get("passed") is False else "?")
                 reason = (c.get("judge_reason") or "")[:50]
                 print(
                     f"  {c['id']:<15} {c.get('expected_behavior', '?'):<8} "

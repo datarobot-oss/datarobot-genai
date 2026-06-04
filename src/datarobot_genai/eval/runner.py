@@ -39,9 +39,7 @@ def run_byob(
     if judge:
         env["JUDGE_URL"] = str(judge["url"])
         env["JUDGE_MODEL_ID"] = str(judge["model_id"])
-        env["JUDGE_API_KEY_NAME"] = str(
-            judge.get("api_key_name", "DATAROBOT_API_TOKEN")
-        )
+        env["JUDGE_API_KEY_NAME"] = str(judge.get("api_key_name", "DATAROBOT_API_TOKEN"))
 
     cmd = [
         sys.executable,
@@ -78,6 +76,6 @@ def run_byob(
     if target_key_name and os.environ.get(target_key_name):
         cmd += ["--api-key-name", str(target_key_name)]
 
-    result = subprocess.run(cmd, env=env, text=True)
+    result = subprocess.run(cmd, env=env, text=True, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"BYOB runner exited with code {result.returncode}")

@@ -13,7 +13,8 @@
 # limitations under the License.
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -46,9 +47,7 @@ def test_run_byob_invokes_subprocess(tmp_path: Path) -> None:
     mock_result.returncode = 0
 
     with patch("datarobot_genai.eval.runner.subprocess.run", return_value=mock_result) as mock_run:
-        run_byob(
-            _cfg(), "http://agent/v1", "/tmp/dataset.jsonl", "/tmp/output", tmp_path
-        )
+        run_byob(_cfg(), "http://agent/v1", "/tmp/dataset.jsonl", "/tmp/output", tmp_path)
 
     assert mock_run.called
     cmd = mock_run.call_args[0][0]

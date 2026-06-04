@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-from datetime import datetime, timezone
+from datetime import UTC
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -91,36 +92,30 @@ def normalize_output(
         for task_name, task_data in raw.get("tasks", {}).items():
             for metric_name, metric_data in task_data.get("metrics", {}).items():
                 for score_name, score_data in metric_data.get("scores", {}).items():
-                    nemo_aggregate[f"{task_name}.{metric_name}.{score_name}"] = (
-                        score_data.get("value")
+                    nemo_aggregate[f"{task_name}.{metric_name}.{score_name}"] = score_data.get(
+                        "value"
                     )
 
     scored = [c for c in cases if isinstance(c["quality_score"], (int, float))]
     inconclusive = len(cases) - len(scored)
-    mean_score = (
-        sum(c["quality_score"] for c in scored) / len(scored) if scored else None
-    )
+    mean_score = sum(c["quality_score"] for c in scored) / len(scored) if scored else None
     pass_rate = sum(1 for c in scored if c["passed"]) / len(scored) if scored else None
     good = [c for c in scored if c["expected_behavior"] == "good"]
     bad = [c for c in scored if c["expected_behavior"] == "bad"]
 
     return {
         "run_id": run_id,
-        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": datetime.now(UTC).isoformat(),
         "agent_endpoint": endpoint,
         "pipeline": pipeline,
         "total_cases": len(dataset),
         "summary": {
             "scored_cases": len(scored),
             "inconclusive_cases": inconclusive,
-            "mean_quality_score": round(mean_score, 4)
-            if mean_score is not None
-            else None,
+            "mean_quality_score": round(mean_score, 4) if mean_score is not None else None,
             "pass_rate": round(pass_rate, 4) if pass_rate is not None else None,
             "good_case_pass_rate": (
-                round(sum(1 for c in good if c["passed"]) / len(good), 4)
-                if good
-                else None
+                round(sum(1 for c in good if c["passed"]) / len(good), 4) if good else None
             ),
             "bad_case_pass_rate": (
                 round(sum(1 for c in bad if c["passed"]) / len(bad), 4) if bad else None

@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from datarobot_genai.eval.converter import convert_csv_to_cases, save_cases
+from datarobot_genai.eval.converter import convert_csv_to_cases
+from datarobot_genai.eval.converter import save_cases
 
 
 def _write_csv(path: Path, content: str) -> Path:
@@ -78,8 +79,7 @@ def test_convert_empty_rows_skipped(tmp_path: Path) -> None:
 def test_convert_quoted_fields(tmp_path: Path) -> None:
     csv = _write_csv(
         tmp_path / "cases.csv",
-        "id,source,input,notes\n"
-        'q-001,collected,"Input with, comma","Note with ""quotes"""\n',
+        'id,source,input,notes\nq-001,collected,"Input with, comma","Note with ""quotes"""\n',
     )
     cases = convert_csv_to_cases(csv)
     assert cases[0]["input"] == "Input with, comma"
@@ -134,9 +134,7 @@ def test_convert_header_only_returns_empty(tmp_path: Path) -> None:
 
 
 def test_save_cases_writes_json(tmp_path: Path) -> None:
-    cases = [
-        {"id": "q-001", "source": "collected", "input": "Hello", "notes": "A note"}
-    ]
+    cases = [{"id": "q-001", "source": "collected", "input": "Hello", "notes": "A note"}]
     out = tmp_path / "output.json"
     save_cases(cases, out)
     written = json.loads(out.read_text())

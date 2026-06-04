@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-from datetime import datetime, timezone
+from datetime import UTC
+from datetime import datetime
 from pathlib import Path
 
 
@@ -28,7 +29,7 @@ def write_status(
     payload = {
         "status": status,  # running | complete | failed
         "run_id": run_id,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "pipeline": pipeline,
         "agent_endpoint": endpoint,
         "error": error,

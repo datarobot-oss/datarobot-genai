@@ -15,7 +15,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from datarobot_genai.eval.output import PASS_THRESHOLD, _find_artifact, normalize_output
+from datarobot_genai.eval.output import PASS_THRESHOLD
+from datarobot_genai.eval.output import _find_artifact
+from datarobot_genai.eval.output import normalize_output
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -24,9 +26,7 @@ from datarobot_genai.eval.output import PASS_THRESHOLD, _find_artifact, normaliz
 
 def _write_predictions(dir_path: Path, rows: list[dict[str, Any]]) -> None:
     dir_path.mkdir(parents=True, exist_ok=True)
-    (dir_path / "byob_predictions.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in rows)
-    )
+    (dir_path / "byob_predictions.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
 
 
 def _write_results(dir_path: Path, data: dict[str, Any]) -> None:
@@ -109,9 +109,7 @@ def test_normalize_output_basic_shape(tmp_path: Path) -> None:
     _write_results(subdir, {"tasks": {}})
 
     dataset = [{"id": "good-001", "input": "q", "expected_behavior": "good"}]
-    result = normalize_output(
-        str(tmp_path), dataset, "http://agent/v1", "p.yaml", "run-1"
-    )
+    result = normalize_output(str(tmp_path), dataset, "http://agent/v1", "p.yaml", "run-1")
 
     assert result["run_id"] == "run-1"
     assert result["total_cases"] == 1
