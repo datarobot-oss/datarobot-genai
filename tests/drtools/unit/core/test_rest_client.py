@@ -28,7 +28,7 @@ _MODULE = "datarobot_genai.drtools.core.clients.datarobot"
 class TestGetDatarobotAccessTokenExtended:
     def test_uses_token_from_request_headers(self) -> None:
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value="user-tok"),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value="user-tok"),
             patch(f"{_MODULE}.get_credentials"),
         ):
             assert get_datarobot_access_token() == "user-tok"
@@ -37,14 +37,14 @@ class TestGetDatarobotAccessTokenExtended:
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_api_token = "app-tok"
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value=None),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value=None),
             patch(f"{_MODULE}.get_credentials", return_value=mock_creds),
         ):
             assert get_datarobot_access_token(headers_auth_only=False) == "app-tok"
 
     def test_raises_tool_error_when_headers_auth_only_and_no_token(self) -> None:
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value=None),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value=None),
             patch(f"{_MODULE}.get_credentials"),
         ):
             with pytest.raises(ToolError, match="DataRobot API token not found"):
@@ -56,7 +56,7 @@ class TestRequestUserDrClient:
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://x.example/api/v2"
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value="user-tok"),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value="user-tok"),
             patch(f"{_MODULE}.get_credentials", return_value=mock_creds),
             patch(f"{_MODULE}.client_configuration") as mock_cfg,
             patch(f"{_MODULE}.dr") as mock_dr,
@@ -73,7 +73,7 @@ class TestRequestUserDrClient:
 
     def test_raises_tool_error_when_headers_auth_only_and_no_token(self) -> None:
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value=None),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value=None),
             patch(f"{_MODULE}.get_credentials"),
             patch(f"{_MODULE}.client_configuration"),
             patch(f"{_MODULE}.dr"),
@@ -88,7 +88,7 @@ class TestRequestUserDrSdk:
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://x.example/api/v2"
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value="user-tok"),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value="user-tok"),
             patch(f"{_MODULE}.get_credentials", return_value=mock_creds),
             patch(f"{_MODULE}.client_configuration") as mock_cfg,
             patch(f"{_MODULE}.DRContext"),
@@ -105,7 +105,7 @@ class TestThreadSafeDataRobotClientRequestUserClient:
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://x.example/api/v2"
         with (
-            patch(f"{_MODULE}.resolve_token_from_headers", return_value="user-tok"),
+            patch(f"{_MODULE}.resolve_datarobot_token", return_value="user-tok"),
             patch(f"{_MODULE}.get_credentials", return_value=mock_creds),
             patch(f"{_MODULE}.client_configuration") as mock_cfg,
             patch(f"{_MODULE}.dr") as mock_dr,
