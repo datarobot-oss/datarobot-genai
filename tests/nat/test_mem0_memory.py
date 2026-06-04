@@ -20,7 +20,14 @@ from typing import Any
 import pytest
 from nat.builder.context import Context
 from nat.memory.models import MemoryItem
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind
+from opentelemetry.util._once import Once
 
+from datarobot_genai.core import telemetry_memory
 from datarobot_genai.nat import datarobot_mem0_memory
 from datarobot_genai.nat.datarobot_mem0_memory import Config
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
@@ -30,6 +37,23 @@ from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
 # falls back to this when no per-session user_id is supplied (e.g. direct calls
 # outside the auto-memory wrapper).
 FAKE_API_KEY_USER_ID = "fake-api-key-sha256"
+
+
+@pytest.fixture
+def memory_span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
+    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
+    trace.set_tracer_provider(provider)
+    monkeypatch.setattr(
+        telemetry_memory,
+        "_tracer",
+        trace.get_tracer("test.nat_mem0_memory"),
+    )
+    yield exporter
+    exporter.clear()
 
 
 class FakeMem0Api:
@@ -789,3 +813,118 @@ async def test_registered_memory_client_allows_memory_space_id_with_explicit_nul
     # the explicit None signals the caller knows what they want.
     async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:
         assert isinstance(editor, DRMem0Editor)
+
+
+async def test_registered_memory_client_sets_store_metadata_for_dr_route(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        datarobot_mem0_memory, "_create_mem0_client", lambda *_a, **_k: FakeMem0Client()
+    )
+    monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+
+    config = DRMem0MemoryClientConfig(
+        memory_space_id="space-42",
+        datarobot_endpoint="https://app.datarobot.com/api/v2",
+        datarobot_api_token="dr-token",
+    )
+
+    async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:
+        assert editor._store_name == "datarobot-memory"
+        assert editor._store_id == "space-42"
+
+
+async def test_registered_memory_client_sets_store_metadata_for_mem0_saas(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        datarobot_mem0_memory, "_create_mem0_client", lambda *_a, **_k: FakeMem0Client()
+    )
+    monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+
+    config = DRMem0MemoryClientConfig(
+        api_key="secret-key",
+        org_id="org-123",
+        project_id="project-456",
+    )
+
+    async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:
+        assert editor._store_name == "mem0"
+        assert editor._store_id == "project-456"
+
+
+async def test_add_items_emits_update_memory_span(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(
+        FakeMem0Client(mem0),
+        store_name="datarobot-memory",
+        store_id="space-42",
+    )
+    item = MemoryItem(
+        conversation=[{"role": "user", "content": "remember Python"}],
+        user_id="session-user-123",
+    )
+
+    await editor.add_items([item])
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.name == "update_memory"
+    assert span.kind == SpanKind.CLIENT
+    assert span.attributes["gen_ai.operation.name"] == "update_memory"
+    assert span.attributes["gen_ai.memory.store.name"] == "datarobot-memory"
+    assert span.attributes["gen_ai.memory.store.id"] == "space-42"
+    assert span.attributes["memory.item_count"] == 1
+    assert span.attributes["memory.user_id"] == "session-user-123"
+
+
+async def test_search_emits_search_memory_span(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    mem0 = FakeMem0Api()
+    mem0.search_result = {
+        "results": [
+            {
+                "input": [{"role": "user", "content": "I prefer Python"}],
+                "memory": "User prefers Python.",
+                "categories": ["preference"],
+                "metadata": {},
+            }
+        ]
+    }
+    editor = DRMem0Editor(FakeMem0Client(mem0), store_name="mem0")
+
+    await editor.search("language", top_k=2, user_id="session-user-123")
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.name == "search_memory"
+    assert span.attributes["gen_ai.operation.name"] == "search_memory"
+    assert span.attributes["gen_ai.memory.query.text"] == "language"
+    assert span.attributes["gen_ai.memory.search.result.count"] == 1
+    assert span.attributes["memory.user_id"] == "session-user-123"
+
+
+async def test_remove_items_emits_delete_memory_span(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), store_name="mem0")
+
+    await editor.remove_items(memory_id="memory-123")
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.name == "delete_memory"
+    assert span.attributes["gen_ai.operation.name"] == "delete_memory"
+    assert span.attributes["gen_ai.memory.record.id"] == "memory-123"
+
+
+async def test_remove_items_without_target_emits_no_span(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    mem0 = FakeMem0Api()
+    editor = DRMem0Editor(FakeMem0Client(mem0), store_name="mem0")
+
+    await editor.remove_items()
+
+    assert not memory_span_exporter.get_finished_spans()
