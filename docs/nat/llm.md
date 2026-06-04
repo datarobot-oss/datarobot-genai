@@ -42,9 +42,17 @@ The exact fields inside each block mirror what you would set in env for routing 
 
 ## Passing extra kwargs with `extra_body`
 
-Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`. The key is not declared on NAT’s `OpenAIModelConfig`; it is accepted because those configs use Pydantic **`extra="allow"`** and `datarobot-genai` forwards `extra_body` into the LiteLLM client (`model_kwargs` on LangChain, `additional_kwargs` on LlamaIndex).
+Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`. This is a **dedicated** top-level field; LangGraph clients move it into `model_kwargs.extra_body` automatically.
 
-Gateway extended thinking for reasoning models:
+```yaml
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-component
+    extra_body:
+      mock_response: "this is a mock response"
+```
+
+Enable LLM extended reasoing (parameters format for Anthropic model before version 4.6).
 
 ```yaml
 llms:
@@ -56,26 +64,7 @@ llms:
         budget_tokens: 1024
 ```
 
-For **`datarobot-llm-router`**, put the map on each **`primary`** / **`fallbacks`** entry (same shape as other LLM config fields on those nodes).
-
-| Source | Format |
-|---|---|
-| `LLM_ADDITIONAL_MODEL_PARAMS` env | JSON object (required for env; not Python `repr`) |
-| `llm_additional_model_params` in YAML | YAML mapping |
-
-## Passing extra kwargs with `extra_body`
-
-Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`. This is a **dedicated** top-level field; LangGraph clients move it into `model_kwargs.extra_body` automatically.
-
-For other LiteLLM options (or nested body shapes), use **`llm_additional_model_params`** instead, or set `extra_body` inside that map (see above).
-
-```yaml
-llms:
-  datarobot_llm:
-    _type: datarobot-llm-component
-    extra_body:
-      mock_response: "this is a mock response"
-```
+See [litellm documetation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
 
 ## Linking workflows to an LLM
 
