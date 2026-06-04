@@ -109,6 +109,36 @@ def test_generate_raises_on_invalid_behavior() -> None:
             gen.generate("test agent", n_good=1, n_bad=0)
 
 
+def test_generate_raises_on_non_list_response() -> None:
+    client = MagicMock(spec=anthropic.Anthropic)
+    response = MagicMock()
+    block = MagicMock()
+    block.text = '{"id": "gen-001"}'  # object instead of array
+    response.content = [block]
+    client.messages.create.return_value = response
+
+    with patch(
+        "datarobot_genai.eval.generator.anthropic.types.TextBlock",
+        type(block),
+    ):
+        gen = CaseGenerator(client=client)
+        with pytest.raises(ValueError, match="Expected a JSON array"):
+            gen.generate("test agent", n_good=1, n_bad=0)
+
+
+def test_generate_warns_on_count_mismatch() -> None:
+    # Model returns 1 case but 2 were requested.
+    client = _make_mock_client([_valid_case("gen-001")])
+
+    with patch(
+        "datarobot_genai.eval.generator.anthropic.types.TextBlock",
+        type(client.messages.create.return_value.content[0]),
+    ):
+        gen = CaseGenerator(client=client)
+        with pytest.warns(UserWarning, match="Requested 2 cases"):
+            gen.generate("test agent", n_good=1, n_bad=1)
+
+
 def test_generate_raises_on_unexpected_block_type() -> None:
     client = MagicMock(spec=anthropic.Anthropic)
     response = MagicMock()

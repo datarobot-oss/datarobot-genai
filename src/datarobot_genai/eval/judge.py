@@ -40,6 +40,7 @@ Usage — benchmarks import ``judge_score`` from here instead of from NeMo::
 from __future__ import annotations
 
 import functools
+import threading
 import warnings
 from typing import Any
 from typing import cast
@@ -102,9 +103,16 @@ class _JudgeCompatSession(requests.Session):
         return super().post(url, **kwargs)
 
 
-# One shared session is fine: it carries no per-judge state and NeMo already
-# pools a single session per judge URL.
-_SESSION = _JudgeCompatSession()
+# Thread-local storage gives each thread its own session. requests.Session is
+# not thread-safe, and run_byob defaults to parallelism=4, so a shared session
+# would cause intermittent connection corruption under concurrent judge calls.
+_thread_local = threading.local()
+
+
+def _get_session() -> _JudgeCompatSession:
+    if not hasattr(_thread_local, "session"):
+        _thread_local.session = _JudgeCompatSession()
+    return _thread_local.session
 
 
 @functools.wraps(_judge_score)
@@ -116,6 +124,6 @@ def judge_score(sample: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
     works against Anthropic/Bedrock models in addition to OpenAI/Azure.
     """
     # setdefault: never clobber a session the caller deliberately supplied.
-    sample.config.setdefault("_judge_session", _SESSION)
+    sample.config.setdefault("_judge_session", _get_session())
     # cast: nemo_evaluator ships untyped, so its return is Any to mypy.
     return cast(dict[str, Any], _judge_score(sample, *args, **kwargs))

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +95,19 @@ class CaseGenerator:
         block = response.content[0]
         if not isinstance(block, anthropic.types.TextBlock):
             raise ValueError(f"Unexpected response content type: {type(block)}")
-        cases: list[dict[str, Any]] = json.loads(block.text.strip())
+        raw = json.loads(block.text.strip())
+        if not isinstance(raw, list):
+            raise ValueError(f"Expected a JSON array from the model, got {type(raw).__name__}")
+        cases: list[dict[str, Any]] = raw
+
+        expected = n_good + n_bad
+        if len(cases) != expected:
+            warnings.warn(
+                f"Requested {expected} cases ({n_good} good, {n_bad} bad) but "
+                f"model returned {len(cases)}",
+                UserWarning,
+                stacklevel=2,
+            )
 
         for i, case in enumerate(cases):
             missing = _REQUIRED_FIELDS - case.keys()

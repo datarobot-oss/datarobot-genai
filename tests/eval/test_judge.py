@@ -136,7 +136,8 @@ def test_wrapper_injects_session_and_delegates(monkeypatch: pytest.MonkeyPatch) 
     result = judge.judge_score(sample, template="binary_qa", criteria="x")
 
     assert result == {"judge_score": 1.0, "judge_grade": "C"}
-    assert captured["session"] is judge._SESSION
+    # Thread-local sessions: each call gets a _JudgeCompatSession for its thread.
+    assert isinstance(captured["session"], judge._JudgeCompatSession)
     assert captured["args"] == ((), {"template": "binary_qa", "criteria": "x"})
 
 
