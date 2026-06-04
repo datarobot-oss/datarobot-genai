@@ -145,6 +145,14 @@ class MCPToolConfig(BaseSettings):
         ),
         description="Enable/disable vector database tools",
     )
+    enable_panels_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PANELS_TOOLS",
+            "ENABLE_PANELS_TOOLS",
+        ),
+        description="Enable/disable panel tools and resources",
+    )
 
     @field_validator(
         "enable_predictive_tools",
@@ -159,6 +167,7 @@ class MCPToolConfig(BaseSettings):
         "enable_code_execution_tools",
         "enable_optimization_tools",
         "enable_vdb_tools",
+        "enable_panels_tools",
         mode="before",
     )
     @classmethod
