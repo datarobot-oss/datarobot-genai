@@ -20,33 +20,32 @@ import pytest
 from aiohttp import ClientResponseError
 from fastmcp.server.transforms import Namespace
 
+from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
 from datarobot_genai.drmcpbase.auth.exceptions import (
     NoDataRobotBearerTokenFoundInRequestContextError,
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import CACHE_TTL_IN_SECOND
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import (
+from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import CACHE_TTL_IN_SECOND
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import (
     HTTPX_CONNECT_POOL_WAIT_TIMEOUT_IN_SECOND,
 )
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import (
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import (
     MCP_K8S_POD_TCP_CONNECT_TIMEOUT_IN_SECOND,
 )
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import MCP_READ_TIMEOUT_IN_SECOND
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import MCP_WRITE_TIMEOUT_IN_SECOND
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import DataRobotClientWithAsyncAPI
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import UserMCPProvider
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import UserMCPProxyAuth
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import get_user_mcp_endpoint
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import httpx_async_client_factory
-from datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider import (
-    user_mcp_proxy_client_factory,
-)
-from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import MCP_READ_TIMEOUT_IN_SECOND
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import MCP_WRITE_TIMEOUT_IN_SECOND
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import UserMCPProvider
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import UserMCPProxyAuth
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import UserMCPProxyProviderCache
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import get_user_mcp_endpoint
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import httpx_async_client_factory
+from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import user_mcp_proxy_client_factory
 
 
 @pytest.fixture
 def module_under_test() -> str:
-    return "datarobot_genai.drmcpbase.drmcp_providers.user_mcp_provider"
+    return "datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider"
 
 
 @pytest.fixture
@@ -58,11 +57,6 @@ def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[AsyncMock]:
 
 
 class TestUserMCPProvider:
-    @pytest.fixture
-    def mock_proxy_provider_cls(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.ProxyProvider") as mock_cls:
-            yield mock_cls
-
     @pytest.fixture
     def mock_datarobot_api_client(self) -> Mock:
         mock_client = Mock()
@@ -80,23 +74,23 @@ class TestUserMCPProvider:
             mock_cls.return_value = mock_datarobot_api_client
             yield mock_cls
 
-    @pytest.fixture
-    def mock_user_mcp_proxy_client_factory(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.user_mcp_proxy_client_factory") as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_get_datarobot_bearer_token_from_mcp_request_context(
-        self, module_under_test: str
+    @pytest.fixture(autouse=True)
+    def mock_user_mcp_proxy_provider_cache_cls(
+        self,
+        module_under_test: str,
     ) -> Iterator[Mock]:
-        with patch(
-            f"{module_under_test}.get_datarobot_bearer_token_from_mcp_request_context"
-        ) as mock_func:
-            yield mock_func
+        with patch(f"{module_under_test}.UserMCPProxyProviderCache") as mock_cls:
+            yield mock_cls
 
     @pytest.fixture
-    def mock_get_api_v2_endpoint(self) -> Iterator[Mock]:
-        with patch.object(DataRobotClientWithAsyncAPI, "get_api_v2_endpoint") as mock_func:
+    def mock_get_datarobot_bearer_token_from_mcp_request(
+        self,
+        module_under_test: str,
+    ) -> Iterator[Mock]:
+        with patch.object(
+            DataRobotBearerHeaderEnum.AUTHORIZATION,
+            "get_from_mcp_request",
+        ) as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -123,6 +117,16 @@ class TestUserMCPProvider:
             new_callable=AsyncMock,
         ) as mock_func:
             yield mock_func
+
+    def test_init(self, mock_user_mcp_proxy_provider_cache_cls: Mock) -> None:
+        mock_datarobot_api_endpoint = Mock()
+        mcp_provider = UserMCPProvider(mock_datarobot_api_endpoint)
+
+        mock_user_mcp_proxy_provider_cache_cls.assert_called_once_with(mock_datarobot_api_endpoint)
+        assert (
+            mcp_provider.user_mcp_proxy_provider_cache
+            == mock_user_mcp_proxy_provider_cache_cls.return_value
+        )
 
     @pytest.mark.asyncio
     async def test_datarobot_api_client_init_and_clean_up(
@@ -181,50 +185,22 @@ class TestUserMCPProvider:
 
     def test_get_or_create_mcp_proxy_provider(
         self,
-        mock_user_mcp_proxy_client_factory: Mock,
-        mock_proxy_provider_cls: Mock,
+        mock_user_mcp_proxy_provider_cache_cls: Mock,
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
         user_mcp_deployment_id = Mock()
         output = mcp_provider.get_or_create_mcp_proxy_provider(user_mcp_deployment_id)
 
-        mock_user_mcp_proxy_client_factory.assert_called_once_with(
-            mcp_provider.datarobot_api_endpoint,
-            user_mcp_deployment_id,
+        mcp_provider.user_mcp_proxy_provider_cache.get.assert_called_once_with(
+            user_mcp_deployment_id
         )
-        mock_proxy_provider_cls.assert_called_once_with(
-            mock_user_mcp_proxy_client_factory.return_value,
-            CACHE_TTL_IN_SECOND,
-        )
-        mock_proxy_provider = mock_proxy_provider_cls.return_value
-        (actual_namespace,), _ = mock_proxy_provider.wrap_transform.call_args
-        assert isinstance(actual_namespace, Namespace)
-        assert actual_namespace._prefix == user_mcp_deployment_id
-        namespace_wrapped_proxy_provider = mock_proxy_provider.wrap_transform.return_value
-        assert mcp_provider.user_mcp_proxy_providers == {
-            user_mcp_deployment_id: namespace_wrapped_proxy_provider
-        }
-        assert output == namespace_wrapped_proxy_provider
-
-    def test_get_or_create_mcp_proxy_provider_return_existing_one(
-        self,
-        mock_proxy_provider_cls: Mock,
-    ) -> None:
-        user_mcp_deployment_id = Mock()
-        mcp_provider = UserMCPProvider(Mock())
-        mock_existing_proxy_provider = Mock()
-        mcp_provider.user_mcp_proxy_providers[user_mcp_deployment_id] = mock_existing_proxy_provider
-
-        output = mcp_provider.get_or_create_mcp_proxy_provider(user_mcp_deployment_id)
-
-        mock_proxy_provider_cls.assert_not_called()
-        assert output == mock_existing_proxy_provider
+        assert output == mcp_provider.user_mcp_proxy_provider_cache.get.return_value
 
     @pytest.mark.asyncio
     async def test_get_user_mcp_proxy_providers_for_user(
         self,
         mock_datarobot_api_client: Mock,
-        mock_get_datarobot_bearer_token_from_mcp_request_context: Mock,
+        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
         mock_get_or_create_mcp_proxy_provider: Mock,
     ) -> None:
         user_mcp_deployment_id = Mock()
@@ -234,10 +210,8 @@ class TestUserMCPProvider:
 
         outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
 
-        mock_get_datarobot_bearer_token_from_mcp_request_context.assert_called_once_with()
-        mock_datarobot_api_token = (
-            mock_get_datarobot_bearer_token_from_mcp_request_context.return_value
-        )
+        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
+        mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token
         )
@@ -262,7 +236,7 @@ class TestUserMCPProvider:
         | RuntimeError
         | ClientResponseError,
         mock_datarobot_api_client: Mock,
-        mock_get_datarobot_bearer_token_from_mcp_request_context: Mock,
+        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
         mock_get_or_create_mcp_proxy_provider: Mock,
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
@@ -271,26 +245,75 @@ class TestUserMCPProvider:
 
         outputs = await mcp_provider.get_user_mcp_proxy_providers_for_user()
 
-        mock_get_datarobot_bearer_token_from_mcp_request_context.assert_called_once_with()
-        mock_datarobot_api_token = (
-            mock_get_datarobot_bearer_token_from_mcp_request_context.return_value
-        )
+        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
+        mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token,
         )
         mock_get_or_create_mcp_proxy_provider.assert_not_called()
         assert outputs == []
 
-    def test_get_user_mcp_endpoint(self, mock_get_api_v2_endpoint: Mock) -> None:
+    def test_get_user_mcp_endpoint(self) -> None:
         mock_datarobot_endpoint = Mock()
         user_mcp_deployment_id = Mock()
         output = get_user_mcp_endpoint(mock_datarobot_endpoint, user_mcp_deployment_id)
 
-        mock_get_api_v2_endpoint.assert_called_once_with(
-            mock_datarobot_endpoint,
-            f"deployments/{user_mcp_deployment_id}/directAccess/mcp",
+        assert output == (
+            f"{mock_datarobot_endpoint}/deployments/{user_mcp_deployment_id}/directAccess/mcp"
         )
-        assert output == mock_get_api_v2_endpoint.return_value
+
+
+class TestUserMCPProxyProviderCache:
+    @pytest.fixture
+    def mock_user_mcp_proxy_client_factory(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.user_mcp_proxy_client_factory") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_proxy_provider_cls(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.ProxyProvider") as mock_cls:
+            yield mock_cls
+
+    def test_get(
+        self,
+        mock_user_mcp_proxy_client_factory: Mock,
+        mock_proxy_provider_cls: Mock,
+    ) -> None:
+        datarobot_api_endpoint = Mock()
+        provider_cache = UserMCPProxyProviderCache(datarobot_api_endpoint, 1)
+
+        user_mcp_deployment_id = Mock()
+        output = provider_cache.get(user_mcp_deployment_id)
+
+        mock_user_mcp_proxy_client_factory.assert_called_once_with(
+            datarobot_api_endpoint,
+            user_mcp_deployment_id,
+        )
+        mock_proxy_provider_cls.assert_called_once_with(
+            mock_user_mcp_proxy_client_factory.return_value,
+            CACHE_TTL_IN_SECOND,
+        )
+        mock_proxy_provider = mock_proxy_provider_cls.return_value
+        (actual_namespace,), _ = mock_proxy_provider.wrap_transform.call_args
+        assert isinstance(actual_namespace, Namespace)
+        assert actual_namespace._prefix == user_mcp_deployment_id
+        assert output == mock_proxy_provider.wrap_transform.return_value
+
+    def test_get_returns_cached_result(
+        self,
+        mock_user_mcp_proxy_client_factory: Mock,
+        mock_proxy_provider_cls: Mock,
+    ) -> None:
+        provider_cache = UserMCPProxyProviderCache(Mock(), 1)
+        user_mcp_deployment_id = Mock()
+        first_result = provider_cache.get(user_mcp_deployment_id)
+        second_result = provider_cache.get(user_mcp_deployment_id)
+
+        mock_proxy_provider_cls.assert_called_once_with(
+            mock_user_mcp_proxy_client_factory.return_value,
+            CACHE_TTL_IN_SECOND,
+        )
+        assert first_result == second_result
 
 
 class TestMCPProxyClientSetup:
@@ -390,7 +413,11 @@ class TestUserMCPProxyAuth:
         self, mock_fastmcp_get_http_request: Mock
     ) -> None:
         auth_header_of_current_request = Mock()
-        inbound_request = Mock(headers={"Authorization": auth_header_of_current_request})
+        inbound_request = Mock(
+            headers={
+                DataRobotBearerHeaderEnum.AUTHORIZATION.get_normalized_header_key(): auth_header_of_current_request,  # noqa: E501
+            }
+        )
         mock_fastmcp_get_http_request.return_value = inbound_request
         auth = UserMCPProxyAuth()
 

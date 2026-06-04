@@ -11,6 +11,10 @@
 # publication of such source code.
 
 
+class InvalidBearerTokenError(Exception):
+    pass
+
+
 class NoHeadersFoundInRequestContextError(Exception):
     pass
 

@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
+from datarobot_genai.drmcpbase.auth.exceptions import InvalidBearerTokenError
 from datarobot_genai.drmcpbase.auth.exceptions import (
     NoDataRobotBearerTokenFoundInRequestContextError,
 )
@@ -32,11 +34,13 @@ def module_under_test():
 
 class TestFeatureFlagEvaluation:
     @pytest.fixture
-    def mock_get_datarobot_bearer_token_from_mcp_request_context(
-        self, module_under_test: str
+    def mock_get_datarobot_bearer_token_from_mcp_request(
+        self,
+        module_under_test: str,
     ) -> Iterator[Mock]:
-        with patch(
-            f"{module_under_test}.get_datarobot_bearer_token_from_mcp_request_context"
+        with patch.object(
+            DataRobotBearerHeaderEnum.AUTHORIZATION,
+            "get_from_mcp_request",
         ) as mock_func:
             yield mock_func
 
@@ -52,7 +56,7 @@ class TestFeatureFlagEvaluation:
     @pytest.mark.asyncio
     async def test_is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(
         self,
-        mock_get_datarobot_bearer_token_from_mcp_request_context: Mock,
+        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
         mock_get_feature_flag_enablement_with_existing_datarobot_client: AsyncMock,
     ) -> None:
         mock_datarobot_api_client = Mock()
@@ -60,10 +64,8 @@ class TestFeatureFlagEvaluation:
             mock_datarobot_api_client
         )
 
-        mock_get_datarobot_bearer_token_from_mcp_request_context.assert_called_once_with()
-        mock_datarobot_api_token = (
-            mock_get_datarobot_bearer_token_from_mcp_request_context.return_value
-        )
+        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
+        mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
         mock_get_feature_flag_enablement_with_existing_datarobot_client.assert_called_once_with(
             mock_datarobot_api_client,
             mock_datarobot_api_token,
@@ -79,6 +81,7 @@ class TestFeatureFlagEvaluation:
         [
             NoHeadersFoundInRequestContextError,
             NoDataRobotBearerTokenFoundInRequestContextError,
+            InvalidBearerTokenError,
         ],
         ids=str,
     )
@@ -86,16 +89,16 @@ class TestFeatureFlagEvaluation:
         self,
         raised_error: NoHeadersFoundInRequestContextError
         | NoDataRobotBearerTokenFoundInRequestContextError,
-        mock_get_datarobot_bearer_token_from_mcp_request_context: Mock,
+        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
         mock_get_feature_flag_enablement_with_existing_datarobot_client: AsyncMock,
     ) -> None:
-        mock_get_datarobot_bearer_token_from_mcp_request_context.side_effect = raised_error
+        mock_get_datarobot_bearer_token_from_mcp_request.side_effect = raised_error
 
         mock_datarobot_api_client = Mock()
         output = await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(  # noqa: E501
             mock_datarobot_api_client
         )
 
-        mock_get_datarobot_bearer_token_from_mcp_request_context.assert_called_once_with()
+        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
         mock_get_feature_flag_enablement_with_existing_datarobot_client.assert_not_called()
         assert output is False

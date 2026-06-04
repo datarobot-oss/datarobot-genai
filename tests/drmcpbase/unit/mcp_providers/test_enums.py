@@ -11,7 +11,7 @@
 # publication of such source code.
 import pytest
 
-from datarobot_genai.drmcpbase.drmcp_providers.enums import ProviderNamespace
+from datarobot_genai.drmcpbase.mcp_providers.enums import ProviderNamespace
 
 
 class TestProviderNamespace:

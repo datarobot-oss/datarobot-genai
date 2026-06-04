@@ -13,11 +13,12 @@
 # limitations under the License.
 import logging
 
+from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
+from datarobot_genai.drmcpbase.auth.exceptions import InvalidBearerTokenError
 from datarobot_genai.drmcpbase.auth.exceptions import (
     NoDataRobotBearerTokenFoundInRequestContextError,
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
-from datarobot_genai.drmcpbase.auth.utils import get_datarobot_bearer_token_from_mcp_request_context
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
     get_feature_flag_enablement_with_existing_datarobot_client,
@@ -32,7 +33,7 @@ class FeatureFlagEvaluation:
         datarobot_api_client: DataRobotClientWithAsyncAPI,
     ) -> bool:
         try:
-            datarobot_api_token = get_datarobot_bearer_token_from_mcp_request_context()
+            datarobot_api_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
             return await get_feature_flag_enablement_with_existing_datarobot_client(
                 datarobot_api_client,
                 datarobot_api_token,
@@ -41,6 +42,7 @@ class FeatureFlagEvaluation:
         except (
             NoDataRobotBearerTokenFoundInRequestContextError,
             NoHeadersFoundInRequestContextError,
+            InvalidBearerTokenError,
         ):
             logger.info(
                 "No bearer token or valid header is found. Feature flag is evaluated to False."

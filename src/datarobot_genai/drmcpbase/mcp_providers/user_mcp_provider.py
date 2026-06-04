@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 
 import httpx
 from aiohttp import ClientResponseError
+from cachetools import LRUCache
+from cachetools import cachedmethod
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.providers import Provider
@@ -29,11 +31,12 @@ from fastmcp.tools.base import Tool
 from httpx import AsyncClient
 from mcp.shared._httpx_utils import create_mcp_http_client
 
+from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
+from datarobot_genai.drmcpbase.auth.exceptions import InvalidBearerTokenError
 from datarobot_genai.drmcpbase.auth.exceptions import (
     NoDataRobotBearerTokenFoundInRequestContextError,
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
-from datarobot_genai.drmcpbase.auth.utils import get_datarobot_bearer_token_from_mcp_request_context
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
 from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
@@ -46,12 +49,11 @@ MCP_K8S_POD_TCP_CONNECT_TIMEOUT_IN_SECOND = 60 * TimeMeasurement.SECOND.to_numer
 MCP_READ_TIMEOUT_IN_SECOND = 30 * TimeMeasurement.SECOND.to_numeric_value_in_second()
 MCP_WRITE_TIMEOUT_IN_SECOND = 30 * TimeMeasurement.SECOND.to_numeric_value_in_second()
 HTTPX_CONNECT_POOL_WAIT_TIMEOUT_IN_SECOND = 5 * TimeMeasurement.SECOND.to_numeric_value_in_second()
+MAX_USER_MCP_TO_CACHE = 50
 
 
 def get_user_mcp_endpoint(datarobot_public_api_endpoint: str, user_mcp_deployment_id: str) -> str:
-    return DataRobotClientWithAsyncAPI.get_api_v2_endpoint(
-        datarobot_public_api_endpoint, f"deployments/{user_mcp_deployment_id}/directAccess/mcp"
-    )
+    return f"{datarobot_public_api_endpoint}/deployments/{user_mcp_deployment_id}/directAccess/mcp"
 
 
 class UserMCPProxyAuth(httpx.Auth):
@@ -61,7 +63,9 @@ class UserMCPProxyAuth(httpx.Auth):
         outbound_request = request
         try:
             inbound_request = get_http_request()
-            auth_header_in_outbound_request = inbound_request.headers.get("Authorization")
+            auth_header_in_outbound_request = inbound_request.headers.get(
+                DataRobotBearerHeaderEnum.AUTHORIZATION.get_normalized_header_key()
+            )
             if auth_header_in_outbound_request:
                 outbound_request.headers["Authorization"] = auth_header_in_outbound_request
         except RuntimeError as ex:
@@ -115,12 +119,26 @@ def user_mcp_proxy_client_factory(
     return client_creation_factory
 
 
+class UserMCPProxyProviderCache:
+    def __init__(self, datarobot_api_endpoint: str, max_cache_size: int = MAX_USER_MCP_TO_CACHE):
+        self.datarobot_api_endpoint = datarobot_api_endpoint
+        self._cache: LRUCache = LRUCache(maxsize=max_cache_size)
+
+    @cachedmethod(lambda self: self._cache)
+    def get(self, user_mcp_deployment_id: str) -> ProxyProvider:
+        user_mcp_proxy_provider = ProxyProvider(
+            user_mcp_proxy_client_factory(self.datarobot_api_endpoint, user_mcp_deployment_id),
+            CACHE_TTL_IN_SECOND,
+        )
+        return user_mcp_proxy_provider.wrap_transform(Namespace(user_mcp_deployment_id))  # type: ignore[assignment]
+
+
 class UserMCPProvider(Provider):
     def __init__(self, datarobot_api_endpoint: str) -> None:
         super().__init__()
-        self.user_mcp_proxy_providers: dict[str, ProxyProvider] = {}
         self.datarobot_api_client: DataRobotClientWithAsyncAPI | None = None
         self.datarobot_api_endpoint = datarobot_api_endpoint
+        self.user_mcp_proxy_provider_cache = UserMCPProxyProviderCache(self.datarobot_api_endpoint)
 
     @asynccontextmanager
     async def lifespan(self) -> AsyncIterator[None]:
@@ -131,20 +149,11 @@ class UserMCPProvider(Provider):
             await self.datarobot_api_client.clean_up()  # type: ignore[union-attr]
 
     def get_or_create_mcp_proxy_provider(self, user_mcp_deployment_id: str) -> ProxyProvider:
-        if user_mcp_deployment_id in self.user_mcp_proxy_providers:
-            return self.user_mcp_proxy_providers[user_mcp_deployment_id]
-        user_mcp_proxy_provider = ProxyProvider(
-            user_mcp_proxy_client_factory(self.datarobot_api_endpoint, user_mcp_deployment_id),
-            CACHE_TTL_IN_SECOND,
-        )
-        self.user_mcp_proxy_providers[user_mcp_deployment_id] = (
-            user_mcp_proxy_provider.wrap_transform(Namespace(user_mcp_deployment_id))  # type: ignore[assignment]
-        )
-        return self.user_mcp_proxy_providers[user_mcp_deployment_id]
+        return self.user_mcp_proxy_provider_cache.get(user_mcp_deployment_id)
 
     async def get_user_mcp_proxy_providers_for_user(self) -> Sequence[ProxyProvider]:
         try:
-            datarobot_token = get_datarobot_bearer_token_from_mcp_request_context()
+            datarobot_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
             user_mcp_deployment_ids = await self.datarobot_api_client._list_mcp_deployment_ids(  # type: ignore[union-attr]
                 datarobot_token
             )
@@ -153,6 +162,7 @@ class UserMCPProvider(Provider):
             NoDataRobotBearerTokenFoundInRequestContextError,
             RuntimeError,
             ClientResponseError,
+            InvalidBearerTokenError,
         ) as ex:
             logger.warning("Failed to list MCP deployments: %s. No user MCP provider returned.", ex)
             return []
