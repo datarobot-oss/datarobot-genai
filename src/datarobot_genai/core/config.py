@@ -22,7 +22,6 @@ from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
-DEFAULT_THINKING_BUDGET_TOKENS = 1024
 
 
 class LLMType(StrEnum):
@@ -51,7 +50,6 @@ class LLMConfig(BaseModel):
     nim_deployment_id: str | None = None
     use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
-    llm_additional_model_params: dict | None = None
 
     def get_llm_type(self) -> LLMType:
         if self.use_datarobot_llm_gateway:
@@ -89,31 +87,28 @@ class LLMConfig(BaseModel):
         llm_type = self.get_llm_type()
 
         if llm_type == LLMType.GATEWAY:
-            config_dict = {
+            return {
                 "model": _with_datarobot_prefix(model_name),
                 "api_base": llm_gateway_url(endpoint),
                 "api_key": api_key,
             }
         elif llm_type == LLMType.DEPLOYMENT:
-            config_dict = {
+            return {
                 "model": _with_datarobot_prefix(model_name),
                 "api_base": deployment_url(self.llm_deployment_id, endpoint),  # type: ignore[arg-type]
                 "api_key": api_key,
             }
         elif llm_type == LLMType.NIM:
-            config_dict = {
+            return {
                 "model": _with_datarobot_prefix(model_name),
                 "api_base": deployment_url(self.nim_deployment_id, endpoint),  # type: ignore[arg-type]
                 "api_key": api_key,
             }
         else:  # EXTERNAL
-            config_dict = {
+            return {
                 "model": model_name.removeprefix("datarobot/"),
                 "api_key": api_key,
             }
-        if self.llm_additional_model_params:
-            config_dict.update(self.llm_additional_model_params)
-        return config_dict
 
 
 class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
@@ -186,8 +181,3 @@ def default_llm_deployment_id() -> str | None:
 def default_nim_deployment_id() -> str | None:
     config = Config()
     return config.nim_deployment_id
-
-
-def default_llm_additional_model_params() -> dict | None:
-    config = Config()
-    return config.llm_additional_model_params

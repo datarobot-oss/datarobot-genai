@@ -40,32 +40,20 @@ llms:
 
 The exact fields inside each block mirror what you would set in env for routing (model name, gateway on/off, deployment ids). Prefer the **same env vars as the e2e tests** unless you need to pin something in YAML for a deployment.
 
-## Additional model parameters (`llm_additional_model_params`)
+## Passing extra kwargs with `extra_body`
 
-Add **`llm_additional_model_params`** to any supported LLM block to pass **extra LiteLLM keyword arguments** through to the framework client (LangChain, CrewAI, or LlamaIndex). The map is merged on top of the block’s other fields (`model`, `temperature`, `api_key`, and so on).
+Add **`extra_body`** to any LLM block to forward arbitrary key-value pairs in the request body. Works with every `_type`. The key is not declared on NAT’s `OpenAIModelConfig`; it is accepted because those configs use Pydantic **`extra="allow"`** and `datarobot-genai` forwards `extra_body` into the LiteLLM client (`model_kwargs` on LangChain, `additional_kwargs` on LlamaIndex).
 
-If the block does not set this field, NAT uses the process default from the **`LLM_ADDITIONAL_MODEL_PARAMS`** environment variable (JSON string). See [LLM configuration (shared)](../llm.md#additional-model-parameters-llm_additional_model_params).
+Gateway extended thinking for reasoning models:
 
 ```yaml
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
-    llm_additional_model_params:
-      max_tokens: 4096
-```
-
-Gateway extended thinking (body field) example:
-
-```yaml
-llms:
-  datarobot_llm:
-    _type: datarobot-llm-gateway
-    model: datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
-    llm_additional_model_params:
-      extra_body:
-        thinking:
-          type: enabled
-          budget_tokens: 1024
+    extra_body:
+      thinking:
+        type: enabled
+        budget_tokens: 1024
 ```
 
 For **`datarobot-llm-router`**, put the map on each **`primary`** / **`fallbacks`** entry (same shape as other LLM config fields on those nodes).

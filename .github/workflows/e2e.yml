@@ -113,9 +113,9 @@ jobs:
       LLM: llmgw
 
       LLM_DEFAULT_MODEL: ${{ matrix.model.id }}
-      LLM_ADDITIONAL_MODEL_PARAMS: ${{ matrix.model.additional_model_params }}
       ALL_TEST_CASES: ${{ matrix.model.all_tests }}
       REASONING_TESTS: ${{ matrix.model.reasoning_tests }}
+      WORKFLOW_FILE: ${{ matrix.model.workflow_file }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

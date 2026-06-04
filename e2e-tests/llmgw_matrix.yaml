@@ -10,17 +10,17 @@ model:
   - label: default
     id: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
     all_tests: true
-    additional_model_params: '{"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 1024}}}'
     reasoning_tests: true
+    workflow_file: workflow-reasoning.yaml
   - label: gpt
     id: "datarobot/azure/gpt-5-1-2025-11-13"
-    additional_model_params: '{}'
+    workflow_file: workflow.yaml
   - label: sonnet
     id: "datarobot/anthropic/claude-sonnet-4-5-20250929"
-    additional_model_params: '{}'
+    workflow_file: workflow.yaml
   - label: gemini
     id: "datarobot/vertex_ai/gemini-3.1-pro-preview"
-    additional_model_params: '{}'
+    workflow_file: workflow.yaml
 # base is not model dependent
 exclude:
   - agent: base
