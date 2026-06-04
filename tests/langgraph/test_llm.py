@@ -234,34 +234,6 @@ def test_factory_omits_model_kwargs_when_no_extra_body() -> None:
     assert llm.model_kwargs == {}
 
 
-def test_gateway_llm_injects_thinking_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ENABLE_THINKING", "true")
-    monkeypatch.setenv("THINKING_BUDGET_TOKENS", "2048")
-    llm = langgraph_llm.get_datarobot_gateway_llm()
-    assert llm.model_kwargs["extra_body"]["thinking"] == {"type": "enabled", "budget_tokens": 2048}
-
-
-def test_deployment_llm_injects_thinking_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The chokepoint covers every LLM type, not just the gateway.
-    monkeypatch.setenv("ENABLE_THINKING", "true")
-    llm = langgraph_llm.get_datarobot_deployment_llm("dep-1")
-    assert llm.model_kwargs["extra_body"]["thinking"]["type"] == "enabled"
-
-
-def test_caller_thinking_wins_over_enabled_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ENABLE_THINKING", "true")
-    llm = langgraph_llm.get_datarobot_gateway_llm(
-        parameters={"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 99}}}
-    )
-    assert llm.model_kwargs["extra_body"]["thinking"]["budget_tokens"] == 99
-
-
-def test_thinking_absent_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ENABLE_THINKING", "false")
-    llm = langgraph_llm.get_datarobot_gateway_llm()
-    assert "extra_body" not in llm.model_kwargs
-
-
 def test_get_llm_forwards_streaming_flag() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
