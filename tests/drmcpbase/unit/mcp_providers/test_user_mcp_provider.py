@@ -62,8 +62,9 @@ class TestUserMCPProvider:
     @pytest.fixture
     def mock_datarobot_api_client(self) -> Mock:
         mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock()
+        mock_client.__aexit__ = AsyncMock()
         mock_client._list_mcp_deployment_ids = AsyncMock()
-        mock_client.clean_up = AsyncMock()
         return mock_client
 
     @pytest.fixture
@@ -117,11 +118,19 @@ class TestUserMCPProvider:
             yield mock_func
 
     @pytest.fixture
-    def mock_get_user_mcp_proxy_providers_for_user(self) -> Iterator[Mock]:
+    def mock_get_user_mcp_proxy_providers_for_user(self) -> Iterator[AsyncMock]:
         with patch.object(
             UserMCPProvider,
             "get_user_mcp_proxy_providers_for_user",
             new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_is_datarobot_api_client_initialized(self) -> Iterator[Mock]:
+        with patch.object(
+            UserMCPProvider,
+            "is_datarobot_api_client_initialized",
         ) as mock_func:
             yield mock_func
 
@@ -148,17 +157,22 @@ class TestUserMCPProvider:
             pass
 
         mock_datarobot_api_client_cls.assert_called_once_with(mock_datarobot_api_endpoint)
-        mock_datarobot_api_client.clean_up.assert_called_once_with()
+        assert (
+            mcp_provider.datarobot_api_client == mock_datarobot_api_client.__aenter__.return_value
+        )
+        mock_datarobot_api_client.__aexit__.assert_called_once_with(None, None, None)
 
     @pytest.mark.asyncio
     async def test_private_method_list_tools(
         self,
         mock_asyncio_gather: AsyncMock,
-        mock_get_user_mcp_proxy_providers_for_user: Mock,
+        mock_get_user_mcp_proxy_providers_for_user: AsyncMock,
+        mock_is_datarobot_api_client_initialized: Mock,
         mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_mcp_proxy_provider: Mock,
     ) -> None:
         mock_get_user_mcp_proxy_providers_for_user.return_value = [mock_mcp_proxy_provider]
+        mock_is_datarobot_api_client_initialized.return_value = True
 
         mcp_provider = UserMCPProvider(Mock())
         await mcp_provider._list_tools()
@@ -172,6 +186,27 @@ class TestUserMCPProvider:
         assert mock_asyncio_gather.call_args.kwargs == {"return_exceptions": True}
 
     @pytest.mark.asyncio
+    async def test_private_method_list_tools_return_empty_if_dr_api_client_uninitialized(
+        self,
+        mock_asyncio_gather: AsyncMock,
+        mock_get_user_mcp_proxy_providers_for_user: AsyncMock,
+        mock_is_datarobot_api_client_initialized: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_mcp_proxy_provider: Mock,
+    ) -> None:
+        mock_is_datarobot_api_client_initialized.return_value = False
+
+        mcp_provider = UserMCPProvider(Mock())
+
+        output = await mcp_provider._list_tools()
+
+        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
+        mock_get_user_mcp_proxy_providers_for_user.assert_not_called()
+        mock_mcp_proxy_provider.list_tools.assert_not_called()
+        mock_asyncio_gather.assert_not_called()
+        assert output == []
+
+    @pytest.mark.asyncio
     @pytest.mark.usefixtures(
         "mock_get_user_mcp_proxy_providers_for_user",
         "mock_is_mcp_tools_gallery_support_enabled",
@@ -179,9 +214,11 @@ class TestUserMCPProvider:
     async def test_private_method_list_tools_ignore_exceptions_from_asyncio_gather(
         self,
         mock_asyncio_gather: AsyncMock,
+        mock_is_datarobot_api_client_initialized: Mock,
     ) -> None:
         tools_in_one_proxy_provider = [Mock()]
         mock_asyncio_gather.return_value = [tools_in_one_proxy_provider, BaseException()]
+        mock_is_datarobot_api_client_initialized.return_value = True
 
         mcp_provider = UserMCPProvider(Mock())
         outputs = await mcp_provider._list_tools()
@@ -224,6 +261,20 @@ class TestUserMCPProvider:
         assert outputs == [user_mcp_deployment_id]
 
     @pytest.mark.asyncio
+    async def test_get_user_mcp_deployment_ids_return_empty_with_uninitialized_dr_api_client(
+        self,
+        mock_datarobot_api_client: Mock,
+        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
+    ) -> None:
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = None
+
+        outputs = await mcp_provider.get_user_mcp_deployment_ids()
+
+        mock_datarobot_api_client._list_mcp_deployment_ids.assert_not_called()
+        assert outputs == []
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "raised_error",
         [
@@ -234,7 +285,7 @@ class TestUserMCPProvider:
         ],
         ids=str,
     )
-    async def test_test_get_user_mcp_deployment_ids_return_empty_if_errored(
+    async def test_get_user_mcp_deployment_ids_return_empty_if_errored(
         self,
         raised_error: NoHeadersFoundInRequestContextError
         | NoDataRobotBearerTokenFoundInRequestContextError

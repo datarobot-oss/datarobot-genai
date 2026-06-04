@@ -151,16 +151,24 @@ class UserMCPProvider(Provider):
 
     @asynccontextmanager
     async def lifespan(self) -> AsyncIterator[None]:
-        try:
-            self.datarobot_api_client = DataRobotClientWithAsyncAPI(self.datarobot_api_endpoint)
+        async with DataRobotClientWithAsyncAPI(self.datarobot_api_endpoint) as client:
+            self.datarobot_api_client = client
             yield
-        finally:
-            await self.datarobot_api_client.clean_up()  # type: ignore[union-attr]
+
+    def is_datarobot_api_client_initialized(self) -> bool:
+        return self.datarobot_api_client is not None
 
     def get_or_create_mcp_proxy_provider(self, user_mcp_deployment_id: str) -> ProxyProvider:
         return self.user_mcp_proxy_provider_cache.get(user_mcp_deployment_id)
 
     async def get_user_mcp_deployment_ids(self) -> Sequence[str]:
+        if not self.is_datarobot_api_client_initialized():
+            logger.warning(
+                "Failed to list MCP deployments. "
+                "Because it executed it before MCP provider entered lifespan."
+            )
+            return []
+
         try:
             datarobot_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
             return await self.datarobot_api_client._list_mcp_deployment_ids(  # type: ignore[union-attr]
@@ -173,7 +181,7 @@ class UserMCPProvider(Provider):
             ClientResponseError,
             InvalidBearerTokenError,
         ) as ex:
-            logger.warning("Failed to list MCP deployments: %s. No user MCP provider returned.", ex)
+            logger.warning("Failed to list MCP deployments: %s.", ex)
             return []
 
     async def get_user_mcp_proxy_providers_for_user(self) -> Sequence[ProxyProvider]:
@@ -184,8 +192,12 @@ class UserMCPProvider(Provider):
 
     async def _list_tools(self) -> Sequence[Tool]:
         tools: list[Tool] = []
-        if await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(
-            self.datarobot_api_client,  # type: ignore[arg-type]
+
+        if (
+            self.is_datarobot_api_client_initialized()
+            and await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(  # noqa: E501
+                self.datarobot_api_client,  # type: ignore[arg-type]
+            )
         ):
             results = await asyncio.gather(
                 *[p.list_tools() for p in await self.get_user_mcp_proxy_providers_for_user()],
