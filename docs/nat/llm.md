@@ -52,7 +52,7 @@ llms:
       mock_response: "this is a mock response"
 ```
 
-Enable LLM extended reasoing (parameters format for Anthropic model before version 4.6).
+Enable LLM extended reasoning (parameters format for Anthropic model before version 4.6).
 
 ```yaml
 llms:
@@ -64,7 +64,7 @@ llms:
         budget_tokens: 1024
 ```
 
-See [litellm documetation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
+See [litellm documentation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
 
 ## Linking workflows to an LLM
 
