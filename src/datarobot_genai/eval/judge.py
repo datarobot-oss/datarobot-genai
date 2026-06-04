@@ -58,7 +58,8 @@ _NOOP_TOP_P = 1.0
 
 # Warn at most once per process — the judge is called once per sample, and a
 # per-sample warning would bury the signal under hundreds of identical lines.
-_warned = False
+# Single-element list avoids a `global` statement (PLW0603).
+_warned: list[bool] = [False]
 
 
 def _strip_redundant_top_p(payload: Any) -> Any:
@@ -73,10 +74,9 @@ def _strip_redundant_top_p(payload: Any) -> Any:
 
 
 def _warn_top_p_dropped(value: Any) -> None:
-    global _warned
-    if _warned:
+    if _warned[0]:
         return
-    _warned = True
+    _warned[0] = True
     warnings.warn(
         f"Judge request dropped top_p={value!r} because temperature was also set. "
         "Many providers (e.g. Anthropic / Bedrock Claude) reject temperature and "

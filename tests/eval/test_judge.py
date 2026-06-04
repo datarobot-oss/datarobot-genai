@@ -29,9 +29,9 @@ from datarobot_genai.eval import judge
 @pytest.fixture(autouse=True)
 def _reset_warn_guard() -> Any:
     """Warn once guard is module-level and resets for each test."""
-    judge._warned = False
+    judge._warned[0] = False
     yield
-    judge._warned = False
+    judge._warned[0] = False
 
 
 # ---------------------------------------------------------------------------
