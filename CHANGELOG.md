@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+<<<<<<< HEAD
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown
 
@@ -56,6 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.
 - `langgraph`/`llamaindex`: emit AG-UI Reasoning chunks under their own message id (derived from the text id) so frontends render reasoning as its own block instead of folding it into the assistant text bubble.
 
+=======
+## 0.15.105
+- `eval`: migrated stdlib foundation layer from `af-component-evaluation` into `datarobot_genai.eval` — `utils`, `status`, `output`, `converter`, `dataset`, `summarize`, `runner`, and JSON schemas. Full test coverage added under `tests/eval/`. Third-party modules (`validation`, `generator`, `judge`), benchmarks subpackage, and top-level orchestrator follow in subsequent PRs.
+
+>>>>>>> 19493019 (Squash commits from PR1)
 ## 0.15.104
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
 - Excluded `leptonai` (Lepton AI cloud backend pulled in by `nemo-evaluator-launcher`); it is unused and pins `httpx==0.27.2`, which conflicts with the `auth` extra.
