@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.109
+- `drtools/panels`: added sandbox-backed `transform_panel` and `filter_panel` — run filtering/transform code over a Dataset panel inside the workload sandbox (`execute_code`) and save the result as a derived child panel with lineage (`execution_context.kind = "sandbox_transform"`). `execute_code` is imported defensively so the module loads even where the sandbox backend is absent (tools then fail closed). Added `PanelStore.get_payload` to hydrate a panel's stored payload. Gated on the `MCP_SANDBOX` entitlement.
+
 ## 0.15.108
 - `drtools/panels`: added connector-sourced Dataset panels — `create_dataset_panel_from_connector` runs SQL against any DataRobot connector/datastore (source-side filtering via `catalog_query_datastore`) and materializes the result to a Parquet payload stored via the Files API, recording datastore_id + sql in the panel's execution context for lineage/refresh. Gated on the `MCP_SANDBOX` entitlement.
 

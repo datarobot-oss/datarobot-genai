@@ -120,3 +120,9 @@ class PanelStore:
         if payload_files_id:
             await self._blobs.delete(payload_files_id)
         await self._blobs.delete(panel_id)
+
+    async def get_payload(self, panel: BasePanel) -> bytes | None:
+        """Hydrate a panel's payload blob, or return ``None`` if it has none."""
+        if not panel.payload_files_id:
+            return None
+        return await self._blobs.get(panel.payload_files_id)
