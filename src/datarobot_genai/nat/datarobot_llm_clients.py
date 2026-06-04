@@ -45,7 +45,6 @@ ModelType = TypeVar("ModelType")
 
 EXCLUDE_FIELDS = {
     "type",
-    "thinking",
     "headers",
     "api_type",
     "llm_deployment_id",
@@ -55,6 +54,7 @@ EXCLUDE_FIELDS = {
     "datarobot_api_token",
     "datarobot_endpoint",
     "llm_default_model",
+    "llm_additional_model_params",
 }
 
 
@@ -68,6 +68,9 @@ def _patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> 
         )
 
     return client
+
+
+# --- Gateway LLM clients ---
 
 
 @register_llm_client(
@@ -89,6 +92,9 @@ async def datarobot_llm_gateway_langchain(
         by_alias=True,
         exclude_none=True,
     )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_gateway_llm(config["model"], parameters=config)
     yield langchain_patch_llm_based_on_config(client, config)
 
@@ -108,6 +114,8 @@ async def datarobot_llm_gateway_crewai(
         by_alias=True,
         exclude_none=True,
     )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
 
     client = get_datarobot_gateway_llm(config["model"], config)
     yield _patch_llm_based_on_config(client, config)
@@ -134,6 +142,9 @@ async def datarobot_llm_gateway_llamaindex(
     yield _patch_llm_based_on_config(client, config)
 
 
+# --- Deployment LLM clients ---
+
+
 @register_llm_client(
     config_type=DataRobotLLMDeploymentModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN
 )
@@ -153,6 +164,8 @@ async def datarobot_llm_deployment_langchain(
         by_alias=True,
         exclude_none=True,
     )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
 
     context_headers = extract_headers_from_context(["X-DataRobot-Identity-Token"])
     if llm_config.headers:
@@ -185,6 +198,9 @@ async def datarobot_llm_deployment_crewai(
     if llm_config.headers:
         config["extra_headers"] = llm_config.headers
 
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_deployment_llm(
         llm_config.llm_deployment_id, llm_config.model_name, config
     )
@@ -210,10 +226,16 @@ async def datarobot_llm_deployment_llamaindex(
     if llm_config.headers:
         config["additional_kwargs"] = {"extra_headers": llm_config.headers}
 
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_deployment_llm(
         llm_config.llm_deployment_id, llm_config.model_name, config
     )
     yield _patch_llm_based_on_config(client, config)
+
+
+# --- NIM LLM clients ---
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
@@ -233,6 +255,9 @@ async def datarobot_nim_langchain(
         by_alias=True,
         exclude_none=True,
     )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_nim_llm(
         llm_config.nim_deployment_id, llm_config.model_name, parameters=config
     )
@@ -252,6 +277,10 @@ async def datarobot_nim_crewai(
         by_alias=True,
         exclude_none=True,
     )
+
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
     yield _patch_llm_based_on_config(client, config)
 
@@ -269,10 +298,18 @@ async def datarobot_nim_llamaindex(
         by_alias=True,
         exclude_none=True,
     )
+
     if not llm_config.nim_deployment_id:
         raise ValueError("nim_deployment_id is required")
+
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
     yield _patch_llm_based_on_config(client, config)
+
+
+# ---- Generalized Config clients -----
 
 
 @register_llm_client(
@@ -296,6 +333,10 @@ async def datarobot_llm_component_langchain(
         by_alias=True,
         exclude_none=True,
     )
+
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     llm_type = llm_config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
@@ -335,6 +376,9 @@ async def datarobot_llm_component_crewai(
         by_alias=True,
         exclude_none=True,
     )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     llm_type = llm_config.get_llm_type()
 
     if llm_type == LLMType.GATEWAY:
@@ -375,6 +419,9 @@ async def datarobot_llm_component_llamaindex(
         exclude_none=True,
     )
 
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     llm_type = llm_config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
@@ -397,6 +444,9 @@ async def datarobot_llm_component_llamaindex(
     yield _patch_llm_based_on_config(client, config)
 
 
+# --- Extenal LLM clients ---
+
+
 @register_llm_client(config_type=DataRobotLitellmConfig, wrapper_type=LLMFrameworkEnum.CREWAI)
 async def litellm_crewai_internal(
     llm_config: DataRobotLitellmConfig, _builder: Builder
@@ -404,15 +454,18 @@ async def litellm_crewai_internal(
     from datarobot_genai.crewai.llm import get_external_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.CREWAI)
+    config = llm_config.model_dump(
+        exclude=EXCLUDE_FIELDS,
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
 
     client = get_external_llm(
         llm_config.model_name,
-        llm_config.model_dump(
-            exclude={"type", "thinking", "api_type", "verify_ssl"},
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        ),
+        config,
     )
 
     yield _patch_llm_based_on_config(client, llm_config)
@@ -425,15 +478,18 @@ async def litellm_langchain_internal(
     from datarobot_genai.langgraph.llm import get_external_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
+    config = llm_config.model_dump(
+        exclude=EXCLUDE_FIELDS,
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
 
     client = get_external_llm(
         llm_config.model_name,
-        llm_config.model_dump(
-            exclude={"type", "thinking", "api_type"},
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        ),
+        config,
     )
 
     yield _patch_llm_based_on_config(client, llm_config)
@@ -447,14 +503,19 @@ async def litellm_llamaindex_internal(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
+    config = llm_config.model_dump(
+        exclude=EXCLUDE_FIELDS,
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+
+    if llm_config.llm_additional_model_params:
+        config.update(llm_config.llm_additional_model_params)
+
     llm = get_external_llm(
         llm_config.model_name,
-        llm_config.model_dump(
-            exclude={"api_type", "thinking", "type", "verify_ssl"},
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        ),
+        config,
     )
 
     yield _patch_llm_based_on_config(llm, llm_config)
@@ -462,6 +523,9 @@ async def litellm_llamaindex_internal(
 
 def _router_settings_from_config(llm_config: DataRobotLLMRouterConfig) -> dict:
     return {"num_retries": llm_config.num_retries}
+
+
+# --- Router clients ---
 
 
 @register_llm_client(config_type=DataRobotLLMRouterConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)

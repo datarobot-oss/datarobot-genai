@@ -31,25 +31,36 @@ from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMDeploymentMo
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotLLMGatewayModelConfig
 from datarobot_genai.nat.datarobot_llm_providers import DataRobotNIMModelConfig
 
+# LiteLLM kwargs that are exposed on LangChain/CrewAI clients (unlike nested dicts e.g. thinking).
+_ADDITIONAL_MODEL_PARAMS = {"max_tokens": 1234}
+
 
 async def test_datarobot_llm_gateway_langchain():
     llm_config = DataRobotLLMGatewayModelConfig(
-        model_name="azure/gpt-4o-2024-11-20", temperature=0.0, api_key="some_token"
+        model_name="azure/gpt-4o-2024-11-20",
+        temperature=0.0,
+        api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, BaseChatModel)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_llm_gateway_crewai():
     llm_config = DataRobotLLMGatewayModelConfig(
-        model_name="azure/gpt-4o-2024-11-20", temperature=0.0, api_key="some_token"
+        model_name="azure/gpt-4o-2024-11-20",
+        temperature=0.0,
+        api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_llm_gateway_llamaindex():
@@ -64,12 +75,16 @@ async def test_datarobot_llm_gateway_llamaindex():
 
 async def test_datarobot_llm_deployment_langchain():
     llm_config = DataRobotLLMDeploymentModelConfig(
-        llm_deployment_id="123", temperature=0.0, api_key="some_token"
+        llm_deployment_id="123",
+        temperature=0.0,
+        api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, BaseChatModel)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_llm_deployment_langchain_with_identity_token():
@@ -88,12 +103,16 @@ async def test_datarobot_llm_deployment_langchain_with_identity_token():
 
 async def test_datarobot_llm_deployment_crewai():
     llm_config = DataRobotLLMDeploymentModelConfig(
-        llm_deployment_id="123", temperature=0.0, api_key="some_token"
+        llm_deployment_id="123",
+        temperature=0.0,
+        api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_llm_deployment_crewai_with_identity_token():
@@ -152,11 +171,13 @@ async def test_datarobot_nim_langchain():
         model_name="azure/gpt-4o-2024-11-20",
         temperature=0.0,
         api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, BaseChatModel)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_nim_crewai():
@@ -165,11 +186,13 @@ async def test_datarobot_nim_crewai():
         model_name="azure/gpt-4o-2024-11-20",
         temperature=0.0,
         api_key="some_token",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
     )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_datarobot_nim_llamaindex():
@@ -186,13 +209,24 @@ async def test_datarobot_nim_llamaindex():
 
 
 async def test_datarobot_llm_component_langchain_use_gateway():
-    llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", model_name="azure/gpt-4o-2024-11-20"
-    )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+            "DATAROBOT_API_TOKEN": "some_token",
+        },
+        clear=False,
+    ):
+        llm_config = DataRobotLLMComponentModelConfig(
+            api_key="some_token",
+            model_name="azure/gpt-4o-2024-11-20",
+            llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
+        )
+        async with WorkflowBuilder() as builder:
+            await builder.add_llm("datarobot_llm", llm_config)
+            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, BaseChatModel)
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 @pytest.mark.parametrize(
@@ -222,6 +256,7 @@ async def test_datarobot_llm_component_langchain(
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
             temperature=0.2,
+            llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
         )
         async with WorkflowBuilder() as builder:
             await builder.add_llm("datarobot_llm", llm_config)
@@ -229,6 +264,7 @@ async def test_datarobot_llm_component_langchain(
 
         assert isinstance(llm, ChatLiteLLM)
         assert llm.temperature == 0.2
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
         if llm_config.get_llm_type() == LLMType.GATEWAY:
             assert llm.model == "datarobot/anthropic/claude-3"
@@ -293,6 +329,7 @@ async def test_datarobot_llm_component_crewai(
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
             temperature=0.2,
+            llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
         )
         async with WorkflowBuilder() as builder:
             await builder.add_llm("datarobot_llm", llm_config)
@@ -301,6 +338,7 @@ async def test_datarobot_llm_component_crewai(
         assert isinstance(llm, LLM)
         assert llm.is_litellm is True
         assert llm.temperature == 0.2
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
         if llm_config.get_llm_type() == LLMType.GATEWAY:
             assert llm.model == "datarobot/anthropic/claude-3"
@@ -407,12 +445,17 @@ async def test_datarobot_llm_component_llamaindex(
 
 
 async def test_litellm_crewai():
-    llm_config = DataRobotLitellmConfig(model_name="openai/gpt-4o", api_key="test-key")
+    llm_config = DataRobotLitellmConfig(
+        model_name="openai/gpt-4o",
+        api_key="test-key",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
+    )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("ext_llm", llm_config)
         llm = await builder.get_llm("ext_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
         assert llm.model == "openai/gpt-4o"
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_litellm_crewai_with_temperature():
@@ -427,12 +470,17 @@ async def test_litellm_crewai_with_temperature():
 
 
 async def test_litellm_langchain():
-    llm_config = DataRobotLitellmConfig(model_name="openai/gpt-4o", api_key="test-key")
+    llm_config = DataRobotLitellmConfig(
+        model_name="openai/gpt-4o",
+        api_key="test-key",
+        llm_additional_model_params=_ADDITIONAL_MODEL_PARAMS,
+    )
     async with WorkflowBuilder() as builder:
         await builder.add_llm("ext_llm", llm_config)
         llm = await builder.get_llm("ext_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         assert isinstance(llm, BaseChatModel)
         assert llm.model == "openai/gpt-4o"
+        assert llm.max_tokens == _ADDITIONAL_MODEL_PARAMS["max_tokens"]
 
 
 async def test_litellm_langchain_with_temperature():

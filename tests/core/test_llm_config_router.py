@@ -78,33 +78,56 @@ def test_llm_config_get_llm_type_external() -> None:
 
 
 def test_to_litellm_params_gateway() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=True)
+    thinking = {"type": "enabled", "budget_tokens": 2048}
+    cfg = LLMConfig(
+        use_datarobot_llm_gateway=True,
+        llm_additional_model_params={"thinking": thinking},
+    )
     params = cfg.to_litellm_params()
     assert params["model"].startswith("datarobot/")
     assert params["api_base"] == "https://app.datarobot.com"
     assert params["api_key"] == "env-token"
+    assert params["thinking"] == thinking
 
 
 def test_to_litellm_params_deployment() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-abc")
+    thinking = {"type": "enabled", "budget_tokens": 1024}
+    cfg = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        llm_deployment_id="dep-abc",
+        llm_additional_model_params={"thinking": thinking},
+    )
     params = cfg.to_litellm_params()
     assert params["model"].startswith("datarobot/")
     assert "dep-abc" in params["api_base"]
     assert params["api_key"] == "env-token"
+    assert params["thinking"] == thinking
 
 
 def test_to_litellm_params_nim() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, nim_deployment_id="nim-xyz")
+    thinking = {"type": "enabled", "budget_tokens": 512}
+    cfg = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        nim_deployment_id="nim-xyz",
+        llm_additional_model_params={"thinking": thinking},
+    )
     params = cfg.to_litellm_params()
     assert "nim-xyz" in params["api_base"]
     assert params["api_key"] == "env-token"
+    assert params["thinking"] == thinking
 
 
 def test_to_litellm_params_external() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_default_model="gpt-4")
+    thinking = {"type": "enabled", "budget_tokens": 256}
+    cfg = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        llm_default_model="gpt-4",
+        llm_additional_model_params={"thinking": thinking},
+    )
     params = cfg.to_litellm_params()
     assert params["model"] == "gpt-4"
     assert "api_base" not in params
+    assert params["thinking"] == thinking
 
 
 def test_to_litellm_params_external_strips_datarobot_prefix() -> None:
@@ -138,6 +161,7 @@ def test_to_litellm_params_gateway_does_not_double_prefix() -> None:
     cfg = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="datarobot/azure/gpt-4o")
     params = cfg.to_litellm_params()
     assert params["model"] == "datarobot/azure/gpt-4o"
+    assert "thinking" not in params
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +172,17 @@ def test_to_litellm_params_gateway_does_not_double_prefix() -> None:
 def test_build_litellm_router_model_list_structure() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    thinking = {"type": "enabled", "budget_tokens": 512}
+    primary = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        llm_deployment_id="dep-1",
+        llm_additional_model_params={"thinking": thinking},
+    )
+    fallback = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        llm_deployment_id="dep-2",
+        llm_additional_model_params={"temperature": 0.1},
+    )
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -162,6 +195,8 @@ def test_build_litellm_router_model_list_structure() -> None:
     assert model_list[1]["model_name"] == "fallback_0"
     assert "dep-1" in model_list[0]["litellm_params"]["api_base"]
     assert "dep-2" in model_list[1]["litellm_params"]["api_base"]
+    assert model_list[0]["litellm_params"]["thinking"] == thinking
+    assert model_list[1]["litellm_params"]["temperature"] == 0.1
 
 
 def test_build_litellm_router_fallbacks_chain() -> None:

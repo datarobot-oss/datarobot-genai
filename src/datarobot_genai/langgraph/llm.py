@@ -22,6 +22,7 @@ from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
@@ -177,8 +178,8 @@ def get_external_llm(
 
 
 def get_router_llm(
-    primary: Any,
-    fallbacks: list[Any],
+    primary: LLMConfig,
+    fallbacks: list[LLMConfig],
     router_settings: dict | None = None,
 ) -> BaseChatModel:
     """Return a ``ChatLiteLLMRouter`` backed by a ``litellm.Router``.

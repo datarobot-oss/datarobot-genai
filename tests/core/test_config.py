@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -64,6 +65,21 @@ def test_get_max_history_messages_default_env_zero_disables(
 def test_get_max_history_messages_default_env_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "7")
     assert get_max_history_messages_default() == 7
+
+
+def test_config_llm_additional_model_params_reads_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    params = {"thinking": {"type": "enabled", "budget_tokens": 2048}}
+    monkeypatch.setenv("LLM_ADDITIONAL_MODEL_PARAMS", json.dumps(params))
+    assert Config().llm_additional_model_params == params
+
+
+def test_config_llm_additional_model_params_unset_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LLM_ADDITIONAL_MODEL_PARAMS", raising=False)
+    assert Config().llm_additional_model_params is None
 
 
 # --- Config.get_llm_type ---

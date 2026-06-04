@@ -73,6 +73,11 @@ async def datarobot_llm_component(
 class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
+    llm_additional_model_params: dict | None = Field(
+        description="Additional model parameters to pass through to the LLM gateway.",
+        default=None,
+    )
+
 
 @register_llm_provider(config_type=DataRobotLLMGatewayModelConfig)
 async def datarobot_llm_gateway(
@@ -100,6 +105,10 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
         description="Additional headers send to LLM deployment.",
         default=None,
     )
+    llm_additional_model_params: dict | None = Field(
+        description="Additional model parameters to pass through to the LLM deployment.",
+        default=None,
+    )
 
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
@@ -124,6 +133,10 @@ class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ig
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
+    llm_additional_model_params: dict | None = Field(
+        description="Additional model parameters to pass through to the NIM deployment.",
+        default=None,
+    )
 
 
 @register_llm_provider(config_type=DataRobotNIMModelConfig)
@@ -140,6 +153,10 @@ class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # t
         validation_alias=AliasChoices("model_name", "model"),
         serialization_alias="model",
         description="The model name.",
+        default=None,
+    )
+    llm_additional_model_params: dict | None = Field(
+        description="Additional model parameters to pass through to the Litellm.",
         default=None,
     )
 
