@@ -25,6 +25,7 @@ from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMConfig
+from datarobot_genai.core.config import default_llm_additional_model_params
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
@@ -55,6 +56,10 @@ class DataRobotLLMComponentModelConfig(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
+    llm_additional_model_params: dict | None = Field(
+        description="Additional model parameters to pass through to the LLM component.",
+        default_factory=default_llm_additional_model_params,
+    )
     headers: dict[str, str] | None = Field(
         description="Additional headers send to LLM deployment.",
         default=None,
@@ -75,7 +80,7 @@ class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gate
 
     llm_additional_model_params: dict | None = Field(
         description="Additional model parameters to pass through to the LLM gateway.",
-        default=None,
+        default_factory=default_llm_additional_model_params,
     )
 
 
@@ -107,7 +112,7 @@ class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-d
     )
     llm_additional_model_params: dict | None = Field(
         description="Additional model parameters to pass through to the LLM deployment.",
-        default=None,
+        default_factory=default_llm_additional_model_params,
     )
 
 
@@ -135,7 +140,7 @@ class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ig
     )
     llm_additional_model_params: dict | None = Field(
         description="Additional model parameters to pass through to the NIM deployment.",
-        default=None,
+        default_factory=default_llm_additional_model_params,
     )
 
 
@@ -157,7 +162,7 @@ class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # t
     )
     llm_additional_model_params: dict | None = Field(
         description="Additional model parameters to pass through to the Litellm.",
-        default=None,
+        default_factory=default_llm_additional_model_params,
     )
 
 

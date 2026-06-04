@@ -186,3 +186,8 @@ def default_llm_deployment_id() -> str | None:
 def default_nim_deployment_id() -> str | None:
     config = Config()
     return config.nim_deployment_id
+
+
+def default_llm_additional_model_params() -> dict | None:
+    config = Config()
+    return config.llm_additional_model_params
