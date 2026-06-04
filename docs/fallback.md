@@ -74,6 +74,7 @@ Each `primary`/`fallbacks[*]` entry uses the same core LLM config shape.
 | `nim_deployment_id` | DataRobot deployment id for NIM routing. |
 | `datarobot_endpoint` | Optional per-entry endpoint override (usually from env). |
 | `datarobot_api_token` | Optional per-entry token override (usually from env). |
+| `llm_additional_model_params` | Optional map of extra LiteLLM kwargs for that entry only |
 
 Router-level tuning fields:
 

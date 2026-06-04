@@ -60,6 +60,7 @@ The examples and `workflow.yaml` expect the variables below; see [LLM configurat
 | `LLM_DEPLOYMENT_ID` | — | Set this to target a specific LLM deployment when the gateway is off. |
 | `NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment when the gateway is off. |
 | `LLM_DEFAULT_MODEL` | `datarobot-deployed-llm` | Default model name you run against. |
+| `LLM_ADDITIONAL_MODEL_PARAMS` | — | JSON object of extra LiteLLM kwargs merged into LLM clients; optional YAML override per `llms:` block (`llm_additional_model_params`). See [LLM configuration](llm.md#additional-model-parameters-llm_additional_model_params). |
 | `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` | `20` | Maximum number of prior messages the client keeps in history. |
 
 ## License

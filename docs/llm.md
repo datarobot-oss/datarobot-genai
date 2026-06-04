@@ -123,6 +123,37 @@ These variables control **`get_llm()`** specifically:
 | `LLM_DEPLOYMENT_ID` | When the gateway is off, use this **LLM deployment** chat endpoint. |
 | `NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id is set, use this **NIM** deployment. |
 | `LLM_DEFAULT_MODEL` | Default model id when you omit `model_name` on **`get_llm()`** |
+| `LLM_ADDITIONAL_MODEL_PARAMS` | Optional JSON object of extra LiteLLM kwargs merged into every LLM client (see below). |
+
+## Additional model parameters (`LLM_ADDITIONAL_MODEL_PARAMS`)
+
+Use this when you need **provider-specific LiteLLM options** that are not first-class fields on the LLM config (for example `max_tokens`, or gateway-only body fields such as extended thinking).
+
+The value is a **JSON object**. Keys are merged into the parameters passed to LiteLLM **after** the usual config fields (`model`, `temperature`, `api_key`, and so on). Later keys from this object can override earlier ones if the same name appears in both places.
+
+**Environment variable** (applies process-wide; NAT `workflow.yaml` blocks pick it up as a default when the block omits the field):
+
+```bash
+export LLM_ADDITIONAL_MODEL_PARAMS='{"max_tokens": 4096}'
+```
+
+For DataRobot LLM Gateway models that expect thinking in the request body, nest it under `extra_body`:
+
+```bash
+export LLM_ADDITIONAL_MODEL_PARAMS='{"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 1024}}}'
+```
+
+**`workflow.yaml`** — set the same map on any supported `llms:` block (`datarobot-llm-component`, `datarobot-llm-gateway`, `datarobot-llm-deployment`, `datarobot-nim`, `datarobot-litellm`, or on `primary` / `fallbacks` entries under `datarobot-llm-router`):
+
+```yaml
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-component
+    llm_additional_model_params:
+      max_tokens: 4096
+```
+
+YAML in the block overrides the env default for that LLM only. See [LLMs in `workflow.yaml`](nat/llm.md) for NAT-specific notes, including how this relates to the top-level **`extra_body`** key.
 
 Example (LangGraph; adjust the import for LlamaIndex or CrewAI):
 
@@ -142,4 +173,4 @@ llms:
     _type: datarobot-llm-component
 ```
 
-That component follows the same four outcomes using fields on the block (gateway flag, deployment ids, etc.) and the environment.
+That component follows the same four outcomes using fields on the block (gateway flag, deployment ids, **`llm_additional_model_params`**, and so on) and the environment.
