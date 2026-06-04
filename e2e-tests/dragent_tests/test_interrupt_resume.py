@@ -30,14 +30,15 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import parse_sse_responses
 
-pytestmark = pytest.mark.skipif(
-    AGENT != "langgraph",
-    reason="Interrupt/resume E2E uses dragent/langgraph (set AGENT=langgraph).",
-)
-
 if not ALL_TEST_CASES:
     pytest.skip(
         "Running minimal test set for non-LLM Gateway LLM, skipping interrupt E2E",
+        allow_module_level=True,
+    )
+
+if AGENT != "langgraph":
+    pytest.skip(
+        "Interrupt/resume E2E uses dragent/langgraph (set AGENT=langgraph).",
         allow_module_level=True,
     )
 

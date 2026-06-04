@@ -26,16 +26,34 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from dragent_tests.helpers import A2A_AGENT_CARD_PATH
-from dragent_tests.helpers import A2A_PATH
 from dragent_tests.helpers import ALL_TEST_CASES
-from dragent_tests.helpers import make_a2a_message_send_payload
+
+A2A_PATH = "/a2a/"
+A2A_AGENT_CARD_PATH = "/a2a/.well-known/agent-card.json"
 
 if not ALL_TEST_CASES:
     pytest.skip(
         "Running minimal test set for non-LLM Gateway LLM, skipping A2A tests",
         allow_module_level=True,
     )
+
+
+def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
+    """Build a JSON-RPC 2.0 ``message/send`` request body for the A2A protocol."""
+    uid = uuid.uuid4().hex[:8]
+    return {
+        "jsonrpc": "2.0",
+        "id": f"e2e-{uid}",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "kind": "message",
+                "messageId": message_id or f"e2e-msg-{uid}",
+                "role": "user",
+                "parts": [{"kind": "text", "text": text}],
+            },
+        },
+    }
 
 
 def test_a2a_agent_card(http_client: httpx.Client) -> None:
