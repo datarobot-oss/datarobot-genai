@@ -15,7 +15,7 @@
 """Setup script defining optional dependencies (extras) for the package.
 
 This script defines all extras and automatically merges 'core' dependencies
-into all other extras except standalone extras (`auth`, `drtools`, `drmcpbase`, `drmcp`)
+into all other extras except standalone extras (`auth`, `drtools`, `drmcpbase`, `drmcp`, `eval`)
 at build time.
 """
 
@@ -126,6 +126,13 @@ drtools = auth + [
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
 ]
 
+# eval is standalone set of dependencies for evaluation utilities only (no core).
+eval_deps = [
+    "nemo-evaluator-launcher",
+    "anthropic>=0.40.0",
+    "pyyaml>=6.0",
+]
+
 # drmcpbase is standalone set of dependencies for MCP Servers only (no core).
 drmcpbase = [
     "starlette>=1.0.1", # CVE-2026-48710 fixed in 1.0.1
@@ -162,6 +169,7 @@ extras_require = {
     "llamaindex": llamaindex,
     "nat": nat,
     "auth": auth,
+    "eval": eval_deps,
     "drmcpbase": drmcpbase,
     "drmcp": drmcp,
     "drtools": drtools,

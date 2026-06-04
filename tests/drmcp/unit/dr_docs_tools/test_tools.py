@@ -15,7 +15,7 @@
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-from datarobot_genai.drtools.dr_docs.tools import fetch_datarobot_doc_page
+from datarobot_genai.drtools.dr_docs.tools import datarobot_docs_fetch_page
 from datarobot_genai.drtools.dr_docs.tools import search_datarobot_agentic_docs
 
 
@@ -81,7 +81,7 @@ class TestSearchDatarobotAgenticDocs:
 
 
 class TestFetchDatarobotDocPage:
-    """Tests for fetch_datarobot_doc_page MCP tool."""
+    """Tests for datarobot_docs_fetch_page MCP tool."""
 
     async def test_fetch_returns_page_content(self) -> None:
         """Test that fetch returns page content on success."""
@@ -97,7 +97,7 @@ class TestFetchDatarobotDocPage:
         ) as mock_fetch:
             mock_fetch.return_value = mock_content
 
-            result = await fetch_datarobot_doc_page(
+            result = await datarobot_docs_fetch_page(
                 url="https://docs.datarobot.com/en/docs/agentic-ai/agentic-glossary.html"
             )
 
@@ -124,7 +124,7 @@ class TestFetchDatarobotDocPage:
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
 
-            result = await fetch_datarobot_doc_page(url="https://example.com/not-docs/")
+            result = await datarobot_docs_fetch_page(url="https://example.com/not-docs/")
 
             content = result
             assert content["title"] == "Error"
@@ -145,7 +145,7 @@ class TestFetchDatarobotDocPage:
         ) as mock_fetch:
             mock_fetch.return_value = mock_error
 
-            result = await fetch_datarobot_doc_page(url=_url)
+            result = await datarobot_docs_fetch_page(url=_url)
 
             content = result
             assert content["title"] == "Error"

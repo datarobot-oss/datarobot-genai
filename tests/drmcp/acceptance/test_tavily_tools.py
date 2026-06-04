@@ -30,12 +30,12 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import SHOULD_NOT_BE_EMPTY
 class TestTavilyToolsE2E(ToolBaseE2E):
     """End-to-end tests for Tavily search tools."""
 
-    async def test_tavily_search_success(self, llm_client: Any) -> None:
+    async def test_tavily_search_web_success(self, llm_client: Any) -> None:
         """Test basic Tavily search."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="tavily_search",
+                    name="tavily_search_web",
                     parameters={"query": "DataRobot machine learning"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -45,7 +45,7 @@ class TestTavilyToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_tavily_search_success"
+            test_name = frame.f_code.co_name if frame else "test_tavily_search_web_success"
             await self._run_test_with_expectations(
                 "Search the web for 'DataRobot machine learning' and summarize what you find.",
                 expectations,
@@ -54,12 +54,12 @@ class TestTavilyToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_tavily_extract_success(self, llm_client: Any) -> None:
+    async def test_tavily_extract_text_success(self, llm_client: Any) -> None:
         """Test basic Tavily extract."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="tavily_extract",
+                    name="tavily_extract_text",
                     parameters={"urls": "https://docs.datarobot.com"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -69,7 +69,7 @@ class TestTavilyToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_tavily_extract_success"
+            test_name = frame.f_code.co_name if frame else "test_tavily_extract_text_success"
             await self._run_test_with_expectations(
                 "Extract content from 'https://docs.datarobot.com' and summarize what you find.",
                 expectations,
@@ -78,12 +78,12 @@ class TestTavilyToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_tavily_map_success(self, llm_client: Any) -> None:
+    async def test_tavily_list_links_success(self, llm_client: Any) -> None:
         """Test basic Tavily map."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="tavily_map",
+                    name="tavily_list_links",
                     parameters={"url": "https://docs.datarobot.com", "limit": 5},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -93,7 +93,7 @@ class TestTavilyToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_tavily_map_success"
+            test_name = frame.f_code.co_name if frame else "test_tavily_list_links_success"
             await self._run_test_with_expectations(
                 "Map 'https://docs.datarobot.com' website. Limit to 5 results.",
                 expectations,
@@ -102,12 +102,12 @@ class TestTavilyToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_tavily_crawl_success(self, llm_client: Any) -> None:
+    async def test_tavily_crawl_site_success(self, llm_client: Any) -> None:
         """Test basic Tavily crawl."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="tavily_crawl",
+                    name="tavily_crawl_site",
                     parameters={"url": "https://docs.datarobot.com"},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -117,7 +117,7 @@ class TestTavilyToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_tavily_crawl_success"
+            test_name = frame.f_code.co_name if frame else "test_tavily_crawl_site_success"
             await self._run_test_with_expectations(
                 "Crawl 'https://docs.datarobot.com' and summarize what pages you find.",
                 expectations,

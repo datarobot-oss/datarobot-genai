@@ -25,7 +25,7 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drtools.gdrive.tools import gdrive_find_contents
 from datarobot_genai.drtools.gdrive.tools import gdrive_manage_access
-from datarobot_genai.drtools.gdrive.tools import gdrive_read_content
+from datarobot_genai.drtools.gdrive.tools import gdrive_read_and_export_content
 from datarobot_genai.drtools.gdrive.tools import gdrive_update_metadata
 
 
@@ -137,14 +137,14 @@ class TestGdriveReadContent:
             yield gdrive_file_content
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_happy_path(
+    async def test_gdrive_read_and_export_content_happy_path(
         self,
         get_gdrive_access_token_mock: None,
         gdrive_file_content: GoogleDriveFileContent,
         gdrive_client_read_file_content_mock: GoogleDriveFileContent,
     ) -> None:
         """Gdrive read content -- happy path."""
-        result = await gdrive_read_content(file_id="doc123")
+        result = await gdrive_read_and_export_content(file_id="doc123")
         content = result
         assert content["id"] == "doc123"
         assert content["mimeType"] == "text/markdown"
@@ -159,7 +159,7 @@ class TestGdriveReadContent:
         assert content["wasExported"] is True
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_csv_file(
+    async def test_gdrive_read_and_export_content_csv_file(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
@@ -177,14 +177,14 @@ class TestGdriveReadContent:
             "datarobot_genai.drtools.core.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.return_value = csv_content
-            result = await gdrive_read_content(file_id="sheet123")
+            result = await gdrive_read_and_export_content(file_id="sheet123")
         content = result
         assert content["mimeType"] == "text/csv"
         assert content["content"] == "Name,Age\nAlice,30"
         assert content["wasExported"] is True
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_regular_text_file(
+    async def test_gdrive_read_and_export_content_regular_text_file(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
@@ -202,31 +202,31 @@ class TestGdriveReadContent:
             "datarobot_genai.drtools.core.clients.gdrive.GoogleDriveClient.read_file_content"
         ) as mock:
             mock.return_value = text_content
-            result = await gdrive_read_content(file_id="txt123")
+            result = await gdrive_read_and_export_content(file_id="txt123")
         content = result
         assert content["wasExported"] is False
         assert content["wasExported"] is False
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_empty_file_id(
+    async def test_gdrive_read_and_export_content_empty_file_id(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive read content -- empty file_id raises error."""
         with pytest.raises(ToolError, match="file_id.*cannot be empty"):
-            await gdrive_read_content(file_id="")
+            await gdrive_read_and_export_content(file_id="")
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_whitespace_file_id(
+    async def test_gdrive_read_and_export_content_whitespace_file_id(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
         """Gdrive read content -- whitespace file_id raises error."""
         with pytest.raises(ToolError, match="file_id.*cannot be empty"):
-            await gdrive_read_content(file_id="   ")
+            await gdrive_read_and_export_content(file_id="   ")
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_file_not_found(
+    async def test_gdrive_read_and_export_content_file_not_found(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
@@ -236,10 +236,10 @@ class TestGdriveReadContent:
         ) as mock:
             mock.side_effect = GoogleDriveError("File with ID 'nonexistent' not found.")
             with pytest.raises(GoogleDriveError, match="not found"):
-                await gdrive_read_content(file_id="nonexistent")
+                await gdrive_read_and_export_content(file_id="nonexistent")
 
     @pytest.mark.asyncio
-    async def test_gdrive_read_content_binary_file_error(
+    async def test_gdrive_read_and_export_content_binary_file_error(
         self,
         get_gdrive_access_token_mock: None,
     ) -> None:
@@ -252,7 +252,7 @@ class TestGdriveReadContent:
                 "File 'photo.jpg' has MIME type 'image/jpeg'."
             )
             with pytest.raises(GoogleDriveError, match="Binary files are not supported"):
-                await gdrive_read_content(file_id="img123")
+                await gdrive_read_and_export_content(file_id="img123")
 
 
 class TestGdriveCreateFile:

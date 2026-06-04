@@ -65,7 +65,7 @@ def _make_dr_client() -> Any:
     elif not os.environ.get("DATAROBOT_API_TOKEN"):
         raise ValueError("Tests need DATAROBOT_API_TOKEN environment variable set.")
     creds = get_credentials()
-    token = creds.datarobot.application_api_token
+    token = creds.datarobot.datarobot_api_token
     if not token:
         raise ValueError("Integration tests need DATAROBOT_API_TOKEN environment variable set.")
     # Skip real API init when using stub token (CI/stub mode); dr.Client() would 401.
@@ -73,7 +73,7 @@ def _make_dr_client() -> Any:
     # etc.) check _is_stub_token() first and yield stub data without calling dr.*, so they
     # never hit the API when no client is configured.
     if token != STUB_DATAROBOT_API_TOKEN:
-        dr.Client(token=token, endpoint=creds.datarobot.endpoint)
+        dr.Client(token=token, endpoint=creds.datarobot.datarobot_endpoint)
     DRContext.use_case = None
     return dr
 

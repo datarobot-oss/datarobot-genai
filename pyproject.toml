@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.15.101"
+version = "0.15.106"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -79,6 +79,8 @@ exclude-dependencies = [
   "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
   "diskcache",                # disk caching pulled in by ragas; not used
   "scikit-network",           # graph analysis pulled in by ragas; not used
+  # nemo-evaluator-launcher bloat
+  "leptonai",                 # Lepton AI cloud backend pulled in by nemo-evaluator-launcher; not used, pins httpx==0.27.2 which conflicts with auth extra
 ]
 
 [dependency-groups]

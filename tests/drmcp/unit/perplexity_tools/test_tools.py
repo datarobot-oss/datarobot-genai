@@ -23,7 +23,7 @@ from datarobot_genai.drtools.core.clients.perplexity import PerplexitySearchResu
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityThinkResult
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.perplexity.tools import perplexity_search
-from datarobot_genai.drtools.perplexity.tools import perplexity_think
+from datarobot_genai.drtools.perplexity.tools import perplexity_sonar
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def mock_perplexity_search_results() -> list[PerplexitySearchResult]:
 
 
 @pytest.fixture
-def mock_perplexity_think_results() -> PerplexityThinkResult:
+def mock_perplexity_sonar_results() -> PerplexityThinkResult:
     """Mock Perplexity Think Results."""
     return PerplexityThinkResult(
         **{
@@ -90,14 +90,14 @@ def mock_client_search_success(
 
 @pytest.fixture
 def mock_client_think_success(
-    mock_perplexity_think_results: PerplexityThinkResult,
+    mock_perplexity_sonar_results: PerplexityThinkResult,
 ) -> Iterator[AsyncMock]:
     """Mock successful client think."""
     with patch("datarobot_genai.drtools.perplexity.tools.PerplexityClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.think = AsyncMock(return_value=mock_perplexity_think_results)
+        mock_client.think = AsyncMock(return_value=mock_perplexity_sonar_results)
         mock_client_class.return_value = mock_client
         yield mock_client
 
@@ -261,17 +261,17 @@ class TestPerplexitySearch:
 
 
 class TestPerplexityThink:
-    """Test perplexity_think tool."""
+    """Test perplexity_sonar tool."""
 
     @pytest.mark.asyncio
     async def test_think_success(
         self,
         get_perplexity_access_token_mock: None,
         mock_client_think_success: AsyncMock,
-        mock_perplexity_think_results: PerplexityThinkResult,
+        mock_perplexity_sonar_results: PerplexityThinkResult,
     ) -> None:
         """Test successful think."""
-        result = await perplexity_think(prompt="test prompt")
+        result = await perplexity_sonar(prompt="test prompt")
 
         assert result["model"] == "sonar"
         assert len(result["citations"]) == 2
@@ -294,7 +294,7 @@ class TestPerplexityThink:
     ) -> None:
         """Test think -- input validation."""
         with pytest.raises(ToolError, match=error_message):
-            await perplexity_think(**function_kwargs)
+            await perplexity_sonar(**function_kwargs)
 
     @pytest.mark.asyncio
     async def test_think_oauth_error(self) -> None:
@@ -304,7 +304,7 @@ class TestPerplexityThink:
             return_value=ToolError("OAuth error"),
         ):
             with pytest.raises(ToolError) as exc_info:
-                await perplexity_think(prompt="test prompt")
+                await perplexity_sonar(prompt="test prompt")
             assert "oauth" in str(exc_info.value).lower() or "error" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -323,7 +323,7 @@ class TestPerplexityThink:
             mock_client_class.return_value = mock_client
 
             with pytest.raises(PerplexityError) as exc_info:
-                await perplexity_think(prompt="test prompt")
+                await perplexity_sonar(prompt="test prompt")
             assert "client error" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -342,5 +342,5 @@ class TestPerplexityThink:
             mock_client_class.return_value = mock_client
 
             with pytest.raises(Exception) as exc_info:
-                await perplexity_think(prompt="test prompt")
+                await perplexity_sonar(prompt="test prompt")
             assert "unexpected error" in str(exc_info.value).lower()

@@ -32,7 +32,7 @@ from datarobot_genai.drtools.predictive.model import model_to_dict
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_best_model_success() -> None:
+async def test_models_get_bestmodel_success() -> None:
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
     mock_model2 = MagicMock(
@@ -40,7 +40,7 @@ async def test_get_best_model_success() -> None:
     )
     mock_project.get_models.return_value = [mock_model1, mock_model2]
     with patch.object(dr.Project, "get", return_value=mock_project):
-        result = await model.get_best_model(project_id="pid", metric="AUC")
+        result = await model.models_get_bestmodel(project_id="pid", metric="AUC")
     assert isinstance(result, dict)
     assert result["project_id"] == "pid"
     assert result["best_model"]["model_type"] == "XGBoost"
@@ -50,25 +50,25 @@ async def test_get_best_model_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_best_model_no_models() -> None:
+async def test_models_get_bestmodel_no_models() -> None:
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
     with patch.object(dr.Project, "get", return_value=mock_project):
         with pytest.raises(ToolError, match="No models found for this project."):
-            await model.get_best_model(project_id="pid", metric="AUC")
+            await model.models_get_bestmodel(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_best_model_project_not_found() -> None:
+async def test_models_get_bestmodel_project_not_found() -> None:
     with patch.object(dr.Project, "get", return_value=None):
         with pytest.raises(ToolError, match="Project with ID pid not found."):
-            await model.get_best_model(project_id="pid", metric="AUC")
+            await model.models_get_bestmodel(project_id="pid", metric="AUC")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_best_model_project_client_error_404() -> None:
+async def test_models_get_bestmodel_project_client_error_404() -> None:
     with patch.object(
         dr.Project,
         "get",
@@ -79,26 +79,26 @@ async def test_get_best_model_project_client_error_404() -> None:
         ),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await model.get_best_model(project_id="missing-proj", metric="AUC")
+            await model.models_get_bestmodel(project_id="missing-proj", metric="AUC")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
-async def test_get_best_model_error() -> None:
+async def test_models_get_bestmodel_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await model.get_best_model(project_id="pid", metric="AUC")
+            await model.models_get_bestmodel(project_id="pid", metric="AUC")
         assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_models_success() -> None:
+async def test_modeling_list_models_success() -> None:
     mock_project = MagicMock()
     mock_model1 = MagicMock(id="m1", model_type="XGBoost", metrics={"AUC": {"validation": 0.9}})
     mock_model2 = MagicMock(
@@ -106,7 +106,7 @@ async def test_list_models_success() -> None:
     )
     mock_project.get_model_records.return_value = [mock_model1, mock_model2]
     with patch.object(dr.Project, "get", return_value=mock_project):
-        result = await model.list_models(project_id="pid")
+        result = await model.modeling_list_models(project_id="pid")
     mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
     assert result["project_id"] == "pid"
     assert result["count"] == 2
@@ -118,11 +118,11 @@ async def test_list_models_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_models_pagination_offset_limit() -> None:
+async def test_modeling_list_models_pagination_offset_limit() -> None:
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = []
     with patch.object(dr.Project, "get", return_value=mock_project):
-        result = await model.list_models(project_id="pid", offset=25, limit=10)
+        result = await model.modeling_list_models(project_id="pid", offset=25, limit=10)
     mock_project.get_model_records.assert_called_once_with(limit=10, offset=25)
     assert result["offset"] == 25
     assert result["limit"] == 10
@@ -131,18 +131,18 @@ async def test_list_models_pagination_offset_limit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_models_negative_offset() -> None:
+async def test_modeling_list_models_negative_offset() -> None:
     with pytest.raises(ToolError, match="offset must be non-negative"):
-        await model.list_models(project_id="pid", offset=-1)
+        await model.modeling_list_models(project_id="pid", offset=-1)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_models_clamp_limit_applies_note() -> None:
+async def test_modeling_list_models_clamp_limit_applies_note() -> None:
     mock_project = MagicMock()
     mock_project.get_model_records.return_value = [MagicMock(id="m1", model_type="T", metrics={})]
     with patch.object(dr.Project, "get", return_value=mock_project):
-        result = await model.list_models(project_id="pid", limit=500)
+        result = await model.modeling_list_models(project_id="pid", limit=500)
     mock_project.get_model_records.assert_called_once_with(limit=100, offset=0)
     assert result["limit"] == 100
     assert "note" in result
@@ -151,7 +151,7 @@ async def test_list_models_clamp_limit_applies_note() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_score_dataset_with_model_success() -> None:
+async def test_modeling_score_dataset_success() -> None:
     mock_project = MagicMock()
     mock_dr_model = MagicMock()
     mock_job = MagicMock(id="jobid")
@@ -169,7 +169,7 @@ async def test_score_dataset_with_model_success() -> None:
         patch.object(dr.Model, "get", return_value=mock_dr_model) as mock_model_get,
         patch.object(dr.Dataset, "get", return_value=mock_catalog_ds) as mock_dataset_get,
     ):
-        result = await model.score_dataset_with_model(
+        result = await model.modeling_score_dataset(
             project_id="pid", model_id="mid", dataset_id=ds_id
         )
     mock_project_get.assert_called_once_with("pid")
@@ -184,9 +184,9 @@ async def test_score_dataset_with_model_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_score_dataset_with_model_empty_dataset_id() -> None:
+async def test_modeling_score_dataset_empty_dataset_id() -> None:
     with pytest.raises(ToolError, match="Dataset ID must be provided"):
-        await model.score_dataset_with_model(
+        await model.modeling_score_dataset(
             project_id="pid",
             model_id="mid",
             dataset_id="   ",
@@ -195,7 +195,7 @@ async def test_score_dataset_with_model_empty_dataset_id() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_score_dataset_with_model_project_not_found() -> None:
+async def test_modeling_score_dataset_project_not_found() -> None:
     project_id = "pid"
     with patch.object(
         dr.Project,
@@ -207,7 +207,7 @@ async def test_score_dataset_with_model_project_not_found() -> None:
         ),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await model.score_dataset_with_model(
+            await model.modeling_score_dataset(
                 project_id=project_id,
                 model_id="mid",
                 dataset_id="dsid",
@@ -218,7 +218,7 @@ async def test_score_dataset_with_model_project_not_found() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_score_dataset_with_model_model_not_found() -> None:
+async def test_modeling_score_dataset_model_not_found() -> None:
     mock_project = MagicMock()
     mock_project.get_models.return_value = []
     with (
@@ -234,7 +234,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
         ),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await model.score_dataset_with_model(
+            await model.modeling_score_dataset(
                 project_id="pid",
                 model_id="mid",
                 dataset_id="dsid",
@@ -244,7 +244,7 @@ async def test_score_dataset_with_model_model_not_found() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> None:
+async def test_modeling_score_dataset_client_error_non_404_is_upstream() -> None:
     with patch.object(
         dr.Project,
         "get",
@@ -255,7 +255,7 @@ async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> No
         ),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await model.score_dataset_with_model(
+            await model.modeling_score_dataset(
                 project_id="pid",
                 model_id="mid",
                 dataset_id="dsid",
@@ -264,14 +264,14 @@ async def test_score_dataset_with_model_client_error_non_404_is_upstream() -> No
 
 
 @pytest.mark.asyncio
-async def test_score_dataset_with_model_error() -> None:
+async def test_modeling_score_dataset_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await model.score_dataset_with_model(
+            await model.modeling_score_dataset(
                 project_id="pid",
                 model_id="mid",
                 dataset_id="dsid",
@@ -281,7 +281,7 @@ async def test_score_dataset_with_model_error() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_model_details_success() -> None:
+async def test_modeling_get_modeldetails_success() -> None:
     mock_project = MagicMock()
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
@@ -297,7 +297,7 @@ async def test_get_model_details_success() -> None:
         patch.object(dr.Project, "get", return_value=mock_project),
         patch.object(dr.Model, "get", return_value=mock_model),
     ):
-        result = await model.get_model_details(project_id="pid", model_id="mid")
+        result = await model.modeling_get_modeldetails(project_id="pid", model_id="mid")
     assert isinstance(result, dict)
     assert result["model_id"] == "mid"
     assert result["model_type"] == "XGBoost"
@@ -305,22 +305,22 @@ async def test_get_model_details_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_model_details_missing_project_id() -> None:
+async def test_modeling_get_modeldetails_missing_project_id() -> None:
     """Required param project_id is enforced by signature (wrapped as ToolError)."""
     with pytest.raises(TypeError, match="project_id"):
-        await model.get_model_details(model_id="mid")
+        await model.modeling_get_modeldetails(model_id="mid")
 
 
 @pytest.mark.asyncio
-async def test_get_model_details_missing_model_id() -> None:
+async def test_modeling_get_modeldetails_missing_model_id() -> None:
     """Required param model_id is enforced by signature (wrapped as ToolError)."""
     with pytest.raises(TypeError, match="model_id"):
-        await model.get_model_details(project_id="pid")
+        await model.modeling_get_modeldetails(project_id="pid")
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_model_details_feature_impact_error() -> None:
+async def test_modeling_get_modeldetails_feature_impact_error() -> None:
     mock_project = MagicMock()
     mock_project.target = "target_col"
     mock_project.metric = "AUC"
@@ -330,7 +330,7 @@ async def test_get_model_details_feature_impact_error() -> None:
         patch.object(dr.Project, "get", return_value=mock_project),
         patch.object(dr.Model, "get", return_value=mock_model),
     ):
-        result = await model.get_model_details(
+        result = await model.modeling_get_modeldetails(
             project_id="pid", model_id="mid", include_feature_impact=True
         )
     assert "feature_impact_error" in result
@@ -338,7 +338,7 @@ async def test_get_model_details_feature_impact_error() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_is_eligible_for_timeseries_training_success() -> None:
+async def test_catalog_check_timeseries_eligibility_success() -> None:
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
     dates = pl.date_range(
@@ -353,7 +353,7 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
     ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await model.is_eligible_for_timeseries_training(
+        result = await model.catalog_check_timeseries_eligibility(
             dataset_id="ds1", datetime_column="date", target_column="target"
         )
     assert result["status"] == "ELIGIBLE"
@@ -362,7 +362,7 @@ async def test_is_eligible_for_timeseries_training_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
+async def test_catalog_check_timeseries_eligibility_too_few_rows() -> None:
     mock_dataset = MagicMock()
     # Build with polars, convert to pandas at boundary (SDK returns pandas)
     dates = pl.date_range(
@@ -376,7 +376,7 @@ async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
     ).to_pandas()
     mock_dataset.get_as_dataframe.return_value = pandas_df
     with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-        result = await model.is_eligible_for_timeseries_training(
+        result = await model.catalog_check_timeseries_eligibility(
             dataset_id="ds1", datetime_column="date", target_column="target"
         )
     assert result["status"] == "NOT_ELIGIBLE"
@@ -384,9 +384,9 @@ async def test_is_eligible_for_timeseries_training_too_few_rows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_is_eligible_for_timeseries_training_missing_params() -> None:
+async def test_catalog_check_timeseries_eligibility_missing_params() -> None:
     with pytest.raises(TypeError, match="dataset_id"):
-        await model.is_eligible_for_timeseries_training(
+        await model.catalog_check_timeseries_eligibility(
             datetime_column="date", target_column="target"
         )
 
@@ -403,7 +403,7 @@ async def _run_eligibility(
     mock_dataset = _build_dataset_mock(pandas_df)
     with patch.object(ThreadSafeDataRobotClient, "request_user_client"):
         with patch.object(dr.Dataset, "get", return_value=mock_dataset):
-            return await model.is_eligible_for_timeseries_training(
+            return await model.catalog_check_timeseries_eligibility(
                 dataset_id="ds1",
                 datetime_column=datetime_column,
                 target_column=target_column,

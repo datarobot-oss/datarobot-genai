@@ -30,13 +30,13 @@ INLINE_CSV_FOR_VALIDATE = "text_review,product_category\nhello world,electronics
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_deployment_features_success(
+def expectations_for_deployment_get_features_success(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_deployment_features",
+                name="deployment_get_features",
                 parameters={"deployment_id": deployment_id},
                 result={"total_features": 0, "features": []},
             ),
@@ -52,13 +52,13 @@ def expectations_for_get_deployment_features_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_generate_prediction_data_template_success(
+def expectations_for_deployment_generate_prediction_sample_success(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="generate_prediction_data_template",
+                name="deployment_generate_prediction_sample",
                 parameters={"deployment_id": deployment_id},
                 result={
                     "deployment_id": "",
@@ -80,7 +80,7 @@ def expectations_for_generate_prediction_data_template_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_validate_prediction_data_success(
+def expectations_for_deployment_validate_prediction_data_success(
     deployment_id: str,
     diabetes_scoring_small_file_path: str,
 ) -> ETETestExpectations:
@@ -88,7 +88,7 @@ def expectations_for_validate_prediction_data_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="validate_prediction_data",
+                name="deployment_validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
                     "csv_string": csv_string,
@@ -106,13 +106,13 @@ def expectations_for_validate_prediction_data_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_validate_prediction_data_inline_csv(
+def expectations_for_deployment_validate_prediction_data_inline_csv(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="validate_prediction_data",
+                name="deployment_validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
                     "csv_string": ANY_NONEMPTY_STRING,
@@ -130,13 +130,13 @@ def expectations_for_validate_prediction_data_inline_csv(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_validate_prediction_data_failure(
+def expectations_for_deployment_validate_prediction_data_failure(
     deployment_id: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="validate_prediction_data",
+                name="deployment_validate_prediction_data",
                 parameters={
                     "deployment_id": deployment_id,
                     "csv_string": "",
@@ -166,10 +166,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             """
         ],
     )
-    async def test_get_deployment_features_success(
+    async def test_deployment_get_features_success(
         self,
         llm_client: Any,
-        expectations_for_get_deployment_features_success: ETETestExpectations,
+        expectations_for_deployment_get_features_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -177,10 +177,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_get_deployment_features_success"
+            test_name = frame.f_code.co_name if frame else "test_deployment_get_features_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_deployment_features_success,
+                expectations_for_deployment_get_features_success,
                 llm_client,
                 session,
                 test_name,
@@ -196,10 +196,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             """
         ],
     )
-    async def test_generate_prediction_data_template_success(
+    async def test_deployment_generate_prediction_sample_success(
         self,
         llm_client: Any,
-        expectations_for_generate_prediction_data_template_success: ETETestExpectations,
+        expectations_for_deployment_generate_prediction_sample_success: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -208,11 +208,13 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = (
-                frame.f_code.co_name if frame else "test_generate_prediction_data_template_success"
+                frame.f_code.co_name
+                if frame
+                else "test_deployment_generate_prediction_sample_success"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_generate_prediction_data_template_success,
+                expectations_for_deployment_generate_prediction_sample_success,
                 llm_client,
                 session,
                 test_name,
@@ -230,10 +232,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             """
         ],
     )
-    async def test_validate_prediction_data_inline_csv_success(
+    async def test_deployment_validate_prediction_data_inline_csv_success(
         self,
         llm_client: Any,
-        expectations_for_validate_prediction_data_inline_csv: ETETestExpectations,
+        expectations_for_deployment_validate_prediction_data_inline_csv: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -246,11 +248,11 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             test_name = (
                 frame.f_code.co_name
                 if frame
-                else "test_validate_prediction_data_inline_csv_success"
+                else "test_deployment_validate_prediction_data_inline_csv_success"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_validate_prediction_data_inline_csv,
+                expectations_for_deployment_validate_prediction_data_inline_csv,
                 llm_client,
                 session,
                 test_name,
@@ -272,10 +274,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             """
         ],
     )
-    async def test_validate_prediction_data_success(
+    async def test_deployment_validate_prediction_data_success(
         self,
         llm_client: Any,
-        expectations_for_validate_prediction_data_success: ETETestExpectations,
+        expectations_for_deployment_validate_prediction_data_success: ETETestExpectations,
         deployment_id: str,
         diabetes_scoring_small_file_path: str,
         prompt_template: str,
@@ -287,10 +289,14 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_validate_prediction_data_success"
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_deployment_validate_prediction_data_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_validate_prediction_data_success,
+                expectations_for_deployment_validate_prediction_data_success,
                 llm_client,
                 session,
                 test_name,
@@ -307,10 +313,10 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
             """
         ],
     )
-    async def test_validate_prediction_data_failure(
+    async def test_deployment_validate_prediction_data_failure(
         self,
         llm_client: Any,
-        expectations_for_validate_prediction_data_failure: ETETestExpectations,
+        expectations_for_deployment_validate_prediction_data_failure: ETETestExpectations,
         deployment_id: str,
         prompt_template: str,
     ) -> None:
@@ -318,10 +324,14 @@ class TestDeploymentInfoE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_validate_prediction_data_failure"
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_deployment_validate_prediction_data_failure"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_validate_prediction_data_failure,
+                expectations_for_deployment_validate_prediction_data_failure,
                 llm_client,
                 session,
                 test_name,

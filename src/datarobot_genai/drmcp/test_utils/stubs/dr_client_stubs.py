@@ -61,7 +61,7 @@ class StubModel:
     def request_predictions(
         self, dataset: Any = None, dataset_id: Any = None, **kwargs: Any
     ) -> MagicMock:
-        """Stub ``Model.request_predictions`` (used by score_dataset_with_model)."""
+        """Stub ``Model.request_predictions`` (used by modeling_score_dataset)."""
         return MagicMock(id=f"pred_job_{self.id}")
 
     def request_feature_impact(self) -> None:
@@ -84,7 +84,7 @@ class StubModel:
 
 
 class StubDatetimePartitioning:
-    """Stub datetime partitioning for get_deployment_info time_series_config."""
+    """Stub datetime partitioning for deployment_get_info time_series_config."""
 
     datetime_partition_column = "date"
     forecast_window_start = 1
@@ -113,7 +113,7 @@ class StubProject:
         return self._models[offset : offset + limit]
 
     def upload_dataset_from_catalog(self, dataset_id: str, **kwargs: Any) -> Any:
-        """Stub ``Project.upload_dataset_from_catalog`` (used by score_dataset_with_model)."""
+        """Stub ``Project.upload_dataset_from_catalog`` (used by modeling_score_dataset)."""
         return SimpleNamespace(id=f"prediction_dataset_for_{dataset_id}")
 
 
@@ -132,7 +132,7 @@ class StubDeployment:
         """
         Stub get_features;
         returns: list of feature dicts
-        (must include feature_type for generate_prediction_data_template).
+        (must include feature_type for deployment_generate_prediction_sample).
         """
         return [
             {"name": "text_review", "importance": 1, "feature_type": "text"},
@@ -364,7 +364,7 @@ def test_create_dr_client() -> StubDRClient:
     """Create a stub DataRobot client with test project and models."""
     client = StubDRClient()
 
-    # Metrics shape: get_best_model expects metrics[metric].get("validation")
+    # Metrics shape: models_get_bestmodel expects metrics[metric].get("validation")
     def _metrics(auc: float, logloss: float) -> dict:
         return {
             "AUC": {"validation": auc},
@@ -440,7 +440,7 @@ def test_create_dr_client() -> StubDRClient:
         ]
 
     def iterate_datasets(offset: int = 0, limit: int | None = None) -> Any:
-        """Stub ``Dataset.iterate``; supports offset/limit for ``list_ai_catalog_items``."""
+        """Stub ``Dataset.iterate``; supports offset/limit for ``catalog_list_datasets``."""
         items = _catalog_stub_datasets()[offset:]
         if limit is not None:
             items = items[:limit]
@@ -530,7 +530,7 @@ def test_create_dr_client() -> StubDRClient:
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.post() REST calls."""
         if "deployments" in url and "predictions" in url:
-            # query_vector_database calls POST deployments/{id}/predictions/
+            # vdb_query calls POST deployments/{id}/predictions/
             return StubRestResponse(
                 {
                     "data": [

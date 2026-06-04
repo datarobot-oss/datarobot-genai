@@ -24,14 +24,14 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 
 @pytest.fixture(scope="session")
-def expectations_for_list_projects_success(
+def expectations_for_modeling_list_projects_success(
     classification_project_id: str,
     classification_project_name: str,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_projects",
+                name="modeling_list_projects",
                 parameters={},
                 result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
@@ -44,7 +44,7 @@ def expectations_for_list_projects_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_project_dataset_by_name_success(
+def expectations_for_modeling_get_project_dataset_success(
     classification_project_id: str,
     classification_dataset_name: str,
     classification_dataset_id: str,
@@ -52,7 +52,7 @@ def expectations_for_get_project_dataset_by_name_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_project_dataset_by_name",
+                name="modeling_get_project_dataset",
                 parameters={
                     "project_id": classification_project_id,
                     "dataset_name": classification_dataset_name,
@@ -71,13 +71,13 @@ def expectations_for_get_project_dataset_by_name_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_project_dataset_by_name_failure(
+def expectations_for_modeling_get_project_dataset_failure(
     classification_project_id: str, nonexistent_dataset_name: str
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="get_project_dataset_by_name",
+                name="modeling_get_project_dataset",
                 parameters={
                     "project_id": classification_project_id,
                     "dataset_name": nonexistent_dataset_name,
@@ -100,7 +100,7 @@ def expectations_for_get_project_dataset_by_name_failure(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
+def expectations_for_modeling_get_project_dataset_success_with_multiple_calls(
     classification_project_name: str,
     classification_dataset_name: str,
     classification_project_id: str,
@@ -109,12 +109,12 @@ def expectations_for_get_project_dataset_by_name_success_with_multiple_calls(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="list_projects",
+                name="modeling_list_projects",
                 parameters={},
                 result=f'"{classification_project_id}": "{classification_project_name}"',
             ),
             ToolCallTestExpectations(
-                name="get_project_dataset_by_name",
+                name="modeling_get_project_dataset",
                 parameters={
                     "project_id": classification_project_id,
                     "dataset_name": classification_dataset_name,
@@ -147,18 +147,18 @@ class TestProjectsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_list_projects_success(
+    async def test_modeling_list_projects_success(
         self,
         llm_client: Any,
-        expectations_for_list_projects_success: ETETestExpectations,
+        expectations_for_modeling_list_projects_success: ETETestExpectations,
         prompt: str,
     ) -> None:
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_list_projects_success"
+            test_name = frame.f_code.co_name if frame else "test_modeling_list_projects_success"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_list_projects_success,
+                expectations_for_modeling_list_projects_success,
                 llm_client,
                 session,
                 test_name,
@@ -173,10 +173,10 @@ class TestProjectsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_project_dataset_by_name_success(
+    async def test_modeling_get_project_dataset_success(
         self,
         llm_client: Any,
-        expectations_for_get_project_dataset_by_name_success: ETETestExpectations,
+        expectations_for_modeling_get_project_dataset_success: ETETestExpectations,
         classification_project_id: str,
         classification_dataset_name: str,
         prompt_template: str,
@@ -189,11 +189,11 @@ class TestProjectsE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = (
-                frame.f_code.co_name if frame else "test_get_project_dataset_by_name_success"
+                frame.f_code.co_name if frame else "test_modeling_get_project_dataset_success"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_project_dataset_by_name_success,
+                expectations_for_modeling_get_project_dataset_success,
                 llm_client,
                 session,
                 test_name,
@@ -208,10 +208,10 @@ class TestProjectsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_project_dataset_by_name_failure(
+    async def test_modeling_get_project_dataset_failure(
         self,
         llm_client: Any,
-        expectations_for_get_project_dataset_by_name_failure: ETETestExpectations,
+        expectations_for_modeling_get_project_dataset_failure: ETETestExpectations,
         classification_project_id: str,
         nonexistent_dataset_name: str,
         prompt_template: str,
@@ -223,11 +223,11 @@ class TestProjectsE2E(ToolBaseE2E):
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
             test_name = (
-                frame.f_code.co_name if frame else "test_get_project_dataset_by_name_failure"
+                frame.f_code.co_name if frame else "test_modeling_get_project_dataset_failure"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_project_dataset_by_name_failure,
+                expectations_for_modeling_get_project_dataset_failure,
                 llm_client,
                 session,
                 test_name,
@@ -241,8 +241,8 @@ class TestProjectsE2E(ToolBaseE2E):
         I need the dataset '{dataset_name}' from that project.
 
         Use tools before answering:
-        1. Call list_projects to find the project id for '{project_name}'.
-        2. Call get_project_dataset_by_name with that project id and dataset name
+        1. Call modeling_list_projects to find the project id for '{project_name}'.
+        2. Call modeling_get_project_dataset with that project id and dataset name
            '{dataset_name}'.
 
         You may call both tools in the same assistant turn. Do not reply with a final
@@ -250,10 +250,10 @@ class TestProjectsE2E(ToolBaseE2E):
         """
         ],
     )
-    async def test_get_project_dataset_by_name_success_with_multiple_calls(
+    async def test_modeling_get_project_dataset_success_with_multiple_calls(
         self,
         llm_client: Any,
-        expectations_for_get_project_dataset_by_name_success_with_multiple_calls: (
+        expectations_for_modeling_get_project_dataset_success_with_multiple_calls: (
             ETETestExpectations
         ),
         classification_project_name: str,
@@ -270,11 +270,11 @@ class TestProjectsE2E(ToolBaseE2E):
             test_name = (
                 frame.f_code.co_name
                 if frame
-                else "test_get_project_dataset_by_name_success_with_multiple_calls"
+                else "test_modeling_get_project_dataset_success_with_multiple_calls"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_get_project_dataset_by_name_success_with_multiple_calls,
+                expectations_for_modeling_get_project_dataset_success_with_multiple_calls,
                 llm_client,
                 session,
                 test_name,

@@ -212,3 +212,55 @@ class TestJiraClient:
                 )
 
                 assert result == ["summary"]
+
+
+class TestIssueModel:
+    def _base_fields(self, **overrides: object) -> dict[str, object]:
+        fields: dict[str, object] = {
+            "summary": "Dummy summary",
+            "status": {"name": "In Progress"},
+            "updated": "2025-12-15T07:47:19.176-0500",
+            "created": "2025-12-11T09:01:58.944-0500",
+            "reporter": {"emailAddress": "dummy@reporter.com"},
+            "assignee": {"emailAddress": "dummy@assignee.com"},
+        }
+        fields.update(overrides)
+        return fields
+
+    def test_as_flat_dict_uses_display_name_when_email_missing(self) -> None:
+        issue = Issue(
+            id="123",
+            key="PROJ-123",
+            fields=self._base_fields(
+                reporter={"displayName": "Reporter User"},
+                assignee={"displayName": "Assignee User"},
+            ),
+        )
+
+        flat = issue.as_flat_dict()
+        assert flat["reporterEmailAddress"] == "Reporter User"
+        assert flat["assigneeEmailAddress"] == "Assignee User"
+
+    def test_as_flat_dict_uses_account_id_when_email_and_display_name_missing(self) -> None:
+        issue = Issue(
+            id="123",
+            key="PROJ-123",
+            fields=self._base_fields(
+                reporter={"accountId": "reporter-account-id"},
+                assignee={"accountId": "assignee-account-id"},
+            ),
+        )
+
+        flat = issue.as_flat_dict()
+        assert flat["reporterEmailAddress"] == "reporter-account-id"
+        assert flat["assigneeEmailAddress"] == "assignee-account-id"
+
+    def test_as_flat_dict_allows_unassigned_issue(self) -> None:
+        issue = Issue(
+            id="123",
+            key="PROJ-123",
+            fields=self._base_fields(assignee=None),
+        )
+
+        flat = issue.as_flat_dict()
+        assert flat["assigneeEmailAddress"] is None
