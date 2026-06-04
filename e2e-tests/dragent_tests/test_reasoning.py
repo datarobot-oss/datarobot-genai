@@ -45,8 +45,6 @@ if AGENT not in ("langgraph", "llamaindex"):
         allow_module_level=True,
     )
 
-REASONING_ENABLED = os.environ.get("LLM_DEFAULT_MODEL") == "true"
-
 
 def test_generate_streaming_emits_reasoning(http_client: httpx.Client) -> None:
     """With thinking enabled, the agent streams AG-UI reasoning events alongside its answer."""
