@@ -17,22 +17,47 @@ from collections.abc import Iterator
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage  # noqa: TC002
 from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
-from datarobot_genai.core.config import apply_default_thinking
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
 
 
+def _wrap_bare_text_blocks(
+    message_dicts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Wrap bare-string items in list-form content as ``{"type": "text"}`` blocks.
+
+    When ``langchain_litellm`` serializes a streamed reasoning-model turn it drops
+    the thinking blocks but leaves the answer as a bare string inside the content
+    list. litellm's OpenAI request transform then calls ``item.get("type")`` on
+    every list item and raises ``'str' object has no attribute 'get'`` on that
+    string. Wrapping each bare string as a text block makes the content valid for
+    the wire; dict items (multimodal ``image_url``/``file`` parts, etc.) and
+    plain-string content are left untouched. Empty-string fragments that langchain
+    leaves between blocks are dropped, and an all-empty list collapses back to
+    ``""`` so the wire never carries an empty content array.
+    """
+    for message_dict in message_dicts:
+        content = message_dict.get("content")
+        if isinstance(content, list):
+            message_dict["content"] = [
+                {"type": "text", "text": item} if isinstance(item, str) else item
+                for item in content
+                if item != ""
+            ] or ""
+    return message_dicts
+
+
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
-
-    apply_default_thinking(config)
 
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
@@ -45,7 +70,22 @@ def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
         model_kwargs["extra_body"] = extra_body
         config["model_kwargs"] = model_kwargs
 
-    return ChatLiteLLM(**config)
+    class _ChatLiteLLM(ChatLiteLLM):  # type: ignore[valid-type,misc]
+        """ChatLiteLLM that keeps list-form content valid for litellm's request transform.
+
+        All four generation paths (``_generate``/``_agenerate``/``_stream``/
+        ``_astream``) funnel through ``_create_message_dicts`` to build the wire
+        request, so overriding that one method covers them all. See
+        ``_wrap_bare_text_blocks``.
+        """
+
+        def _create_message_dicts(
+            self, messages: list[BaseMessage], stop: list[str] | None
+        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            message_dicts, params = super()._create_message_dicts(messages, stop)
+            return _wrap_bare_text_blocks(message_dicts), params
+
+    return _ChatLiteLLM(**config)
 
 
 def get_datarobot_gateway_llm(
@@ -138,8 +178,8 @@ def get_external_llm(
 
 
 def get_router_llm(
-    primary: Any,
-    fallbacks: list[Any],
+    primary: LLMConfig,
+    fallbacks: list[LLMConfig],
     router_settings: dict | None = None,
 ) -> BaseChatModel:
     """Return a ``ChatLiteLLMRouter`` backed by a ``litellm.Router``.
@@ -162,7 +202,16 @@ def get_router_llm(
         a flat list of partial deltas with fragmentary JSON arguments.  The
         correct data already lives in ``tool_call_chunks``; stripping the extra
         key lets downstream code use that path instead.
+
+        Also normalizes list-form content (see ``_wrap_bare_text_blocks``) so the
+        router path gets the same protection as the non-router model.
         """
+
+        def _create_message_dicts(
+            self, messages: list[BaseMessage], stop: list[str] | None
+        ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            message_dicts, params = super()._create_message_dicts(messages, stop)
+            return _wrap_bare_text_blocks(message_dicts), params
 
         def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
             for chunk in super()._stream(*args, **kwargs):

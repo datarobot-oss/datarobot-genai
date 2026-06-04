@@ -27,8 +27,6 @@ BASE_URL = "http://localhost:8080"
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
-A2A_PATH = "/a2a/"
-A2A_AGENT_CARD_PATH = "/a2a/.well-known/agent-card.json"
 
 AGENT = os.environ.get("AGENT")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
@@ -36,7 +34,7 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 
 LLM = os.environ.get("LLM")
 
-ALL_TEST_CASES = LLM == "llmgw"
+ALL_TEST_CASES = os.environ.get("ALL_TEST_CASES") == "true"
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
@@ -146,53 +144,3 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
     return "".join(parts)
-
-
-# AG-UI event types that carry a reasoning/thinking step from a reasoning-capable model.
-REASONING_EVENT_TYPES = frozenset(
-    {
-        EventType.REASONING_MESSAGE_START,
-        EventType.REASONING_MESSAGE_CONTENT,
-        EventType.REASONING_MESSAGE_CHUNK,
-        EventType.REASONING_MESSAGE_END,
-        EventType.THINKING_TEXT_MESSAGE_CONTENT,
-    }
-)
-
-
-def collect_reasoning(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
-    """Join reasoning/thinking deltas from AG-UI reasoning events.
-
-    langgraph and llama_index both emit incremental reasoning as
-    ``REASONING_MESSAGE_CHUNK`` events; ``*_CONTENT`` variants are included so
-    the helper stays correct if an agent emits the start/content/end form.
-    """
-    parts = []
-    for event in ag_ui_events:
-        if event.type in (
-            EventType.REASONING_MESSAGE_CONTENT,
-            EventType.REASONING_MESSAGE_CHUNK,
-            EventType.THINKING_TEXT_MESSAGE_CONTENT,
-        ):
-            delta = getattr(event, "delta", None)
-            if delta:
-                parts.append(delta)
-    return "".join(parts)
-
-
-def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
-    """Build a JSON-RPC 2.0 ``message/send`` request body for the A2A protocol."""
-    uid = uuid.uuid4().hex[:8]
-    return {
-        "jsonrpc": "2.0",
-        "id": f"e2e-{uid}",
-        "method": "message/send",
-        "params": {
-            "message": {
-                "kind": "message",
-                "messageId": message_id or f"e2e-msg-{uid}",
-                "role": "user",
-                "parts": [{"kind": "text", "text": text}],
-            },
-        },
-    }
