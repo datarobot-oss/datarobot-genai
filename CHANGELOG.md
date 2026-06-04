@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.104
+- Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
+- Excluded `leptonai` (Lepton AI cloud backend pulled in by `nemo-evaluator-launcher`); it is unused and pins `httpx==0.27.2`, which conflicts with the `auth` extra.
+- Added `eval` to the CI per-module test matrix with a temporary stub test (`tests/eval/`); the full eval implementation will follow in a separate PR.
+
 ## 0.15.103
 - `drtools`: refactored tool credentials to `ToolsAuthCredentials` and nested `DataRobotCredentials` using `DataRobotAppFrameworkBaseSettings` (env, runtime params, `.env`, file secrets, `pulumi_config.json`). Renamed fields to `datarobot_api_token` and `datarobot_endpoint` (`DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`). Replaced `MCPServerCredentials`; added third-party config fields (`tavily_api_key`, `perplexity_api_key`, `atlassian_api_token`, `atlassian_email`, `atlassian_site_url`). Public export is `ToolsAuthCredentials`.
 
