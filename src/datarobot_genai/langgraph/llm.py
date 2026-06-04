@@ -23,7 +23,6 @@ from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
-from datarobot_genai.core.config import apply_default_thinking
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
@@ -58,8 +57,6 @@ def _wrap_bare_text_blocks(
 
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
-
-    apply_default_thinking(config)
 
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
