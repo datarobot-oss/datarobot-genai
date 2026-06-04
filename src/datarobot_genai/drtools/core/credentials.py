@@ -12,84 +12,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
-
-from pydantic import AliasChoices
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
-from pydantic import field_validator
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
 
-from .config_utils import extract_datarobot_runtime_param_payload
 from .constants import DEFAULT_DATAROBOT_ENDPOINT
-from .constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 
-class DataRobotCredentials(BaseSettings):
-    """DataRobot API credentials."""
+class DataRobotCredentials(DataRobotAppFrameworkBaseSettings):
+    """DataRobot API credentials.
 
-    application_api_token: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "DATAROBOT_API_TOKEN",
-            "DATAROBOT_API_TOKEN",
-        ),
-        description="DataRobot API token",
-    )
-    endpoint: str = Field(
-        default=DEFAULT_DATAROBOT_ENDPOINT,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "DATAROBOT_ENDPOINT",
-            "DATAROBOT_ENDPOINT",
-        ),
-        description="DataRobot API endpoint",
-    )
+    Loads from env vars (including MLOPS_RUNTIME_PARAM_*), .env, file secrets,
+    and pulumi_config.json. Fields map by name: ``datarobot_api_token`` reads
+    ``DATAROBOT_API_TOKEN``, ``datarobot_endpoint`` reads ``DATAROBOT_ENDPOINT``.
+    """
 
-    @field_validator(
-        "application_api_token",
-        "endpoint",
-        mode="before",
-    )
-    @classmethod
-    def validate_runtime_params(cls, v: Any) -> Any:
-        """Validate runtime parameters."""
-        return extract_datarobot_runtime_param_payload(v)
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    datarobot_api_token: str = ""
+    datarobot_endpoint: str = DEFAULT_DATAROBOT_ENDPOINT
 
 
-class MCPServerCredentials(BaseSettings):
-    """Application credentials for MCP server."""
+class ToolsAuthCredentials(DataRobotAppFrameworkBaseSettings):
+    """Application credentials for tools (DataRobot and third-party API keys)."""
 
     datarobot: DataRobotCredentials = Field(default_factory=DataRobotCredentials)
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    tavily_api_key: str = ""
+    perplexity_api_key: str = ""
+    atlassian_api_token: str = ""
+    atlassian_email: str = ""
+    atlassian_site_url: str = ""
 
     def has_datarobot_credentials(self) -> bool:
         """Check if DataRobot credentials are configured."""
-        return bool(self.datarobot.application_api_token)
+        return bool(self.datarobot.datarobot_api_token)
 
 
 # Global credentials instance
-_credentials: MCPServerCredentials | None = None
+_credentials: ToolsAuthCredentials | None = None
 
 
-def get_credentials() -> MCPServerCredentials:
+def get_credentials() -> ToolsAuthCredentials:
     """Get the global credentials instance."""
     # Use a local variable to avoid global statement warning
     credentials = _credentials
     if credentials is None:
-        credentials = MCPServerCredentials()
+        credentials = ToolsAuthCredentials()
         # Update the global variable
         globals()["_credentials"] = credentials
     return credentials

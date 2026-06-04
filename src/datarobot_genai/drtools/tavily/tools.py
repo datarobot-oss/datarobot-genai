@@ -43,15 +43,16 @@ _TAVILY_CRAWL_API = "https://docs.tavily.com/documentation/api-reference/endpoin
         "[Tavily—web search] Use when the user needs fresh facts from the public web by keyword "
         "(optional topic string: 'general', 'news', or 'finance'). Returns ranked snippets and "
         "optional short answer. "
-        "Not for reading full pages when you already have URLs (tavily_extract), not site link "
-        "discovery (tavily_map), not multi-page site harvest (tavily_crawl).\n\n"
-        'Examples: tavily_search(query="Python best practices 2026"); '
+        "Not for reading full pages when you already have URLs (tavily_extract_text), "
+        "not site link discovery (tavily_list_links), "
+        "not multi-page site harvest (tavily_crawl_site).\n\n"
+        'Examples: tavily_search_web(query="Python best practices 2026"); '
         'topic="news", time_range="week"; topic="finance"; search_depth="advanced", '
         "include_answer=True. Advanced depth uses more credits.\n\n"
         f"Reference: {_TAVILY_SEARCH_API}"
     ),
 )
-async def tavily_search(
+async def tavily_search_web(
     *,
     query: Annotated[str, "The search query to execute."],
     topic: Annotated[
@@ -119,13 +120,13 @@ async def tavily_search(
     description=(
         "[Tavily—read URLs] Use when you already have one or more page URLs and need cleaned "
         "body text or reranked chunks (optional query for relevance). Not broad keyword web "
-        "search (tavily_search), not crawling an entire site (tavily_crawl).\n\n"
-        'Examples: single url string; list of urls; tavily_extract(urls="...", query="...", '
+        "search (tavily_search_web), not crawling an entire site (tavily_crawl_site).\n\n"
+        'Examples: single url string; list of urls; tavily_extract_text(urls="...", query="...", '
         'chunks_per_source=5); extract_depth="advanced". Up to 20 URLs; chunks_per_source 1-5.\n\n'
         f"Reference: {_TAVILY_EXTRACT_API}"
     ),
 )
-async def tavily_extract(
+async def tavily_extract_text(
     *,
     urls: Annotated[
         str | list[str],
@@ -191,13 +192,15 @@ async def tavily_extract(
     description=(
         "[Tavily—site map] Use when you need a structured list of links under one root URL "
         "(find sections or docs paths before reading). Optional instructions steer which branches "
-        "matter. Not keyword web search (tavily_search), not full page text (tavily_extract), "
-        "not deep multi-hop crawl (tavily_crawl).\n\n"
-        'Example: tavily_map(url="https://docs.example.com", instructions="API sections").\n\n'
+        "matter. Not keyword web search (tavily_search_web), "
+        "not full page text (tavily_extract_text), "
+        "not deep multi-hop crawl (tavily_crawl_site).\n\n"
+        'Example: tavily_list_links(url="https://docs.example.com", '
+        'instructions="API sections").\n\n'
         f"Reference: {_TAVILY_MAP_API}"
     ),
 )
-async def tavily_map(
+async def tavily_list_links(
     *,
     url: Annotated[str, "The root URL to begin mapping."],
     instructions: Annotated[
@@ -234,14 +237,14 @@ async def tavily_map(
     description=(
         "[Tavily—site crawl] Use when you need many related pages from one site guided by "
         "natural-language instructions (breadth/depth limits). Not single-URL read "
-        "(tavily_extract), not link-only outline (tavily_map), not global keyword search "
-        "(tavily_search).\n\n"
+        "(tavily_extract_text), not link-only outline (tavily_list_links), "
+        "not global keyword search (tavily_search_web).\n\n"
         "Examples: basic crawl on docs root; instructions to filter topics; max_depth and limit "
         "up to API max; exclude_paths regex list. Higher depth/limit uses more credits.\n\n"
         f"Reference: {_TAVILY_CRAWL_API}"
     ),
 )
-async def tavily_crawl(
+async def tavily_crawl_site(
     *,
     url: Annotated[str, "The root URL to begin the traversal."],
     instructions: Annotated[

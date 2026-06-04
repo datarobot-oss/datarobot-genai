@@ -56,8 +56,8 @@ class TestDRAPIClientWithStaticConfigInContainer:
         mock_get_credentials.assert_called_once_with()
         mock_credentials = mock_get_credentials.return_value
         mock_dr_client_cls.assert_called_once_with(
-            token=mock_credentials.datarobot.application_api_token,
-            endpoint=mock_credentials.datarobot.endpoint,
+            token=mock_credentials.datarobot.datarobot_api_token,
+            endpoint=mock_credentials.datarobot.datarobot_endpoint,
         )
         assert output == mock_dr_client_cls.return_value
 

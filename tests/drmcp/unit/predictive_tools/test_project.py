@@ -25,11 +25,11 @@ from datarobot_genai.drtools.predictive import project
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_projects_success() -> None:
+async def test_modeling_list_projects_success() -> None:
     mock_proj1 = MagicMock(id="1", project_name="proj1")
     mock_proj2 = MagicMock(id="2", project_name="proj2")
     with patch.object(dr.Project, "list", return_value=[mock_proj1, mock_proj2]):
-        result = await project.list_projects()
+        result = await project.modeling_list_projects()
     assert isinstance(result, dict)
     projects_dict = result
     assert "1" in projects_dict
@@ -40,28 +40,28 @@ async def test_list_projects_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_list_projects_empty() -> None:
+async def test_modeling_list_projects_empty() -> None:
     with patch.object(dr.Project, "list", return_value=[]):
-        result = await project.list_projects()
+        result = await project.modeling_list_projects()
     assert isinstance(result, dict)
     assert result == {}
 
 
 @pytest.mark.asyncio
-async def test_list_projects_error() -> None:
+async def test_modeling_list_projects_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await project.list_projects()
+            await project.modeling_list_projects()
         assert "fail" == str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_project_dataset_by_name_success() -> None:
+async def test_modeling_get_project_dataset_success() -> None:
     mock_project = MagicMock()
     mock_ds1 = MagicMock()
     mock_ds1.name = "training_data"
@@ -69,7 +69,7 @@ async def test_get_project_dataset_by_name_success() -> None:
     mock_project.get_datasets.return_value = [mock_ds1]
     mock_project.get_dataset.return_value = None
     with patch.object(dr.Project, "get", return_value=mock_project) as mock_proj_get:
-        result = await project.get_project_dataset_by_name(
+        result = await project.modeling_get_project_dataset(
             project_id="pid", dataset_name="training"
         )
     mock_proj_get.assert_called_once_with("pid")
@@ -79,25 +79,25 @@ async def test_get_project_dataset_by_name_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_request_user_client")
-async def test_get_project_dataset_by_name_not_found() -> None:
+async def test_modeling_get_project_dataset_not_found() -> None:
     mock_project = MagicMock()
     mock_project.get_datasets.return_value = []
     mock_project.get_dataset.return_value = None
     with patch.object(dr.Project, "get", return_value=mock_project):
         with pytest.raises(ToolError) as exc_info:
-            await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
+            await project.modeling_get_project_dataset(project_id="pid", dataset_name="training")
     assert (
         str(exc_info.value) == "Dataset with name containing 'training' not found in project pid."
     )
 
 
 @pytest.mark.asyncio
-async def test_get_project_dataset_by_name_error() -> None:
+async def test_modeling_get_project_dataset_error() -> None:
     with patch.object(
         ThreadSafeDataRobotClient,
         "request_user_client",
         side_effect=Exception("fail"),
     ):
         with pytest.raises(Exception) as exc_info:
-            await project.get_project_dataset_by_name(project_id="pid", dataset_name="training")
+            await project.modeling_get_project_dataset(project_id="pid", dataset_name="training")
         assert "fail" == str(exc_info.value)

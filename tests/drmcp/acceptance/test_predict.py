@@ -26,14 +26,14 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 
 
 @pytest.fixture(scope="session")
-def expectations_for_predict_by_ai_catalog_success(
+def expectations_for_predict_batch_predictions_from_dataset_success(
     deployment_id: str,
     classification_predict_dataset: Any,
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_by_ai_catalog",
+                name="predict_batch_predictions_from_dataset",
                 parameters={
                     "deployment_id": deployment_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
@@ -41,12 +41,12 @@ def expectations_for_predict_by_ai_catalog_success(
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_job_status",
+                name="predict_get_batch_job_status",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_results",
+                name="predict_get_batch_results",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -58,13 +58,13 @@ def expectations_for_predict_by_ai_catalog_success(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_predict_from_project_data_success(
+def expectations_for_predict_batch_predictions_from_partition_success(
     deployment_id: str, classification_project_id: str
 ) -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_from_project_data",
+                name="predict_batch_predictions_from_partition",
                 parameters={
                     "deployment_id": deployment_id,
                     "project_id": classification_project_id,
@@ -73,12 +73,12 @@ def expectations_for_predict_from_project_data_success(
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_job_status",
+                name="predict_get_batch_job_status",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_results",
+                name="predict_get_batch_results",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -97,7 +97,7 @@ def expectations_for_batch_predict_then_get_batch_results_success(
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="predict_by_ai_catalog",
+                name="predict_batch_predictions_from_dataset",
                 parameters={
                     "deployment_id": deployment_id,
                     "dataset_id": classification_predict_dataset["dataset_id"],
@@ -105,12 +105,12 @@ def expectations_for_batch_predict_then_get_batch_results_success(
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_job_status",
+                name="predict_get_batch_job_status",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
             ToolCallTestExpectations(
-                name="get_batch_prediction_results",
+                name="predict_get_batch_results",
                 parameters={"job_id": ANY_NONEMPTY_STRING},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -157,16 +157,16 @@ class TestPredictE2E(ToolBaseE2E):
         I have a DataRobot deployment with ID '{deployment_id}'.
         Run batch predictions using the AI Catalog dataset with ID '{dataset_id}'.
         The batch submit tool returns immediately with a job_id: you must call
-        get_batch_prediction_job_status with that job_id until the job is COMPLETED and a
-        download url exists, then call get_batch_prediction_results with the same job_id to
+        predict_get_batch_job_status with that job_id until the job is COMPLETED and a
+        download url exists, then call predict_get_batch_results with the same job_id to
         retrieve the scored CSV. Summarize the prediction outcome.
         """
         ],
     )
-    async def test_predict_by_ai_catalog_success(
+    async def test_predict_batch_predictions_from_dataset_success(
         self,
         llm_client: Any,
-        expectations_for_predict_by_ai_catalog_success: ETETestExpectations,
+        expectations_for_predict_batch_predictions_from_dataset_success: ETETestExpectations,
         deployment_id: str,
         classification_project_id: str,
         classification_predict_dataset: Any,
@@ -180,10 +180,14 @@ class TestPredictE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_by_ai_catalog_success"
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_predict_batch_predictions_from_dataset_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_predict_by_ai_catalog_success,
+                expectations_for_predict_batch_predictions_from_dataset_success,
                 llm_client,
                 session,
                 test_name,
@@ -196,15 +200,15 @@ class TestPredictE2E(ToolBaseE2E):
         The MCP server has no access to my laptop files. Deployment ID is '{deployment_id}'.
         Run batch scoring using only the AI Catalog dataset id '{dataset_id}' as the input source.
         Do not use local file paths or upload from this machine.
-        After submit, poll get_batch_prediction_job_status until COMPLETED with a url, then
-        get_batch_prediction_results for the CSV and describe the predictions.
+        After submit, poll predict_get_batch_job_status until COMPLETED with a url, then
+        predict_get_batch_results for the CSV and describe the predictions.
         """
         ],
     )
-    async def test_predict_by_ai_catalog_catalog_id_only_prompt(
+    async def test_predict_batch_predictions_from_dataset_catalog_id_only_prompt(
         self,
         llm_client: Any,
-        expectations_for_predict_by_ai_catalog_success: ETETestExpectations,
+        expectations_for_predict_batch_predictions_from_dataset_success: ETETestExpectations,
         deployment_id: str,
         classification_project_id: str,
         classification_predict_dataset: Any,
@@ -220,11 +224,11 @@ class TestPredictE2E(ToolBaseE2E):
             test_name = (
                 frame.f_code.co_name
                 if frame
-                else "test_predict_by_ai_catalog_catalog_id_only_prompt"
+                else "test_predict_batch_predictions_from_dataset_catalog_id_only_prompt"
             )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_predict_by_ai_catalog_success,
+                expectations_for_predict_batch_predictions_from_dataset_success,
                 llm_client,
                 session,
                 test_name,
@@ -236,15 +240,15 @@ class TestPredictE2E(ToolBaseE2E):
             """
         I have a DataRobot deployment with ID '{deployment_id}' and project ID '{project_id}'.
         Run batch predictions on the holdout partition. After submit returns job_id, poll
-        get_batch_prediction_job_status until COMPLETED with url, then get_batch_prediction_results
+        predict_get_batch_job_status until COMPLETED with url, then predict_get_batch_results
         and summarize predictions.
         """
         ],
     )
-    async def test_predict_from_project_data_success(
+    async def test_predict_batch_predictions_from_partition_success(
         self,
         llm_client: Any,
-        expectations_for_predict_from_project_data_success: ETETestExpectations,
+        expectations_for_predict_batch_predictions_from_partition_success: ETETestExpectations,
         deployment_id: str,
         classification_project_id: str,
         prompt_template: str,
@@ -255,10 +259,14 @@ class TestPredictE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_predict_from_project_data_success"
+            test_name = (
+                frame.f_code.co_name
+                if frame
+                else "test_predict_batch_predictions_from_partition_success"
+            )
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_predict_from_project_data_success,
+                expectations_for_predict_batch_predictions_from_partition_success,
                 llm_client,
                 session,
                 test_name,
@@ -269,12 +277,12 @@ class TestPredictE2E(ToolBaseE2E):
         [
             """
         Run batch scoring on deployment '{deployment_id}' using AI Catalog dataset '{dataset_id}'.
-        Use the job_id from submit: call get_batch_prediction_job_status until COMPLETED and url
-        is set, then get_batch_prediction_results for the CSV. Summarize the prediction results.
+        Use the job_id from submit: call predict_get_batch_job_status until COMPLETED and url
+        is set, then predict_get_batch_results for the CSV. Summarize the prediction results.
         """
         ],
     )
-    async def test_batch_predict_then_get_batch_prediction_results(
+    async def test_batch_predict_then_predict_get_batch_results(
         self,
         llm_client: Any,
         expectations_for_batch_predict_then_get_batch_results_success: ETETestExpectations,
@@ -291,7 +299,7 @@ class TestPredictE2E(ToolBaseE2E):
             test_name = (
                 frame.f_code.co_name
                 if frame
-                else "test_batch_predict_then_get_batch_prediction_results"
+                else "test_batch_predict_then_predict_get_batch_results"
             )
             await self._run_test_with_expectations(
                 prompt,

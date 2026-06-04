@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Acceptance tests for VDB MCP tools (list_vector_databases, query_vector_database)."""
+"""Acceptance tests for VDB MCP tools (vdb_list, vdb_query)."""
 
 import inspect
 from typing import Any
@@ -39,12 +39,12 @@ def vdb_deployment_id() -> str:
 class TestVDBToolsE2E(ToolBaseE2E):
     """End-to-end acceptance tests for VDB MCP tools."""
 
-    async def test_list_vector_databases_callable(self, llm_client: Any) -> None:
+    async def test_vdb_list_callable(self, llm_client: Any) -> None:
         """Smoke test: LLM is prompted to list VDBs; expect tool use and valid response."""
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="list_vector_databases",
+                    name="vdb_list",
                     parameters={},
                     result=SHOULD_NOT_BE_EMPTY,
                 ),
@@ -52,12 +52,11 @@ class TestVDBToolsE2E(ToolBaseE2E):
             llm_response_content_contains_expectations=["vector database", "VDB", "deployment"],
         )
         prompt = (
-            "Please list all Vector Databases (VDBs) available in DataRobot. "
-            "Use the list_vector_databases tool."
+            "Please list all Vector Databases (VDBs) available in DataRobot. Use the vdb_list tool."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_list_vector_databases_callable"
+            test_name = frame.f_code.co_name if frame else "test_vdb_list_callable"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,
@@ -66,7 +65,7 @@ class TestVDBToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_query_vector_database_callable(
+    async def test_vdb_query_callable(
         self,
         llm_client: Any,
         vdb_deployment_id: str,
@@ -75,7 +74,7 @@ class TestVDBToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="query_vector_database",
+                    name="vdb_query",
                     parameters={
                         "deployment_id": vdb_deployment_id,
                         "query": "What is DataRobot?",
@@ -87,11 +86,11 @@ class TestVDBToolsE2E(ToolBaseE2E):
         )
         prompt = (
             f"Please query the Vector Database deployment with ID '{vdb_deployment_id}' "
-            "for 'What is DataRobot?' using the query_vector_database tool."
+            "for 'What is DataRobot?' using the vdb_query tool."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_query_vector_database_callable"
+            test_name = frame.f_code.co_name if frame else "test_vdb_query_callable"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,

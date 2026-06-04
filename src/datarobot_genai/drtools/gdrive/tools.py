@@ -43,7 +43,7 @@ _DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage
     description=(
         "[GDrive—find files] Use when the user needs Google Drive file names and ids with "
         "optional folder scope, Drive query string, and pagination. Not file body text "
-        "(gdrive_read_content), not SharePoint (microsoft_graph_search_content).\n\n"
+        "(gdrive_read_and_export_content), not SharePoint (microsoft_graph_search_content).\n\n"
         f"limit must be >= page_size and a multiple of page_size (page_size max {MAX_PAGE_SIZE}, "
         f"limit max {LIMIT}). Examples: page_size=10, limit=50; page_size=3, limit=3; "
         "page_size=12, limit=36.\n\n"
@@ -117,7 +117,7 @@ async def gdrive_find_contents(
         f"Reference (export MIME types): {_DRIVE_EXPORT_DOCS}"
     ),
 )
-async def gdrive_read_content(
+async def gdrive_read_and_export_content(
     *,
     file_id: Annotated[str, "The ID of the file to read."],
     target_format: Annotated[
@@ -200,7 +200,8 @@ async def gdrive_create_file(
     enabled=False,
     description=(
         "[GDrive—metadata] Use when renaming, starring, or trashing an existing file by id. "
-        "Not reading content (gdrive_read_content), not ACL changes (gdrive_manage_access).\n\n"
+        "Not reading content (gdrive_read_and_export_content), "
+        "not ACL changes (gdrive_manage_access).\n\n"
         "Examples: new_name only; starred=True/False; trash=True/restore False; combine fields. "
         "At least one of new_name, starred, or trash is required.\n\n"
         f"Reference: {_DRIVE_FILES_UPDATE_DOCS}"

@@ -75,9 +75,9 @@ def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) 
         "name": f"Predictions for {deployment_id}",
         "mime_type": "text/csv",
         "note": (
-            "This tool only submits the batch job. You MUST poll get_batch_prediction_job_status "
+            "This tool only submits the batch job. You MUST poll predict_get_batch_job_status "
             "with job_id until batch_job_status is COMPLETED and url is present (retry every few "
-            "seconds while RUNNING or INITIALIZING). Then call get_batch_prediction_results for "
+            "seconds while RUNNING or INITIALIZING). Then call predict_get_batch_results for "
             "inline CSV if small enough, or fetch url with DataRobot API authentication."
         ),
     }
@@ -89,14 +89,15 @@ def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) 
         "[Predict—deployment + catalog dataset] Submits batch scoring of one AI Catalog tabular "
         "dataset through an MLOps deployment (deployment_id + dataset_id). Returns immediately "
         "with job_id and initial batch_job_status; does NOT wait for completion. Required "
-        "follow-up: poll get_batch_prediction_job_status until COMPLETED and url is set, then "
-        "get_batch_prediction_results or authenticated download of url. Not leaderboard scoring "
-        "(score_dataset_with_model), not project splits (predict_from_project_data), not inline "
-        "rows (predict_realtime). For synchronous small catalog scoring use "
-        "predict_by_ai_catalog_rt."
+        "follow-up: poll predict_get_batch_job_status until COMPLETED and url is set, then "
+        "predict_get_batch_results or authenticated download of url. Not leaderboard scoring "
+        "(modeling_score_dataset), not project splits "
+        "(predict_batch_predictions_from_partition), not inline "
+        "rows (predict_score_inline_realtime). For synchronous small catalog scoring use "
+        "predict_score_catalog_realtime."
     ),
 )
-async def predict_by_ai_catalog(
+async def predict_batch_predictions_from_dataset(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     dataset_id: Annotated[str, "AI Catalog dataset id to score."],
@@ -133,13 +134,14 @@ async def predict_by_ai_catalog(
     description=(
         "[Predict—deployment + project splits] Submits batch predictions from a deployment using "
         "project data: training, holdout, validation, or allBacktest (partition), optional "
-        "catalog dataset_id. Returns immediately with job_id like predict_by_ai_catalog; does NOT "
-        "wait. Required follow-up: poll get_batch_prediction_job_status until COMPLETED and url, "
-        "then get_batch_prediction_results or download url. Not catalog-only scoring without "
+        "catalog dataset_id. Returns immediately with job_id like "
+        "predict_batch_predictions_from_dataset; does NOT "
+        "wait. Required follow-up: poll predict_get_batch_job_status until COMPLETED and url, "
+        "then predict_get_batch_results or download url. Not catalog-only scoring without "
         "project context, not inline CSV in chat."
     ),
 )
-async def predict_from_project_data(
+async def predict_batch_predictions_from_partition(
     *,
     deployment_id: Annotated[str, "MLOps deployment id."],
     project_id: Annotated[str, "DataRobot project id that supplies training/holdout data."],
@@ -197,19 +199,22 @@ async def predict_from_project_data(
 @tool_metadata(
     tags={"predictive", "prediction", "read", "scoring", "batch"},
     description=(
-        "[Predict—batch job status] REQUIRED polling step after predict_by_ai_catalog or "
-        "predict_from_project_data. Pass job_id from the submit response. Returns "
+        "[Predict—batch job status] REQUIRED polling step after "
+        "predict_batch_predictions_from_dataset or "
+        "predict_batch_predictions_from_partition. Pass job_id from the submit response. "
+        "Returns "
         "batch_job_status, optional url when the scored file is ready, and progress fields. "
         "Poll every few seconds until batch_job_status is COMPLETED and url is non-null, then "
-        "get_batch_prediction_results or download url. Lightweight (no CSV body). Raises on "
-        "terminal failure. Not for score_dataset_with_model jobs."
+        "predict_get_batch_results or download url. Lightweight (no CSV body). Raises on "
+        "terminal failure. Not for modeling_score_dataset jobs."
     ),
 )
-async def get_batch_prediction_job_status(
+async def predict_get_batch_job_status(
     *,
     job_id: Annotated[
         str,
-        "Batch prediction job id from predict_by_ai_catalog or predict_from_project_data.",
+        "Batch prediction job id from predict_batch_predictions_from_dataset "
+        "or predict_batch_predictions_from_partition.",
     ],
 ) -> dict[str, Any]:
     if not job_id or not job_id.strip():
@@ -252,17 +257,18 @@ async def get_batch_prediction_job_status(
 @tool_metadata(
     tags={"predictive", "prediction", "read", "scoring", "batch"},
     description=(
-        "[Predict—fetch batch CSV] After get_batch_prediction_job_status shows COMPLETED and "
+        "[Predict—fetch batch CSV] After predict_get_batch_job_status shows COMPLETED and "
         "url, returns scored CSV text inline for job_id when under the inline size cap. If too "
         "large, the error includes the download url—fetch with API authentication. Does not start "
-        "scoring; not for score_dataset_with_model jobs."
+        "scoring; not for modeling_score_dataset jobs."
     ),
 )
-async def get_batch_prediction_results(
+async def predict_get_batch_results(
     *,
     job_id: Annotated[
         str,
-        "job_id from predict_by_ai_catalog or predict_from_project_data (same as status polling).",
+        "job_id from predict_batch_predictions_from_dataset "
+        "or predict_batch_predictions_from_partition (same as status polling).",
     ],
     download_timeout: Annotated[int, "Seconds to wait for the download to become ready."] = 120,
     download_read_timeout: Annotated[int, "Seconds allowed for streaming the CSV body."] = 660,

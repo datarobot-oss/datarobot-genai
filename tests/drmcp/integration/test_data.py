@@ -29,16 +29,16 @@ class TestMCPDataToolsIntegration:
         async with integration_test_mcp_session() as session:
             result = await session.list_tools()
             tool_names = [t.name for t in result.tools]
-            assert "get_dataset_details" in tool_names
-            assert "list_datastores" in tool_names
-            assert "browse_datastore" in tool_names
-            assert "query_datastore" in tool_names
+            assert "catalog_get_preview" in tool_names
+            assert "catalog_list_datastores" in tool_names
+            assert "catalog_browse_datastore" in tool_names
+            assert "catalog_query_datastore" in tool_names
 
-    async def test_get_dataset_details_success(self) -> None:
-        """Test get_dataset_details returns metadata and sample rows."""
+    async def test_catalog_get_preview_success(self) -> None:
+        """Test catalog_get_preview returns metadata and sample rows."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_dataset_details",
+                "catalog_get_preview",
                 {"dataset_id": "stub_dataset_id"},
             )
             assert not result.isError
@@ -51,32 +51,32 @@ class TestMCPDataToolsIntegration:
             assert "sample" in data
             assert len(data["sample"]) > 0
 
-    async def test_get_dataset_details_not_found(self) -> None:
-        """Test get_dataset_details with nonexistent dataset."""
+    async def test_catalog_get_preview_not_found(self) -> None:
+        """Test catalog_get_preview with nonexistent dataset."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_dataset_details",
+                "catalog_get_preview",
                 {"dataset_id": "nonexistent_dataset"},
             )
             assert result.isError
             result_text = result.content[0].text  # type: ignore[union-attr]
             assert "not found" in result_text.lower() or "error" in result_text.lower()
 
-    async def test_get_dataset_details_missing_id(self) -> None:
-        """Test get_dataset_details with no dataset_id."""
+    async def test_catalog_get_preview_missing_id(self) -> None:
+        """Test catalog_get_preview with no dataset_id."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "get_dataset_details",
+                "catalog_get_preview",
                 {},
             )
             assert result.isError
             result_text = result.content[0].text  # type: ignore[union-attr]
             assert "Dataset ID must be provided" in result_text
 
-    async def test_list_datastores_success(self) -> None:
-        """Test list_datastores returns available data connections."""
+    async def test_catalog_list_datastores_success(self) -> None:
+        """Test catalog_list_datastores returns available data connections."""
         async with integration_test_mcp_session() as session:
-            result = await session.call_tool("list_datastores", {})
+            result = await session.call_tool("catalog_list_datastores", {})
             assert not result.isError
             assert isinstance(result.content[0], TextContent)
             data = json.loads(result.content[0].text)
@@ -86,11 +86,11 @@ class TestMCPDataToolsIntegration:
             assert data["datastores"][0]["id"] == "stub_datastore_id"
             assert data["datastores"][0]["canonical_name"] == "Test PostgreSQL"
 
-    async def test_browse_datastore_success(self) -> None:
-        """Test browse_datastore returns table listings."""
+    async def test_catalog_browse_datastore_success(self) -> None:
+        """Test catalog_browse_datastore returns table listings."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "browse_datastore",
+                "catalog_browse_datastore",
                 {"datastore_id": "stub_datastore_id"},
             )
             assert not result.isError
@@ -100,19 +100,19 @@ class TestMCPDataToolsIntegration:
             assert "items" in data
             assert data["count"] >= 1
 
-    async def test_browse_datastore_missing_id(self) -> None:
-        """Test browse_datastore with no datastore_id."""
+    async def test_catalog_browse_datastore_missing_id(self) -> None:
+        """Test catalog_browse_datastore with no datastore_id."""
         async with integration_test_mcp_session() as session:
-            result = await session.call_tool("browse_datastore", {})
+            result = await session.call_tool("catalog_browse_datastore", {})
             assert result.isError
             result_text = result.content[0].text  # type: ignore[union-attr]
             assert "Datastore ID must be provided" in result_text
 
-    async def test_query_datastore_success(self) -> None:
-        """Test query_datastore executes SQL and returns results."""
+    async def test_catalog_query_datastore_success(self) -> None:
+        """Test catalog_query_datastore executes SQL and returns results."""
         async with integration_test_mcp_session() as session:
             result = await session.call_tool(
-                "query_datastore",
+                "catalog_query_datastore",
                 {
                     "datastore_id": "stub_datastore_id",
                     "sql": "SELECT * FROM users LIMIT 10",
@@ -125,12 +125,12 @@ class TestMCPDataToolsIntegration:
             assert "columns" in data
             assert data["row_count"] >= 1
 
-    async def test_query_datastore_missing_params(self) -> None:
-        """Test query_datastore with missing required parameters."""
+    async def test_catalog_query_datastore_missing_params(self) -> None:
+        """Test catalog_query_datastore with missing required parameters."""
         async with integration_test_mcp_session() as session:
             # Missing sql
             result = await session.call_tool(
-                "query_datastore",
+                "catalog_query_datastore",
                 {"datastore_id": "stub_datastore_id"},
             )
             assert result.isError
@@ -139,7 +139,7 @@ class TestMCPDataToolsIntegration:
 
             # Missing datastore_id
             result = await session.call_tool(
-                "query_datastore",
+                "catalog_query_datastore",
                 {"sql": "SELECT 1"},
             )
             assert result.isError

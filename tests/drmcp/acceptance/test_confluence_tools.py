@@ -131,7 +131,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_confluence_search_success(
+    async def test_confluence_search_space_success(
         self,
         llm_client: Any,
     ) -> None:
@@ -140,7 +140,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
         expectations = ETETestExpectations(
             tool_calls_expected=[
                 ToolCallTestExpectations(
-                    name="confluence_search",
+                    name="confluence_search_space",
                     parameters={
                         "cql_query": cql_query,
                     },
@@ -159,7 +159,7 @@ class TestConfluenceToolsE2E(ToolBaseE2E):
 
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_confluence_search_success"
+            test_name = frame.f_code.co_name if frame else "test_confluence_search_space_success"
             await self._run_test_with_expectations(
                 prompt,
                 expectations,

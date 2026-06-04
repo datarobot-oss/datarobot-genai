@@ -30,7 +30,7 @@ class ToolCallTestExpectations(BaseModel):
         default_factory=list,
         description=(
             "Logical tool names treated as equivalent for this step (same parameters/result "
-            "checks). Example: get_deployment_features vs get_deployment_info for deployment "
+            "checks). Example: deployment_get_features vs deployment_get_info for deployment "
             "scoring metadata."
         ),
     )
@@ -45,7 +45,7 @@ class ETETestExpectations(BaseModel):
     """Class to store test expectations for ETE tests.
 
     By default ``allow_unexpected_tool_calls`` is True so models may call extra tools
-    (e.g. list_projects after an error, get_dataset_details after resolving an id).
+    (e.g. modeling_list_projects after an error, catalog_get_preview after resolving an id).
     Set it to False when a test must assert an exact tool-call count and order with
     no additional calls.
     """
@@ -90,7 +90,7 @@ def _normalize_tool_name(tool_name: str, expected_tool_name: str | None = None) 
             return expected_tool_name
 
     # Some environments expose names as `<server>_mcp_<tool_name>`
-    # (e.g. `global_mcp_upload_dataset_to_ai_catalog`). Strip that server prefix.
+    # (e.g. `global_mcp_catalog_upload_dataset`). Strip that server prefix.
     if "_mcp_" in tool_name:
         _, suffix = tool_name.split("_mcp_", 1)
         if suffix:
@@ -298,7 +298,7 @@ class ToolBaseE2E:
                 - llm_response_content_contains_expectations: Expected content in the LLM response
             openai_llm_client: The OpenAI LLM client
             mcp_session: The test session
-            test_name: The name of the test (e.g. test_get_best_model_success)
+            test_name: The name of the test (e.g. test_models_get_bestmodel_success)
         """
         # Get the test file name from the class name
         file_name = self.__class__.__name__.lower().replace("e2e", "").replace("test", "")

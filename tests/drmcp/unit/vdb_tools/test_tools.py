@@ -42,7 +42,7 @@ def mock_get_client_context_with_token_from_request_header(
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_vector_databases_success() -> None:
+async def test_vdb_list_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "data": [
@@ -58,7 +58,7 @@ async def test_list_vector_databases_success() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_vector_databases()
+        result = await tools.vdb_list()
         assert isinstance(result, dict)
         assert result["count"] == 1
         assert result["vector_databases"][0]["deployment_id"] == "dep1"
@@ -70,13 +70,13 @@ async def test_list_vector_databases_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_vector_databases_pagination_params() -> None:
+async def test_vdb_list_pagination_params() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": [], "next": "url", "total_count": 7}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_vector_databases(offset=10, limit=25)
+        result = await tools.vdb_list(offset=10, limit=25)
         mock_rest_client.get.assert_called_once_with(
             "deployments/",
             params={"limit": 25, "modelTargetType": "VectorDatabase", "offset": 10},
@@ -88,33 +88,33 @@ async def test_list_vector_databases_pagination_params() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_vector_databases_negative_offset_validation() -> None:
+async def test_vdb_list_negative_offset_validation() -> None:
     with pytest.raises(ToolError, match="offset must be non-negative"):
-        await tools.list_vector_databases(offset=-1)
+        await tools.vdb_list(offset=-1)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_vector_databases_empty() -> None:
+async def test_vdb_list_empty() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": []}
     mock_rest_client = MagicMock()
     mock_rest_client.get.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.list_vector_databases()
+        result = await tools.vdb_list()
         assert result["count"] == 0
         assert result["vector_databases"] == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_query_vector_database_success() -> None:
+async def test_vdb_query_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {"data": [{"content": "doc1", "metadata": {}}]}
     mock_rest_client = MagicMock()
     mock_rest_client.post.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
-        result = await tools.query_vector_database(deployment_id="dep1", query="test query")
+        result = await tools.vdb_query(deployment_id="dep1", query="test query")
         assert isinstance(result, dict)
         assert result["count"] == 1
         assert result["deployment_id"] == "dep1"
@@ -122,7 +122,7 @@ async def test_query_vector_database_success() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_list_vector_databases_client_error_404() -> None:
+async def test_vdb_list_client_error_404() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.get.side_effect = ClientError(
         "404 client error: {'message': 'Not Found'}",
@@ -131,14 +131,14 @@ async def test_list_vector_databases_client_error_404() -> None:
     )
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         with pytest.raises(ToolError) as exc_info:
-            await tools.list_vector_databases()
+            await tools.vdb_list()
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
-async def test_query_vector_database_client_error_404() -> None:
+async def test_vdb_query_client_error_404() -> None:
     mock_rest_client = MagicMock()
     mock_rest_client.post.side_effect = ClientError(
         "404 client error: {'message': 'Not Found'}",
@@ -147,18 +147,18 @@ async def test_query_vector_database_client_error_404() -> None:
     )
     with patch.object(dr.client, "get_client", return_value=mock_rest_client):
         with pytest.raises(ToolError) as exc_info:
-            await tools.query_vector_database(deployment_id="missing-dep", query="test")
+            await tools.vdb_query(deployment_id="missing-dep", query="test")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
-async def test_query_vector_database_missing_deployment_id() -> None:
+async def test_vdb_query_missing_deployment_id() -> None:
     with pytest.raises(ToolError, match="Deployment ID must be provided"):
-        await tools.query_vector_database(query="test")
+        await tools.vdb_query(query="test")
 
 
 @pytest.mark.asyncio
-async def test_query_vector_database_missing_query() -> None:
+async def test_vdb_query_missing_query() -> None:
     with pytest.raises(ToolError, match="Query must be provided"):
-        await tools.query_vector_database(deployment_id="dep1")
+        await tools.vdb_query(deployment_id="dep1")

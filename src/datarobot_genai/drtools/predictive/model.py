@@ -41,7 +41,7 @@ _MAX_NULL_RATE_FOR_ELIGIBILITY = 0.3
 # Below this fraction, `:.0%` rounds to "0%", so render as "<1%" instead.
 _MIN_DISPLAYABLE_GAP_PCT = 0.01
 
-# Cadence / gap inference helpers for is_eligible_for_timeseries_training.
+# Cadence / gap inference helpers for catalog_check_timeseries_eligibility.
 # Adapted from datarobot-ts-helpers (MIT, Bultema et al.):
 # https://github.com/jarredbultema/ts_helpers_package — specifically
 # `time_steps_gap_check` and the `median_timestep` derivation in
@@ -130,7 +130,7 @@ def _compute_cadence(
 
 @dataclass
 class ModelInsights:
-    """DTO for model detail information returned by get_model_details."""
+    """DTO for model detail information returned by modeling_get_modeldetails."""
 
     model_id: str
     project_id: str
@@ -178,11 +178,12 @@ class ModelEncoder(json.JSONEncoder):
         "[Project—pick best model] Use when the user wants the top leaderboard model for one "
         "modeling project, optionally ranked by a validation metric (e.g. AUC, LogLoss). "
         "Read-only; returns project_id plus best model id, type, and metrics. Not for listing "
-        "every model (list_models), not deployment scoring metadata (get_deployment_info), "
-        "not full diagnostics (get_model_details)."
+        "every model (modeling_list_models), not deployment scoring metadata "
+        "(deployment_get_info), "
+        "not full diagnostics (modeling_get_modeldetails)."
     ),
 )
-async def get_best_model(
+async def models_get_bestmodel(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     metric: Annotated[
@@ -248,15 +249,17 @@ async def get_best_model(
     description=(
         "[Project—model vs catalog] Use when the user wants to score an AI Catalog dataset with a "
         "specific leaderboard model inside a modeling project (they give project_id, model_id, and "
-        "catalog dataset_id). This is not deployment batch scoring (see predict_by_ai_catalog) and "
-        "not inline CSV in chat (see predict_realtime). Starts an async project scoring job; "
+        "catalog dataset_id). This is not deployment batch scoring "
+        "(see predict_batch_predictions_from_dataset) and "
+        "not inline CSV in chat (see predict_score_inline_realtime). "
+        "Starts an async project scoring job; "
         "returns scoring_job_id and related dataset ids, not prediction rows."
     ),
 )
-async def score_dataset_with_model(
+async def modeling_score_dataset(
     *,
     project_id: Annotated[str, "Modeling project that owns the model."],
-    model_id: Annotated[str, "Leaderboard model id from list_models."],
+    model_id: Annotated[str, "Leaderboard model id from modeling_list_models."],
     dataset_id: Annotated[str, "AI Catalog dataset id to score (tabular)."],
 ) -> dict[str, Any]:
     if not project_id:
@@ -291,12 +294,14 @@ async def score_dataset_with_model(
     description=(
         "[Project—list models] Use when the user needs trained leaderboard models for a "
         "project (ids, types, metrics), with optional offset/limit pagination. Read-only. Not "
-        "the same as picking only the best model (get_best_model). When may_have_more is true, "
-        "call again with offset increased by the prior limit. Follow with get_model_details, "
-        "deploy_model, or score_dataset_with_model using a chosen model_id."
+        "the same as picking only the best model (models_get_bestmodel). "
+        "When may_have_more is true, "
+        "call again with offset increased by the prior limit. Follow with "
+        "modeling_get_modeldetails, "
+        "deployment_create_deployment, or modeling_score_dataset using a chosen model_id."
     ),
 )
-async def list_models(
+async def modeling_list_models(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     offset: Annotated[
@@ -350,11 +355,11 @@ async def list_models(
         "[Project—model diagnostics] Use when the user asks for training-time detail on one "
         "leaderboard model: target, project metric, validation metrics, optional feature impact "
         "and ROC. Read-only. For MLOps deployment input columns and prediction contract, use "
-        "get_deployment_info instead. For ROC-only or lift-only charts with explicit source "
-        "fold, see get_model_roc_curve / get_model_lift_chart."
+        "deployment_get_info instead. For ROC-only or lift-only charts with explicit source "
+        "fold, see modeling_get_model_roc / modeling_get_model_lift_chart."
     ),
 )
-async def get_model_details(
+async def modeling_get_modeldetails(
     *,
     project_id: Annotated[str, "DataRobot modeling project id."],
     model_id: Annotated[str, "Leaderboard model id."],
@@ -408,11 +413,11 @@ async def get_model_details(
         "[Catalog—time series readiness] Use before starting time-series Autopilot: checks an "
         "AI Catalog dataset for row count, parsable datetime column, target null rate, optional "
         "multiseries id column. Read-only; returns ELIGIBLE or NOT_ELIGIBLE with reasons; does "
-        "not train. Not general EDA (get_exploratory_insights / analyze_dataset) and not "
-        "tabular-only Autopilot start (start_autopilot without TS-specific checks)."
+        "not train. Not general EDA (catalog_get_eda_insights / catalog_analyze_dataset) and not "
+        "tabular-only Autopilot start (modeling_start_autopilot without TS-specific checks)."
     ),
 )
-async def is_eligible_for_timeseries_training(
+async def catalog_check_timeseries_eligibility(
     *,
     dataset_id: Annotated[str, "AI Catalog dataset id."],
     datetime_column: Annotated[str, "Column name with timestamps."],

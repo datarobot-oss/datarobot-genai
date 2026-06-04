@@ -24,10 +24,8 @@ class FeatureFlag:
     @alru_cache(maxsize=1)
     async def is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user() -> bool:
         credentials = get_credentials()
-        dr_api_endpoint = credentials.datarobot.endpoint
-        dr_api_token_of_static_account_in_mcp_container = (
-            credentials.datarobot.application_api_token
-        )
+        dr_api_endpoint = credentials.datarobot.datarobot_endpoint
+        dr_api_token_of_static_account_in_mcp_container = credentials.datarobot.datarobot_api_token
 
         return await is_mcp_tools_gallery_support_enabled(
             dr_api_endpoint, dr_api_token_of_static_account_in_mcp_container

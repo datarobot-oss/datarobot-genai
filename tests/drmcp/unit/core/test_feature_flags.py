@@ -50,7 +50,7 @@ class TestFeatureFlags:
         )
 
         mock_credentials = mock_get_credentials.return_value
-        mock_token = mock_credentials.datarobot.application_api_token
-        mock_endpoint = mock_credentials.datarobot.endpoint
+        mock_token = mock_credentials.datarobot.datarobot_api_token
+        mock_endpoint = mock_credentials.datarobot.datarobot_endpoint
         mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with(mock_endpoint, mock_token)
         assert output == mock_is_mcp_tools_gallery_support_enabled.return_value
