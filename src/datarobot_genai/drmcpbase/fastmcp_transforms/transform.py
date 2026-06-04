@@ -13,53 +13,34 @@
 # limitations under the License.
 
 import logging
-from collections.abc import Mapping
 from collections.abc import Sequence
-from enum import Enum
-from enum import auto
 from typing import Any
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
-from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.transforms import GetToolNext
 from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
-
-def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
-    # include_all=True so x-datarobot-* headers survive FastMCP's default exclusion list
-    return get_http_headers(include_all=True, **kwargs)
-
-
-class MCPMode(Enum):
-    TOOLS = auto()
-    CODE_EXECUTE = auto()
-
-    @classmethod
-    def from_current_http_request_headers(cls) -> "MCPMode":
-        headers = get_fast_mcp_http_headers()
-        return cls._from_headers(headers)
-
-    @staticmethod
-    def _get_mcp_mode_header_key() -> str:
-        return "x-datarobot-mcp-mode"
-
-    @classmethod
-    def _from_headers(cls, value: Mapping[str, str]) -> "MCPMode":
-        try:
-            return cls[value.get(cls._get_mcp_mode_header_key(), "").upper()]
-        except KeyError:
-            return cls.TOOLS
-
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestMode
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allowed
 
 logger = logging.getLogger(__name__)
 
 
-class ConditionalCodeMode(CodeMode):
+class DataRobotMCPCatalogTransform(CodeMode):
+    def _request_context(self) -> MCPRequestContext:
+        return get_request_context()
+
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
-        if MCPMode.from_current_http_request_headers() is MCPMode.CODE_EXECUTE:
+        ctx = self._request_context()
+        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
             return await super().transform_tools(tools)
-        return tools
+        if ctx.tool_allowlist is None:
+            return tools
+        return filter_tools_by_allowlist(tools, ctx.tool_allowlist)
 
     async def get_tool(
         self,
@@ -68,11 +49,14 @@ class ConditionalCodeMode(CodeMode):
         *,
         version: VersionSpec | None = None,
     ) -> Tool | None:
-        if MCPMode.from_current_http_request_headers() == MCPMode.CODE_EXECUTE:
+        ctx = self._request_context()
+        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
             return await super().get_tool(name, call_next, version=version)
+        if ctx.tool_allowlist is not None and not is_tool_name_allowed(name, ctx.tool_allowlist):
+            return None
         return await call_next(name, version=version)
 
 
-def initialize_conditional_code_mode_transform(mcp: Any) -> None:
-    mcp.add_transform(ConditionalCodeMode())
-    logger.info("Code mode transform registered successfully")
+def register_mcp_catalog_transform(mcp: Any) -> None:
+    mcp.add_transform(DataRobotMCPCatalogTransform())
+    logger.info("DataRobot MCP catalog transform registered successfully")

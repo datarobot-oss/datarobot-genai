@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.107
+- `drmcpbase`: MCP catalog transforms live in `datarobot_genai.drmcpbase.fastmcp_transforms` (`DataRobotMCPCatalogTransform`, `register_mcp_catalog_transform`). Removed `conditional_code_mode` and `mcp_catalog_transform` modules.
+- `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped.
+
 ## 0.15.106
 - `drtools`: added `auth_resolution_strategy` on `ToolsAuthCredentials` (`AUTH_RESOLUTION_STRATEGY`: `http` or `config`, default `http`). `AuthResolutionStrategy` is a `StrEnum` so env values parse correctly.
 - `drtools.core.auth`: runtime adapters inject per-request data via `set_request_headers` / `set_auth_context`; resolvers `resolve_datarobot_token`, `resolve_secret`, and `get_oauth_access_token_with_header_fallback` honor `auth_resolution_strategy`. Removed legacy helpers `set_request_headers_for_context`, `resolve_token_from_headers`, and `get_api_key_from_headers`. `get_datarobot_access_token(headers_auth_only=False)` falls back to the server `DATAROBOT_API_TOKEN` when strategy is `http` and no request headers are present (dynamic tool/prompt registration at startup).
