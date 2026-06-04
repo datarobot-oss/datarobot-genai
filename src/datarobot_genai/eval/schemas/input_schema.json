@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NeMo Evaluation Run — CLI Input",
+  "description": "Documents the three inputs the external CLI passes to run.py. Judge LLM (when used) and run configuration live in the pipeline YAML, not here.",
+  "type": "object",
+  "required": ["endpoint", "pipeline"],
+  "properties": {
+    "endpoint": {
+      "type": "string",
+      "description": "Base URL of the agent's OpenAI-compatible API, e.g. http://localhost:8842/v1"
+    },
+    "pipeline": {
+      "type": "string",
+      "description": "Filename of a pipeline YAML in user_pipelines/, e.g. answer_quality.yaml"
+    },
+    "dataset": {
+      "type": "string",
+      "description": "Path to a test case JSON file. Defaults to user_datasets/sample_answer_quality.json if omitted."
+    }
+  },
+  "x-env-vars": {
+    "description": "Read from the environment (.env) at execution time.",
+    "DATAROBOT_API_TOKEN": "Required for judge-based pipelines. Bearer token for the judge (DR LLM gateway). Judge-free pipelines omit the judge: block and do not need it.",
+    "AGENT_API_KEY":       "Optional. Bearer token for the agent endpoint — only sent if set (a local DRUM agent needs none). Env var NAME is configured in the pipeline YAML's target.api_key_name."
+  },
+  "x-model-names": {
+    "description": "NeMo Evaluator makes plain OpenAI-compatible HTTP calls (NOT LiteLLM). Judge/target model names must match whatever the named endpoint expects. Against the DR LLM gateway directly that is the gateway CATALOG name with no datarobot/ prefix, e.g. azure/gpt-4o-2024-11-20. See BUGS.md."
+  }
+}
