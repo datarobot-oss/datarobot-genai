@@ -17,7 +17,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from nat.builder.context import Context
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -119,9 +118,8 @@ def test_trace_memory_operation_fallback_uses_workflow_trace_id(
         lambda: workflow_trace_id,
     )
 
-    with Context.scope(workflow_trace_id=workflow_trace_id):
-        with telemetry_memory.trace_memory_operation("search_memory", store_name="mem0"):
-            pass
+    with telemetry_memory.trace_memory_operation("search_memory", store_name="mem0"):
+        pass
 
     span = memory_span_exporter.get_finished_spans()[0]
     assert span.context.trace_id == workflow_trace_id
