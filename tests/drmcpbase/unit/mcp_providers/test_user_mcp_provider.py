@@ -299,7 +299,7 @@ class TestUserMCPProxyProviderCache:
         datarobot_api_endpoint = Mock()
         provider_cache = UserMCPProxyProviderCache(datarobot_api_endpoint, 1)
 
-        user_mcp_deployment_id = Mock()
+        user_mcp_deployment_id = "dafadfsa"
         output = provider_cache.get(user_mcp_deployment_id)
 
         mock_user_mcp_proxy_client_factory.assert_called_once_with(
@@ -313,7 +313,6 @@ class TestUserMCPProxyProviderCache:
         mock_proxy_provider = mock_proxy_provider_cls.return_value
         (actual_namespace,), _ = mock_proxy_provider.wrap_transform.call_args
         assert isinstance(actual_namespace, Namespace)
-        assert actual_namespace._prefix == user_mcp_deployment_id
         assert output == mock_proxy_provider.wrap_transform.return_value
 
     def test_get_returns_cached_result(
@@ -322,7 +321,7 @@ class TestUserMCPProxyProviderCache:
         mock_proxy_provider_cls: Mock,
     ) -> None:
         provider_cache = UserMCPProxyProviderCache(Mock(), 1)
-        user_mcp_deployment_id = Mock()
+        user_mcp_deployment_id = "dafadfsa"
         first_result = provider_cache.get(user_mcp_deployment_id)
         second_result = provider_cache.get(user_mcp_deployment_id)
 
@@ -331,6 +330,21 @@ class TestUserMCPProxyProviderCache:
             CACHE_TTL_IN_SECOND,
         )
         assert first_result == second_result
+
+    @pytest.mark.parametrize(
+        "user_mcp_deployment_id, namespace_transform_value",
+        [
+            ("dsafdafd", "dafd"),
+            ("fd", "fd"),
+        ],
+    )
+    def test_get_namespace_transform(
+        self,
+        user_mcp_deployment_id: str,
+        namespace_transform_value: str,
+    ) -> None:
+        output = UserMCPProxyProviderCache.get_namespace_transform(user_mcp_deployment_id)
+        assert output._prefix == f"user-mcp-{namespace_transform_value}"
 
 
 class TestMCPProxyClientSetup:

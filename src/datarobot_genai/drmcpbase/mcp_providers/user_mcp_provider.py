@@ -124,13 +124,20 @@ class UserMCPProxyProviderCache:
         self.datarobot_api_endpoint = datarobot_api_endpoint
         self._cache: LRUCache = LRUCache(maxsize=max_cache_size)
 
+    @staticmethod
+    def get_namespace_transform(user_mcp_deployment_id: str) -> Namespace:
+        last_four_digit = user_mcp_deployment_id[-4:] or user_mcp_deployment_id
+        return Namespace(f"user-mcp-{last_four_digit}")
+
     @cachedmethod(lambda self: self._cache)
     def get(self, user_mcp_deployment_id: str) -> ProxyProvider:
         user_mcp_proxy_provider = ProxyProvider(
             user_mcp_proxy_client_factory(self.datarobot_api_endpoint, user_mcp_deployment_id),
             CACHE_TTL_IN_SECOND,
         )
-        return user_mcp_proxy_provider.wrap_transform(Namespace(user_mcp_deployment_id))  # type: ignore[assignment]
+        return user_mcp_proxy_provider.wrap_transform(
+            self.get_namespace_transform(user_mcp_deployment_id)
+        )  # type: ignore[assignment]
 
 
 class UserMCPProvider(Provider):
