@@ -85,15 +85,23 @@ class DataRobotOTLPSpanAdapterExporter(OTLPSpanAdapterExporter):
     workflow span.
     """
 
+    @staticmethod
+    def _span_has_bridge_context(span: object | None) -> bool:
+        context = getattr(span, "context", None)
+        return bool(context and context.trace_id and context.span_id)
+
     def _process_start_event(self, event: IntermediateStep) -> None:
         super()._process_start_event(event)
         span = self._span_stack.get(event.UUID)
-        if span and span.context:
+        if self._span_has_bridge_context(span):
             push_nat_span_context(trace_id=span.context.trace_id, span_id=span.context.span_id)
 
     def _process_end_event(self, event: IntermediateStep) -> None:
-        pop_nat_span_context()
+        span = self._span_stack.get(event.UUID)
+        should_pop = self._span_has_bridge_context(span)
         super()._process_end_event(event)
+        if should_pop:
+            pop_nat_span_context()
 
     def on_complete(self) -> None:
         reset_nat_span_context()

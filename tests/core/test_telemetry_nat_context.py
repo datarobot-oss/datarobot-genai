@@ -53,8 +53,9 @@ def test_push_and_pop_nat_span_context_nests_sdk_spans(
 
     telemetry_nat_context.push_nat_span_context(trace_id=trace_id, span_id=parent_span_id)
     telemetry_nat_context.push_nat_span_context(trace_id=trace_id, span_id=child_span_id)
-    with trace.get_tracer("test").start_as_current_span("search_memory"):
-        pass
+    with telemetry_nat_context.use_nat_workflow_trace_context():
+        with trace.get_tracer("test").start_as_current_span("search_memory"):
+            pass
     telemetry_nat_context.pop_nat_span_context()
     telemetry_nat_context.pop_nat_span_context()
 
@@ -63,11 +64,30 @@ def test_push_and_pop_nat_span_context_nests_sdk_spans(
     assert span.parent.span_id == child_span_id
 
 
-def test_reset_nat_span_context_clears_stack() -> None:
-    trace_id = uuid.uuid4().int
-    telemetry_nat_context.push_nat_span_context(trace_id=trace_id, span_id=uuid.uuid4().int >> 64)
+def test_pop_without_push_is_safe() -> None:
+    telemetry_nat_context.pop_nat_span_context()
     telemetry_nat_context.reset_nat_span_context()
-    assert trace.get_current_span().get_span_context().is_valid is False
+
+
+def test_reset_nat_span_context_clears_stack(
+    memory_span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_id = uuid.uuid4().int
+    parent_span_id = uuid.uuid4().int >> 64
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_trace_id_from_nat",
+        lambda: None,
+    )
+    telemetry_nat_context.push_nat_span_context(trace_id=trace_id, span_id=parent_span_id)
+    telemetry_nat_context.reset_nat_span_context()
+
+    with telemetry_memory.trace_memory_operation("search_memory", store_name="mem0"):
+        pass
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.context.trace_id != trace_id
 
 
 def test_use_nat_workflow_trace_context_joins_workflow_trace(

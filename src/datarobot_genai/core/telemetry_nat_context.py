@@ -31,39 +31,55 @@ from opentelemetry.trace import TraceFlags
 
 logger = logging.getLogger(__name__)
 
-# Attach tokens for NonRecordingSpan parents pushed by the NAT exporter bridge.
-_otel_context_tokens: ContextVar[list[Any]] = ContextVar("nat_otel_context_tokens", default=[])
+NatSpanRef = tuple[int, int]
+
+# Track NAT span hierarchy without mutating OTel context in the exporter callback.
+# SDK spans attach this parent locally inside use_nat_workflow_trace_context().
+_nat_parent_stack: ContextVar[list[NatSpanRef]] = ContextVar("nat_parent_stack", default=[])
 
 
 def push_nat_span_context(*, trace_id: int, span_id: int) -> None:
-    """Attach a NonRecordingSpan so SDK spans share NAT's trace and parent."""
-    span_context = SpanContext(
+    """Record the active NAT span as the SDK parent for this execution context."""
+    stack = list(_nat_parent_stack.get())
+    stack.append((trace_id, span_id))
+    _nat_parent_stack.set(stack)
+
+
+def pop_nat_span_context() -> None:
+    """Remove one NAT span level from the current execution context."""
+    stack = list(_nat_parent_stack.get())
+    if not stack:
+        return
+    stack.pop()
+    _nat_parent_stack.set(stack)
+
+
+def reset_nat_span_context() -> None:
+    """Clear any remaining NAT span levels for the current execution context."""
+    _nat_parent_stack.set([])
+
+
+def _current_nat_parent_span_context() -> SpanContext | None:
+    stack = _nat_parent_stack.get()
+    if not stack:
+        return None
+    trace_id, span_id = stack[-1]
+    return SpanContext(
         trace_id=trace_id,
         span_id=span_id,
         is_remote=False,
         trace_flags=TraceFlags(TraceFlags.SAMPLED),
     )
-    ctx = trace.set_span_in_context(NonRecordingSpan(span_context))
-    token = otel_context.attach(ctx)
-    stack = list(_otel_context_tokens.get())
-    stack.append(token)
-    _otel_context_tokens.set(stack)
 
 
-def pop_nat_span_context() -> None:
-    """Pop one NAT-bridged OTel context level."""
-    stack = list(_otel_context_tokens.get())
-    if not stack:
-        return
-    token = stack.pop()
-    _otel_context_tokens.set(stack)
-    otel_context.detach(token)
-
-
-def reset_nat_span_context() -> None:
-    """Detach any remaining bridged OTel context levels."""
-    while _otel_context_tokens.get():
-        pop_nat_span_context()
+def _safe_detach(token: object) -> None:
+    try:
+        otel_context.detach(token)
+    except ValueError:
+        logger.debug(
+            "Skipping OTel context detach for token from a different execution context",
+            exc_info=True,
+        )
 
 
 def _workflow_trace_id_from_nat() -> int | None:
@@ -76,17 +92,31 @@ def _workflow_trace_id_from_nat() -> int | None:
         return None
 
 
+def _attach_span_context(span_context: SpanContext) -> Any:
+    return otel_context.attach(trace.set_span_in_context(NonRecordingSpan(span_context)))
+
+
 @contextmanager
 def use_nat_workflow_trace_context() -> Iterator[None]:
     """Ensure SDK spans join the active NAT workflow trace when possible.
 
-    When ``datarobot_otelcollector`` is active it keeps the OTel SDK context
-    aligned with NAT intermediate steps. This fallback covers the gap when
-    only ``instrument()`` is configured or the exporter bridge is unavailable.
+    When ``datarobot_otelcollector`` is active it keeps a NAT span stack aligned
+    with intermediate steps. This helper attaches that parent (or falls back to
+    ``workflow_trace_id``) only for the duration of the caller's scope so OTel
+    context tokens are not leaked across async boundaries.
     """
     current = trace.get_current_span()
     if current.get_span_context().is_valid:
         yield
+        return
+
+    parent_context = _current_nat_parent_span_context()
+    if parent_context is not None:
+        token = _attach_span_context(parent_context)
+        try:
+            yield
+        finally:
+            _safe_detach(token)
         return
 
     trace_id = _workflow_trace_id_from_nat()
@@ -94,14 +124,14 @@ def use_nat_workflow_trace_context() -> Iterator[None]:
         yield
         return
 
-    span_context = SpanContext(
+    fallback_context = SpanContext(
         trace_id=trace_id,
         span_id=uuid.uuid4().int >> 64,
         is_remote=True,
         trace_flags=TraceFlags(TraceFlags.SAMPLED),
     )
-    token = otel_context.attach(trace.set_span_in_context(NonRecordingSpan(span_context)))
+    token = _attach_span_context(fallback_context)
     try:
         yield
     finally:
-        otel_context.detach(token)
+        _safe_detach(token)
