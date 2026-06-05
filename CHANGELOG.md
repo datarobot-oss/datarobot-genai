@@ -4,11 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+<<<<<<< HEAD
 ## 0.15.112
 - Upgrade github actions to release 0.0.9
 
 ## 0.15.111
 - Bump `datarobot-moderations` to 11.2.33 to fix a bug with `ModerationIterator`
+=======
+## 0.15.111
+>>>>>>> 88ce4399 (Update and add agent memory space id to configs)
 
 ## 0.15.110
 - `nat/datarobot_mem0_memory`: emit OpenTelemetry GenAI memory spans (`update_memory`, `search_memory`, `delete_memory`) for Mem0/DataRobot Memory Service access through `DRMem0Editor`, with `gen_ai.memory.store.*`, query/result counts, and per-user scope attributes. Spans export through the same OTel SDK bootstrap used by `instrument()` in `register.py`.

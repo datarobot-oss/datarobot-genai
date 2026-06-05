@@ -500,6 +500,33 @@ def test_memory_client_config_uses_settings_mem0_api_key(monkeypatch: Any) -> No
     assert config.api_key == "settings-key"
 
 
+def test_memory_client_config_uses_settings_default_agent_memory_space_id(
+    monkeypatch: Any,
+) -> None:
+    # GIVEN AGENT_MEMORY_SPACE_ID is set in the env by the recipe's agent runtime
+    # parameter wiring.
+    monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "space-from-runtime")
+    monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    # WHEN the NAT memory config is created without an explicit agent_memory_space_id.
+    config = DRMem0MemoryClientConfig(api_key=None)
+
+    # THEN the agent_memory_space_id defaults from settings, so minimal workflow.yaml
+    # memory blocks can still target the DataRobot Memory Service.
+    assert Config().agent_memory_space_id == "space-from-runtime"
+    assert config.agent_memory_space_id == "space-from-runtime"
+
+
+def test_memory_client_config_explicit_agent_memory_space_id_beats_env(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "space-from-runtime")
+
+    config = DRMem0MemoryClientConfig(api_key=None, agent_memory_space_id="space-explicit")
+
+    assert config.agent_memory_space_id == "space-explicit"
+
+
 def test_memory_client_config_uses_settings_default_ttl(monkeypatch: Any) -> None:
     # GIVEN AGENT_MEMORY_TTL_SECONDS is set in the env (e.g. by infra/agent.py's
     # runtime parameter), exposing the recipe's configured retention to the
@@ -553,14 +580,14 @@ async def test_registered_memory_client_requires_api_key(monkeypatch: Any) -> No
 
 
 def test_dr_mem0_endpoint_builds_path_prefixed_url(monkeypatch: Any) -> None:
-    # GIVEN a memory_space_id and an explicit datarobot_endpoint.
+    # GIVEN an agent_memory_space_id and an explicit datarobot_endpoint.
     # WHEN the endpoint URL is built.
     # THEN it follows PBMP-7431's "API Layout": {endpoint}/memory/{id}, with no
     # trailing slash (mem0's _validate_api_key uses raw f"{host}/v1/ping/"
     # concat, so a trailing slash would produce a double slash). Any
     # caller-supplied trailing slash on the base is collapsed.
     config = DRMem0MemoryClientConfig(
-        memory_space_id="space-123",
+        agent_memory_space_id="space-123",
         datarobot_endpoint="https://app.datarobot.com/api/v2/",
     )
     assert (
@@ -572,7 +599,7 @@ def test_dr_mem0_endpoint_builds_path_prefixed_url(monkeypatch: Any) -> None:
 def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any) -> None:
     # GIVEN no explicit datarobot_endpoint on the config but DATAROBOT_ENDPOINT in env.
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://staging.datarobot.com/api/v2")
-    config = DRMem0MemoryClientConfig(memory_space_id="space-xyz")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
 
     # THEN the env var is used as the base.
     assert (
@@ -584,7 +611,7 @@ def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any)
 def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
     # GIVEN no datarobot_endpoint configured and no env var.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
-    config = DRMem0MemoryClientConfig(memory_space_id="space-xyz")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
 
     # THEN the builder refuses to fabricate a URL — better to fail loud than to
     # point at a wrong host.
@@ -592,10 +619,10 @@ def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
         datarobot_mem0_memory._dr_mem0_endpoint(config)
 
 
-def test_create_mem0_client_routes_to_dr_endpoint_when_memory_space_id_set(
+def test_create_mem0_client_routes_to_dr_endpoint_when_agent_memory_space_id_set(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN a memory_space_id and a DR endpoint. This test exercises the real
+    # GIVEN an agent_memory_space_id and a DR endpoint. This test exercises the real
     # ``_create_mem0_client`` body (host computation), which transitively
     # imports ``mem0``. Skip on minimal installs (the ``nat`` test module in
     # CI doesn't include the ``[memory]`` extra) — the factory-level tests
@@ -622,7 +649,7 @@ def test_create_mem0_client_routes_to_dr_endpoint_when_memory_space_id_set(
     monkeypatch.setattr(mem0client_module, "Mem0Client", FakeMem0Client)
 
     config = DRMem0MemoryClientConfig(
-        memory_space_id="space-42",
+        agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         org_id="org-1",
         project_id="proj-1",
@@ -641,10 +668,10 @@ def test_create_mem0_client_routes_to_dr_endpoint_when_memory_space_id_set(
     }
 
 
-def test_create_mem0_client_uses_config_host_when_no_memory_space_id(
+def test_create_mem0_client_uses_config_host_when_no_agent_memory_space_id(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN no memory_space_id (Mem0 SaaS path) and an explicit host override.
+    # GIVEN no agent_memory_space_id (Mem0 SaaS path) and an explicit host override.
     # Same skip rationale as ``..._routes_to_dr_endpoint...``: this hits the
     # real ``_create_mem0_client`` body which imports ``mem0``.
     pytest.importorskip("mem0")
@@ -673,10 +700,10 @@ def test_create_mem0_client_uses_config_host_when_no_memory_space_id(
     assert captured == {"api_key": "mem0-key", "host": "https://mem0.example.com"}
 
 
-async def test_registered_memory_client_uses_dr_token_when_memory_space_id_set(
+async def test_registered_memory_client_uses_dr_token_when_agent_memory_space_id_set(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN a memory_space_id config and a DATAROBOT_API_TOKEN in env.
+    # GIVEN an agent_memory_space_id config and a DATAROBOT_API_TOKEN in env.
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "dr-secret-token")
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
 
@@ -691,7 +718,7 @@ async def test_registered_memory_client_uses_dr_token_when_memory_space_id_set(
 
     config = DRMem0MemoryClientConfig(
         api_key=None,
-        memory_space_id="space-42",
+        agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
     )
 
@@ -723,7 +750,7 @@ async def test_registered_memory_client_prefers_explicit_dr_token_over_env(
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
 
     config = DRMem0MemoryClientConfig(
-        memory_space_id="space-42",
+        agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="explicit-token",
     )
@@ -736,10 +763,10 @@ async def test_registered_memory_client_prefers_explicit_dr_token_over_env(
     assert created == [{"api_key": "explicit-token"}]
 
 
-async def test_registered_memory_client_requires_dr_token_when_memory_space_id_set(
+async def test_registered_memory_client_requires_dr_token_when_agent_memory_space_id_set(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN a memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
+    # GIVEN an agent_memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
 
@@ -748,7 +775,7 @@ async def test_registered_memory_client_requires_dr_token_when_memory_space_id_s
     with pytest.raises(RuntimeError, match="DATAROBOT_API_TOKEN"):
         async with datarobot_mem0_memory.dr_mem0_memory_client(
             DRMem0MemoryClientConfig(
-                memory_space_id="space-42",
+                agent_memory_space_id="space-42",
                 datarobot_endpoint="https://app.datarobot.com/api/v2",
             ),
             object(),
@@ -756,10 +783,10 @@ async def test_registered_memory_client_requires_dr_token_when_memory_space_id_s
             pass
 
 
-async def test_registered_memory_client_rejects_memory_space_id_and_api_key_together(
+async def test_registered_memory_client_rejects_agent_memory_space_id_and_api_key_together(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN both memory_space_id and api_key set (e.g. a config copied from a
+    # GIVEN both agent_memory_space_id and api_key set (e.g. a config copied from a
     # Mem0-SaaS deployment that forgot to clear api_key after switching to DR,
     # or a stray MEM0_API_KEY in env hydrating api_key via its default factory).
     # The two fields point at different services with different auth tokens,
@@ -771,7 +798,7 @@ async def test_registered_memory_client_rejects_memory_space_id_and_api_key_toge
         async with datarobot_mem0_memory.dr_mem0_memory_client(
             DRMem0MemoryClientConfig(
                 api_key="mem0-saas-key",
-                memory_space_id="space-42",
+                agent_memory_space_id="space-42",
                 datarobot_endpoint="https://app.datarobot.com/api/v2",
                 datarobot_api_token="dr-token",
             ),
@@ -780,16 +807,16 @@ async def test_registered_memory_client_rejects_memory_space_id_and_api_key_toge
             pass
 
 
-async def test_registered_memory_client_rejects_memory_space_id_with_env_mem0_key(
+async def test_registered_memory_client_rejects_agent_memory_space_id_with_env_mem0_key(
     monkeypatch: Any,
 ) -> None:
     # GIVEN MEM0_API_KEY contamination in env (e.g. another tool set it) and
-    # an explicit memory_space_id config. The default_factory will pick up
+    # an explicit agent_memory_space_id config. The default_factory will pick up
     # MEM0_API_KEY and populate api_key, creating an ambiguous config.
     monkeypatch.setenv("MEM0_API_KEY", "stray-env-key")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "dr-token")
 
-    config = DRMem0MemoryClientConfig(memory_space_id="space-42")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-42")
     # Confirm the env did hydrate api_key — this is the exact ambiguity the
     # guardrail exists to catch.
     assert config.api_key == "stray-env-key"
@@ -802,7 +829,7 @@ async def test_registered_memory_client_rejects_memory_space_id_with_env_mem0_ke
             pass
 
 
-async def test_registered_memory_client_allows_memory_space_id_with_explicit_null_api_key(
+async def test_registered_memory_client_allows_agent_memory_space_id_with_explicit_null_api_key(
     monkeypatch: Any,
 ) -> None:
     # GIVEN MEM0_API_KEY in env but the caller explicitly passes api_key=None
@@ -815,7 +842,7 @@ async def test_registered_memory_client_allows_memory_space_id_with_explicit_nul
 
     config = DRMem0MemoryClientConfig(
         api_key=None,  # explicit override beats the env default_factory
-        memory_space_id="space-42",
+        agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="dr-token",
     )

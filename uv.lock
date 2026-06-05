@@ -1099,7 +1099,11 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
+<<<<<<< HEAD
 version = "0.15.112"
+=======
+version = "0.15.111"
+>>>>>>> 88ce4399 (Update and add agent memory space id to configs)
 source = { editable = "." }
 
 [package.optional-dependencies]
