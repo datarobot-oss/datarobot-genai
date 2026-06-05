@@ -52,6 +52,9 @@ from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
+from datarobot_genai.core.telemetry_memory import trace_memory_operation
+from datarobot_genai.core.telemetry_memory import truncate_memory_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,12 +184,51 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
     """Adapt ``Mem0Client`` to NAT's ``MemoryEditor`` interface."""
 
-    def __init__(self, client: Any, ttl_seconds: int | None = None) -> None:
+    def __init__(
+        self,
+        client: Any,
+        ttl_seconds: int | None = None,
+        *,
+        store_name: str = "mem0",
+        store_id: str | None = None,
+    ) -> None:
         self._client = client
         self._mem0 = client._memory
         self._ttl_seconds = ttl_seconds
+        self._store_name = store_name
+        self._store_id = store_id
+
+    def _memory_span_attributes(
+        self,
+        *,
+        user_id: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        attrs: dict[str, Any] = dict(extra or {})
+        if user_id:
+            attrs["gen_ai.memory.scope"] = "user"
+            attrs["memory.user_id"] = user_id
+        return attrs
 
     async def add_items(self, items: list[MemoryItem], **kwargs: Any) -> None:
+        configured_user_id = kwargs.get("user_id")
+        resolved_user_ids = {
+            item.user_id or configured_user_id or self._mem0.user_id for item in items
+        }
+        user_id = next(iter(resolved_user_ids)) if len(resolved_user_ids) == 1 else None
+
+        with trace_memory_operation(
+            "update_memory",
+            store_name=self._store_name,
+            store_id=self._store_id,
+            attributes=self._memory_span_attributes(
+                user_id=user_id,
+                extra={"memory.item_count": len(items)},
+            ),
+        ):
+            await self._add_items_impl(items, **kwargs)
+
+    async def _add_items_impl(self, items: list[MemoryItem], **kwargs: Any) -> None:
         add_kwargs = dict(kwargs)
         output_format = add_kwargs.pop("output_format", "v1.1")
         configured_run_id = add_kwargs.pop("run_id", None)
@@ -220,6 +262,24 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             await asyncio.gather(*coroutines)
 
     async def search(self, query: str, top_k: int = 5, **kwargs: Any) -> list[MemoryItem]:
+        user_id = kwargs.get("user_id") or self._mem0.user_id
+        with trace_memory_operation(
+            "search_memory",
+            store_name=self._store_name,
+            store_id=self._store_id,
+            attributes=self._memory_span_attributes(
+                user_id=user_id,
+                extra={
+                    "gen_ai.memory.query.text": truncate_memory_text(query),
+                    "memory.top_k": top_k,
+                },
+            ),
+        ) as span:
+            memories = await self._search_impl(query, top_k=top_k, **kwargs)
+            span.set_attribute("gen_ai.memory.search.result.count", len(memories))
+            return memories
+
+    async def _search_impl(self, query: str, top_k: int = 5, **kwargs: Any) -> list[MemoryItem]:
         user_id = kwargs.pop("user_id", None) or self._mem0.user_id
         conditions: list[dict[str, Any]] = [{"user_id": user_id}]
         for key in ("run_id", "agent_id", "app_id"):
@@ -258,6 +318,27 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         return memories
 
     async def remove_items(self, **kwargs: Any) -> None:
+        has_memory_id = "memory_id" in kwargs
+        user_id = kwargs.get("user_id")
+        if not has_memory_id and not user_id:
+            return
+
+        memory_id = kwargs.get("memory_id") if has_memory_id else None
+        with trace_memory_operation(
+            "delete_memory",
+            store_name=self._store_name,
+            store_id=self._store_id,
+            attributes=self._memory_span_attributes(
+                user_id=user_id,
+                extra={
+                    **({"gen_ai.memory.record.id": memory_id} if memory_id else {}),
+                    **({"memory.delete_all": True} if user_id and not has_memory_id else {}),
+                },
+            ),
+        ):
+            await self._remove_items_impl(**kwargs)
+
+    async def _remove_items_impl(self, **kwargs: Any) -> None:
         if "memory_id" in kwargs:
             await self._mem0.delete(kwargs.pop("memory_id"))
             return
@@ -287,6 +368,8 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
+    # Belt-and-suspenders: mem0 reads MEM0_TELEMETRY at import time.
+    os.environ["MEM0_TELEMETRY"] = "False"
     try:
         from datarobot_genai.core.memory.mem0client import Mem0Client
     except ImportError as exc:
@@ -336,9 +419,18 @@ async def dr_mem0_memory_client(
             "or set memory_space_id to target the DataRobot mem0 endpoint."
         )
 
+    if config.memory_space_id:
+        store_name = "datarobot-memory"
+        store_id: str | None = config.memory_space_id
+    else:
+        store_name = "mem0"
+        store_id = config.project_id or config.org_id
+
     editor: MemoryEditor = DRMem0Editor(
         _create_mem0_client(config, api_key),
         ttl_seconds=config.default_ttl_seconds,
+        store_name=store_name,
+        store_id=store_id,
     )
     if isinstance(config, RetryMixin):
         editor = patch_with_retry(

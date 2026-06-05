@@ -43,6 +43,11 @@ from upstream ``AutoMemoryAgentConfig`` so the two wrappers can be swapped
 without reauthoring ``workflow.yaml``.
 """
 
+import os
+
+# Mem0 reads MEM0_TELEMETRY at import time; set before any transitive mem0 import.
+os.environ["MEM0_TELEMETRY"] = "False"
+
 import logging
 import uuid
 from collections.abc import AsyncGenerator
