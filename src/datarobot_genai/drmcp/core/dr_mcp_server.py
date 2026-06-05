@@ -32,6 +32,7 @@ from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
+from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandboxProvider
 from datarobot_genai.drtools.core.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
@@ -149,7 +150,10 @@ class DataRobotMCPServer:
         # Initialize OAuth middleware
         initialize_oauth_middleware(mcp)
 
-        register_mcp_catalog_transform(mcp)
+        register_mcp_catalog_transform(
+            mcp,
+            sandbox_provider=DataRobotWorkloadSandboxProvider(),
+        )
 
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = Path(__file__).parent.parent

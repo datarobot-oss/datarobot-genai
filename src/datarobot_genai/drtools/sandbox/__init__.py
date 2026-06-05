@@ -12,29 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Sandbox abstraction for offloading code execution to isolated containers.
-
-The :class:`Sandbox` Protocol is the only thing call sites should depend on,
-allowing implementations to swap freely (workload-api for production, and
-future backends — e.g. a local-Docker dev/test sandbox) without code churn.
-"""
-
 from datarobot_genai.drtools.sandbox.base import Sandbox
 from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.sandbox.protocol import SANDBOX_API_KEY_ENV
+from datarobot_genai.drtools.sandbox.protocol import SANDBOX_AUTHORIZATION_ENV
+from datarobot_genai.drtools.sandbox.protocol import SandboxRequestAuth
+from datarobot_genai.drtools.sandbox.workload import resolve_sandbox_request_auth
 from datarobot_genai.drtools.sandbox.utils import MCP_SANDBOX_FEATURE_FLAG
 from datarobot_genai.drtools.sandbox.utils import execute_code
+from datarobot_genai.drtools.sandbox.workload import DEFAULT_SANDBOX_IMAGE
 from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
+from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandboxProvider
 
 __all__ = [
+    "DEFAULT_SANDBOX_IMAGE",
     "MCP_SANDBOX_FEATURE_FLAG",
+    "SANDBOX_API_KEY_ENV",
+    "SANDBOX_AUTHORIZATION_ENV",
     "DataRobotWorkloadSandbox",
+    "DataRobotWorkloadSandboxProvider",
     "Sandbox",
     "SandboxError",
+    "SandboxRequestAuth",
     "SandboxResult",
     "SandboxSecurityContext",
     "SandboxTimeout",
     "execute_code",
+    "resolve_sandbox_request_auth",
 ]

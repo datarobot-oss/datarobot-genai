@@ -15,6 +15,7 @@
 import asyncio
 import base64
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -24,6 +25,10 @@ from datarobot_genai.drtools.sandbox import DataRobotWorkloadSandbox
 from datarobot_genai.drtools.sandbox import SandboxError
 from datarobot_genai.drtools.sandbox import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox import SandboxTimeout
+from datarobot_genai.drtools.sandbox.protocol import SANDBOX_API_KEY_ENV
+from datarobot_genai.drtools.sandbox.protocol import SANDBOX_AUTHORIZATION_ENV
+from datarobot_genai.drtools.sandbox.protocol import SandboxRequestAuth
+from datarobot_genai.drtools.sandbox.workload import resolve_sandbox_request_auth
 
 API_BASE = "https://app.datarobot.com/api/v2"
 WORKLOAD_ID = "wkl_123"
@@ -120,6 +125,7 @@ async def test_submit_contains_security_context_camel_case_when_provided() -> No
     def _capture(request: httpx.Request) -> httpx.Response:
         captured["body"] = json.loads(request.content)
         captured["auth"] = request.headers.get("authorization")
+        captured["api_key"] = request.headers.get("x-datarobot-api-key")
         return _create_response("provisioning")
 
     respx.post(CREATE_URL).mock(side_effect=_capture)
@@ -141,6 +147,7 @@ async def test_submit_contains_security_context_camel_case_when_provided() -> No
 
     body = captured["body"]
     assert captured["auth"] == "Bearer test-token"
+    assert captured["api_key"] == "test-token"
     container = body["artifact"]["spec"]["containerGroups"][0]["containers"][0]
     sc = container["securityContext"]
     assert sc["readOnlyRootFilesystem"] is True
@@ -312,14 +319,90 @@ async def test_status_terminal_timeout_raises_sandbox_timeout() -> None:
             await _sandbox(client).run("_return = 1")
 
 
-async def test_externals_not_supported() -> None:
+@respx.mock
+async def test_externals_are_ignored() -> None:
+    captured: dict[str, Any] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _create_response()
+
+    respx.post(CREATE_URL).mock(side_effect=_capture)
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "succeeded"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response("__DR_SANDBOX_RESULT__:1"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run(
+            "_return = 1",
+            externals={"f": lambda: None},
+        )
+
+    assert result.return_value == 1
+    assert captured["body"] is not None
+
+
+def test_resolve_sandbox_request_auth_prefers_request_headers() -> None:
+    from datarobot_genai.drtools.core.auth import set_request_headers
+
+    set_request_headers(
+        {
+            "authorization": "Bearer header-token",
+            "x-datarobot-api-key": "header-token",
+        }
+    )
+    auth = resolve_sandbox_request_auth("fallback-token")
+    assert auth.authorization == "Bearer header-token"
+    assert auth.x_datarobot_api_key == "header-token"
+
+
+def test_resolve_sandbox_request_auth_falls_back_to_token() -> None:
+    from datarobot_genai.drtools.core.auth import set_request_headers
+
+    set_request_headers({})
+    auth = resolve_sandbox_request_auth("fallback-token")
+    assert auth.authorization == "Bearer fallback-token"
+    assert auth.x_datarobot_api_key == "fallback-token"
+
+
+@respx.mock
+async def test_submit_forwards_request_auth_env_vars() -> None:
+    captured: dict[str, Any] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _create_response()
+
+    respx.post(CREATE_URL).mock(side_effect=_capture)
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "succeeded"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response("__DR_SANDBOX_RESULT__:1"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
     sb = DataRobotWorkloadSandbox(
         image="dr-sandbox",
         datarobot_endpoint=API_BASE,
         datarobot_api_token="t",
+        request_auth=SandboxRequestAuth(
+            authorization="Bearer caller-token",
+            x_datarobot_api_key="caller-token",
+        ),
     )
-    with pytest.raises(NotImplementedError):
-        await sb.run("_return = 1", externals={"f": lambda: None})
+    async with httpx.AsyncClient() as client:
+        sb._http_client = client
+        await sb.run("_return = 1")
+
+    env = {
+        item["name"]: item["value"]
+        for item in captured["body"]["artifact"]["spec"]["containerGroups"][0]["containers"][0][
+            "environmentVars"
+        ]
+    }
+    assert env[SANDBOX_AUTHORIZATION_ENV] == "Bearer caller-token"
+    assert env[SANDBOX_API_KEY_ENV] == "caller-token"
 
 
 @respx.mock
@@ -427,3 +510,114 @@ def test_security_context_override_honored() -> None:
     payload = sb._build_workload_payload("x = 1", None, timeout_s=30.0)
     sc = payload["artifact"]["spec"]["containerGroups"][0]["containers"][0]["securityContext"]
     assert sc["readOnlyRootFilesystem"] is False
+
+
+def test_derive_workload_base_preserves_absolute_endpoint() -> None:
+    assert (
+        DataRobotWorkloadSandbox._derive_workload_base("https://staging.datarobot.com/api/v2")
+        == "https://staging.datarobot.com/api/v2"
+    )
+    assert (
+        DataRobotWorkloadSandbox._derive_workload_base("https://staging.datarobot.com")
+        == "https://staging.datarobot.com/api/v2"
+    )
+
+
+def test_derive_workload_base_path_only_uses_public_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+
+    sb = DataRobotWorkloadSandbox(
+        image="dr-sandbox",
+        datarobot_endpoint="/api/v2",
+        datarobot_api_token="t",
+    )
+    assert sb.workload_api_base == "https://staging.datarobot.com/api/v2"
+    assert sb._workloads_url() == "https://staging.datarobot.com/api/v2/console/workloads/"
+    assert (
+        sb._logs_url(WORKLOAD_ID)
+        == f"https://staging.datarobot.com/api/v2/otel/workload/{WORKLOAD_ID}/logs/"
+    )
+
+
+def test_derive_workload_base_path_only_without_absolute_env_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATAROBOT_PUBLIC_API_ENDPOINT", raising=False)
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "/api/v2")
+
+    with pytest.raises(SandboxError, match="no host"):
+        DataRobotWorkloadSandbox(
+            image="dr-sandbox",
+            datarobot_endpoint="/api/v2",
+            datarobot_api_token="t",
+        )
+
+
+@respx.mock
+async def test_path_only_endpoint_posts_to_resolved_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging_base = "https://staging.datarobot.com/api/v2"
+    create_url = f"{staging_base}/console/workloads/"
+    get_url = f"{staging_base}/console/workloads/{WORKLOAD_ID}"
+    delete_url = f"{staging_base}/console/workloads/{WORKLOAD_ID}"
+    logs_url = f"{staging_base}/otel/workload/{WORKLOAD_ID}/logs/"
+
+    monkeypatch.setenv("DATAROBOT_PUBLIC_API_ENDPOINT", staging_base)
+    monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+
+    submit = respx.post(create_url).mock(return_value=_create_response())
+    respx.get(get_url).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "succeeded"})
+    )
+    respx.get(logs_url).mock(return_value=_logs_response("__DR_SANDBOX_RESULT__:9"))
+    respx.delete(delete_url).mock(return_value=httpx.Response(204))
+
+    sb = DataRobotWorkloadSandbox(
+        image="datarobotdev/datarobot-user-models:public_dropin_environments_dr_mcp_execute_sandbox_minimal_latest",
+        datarobot_endpoint="/api/v2",
+        datarobot_api_token="test-token",
+    )
+    async with httpx.AsyncClient() as client:
+        sb._http_client = client
+        result = await sb.run("_return = 9")
+
+    assert result.return_value == 9
+    assert submit.called
+
+
+@pytest.mark.asyncio
+async def test_sandbox_provider_uses_remote_workload() -> None:
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch
+
+    from datarobot_genai.drtools.sandbox import SandboxResult
+    from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandboxProvider
+
+    provider = DataRobotWorkloadSandboxProvider()
+    mock_result = SandboxResult(
+        stdout="",
+        stderr="",
+        return_value=7,
+        duration_s=0.1,
+        exit_code=0,
+    )
+
+    async def echo(_tool: str, _params: dict) -> str:
+        return "called"
+
+    with patch(
+        "datarobot_genai.drtools.sandbox.workload.run_request_scoped",
+        new=AsyncMock(return_value=mock_result),
+    ) as mock_run:
+        result = await provider.run(
+            "_return = 7",
+            external_functions={"call_tool": echo},
+        )
+
+    assert result == 7
+    mock_run.assert_awaited_once()

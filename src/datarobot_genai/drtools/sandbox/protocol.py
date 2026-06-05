@@ -32,10 +32,25 @@ body would inevitably drift from the image copy).
 """
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 # Final stdout line emitted by the container runner: ``<marker><json>``.
 RESULT_MARKER = "__DR_SANDBOX_RESULT__:"
+
+# Request-scoped auth the MCP host forwards into the container so in-sandbox
+# ``call_tool`` can authenticate back to the MCP server with the same headers
+# the original caller supplied.
+SANDBOX_AUTHORIZATION_ENV = "DR_SANDBOX_AUTHORIZATION"
+SANDBOX_API_KEY_ENV = "DR_SANDBOX_X_DATAROBOT_API_KEY"
+
+
+@dataclass(frozen=True, slots=True)
+class SandboxRequestAuth:
+    """Authorization headers forwarded from the MCP request into the container."""
+
+    authorization: str
+    x_datarobot_api_key: str
 
 # Exit code the runner uses when its in-process SIGALRM cap fires before the
 # caller / workload-api timeout. Surfaced by the caller as ``SandboxTimeout``.

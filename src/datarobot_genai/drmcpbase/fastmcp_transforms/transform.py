@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
+from fastmcp.experimental.transforms.code_mode import SandboxProvider
 from fastmcp.server.transforms import GetToolNext
 from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
@@ -36,7 +37,7 @@ class DataRobotMCPCatalogTransform(CodeMode):
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         ctx = self._request_context()
-        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
+        if ctx.mode is MCPRequestMode.CODE:
             return await super().transform_tools(tools)
         if ctx.tool_allowlist is None:
             return tools
@@ -50,13 +51,20 @@ class DataRobotMCPCatalogTransform(CodeMode):
         version: VersionSpec | None = None,
     ) -> Tool | None:
         ctx = self._request_context()
-        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
+        if ctx.mode is MCPRequestMode.CODE:
             return await super().get_tool(name, call_next, version=version)
         if ctx.tool_allowlist is not None and not is_tool_name_allowed(name, ctx.tool_allowlist):
             return None
         return await call_next(name, version=version)
 
 
-def register_mcp_catalog_transform(mcp: Any) -> None:
-    mcp.add_transform(DataRobotMCPCatalogTransform())
+def register_mcp_catalog_transform(
+    mcp: Any,
+    *,
+    sandbox_provider: SandboxProvider | None = None,
+) -> None:
+    kwargs: dict[str, Any] = {}
+    if sandbox_provider is not None:
+        kwargs["sandbox_provider"] = sandbox_provider
+    mcp.add_transform(DataRobotMCPCatalogTransform(**kwargs))
     logger.info("DataRobot MCP catalog transform registered successfully")

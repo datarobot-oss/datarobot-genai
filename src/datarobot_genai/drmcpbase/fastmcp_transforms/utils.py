@@ -49,7 +49,7 @@ def get_header_case_insensitive(headers: Mapping[str, str], name: str) -> str | 
 
 class MCPRequestMode(Enum):
     TOOLS = auto()
-    CODE_EXECUTE = auto()
+    CODE = auto()
 
     @classmethod
     def from_headers(cls, headers: Mapping[str, str]) -> "MCPRequestMode":

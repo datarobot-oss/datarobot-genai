@@ -142,8 +142,13 @@ drmcpbase = [
     "datarobot>=3.10.0,<4.0.0",
 ]
 
+# codemode: Monty in-process sandbox for FastMCP CodeMode (local dev / tests).
+codemode = [
+    "fastmcp[code-mode]>=3.2.0,<4.0.0",
+]
+
 # drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.
-drmcp = drmcpbase + drtools + [
+drmcp = drmcpbase + drtools + codemode + [
     "requests>=2.32.4,<3.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",
@@ -171,6 +176,7 @@ extras_require = {
     "auth": auth,
     "eval": eval_deps,
     "drmcpbase": drmcpbase,
+    "codemode": codemode,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
