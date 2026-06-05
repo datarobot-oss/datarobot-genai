@@ -14,7 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
 
 ## 0.15.105
-- `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend.
+- `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
+- `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`, which now re-exports it) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
 
 ## 0.15.104
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.

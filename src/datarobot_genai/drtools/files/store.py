@@ -38,8 +38,8 @@ from typing import runtime_checkable
 import datarobot as dr
 from datarobot.errors import ClientError
 
+from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +63,24 @@ class _NamedBytesIO(io.BytesIO):
 class BlobRef:
     """A lightweight, serializable handle to a stored blob.
 
-    ``files_id`` is the durable handle (the DataRobot Files container id). The
-    remaining fields are advisory metadata for callers/UX.
+    Every field is durably round-tripped by the Files API, so a ref returned by
+    :meth:`BlobStore.put` and the same blob's ref returned by
+    :meth:`BlobStore.list` compare equal:
+
+    - ``files_id`` — the durable handle (the DataRobot Files container id).
+    - ``name`` — the stored container name.
+    - ``tags`` — the stored tags (a ``tuple`` so the ref stays hashable).
+
+    Note: byte size and MIME content-type are intentionally *not* fields. The
+    Files API does not persist them on the container (and ``search_catalog``
+    never returns them), so they could not be populated symmetrically by
+    ``list``. Callers that need a content-type should record it themselves
+    (e.g. a panel manifest); see ``content_type`` on :meth:`BlobStore.put`.
     """
 
     files_id: str
     name: str
-    content_type: str | None = None
-    size: int | None = None
+    tags: tuple[str, ...] = ()
 
 
 @runtime_checkable
@@ -85,7 +95,12 @@ class BlobStore(Protocol):
         content_type: str | None = None,
         tags: list[str] | None = None,
     ) -> BlobRef:
-        """Store ``data`` and return a handle to it."""
+        """Store ``data`` and return a handle to it.
+
+        ``content_type`` is advisory: the Files backend does not persist it, so
+        it is not reflected on the returned :class:`BlobRef`. Callers that need
+        it should record it alongside their own metadata.
+        """
         ...
 
     async def get(self, ref: BlobRef | str) -> bytes:
@@ -112,6 +127,19 @@ def _files_id(ref: BlobRef | str) -> str:
     return ref.files_id if isinstance(ref, BlobRef) else ref
 
 
+def _blob_ref(item: object, *, default_name: str = "") -> BlobRef:
+    """Build a :class:`BlobRef` from a Files SDK object (``Files`` or catalog entry).
+
+    Shared by ``put`` and ``list`` so both paths map the same durable fields the
+    same way, keeping the two refs for a given blob equal.
+    """
+    return BlobRef(
+        files_id=getattr(item, "id"),
+        name=getattr(item, "name", None) or getattr(item, "catalog_name", None) or default_name,
+        tags=tuple(getattr(item, "tags", None) or ()),
+    )
+
+
 class DataRobotFilesBlobStore:
     """:class:`BlobStore` backed by the DataRobot Files API (``datarobot.models.Files``).
 
@@ -132,6 +160,7 @@ class DataRobotFilesBlobStore:
         content_type: str | None = None,
         tags: list[str] | None = None,
     ) -> BlobRef:
+        # content_type is advisory only — the Files API has no field for it.
         def _upload() -> dr.models.Files:
             buf = _NamedBytesIO(data, name)
             # use_archive_contents=False: store the payload as-is, never auto-extract.
@@ -147,12 +176,7 @@ class DataRobotFilesBlobStore:
             except ClientError as exc:
                 raise_tool_error_for_client_error(exc)
         logger.debug("Stored blob %s (name=%s, %d bytes)", files.id, name, len(data))
-        return BlobRef(
-            files_id=files.id,
-            name=getattr(files, "name", name),
-            content_type=content_type,
-            size=len(data),
-        )
+        return _blob_ref(files, default_name=name)
 
     async def get(self, ref: BlobRef | str) -> bytes:
         files_id = _files_id(ref)
@@ -185,7 +209,7 @@ class DataRobotFilesBlobStore:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> list[BlobRef]:
-        def _search() -> list:
+        def _search() -> list[object]:
             return dr.models.Files.search_catalog(
                 search=search,
                 tags=tags,
@@ -198,10 +222,11 @@ class DataRobotFilesBlobStore:
                 results = await asyncio.to_thread(_search)
             except ClientError as exc:
                 raise_tool_error_for_client_error(exc)
-        return [
-            BlobRef(
-                files_id=item.id,
-                name=getattr(item, "name", None) or getattr(item, "catalog_name", "") or "",
+        if limit and len(results) >= limit:
+            # The Files API caps each page at ``limit``; more may exist. Callers
+            # that need them must page via ``offset``.
+            logger.debug(
+                "list() hit the page limit of %d; additional blobs may exist (use offset to page)",
+                limit,
             )
-            for item in results
-        ]
+        return [_blob_ref(item) for item in results]

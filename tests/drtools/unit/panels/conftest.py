@@ -39,9 +39,10 @@ class FakeBlobStore:
         content_type: str | None = None,
         tags: list[str] | None = None,
     ) -> BlobRef:
+        # content_type is advisory and not persisted (mirrors the real backend).
         self._counter += 1
         files_id = f"blob{self._counter}"
-        ref = BlobRef(files_id=files_id, name=name, content_type=content_type, size=len(data))
+        ref = BlobRef(files_id=files_id, name=name, tags=tuple(tags or []))
         self.blobs[files_id] = (data, ref, set(tags or []))
         return ref
 
