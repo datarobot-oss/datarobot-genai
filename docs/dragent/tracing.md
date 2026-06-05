@@ -26,7 +26,7 @@ Two independent span sources reach DataRobot, each wired through its own switch:
 - **Framework auto-instrumentor spans** — spans emitted by `opentelemetry-instrumentation-crewai`, `-langchain`, `-llamaindex`, and `-openai`. Enabled by calling `instrument(framework=...)` from your own code.
 - **Mem0 memory spans** — `update_memory`, `search_memory`, and `delete_memory` spans emitted by the `dr_mem0_memory` NAT provider when `streaming_memory_agent` / `auto_memory_agent` store or retrieve long-term memory. Enabled automatically once the OTel SDK bootstrap from `instrument()` is active (same env vars as above); no extra YAML config.
 
-When both the NAT exporter and SDK bootstrap are active, `datarobot_otelcollector` mirrors NAT span hierarchy into the OTel SDK context so memory spans nest under the active workflow trace instead of exporting as a separate tree.
+When both the NAT exporter and SDK bootstrap are active, `datarobot_otelcollector` mirrors NAT span hierarchy into the OTel SDK context and the SDK bootstrap wraps the global `TracerProvider` so framework, HTTP, and memory spans nest under the active workflow trace instead of exporting as separate trees.
 
 You generally want both NAT lifecycle and framework spans; mem0 spans appear automatically when memory is configured and tracing is enabled.
 
@@ -90,5 +90,5 @@ The repo ships a minimal reproducer at [`e2e-tests/dragent/base/workflow-tracing
 
 - **Data Exploration tab is empty**: Confirm the three environment variables in the table above are set in the deployment. Both sides silently skip when any is missing.
 - **NAT lifecycle spans appear but framework spans don't**: `instrument(framework=...)` was not called, or was called after the framework imported. Move the call to the top of `register.py`.
-- **Memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py`. The exporter bridges NAT context into the SDK; without it, memory spans only join the workflow trace via a best-effort `workflow_trace_id` fallback.
+- **Framework or memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py` before the framework imports. The exporter bridges NAT context into the SDK and the bootstrap wraps the global `TracerProvider` so LangChain/LangGraph, HTTP `POST`, and memory spans share the active workflow trace.
 - **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.

@@ -109,14 +109,21 @@ def reset_nat_span_context(*, run_id: str | None = None) -> None:
     _local_parent_stack.set([])
 
 
-def _current_nat_parent_span_context() -> SpanContext | None:
+def _stack_for_current_run() -> list[NatSpanRef]:
     key = _workflow_run_id_from_nat()
-    stack: list[NatSpanRef] | None
     if key:
         with _lock:
-            stack = list(_run_parent_stacks.get(key, ()))
-    else:
-        stack = list(_local_parent_stack.get())
+            return list(_run_parent_stacks.get(key, ()))
+
+    with _lock:
+        if len(_run_parent_stacks) == 1:
+            return list(next(iter(_run_parent_stacks.values())))
+
+    return list(_local_parent_stack.get())
+
+
+def _current_nat_parent_span_context() -> SpanContext | None:
+    stack = _stack_for_current_run()
 
     if not stack:
         return None

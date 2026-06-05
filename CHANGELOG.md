@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.110
 - `nat/datarobot_mem0_memory`: emit OpenTelemetry GenAI memory spans (`update_memory`, `search_memory`, `delete_memory`) for Mem0/DataRobot Memory Service access through `DRMem0Editor`, with `gen_ai.memory.store.*`, query/result counts, and per-user scope attributes. Spans export through the same OTel SDK bootstrap used by `instrument()` in `register.py`.
 - `dragent/datarobot_otelcollector`: bridge NAT intermediate-step span context into the OTel SDK so memory and framework spans share the workflow trace instead of exporting as a separate tree. Falls back to NAT `workflow_trace_id` when the exporter bridge is unavailable.
+- `core/telemetry_nat_tracer`: patch the SDK `TracerProvider` installed by `bootstrap_otel_provider_for_datarobot()` so LangChain/LangGraph, HTTP client, and other auto-instrumentor spans join the active NAT workflow trace. Adds a single-active-run fallback when NAT `Context` is unavailable in framework worker threads.
 
 ## 0.15.109
 - `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` (workload-api backend) plus the `execute_code` function; credentials come from the request/config helpers (not `os.environ`), container stderr is surfaced from OTEL logs, and the security context is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`.

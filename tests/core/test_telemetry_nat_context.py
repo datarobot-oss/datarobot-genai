@@ -145,6 +145,40 @@ def test_trace_memory_operation_fallback_uses_workflow_trace_id(
     assert span.context.trace_id == workflow_trace_id
 
 
+def test_single_active_run_fallback_without_nat_context(
+    memory_span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "run-only"
+    trace_id = uuid.uuid4().int
+    parent_span_id = uuid.uuid4().int >> 64
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_run_id_from_nat",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_trace_id_from_nat",
+        lambda: None,
+    )
+
+    telemetry_nat_context.push_nat_span_context(
+        trace_id=trace_id,
+        span_id=parent_span_id,
+        run_id=run_id,
+    )
+    try:
+        with telemetry_memory.trace_memory_operation("search_memory", store_name="mem0"):
+            pass
+    finally:
+        telemetry_nat_context.pop_nat_span_context(run_id=run_id)
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.context.trace_id == trace_id
+    assert span.parent.span_id == parent_span_id
+
+
 def test_run_id_stack_is_visible_from_memory_context(
     memory_span_exporter: InMemorySpanExporter,
     monkeypatch: pytest.MonkeyPatch,
