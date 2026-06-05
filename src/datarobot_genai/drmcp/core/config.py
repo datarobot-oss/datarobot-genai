@@ -22,6 +22,7 @@ from datarobot.core.config import PulumiConfigSettingsSource
 from fastmcp.settings import DuplicateBehavior
 from pydantic import AliasChoices
 from pydantic import Field
+from pydantic import ValidationInfo
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
@@ -284,6 +285,21 @@ class MCPServerConfig(BaseSettings):
         ),
         description="Standard OTel OTLP headers. Takes priority over entity_id construction.",
     )
+
+    @field_validator("otel_exporter_otlp_headers", mode="before")
+    @classmethod
+    def _assemble_otel_headers(cls, v: object, info: ValidationInfo) -> object:
+        if v:
+            return v
+        entity_id = (info.data or {}).get("otel_entity_id", "")
+        api_token = os.environ.get("DATAROBOT_API_TOKEN", "")
+        if entity_id and api_token:
+            return (
+                f"x-datarobot-entity-id={entity_id},"
+                f"x-datarobot-api-key={api_token}"
+            )
+        return v
+
     mcp_server_register_dynamic_tools_on_startup: bool = Field(
         default=False,
         validation_alias=AliasChoices(

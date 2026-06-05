@@ -485,6 +485,69 @@ class TestOtelStandardFields:
             assert config.otel_exporter_otlp_headers == "x-key=rt123"
 
 
+class TestOtelHeaderAssembly:
+    """Test dynamic OTel header assembly from entity_id + API token."""
+
+    def test_assembles_header_from_entity_id_and_token(self) -> None:
+        """When OTEL_EXPORTER_OTLP_HEADERS is empty but OTEL_ENTITY_ID and
+        DATAROBOT_API_TOKEN are set, the header is assembled dynamically."""
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_ENTITY_ID": "experiment_container-abc123",
+                "DATAROBOT_API_TOKEN": "fresh-token-xyz",
+            },
+            clear=True,
+        ):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.otel_exporter_otlp_headers == (
+                "x-datarobot-entity-id=experiment_container-abc123,"
+                "x-datarobot-api-key=fresh-token-xyz"
+            )
+            config_module._config = None
+
+    def test_explicit_headers_not_overwritten(self) -> None:
+        """When OTEL_EXPORTER_OTLP_HEADERS is already set, it is used as-is."""
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-custom=platform-injected",
+                "OTEL_ENTITY_ID": "experiment_container-abc123",
+                "DATAROBOT_API_TOKEN": "fresh-token-xyz",
+            },
+            clear=True,
+        ):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.otel_exporter_otlp_headers == "x-custom=platform-injected"
+            config_module._config = None
+
+    def test_no_assembly_without_entity_id(self) -> None:
+        """When OTEL_ENTITY_ID is missing, no header is assembled."""
+        with patch.dict(
+            os.environ,
+            {"DATAROBOT_API_TOKEN": "fresh-token-xyz"},
+            clear=True,
+        ):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.otel_exporter_otlp_headers == ""
+            config_module._config = None
+
+    def test_no_assembly_without_api_token(self) -> None:
+        """When DATAROBOT_API_TOKEN is missing, no header is assembled."""
+        with patch.dict(
+            os.environ,
+            {"OTEL_ENTITY_ID": "experiment_container-abc123"},
+            clear=True,
+        ):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.otel_exporter_otlp_headers == ""
+            config_module._config = None
+
+
 class TestPulumiConfigSource:
     """Test that MCPServerConfig reads from pulumi_config.json."""
 
