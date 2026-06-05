@@ -85,6 +85,13 @@ class DataRobotOTLPSpanAdapterExporter(OTLPSpanAdapterExporter):
     workflow span.
     """
 
+    def _workflow_run_id(self) -> str | None:
+        try:
+            return self._context_state.workflow_run_id.get()
+        except Exception:
+            logger.debug("Unable to read workflow run id for NAT span bridge", exc_info=True)
+            return None
+
     @staticmethod
     def _span_has_bridge_context(span: object | None) -> bool:
         context = getattr(span, "context", None)
@@ -92,19 +99,27 @@ class DataRobotOTLPSpanAdapterExporter(OTLPSpanAdapterExporter):
 
     def _process_start_event(self, event: IntermediateStep) -> None:
         super()._process_start_event(event)
+        run_id = self._workflow_run_id()
         span = self._span_stack.get(event.UUID)
-        if self._span_has_bridge_context(span):
-            push_nat_span_context(trace_id=span.context.trace_id, span_id=span.context.span_id)
+        if run_id and self._span_has_bridge_context(span):
+            push_nat_span_context(
+                trace_id=span.context.trace_id,
+                span_id=span.context.span_id,
+                run_id=run_id,
+            )
 
     def _process_end_event(self, event: IntermediateStep) -> None:
+        run_id = self._workflow_run_id()
         span = self._span_stack.get(event.UUID)
-        should_pop = self._span_has_bridge_context(span)
+        should_pop = bool(run_id and self._span_has_bridge_context(span))
         super()._process_end_event(event)
         if should_pop:
-            pop_nat_span_context()
+            pop_nat_span_context(run_id=run_id)
 
     def on_complete(self) -> None:
-        reset_nat_span_context()
+        run_id = self._workflow_run_id()
+        if run_id:
+            reset_nat_span_context(run_id=run_id)
         super().on_complete()
 
 

@@ -143,3 +143,58 @@ def test_trace_memory_operation_fallback_uses_workflow_trace_id(
 
     span = memory_span_exporter.get_finished_spans()[0]
     assert span.context.trace_id == workflow_trace_id
+
+
+def test_run_id_stack_is_visible_from_memory_context(
+    memory_span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "run-123"
+    trace_id = uuid.uuid4().int
+    parent_span_id = uuid.uuid4().int >> 64
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_run_id_from_nat",
+        lambda: run_id,
+    )
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_trace_id_from_nat",
+        lambda: None,
+    )
+
+    telemetry_nat_context.push_nat_span_context(
+        trace_id=trace_id,
+        span_id=parent_span_id,
+        run_id=run_id,
+    )
+    try:
+        with telemetry_memory.trace_memory_operation("delete_memory", store_name="mem0"):
+            pass
+    finally:
+        telemetry_nat_context.pop_nat_span_context(run_id=run_id)
+
+    span = memory_span_exporter.get_finished_spans()[0]
+    assert span.context.trace_id == trace_id
+    assert span.parent.span_id == parent_span_id
+
+
+def test_use_nat_workflow_trace_context_overrides_unrelated_active_span(
+    memory_span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow_trace_id = uuid.uuid4().int
+    monkeypatch.setattr(
+        telemetry_nat_context,
+        "_workflow_trace_id_from_nat",
+        lambda: workflow_trace_id,
+    )
+
+    with trace.get_tracer("other").start_as_current_span("framework-span"):
+        with telemetry_nat_context.use_nat_workflow_trace_context():
+            with trace.get_tracer("test").start_as_current_span("search_memory"):
+                pass
+
+    spans = {span.name: span for span in memory_span_exporter.get_finished_spans()}
+    span = spans["search_memory"]
+    assert span.context.trace_id == workflow_trace_id

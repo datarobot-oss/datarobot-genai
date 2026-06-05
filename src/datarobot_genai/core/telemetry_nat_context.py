@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,34 +34,90 @@ logger = logging.getLogger(__name__)
 
 NatSpanRef = tuple[int, int]
 
-# Track NAT span hierarchy without mutating OTel context in the exporter callback.
-# SDK spans attach this parent locally inside use_nat_workflow_trace_context().
-_nat_parent_stack: ContextVar[list[NatSpanRef]] = ContextVar("nat_parent_stack", default=[])
+_lock = threading.Lock()
+# NAT exporter callbacks and memory ops can run in different asyncio tasks.
+# Key stacks by workflow_run_id so both sides see the same active NAT span.
+_run_parent_stacks: dict[str, list[NatSpanRef]] = {}
+
+# Fallback for unit tests that push/pop without a NAT workflow run id.
+_local_parent_stack: ContextVar[list[NatSpanRef]] = ContextVar("nat_local_parent_stack", default=[])
 
 
-def push_nat_span_context(*, trace_id: int, span_id: int) -> None:
-    """Record the active NAT span as the SDK parent for this execution context."""
-    stack = list(_nat_parent_stack.get())
+def _workflow_run_id_from_nat() -> str | None:
+    try:
+        from nat.builder.context import Context
+
+        return Context.get().workflow_run_id
+    except Exception:
+        logger.debug("Unable to read NAT workflow run id", exc_info=True)
+        return None
+
+
+def _stack_for_run(run_id: str | None) -> list[NatSpanRef] | None:
+    if not run_id:
+        return None
+    with _lock:
+        return _run_parent_stacks.setdefault(run_id, [])
+
+
+def push_nat_span_context(
+    *,
+    trace_id: int,
+    span_id: int,
+    run_id: str | None = None,
+) -> None:
+    """Record the active NAT span as the SDK parent for a workflow run."""
+    key = run_id or _workflow_run_id_from_nat()
+    if key:
+        stack = _stack_for_run(key)
+        assert stack is not None
+        stack.append((trace_id, span_id))
+        return
+
+    stack = list(_local_parent_stack.get())
     stack.append((trace_id, span_id))
-    _nat_parent_stack.set(stack)
+    _local_parent_stack.set(stack)
 
 
-def pop_nat_span_context() -> None:
-    """Remove one NAT span level from the current execution context."""
-    stack = list(_nat_parent_stack.get())
+def pop_nat_span_context(*, run_id: str | None = None) -> None:
+    """Remove one NAT span level for a workflow run."""
+    key = run_id or _workflow_run_id_from_nat()
+    if key:
+        with _lock:
+            stack = _run_parent_stacks.get(key)
+            if not stack:
+                return
+            stack.pop()
+            if not stack:
+                _run_parent_stacks.pop(key, None)
+        return
+
+    stack = list(_local_parent_stack.get())
     if not stack:
         return
     stack.pop()
-    _nat_parent_stack.set(stack)
+    _local_parent_stack.set(stack)
 
 
-def reset_nat_span_context() -> None:
-    """Clear any remaining NAT span levels for the current execution context."""
-    _nat_parent_stack.set([])
+def reset_nat_span_context(*, run_id: str | None = None) -> None:
+    """Clear NAT span levels for one workflow run (or the local fallback stack)."""
+    key = run_id or _workflow_run_id_from_nat()
+    if key:
+        with _lock:
+            _run_parent_stacks.pop(key, None)
+        return
+    _local_parent_stack.set([])
 
 
 def _current_nat_parent_span_context() -> SpanContext | None:
-    stack = _nat_parent_stack.get()
+    key = _workflow_run_id_from_nat()
+    stack: list[NatSpanRef] | None
+    if key:
+        with _lock:
+            stack = list(_run_parent_stacks.get(key, ()))
+    else:
+        stack = list(_local_parent_stack.get())
+
     if not stack:
         return None
     trace_id, span_id = stack[-1]
@@ -96,41 +153,42 @@ def _attach_span_context(span_context: SpanContext) -> Any:
     return otel_context.attach(trace.set_span_in_context(NonRecordingSpan(span_context)))
 
 
-@contextmanager
-def use_nat_workflow_trace_context() -> Iterator[None]:
-    """Ensure SDK spans join the active NAT workflow trace when possible.
-
-    When ``datarobot_otelcollector`` is active it keeps a NAT span stack aligned
-    with intermediate steps. This helper attaches that parent (or falls back to
-    ``workflow_trace_id``) only for the duration of the caller's scope so OTel
-    context tokens are not leaked across async boundaries.
-    """
-    current = trace.get_current_span()
-    if current.get_span_context().is_valid:
-        yield
-        return
-
+def _resolve_workflow_parent_context() -> SpanContext | None:
     parent_context = _current_nat_parent_span_context()
     if parent_context is not None:
-        token = _attach_span_context(parent_context)
-        try:
-            yield
-        finally:
-            _safe_detach(token)
-        return
+        return parent_context
 
     trace_id = _workflow_trace_id_from_nat()
     if trace_id is None:
-        yield
-        return
+        return None
 
-    fallback_context = SpanContext(
+    return SpanContext(
         trace_id=trace_id,
         span_id=uuid.uuid4().int >> 64,
         is_remote=True,
         trace_flags=TraceFlags(TraceFlags.SAMPLED),
     )
-    token = _attach_span_context(fallback_context)
+
+
+@contextmanager
+def use_nat_workflow_trace_context() -> Iterator[None]:
+    """Ensure SDK spans join the active NAT workflow trace when possible.
+
+    When ``datarobot_otelcollector`` is active it keeps a per-run NAT span stack
+    aligned with intermediate steps. This helper attaches that parent (or falls
+    back to ``workflow_trace_id``) only for the duration of the caller's scope.
+    """
+    parent_context = _resolve_workflow_parent_context()
+    if parent_context is None:
+        yield
+        return
+
+    current = trace.get_current_span().get_span_context()
+    if current.is_valid and current.trace_id == parent_context.trace_id:
+        yield
+        return
+
+    token = _attach_span_context(parent_context)
     try:
         yield
     finally:
