@@ -182,6 +182,9 @@ max-args = 8
 [tool.pytest.ini_options]
 filterwarnings = []
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that exercise the real DataRobot API / SDK over the network (opt-in)",
+]
 
 [tool.coverage.run]
 source = ["datarobot_genai"]
@@ -209,5 +212,7 @@ drmcpbase_forbidden = [
 exclude_lines = [
     "raise NotImplementedError",
     "pass",
+    # Abstract Protocol/stub bodies — never executed.
+    "^\\s*\\.\\.\\.\\s*$",
 ]
 fail_under = 80
