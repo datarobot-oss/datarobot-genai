@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.112
+- Upgrade github actions to release 0.0.9
+
 ## 0.15.111
 - Bump `datarobot-moderations` to 11.2.33 to fix a bug with `ModerationIterator`
 
