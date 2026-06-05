@@ -1,0 +1,73 @@
+cases:
+  - name: primary-test
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      WORKFLOW_FILE: workflow-reasoning.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+        - base
+
+  - name: extended-llmgw
+    env:
+      LLM: llmgw
+      WORKFLOW_FILE: workflow.yaml
+    tests:
+      - ./dragent_tests/test_tools.py
+    matrix:
+      LLM_DEFAULT_MODEL:
+        - datarobot/azure/gpt-5-2-2025-12-11
+        - datarobot/anthropic/claude-sonnet-4-6
+        - datarobot/vertex_ai/gemini-3.1-pro-preview
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: deployed-llm
+    env:
+      LLM: deployment
+      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests/test_tools.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: external-llm
+    env:
+      LLM: external
+      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests/test_tools.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: router-llm
+    env:
+      LLM: router
+      WORKFLOW_FILE: workflow-router-fallback-used.yaml
+    tests:
+      - ./dragent_tests/test_tools.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex

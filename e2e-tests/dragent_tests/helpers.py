@@ -34,8 +34,6 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 
 LLM = os.environ.get("LLM")
 
-ALL_TEST_CASES = os.environ.get("ALL_TEST_CASES") == "true"
-
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
 
