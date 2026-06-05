@@ -303,23 +303,50 @@ class TestBridgePulumiOtelEnv:
 
         self._bridge = _bridge_pulumi_otel_env
 
-    def test_reads_from_pulumi_config(self, tmp_path: object) -> None:
+    def test_assembles_headers_from_entity_id_and_token(self, tmp_path: object) -> None:
         import pathlib
 
         tmp = pathlib.Path(str(tmp_path))
         config = {
             "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.com/otel",
-            "OTEL_EXPORTER_OTLP_HEADERS": "x-key=abc",
+            "OTEL_ENTITY_ID": "experiment_container-abc123",
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+        with patch.dict(
+            os.environ, {"DATAROBOT_API_TOKEN": "fresh-token"}, clear=True
+        ), patch(f"{_COMMANDS}.Path") as mock_path_cls:
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://example.com/otel"
-            assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-key=abc"
+            assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (
+                "x-datarobot-entity-id=experiment_container-abc123,"
+                "x-datarobot-api-key=fresh-token"
+            )
 
-    def test_does_not_override_existing_env(self, tmp_path: object) -> None:
+    def test_skips_when_headers_already_set(self, tmp_path: object) -> None:
+        import pathlib
+
+        tmp = pathlib.Path(str(tmp_path))
+        config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.com/otel",
+            "OTEL_ENTITY_ID": "experiment_container-abc123",
+        }
+        (tmp / "pulumi_config.json").write_text(json.dumps(config))
+
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_EXPORTER_OTLP_HEADERS": "x-pre-existing=value",
+                "DATAROBOT_API_TOKEN": "fresh-token",
+            },
+            clear=True,
+        ), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+            mock_path_cls.cwd.return_value = tmp
+            self._bridge()
+            assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-pre-existing=value"
+
+    def test_does_not_override_existing_endpoint(self, tmp_path: object) -> None:
         import pathlib
 
         tmp = pathlib.Path(str(tmp_path))
@@ -340,6 +367,22 @@ class TestBridgePulumiOtelEnv:
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://explicit.com/otel"
 
+    def test_no_header_without_api_token(self, tmp_path: object) -> None:
+        import pathlib
+
+        tmp = pathlib.Path(str(tmp_path))
+        config = {
+            "OTEL_ENTITY_ID": "experiment_container-abc123",
+        }
+        (tmp / "pulumi_config.json").write_text(json.dumps(config))
+
+        with patch.dict(os.environ, {}, clear=True), patch(
+            f"{_COMMANDS}.Path"
+        ) as mock_path_cls:
+            mock_path_cls.cwd.return_value = tmp
+            self._bridge()
+            assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
+
     def test_no_pulumi_config_is_noop(self) -> None:
         import pathlib
         import tempfile
@@ -349,3 +392,4 @@ class TestBridgePulumiOtelEnv:
             mock_path_cls.cwd.return_value = empty_dir
             self._bridge()
             assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in os.environ
+            assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
