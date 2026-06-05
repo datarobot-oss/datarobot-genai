@@ -368,6 +368,8 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
+    # Belt-and-suspenders: mem0 reads MEM0_TELEMETRY at import time.
+    os.environ["MEM0_TELEMETRY"] = "False"
     try:
         from datarobot_genai.core.memory.mem0client import Mem0Client
     except ImportError as exc:
