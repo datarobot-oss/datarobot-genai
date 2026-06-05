@@ -11,14 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Helpers for DataRobot SDK HTTP errors in predictive tools.
-
-The implementation now lives in :mod:`datarobot_genai.drtools.core.client_exceptions`
-so non-predictive domains (e.g. ``files``) can reuse it without depending on
-``predictive``. This module re-exports it for backwards compatibility.
-"""
-
-from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
-
-__all__ = ["raise_tool_error_for_client_error"]
