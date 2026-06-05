@@ -20,7 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drtools/core`: added the `resource_metadata` decorator and `get_registered_resources()` — the MCP-*resource* mirror of `tool_metadata`. Lets drtools declare MCP resources (with a required `uri` plus optional name/title/description/mime_type/tags) without depending on `drmcp`/`fastmcp`, so both DRMCP and global-mcp can discover and register them. The server-side wiring + first panel resources land in a follow-up (MODEL-23663).
 
 ## 0.15.105
-- `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend.
+- `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
+- `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`, which now re-exports it) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
 
 ## 0.15.104
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
