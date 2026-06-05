@@ -862,7 +862,7 @@ async def test_registered_memory_client_sets_store_metadata_for_dr_route(
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
 
     config = DRMem0MemoryClientConfig(
-        memory_space_id="space-42",
+        agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="dr-token",
     )

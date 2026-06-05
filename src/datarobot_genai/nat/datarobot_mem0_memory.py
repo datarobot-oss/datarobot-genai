@@ -429,9 +429,9 @@ async def dr_mem0_memory_client(
             "or set agent_memory_space_id to target the DataRobot mem0 endpoint."
         )
 
-    if config.memory_space_id:
+    if config.agent_memory_space_id:
         store_name = "datarobot-memory"
-        store_id: str | None = config.memory_space_id
+        store_id: str | None = config.agent_memory_space_id
     else:
         store_name = "mem0"
         store_id = config.project_id or config.org_id
