@@ -66,7 +66,7 @@ class UserMCPProxyAuth(httpx.Auth):
         try:
             inbound_request = get_http_request()
             auth_header_in_outbound_request = inbound_request.headers.get(
-                DataRobotBearerHeaderEnum.AUTHORIZATION.get_normalized_header_key()
+                DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_normalized_header_key()
             )
             if auth_header_in_outbound_request:
                 outbound_request.headers["Authorization"] = auth_header_in_outbound_request
@@ -170,7 +170,9 @@ class UserMCPProvider(Provider):
             return []
 
         try:
-            datarobot_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
+            datarobot_token = (
+                DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_from_mcp_request()
+            )
             return await self.datarobot_api_client._list_mcp_deployment_ids(  # type: ignore[union-attr]
                 datarobot_token
             )

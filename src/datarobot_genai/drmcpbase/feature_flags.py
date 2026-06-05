@@ -33,7 +33,9 @@ class FeatureFlagEvaluation:
         datarobot_api_client: DataRobotClientWithAsyncAPI,
     ) -> bool:
         try:
-            datarobot_api_token = DataRobotBearerHeaderEnum.AUTHORIZATION.get_from_mcp_request()
+            datarobot_api_token = (
+                DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_from_mcp_request()
+            )
             return await get_feature_flag_enablement_with_existing_datarobot_client(
                 datarobot_api_client,
                 datarobot_api_token,

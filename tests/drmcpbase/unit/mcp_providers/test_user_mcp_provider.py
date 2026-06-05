@@ -86,12 +86,12 @@ class TestUserMCPProvider:
             yield mock_cls
 
     @pytest.fixture
-    def mock_get_datarobot_bearer_token_from_mcp_request(
+    def mock_get_datarobot_bearer_token_from_x_datarobot_authorization(
         self,
         module_under_test: str,
     ) -> Iterator[Mock]:
         with patch.object(
-            DataRobotBearerHeaderEnum.AUTHORIZATION,
+            DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION,
             "get_from_mcp_request",
         ) as mock_func:
             yield mock_func
@@ -244,7 +244,7 @@ class TestUserMCPProvider:
     async def test_get_user_mcp_deployment_ids(
         self,
         mock_datarobot_api_client: Mock,
-        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization: Mock,
     ) -> None:
         user_mcp_deployment_id = Mock()
         mcp_provider = UserMCPProvider(Mock())
@@ -253,8 +253,10 @@ class TestUserMCPProvider:
 
         outputs = await mcp_provider.get_user_mcp_deployment_ids()
 
-        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
-        mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization.assert_called_once_with()
+        mock_datarobot_api_token = (
+            mock_get_datarobot_bearer_token_from_x_datarobot_authorization.return_value
+        )
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token
         )
@@ -264,7 +266,7 @@ class TestUserMCPProvider:
     async def test_get_user_mcp_deployment_ids_return_empty_with_uninitialized_dr_api_client(
         self,
         mock_datarobot_api_client: Mock,
-        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization: Mock,
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
         mcp_provider.datarobot_api_client = None
@@ -292,7 +294,7 @@ class TestUserMCPProvider:
         | RuntimeError
         | ClientResponseError,
         mock_datarobot_api_client: Mock,
-        mock_get_datarobot_bearer_token_from_mcp_request: Mock,
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization: Mock,
     ) -> None:
         mcp_provider = UserMCPProvider(Mock())
         mcp_provider.datarobot_api_client = mock_datarobot_api_client
@@ -300,8 +302,10 @@ class TestUserMCPProvider:
 
         outputs = await mcp_provider.get_user_mcp_deployment_ids()
 
-        mock_get_datarobot_bearer_token_from_mcp_request.assert_called_once_with()
-        mock_datarobot_api_token = mock_get_datarobot_bearer_token_from_mcp_request.return_value
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization.assert_called_once_with()
+        mock_datarobot_api_token = (
+            mock_get_datarobot_bearer_token_from_x_datarobot_authorization.return_value
+        )
         mock_datarobot_api_client._list_mcp_deployment_ids.assert_called_once_with(
             mock_datarobot_api_token,
         )
@@ -499,7 +503,7 @@ class TestUserMCPProxyAuth:
         auth_header_of_current_request = Mock()
         inbound_request = Mock(
             headers={
-                DataRobotBearerHeaderEnum.AUTHORIZATION.get_normalized_header_key(): auth_header_of_current_request,  # noqa: E501
+                DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_normalized_header_key(): auth_header_of_current_request,  # noqa: E501
             }
         )
         mock_fastmcp_get_http_request.return_value = inbound_request
