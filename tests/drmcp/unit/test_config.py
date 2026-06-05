@@ -490,7 +490,8 @@ class TestOtelHeaderAssembly:
 
     def test_assembles_header_from_entity_id_and_token(self) -> None:
         """When OTEL_EXPORTER_OTLP_HEADERS is empty but OTEL_ENTITY_ID and
-        DATAROBOT_API_TOKEN are set, the header is assembled dynamically."""
+        DATAROBOT_API_TOKEN are set, the header is assembled dynamically.
+        """
         with patch.dict(
             os.environ,
             {
