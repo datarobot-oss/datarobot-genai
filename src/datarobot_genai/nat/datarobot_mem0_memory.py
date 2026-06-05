@@ -19,18 +19,16 @@ interface so ``auto_memory_agent`` can store and retrieve long-term memory.
 
 Backend selection is driven by config:
 
-* ``memory_space_id`` → the DataRobot Memory Service's mem0-compatible API,
-  reached at ``{DATAROBOT_ENDPOINT}/memory/{memory_space_id}/`` and
+* ``agent_memory_space_id`` → the DataRobot Memory Service's mem0-compatible API,
+  reached at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}/`` and
   authenticated with the DataRobot API token. See PBMP-7431 ("Agentic Memory
   Service"), section "Connect to DataRobot memory" / "API Layout".
 * ``api_key`` (or ``MEM0_API_KEY``) → Mem0's hosted SaaS at
-  ``https://api.mem0.ai``. Used when no ``memory_space_id`` is configured.
+  ``https://api.mem0.ai``. Used when no ``agent_memory_space_id`` is configured.
 
 Both routes share the same ``MemoryEditor`` adapter because the DR endpoint
 is API-compatible with mem0 — only the host and auth token differ.
 """
-
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -66,11 +64,23 @@ class Config(DataRobotAppFrameworkBaseSettings):
     """
 
     mem0_api_key: str | None = None
+    agent_memory_space_id: str | None = None
     agent_memory_ttl_seconds: int | None = None
 
 
-def _get_default_mem0_api_key() -> str | None:
-    return Config().mem0_api_key
+def _get_default_memory_backend_config() -> Config:
+    return Config()
+
+
+def _get_default_mem0_api_key_for_memory_backend() -> str | None:
+    config = _get_default_memory_backend_config()
+    if config.agent_memory_space_id:
+        return None
+    return config.mem0_api_key
+
+
+def _get_default_agent_memory_space_id() -> str | None:
+    return _get_default_memory_backend_config().agent_memory_space_id
 
 
 def _get_default_ttl_seconds() -> int | None:
@@ -122,28 +132,28 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 
     Backend selection:
 
-    * If ``memory_space_id`` is set, requests go to the DataRobot Memory
+    * If ``agent_memory_space_id`` is set, requests go to the DataRobot Memory
       Service's mem0-compatible endpoint at
-      ``{datarobot_endpoint}/memory/{memory_space_id}/`` authenticated with
+      ``{datarobot_endpoint}/memory/{agent_memory_space_id}/`` authenticated with
       ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``).
     * Otherwise, ``api_key`` (or ``MEM0_API_KEY``) is used against Mem0's
       hosted SaaS (``host`` defaults to ``https://api.mem0.ai``).
     """
 
     api_key: str | None = Field(
-        default_factory=_get_default_mem0_api_key,
+        default_factory=_get_default_mem0_api_key_for_memory_backend,
         description="Mem0 API key used when targeting Mem0's hosted SaaS.",
     )
     host: str | None = Field(
         default=None,
         description=(
-            "Mem0 base URL for the SaaS backend. Ignored when ``memory_space_id`` is set."
+            "Mem0 base URL for the SaaS backend. Ignored when ``agent_memory_space_id`` is set."
         ),
     )
     org_id: str | None = None
     project_id: str | None = None
-    memory_space_id: str | None = Field(
-        default=None,
+    agent_memory_space_id: str | None = Field(
+        default_factory=_get_default_agent_memory_space_id,
         description=(
             "DataRobot MemorySpace ID. When set, the editor uses the DataRobot "
             "Memory Service's mem0-compatible endpoint instead of Mem0 SaaS. "
@@ -154,14 +164,14 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
         default=None,
         description=(
             "DataRobot API base URL used to build the mem0 endpoint when "
-            "``memory_space_id`` is set (e.g. ``https://app.datarobot.com/api/v2``). "
+            "``agent_memory_space_id`` is set (e.g. ``https://app.datarobot.com/api/v2``). "
             "Defaults to the ``DATAROBOT_ENDPOINT`` env var."
         ),
     )
     datarobot_api_token: str | None = Field(
         default=None,
         description=(
-            "DataRobot API token used when ``memory_space_id`` is set. "
+            "DataRobot API token used when ``agent_memory_space_id`` is set. "
             "Defaults to the ``DATAROBOT_API_TOKEN`` env var."
         ),
     )
@@ -348,10 +358,10 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
 
 
 def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
-    """Build the DataRobot Memory Service mem0 endpoint for a memory space.
+    """Build the DataRobot Memory Service mem0 endpoint for an agent memory space.
 
     Per PBMP-7431 ("API Layout"), the DR memory service exposes a
-    mem0-compatible API at ``{DATAROBOT_ENDPOINT}/memory/{memory_space_id}``.
+    mem0-compatible API at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}``.
 
     No trailing slash: mem0's ``AsyncMemoryClient._validate_api_key`` builds
     its ping URL as ``f"{host}/v1/ping/"`` via raw string concat (it does not
@@ -362,9 +372,9 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     if not base:
         raise RuntimeError(
             "DataRobot endpoint is not set. Configure memory.datarobot_endpoint "
-            "or DATAROBOT_ENDPOINT when using memory_space_id."
+            "or DATAROBOT_ENDPOINT when using agent_memory_space_id."
         )
-    return f"{base.rstrip('/')}/memory/{config.memory_space_id}"
+    return f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}"
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:
@@ -378,7 +388,7 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
             'Install it with `pip install "datarobot-genai[nat,memory]"`.'
         ) from exc
 
-    host = _dr_mem0_endpoint(config) if config.memory_space_id else config.host
+    host = _dr_mem0_endpoint(config) if config.agent_memory_space_id else config.host
     return Mem0Client(
         api_key=api_key,
         host=host,
@@ -391,37 +401,37 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
 ) -> AsyncGenerator[MemoryEditor]:
-    if config.memory_space_id and config.api_key:
+    if config.agent_memory_space_id and config.api_key:
         # These point at different services with different tokens. Silently
         # picking one masks misconfiguration — e.g. a config copied from a
         # Mem0-SaaS deployment that left ``api_key`` populated, or a stray
         # ``MEM0_API_KEY`` in env hydrating ``api_key`` via its default
         # factory. Force the caller to disambiguate.
         raise RuntimeError(
-            "memory_space_id and api_key are mutually exclusive: they target "
+            "agent_memory_space_id and api_key are mutually exclusive: they target "
             "different services (DataRobot Memory Service vs. Mem0 SaaS) with "
             "different auth tokens. Set exactly one. If MEM0_API_KEY is in env, "
-            "either unset it or pass api_key=None explicitly when using memory_space_id."
+            "either unset it or pass api_key=None explicitly when using agent_memory_space_id."
         )
 
-    if config.memory_space_id:
+    if config.agent_memory_space_id:
         api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
         if not api_key:
             raise RuntimeError(
                 "DataRobot API token is not set. Configure memory.datarobot_api_token "
-                "or DATAROBOT_API_TOKEN when using memory_space_id."
+                "or DATAROBOT_API_TOKEN when using agent_memory_space_id."
             )
     elif config.api_key:
         api_key = config.api_key
     else:
         raise RuntimeError(
             "Mem0 API key is not set. Please configure memory.api_key or MEM0_API_KEY, "
-            "or set memory_space_id to target the DataRobot mem0 endpoint."
+            "or set agent_memory_space_id to target the DataRobot mem0 endpoint."
         )
 
-    if config.memory_space_id:
+    if config.agent_memory_space_id:
         store_name = "datarobot-memory"
-        store_id: str | None = config.memory_space_id
+        store_id: str | None = config.agent_memory_space_id
     else:
         store_name = "mem0"
         store_id = config.project_id or config.org_id

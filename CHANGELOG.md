@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.113
+- `nat/datarobot_mem0_memory`: renamed the `memory_space_id` config field to `agent_memory_space_id` (endpoint path follows: `{datarobot_endpoint}/memory/{agent_memory_space_id}`), and added a default factory that reads `AGENT_MEMORY_SPACE_ID` from env via `DataRobotAppFrameworkBaseSettings`. This lets a minimal `workflow.yaml` memory block target the DataRobot Memory Service when the recipe's agent runtime wires the env var, without requiring an explicit field in YAML. Error messages, docstrings, and the mutually-exclusive guardrail against `api_key` were updated to reference the new field name.
+
 ## 0.15.112
 - Upgrade github actions to release 0.0.9
 
