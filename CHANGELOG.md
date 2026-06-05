@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.111
+## 0.15.112
 - `drmcp/core/config`: `MCPServerConfig` assembles `otel_exporter_otlp_headers` dynamically from `OTEL_ENTITY_ID` + `DATAROBOT_API_TOKEN` when the header is not explicitly set, avoiding stale API tokens baked at `pulumi up` time.
 - `dragent/cli/commands`: `_bridge_pulumi_otel_env()` reads `OTEL_ENTITY_ID` from `pulumi_config.json` and assembles OTel headers with the live `DATAROBOT_API_TOKEN`.
+
+## 0.15.111
+- Bump `datarobot-moderations` to 11.2.33 to fix a bug with `ModerationIterator`
 
 ## 0.15.110
 - `nat/datarobot_mem0_memory`: emit OpenTelemetry GenAI memory spans (`update_memory`, `search_memory`, `delete_memory`) for Mem0/DataRobot Memory Service access through `DRMem0Editor`, with `gen_ai.memory.store.*`, query/result counts, and per-user scope attributes. Spans export through the same OTel SDK bootstrap used by `instrument()` in `register.py`.
