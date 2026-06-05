@@ -383,6 +383,26 @@ class TestBridgePulumiOtelEnv:
             self._bridge()
             assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
 
+    def test_falls_back_to_old_baked_headers(self, tmp_path: object) -> None:
+        import pathlib
+
+        tmp = pathlib.Path(str(tmp_path))
+        config = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.com/otel",
+            "OTEL_EXPORTER_OTLP_HEADERS": "x-datarobot-entity-id=experiment_container-abc123,x-datarobot-api-key=old-baked-token",
+        }
+        (tmp / "pulumi_config.json").write_text(json.dumps(config))
+
+        with patch.dict(os.environ, {}, clear=True), patch(
+            f"{_COMMANDS}.Path"
+        ) as mock_path_cls:
+            mock_path_cls.cwd.return_value = tmp
+            self._bridge()
+            assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (
+                "x-datarobot-entity-id=experiment_container-abc123,"
+                "x-datarobot-api-key=old-baked-token"
+            )
+
     def test_no_pulumi_config_is_noop(self) -> None:
         import pathlib
         import tempfile
