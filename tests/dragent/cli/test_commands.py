@@ -313,15 +313,15 @@ class TestBridgePulumiOtelEnv:
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(
-            os.environ, {"DATAROBOT_API_TOKEN": "fresh-token"}, clear=True
-        ), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+        with (
+            patch.dict(os.environ, {"DATAROBOT_API_TOKEN": "fresh-token"}, clear=True),
+            patch(f"{_COMMANDS}.Path") as mock_path_cls,
+        ):
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://example.com/otel"
             assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (
-                "x-datarobot-entity-id=experiment_container-abc123,"
-                "x-datarobot-api-key=fresh-token"
+                "x-datarobot-entity-id=experiment_container-abc123,x-datarobot-api-key=fresh-token"
             )
 
     def test_skips_when_headers_already_set(self, tmp_path: object) -> None:
@@ -334,14 +334,17 @@ class TestBridgePulumiOtelEnv:
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(
-            os.environ,
-            {
-                "OTEL_EXPORTER_OTLP_HEADERS": "x-pre-existing=value",
-                "DATAROBOT_API_TOKEN": "fresh-token",
-            },
-            clear=True,
-        ), patch(f"{_COMMANDS}.Path") as mock_path_cls:
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OTEL_EXPORTER_OTLP_HEADERS": "x-pre-existing=value",
+                    "DATAROBOT_API_TOKEN": "fresh-token",
+                },
+                clear=True,
+            ),
+            patch(f"{_COMMANDS}.Path") as mock_path_cls,
+        ):
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-pre-existing=value"
@@ -376,9 +379,7 @@ class TestBridgePulumiOtelEnv:
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(os.environ, {}, clear=True), patch(
-            f"{_COMMANDS}.Path"
-        ) as mock_path_cls:
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
@@ -389,13 +390,14 @@ class TestBridgePulumiOtelEnv:
         tmp = pathlib.Path(str(tmp_path))
         config = {
             "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.com/otel",
-            "OTEL_EXPORTER_OTLP_HEADERS": "x-datarobot-entity-id=experiment_container-abc123,x-datarobot-api-key=old-baked-token",
+            "OTEL_EXPORTER_OTLP_HEADERS": (
+                "x-datarobot-entity-id=experiment_container-abc123,"
+                "x-datarobot-api-key=old-baked-token"
+            ),
         }
         (tmp / "pulumi_config.json").write_text(json.dumps(config))
 
-        with patch.dict(os.environ, {}, clear=True), patch(
-            f"{_COMMANDS}.Path"
-        ) as mock_path_cls:
+        with patch.dict(os.environ, {}, clear=True), patch(f"{_COMMANDS}.Path") as mock_path_cls:
             mock_path_cls.cwd.return_value = tmp
             self._bridge()
             assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (

@@ -66,8 +66,7 @@ def _bridge_pulumi_otel_env() -> None:
             if entity_id and api_token:
                 os.environ.setdefault(
                     "OTEL_EXPORTER_OTLP_HEADERS",
-                    f"x-datarobot-entity-id={entity_id},"
-                    f"x-datarobot-api-key={api_token}",
+                    f"x-datarobot-entity-id={entity_id},x-datarobot-api-key={api_token}",
                 )
             elif data.get("OTEL_EXPORTER_OTLP_HEADERS"):
                 os.environ.setdefault(

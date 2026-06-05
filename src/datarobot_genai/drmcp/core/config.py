@@ -294,10 +294,7 @@ class MCPServerConfig(BaseSettings):
         entity_id = (info.data or {}).get("otel_entity_id", "")
         api_token = os.environ.get("DATAROBOT_API_TOKEN", "")
         if entity_id and api_token:
-            return (
-                f"x-datarobot-entity-id={entity_id},"
-                f"x-datarobot-api-key={api_token}"
-            )
+            return f"x-datarobot-entity-id={entity_id},x-datarobot-api-key={api_token}"
         return v
 
     mcp_server_register_dynamic_tools_on_startup: bool = Field(
