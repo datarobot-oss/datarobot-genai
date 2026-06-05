@@ -34,7 +34,7 @@ class TestGetTavilyAccessToken:
     async def test_returns_api_key_from_headers(self) -> None:
         """Test getting API key from HTTP headers."""
         with patch(
-            "datarobot_genai.drtools.core.clients.tavily.get_api_key_from_headers",
+            "datarobot_genai.drtools.core.clients.tavily.resolve_secret",
             return_value="test-api-key-123",
         ):
             result = await get_tavily_access_token()
@@ -44,7 +44,7 @@ class TestGetTavilyAccessToken:
     async def test_raises_error_when_missing(self) -> None:
         """Test that missing API key raises ToolError."""
         with patch(
-            "datarobot_genai.drtools.core.clients.tavily.get_api_key_from_headers",
+            "datarobot_genai.drtools.core.clients.tavily.resolve_secret",
             return_value=None,
         ):
             with pytest.raises(ToolError, match="Tavily API key not found"):

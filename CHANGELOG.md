@@ -4,9 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.106
+## 0.15.109
 - `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` (workload-api backend) plus the `execute_code` function; credentials come from the request/config helpers (not `os.environ`), container stderr is surfaced from OTEL logs, and the security context is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`.
 - `drtools.core.feature_flags`: added `is_tool_feature_enabled(flag, *, evaluator)`, the shared tool-gating policy reused by `drmcp` and global-mcp registries.
+
+## 0.15.108
+- `drtools` Atlassian (Jira/Confluence): added `AtlassianAuth` with OAuth Bearer (HTTP) and API token Basic auth (config). Config fields: `ATLASSIAN_API_TOKEN`, optional `ATLASSIAN_EMAIL` and `ATLASSIAN_SITE_URL` for Basic auth (cloud ID from `/_edge/tenant_info`); token alone is treated as a static OAuth Bearer token.
+- Docs: added `docs/drtools/auth-atlassian.md` for Atlassian config auth.
+- Tests: added Atlassian API token Basic auth tests for Jira/Confluence clients.
+
+## 0.15.107
+- `drmcpbase`: MCP catalog transforms live in `datarobot_genai.drmcpbase.fastmcp_transforms` (`DataRobotMCPCatalogTransform`, `register_mcp_catalog_transform`). Removed `conditional_code_mode` and `mcp_catalog_transform` modules.
+- `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped.
+
+## 0.15.106
+- `drtools`: added `auth_resolution_strategy` on `ToolsAuthCredentials` (`AUTH_RESOLUTION_STRATEGY`: `http` or `config`, default `http`). `AuthResolutionStrategy` is a `StrEnum` so env values parse correctly.
+- `drtools.core.auth`: runtime adapters inject per-request data via `set_request_headers` / `set_auth_context`; resolvers `resolve_datarobot_token`, `resolve_secret`, and `get_oauth_access_token_with_header_fallback` honor `auth_resolution_strategy`. Removed legacy helpers `set_request_headers_for_context`, `resolve_token_from_headers`, and `get_api_key_from_headers`. `get_datarobot_access_token(headers_auth_only=False)` falls back to the server `DATAROBOT_API_TOKEN` when strategy is `http` and no request headers are present (dynamic tool/prompt registration at startup).
+- `drmcpbase`: added FastMCP middleware (`read_http_headers`, `OAuthMiddleWare`, `RequestHeadersMiddleware`, `register_oauth_middleware`) with injectable callbacks so `drmcpbase` stays free of `drtools` imports.
+- `drmcp`: thin `core.middleware` wires `drmcpbase` middleware to `drtools.core.auth` (`initialize_oauth_middleware`, `create_oauth_middleware`). Tool clients use `resolve_datarobot_token` / `resolve_secret`.
+- Docs: added `docs/drtools/auth.md` (MCP/http, LangChain/http, LangChain/config examples) and `AUTH_RESOLUTION_STRATEGY` to `docs/README.md`.
+- Tests: added `tests/drmcp/unit/test_resolve_auth.py` for strategy-aware token/secret resolution; updated middleware, config, and OAuth fallback tests for the new injection model.
 
 ## 0.15.105
 - `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.

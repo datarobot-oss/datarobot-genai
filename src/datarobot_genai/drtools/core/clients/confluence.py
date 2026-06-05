@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from .atlassian import ATLASSIAN_API_BASE
+from .atlassian import AtlassianAuth
 from .atlassian import get_atlassian_cloud_id
 
 logger = logging.getLogger(__name__)
@@ -115,23 +116,19 @@ class ConfluenceClient:
 
     EXPAND_FIELDS = "body.storage,space,version"
 
-    def __init__(self, access_token: str) -> None:
+    def __init__(self, auth: str | AtlassianAuth) -> None:
         """
-        Initialize Confluence client with access token.
+        Initialize Confluence client with OAuth Bearer or API token Basic auth.
 
         Args:
-            access_token: OAuth access token for Atlassian API
+            auth: :class:`AtlassianAuth` or a raw OAuth access token string (Bearer)
         """
-        self.access_token = access_token
+        self._auth = auth if isinstance(auth, AtlassianAuth) else AtlassianAuth.oauth_bearer(auth)
         self._client = httpx.AsyncClient(
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            headers=self._auth.http_headers(),
             timeout=30.0,
         )
-        self._cloud_id: str | None = None
+        self._cloud_id: str | None = self._auth.cloud_id or None
 
     async def _get_cloud_id(self) -> str:
         """
@@ -151,7 +148,9 @@ class ConfluenceClient:
         if self._cloud_id:
             return self._cloud_id
 
-        self._cloud_id = await get_atlassian_cloud_id(self._client, service_type="confluence")
+        self._cloud_id = await get_atlassian_cloud_id(
+            self._client, service_type="confluence", auth=self._auth
+        )
         return self._cloud_id
 
     def _parse_response(self, data: dict) -> ConfluencePage:

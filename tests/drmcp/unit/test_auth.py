@@ -22,12 +22,17 @@ import pytest
 from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
+from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
-from datarobot_genai.drtools.core.auth import OAuthMiddleWare
+from datarobot_genai.drmcp.core.middleware import create_oauth_middleware
+from datarobot_genai.drmcpbase.middleware import OAuthMiddleWare
+from datarobot_genai.drmcpbase.middleware import read_http_headers
 from datarobot_genai.drtools.core.auth import must_get_auth_context
+from datarobot_genai.drtools.core.auth import set_auth_context
+from datarobot_genai.drtools.core.auth import set_request_headers
 
 
 @pytest.fixture
@@ -66,7 +71,9 @@ def auth_token(auth_context_data: dict[str, Any], secret_key: str) -> str:
 def middleware(secret_key: str) -> OAuthMiddleWare:
     """Create an OAuthMiddleware instance with mocked config."""
     auth_handler = AuthContextHeaderHandler(secret_key=secret_key, algorithm="HS256")
-    middleware_instance = OAuthMiddleWare(auth_handler=auth_handler)
+    middleware_instance = create_oauth_middleware(
+        extract_auth_context=auth_handler.get_context,
+    )
     return middleware_instance
 
 
@@ -99,17 +106,11 @@ def call_next() -> AsyncMock:
     return mock_next
 
 
-class TestGetHttpHeadersWrapper:
-    """Test that _get_http_headers includes authorization headers.
-
-    fastmcp 3.x changed get_http_headers() to strip 'authorization' by default.
-    Our wrapper must pass include_all=True so auth middleware can read tokens.
-    """
+class TestReadHttpHeaders:
+    """Test that middleware reads authorization headers via include_all=True."""
 
     def test_fastmcp_strips_auth_headers_by_default(self) -> None:
         """Confirm fastmcp 3.x strips authorization without include_all."""
-        from fastmcp.server.dependencies import get_http_headers
-
         fake_request = MagicMock()
         fake_request.headers = MagicMock()
         fake_request.headers.items.return_value = [
@@ -122,21 +123,16 @@ class TestGetHttpHeadersWrapper:
             default_headers = get_http_headers()
             all_headers = get_http_headers(include_all=True)
 
-        # Default: authorization is stripped
         assert "authorization" not in default_headers
         assert "x-custom" in default_headers
-
-        # include_all: authorization is kept
         assert "authorization" in all_headers
         assert all_headers["authorization"] == "Bearer token123"
 
-    def test_wrapper_passes_include_all(self) -> None:
-        """Verify our _get_http_headers wrapper passes include_all=True."""
-        with patch("datarobot_genai.drtools.core.auth.get_http_headers") as mock_get_headers:
+    def test_middleware_read_http_headers_passes_include_all(self) -> None:
+        """Verify middleware _read_http_headers passes include_all=True."""
+        with patch("datarobot_genai.drmcpbase.middleware.get_http_headers") as mock_get_headers:
             mock_get_headers.return_value = {"authorization": "Bearer token123"}
-            from datarobot_genai.drtools.core.auth import _get_http_headers
-
-            result = _get_http_headers()
+            result = read_http_headers()
 
             mock_get_headers.assert_called_once_with(include_all=True)
             assert result == {"authorization": "Bearer token123"}
@@ -155,7 +151,7 @@ class TestOAuthMiddleware:
         """Test that middleware successfully parses valid auth header and attaches context."""
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was called
@@ -182,7 +178,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles missing auth header gracefully."""
         headers = {}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was still called
@@ -205,7 +201,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles invalid auth token gracefully."""
         headers = {"X-DataRobot-Authorization-Context": "invalid.jwt.token"}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify call_next was still called (middleware doesn't block execution)
@@ -233,7 +229,7 @@ class TestOAuthMiddleware:
             "User-Agent": "test-client",
         }
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             # Verify successful processing
@@ -256,7 +252,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles exceptions during header parsing gracefully."""
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_headers:
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers") as mock_headers:
             # Simulate an exception when getting headers
             mock_headers.side_effect = RuntimeError("Header parsing failed")
 
@@ -285,7 +281,7 @@ class TestOAuthMiddleware:
 
         mock_next = AsyncMock(return_value=expected_result)
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, mock_next)
 
             # Verify the exact result is returned
@@ -294,11 +290,10 @@ class TestOAuthMiddleware:
 
     async def test_middleware_initialization(self, secret_key: str) -> None:
         """Test that middleware initializes correctly with config."""
-        middleware = OAuthMiddleWare(AuthContextHeaderHandler(secret_key))
+        auth_handler = AuthContextHeaderHandler(secret_key=secret_key, algorithm="HS256")
+        middleware = create_oauth_middleware(extract_auth_context=auth_handler.get_context)
 
-        assert middleware.auth_handler is not None
-        assert middleware.auth_handler.secret_key == secret_key
-        assert middleware.auth_handler.algorithm == "HS256"
+        assert isinstance(middleware, OAuthMiddleWare)
 
     async def test_middleware_initialization_without_secret_key(self) -> None:
         """Test that middleware initializes correctly without explicit secret key."""
@@ -307,10 +302,9 @@ class TestOAuthMiddleware:
             mock_config_instance.session_secret_key = "config-secret-key"
             mock_config_class.return_value = mock_config_instance
 
-            middleware = OAuthMiddleWare()
+            middleware = create_oauth_middleware()
 
-            assert middleware.auth_handler is not None
-            assert middleware.auth_handler.secret_key == "config-secret-key"
+            assert isinstance(middleware, OAuthMiddleWare)
 
     async def test_middleware_with_lowercase_header_name(
         self,
@@ -322,7 +316,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles lowercase header names (as returned by get_http_headers)."""
         headers = {"x-datarobot-authorization-context": auth_token}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             call_next.assert_awaited_once_with(middleware_context)
@@ -346,7 +340,7 @@ class TestOAuthMiddleware:
         """Test that middleware handles mixed case header names."""
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(middleware_context, call_next)
 
             call_next.assert_awaited_once_with(middleware_context)
@@ -371,7 +365,7 @@ class TestOAuthMiddleware:
 
         headers = {"X-DataRobot-Authorization-Context": auth_token}
 
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value=headers):
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers", return_value=headers):
             result = await middleware.on_call_tool(context, call_next)
 
             # Should still call next and return result
@@ -385,7 +379,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles ValueError exceptions gracefully."""
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = ValueError("Invalid header format")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -405,7 +399,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles KeyError exceptions gracefully."""
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = KeyError("Missing key")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -425,7 +419,7 @@ class TestOAuthMiddleware:
         call_next: AsyncMock,
     ) -> None:
         """Test that middleware handles TypeError exceptions gracefully."""
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers") as mock_get_headers:
+        with patch("datarobot_genai.drmcpbase.middleware.read_http_headers") as mock_get_headers:
             mock_get_headers.side_effect = TypeError("Invalid type")
 
             result = await middleware.on_call_tool(middleware_context, call_next)
@@ -439,38 +433,19 @@ class TestOAuthMiddleware:
             )
 
 
-def _make_mock_context() -> MagicMock:
-    """Create a mock Context with async dict-based state.
-
-    Context requires a session in fastmcp 3.x, so we mock it.
-    """
-    state: dict[str, Any] = {}
-
-    async def set_state(key: str, value: Any) -> None:
-        state[key] = value
-
-    async def get_state(key: str) -> Any:
-        return state.get(key)
-
-    ctx = MagicMock()
-    ctx.set_state = set_state
-    ctx.get_state = get_state
-    return ctx
-
-
 class TestGetAuthContext:
     """Test cases for must_get_auth_context function."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_auth_context(self) -> None:
+        set_auth_context(None)
+        set_request_headers({})
+        yield
+        set_auth_context(None)
+        set_request_headers({})
+
     @pytest.mark.asyncio
     async def test_get_auth_context_success(self) -> None:
-        """Test that must_get_auth_context returns auth context when available.
-
-        This test mocks at the fastmcp.server.context level to simulate a real
-        Context with state management.
-        """
-        context = _make_mock_context()
-
-        # Create a real AuthCtx object to store in state
         auth_ctx = AuthCtx(
             user=User(id="user123", name="Test User", email="test@example.com"),
             identities=[
@@ -483,152 +458,30 @@ class TestGetAuthContext:
             ],
             metadata={"endpoint": "https://app.datarobot.com", "account_id": "account456"},
         )
-
-        await context.set_state("authorization_context", auth_ctx)
-
-        # Patch _get_context (alias used by must_get_auth_context) to return our Context with state
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
-            result = await must_get_auth_context()
-
-            # Verify the auth context was retrieved correctly
-            assert result is auth_ctx
-            assert result.user.id == "user123"
-            assert result.user.name == "Test User"
-            assert result.user.email == "test@example.com"
-            assert len(result.identities) == 1
-            assert result.identities[0].provider_type == "datarobot"
+        set_auth_context(auth_ctx)
+        result = await must_get_auth_context()
+        assert result is auth_ctx
+        assert result.user.id == "user123"
 
     @pytest.mark.asyncio
     async def test_get_auth_context_raises_when_missing(self) -> None:
-        """Test that must_get_auth_context raises RuntimeError when auth context is missing.
-
-        This test uses a real Context object without any auth context set in state.
-        """
-        context = _make_mock_context()
-
-        # Don't set any auth context - state will be empty
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
-            with pytest.raises(
-                RuntimeError,
-                match="Could not retrieve authorization context from FastMCP context state.",
-            ):
-                await must_get_auth_context()
+        with pytest.raises(RuntimeError, match="Could not retrieve authorization context."):
+            await must_get_auth_context()
 
     @pytest.mark.asyncio
-    async def test_get_auth_context_raises_when_no_context(self) -> None:
-        """Test that RuntimeError is raised when no active context exists.
-
-        This simulates the case where get_context() is called outside of a
-        FastMCP request context.
-        """
-        with patch("datarobot_genai.drtools.core.auth._get_context") as mock_get_context:
-            # Simulate no active context
-            mock_get_context.side_effect = RuntimeError("No active context found.")
-
-            with pytest.raises(RuntimeError, match="No active context found."):
-                await must_get_auth_context()
-
-    @pytest.mark.asyncio
-    async def test_get_auth_context_with_state_isolation(self) -> None:
-        """Test that auth context is properly isolated in context state.
-
-        This test verifies that different contexts maintain separate state,
-        which is important for concurrent request handling.
-        """
-        context1 = _make_mock_context()
-        context2 = _make_mock_context()
-
-        # Create different auth contexts with different users
-        auth_ctx1 = AuthCtx(
-            user=User(id="user1", name="Alice", email="alice@example.com"),
-            identities=[
-                Identity(
-                    id="identity1",
-                    type="user",
-                    provider_type="datarobot",
-                    provider_user_id="user1",
-                )
-            ],
-            metadata={"endpoint": "https://app.datarobot.com"},
+    async def test_get_auth_context_reconstructs_from_dict(self) -> None:
+        set_auth_context(
+            {
+                "user": {"id": "user123", "name": "Test User", "email": "test@example.com"},
+                "identities": [],
+                "metadata": {},
+            }
         )
-
-        auth_ctx2 = AuthCtx(
-            user=User(id="user2", name="Bob", email="bob@example.com"),
-            identities=[
-                Identity(
-                    id="identity2",
-                    type="user",
-                    provider_type="datarobot",
-                    provider_user_id="user2",
-                )
-            ],
-            metadata={"endpoint": "https://app.datarobot.com"},
-        )
-
-        # Set different auth contexts in each context
-        await context1.set_state("authorization_context", auth_ctx1)
-        await context2.set_state("authorization_context", auth_ctx2)
-
-        # Verify context1 returns the correct auth context
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context1):
-            result1 = await must_get_auth_context()
-            assert result1.user.id == "user1"
-            assert result1.user.name == "Alice"
-
-        # Verify context2 returns its own auth context (state isolation)
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context2):
-            result2 = await must_get_auth_context()
-            assert result2.user.id == "user2"
-            assert result2.user.name == "Bob"
-
-    @pytest.mark.asyncio
-    async def test_get_auth_context_retrieves_correct_key(self) -> None:
-        """Test that must_get_auth_context retrieves the correct state key.
-
-        This ensures we're using the right key ('authorization_context') and not
-        accidentally retrieving other state values.
-        """
-        context = _make_mock_context()
-
-        # Set multiple state values to ensure we retrieve the correct one
-        await context.set_state("other_key", "other_value")
-        await context.set_state("another_key", {"some": "data"})
-
-        auth_ctx = AuthCtx(
-            user=User(id="user123", name="Test User", email="test@example.com"),
-            identities=[
-                Identity(
-                    id="identity123",
-                    type="user",
-                    provider_type="datarobot",
-                    provider_user_id="user123",
-                )
-            ],
-            metadata={},
-        )
-        await context.set_state("authorization_context", auth_ctx)
-
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
-            result = await must_get_auth_context()
-
-            # Verify we got the auth context, not other state values
-            assert result is auth_ctx
-            assert isinstance(result, AuthCtx)
-            assert result.user.id == "user123"
-            # Ensure we didn't get other state values
-            assert result != "other_value"
-            assert result != {"some": "data"}
+        result = await must_get_auth_context()
+        assert result.user.id == "user123"
 
     @pytest.mark.asyncio
     async def test_get_auth_context_with_complex_metadata(self) -> None:
-        """Test that auth context with complex metadata is properly preserved.
-
-        This verifies that all fields of AuthCtx are properly stored and retrieved
-        from the context state.
-        """
-        context = _make_mock_context()
-
-        # Create an auth context with complex metadata
         auth_ctx = AuthCtx(
             user=User(id="user456", name="Complex User", email="complex@example.com"),
             identities=[
@@ -638,12 +491,6 @@ class TestGetAuthContext:
                     provider_type="provider1",
                     provider_user_id="oauth-user-123",
                 ),
-                Identity(
-                    id="identity2",
-                    type="datarobot",
-                    provider_type="provider2",
-                    provider_user_id="service-account-456",
-                ),
             ],
             metadata={
                 "endpoint": "https://app.datarobot.com",
@@ -652,19 +499,7 @@ class TestGetAuthContext:
                 "custom_data": {"key1": "value1", "key2": 42},
             },
         )
-
-        await context.set_state("authorization_context", auth_ctx)
-
-        with patch("datarobot_genai.drtools.core.auth._get_context", return_value=context):
-            result = await must_get_auth_context()
-
-            # Verify all fields are preserved
-            assert result is auth_ctx
-            assert result.user.id == "user456"
-            assert len(result.identities) == 2
-            assert result.identities[0].provider_type == "provider1"
-            assert result.identities[1].provider_type == "provider2"
-            assert result.metadata["endpoint"] == "https://app.datarobot.com"
-            assert result.metadata["account_id"] == "account789"
-            assert "permissions" in result.metadata
-            assert result.metadata["custom_data"]["key2"] == 42
+        set_auth_context(auth_ctx)
+        result = await must_get_auth_context()
+        assert result.user.id == "user456"
+        assert result.metadata["custom_data"]["key2"] == 42

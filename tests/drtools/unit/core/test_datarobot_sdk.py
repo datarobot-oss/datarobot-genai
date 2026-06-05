@@ -22,6 +22,7 @@ from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 
+from datarobot_genai.drtools.core.auth import set_request_headers
 from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drtools.core.exceptions import ToolError
 
@@ -31,11 +32,10 @@ _MODULE = "datarobot_genai.drtools.core.clients.datarobot"
 class TestRequestUserDrSdk:
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
-    @patch("datarobot_genai.drtools.core.auth._get_http_headers")
     def test_uses_token_from_authorization_header(
-        self, mock_get_headers, mock_get_creds, mock_client_configuration
+        self, mock_get_creds, mock_client_configuration
     ) -> None:
-        mock_get_headers.return_value = {"authorization": "Bearer header-token"}
+        set_request_headers({"authorization": "Bearer header-token"})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
@@ -47,12 +47,9 @@ class TestRequestUserDrSdk:
             token="header-token", endpoint="https://test.datarobot.com/api/v2"
         )
 
-    @patch("datarobot_genai.drtools.core.auth._get_http_headers")
     @patch(f"{_MODULE}.get_credentials")
-    def test_raises_tool_error_when_no_token_in_headers(
-        self, mock_get_creds, mock_get_headers
-    ) -> None:
-        mock_get_headers.return_value = {}
+    def test_raises_tool_error_when_no_token_in_headers(self, mock_get_creds) -> None:
+        set_request_headers({})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_api_token = "credential-token"
         mock_get_creds.return_value = mock_creds
@@ -63,11 +60,10 @@ class TestRequestUserDrSdk:
 
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
-    @patch("datarobot_genai.drtools.core.auth._get_http_headers")
     def test_uses_datarobot_api_token_when_no_headers(
-        self, mock_get_headers, mock_get_creds, mock_client_configuration
+        self, mock_get_creds, mock_client_configuration
     ) -> None:
-        mock_get_headers.return_value = {}
+        set_request_headers({})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_api_token = "env-api-token"
         mock_creds.datarobot.datarobot_endpoint = "https://app.datarobot.com/api/v2"
@@ -86,7 +82,7 @@ class TestRequestUserDrSdk:
     def test_resets_dr_context_use_case(
         self, mock_dr_context, mock_get_creds, mock_client_configuration
     ) -> None:
-        with patch(f"{_MODULE}.resolve_token_from_headers", return_value="tok"):
+        with patch(f"{_MODULE}.resolve_datarobot_token", return_value="tok"):
             mock_creds = MagicMock()
             mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
             mock_get_creds.return_value = mock_creds
@@ -100,9 +96,8 @@ class TestRequestUserDrSdk:
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
     @patch("datarobot_genai.drtools.core.auth.AuthContextHeaderHandler")
-    @patch("datarobot_genai.drtools.core.auth._get_http_headers")
     def test_extracts_token_from_auth_context_when_no_standard_headers(
-        self, mock_get_headers, mock_handler_class, mock_get_creds, mock_client_configuration
+        self, mock_handler_class, mock_get_creds, mock_client_configuration
     ) -> None:
         auth_ctx = AuthCtx(
             user=User(
@@ -132,7 +127,7 @@ class TestRequestUserDrSdk:
         mock_handler.get_context.return_value = auth_ctx
         mock_handler_class.return_value = mock_handler
         jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        mock_get_headers.return_value = {"x-datarobot-authorization-context": jwt}
+        set_request_headers({"x-datarobot-authorization-context": jwt})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://app.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
