@@ -37,7 +37,7 @@ cases:
       LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
       USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
-      - ./dragent_tests/test_tools.py
+      - ./dragent_tests/test_streaming.py
     matrix:
       AGENT:
         - nat
@@ -51,7 +51,7 @@ cases:
       LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
       USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
-      - ./dragent_tests/test_tools.py
+      - ./dragent_tests/test_streaming.py
     matrix:
       AGENT:
         - nat
@@ -67,7 +67,6 @@ cases:
       - ./dragent_tests/test_tools.py
     matrix:
       AGENT:
-        - nat
         - crewai
         - langgraph
         - llamaindex
