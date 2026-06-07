@@ -39,6 +39,7 @@ from datarobot_genai.dragent.plugins.streaming_memory_agent import _last_user_te
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _user_id_from_context
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _with_memory_context
 from datarobot_genai.dragent.plugins.streaming_memory_agent import streaming_memory_agent
+from datarobot_genai.nat.datarobot_mem0_memory import UnconfiguredMemoryEditor
 
 _MODULE = "datarobot_genai.dragent.plugins.streaming_memory_agent"
 
@@ -341,6 +342,21 @@ class TestStreamingMemoryAgentFactory:
         builder.get_memory_client.assert_awaited_once_with("mem0")
         builder.get_function.assert_awaited_once_with("inner-agent")
 
+    async def test_passthroughs_when_memory_backend_unconfigured(self, context_user_id):
+        config = _make_config(memory_name="mem0")
+        chunks = [_chunk("Hello"), _chunk(" world")]
+        builder = _make_builder(
+            memory_editor=UnconfiguredMemoryEditor(),
+            inner_agent_chunks=chunks,
+        )
+
+        async with streaming_memory_agent(config, builder) as fn_info:
+            out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
+
+        assert _content_deltas(out) == ["Hello", " world"]
+        builder.get_memory_client.assert_awaited_once_with("mem0")
+        builder.get_function.assert_awaited_once_with("inner-agent")
+
 
 # ---------------------------------------------------------------------------
 # streaming_memory_agent — stream_fn behavior
@@ -377,6 +393,43 @@ class TestStreamFnAllFlagsOff:
         # No memory side effects when every flag is off.
         memory_editor.add_items.assert_not_called()
         memory_editor.search.assert_not_called()
+
+
+class TestStreamFnPassthroughWithoutMemory:
+    """Unconfigured dr_mem0_memory → inner agent stream passes through unchanged."""
+
+    async def test_streams_inner_agent_without_memory_calls(self, context_user_id):
+        config = _make_config(memory_name="mem0")
+        chunks = [_chunk("Hello"), _chunk(" world")]
+        builder = _make_builder(
+            memory_editor=UnconfiguredMemoryEditor(),
+            inner_agent_chunks=chunks,
+        )
+
+        async with streaming_memory_agent(config, builder) as fn_info:
+            out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
+
+        assert _content_deltas(out) == ["Hello", " world"]
+        builder.get_memory_client.assert_awaited_once_with("mem0")
+
+    async def test_forwards_input_unchanged(self, context_user_id):
+        config = _make_config(memory_name="mem0")
+        captured: dict = {}
+
+        async def _astream(inner_request, to_type=None):
+            captured["request"] = inner_request
+            captured["to_type"] = to_type
+            yield _chunk("ok")
+
+        builder = _make_builder(memory_editor=UnconfiguredMemoryEditor())
+        builder.get_function.return_value.astream = _astream
+
+        async with streaming_memory_agent(config, builder) as fn_info:
+            await _drain(fn_info.stream_fn(_input(_user("hi"))))
+
+        assert captured["to_type"] is None
+        assert isinstance(captured["request"], RunAgentInput)
+        assert [m.content for m in captured["request"].messages] == ["hi"]
 
 
 class TestStreamFnSavesUserMessage:
