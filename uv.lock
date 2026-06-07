@@ -1099,7 +1099,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.114"
+version = "0.15.115"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1186,6 +1186,7 @@ drmcp = [
     { name = "aiohttp-retry" },
     { name = "async-lru" },
     { name = "beautifulsoup4" },
+    { name = "cachetools" },
     { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-asgi-middleware" },
     { name = "datarobot-early-access" },
@@ -1218,6 +1219,7 @@ drmcp = [
 drmcpbase = [
     { name = "aiohttp" },
     { name = "aiohttp-retry" },
+    { name = "cachetools" },
     { name = "datarobot" },
     { name = "fastmcp" },
     { name = "starlette" },
@@ -1361,6 +1363,8 @@ requires-dist = [
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcp'", specifier = ">=5.0.0,<8.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcpbase'", specifier = ">=5.0.0,<8.0.0" },
     { name = "colorama", marker = "extra == 'core'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'crewai'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
