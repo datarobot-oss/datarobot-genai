@@ -18,6 +18,7 @@ import os
 from unittest.mock import patch
 
 from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.drmcp.core.config import MCPToolConfig
 from datarobot_genai.drmcp.core.tool_config import TOOL_CONFIGS
 from datarobot_genai.drmcp.core.tool_config import ToolType
 from datarobot_genai.drmcp.core.tool_config import get_tool_enable_config_name
@@ -138,7 +139,7 @@ class TestIsToolEnabled:
     def test_predictive_tool_default_disabled(self) -> None:
         """Test predictive tool default is disabled."""
         with patch.dict(os.environ, clear=True):
-            config = MCPServerConfig(_env_file=None)
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
             assert is_tool_enabled(ToolType.PREDICTIVE, config) is False
 
     def test_jira_tool_enabled(self) -> None:
@@ -180,5 +181,5 @@ class TestIsToolEnabled:
     def test_workload_tool_default_disabled(self) -> None:
         """Test workload tool default is disabled."""
         with patch.dict(os.environ, clear=True):
-            config = MCPServerConfig(_env_file=None)
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
             assert is_tool_enabled(ToolType.WORKLOAD, config) is False
