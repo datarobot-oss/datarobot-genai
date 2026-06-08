@@ -53,7 +53,7 @@ def merge_pagination_metadata(
         for key in ("next", "previous"):
             if key in api_response and api_response[key] is not None:
                 final_results[key] = api_response[key]
-        for total_key in ("total_count", "total"):
+        for total_key in ("total_count", "totalCount", "total"):
             if total_key in api_response and api_response[total_key] is not None:
                 final_results["total_count"] = api_response[total_key]
                 break
