@@ -16,6 +16,10 @@ import hashlib
 import os
 
 import httpx
+
+# Mem0 reads MEM0_TELEMETRY at import time; disable PostHog before loading mem0.
+os.environ["MEM0_TELEMETRY"] = "False"
+
 from mem0 import AsyncMemoryClient
 from mem0.client.project import AsyncProject
 from mem0.memory.telemetry import capture_client_event

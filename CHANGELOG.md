@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.115
+- `drmcpbase`: added `class UserMCPProvider` to support user MCP proxy
+
+## 0.15.114
+- `eval`: migrated stdlib foundation layer from `af-component-evaluation` into `datarobot_genai.eval` — `utils`, `status`, `output`, `converter`, `dataset`, `summarize`, `runner`, and JSON schemas. Full test coverage added under `tests/eval/`. Third-party modules (`validation`, `generator`, `judge`), benchmarks subpackage, and top-level orchestrator follow in subsequent PRs.
+
+## 0.15.113
+- `nat/datarobot_mem0_memory`: renamed the `memory_space_id` config field to `agent_memory_space_id` (endpoint path follows: `{datarobot_endpoint}/memory/{agent_memory_space_id}`), and added a default factory that reads `AGENT_MEMORY_SPACE_ID` from env via `DataRobotAppFrameworkBaseSettings`. This lets a minimal `workflow.yaml` memory block target the DataRobot Memory Service when the recipe's agent runtime wires the env var, without requiring an explicit field in YAML. Error messages, docstrings, and the mutually-exclusive guardrail against `api_key` were updated to reference the new field name.
+
+## 0.15.112
+- Upgrade github actions to release 0.0.9
+
+## 0.15.111
+- Bump `datarobot-moderations` to 11.2.33 to fix a bug with `ModerationIterator`
+
+## 0.15.110
+- `nat/datarobot_mem0_memory`: emit OpenTelemetry GenAI memory spans (`update_memory`, `search_memory`, `delete_memory`) for Mem0/DataRobot Memory Service access through `DRMem0Editor`, with `gen_ai.memory.store.*`, query/result counts, and per-user scope attributes. Spans export through the same OTel SDK bootstrap used by `instrument()` in `register.py`.
+- `dragent/datarobot_otelcollector`: bridge NAT intermediate-step span context into the OTel SDK so memory and framework spans share the workflow trace instead of exporting as a separate tree. Falls back to NAT `workflow_trace_id` when the exporter bridge is unavailable.
+- `core/telemetry_nat_tracer`: patch the SDK `TracerProvider` installed by `bootstrap_otel_provider_for_datarobot()` so LangChain/LangGraph, HTTP client, and other auto-instrumentor spans join the active NAT workflow trace. Adds a single-active-run fallback when NAT `Context` is unavailable in framework worker threads.
+
+## 0.15.109
+- `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` (workload-api backend) plus the `execute_code` function; credentials come from the request/config helpers (not `os.environ`), container stderr is surfaced from OTEL logs, and the security context is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`.
+- `drtools.core.feature_flags`: added `is_tool_feature_enabled(flag, *, evaluator)`, the shared tool-gating policy reused by `drmcp` and global-mcp registries.
+
 ## 0.15.108
 - `drtools` Atlassian (Jira/Confluence): added `AtlassianAuth` with OAuth Bearer (HTTP) and API token Basic auth (config). Config fields: `ATLASSIAN_API_TOKEN`, optional `ATLASSIAN_EMAIL` and `ATLASSIAN_SITE_URL` for Basic auth (cloud ID from `/_edge/tenant_info`); token alone is treated as a static OAuth Bearer token.
 - Docs: added `docs/drtools/auth-atlassian.md` for Atlassian config auth.

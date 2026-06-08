@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -128,6 +129,9 @@ async def _drain(gen: AsyncGenerator) -> list:
 
 
 class TestStreamingMemoryAgentConfig:
+    def test_disables_mem0_posthog_telemetry_on_import(self):
+        assert os.environ.get("MEM0_TELEMETRY") == "False"
+
     def test_is_subclass_of_auto_memory_agent_config(self):
         # Inheriting from upstream lets workflows swap _type between the two
         # wrappers without restating any other field.

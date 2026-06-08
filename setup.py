@@ -35,7 +35,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.43b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.40.5,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.43b0,<1.0.0",
-    "datarobot-moderations[all]>=11.2.30,<12.0.0",
+    "datarobot-moderations[all]>=11.2.33,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -140,6 +140,7 @@ drmcpbase = [
     "aiohttp>=3.13.3,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
+    "cachetools>=5.0.0,<8.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.

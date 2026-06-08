@@ -20,20 +20,52 @@ from collections.abc import Callable
 from typing import Any
 
 from datarobot_genai.drtools.core import get_registered_tools
+from datarobot_genai.drtools.core.feature_flags import FeatureFlag
+from datarobot_genai.drtools.core.feature_flags import is_tool_feature_enabled
 
+from .clients import setup_and_return_dr_api_client_with_static_config_in_container
 from .enums import DataRobotMCPToolCategory
 from .mcp_instance import dr_mcp_tool
 
 logger = logging.getLogger(__name__)
 
 
+def _static_account_flag_enabled(feature_flag_name: str) -> bool:
+    """Evaluate a DR entitlement for the MCP container's static account.
+
+    drmcp's registry has no request user at registration time, so it gates
+    against the application-static container account. global-mcp passes a
+    per-user evaluator to the same :func:`is_tool_feature_enabled` helper.
+    """
+    client = setup_and_return_dr_api_client_with_static_config_in_container()
+    return FeatureFlag.is_enabled(feature_flag_name, client=client)
+
+
 def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
     """Register a drtools function with the MCP server.
 
+    If ``metadata`` contains a ``feature_flag`` key, the named DR entitlement
+    is evaluated for the static container account at registration time via the
+    shared :func:`is_tool_feature_enabled` policy. When the flag is disabled —
+    or the check raises for any reason (DR API unavailable, network failure,
+    flag not provisioned) — registration is skipped (fail-closed) so the tool
+    does not appear in ``list_tools``. The gating policy lives in drtools so
+    global-mcp's per-user registry reuses it; only the client differs.
+
     Args:
         func: The function to register
-        metadata: Tool metadata (tags, name, description, etc.)
+        metadata: Tool metadata (tags, name, description, feature_flag, etc.)
     """
+    metadata = dict(metadata)
+    feature_flag = metadata.pop("feature_flag", None)
+    if not is_tool_feature_enabled(feature_flag, evaluator=_static_account_flag_enabled):
+        logger.debug(
+            "skipping registration of %s — feature flag %s disabled or unavailable",
+            func.__name__,
+            feature_flag,
+        )
+        return
+
     # Apply the dr_mcp_tool decorator with the metadata
     dr_mcp_tool(tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL, **metadata)(func)
 
