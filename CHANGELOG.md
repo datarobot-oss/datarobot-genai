@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.118
+- `drtools/workload`: add initial Workload API tool group — `workload_list`, `workload_search`, `workload_get`, `bundle_list` — backed by a new `WorkloadApiClient` using the per-request DataRobot REST client. Includes full MCP registration wiring (`ToolType.WORKLOAD`, `enable_workload_tools` config flag, `MCP_CLI_OPTS` entry). Enable with `ENABLE_WORKLOAD_TOOLS=true`. Canonical paths: `/api/v2/workloads/`, `/api/v2/mlops/compute/bundles`.
+
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown
 
