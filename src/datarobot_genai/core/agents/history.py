@@ -137,9 +137,6 @@ def extract_history_messages(
         tool_calls = _get_message_field(message, "tool_calls")
 
         text = str(content) if content is not None else ""
-        if not text and tool_calls is not None:
-            # Preserve assistant tool-call messages even when content is empty/None.
-            text = _summarize_tool_calls(tool_calls)
         if not text and str(role or "") == "tool":
             # Tool outputs should generally have content, but if they don't,
             # keep a minimal placeholder so downstream adapters don't silently
@@ -148,7 +145,11 @@ def extract_history_messages(
             if not label and tool_call_id is not None:
                 label = str(tool_call_id)
             text = f"[tool] {label}".strip() if label else "[tool]"
-        if not text:
+        # Keep tool-call-only assistant turns even with empty content: the
+        # structured ``tool_calls`` carry them. ``content`` stays as-is (possibly
+        # "") so structured adapters reconstruct it faithfully; the text renderer
+        # surfaces the calls separately (see build_history_summary_from_messages).
+        if not text and tool_calls is None:
             continue
 
         entry: NormalizedHistoryMessage = {
@@ -192,5 +193,37 @@ def build_history_summary_from_messages(
     if not history:
         return ""
 
-    lines = [f"{msg['role']}: {msg['content']}" for msg in history]
+    lines = []
+    for msg in history:
+        # Render content and tool calls in both cases: a turn may have text, a
+        # tool call, or both. Appending the tool-call summary whenever tool_calls
+        # are present (not only when content is empty) keeps tool steps visible
+        # for assistant turns that also say something.
+        parts = []
+        if msg["content"]:
+            parts.append(msg["content"])
+        if msg.get("tool_calls"):
+            parts.append(_summarize_tool_calls(msg["tool_calls"]))
+        lines.append(f"{msg['role']}: {' '.join(parts)}".rstrip())
     return "\n".join(lines)
+
+
+def drop_unpaired_boundary_tool_turns(
+    history: list[NormalizedHistoryMessage],
+) -> list[NormalizedHistoryMessage]:
+    """Drop tool-call/result turns left unpaired by truncation.
+
+    ``max_history`` truncation is turn-count based and can slice through a
+    tool-call/result pair, leaving a leading tool result with no preceding tool call,
+    or a trailing assistant tool-call with no following result. Most chat APIs reject
+    either, so the structured (native-message) path drops them; the plain-text summary
+    flattens and is unaffected, so it does not call this.
+    """
+    result = list(history)
+    # Leading tool results whose originating tool call was truncated off the front.
+    while result and result[0].get("role") == "tool":
+        result.pop(0)
+    # Trailing assistant tool-call whose result was truncated off the end.
+    if result and result[-1].get("role") == "assistant" and result[-1].get("tool_calls"):
+        result.pop()
+    return result

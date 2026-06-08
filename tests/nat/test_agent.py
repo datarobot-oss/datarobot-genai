@@ -282,6 +282,31 @@ async def test_invoke_includes_chat_history(workflow_path):
 
 
 @pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
+async def test_invoke_includes_tool_calls_in_history(
+    workflow_path, run_agent_input_with_tool_history
+):
+    """Tool calls appear in the prior-conversation text in both content cases."""
+    agent = NatAgent(workflow_path=workflow_path)
+
+    captured_prompts: list[str] = []
+    original = agent.make_chat_request
+
+    def capturing(user_prompt: str):  # type: ignore[no-untyped-def]
+        captured_prompts.append(user_prompt)
+        return original(user_prompt)
+
+    agent.make_chat_request = capturing  # type: ignore[assignment]
+
+    _ = [event async for event in agent.invoke(run_agent_input_with_tool_history)]
+
+    text = captured_prompts[0]
+    # Assistant turn with content AND a tool call: both are shown.
+    assert "Let me check the weather. [tool_calls] get_weather" in text
+    # Tool-call-only assistant turn (empty content): the call is still shown.
+    assert "[tool_calls] log_event" in text
+
+
+@pytest.mark.usefixtures("mock_intermediate_structured", "mock_load_workflow")
 async def test_invoke_retrieves_and_stores_memory(workflow_path):
     # GIVEN: a NAT agent whose prompt opts into memory
     memory_client = FakeMemoryClient(retrieved="Use concise answers.")

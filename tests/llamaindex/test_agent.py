@@ -21,6 +21,7 @@ from unittest.mock import Mock
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall as AgFunctionCall
 from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -31,9 +32,11 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCall as AgToolCall
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
+from ag_ui.core import ToolMessage as AgToolMessage
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -94,6 +97,46 @@ class CapturingWorkflow(Workflow):
     def run(self, *, user_msg: str) -> Handler:
         self.captured_user_msgs.append(user_msg)
         return super().run(user_msg=user_msg)
+
+
+class ChatHistoryCapturingWorkflow(Workflow):
+    """AgentWorkflow-like mock that records the structured ``chat_history`` kwarg."""
+
+    def __init__(self, events: list[Any], state: Any) -> None:
+        super().__init__(events, state)
+        self.captured_user_msg: str | None = None
+        self.captured_chat_history: Any = None
+
+    def run(self, *, user_msg: str, chat_history: Any = None) -> Handler:
+        self.captured_user_msg = user_msg
+        self.captured_chat_history = chat_history
+        return Handler(self._events, self._state)
+
+
+def _tool_history_run_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            UserMessage(id="u1", content="weather in Paris?"),
+            AssistantMessage(
+                id="a1",
+                content="Let me check.",
+                tool_calls=[
+                    AgToolCall(
+                        id="c1",
+                        function=AgFunctionCall(name="get_weather", arguments='{"city": "Paris"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="t1", content="18C, sunny", tool_call_id="c1"),
+            UserMessage(id="u2", content="and tomorrow?"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
 
 
 class FakeMemoryClient(BaseMemoryClient):
@@ -826,3 +869,34 @@ async def test_invoke_does_not_store_memory_when_workflow_fails(
         }
     ]
     assert memory_client.store_calls == []
+
+
+async def test_invoke_passes_structured_chat_history_when_enabled(events: list[Any]) -> None:
+    # GIVEN structured_history=True and a prior tool-call turn
+    wf = ChatHistoryCapturingWorkflow(events=events, state="S")
+    agent = MyLlamaAgent(wf, structured_history=True)
+
+    # WHEN invoking with prior history
+    _ = [e async for e in agent.invoke(_tool_history_run_input())]
+
+    # THEN prior turns are passed natively as ChatMessage chat_history (tool calls preserved)
+    chat_history = wf.captured_chat_history
+    assert chat_history is not None
+    assert [m.role for m in chat_history] == ["user", "assistant", "tool"]
+    tool_calls = chat_history[1].additional_kwargs["tool_calls"]
+    assert tool_calls[0]["function"]["name"] == "get_weather"
+    assert tool_calls[0]["function"]["arguments"] == '{"city": "Paris"}'
+    # The current turn is still the user message.
+    assert wf.captured_user_msg == "and tomorrow?"
+
+
+async def test_invoke_omits_chat_history_by_default(events: list[Any]) -> None:
+    # GIVEN no structured_history flag and no {chat_history} placeholder
+    wf = ChatHistoryCapturingWorkflow(events=events, state="S")
+    agent = MyLlamaAgent(wf)
+
+    # WHEN invoking with prior history
+    _ = [e async for e in agent.invoke(_tool_history_run_input())]
+
+    # THEN no structured chat_history is passed (backward-compatible default)
+    assert wf.captured_chat_history is None

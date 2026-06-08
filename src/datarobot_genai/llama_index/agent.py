@@ -51,6 +51,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -120,6 +121,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
+        structured_history: bool = False,
         allow_parallel_tool_calls: bool = True,
     ) -> None:
         super().__init__(
@@ -134,7 +136,17 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             memory_client=memory_client,
             model=model,
         )
+        self._structured_history = structured_history
         self.allow_parallel_tool_calls = allow_parallel_tool_calls
+
+    @property
+    def structured_history(self) -> bool:
+        """When true, prior turns are fed to the model as structured native
+        ``ChatMessage`` history (tool calls preserved) instead of the text
+        ``{chat_history}`` summary. Only applies when the prompt has no
+        ``{chat_history}`` placeholder.
+        """
+        return self._structured_history
 
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
@@ -152,13 +164,20 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         input_message = str(user_prompt_content)
         uses_memory = "{memory}" in input_message
 
-        # Handle {chat_history} placeholder replacement for subclass templates
+        # Prior turns reach the model as a text {chat_history} summary when the
+        # prompt uses the placeholder, or as structured native ChatMessage history
+        # (tool calls preserved) when structured_history is opt-in.
+        structured_chat_history = None
         if "{chat_history}" in input_message:
             history_summary = self.build_history_summary(run_agent_input)
             formatted_history = (
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
+        elif self.structured_history:
+            structured_chat_history = (
+                ag_ui_history_to_chat_messages(self.history_messages(run_agent_input)) or None
+            )
         if uses_memory:
             memory = ""
             try:
@@ -183,7 +202,10 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         # Subclasses may implement build_workflow as async or sync; support both.
         built: Any = self.build_workflow()
         workflow = await built if inspect.isawaitable(built) else built
-        handler = workflow.run(user_msg=input_message)
+        run_kwargs: dict[str, Any] = {"user_msg": input_message}
+        if structured_chat_history:
+            run_kwargs["chat_history"] = structured_chat_history
+        handler = workflow.run(**run_kwargs)
 
         events: list[Any] = []
         current_agent_name: str | None = None
