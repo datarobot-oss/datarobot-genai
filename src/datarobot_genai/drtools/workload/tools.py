@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
     tags={"workload", "datarobot", "list", "search"},
     description=(
         "[Workload—list] Use to discover workloads: returns id, name, status, "
-        "artifactId, importance, and runtime for each workload. Supports "
+        "artifactId, importance, and runtime for each workload. "
         "Not for a single known workload id (workload_get), not for artifacts "
         "(artifact_list).\n\n"
         "Example: workload_list(limit=50) or workload_list(search='my-app', limit=20)."
