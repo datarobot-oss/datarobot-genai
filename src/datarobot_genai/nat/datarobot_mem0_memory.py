@@ -28,6 +28,11 @@ Backend selection is driven by config:
 
 Both routes share the same ``MemoryEditor`` adapter because the DR endpoint
 is API-compatible with mem0 — only the host and auth token differ.
+
+When neither route is configured (no ``agent_memory_space_id`` + token and no
+``api_key`` / ``MEM0_API_KEY``), the provider yields an
+:class:`UnconfiguredMemoryEditor` so workflows can declare ``dr_mem0_memory``
+unconditionally and enable memory later via runtime parameters or env vars.
 """
 
 import asyncio
@@ -189,6 +194,24 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
             "``AGENT_MEMORY_TTL_SECONDS`` env var."
         ),
     )
+
+
+class UnconfiguredMemoryEditor(MemoryEditor):  # type: ignore[misc]
+    """No-op memory backend returned when ``dr_mem0_memory`` has no credentials."""
+
+    async def add_items(self, items: list[MemoryItem], **kwargs: Any) -> None:
+        return
+
+    async def search(self, query: str, top_k: int = 5, **kwargs: Any) -> list[MemoryItem]:
+        return []
+
+    async def remove_items(self, **kwargs: Any) -> None:
+        return
+
+
+def is_memory_editor_configured(editor: MemoryEditor) -> bool:
+    """Return ``False`` when ``dr_mem0_memory`` yielded an unconfigured no-op editor."""
+    return not isinstance(editor, UnconfiguredMemoryEditor)
 
 
 class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
@@ -397,6 +420,22 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
     )
 
 
+def _resolve_memory_backend(
+    config: DRMem0MemoryClientConfig,
+) -> tuple[str, str, str | None] | None:
+    """Return ``(api_key, store_name, store_id)`` when configured, else ``None``."""
+    if config.agent_memory_space_id:
+        api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
+        if not api_key:
+            return None
+        return (api_key, "datarobot-memory", config.agent_memory_space_id)
+
+    if config.api_key:
+        return (config.api_key, "mem0", config.project_id or config.org_id)
+
+    return None
+
+
 @register_memory(config_type=DRMem0MemoryClientConfig)
 async def dr_mem0_memory_client(
     config: DRMem0MemoryClientConfig, builder: Builder
@@ -414,27 +453,17 @@ async def dr_mem0_memory_client(
             "either unset it or pass api_key=None explicitly when using agent_memory_space_id."
         )
 
-    if config.agent_memory_space_id:
-        api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
-        if not api_key:
-            raise RuntimeError(
-                "DataRobot API token is not set. Configure memory.datarobot_api_token "
-                "or DATAROBOT_API_TOKEN when using agent_memory_space_id."
-            )
-    elif config.api_key:
-        api_key = config.api_key
-    else:
-        raise RuntimeError(
-            "Mem0 API key is not set. Please configure memory.api_key or MEM0_API_KEY, "
-            "or set agent_memory_space_id to target the DataRobot mem0 endpoint."
+    resolved = _resolve_memory_backend(config)
+    if resolved is None:
+        logger.info(
+            "dr_mem0_memory: no memory backend configured "
+            "(set agent_memory_space_id + DATAROBOT_API_TOKEN, or api_key / MEM0_API_KEY); "
+            "memory operations are disabled"
         )
+        yield UnconfiguredMemoryEditor()
+        return
 
-    if config.agent_memory_space_id:
-        store_name = "datarobot-memory"
-        store_id: str | None = config.agent_memory_space_id
-    else:
-        store_name = "mem0"
-        store_id = config.project_id or config.org_id
+    api_key, store_name, store_id = resolved
 
     editor: MemoryEditor = DRMem0Editor(
         _create_mem0_client(config, api_key),

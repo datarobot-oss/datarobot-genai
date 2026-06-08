@@ -32,6 +32,8 @@ from datarobot_genai.nat import datarobot_mem0_memory
 from datarobot_genai.nat.datarobot_mem0_memory import Config
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
+from datarobot_genai.nat.datarobot_mem0_memory import UnconfiguredMemoryEditor
+from datarobot_genai.nat.datarobot_mem0_memory import is_memory_editor_configured
 
 # Matches ``DataRobotMemoryClient.user_id`` (= ``sha256(api_key)``). The editor
 # falls back to this when no per-session user_id is supplied (e.g. direct calls
@@ -567,16 +569,23 @@ def test_memory_client_config_default_ttl_is_none_without_env(monkeypatch: Any) 
     assert config.default_ttl_seconds is None
 
 
-async def test_registered_memory_client_requires_api_key(monkeypatch: Any) -> None:
+async def test_registered_memory_client_yields_unconfigured_editor_without_api_key(
+    monkeypatch: Any,
+) -> None:
     # GIVEN neither memory.api_key nor MEM0_API_KEY is configured.
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
+    monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
 
-    # WHEN NAT builds the memory client, THEN it raises a clear configuration error.
-    with pytest.raises(RuntimeError, match="MEM0_API_KEY"):
-        async with datarobot_mem0_memory.dr_mem0_memory_client(
-            DRMem0MemoryClientConfig(api_key=None), object()
-        ):
-            pass
+    # WHEN NAT builds the memory client, THEN it yields a no-op editor instead of failing.
+    async with datarobot_mem0_memory.dr_mem0_memory_client(
+        DRMem0MemoryClientConfig(api_key=None), object()
+    ) as editor:
+        assert isinstance(editor, UnconfiguredMemoryEditor)
+        assert not is_memory_editor_configured(editor)
+        await editor.add_items(
+            [MemoryItem(conversation=[{"role": "user", "content": "hi"}], user_id="u1")]
+        )
+        assert await editor.search("hi", user_id="u1") == []
 
 
 def test_dr_mem0_endpoint_builds_path_prefixed_url(monkeypatch: Any) -> None:
@@ -763,24 +772,22 @@ async def test_registered_memory_client_prefers_explicit_dr_token_over_env(
     assert created == [{"api_key": "explicit-token"}]
 
 
-async def test_registered_memory_client_requires_dr_token_when_agent_memory_space_id_set(
+async def test_registered_memory_client_yields_unconfigured_editor_without_dr_token(
     monkeypatch: Any,
 ) -> None:
     # GIVEN an agent_memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
 
-    # WHEN NAT builds the memory client, THEN it raises a DR-specific error so
-    # users know to set the DR token, not the Mem0 api_key.
-    with pytest.raises(RuntimeError, match="DATAROBOT_API_TOKEN"):
-        async with datarobot_mem0_memory.dr_mem0_memory_client(
-            DRMem0MemoryClientConfig(
-                agent_memory_space_id="space-42",
-                datarobot_endpoint="https://app.datarobot.com/api/v2",
-            ),
-            object(),
-        ):
-            pass
+    async with datarobot_mem0_memory.dr_mem0_memory_client(
+        DRMem0MemoryClientConfig(
+            agent_memory_space_id="space-42",
+            datarobot_endpoint="https://app.datarobot.com/api/v2",
+        ),
+        object(),
+    ) as editor:
+        assert isinstance(editor, UnconfiguredMemoryEditor)
+        assert not is_memory_editor_configured(editor)
 
 
 async def test_registered_memory_client_rejects_agent_memory_space_id_and_api_key_together(

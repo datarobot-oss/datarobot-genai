@@ -742,3 +742,28 @@ class TestDRAgentFastApiFrontEndPlugin:
     def test_get_worker_class(self):
         plugin = DRAgentFastApiFrontEndPlugin(full_config=Config(general=GeneralConfig()))
         assert plugin.get_worker_class() is DRAgentFastApiFrontEndPluginWorker
+
+    def test_dask_client_initialized_to_none(self):
+        """NAT's run() finally-block reads self._dask_client directly; it must exist even
+        when dask is not installed so shutdown cleanup doesn't raise AttributeError.
+        """
+        plugin = DRAgentFastApiFrontEndPlugin(full_config=Config(general=GeneralConfig()))
+        assert plugin._dask_client is None
+
+    @pytest.mark.asyncio
+    async def test_run_shutdown_without_dask_does_not_raise(self):
+        """Simulate stopping the server (Ctrl+C) so NAT's run() finally-block runs its
+        dask cleanup. Without the _dask_client fix this raises AttributeError when dask
+        is not installed.
+        """
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        plugin = DRAgentFastApiFrontEndPlugin(full_config=config)
+
+        async def fake_serve(_self):
+            raise KeyboardInterrupt
+
+        with (
+            patch("datarobot_genai.dragent.workflow_paths.publish_dragent_config_file_env"),
+            patch("uvicorn.Server.serve", fake_serve),
+        ):
+            await plugin.run()
