@@ -12,11 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import sys
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
+
+# nemo_evaluator pulls in flask as a transitive dependency, which is not part
+# of the [eval] extra. Stub the relevant submodules so unit tests can import
+# judge.py and the benchmark modules without needing the full dep chain.
+_nemo_stub = MagicMock()
+for _mod in (
+    "nemo_evaluator",
+    "nemo_evaluator.contrib",
+    "nemo_evaluator.contrib.byob",
+    "nemo_evaluator.contrib.byob.judge",
+    "nemo_evaluator.contrib.byob.runner",
+):
+    sys.modules.setdefault(_mod, _nemo_stub)
 
 
 @pytest.fixture
