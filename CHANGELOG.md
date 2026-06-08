@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.15.119
+- `drtools/workload`: workload lifecycle tools — `workload_create_payload` (payload builder helper), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), and `workload_wait_for_status` (async polling with terminal-status detection and configurable timeout). Client gains `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload` methods. Payload builder supports both existing-artifact (`artifactId`) and inline-artifact modes, fixed and autoscaling replica configurations, and resource bundle selection — following the source-of-truth `WorkloadRuntime.containerGroups` schema.
+
 ## 0.15.118
-- `drtools/workload`: add initial Workload API tool group — `workload_list`, `workload_search`, `workload_get`, `bundle_list` — backed by a new `WorkloadApiClient` using the per-request DataRobot REST client. Includes full MCP registration wiring (`ToolType.WORKLOAD`, `enable_workload_tools` config flag, `MCP_CLI_OPTS` entry). Enable with `ENABLE_WORKLOAD_TOOLS=true`. Canonical paths: `/api/v2/workloads/`, `/api/v2/mlops/compute/bundles`.
+- `eval`: migrated third-party dependent modules from `af-component-evaluation` into `datarobot_genai.eval` — `validation` (pyyaml), `generator` (anthropic), `judge` (nemo_evaluator). `judge` fixes a cross-provider incompatibility where NeMo always sends `temperature` + `top_p` together, which Anthropic/Bedrock Claude rejects. Judge sessions are now thread-local to be safe under `parallelism > 1`. Full test coverage added; `nemo_evaluator` is stubbed in `conftest.py` so tests run without flask.
 
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown
