@@ -20,6 +20,7 @@ cases:
       WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests/test_tools.py
+      - ./dragent_tests/test_streaming.py
     matrix:
       LLM_DEFAULT_MODEL:
         - datarobot/azure/gpt-5-2-2025-12-11
