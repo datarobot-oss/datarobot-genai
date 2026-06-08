@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.116
+## 0.15.118
 - Test cases runner for `dragent` e2e-tests.
 
 ## 0.15.115
