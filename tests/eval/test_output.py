@@ -274,6 +274,33 @@ def test_normalize_output_duplicate_dataset_id_warns(tmp_path: Path) -> None:
     assert any("good-001" in str(w.message) for w in caught)
 
 
+def test_normalize_output_duplicate_prediction_id_warns_and_skips(
+    tmp_path: Path,
+) -> None:
+    subdir = tmp_path / "run"
+    # Two prediction rows for the same case id.
+    _write_predictions(
+        subdir,
+        [
+            _scored_row("good-001", "good", 1.0, "5"),
+            _scored_row("good-001", "good", 0.2, "2"),  # duplicate
+        ],
+    )
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [{"id": "good-001", "input": "q", "expected_behavior": "good"}]
+    import warnings as _warnings
+
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        result = normalize_output(str(tmp_path), dataset, "http://x", "p.yaml", "r1")
+
+    assert any("good-001" in str(w.message) for w in caught)
+    # Only the first prediction should be kept.
+    assert len(result["cases"]) == 1
+    assert result["cases"][0]["quality_score"] == 1.0
+
+
 def test_find_artifact_prefers_most_recently_modified(tmp_path: Path) -> None:
     import time
 
