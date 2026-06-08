@@ -18,6 +18,7 @@ import os
 from unittest.mock import patch
 
 from datarobot_genai.drmcp.core.config import MCPServerConfig
+from datarobot_genai.drmcp.core.config import MCPToolConfig
 from datarobot_genai.drmcp.core.tool_config import TOOL_CONFIGS
 from datarobot_genai.drmcp.core.tool_config import ToolType
 from datarobot_genai.drmcp.core.tool_config import get_tool_enable_config_name
@@ -37,6 +38,7 @@ class TestToolType:
         assert ToolType.VDB.value == "vdb"
         assert ToolType.CODE_EXECUTION.value == "code_execution"
         assert ToolType.OPTIMIZATION.value == "optimization"
+        assert ToolType.WORKLOAD.value == "workload"
 
     def test_tool_type_is_string_enum(self) -> None:
         """Test that ToolType is a string enum."""
@@ -84,6 +86,14 @@ class TestToolConfigs:
         assert config["package_prefix"] == "datarobot_genai.drtools.microsoft_graph"
         assert config["config_field_name"] == "enable_microsoft_graph_tools"
 
+    def test_workload_tool_config(self) -> None:
+        """Test workload tool configuration."""
+        config = TOOL_CONFIGS[ToolType.WORKLOAD]
+        assert config["name"] == "workload"
+        assert config["directory"] == "workload"
+        assert config["package_prefix"] == "datarobot_genai.drtools.workload"
+        assert config["config_field_name"] == "enable_workload_tools"
+
 
 class TestGetToolEnableConfigName:
     """Test get_tool_enable_config_name function."""
@@ -106,6 +116,10 @@ class TestGetToolEnableConfigName:
             get_tool_enable_config_name(ToolType.MICROSOFT_GRAPH) == "enable_microsoft_graph_tools"
         )
 
+    def test_workload_config_name(self) -> None:
+        """Test config name for workload tools."""
+        assert get_tool_enable_config_name(ToolType.WORKLOAD) == "enable_workload_tools"
+
 
 class TestIsToolEnabled:
     """Test is_tool_enabled function."""
@@ -125,7 +139,7 @@ class TestIsToolEnabled:
     def test_predictive_tool_default_disabled(self) -> None:
         """Test predictive tool default is disabled."""
         with patch.dict(os.environ, clear=True):
-            config = MCPServerConfig(_env_file=None)
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
             assert is_tool_enabled(ToolType.PREDICTIVE, config) is False
 
     def test_jira_tool_enabled(self) -> None:
@@ -151,3 +165,21 @@ class TestIsToolEnabled:
         with patch.dict(os.environ, {"ENABLE_MICROSOFT_GRAPH_TOOLS": "true"}, clear=False):
             config = MCPServerConfig()
             assert is_tool_enabled(ToolType.MICROSOFT_GRAPH, config) is True
+
+    def test_workload_tool_enabled(self) -> None:
+        """Test workload tool when enabled."""
+        with patch.dict(os.environ, {"ENABLE_WORKLOAD_TOOLS": "true"}, clear=False):
+            config = MCPServerConfig()
+            assert is_tool_enabled(ToolType.WORKLOAD, config) is True
+
+    def test_workload_tool_disabled(self) -> None:
+        """Test workload tool when disabled."""
+        with patch.dict(os.environ, {"ENABLE_WORKLOAD_TOOLS": "false"}, clear=False):
+            config = MCPServerConfig()
+            assert is_tool_enabled(ToolType.WORKLOAD, config) is False
+
+    def test_workload_tool_default_disabled(self) -> None:
+        """Test workload tool default is disabled."""
+        with patch.dict(os.environ, clear=True):
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert is_tool_enabled(ToolType.WORKLOAD, config) is False

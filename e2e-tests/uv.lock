@@ -963,7 +963,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.118"
+version = "0.15.119"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1093,6 +1093,8 @@ requires-dist = [
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcp'", specifier = ">=5.0.0,<8.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcpbase'", specifier = ">=5.0.0,<8.0.0" },
     { name = "colorama", marker = "extra == 'core'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'crewai'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
