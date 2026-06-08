@@ -16,14 +16,11 @@
 
 from collections.abc import Iterator
 from unittest.mock import MagicMock
-from unittest.mock import Mock
 from unittest.mock import patch
 
-import datarobot as dr
 import pytest
 from datarobot.errors import ClientError
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.workload import tools
@@ -34,22 +31,17 @@ from datarobot_genai.drtools.workload import tools
 
 
 @pytest.fixture
-def mock_request_user_client() -> Iterator[Mock]:
-    with patch.object(ThreadSafeDataRobotClient, "request_user_client") as mock_cm:
-        yield mock_cm
-
-
-@pytest.fixture
 def mock_rest_client() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def patched_dr_client(
-    mock_request_user_client: Mock,  # noqa: ARG001 — activates the context manager patch
-    mock_rest_client: MagicMock,
-) -> Iterator[MagicMock]:
-    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
+def patched_dr_client(mock_rest_client: MagicMock) -> Iterator[MagicMock]:
+    with patch(
+        "datarobot_genai.drtools.core.clients.datarobot_workload.request_user_dr_client"
+    ) as mock_cm:
+        mock_cm.return_value.__enter__.return_value = mock_rest_client
+        mock_cm.return_value.__exit__.return_value = False
         yield mock_rest_client
 
 
@@ -76,6 +68,7 @@ async def test_workload_list_success(patched_dr_client: MagicMock) -> None:
     result = await tools.workload_list()
 
     assert result["count"] == 2
+    assert result["total_count"] == 2
     assert result["workloads"][0]["id"] == "wkld-1"
     assert result["workloads"][1]["name"] == "Beta"
     patched_dr_client.get.assert_called_once_with("workloads/", params={"limit": 100, "offset": 0})
@@ -134,61 +127,6 @@ async def test_workload_list_404_raises_not_found(patched_dr_client: MagicMock) 
     with pytest.raises(ToolError) as exc_info:
         await tools.workload_list()
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
-
-
-# ------------------------------------------------------------------ #
-# workload_search                                                       #
-# ------------------------------------------------------------------ #
-
-
-@pytest.mark.asyncio
-async def test_workload_search_success(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.get.return_value = MagicMock(
-        json=lambda: {
-            "data": [{"id": "wkld-1", "name": "mcp-server"}],
-            "count": 1,
-        }
-    )
-
-    result = await tools.workload_search(query="mcp-server")
-
-    patched_dr_client.get.assert_called_once_with(
-        "workloads/", params={"limit": 20, "offset": 0, "search": "mcp-server"}
-    )
-    assert result["count"] == 1
-    assert result["workloads"][0]["id"] == "wkld-1"
-
-
-@pytest.mark.asyncio
-async def test_workload_search_empty_query_raises() -> None:
-    with pytest.raises(ToolError) as exc_info:
-        await tools.workload_search(query="")
-    assert exc_info.value.kind is ToolErrorKind.VALIDATION
-
-
-@pytest.mark.asyncio
-async def test_workload_search_whitespace_query_raises() -> None:
-    with pytest.raises(ToolError) as exc_info:
-        await tools.workload_search(query="   ")
-    assert exc_info.value.kind is ToolErrorKind.VALIDATION
-
-
-@pytest.mark.asyncio
-async def test_workload_search_negative_offset_raises() -> None:
-    with pytest.raises(ToolError) as exc_info:
-        await tools.workload_search(query="anything", offset=-5)
-    assert exc_info.value.kind is ToolErrorKind.VALIDATION
-
-
-@pytest.mark.asyncio
-async def test_workload_search_client_error(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.get.side_effect = ClientError(
-        "503 Service Unavailable", status_code=503, json={}
-    )
-
-    with pytest.raises(ToolError) as exc_info:
-        await tools.workload_search(query="foo")
-    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 # ------------------------------------------------------------------ #

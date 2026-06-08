@@ -37,11 +37,10 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "list"},
+    tags={"workload", "datarobot", "list", "search"},
     description=(
         "[Workload—list] Use to discover workloads: returns id, name, status, "
         "artifactId, importance, and runtime for each workload. Supports "
-        "pagination (limit/offset) and an optional server-side search filter. "
         "Not for a single known workload id (workload_get), not for artifacts "
         "(artifact_list).\n\n"
         "Example: workload_list(limit=50) or workload_list(search='my-app', limit=20)."
@@ -75,62 +74,6 @@ async def workload_list(
             rest_client = dr.client.get_client()
             client = WorkloadApiClient(rest_client)
             result = client.list_workloads(limit=clamped_limit, offset=offset, search=search)
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-    data = result.get("data", []) or []
-    return merge_pagination_metadata(
-        {"workloads": data, "count": len(data)},
-        result,
-        note,
-        offset=offset,
-        limit=clamped_limit,
-    )
-
-
-@tool_metadata(
-    tags={"workload", "datarobot", "search"},
-    description=(
-        "[Workload—search] Use when you have a partial workload name or id to "
-        "search for. Performs a server-side search and returns matching "
-        "workloads. Use workload_list when you want all workloads without a "
-        "filter, or workload_get when you already have the exact id.\n\n"
-        "Example: workload_search(query='mcp-server', limit=10)."
-    ),
-)
-async def workload_search(
-    *,
-    query: Annotated[
-        str,
-        "Search string matched server-side against workload name and id.",
-    ],
-    limit: Annotated[
-        int,
-        "Maximum workloads to return (1–100). Default 20.",
-    ] = 20,
-    offset: Annotated[
-        int,
-        "Number of results to skip for pagination. Default 0.",
-    ] = 0,
-) -> dict[str, Any]:
-    if not query or not query.strip():
-        raise ToolError(
-            "Argument validation error: 'query' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    if offset < 0:
-        raise ToolError(
-            "Argument validation error: 'offset' must be >= 0.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-
-    clamped_limit, note = clamp_limit(limit)
-
-    try:
-        with ThreadSafeDataRobotClient().request_user_client():
-            rest_client = dr.client.get_client()
-            client = WorkloadApiClient(rest_client)
-            result = client.list_workloads(limit=clamped_limit, offset=offset, search=query.strip())
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 

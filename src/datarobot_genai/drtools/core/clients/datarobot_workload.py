@@ -15,27 +15,20 @@
 import logging
 from typing import Any
 
-from datarobot.rest import RESTClientObject
+from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
 
 
 class WorkloadApiClient:
-    """Workload API methods backed by the DataRobot REST client.
+    """Workload API methods backed by the per-request DataRobot REST client.
 
-    Instantiate inside a
-    :func:`~datarobot_genai.drtools.core.clients.datarobot.request_user_dr_client`
-    (or :meth:`ThreadSafeDataRobotClient.request_user_client`) context so the
-    underlying client carries the correct per-user credentials::
+    Each call runs inside :func:`request_user_dr_client` so credentials come from
+    the requesting user's headers::
 
-        with ThreadSafeDataRobotClient().request_user_client():
-            rest_client = dr.client.get_client()
-            client = WorkloadApiClient(rest_client)
-            result = client.list_workloads(limit=50)
+        client = WorkloadApiClient()
+        result = client.list_workloads(limit=50)
     """
-
-    def __init__(self, rest_client: RESTClientObject) -> None:
-        self._client = rest_client
 
     # ------------------------------------------------------------------ #
     # Workloads — read                                                     #
@@ -52,7 +45,8 @@ class WorkloadApiClient:
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if search:
             params["search"] = search
-        return self._client.get("workloads/", params=params).json()
+        with request_user_dr_client() as client:
+            return client.get("workloads/", params=params).json()
 
     def get_workload(self, workload_id: str) -> dict[str, Any]:
         """GET /workloads/{workload_id}."""
@@ -64,4 +58,5 @@ class WorkloadApiClient:
 
     def list_bundles(self) -> dict[str, Any]:
         """GET /mlops/compute/bundles — available CPU/GPU resource bundles."""
-        return self._client.get("mlops/compute/bundles").json()
+        with request_user_dr_client() as client:
+            return client.get("mlops/compute/bundles").json()
