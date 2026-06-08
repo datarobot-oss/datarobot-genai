@@ -4,9 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.114
+## 0.15.118
 - `drmcp/core/config`: `MCPServerConfig` assembles `otel_exporter_otlp_headers` dynamically from `OTEL_ENTITY_ID` + `DATAROBOT_API_TOKEN` when the header is not explicitly set, avoiding stale API tokens baked at `pulumi up` time.
 - `dragent/cli/commands`: `_bridge_pulumi_otel_env()` reads `OTEL_ENTITY_ID` from `pulumi_config.json` and assembles OTel headers with the live `DATAROBOT_API_TOKEN`.
+
+## 0.15.117
+- Initialize `_dask_client` to exit cleanly and not throw error during shutdown
+
+## 0.15.116
+- `nat/datarobot_mem0_memory`: when no memory backend is configured (no `agent_memory_space_id` + `DATAROBOT_API_TOKEN`, and no `api_key` / `MEM0_API_KEY`), the provider yields an `UnconfiguredMemoryEditor` no-op instead of raising at startup. Workflows can declare `dr_mem0_memory` unconditionally and enable memory later via runtime parameters or env vars. The mutually-exclusive guardrail against setting both `agent_memory_space_id` and `api_key` is unchanged.
+- `dragent/plugins/streaming_memory_agent`: passes through to the inner agent when the referenced memory backend is unconfigured (`is_memory_editor_configured` returns false), so a fixed `memory_name` in `workflow.yaml` works with or without credentials wired at deploy time.
+
+## 0.15.115
+- `drmcpbase`: added `class UserMCPProvider` to support user MCP proxy
+
+## 0.15.114
+- `eval`: migrated stdlib foundation layer from `af-component-evaluation` into `datarobot_genai.eval` — `utils`, `status`, `output`, `converter`, `dataset`, `summarize`, `runner`, and JSON schemas. Full test coverage added under `tests/eval/`. Third-party modules (`validation`, `generator`, `judge`), benchmarks subpackage, and top-level orchestrator follow in subsequent PRs.
 
 ## 0.15.113
 - `nat/datarobot_mem0_memory`: renamed the `memory_space_id` config field to `agent_memory_space_id` (endpoint path follows: `{datarobot_endpoint}/memory/{agent_memory_space_id}`), and added a default factory that reads `AGENT_MEMORY_SPACE_ID` from env via `DataRobotAppFrameworkBaseSettings`. This lets a minimal `workflow.yaml` memory block target the DataRobot Memory Service when the recipe's agent runtime wires the env var, without requiring an explicit field in YAML. Error messages, docstrings, and the mutually-exclusive guardrail against `api_key` were updated to reference the new field name.
