@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.118
+- `eval`: migrated third-party dependent modules from `af-component-evaluation` into `datarobot_genai.eval` — `validation` (pyyaml), `generator` (anthropic), `judge` (nemo_evaluator). `judge` fixes a cross-provider incompatibility where NeMo always sends `temperature` + `top_p` together, which Anthropic/Bedrock Claude rejects. Judge sessions are now thread-local to be safe under `parallelism > 1`. Full test coverage added; `nemo_evaluator` is stubbed in `conftest.py` so tests run without flask.
+
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown
 
