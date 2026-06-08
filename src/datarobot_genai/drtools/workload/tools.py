@@ -16,11 +16,9 @@ import logging
 from typing import Annotated
 from typing import Any
 
-import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
@@ -70,10 +68,9 @@ async def workload_list(
     clamped_limit, note = clamp_limit(limit)
 
     try:
-        with ThreadSafeDataRobotClient().request_user_client():
-            rest_client = dr.client.get_client()
-            client = WorkloadApiClient(rest_client)
-            result = client.list_workloads(limit=clamped_limit, offset=offset, search=search)
+        result = WorkloadApiClient().list_workloads(
+            limit=clamped_limit, offset=offset, search=search
+        )
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
@@ -111,10 +108,7 @@ async def workload_get(
         )
 
     try:
-        with ThreadSafeDataRobotClient().request_user_client():
-            rest_client = dr.client.get_client()
-            client = WorkloadApiClient(rest_client)
-            return client.get_workload(workload_id.strip())
+        return WorkloadApiClient().get_workload(workload_id.strip())
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
@@ -136,9 +130,6 @@ async def workload_get(
 )
 async def bundle_list() -> dict[str, Any]:
     try:
-        with ThreadSafeDataRobotClient().request_user_client():
-            rest_client = dr.client.get_client()
-            client = WorkloadApiClient(rest_client)
-            return client.list_bundles()
+        return WorkloadApiClient().list_bundles()
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)

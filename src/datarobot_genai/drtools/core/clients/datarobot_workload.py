@@ -50,7 +50,8 @@ class WorkloadApiClient:
 
     def get_workload(self, workload_id: str) -> dict[str, Any]:
         """GET /workloads/{workload_id}."""
-        return self._client.get(f"workloads/{workload_id}").json()
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}").json()
 
     # ------------------------------------------------------------------ #
     # Compute bundles                                                      #
