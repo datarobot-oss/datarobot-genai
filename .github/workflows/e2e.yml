@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      case_file:
+        description: "Case YAML under e2e-tests/cases/ (e.g. pr-tests.yaml)"
+        type: string
+        default: pr-tests.yaml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,18 +20,18 @@ env:
 
 jobs:
   detect-changes:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       agents: ${{ steps.matrix.outputs.agents }}
-      router: ${{ steps.filter.outputs.router }}
-      reasoning: ${{ steps.filter.outputs.reasoning }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
         id: filter
-        # TODO: Add crewai to the filters
         with:
           filters: |
             langgraph:
@@ -44,30 +49,18 @@ jobs:
               - 'src/datarobot_genai/core/**'
               - 'e2e-tests/**'
               - '.github/workflows/e2e.yml'
-            router:
-              - 'src/datarobot_genai/core/**'
-              - 'src/datarobot_genai/nat/**'
-              - 'src/datarobot_genai/langgraph/llm.py'
-              - 'src/datarobot_genai/crewai/llm.py'
-              - 'src/datarobot_genai/llama_index/llm.py'
-              - 'e2e-tests/dragent/*/workflow-router-*.yaml'
-              - '.github/workflows/e2e.yml'
-            reasoning:
-              - 'src/datarobot_genai/core/config.py'
-              - 'src/datarobot_genai/core/agents/reasoning.py'
-              - 'src/datarobot_genai/langgraph/llm.py'
-              - 'src/datarobot_genai/langgraph/agent.py'
-              - 'src/datarobot_genai/llama_index/llm.py'
-              - 'src/datarobot_genai/llama_index/agent.py'
-              - 'e2e-tests/dragent_tests/test_reasoning.py'
-              - 'e2e-tests/dragent_tests/helpers.py'
-              - '.github/workflows/e2e.yml'
 
       - id: matrix
         run: |
           agents='[]'
           core="${{ steps.filter.outputs.core }}"
-          declare -A changed=( [langgraph]="${{ steps.filter.outputs.langgraph }}" [llamaindex]="${{ steps.filter.outputs.llamaindex }}" [nat]="${{ steps.filter.outputs.nat }}" [base]="${{ steps.filter.outputs.base }}" [crewai]="${{ steps.filter.outputs.crewai }}" )
+          declare -A changed=(
+            [langgraph]="${{ steps.filter.outputs.langgraph }}"
+            [llamaindex]="${{ steps.filter.outputs.llamaindex }}"
+            [nat]="${{ steps.filter.outputs.nat }}"
+            [base]="${{ steps.filter.outputs.base }}"
+            [crewai]="${{ steps.filter.outputs.crewai }}"
+          )
           for fw in langgraph llamaindex nat base crewai; do
             if [[ "${changed[$fw]}" == "true" || "$core" == "true" ]]; then
               agents=$(echo "$agents" | jq -c ". + [\"$fw\"]")
@@ -75,206 +68,72 @@ jobs:
           done
           echo "agents=$agents" >> "$GITHUB_OUTPUT"
 
-  load-llmgw-matrix:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+  prepare-matrix:
+    needs: [detect-changes]
+    # detect-changes is skipped on workflow_dispatch — gate accordingly.
+    if: |
+      always() && (
+        github.event_name == 'workflow_dispatch' ||
+        (needs.detect-changes.result == 'success' &&
+         needs.detect-changes.outputs.agents != '[]')
+      )
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.read.outputs.matrix }}
+      matrix: ${{ steps.gen.outputs.matrix }}
+      has_combos: ${{ steps.gen.outputs.has_combos }}
     steps:
       - uses: actions/checkout@v4
-      - id: read
-        run: |
-          matrix=$(python3 -c "
-          import yaml, json
-          with open('e2e-tests/llmgw_matrix.yaml') as f:
-              data = yaml.safe_load(f)
-          print(json.dumps(data))
-          ")
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+      - uses: astral-sh/setup-uv@v3
 
-  e2e-dragent-llmgw:
-    needs: [detect-changes, load-llmgw-matrix]
-    if: needs.detect-changes.outputs.agents != '[]'
+      - id: gen
+        working-directory: e2e-tests
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual run: pick the requested case file, no agent filter.
+            matrix=$(uv run --script scripts/cases.py generate-matrix \
+              "${{ inputs.case_file }}")
+          else
+            # PR / push: filter the matrix to agents whose code changed.
+            agents_csv=$(echo '${{ needs.detect-changes.outputs.agents }}' | jq -r 'join(",")')
+            matrix=$(uv run --script scripts/cases.py generate-matrix \
+              pr-tests.yaml \
+              --agents "$agents_csv")
+          fi
+          # Empty `include:` would make the downstream job blow up
+          # ("Matrix vector 'include' does not contain any values"); emit a
+          # boolean so the e2e job can gate on it.
+          count=$(echo "$matrix" | jq '.include | length')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "has_combos=$([[ "$count" -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Generated $count combination(s)."
+
+  e2e:
+    needs: [prepare-matrix]
+    if: needs.prepare-matrix.outputs.has_combos == 'true'
+    # `matrix.name` is the per-combo label produced by cases.py — format is
+    # "<case>--<matrix-value-1>--<matrix-value-2>...". Without an explicit
+    # name GH would label each parallel job with every field in the matrix
+    # entry (case, agent, python_version, tests, pytest_args, env, ...) which
+    # is unreadable.
+    name: e2e / ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.load-llmgw-matrix.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
     permissions:
       contents: read
     env:
+      # Single shared secrets layer — same for every matrix entry. Case-specific
+      # values (LLM, LLM_DEFAULT_MODEL, WORKFLOW_FILE, ...) are applied below
+      # from `matrix.env`.
       DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
       DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
       DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
-
-      AGENT: ${{ matrix.agent }}
-      LLM: llmgw
-
-      LLM_DEFAULT_MODEL: ${{ matrix.model.id }}
-      ALL_TEST_CASES: ${{ matrix.model.all_tests }}
-      REASONING_TESTS: ${{ matrix.model.reasoning_tests }}
-      WORKFLOW_FILE: ${{ matrix.model.workflow_file }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Setup Task
-        uses: arduino/setup-task@v2
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Cache uv and virtualenv
-        uses: actions/cache@v4
-        with:
-          path: |
-            e2e-tests/.venv
-            ~/.cache/uv
-          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
-          restore-keys: |
-            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-
-
-      - name: Install dependencies
-        working-directory: e2e-tests
-        run: |
-          uv sync --group dragent-${{ matrix.agent }}
-
-      - name: Run dragent server in background
-        uses: JarvusInnovations/background-action@v1
-        with:
-          working-directory: e2e-tests
-          run: task dragent:run-${{ matrix.agent }} &
-          wait-on: http-get://localhost:8080/health
-          wait-for: 60s
-
-      - name: Run e2e tests with LLM Gateway
-        working-directory: e2e-tests
-        run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-results-${{ matrix.agent }}-${{ matrix.model.label }}-py${{ matrix.python-version }}-llmgw
-          path: e2e-tests/test_results/
-          if-no-files-found: ignore
-
-  e2e-dragent-deployment:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.agents != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        agent: ${{ fromJson(needs.detect-changes.outputs.agents) }}
-        python-version: ['3.12']
-    permissions:
-      contents: read
-    env:
-      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
-      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
-
-      AGENT: ${{ matrix.agent }}
-      LLM: deployment
-
-      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
       LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
-      USE_DATAROBOT_LLM_GATEWAY: 0
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Setup Task
-        uses: arduino/setup-task@v2
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Cache uv and virtualenv
-        uses: actions/cache@v4
-        with:
-          path: |
-            e2e-tests/.venv
-            ~/.cache/uv
-          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
-          restore-keys: |
-            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-
-
-      - name: Install dependencies
-        working-directory: e2e-tests
-        run: |
-          uv sync --group dragent-${{ matrix.agent }}
-
-      - name: Run dragent server in background
-        uses: JarvusInnovations/background-action@v1
-        with:
-          working-directory: e2e-tests
-          run: task dragent:run-${{ matrix.agent }} &
-          wait-on: http-get://localhost:8080/health
-          wait-for: 60s
-
-      - name: Run e2e tests with DataRobot LLM Deployment (only tool calls)
-        working-directory: e2e-tests
-        run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-results-${{ matrix.agent }}-py${{ matrix.python-version }}-deployment
-          path: e2e-tests/test_results/
-          if-no-files-found: ignore
-
-  e2e-dragent-external:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.agents != '[]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        agent: ${{ fromJson(needs.detect-changes.outputs.agents) }}
-        python-version: ['3.12']
-    permissions:
-      contents: read
-    env:
-      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
-      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-      MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
-      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
-
-      AGENT: ${{ matrix.agent }}
-      LLM: external
-
-      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
-      USE_DATAROBOT_LLM_GATEWAY: 0
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"
@@ -287,7 +146,8 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python_version }}
+
       - name: Setup Task
         uses: arduino/setup-task@v2
         with:
@@ -303,14 +163,17 @@ jobs:
           path: |
             e2e-tests/.venv
             ~/.cache/uv
-          key: e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
+          key: e2e-uv-${{ runner.os }}-${{ matrix.python_version }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
           restore-keys: |
-            e2e-uv-${{ runner.os }}-${{ matrix.python-version }}-${{ matrix.agent }}-
+            e2e-uv-${{ runner.os }}-${{ matrix.python_version }}-${{ matrix.agent }}-
+
+      - name: Apply case env
+        run: |
+          echo '${{ toJson(matrix.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
 
       - name: Install dependencies
         working-directory: e2e-tests
-        run: |
-          uv sync --group dragent-${{ matrix.agent }}
+        run: uv sync --group dragent-${{ matrix.agent }}
 
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1
@@ -320,90 +183,15 @@ jobs:
           wait-on: http-get://localhost:8080/health
           wait-for: 60s
 
-      - name: Run e2e tests with external LLM (only tool calls)
+      - name: Run e2e tests
         working-directory: e2e-tests
         run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=1 --reruns-delay=5 --junitxml=test_results/results.xml
+          uv run pytest ${{ matrix.tests }} ${{ matrix.pytest_args }} --junitxml=test_results/results.xml
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results-${{ matrix.agent }}-py${{ matrix.python-version }}-external
-          path: e2e-tests/test_results/
-          if-no-files-found: ignore
-
-  e2e-router:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.router == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        agent: [langgraph, crewai, llamaindex]
-    permissions:
-      contents: read
-    env:
-      DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
-      DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
-      DATAROBOT_USER_ID: ${{ secrets.E2E_DATAROBOT_USER_ID }}
-      SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
-
-      AGENT: ${{ matrix.agent }}
-      LLM: llmgw
-      WORKFLOW_FILE: workflow-router-fallback-used.yaml
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Setup Task
-        uses: arduino/setup-task@v2
-        with:
-          version: ${{ env.TASK_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Cache uv and virtualenv
-        uses: actions/cache@v4
-        with:
-          path: |
-            e2e-tests/.venv
-            ~/.cache/uv
-          key: e2e-router-uv-${{ runner.os }}-${{ matrix.agent }}-${{ hashFiles('e2e-tests/uv.lock') }}
-          restore-keys: |
-            e2e-router-uv-${{ runner.os }}-${{ matrix.agent }}-
-
-      - name: Install dependencies
-        working-directory: e2e-tests
-        run: uv sync --group dragent-${{ matrix.agent }}
-
-      - name: Run router dragent in background
-        uses: JarvusInnovations/background-action@v1
-        with:
-          working-directory: e2e-tests
-          run: task dragent:run-${{ matrix.agent }} &
-          wait-on: http-get://localhost:8080/health
-          wait-for: 60s
-
-      - name: Run router e2e tests
-        working-directory: e2e-tests
-        run: |
-          uv run pytest dragent_tests -vv -s --timeout=60 --tb=short --reruns=2 --reruns-delay=5 --junitxml=test_results/results.xml
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-router-results-${{ matrix.agent }}
+          name: e2e-results-${{ matrix.name }}-py${{ matrix.python_version }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore

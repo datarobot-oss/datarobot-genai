@@ -29,16 +29,6 @@ from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import parse_sse_responses
 
-REASONING_TESTS = os.environ.get("REASONING_TESTS") == "true"
-
-# Reasoning is only emitted by the langgraph and llama_index agents, and only with a specific model.
-# Skip otherwise
-if not REASONING_TESTS:
-    pytest.skip(
-        "Reasoning tests run only against the LLM Gateway.",
-        allow_module_level=True,
-    )
-
 if AGENT not in ("langgraph", "llamaindex"):
     pytest.skip(
         "Reasoning is only emitted by the langgraph and llamaindex agents.",
