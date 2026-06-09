@@ -32,6 +32,7 @@ from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
 from datarobot_genai.nat.helpers import extract_headers_from_context
 from datarobot_genai.nat.helpers import load_config
 from datarobot_genai.nat.helpers import load_workflow
+from datarobot_genai.nat.helpers import remove_datarobot_moderation_middleware
 
 
 @pytest.mark.parametrize(
@@ -267,6 +268,93 @@ def test_load_config(config_yaml, headers, should_have_headers):
         assert not dr_auth_config.headers
 
 
+def test_remove_datarobot_moderation_middleware_strips_definitions_and_references() -> None:
+    config_yaml = {
+        "middleware": {
+            "datarobot_guardrails": {
+                "_type": "datarobot_moderation",
+                "moderation": {"guards": []},
+            },
+            "other_middleware": {"_type": "some_other"},
+        },
+        "workflow": {
+            "_type": "react_agent",
+            "middleware": ["datarobot_guardrails", "other_middleware"],
+        },
+    }
+
+    remove_datarobot_moderation_middleware(config_yaml)
+
+    assert config_yaml == {
+        "middleware": {"other_middleware": {"_type": "some_other"}},
+        "workflow": {"_type": "react_agent", "middleware": ["other_middleware"]},
+    }
+
+
+def test_remove_datarobot_moderation_middleware_noop_when_absent() -> None:
+    config_yaml = {
+        "middleware": {"other_middleware": {"_type": "some_other"}},
+        "workflow": {"_type": "react_agent"},
+    }
+
+    remove_datarobot_moderation_middleware(config_yaml)
+
+    assert config_yaml == {
+        "middleware": {"other_middleware": {"_type": "some_other"}},
+        "workflow": {"_type": "react_agent"},
+    }
+
+
+@pytest.mark.parametrize(
+    "disable_datarobot_moderation, expected_middleware",
+    [
+        (
+            True,
+            {"other_middleware": {"_type": "some_other"}},
+        ),
+        (
+            False,
+            {
+                "datarobot_guardrails": {"_type": "datarobot_moderation"},
+                "other_middleware": {"_type": "some_other"},
+            },
+        ),
+    ],
+)
+def test_load_config_can_disable_datarobot_moderation(
+    disable_datarobot_moderation, expected_middleware
+) -> None:
+    config_yaml = {
+        "middleware": {
+            "datarobot_guardrails": {"_type": "datarobot_moderation"},
+            "other_middleware": {"_type": "some_other"},
+        },
+        "workflow": {
+            "_type": "react_agent",
+            "middleware": ["datarobot_guardrails", "other_middleware"],
+        },
+        "llms": {"llm": {"_type": "test"}},
+    }
+    with (
+        patch("datarobot_genai.nat.helpers.yaml_load", return_value=config_yaml),
+        patch("datarobot_genai.nat.helpers.validate_schema", side_effect=lambda cfg, _: cfg),
+        patch("datarobot_genai.nat.helpers.discover_and_register_plugins"),
+    ):
+        load_config(
+            "some_path",
+            disable_datarobot_moderation=disable_datarobot_moderation,
+        )
+
+    assert config_yaml["middleware"] == expected_middleware
+    if disable_datarobot_moderation:
+        assert config_yaml["workflow"]["middleware"] == ["other_middleware"]
+    else:
+        assert config_yaml["workflow"]["middleware"] == [
+            "datarobot_guardrails",
+            "other_middleware",
+        ]
+
+
 async def test_load_workflow():
     with patch("datarobot_genai.nat.helpers.WorkflowBuilder"):
         with patch("datarobot_genai.nat.helpers.SessionManager") as mock_session_manager:
@@ -276,7 +364,11 @@ async def test_load_workflow():
                 headers = {"h1": "v1"}
                 async with load_workflow(path, headers=headers) as workflow:
                     assert workflow
-                    mock_load_config.assert_called_once_with("some_path", headers=headers)
+                    mock_load_config.assert_called_once_with(
+                        "some_path",
+                        headers=headers,
+                        disable_datarobot_moderation=False,
+                    )
 
 
 @pytest.fixture

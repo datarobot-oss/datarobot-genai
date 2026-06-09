@@ -503,4 +503,5 @@ async def test_streaming_mcp_headers(
     mock_load_workflow.assert_called_once_with(
         workflow_path,
         headers=expected_headers,
+        disable_datarobot_moderation=True,
     )
