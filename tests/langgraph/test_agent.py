@@ -218,6 +218,18 @@ def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose
     assert calls[1] == (mock_llm, extra_tools, True)
 
 
+def test_datarobot_agent_class_from_langgraph_exposes_structured_history() -> None:
+    # The factory must let agents opt into native-message history via structured_history.
+    inner = SimpleLangGraphAgent()
+    cls = datarobot_agent_class_from_langgraph(
+        lambda _l, _t, _v: inner.workflow, inner.prompt_template
+    )
+    assert cls(llm=Mock()).structured_history is True  # default on for langgraph
+    assert (
+        cls(llm=Mock(), structured_history=False).structured_history is False
+    )  # opt-out respected
+
+
 @pytest.mark.asyncio
 async def test_datarobot_agent_class_from_langgraph_invoke_streams(
     run_agent_input: RunAgentInput,
@@ -564,9 +576,9 @@ async def test_convert_input_message_structured_history_reconstructs_tool_calls(
     assert "and tomorrow?" in str(msgs[4].content)
 
 
-async def test_convert_input_message_structured_history_off_by_default() -> None:
-    """Without the flag (and no {chat_history} var), no prior turns are injected."""
-    agent = StructuredHistoryLangGraphAgent()  # structured_history defaults False
+async def test_convert_input_message_structured_history_off_when_disabled() -> None:
+    """With structured_history=False (and no {chat_history} var), no prior turns are injected."""
+    agent = StructuredHistoryLangGraphAgent(structured_history=False)
 
     command = await agent.convert_input_message(_tool_history_run_input())
     msgs = command["messages"]

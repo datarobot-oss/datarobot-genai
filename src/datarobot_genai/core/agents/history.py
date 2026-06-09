@@ -211,19 +211,25 @@ def build_history_summary_from_messages(
 def drop_unpaired_boundary_tool_turns(
     history: list[NormalizedHistoryMessage],
 ) -> list[NormalizedHistoryMessage]:
-    """Drop tool-call/result turns left unpaired by truncation.
+    """Drop tool-call/result turns left unpaired at the history boundaries.
 
-    ``max_history`` truncation is turn-count based and can slice through a
-    tool-call/result pair, leaving a leading tool result with no preceding tool call,
-    or a trailing assistant tool-call with no following result. Most chat APIs reject
-    either, so the structured (native-message) path drops them; the plain-text summary
-    flattens and is unaffected, so it does not call this.
+    Two boundary cases, both of which most chat APIs reject; the structured
+    (native-message) path drops them (the plain-text summary flattens and is unaffected,
+    so it does not call this):
+
+    - **Leading** ``tool`` result with no preceding tool call — produced by
+      ``max_history`` truncation, which keeps the most recent N turns (removing from the
+      *front*) and so can slice a tool-call/result pair, leaving the result first.
+    - **Trailing** ``assistant`` message with ``tool_calls`` but no following ``tool``
+      result. This is *not* from truncation (truncation only trims the front): it is the
+      supplied history simply *ending* on a tool-call turn (the current user turn is
+      handled separately, so its result may not be in these messages).
     """
     result = list(history)
-    # Leading tool results whose originating tool call was truncated off the front.
+    # Leading tool result whose originating tool call was truncated off the front.
     while result and result[0].get("role") == "tool":
         result.pop(0)
-    # Trailing assistant tool-call whose result was truncated off the end.
+    # Trailing assistant tool-call the history ends on, with no following tool result.
     if result and result[-1].get("role") == "assistant" and result[-1].get("tool_calls"):
         result.pop()
     return result

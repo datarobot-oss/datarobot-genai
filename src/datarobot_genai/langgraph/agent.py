@@ -118,7 +118,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
-        structured_history: bool = False,
+        structured_history: bool = True,
         checkpointer: Any | None = None,
         interrupt_before: Any | None = None,
         interrupt_after: Any | None = None,
@@ -149,6 +149,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         """When true, prior turns are fed to the model as structured native messages
         (tool calls preserved) instead of the text ``{chat_history}`` summary. Only
         applies when the prompt template does not declare ``{chat_history}``.
+
+        Defaults to ``True`` so multi-turn history is replayed by default; pass
+        ``structured_history=False`` to opt out.
         """
         return self._structured_history
 

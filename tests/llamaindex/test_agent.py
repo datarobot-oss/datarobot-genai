@@ -303,6 +303,14 @@ def test_datarobot_agent_class_from_llamaindex_allow_parallel_tool_calls_on_func
     assert writer.allow_parallel_tool_calls is False
 
 
+def test_datarobot_agent_class_from_llamaindex_exposes_structured_history() -> None:
+    # The factory __init__ must forward structured_history so agents built from it can
+    # opt into native-message history (the base supports it; this guards the passthrough).
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [], lambda _s, _e: "")
+    assert cls().structured_history is True  # default on for llama_index
+    assert cls(structured_history=False).structured_history is False  # opt-out respected
+
+
 def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:
     orig1 = Mock(name="static_tool_1")
     orig2 = Mock(name="static_tool_2")
@@ -495,9 +503,10 @@ async def test_llama_index_agent_invoke(
 
 
 async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
-    # GIVEN a llamaindex agent without prompt placeholders
+    # GIVEN a llamaindex agent without prompt placeholders (history disabled so this
+    # focuses on the raw user prompt; CapturingWorkflow.run takes no chat_history kwarg)
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow)
+    agent = MyLlamaAgent(workflow, structured_history=False)
 
     # WHEN invoking the agent
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
@@ -890,13 +899,13 @@ async def test_invoke_passes_structured_chat_history_when_enabled(events: list[A
     assert wf.captured_user_msg == "and tomorrow?"
 
 
-async def test_invoke_omits_chat_history_by_default(events: list[Any]) -> None:
-    # GIVEN no structured_history flag and no {chat_history} placeholder
+async def test_invoke_omits_chat_history_when_disabled(events: list[Any]) -> None:
+    # GIVEN structured_history=False and no {chat_history} placeholder
     wf = ChatHistoryCapturingWorkflow(events=events, state="S")
-    agent = MyLlamaAgent(wf)
+    agent = MyLlamaAgent(wf, structured_history=False)
 
     # WHEN invoking with prior history
     _ = [e async for e in agent.invoke(_tool_history_run_input())]
 
-    # THEN no structured chat_history is passed (backward-compatible default)
+    # THEN no structured chat_history is passed (history disabled)
     assert wf.captured_chat_history is None

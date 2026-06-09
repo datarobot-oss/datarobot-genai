@@ -121,7 +121,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
-        structured_history: bool = False,
+        structured_history: bool = True,
         allow_parallel_tool_calls: bool = True,
     ) -> None:
         super().__init__(
@@ -145,6 +145,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         ``ChatMessage`` history (tool calls preserved) instead of the text
         ``{chat_history}`` summary. Only applies when the prompt has no
         ``{chat_history}`` placeholder.
+
+        Defaults to ``True`` so multi-turn history is replayed by default; pass
+        ``structured_history=False`` to opt out.
         """
         return self._structured_history
 
@@ -556,6 +559,7 @@ def datarobot_agent_class_from_llamaindex(
             max_history_messages: int | None = None,
             memory_client: BaseMemoryClient | None = None,
             model: str | None = None,
+            structured_history: bool = True,
             allow_parallel_tool_calls: bool = True,
         ) -> None:
             super().__init__(
@@ -569,6 +573,7 @@ def datarobot_agent_class_from_llamaindex(
                 max_history_messages=max_history_messages,
                 memory_client=memory_client,
                 model=model,
+                structured_history=structured_history,
                 allow_parallel_tool_calls=allow_parallel_tool_calls,
             )
             for agent in agents:

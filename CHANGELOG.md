@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.118
 - `core/agents`: tool calls now render in the text chat-history summary in both content cases (previously dropped when the assistant turn also had text), so all frameworks surface prior tool steps. Consumer note: prompts using `{chat_history}` now see a `[tool_calls]` line on assistant turns that call tools, where those calls were previously omitted.
-- `langgraph`/`llama_index`: added opt-in `structured_history` that feeds prior turns to the model as native messages with tool calls preserved, via a shared `BaseAgent.history_messages()` accessor and per-framework converters.
+- `langgraph`/`llama_index`: prior turns are fed to the model as native messages with tool calls preserved (`structured_history`), via a shared `BaseAgent.history_messages()` accessor and per-framework converters. Defaults to **on** for these frameworks (pass `structured_history=False` to disable); only applies when the prompt has no `{chat_history}` placeholder. Consumer note (breaking): a langgraph/llama_index agent whose prompt has no `{chat_history}` placeholder now replays prior turns to the model by default — where before it received no history — bounded by `max_history_messages`.
 
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown
