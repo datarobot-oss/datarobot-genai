@@ -15,7 +15,7 @@ import pytest
 
 from datarobot_genai.drmcp.core.enums import DataRobotMCPPromptCategory
 from datarobot_genai.drmcp.core.enums import DataRobotMCPResourceCategory
-from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 
 
 class TestDataRobotMCPToolCategory:

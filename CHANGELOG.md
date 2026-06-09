@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.124
+- Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
+
 ## 0.15.123
 - `drtools/workload`: lifecycle tools.
   - **New tools**: `workload_create_payload` (builds and validates a create payload without an API call; supports both existing `artifactId` and inline artifact via `artifact_name`, `image_uri`, `port`, `cpu`, `memory_bytes`), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), `workload_wait_for_status`.

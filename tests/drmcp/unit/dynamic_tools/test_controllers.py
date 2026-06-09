@@ -30,8 +30,8 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
     register_tool_for_deployment_id,
 )
-from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
 
 
 @pytest.fixture
