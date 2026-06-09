@@ -28,19 +28,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pytest
-
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.mock_otel_collector import MockOtelCollector
 
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping OTel tracing tests",
-        allow_module_level=True,
-    )
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
 TEST_API_TOKEN = "test-token"
