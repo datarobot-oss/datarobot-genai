@@ -25,10 +25,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from openai.types.chat import ChatCompletion
 
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import E2E_ROOT
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
@@ -37,12 +35,6 @@ from dragent_tests.helpers import spawn_runner
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 AGENT_DIR = agent_dir()
 WORKFLOW_CONFIG = AGENT_DIR / "workflow.yaml"
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping inline runner tests",
-        allow_module_level=True,
-    )
 
 
 def test_run_agent_inline(tmp_path: Path) -> None:

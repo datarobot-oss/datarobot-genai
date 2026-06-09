@@ -22,7 +22,6 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
@@ -32,8 +31,6 @@ if not os.environ.get("MCP_DEPLOYMENT_ID"):
     pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping MCP tests", allow_module_level=True)
-if not ALL_TEST_CASES:
-    pytest.skip("Running minimal test set for non-LLM Gateway LLM", allow_module_level=True)
 
 MCP_TOOL_PROMPT = (
     "You MUST use the search_datarobot_agentic_docs tool to search for 'MCP server'. "

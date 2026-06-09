@@ -4,9 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.118
+## 0.15.121
 - `core/agents`: tool calls now render in the text chat-history summary in both content cases (previously dropped when the assistant turn also had text), so all frameworks surface prior tool steps. Consumer note: prompts using `{chat_history}` now see a `[tool_calls]` line on assistant turns that call tools, where those calls were previously omitted.
 - `langgraph`/`llama_index`: prior turns are fed to the model as native messages with tool calls preserved (`structured_history`), via a shared `BaseAgent.history_messages()` accessor and per-framework converters. Defaults to **on** for these frameworks (pass `structured_history=False` to disable); only applies when the prompt has no `{chat_history}` placeholder. Consumer note (breaking): a langgraph/llama_index agent whose prompt has no `{chat_history}` placeholder now replays prior turns to the model by default — where before it received no history — bounded by `max_history_messages`.
+
+## 0.15.120
+- Test cases runner for `dragent` e2e-tests.
+
+## 0.15.119
+- `drtools/workload`: workload lifecycle tools — `workload_create_payload` (payload builder helper), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), and `workload_wait_for_status` (async polling with terminal-status detection and configurable timeout). Client gains `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload` methods. Payload builder supports both existing-artifact (`artifactId`) and inline-artifact modes, fixed and autoscaling replica configurations, and resource bundle selection — following the source-of-truth `WorkloadRuntime.containerGroups` schema.
+
+## 0.15.118
+- `eval`: migrated third-party dependent modules from `af-component-evaluation` into `datarobot_genai.eval` — `validation` (pyyaml), `generator` (anthropic), `judge` (nemo_evaluator). `judge` fixes a cross-provider incompatibility where NeMo always sends `temperature` + `top_p` together, which Anthropic/Bedrock Claude rejects. Judge sessions are now thread-local to be safe under `parallelism > 1`. Full test coverage added; `nemo_evaluator` is stubbed in `conftest.py` so tests run without flask.
 
 ## 0.15.117
 - Initialize `_dask_client` to exit cleanly and not throw error during shutdown

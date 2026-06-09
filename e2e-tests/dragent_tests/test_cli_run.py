@@ -20,16 +20,7 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping CLI run tests",
-        allow_module_level=True,
-    )
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_CONFIG = E2E_ROOT / "dragent" / (AGENT or "langgraph") / "workflow.yaml"

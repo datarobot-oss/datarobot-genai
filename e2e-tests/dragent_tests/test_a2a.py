@@ -28,16 +28,8 @@ import uuid
 import httpx
 import pytest
 
-from dragent_tests.helpers import ALL_TEST_CASES
-
 A2A_PATH = "/a2a/"
 A2A_AGENT_CARD_PATH = "/a2a/.well-known/agent-card.json"
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping A2A tests",
-        allow_module_level=True,
-    )
 
 
 def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
