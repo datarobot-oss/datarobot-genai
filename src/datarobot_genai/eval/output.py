@@ -47,6 +47,7 @@ def normalize_output(
     results_path = _find_artifact(output_dir, "byob_results.json")
 
     cases: list[dict[str, Any]] = []
+    predicted_ids: set[str] = set()
     if predictions_path and predictions_path.exists():
         for line in predictions_path.read_text().splitlines():
             if not line.strip():
@@ -54,6 +55,14 @@ def normalize_output(
             pred: dict[str, Any] = json.loads(line)
             meta: dict[str, Any] = pred.get("metadata", {})
             case_id: str = meta.get("id", "unknown")
+            if case_id in predicted_ids:
+                warnings.warn(
+                    f"Duplicate prediction id {case_id!r} in byob_predictions.jsonl; skipping",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            predicted_ids.add(case_id)
             original = dataset_by_id.get(case_id, {})
 
             scores: dict[str, Any] = pred.get("scores") or {}
@@ -96,7 +105,6 @@ def normalize_output(
 
     # Dataset cases with no prediction entry are surfaced as inconclusive so
     # partial runs don't silently appear complete in the summary.
-    predicted_ids = {c["id"] for c in cases}
     for c in dataset:
         if c["id"] not in predicted_ids:
             cases.append(
