@@ -114,3 +114,14 @@ def test_converted_history_serializes_to_openai_without_crashing() -> None:
     assert assistant["tool_calls"][0]["function"]["name"] == "get_weather"
     tool = next(d for d in dicts if d["role"] == "tool")
     assert tool["tool_call_id"] == "c1"
+
+
+def test_carries_folded_reasoning_in_assistant_content() -> None:
+    # extract_history_messages folds standalone reasoning into the assistant content;
+    # the converter must carry that <reasoning> text through to the model (it would
+    # otherwise drop a standalone reasoning-role message).
+    history = [{"role": "assistant", "content": "<reasoning>\nadded 2+2\n</reasoning>\n4"}]
+    msgs = ag_ui_history_to_chat_messages(history)
+    assert msgs[0].role == "assistant"
+    assert "<reasoning>" in msgs[0].content
+    assert "added 2+2" in msgs[0].content

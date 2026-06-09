@@ -98,3 +98,14 @@ def test_parallel_tool_calls_in_one_turn_all_mapped() -> None:
     assert [tc["id"] for tc in tool_calls] == ["c1", "c2"]
     assert [tc["name"] for tc in tool_calls] == ["get_weather", "log_event"]
     assert tool_calls[0]["args"] == {"city": "Paris"}
+
+
+def test_carries_folded_reasoning_in_assistant_content() -> None:
+    # extract_history_messages folds standalone reasoning into the assistant content;
+    # the converter must carry that <reasoning> text through to the model (it would
+    # otherwise drop a standalone reasoning-role message).
+    history = [{"role": "assistant", "content": "<reasoning>\nadded 2+2\n</reasoning>\n4"}]
+    msgs = ag_ui_history_to_langchain(history)
+    assert isinstance(msgs[0], AIMessage)
+    assert "<reasoning>" in msgs[0].content
+    assert "added 2+2" in msgs[0].content

@@ -26,6 +26,8 @@ from typing import TypedDict
 
 from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.agents.reasoning import wrap_reasoning
+
 
 class _NormalizedHistoryMessageRequired(TypedDict):
     """Required fields for a normalized prior chat message."""
@@ -94,6 +96,51 @@ def _summarize_tool_calls(tool_calls: Any) -> str:
     return "[tool_calls]"
 
 
+def _fold_reasoning_messages(messages: list[Any]) -> list[Any]:
+    """Fold standalone ``reasoning`` messages into the following assistant turn.
+
+    AG-UI ``AssistantMessage`` has no reasoning field, so reasoning arrives as separate
+    ``role="reasoning"`` messages in history.
+    Reasoning precedes its answer, so each reasoning message is merged into the next
+    assistant message's content as ``<reasoning>...</reasoning>`` text; the standalone
+    reasoning message is then dropped. This makes the text summary and the structured
+    converters surface reasoning identically, without per-path handling.
+
+    Consecutive reasoning messages before one assistant are concatenated. Reasoning
+    with no following assistant turn (orphan) is dropped. A no-op when there are no
+    reasoning messages, so non-reasoning history is unchanged.
+    """
+    folded: list[Any] = []
+    pending: list[str] = []
+    for message in messages:
+        role = str(_get_message_field(message, "role") or "")
+        if role == "reasoning":
+            text = _get_message_field(message, "content")
+            if text:
+                pending.append(str(text))
+            continue
+        if pending and role == "assistant":
+            content = _get_message_field(message, "content")
+            folded.append(
+                {
+                    "role": "assistant",
+                    "content": wrap_reasoning(
+                        "\n".join(pending), str(content) if content is not None else ""
+                    ),
+                    "tool_calls": _get_message_field(message, "tool_calls"),
+                    "name": _get_message_field(message, "name"),
+                    "tool_call_id": _get_message_field(message, "tool_call_id"),
+                }
+            )
+            pending = []
+            continue
+        # Non-assistant turn (or assistant with no buffered reasoning): any buffered
+        # reasoning has no answer to attach to, so drop it.
+        pending = []
+        folded.append(message)
+    return folded
+
+
 def extract_history_messages(
     run_agent_input: RunAgentInput,
     max_history: int,
@@ -113,7 +160,9 @@ def extract_history_messages(
     - When ``max_history <= 0``, history is disabled and an empty list is returned.
       This matches the documented semantics where 0 means "no history".
     """
-    raw_messages = list(run_agent_input.messages)
+    # Fold standalone reasoning messages into their following assistant turn before
+    # any truncation, so reasoning travels with its answer and never consumes a slot.
+    raw_messages = _fold_reasoning_messages(list(run_agent_input.messages))
     if not raw_messages or max_history <= 0:
         return []
 
