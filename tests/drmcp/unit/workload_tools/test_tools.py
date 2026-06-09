@@ -23,7 +23,8 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.workload import tools
+from datarobot_genai.drtools.workload import lifecycle_tools
+from datarobot_genai.drtools.workload import read_tools
 
 # ------------------------------------------------------------------ #
 # Shared fixtures                                                       #
@@ -65,7 +66,7 @@ async def test_workload_list_success(patched_dr_client: MagicMock) -> None:
         }
     )
 
-    result = await tools.workload_list()
+    result = await read_tools.workload_list()
 
     assert result["count"] == 2
     assert result["total_count"] == 2
@@ -80,7 +81,7 @@ async def test_workload_list_with_search(patched_dr_client: MagicMock) -> None:
         json=lambda: {"data": [{"id": "wkld-1", "name": "my-app"}], "count": 1}
     )
 
-    result = await tools.workload_list(search="my-app", limit=10, offset=5)
+    result = await read_tools.workload_list(search="my-app", limit=10, offset=5)
 
     patched_dr_client.get.assert_called_once_with(
         "workloads/", params={"limit": 10, "offset": 5, "search": "my-app"}
@@ -94,7 +95,7 @@ async def test_workload_list_with_search(patched_dr_client: MagicMock) -> None:
 async def test_workload_list_clamps_limit(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(json=lambda: {"data": [], "count": 0})
 
-    result = await tools.workload_list(limit=500)
+    result = await read_tools.workload_list(limit=500)
 
     # limit clamped to 100
     patched_dr_client.get.assert_called_once_with("workloads/", params={"limit": 100, "offset": 0})
@@ -105,7 +106,7 @@ async def test_workload_list_clamps_limit(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_list_negative_offset_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_list(offset=-1)
+        await read_tools.workload_list(offset=-1)
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -116,7 +117,7 @@ async def test_workload_list_client_error(patched_dr_client: MagicMock) -> None:
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_list()
+        await read_tools.workload_list()
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -125,7 +126,7 @@ async def test_workload_list_404_raises_not_found(patched_dr_client: MagicMock) 
     patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_list()
+        await read_tools.workload_list()
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -145,7 +146,7 @@ async def test_workload_get_success(patched_dr_client: MagicMock) -> None:
         }
     )
 
-    result = await tools.workload_get(workload_id="wkld-abc")
+    result = await read_tools.workload_get(workload_id="wkld-abc")
 
     patched_dr_client.get.assert_called_once_with("workloads/wkld-abc")
     assert result["id"] == "wkld-abc"
@@ -156,7 +157,7 @@ async def test_workload_get_success(patched_dr_client: MagicMock) -> None:
 async def test_workload_get_strips_whitespace(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(json=lambda: {"id": "wkld-abc"})
 
-    await tools.workload_get(workload_id="  wkld-abc  ")
+    await read_tools.workload_get(workload_id="  wkld-abc  ")
 
     patched_dr_client.get.assert_called_once_with("workloads/wkld-abc")
 
@@ -164,7 +165,7 @@ async def test_workload_get_strips_whitespace(patched_dr_client: MagicMock) -> N
 @pytest.mark.asyncio
 async def test_workload_get_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_get(workload_id="")
+        await read_tools.workload_get(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -173,7 +174,7 @@ async def test_workload_get_not_found(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_get(workload_id="wkld-missing")
+        await read_tools.workload_get(workload_id="wkld-missing")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -192,7 +193,7 @@ async def test_bundle_list_success(patched_dr_client: MagicMock) -> None:
     }
     patched_dr_client.get.return_value = MagicMock(json=lambda: bundles_payload)
 
-    result = await tools.bundle_list()
+    result = await read_tools.bundle_list()
 
     patched_dr_client.get.assert_called_once_with("mlops/compute/bundles")
     assert result == bundles_payload
@@ -205,7 +206,7 @@ async def test_bundle_list_client_error(patched_dr_client: MagicMock) -> None:
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.bundle_list()
+        await read_tools.bundle_list()
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -216,7 +217,7 @@ async def test_bundle_list_client_error(patched_dr_client: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_create_payload_existing_artifact() -> None:
-    result = await tools.workload_create_payload(name="my-wl", artifact_id="art-abc")
+    result = await lifecycle_tools.workload_create_payload(name="my-wl", artifact_id="art-abc")
     p = result["payload"]
     assert p["name"] == "my-wl"
     assert p["artifactId"] == "art-abc"
@@ -227,7 +228,7 @@ async def test_create_payload_existing_artifact() -> None:
 
 @pytest.mark.asyncio
 async def test_create_payload_inline_artifact() -> None:
-    result = await tools.workload_create_payload(
+    result = await lifecycle_tools.workload_create_payload(
         name="test-echo",
         artifact_name="echo",
         image_uri="hashicorp/http-echo:0.2.3",
@@ -251,7 +252,7 @@ async def test_create_payload_inline_artifact() -> None:
 @pytest.mark.asyncio
 async def test_create_payload_both_modes_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create_payload(
+        await lifecycle_tools.workload_create_payload(
             name="x",
             artifact_id="art-abc",
             artifact_name="echo",
@@ -266,21 +267,23 @@ async def test_create_payload_both_modes_raises() -> None:
 @pytest.mark.asyncio
 async def test_create_payload_neither_mode_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create_payload(name="x")
+        await lifecycle_tools.workload_create_payload(name="x")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_create_payload_invalid_importance_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create_payload(name="wl", artifact_id="art-1", importance="ultra")
+        await lifecycle_tools.workload_create_payload(
+            name="wl", artifact_id="art-1", importance="ultra"
+        )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_create_payload_invalid_port_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create_payload(
+        await lifecycle_tools.workload_create_payload(
             name="wl", artifact_name="x", image_uri="x:1", port=80, cpu=1, memory_bytes=1
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -288,7 +291,7 @@ async def test_create_payload_invalid_port_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_create_payload_env_vars() -> None:
-    result = await tools.workload_create_payload(
+    result = await lifecycle_tools.workload_create_payload(
         name="app-wl",
         artifact_name="app",
         image_uri="my-image:latest",
@@ -312,7 +315,7 @@ async def test_workload_create_success(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "wkld-new", "name": "my-wl", "status": "initializing"}
     )
 
-    result = await tools.workload_create(
+    result = await lifecycle_tools.workload_create(
         payload={"name": "my-wl", "artifactId": "art-abc", "runtime": {}}
     )
 
@@ -325,21 +328,21 @@ async def test_workload_create_success(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_create_empty_payload_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create(payload={})
+        await lifecycle_tools.workload_create(payload={})
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_create_missing_name_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create(payload={"artifactId": "art-1"})
+        await lifecycle_tools.workload_create(payload={"artifactId": "art-1"})
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_create_both_artifact_fields_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create(
+        await lifecycle_tools.workload_create(
             payload={"name": "wl", "artifactId": "art-1", "artifact": {"name": "x"}}
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -349,7 +352,7 @@ async def test_workload_create_both_artifact_fields_raises() -> None:
 async def test_workload_create_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.side_effect = ClientError("422", status_code=422, json={})
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_create(payload={"name": "wl", "artifactId": "art-1"})
+        await lifecycle_tools.workload_create(payload={"name": "wl", "artifactId": "art-1"})
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -364,7 +367,7 @@ async def test_workload_start_success(patched_dr_client: MagicMock) -> None:
         content=b'{"accepted":true}', json=lambda: {"accepted": True}
     )
 
-    result = await tools.workload_start(workload_id="wkld-abc")
+    result = await lifecycle_tools.workload_start(workload_id="wkld-abc")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/start")
     assert result == {"accepted": True}
@@ -373,7 +376,7 @@ async def test_workload_start_success(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_start_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_start(workload_id="")
+        await lifecycle_tools.workload_start(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -388,7 +391,7 @@ async def test_workload_stop_no_wait(patched_dr_client: MagicMock) -> None:
         content=b'{"accepted":true}', json=lambda: {"accepted": True}
     )
 
-    result = await tools.workload_stop(workload_id="wkld-abc", wait_stopped=False)
+    result = await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=False)
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/stop")
     assert result == {"accepted": True}
@@ -401,7 +404,7 @@ async def test_workload_stop_with_wait(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "wkld-abc", "status": "stopped"}
     )
 
-    result = await tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
+    result = await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
 
     assert result["status"] == "stopped"
 
@@ -414,7 +417,9 @@ async def test_workload_stop_timeout_raises(patched_dr_client: MagicMock) -> Non
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_stop(workload_id="wkld-abc", wait_stopped=True, timeout_seconds=1)
+        await lifecycle_tools.workload_stop(
+            workload_id="wkld-abc", wait_stopped=True, timeout_seconds=1
+        )
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -426,7 +431,9 @@ async def test_workload_stop_errored_raises(patched_dr_client: MagicMock) -> Non
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_stop(workload_id="wkld-abc", wait_stopped=True, timeout_seconds=30)
+        await lifecycle_tools.workload_stop(
+            workload_id="wkld-abc", wait_stopped=True, timeout_seconds=30
+        )
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -436,7 +443,7 @@ async def test_workload_stop_wait_client_error(patched_dr_client: MagicMock) -> 
     patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
+        await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -449,7 +456,7 @@ async def test_workload_stop_wait_client_error(patched_dr_client: MagicMock) -> 
 async def test_workload_delete_success(patched_dr_client: MagicMock) -> None:
     patched_dr_client.delete.return_value = MagicMock()
 
-    result = await tools.workload_delete(workload_id="wkld-abc")
+    result = await lifecycle_tools.workload_delete(workload_id="wkld-abc")
 
     patched_dr_client.delete.assert_called_once_with("workloads/wkld-abc")
     assert result == {"deleted": True, "workload_id": "wkld-abc"}
@@ -458,7 +465,7 @@ async def test_workload_delete_success(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_delete_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_delete(workload_id="")
+        await lifecycle_tools.workload_delete(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -473,7 +480,7 @@ async def test_workload_update_name(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "wkld-abc", "name": "new-name"}
     )
 
-    result = await tools.workload_update(workload_id="wkld-abc", name="new-name")
+    result = await lifecycle_tools.workload_update(workload_id="wkld-abc", name="new-name")
 
     patched_dr_client.patch.assert_called_once_with("workloads/wkld-abc", json={"name": "new-name"})
     assert result["name"] == "new-name"
@@ -483,7 +490,7 @@ async def test_workload_update_name(patched_dr_client: MagicMock) -> None:
 async def test_workload_update_multiple_fields(patched_dr_client: MagicMock) -> None:
     patched_dr_client.patch.return_value = MagicMock(json=lambda: {"id": "wkld-abc"})
 
-    await tools.workload_update(
+    await lifecycle_tools.workload_update(
         workload_id="wkld-abc", name="x", description="desc", importance="high"
     )
 
@@ -495,14 +502,14 @@ async def test_workload_update_multiple_fields(patched_dr_client: MagicMock) -> 
 @pytest.mark.asyncio
 async def test_workload_update_no_fields_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_update(workload_id="wkld-abc")
+        await lifecycle_tools.workload_update(workload_id="wkld-abc")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_update_invalid_importance_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_update(workload_id="wkld-abc", importance="ultra")
+        await lifecycle_tools.workload_update(workload_id="wkld-abc", importance="ultra")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -517,7 +524,9 @@ async def test_workload_wait_for_status_immediate(patched_dr_client: MagicMock) 
         json=lambda: {"id": "wkld-abc", "status": "running"}
     )
 
-    result = await tools.workload_wait_for_status(workload_id="wkld-abc", target_status="running")
+    result = await lifecycle_tools.workload_wait_for_status(
+        workload_id="wkld-abc", target_status="running"
+    )
 
     assert result["status"] == "running"
 
@@ -529,21 +538,23 @@ async def test_workload_wait_for_status_errored_raises(patched_dr_client: MagicM
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_wait_for_status(workload_id="wkld-abc", target_status="running")
+        await lifecycle_tools.workload_wait_for_status(
+            workload_id="wkld-abc", target_status="running"
+        )
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 @pytest.mark.asyncio
 async def test_workload_wait_for_status_empty_target_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_wait_for_status(workload_id="wkld-abc", target_status="")
+        await lifecycle_tools.workload_wait_for_status(workload_id="wkld-abc", target_status="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_wait_for_status_zero_timeout_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await tools.workload_wait_for_status(
+        await lifecycle_tools.workload_wait_for_status(
             workload_id="wkld-abc", target_status="running", timeout_seconds=0
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
