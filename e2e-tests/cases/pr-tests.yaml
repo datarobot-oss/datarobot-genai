@@ -27,7 +27,8 @@ cases:
         - datarobot/anthropic/claude-sonnet-4-6
         - datarobot/vertex_ai/gemini-3.1-pro-preview
       AGENT:
-        # - nat deliberately excluded because 1. it flakes 2. its not an agent we're implementing
+        # - nat deliberately excluded because 1. it flakes 2. its not an agent we're implementing, its implemented in NAT
+        # Can be enabled back with BUZZOK-31129
         - crewai
         - langgraph
         - llamaindex
