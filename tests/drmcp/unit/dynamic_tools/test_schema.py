@@ -23,11 +23,11 @@ from pydantic import Field
 from pydantic import TypeAdapter
 from pydantic import ValidationError
 
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import DrumTargetType
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import get_default_schema
-from datarobot_genai.drmcp.core.dynamic_tools.schema import SchemaValidationError
-from datarobot_genai.drmcp.core.dynamic_tools.schema import create_input_schema_pydantic_model
-from datarobot_genai.drmcp.core.dynamic_tools.schema import create_schema_model
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.drum import DrumTargetType
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.drum import get_default_schema
+from datarobot_genai.drmcpbase.dynamic_tools.schema import SchemaValidationError
+from datarobot_genai.drmcpbase.dynamic_tools.schema import create_input_schema_pydantic_model
+from datarobot_genai.drmcpbase.dynamic_tools.schema import create_schema_model
 
 TEMPERATURE_DEFAULT = 0.7
 ITEM_VALUE = 2.5

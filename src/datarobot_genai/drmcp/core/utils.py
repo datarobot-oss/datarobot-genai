@@ -12,45 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
-
 from fastmcp.tools import Tool
-from fastmcp.tools.tool import ToolResult
 from mcp.types import Prompt as MCPPrompt
 from mcp.types import Resource as MCPResource
 from mcp.types import Tool as MCPTool
-
-
-def format_response_as_tool_result(data: bytes, content_type: str, charset: str) -> ToolResult:
-    """Format the deployment response into a ToolResult.
-
-    Using structured_content, to return as much information about
-    the response as possible, for LLMs to correctly interpret the
-    response.
-    """
-    charset = charset or "utf-8"
-    content_type = content_type.lower() if content_type else ""
-
-    if content_type.startswith("text/") or content_type == "application/json":
-        payload = {
-            "type": "text",
-            "mime_type": content_type,
-            "data": data.decode(charset),
-        }
-    elif content_type.startswith("image/"):
-        payload = {
-            "type": "image",
-            "mime_type": content_type,
-            "data_base64": base64.b64encode(data).decode(charset),
-        }
-    else:
-        payload = {
-            "type": "binary",
-            "mime_type": content_type,
-            "data_base64": base64.b64encode(data).decode(charset),
-        }
-
-    return ToolResult(structured_content=payload)
 
 
 def get_prompt_tags(prompt: MCPPrompt) -> set[str]:
