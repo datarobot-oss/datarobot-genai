@@ -430,6 +430,16 @@ async def test_workload_stop_errored_raises(patched_dr_client: MagicMock) -> Non
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
+@pytest.mark.asyncio
+async def test_workload_stop_wait_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(content=b"{}", json=lambda: {})
+    patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
+
+    with pytest.raises(ToolError) as exc_info:
+        await tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
 # ------------------------------------------------------------------ #
 # workload_delete                                                       #
 # ------------------------------------------------------------------ #

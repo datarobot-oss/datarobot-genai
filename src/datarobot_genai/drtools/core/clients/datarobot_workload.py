@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
@@ -97,7 +99,7 @@ class WorkloadApiClient:
     # Workloads — polling                                                  #
     # ------------------------------------------------------------------ #
 
-    def wait_for_workload_status(
+    async def wait_for_workload_status(
         self,
         workload_id: str,
         target_status: str,
@@ -105,7 +107,9 @@ class WorkloadApiClient:
         timeout_seconds: int = 600,
         poll_interval_seconds: int = 1,
     ) -> dict[str, Any]:
-        """Block until the workload reaches *target_status*, enters errored, or times out.
+        """Poll until the workload reaches *target_status*, enters errored, or times out.
+
+        Uses :func:`asyncio.sleep` between polls so async callers do not block the event loop.
 
         Raises
         ------
@@ -114,8 +118,6 @@ class WorkloadApiClient:
         TimeoutError
             When *timeout_seconds* elapses before reaching *target_status*.
         """
-        import time
-
         deadline = time.monotonic() + timeout_seconds
         last_status: str | None = None
         while True:
@@ -135,4 +137,4 @@ class WorkloadApiClient:
                     f"Timeout waiting for workload {workload_id} to reach "
                     f"'{target_status}'. Last status: {status}"
                 )
-            time.sleep(poll_interval_seconds)
+            await asyncio.sleep(poll_interval_seconds)

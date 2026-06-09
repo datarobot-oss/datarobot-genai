@@ -25,6 +25,7 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drtools.workload.constants import IMPORTANCE_VALUES
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +140,6 @@ async def bundle_list() -> dict[str, Any]:
 # Workload tools — lifecycle                                           #
 # ------------------------------------------------------------------ #
 
-_IMPORTANCE_VALUES = ("low", "moderate", "high", "critical")
-
 
 @tool_metadata(
     tags={"workload", "datarobot", "payload", "helper"},
@@ -218,9 +217,9 @@ async def workload_create_payload(
             "Argument validation error: 'name' is required.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if importance and importance.lower() not in _IMPORTANCE_VALUES:
+    if importance and importance.lower() not in IMPORTANCE_VALUES:
         raise ToolError(
-            f"Argument validation error: 'importance' must be one of {_IMPORTANCE_VALUES}.",
+            f"Argument validation error: 'importance' must be one of {IMPORTANCE_VALUES}.",
             kind=ToolErrorKind.VALIDATION,
         )
     if use_inline:
@@ -385,11 +384,13 @@ async def workload_stop(
 
     if wait_stopped:
         try:
-            result = client.wait_for_workload_status(
+            result = await client.wait_for_workload_status(
                 workload_id.strip(), "stopped", timeout_seconds=timeout_seconds
             )
         except (RuntimeError, TimeoutError) as exc:
             raise ToolError(str(exc), kind=ToolErrorKind.UPSTREAM) from exc
+        except ClientError as exc:
+            raise_tool_error_for_client_error(exc)
 
     return result
 
@@ -446,9 +447,9 @@ async def workload_update(
             "Argument validation error: at least one of name, description, or importance must be set.",  # noqa: E501
             kind=ToolErrorKind.VALIDATION,
         )
-    if importance and importance.lower() not in _IMPORTANCE_VALUES:
+    if importance and importance.lower() not in IMPORTANCE_VALUES:
         raise ToolError(
-            f"Argument validation error: 'importance' must be one of {_IMPORTANCE_VALUES}.",
+            f"Argument validation error: 'importance' must be one of {IMPORTANCE_VALUES}.",
             kind=ToolErrorKind.VALIDATION,
         )
 
@@ -500,7 +501,7 @@ async def workload_wait_for_status(
         )
 
     try:
-        return WorkloadApiClient().wait_for_workload_status(
+        return await WorkloadApiClient().wait_for_workload_status(
             workload_id.strip(),
             target_status.strip(),
             timeout_seconds=timeout_seconds,
