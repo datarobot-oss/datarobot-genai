@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.123
+- `drtools/workload`: PR2 — workload lifecycle tools.
+  - **New tools**: `workload_create_payload` (builds and validates a create payload without an API call; supports both existing `artifactId` and inline artifact via `artifact_name`, `image_uri`, `port`, `cpu`, `memory_bytes`), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), `workload_wait_for_status`.
+  - **Client additions** (`WorkloadApiClient`): `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload`, and `wait_for_workload_status` polling method (raises `RuntimeError` on `errored`, `TimeoutError` on deadline).
+  - Runtime payload uses the canonical `runtime.containerGroups[].resourceBundles` schema from the OpenAPI spec.
+
 ## 0.15.122
 - `nat/helpers`: `NatAgent` (DRUM path) now strips `datarobot_moderation` middleware from the loaded `workflow.yaml` automatically. DRUM applies guardrails via `moderation_config.yaml` outside NAT; keeping the middleware in YAML for DRAgent deployments no longer requires a separate DRUM copy of the file. DRAgent entry points (`load_workflow` default, inline runner, CLI) are unchanged.
 
