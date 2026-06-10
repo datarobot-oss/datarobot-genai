@@ -476,3 +476,23 @@ class TestReasoningFold:
             {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "hello"},
         ]
+
+    def test_fold_runs_before_truncation(self) -> None:
+        # The reasoning fold must run BEFORE max_history truncation: reasoning travels
+        # with its assistant answer and never consumes a history slot. With max_history=2
+        # over [user, reasoning, assistant, user-boundary], BOTH the user turn and the
+        # folded assistant turn survive. If the fold ran AFTER the slice, reasoning would
+        # occupy a slot and push the user turn out (leaving only the assistant) -- this
+        # pins the ordering the fix depends on.
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="2+2?"),
+                ReasoningMessage(id="r1", content="adding two and two"),
+                AssistantMessage(id="a1", content="4"),
+                UserMessage(id="u2", content="thanks"),
+            ]
+        )
+        history = extract_history_messages(run_input, 2)
+        assert [m["role"] for m in history] == ["user", "assistant"]
+        assert history[0]["content"] == "2+2?"
+        assert history[1]["content"] == "<reasoning>\nadding two and two\n</reasoning>\n4"
