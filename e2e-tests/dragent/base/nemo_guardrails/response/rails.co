@@ -1,0 +1,31 @@
+
+define user input
+  "..."
+
+define flow
+  user input
+  bot $llm_output
+
+define bot should not intervene
+  "FALSE"
+
+define bot should intervene
+  "TRUE"
+
+define flow self check output
+  $allowed = execute self_check_output
+
+  if not $allowed
+    bot should intervene
+    stop
+
+define subflow check blocked terms
+  $is_blocked = execute check_blocked_terms
+
+  if $is_blocked
+    bot should intervene
+    stop
+
+define subflow allow output
+  bot should not intervene
+  stop

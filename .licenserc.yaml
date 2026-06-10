@@ -97,5 +97,6 @@ header:
     - '.cursor/**'
     - '**/.env*'
     - '**/*.ipynb'
+    - '**/*.co'
 
   comment: on-failure
