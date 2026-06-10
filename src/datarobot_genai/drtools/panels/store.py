@@ -125,7 +125,12 @@ class PanelStore:
         panels: list[Panel] = []
         for ref in refs:
             raw = await self._blobs.get(ref.files_id)
-            panel = panel_from_manifest(json.loads(raw.decode("utf-8")))
+            try:
+                panel = panel_from_manifest(json.loads(raw.decode("utf-8")))
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
+                # One corrupt manifest must not break listing the healthy ones.
+                logger.warning("Skipping unreadable panel manifest %s: %s", ref.files_id, exc)
+                continue
             panel.id = ref.files_id
             panels.append(panel)
         return panels
@@ -140,7 +145,7 @@ class PanelStore:
         payload_files_id: str | None = None
         try:
             payload_files_id = (await self.get(panel_id)).payload_files_id
-        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
             logger.warning(
                 "Panel %s manifest is unreadable (%s); deleting the manifest only", panel_id, exc
             )
