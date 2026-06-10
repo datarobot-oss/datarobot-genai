@@ -211,38 +211,24 @@ class SchemaRegistry:
         origin = get_origin(annotation)
         args = get_args(annotation)
 
-        if origin is type(None):
-            return None
-
         if origin is Union:
-            for arg in args:
-                if arg is not type(None):
-                    return cls._example_for_type(arg, field_name)
-            return None
-
+            non_none = [arg for arg in args if arg is not type(None)]
+            return cls._example_for_type(non_none[0], field_name) if non_none else None
         if origin is list:
             return [cls._example_for_type(args[0], field_name)] if args else []
-
         if origin is dict:
             return {}
-
         if origin is tuple:
-            if args:
-                return tuple(
-                    cls._example_for_type(arg, f"{field_name}[{i}]") for i, arg in enumerate(args)
-                )
-            return ()
-
+            return tuple(
+                cls._example_for_type(arg, f"{field_name}[{i}]") for i, arg in enumerate(args)
+            )
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             return cls._generate_example(annotation)
 
-        if annotation is str:
-            return f"example_{field_name}" if field_name else "example"
-        if annotation is int:
-            return 1
-        if annotation is float:
-            return 1.0
-        if annotation is bool:
-            return True
-
-        return None
+        scalar_examples: dict[Any, Any] = {
+            str: f"example_{field_name}" if field_name else "example",
+            int: 1,
+            float: 1.0,
+            bool: True,
+        }
+        return scalar_examples.get(annotation)
