@@ -4,16 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-<<<<<<< HEAD
-## 0.15.110
-- `drtools/panels` + `drmcp`: exposed panels as MCP **resources** (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) via the `@resource_metadata` primitive, and taught the drmcp registry to register drtools resources (`dr_mcp_resource` + a new `DataRobotMCPResourceCategory.BUILT_IN_RESOURCE`). Registered the panels domain (`ToolType.PANELS` + `enable_panels_tools`) so the panel CRUD/connector/transform tools (0.15.107–0.15.109) are served by DRMCP. Resources are read-only and `MCP_SANDBOX`-gated.
+## 0.15.129
+- `drtools/panels` + `drmcp`: exposed panels as MCP **resources** (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) via the `@resource_metadata` primitive, and taught the drmcp registry to register drtools resources (`dr_mcp_resource` + a new `DataRobotMCPResourceCategory.BUILT_IN_RESOURCE`). Registered the panels domain (`ToolType.PANELS` + `enable_panels_tools`) so the panel CRUD/connector/transform tools (0.15.126–0.15.128) are served by DRMCP. Resources are read-only and `MCP_SANDBOX`-gated. **Fix**: `dr_mcp_resource` registers the handler unwrapped — the previous sync pass-through wrapper hid async handlers' coroutine-ness from FastMCP, so resource reads returned un-awaited coroutines. Also ports the wren-mcp review tools: `inspect_panel` (recursive parent-lineage walk with execution context, no payload hydration) and `view_json_panel` (Json panel data with structure-preserving truncation), plus the `truncate_for_llm` helper.
+- `drtools/core`: added the `resource_metadata` decorator and `get_registered_resources()` — the MCP-*resource* mirror of `tool_metadata`. Lets drtools declare MCP resources (with a required `uri` plus optional name/title/description/mime_type/tags) without depending on `drmcp`/`fastmcp`, so both DRMCP and global-mcp can discover and register them. (Also ships independently as MODEL-23659.)
 
-## 0.15.109
-- `drtools/panels`: added sandbox-backed `transform_panel` and `filter_panel` — run filtering/transform code over a Dataset panel inside the workload sandbox (`execute_code`) and save the result as a derived child panel with lineage (`execution_context.kind = "sandbox_transform"`). `execute_code` is imported defensively so the module loads even where the sandbox backend is absent (tools then fail closed). Added `PanelStore.get_payload` to hydrate a panel's stored payload. Gated on the `MCP_SANDBOX` entitlement.
-=======
 ## 0.15.128
 - `drtools/panels`: added sandbox-backed `transform_panel` and `filter_panel` — run filtering/transform code over a Dataset panel inside the workload sandbox (`execute_code`) and save the result as a derived child panel with lineage (`execution_context.kind = "sandbox_transform"`). `execute_code` is imported defensively so the module loads even where the sandbox backend is absent (tools then fail closed). Added `PanelStore.get_payload` to hydrate a panel's stored payload. Gated on the `MCP_SANDBOX` entitlement. Transforms reject non-Dataset source panels with a clear validation error, and a transform returning zero rows keeps the source column schema (metadata and Parquet payload agree).
->>>>>>> jjohnson/MODEL-23662-panels-sandbox-filter
 
 ## 0.15.127
 - `drtools/panels`: added connector-sourced Dataset panels — `create_dataset_panel_from_connector` runs SQL against any DataRobot connector/datastore (source-side filtering via `catalog_query_datastore`) and materializes the result to a Parquet payload stored via the Files API, recording datastore_id + sql in the panel's execution context for lineage/refresh. Gated on the `MCP_SANDBOX` entitlement. Adds `preview_dataset_panel` (columns/dtypes/row count/sample rows from the stored Parquet payload, ported from wren-mcp's preview_data_source) and `PanelStore.get_payload`. Empty query results keep the column schema in the Parquet payload. **Fix**: `catalog_query_datastore` now POSTs to the real `externalDataStores/<id>/previewQuery/` route (the previous `externalDataDrivers/<id>/execute/` route does not exist); offset paging is emulated by over-fetching up to the route's 999-row cap.
@@ -21,14 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.15.126
 - `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `list_panels` clamps/echoes `limit` and supports `offset` paging; `PanelStore.create` cleans up the payload blob if the manifest write fails, and `delete` no longer orphans payloads on transient errors. Also ports the wren-mcp schema tools as `list_panel_schemas`, `describe_panel_schema`, `validate_panel_data` over a new `panels.schema_registry.SchemaRegistry` (namespaced Pydantic schemas for Json panel validation). `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
 
-<<<<<<< HEAD
-## 0.15.106
-- `drtools/core`: added the `resource_metadata` decorator and `get_registered_resources()` — the MCP-*resource* mirror of `tool_metadata`. Lets drtools declare MCP resources (with a required `uri` plus optional name/title/description/mime_type/tags) without depending on `drmcp`/`fastmcp`, so both DRMCP and global-mcp can discover and register them. The server-side wiring + first panel resources land in a follow-up (MODEL-23663).
-
-## 0.15.105
-=======
 ## 0.15.125
->>>>>>> jjohnson/MODEL-23662-panels-sandbox-filter
 - `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
 - `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`, which now re-exports it) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
 
