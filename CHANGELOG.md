@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.125
+## 0.16.0
 - `core/agents/events.py`: `events_to_messages` folds an AG-UI event stream back into `Message` objects (assistant text + its tool calls on one `AssistantMessage`, paired `ToolMessage` results, reasoning) for replay as history — the Python port of the TS client's `defaultApplyEvents` (messages slice).
 - `llama_index`: tool-call events now carry `parent_message_id`, so a client folding the stream keeps a turn's text and tool calls on one assistant message.
 - `dragent` e2e-tests: multi-turn conversation test (tool calls + reasoning) for langgraph/nat/llama_index; langgraph + llama_index replay structured history. The langgraph e2e agent drops `{chat_history}` and only interrupts for the interrupt/resume case.

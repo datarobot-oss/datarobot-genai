@@ -32,11 +32,10 @@ from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
-from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import parse_sse_responses
+from dragent_tests.helpers import stream_sse_responses
 
 # Runs for every framework that streams tool-call events, so the fold can rebuild
 # the tool call from the stream: langgraph, nat, llamaindex. crewai (supports tools
@@ -50,7 +49,7 @@ if not AGENT_SUPPORTS_TOOL_CALLS_STREAMING:
         allow_module_level=True,
     )
 
-EXPECTED_OBJECT_ID = "69cbb73789723b6936c6c9e1" # from tool.py
+EXPECTED_OBJECT_ID = "69cbb73789723b6936c6c9e1"  # from tool.py
 
 
 def _turn_one_prompt() -> str:
@@ -66,18 +65,11 @@ def _turn_one_prompt() -> str:
     )
 
 
-def _stream(http_client: httpx.Client, payload: dict) -> list:  # type: ignore[type-arg]
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        return parse_sse_responses(response)
-
-
 def test_multiturn_replays_tool_call_and_reasoning_history(http_client: httpx.Client) -> None:
     """Fold a tool+reasoning turn into history and recall its result on the next turn."""
     # GIVEN: turn 1 forces the deterministic generate_objectid tool
     turn_one_prompt = _turn_one_prompt()
-    turn_one_responses = _stream(http_client, make_generate_payload(turn_one_prompt))
+    turn_one_responses = stream_sse_responses(http_client, make_generate_payload(turn_one_prompt))
     turn_one_events = collect_ag_ui_events(turn_one_responses)
 
     # THEN: turn 1 is a valid stream that called the tool
@@ -138,7 +130,7 @@ def test_multiturn_replays_tool_call_and_reasoning_history(http_client: httpx.Cl
         "forwardedProps": {},
         "state": {},
     }
-    turn_two_events = collect_ag_ui_events(_stream(http_client, turn_two_payload))
+    turn_two_events = collect_ag_ui_events(stream_sse_responses(http_client, turn_two_payload))
 
     # THEN: the follow-up recalls the tool result from the replayed history
     validate_sequence(turn_two_events)
