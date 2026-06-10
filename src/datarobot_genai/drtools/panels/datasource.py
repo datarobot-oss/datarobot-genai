@@ -49,10 +49,18 @@ _PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet"
 def _rows_to_parquet(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
     """Serialize query rows (list of column→value dicts) to Parquet bytes.
 
-    For an empty result, ``columns`` keeps the Parquet schema in agreement with
-    the panel's ``columns`` metadata instead of producing a column-less file.
+    ``columns`` keeps the Parquet schema in agreement with the panel's
+    ``columns`` metadata: rows are normalized to exactly those keys (missing
+    keys become null), and an empty result still carries the column schema.
     """
-    frame = pl.DataFrame(rows) if rows else pl.DataFrame({c: [] for c in columns or []})
+    if columns:
+        frame = (
+            pl.DataFrame([{c: row.get(c) for c in columns} for row in rows])
+            if rows
+            else pl.DataFrame({c: [] for c in columns})
+        )
+    else:
+        frame = pl.DataFrame(rows)
     buffer = io.BytesIO()
     frame.write_parquet(buffer)
     return buffer.getvalue()
