@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.125
+## 0.15.126
 - Replace `anthropic` with `litellm` calls in the eval package
+
+## 0.15.125
+- `dragent/frontends/converters`: registered `convert_run_agent_input_to_chat_request_or_message` so plain `RunAgentInput` from the DRUM `NatAgent.invoke` / `streaming_memory_agent` passthrough boundary converts to NAT `ChatRequestOrMessage` for inner `per_user_tool_calling_agent` workflows.
 
 ## 0.15.124
 - Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
