@@ -107,6 +107,7 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "has_combos=$([[ "$count" -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "Generated $count combination(s)."
+          echo "$GITHUB_OUTPUT"
 
   e2e:
     needs: [prepare-matrix]
