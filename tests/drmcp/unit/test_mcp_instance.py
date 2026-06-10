@@ -19,7 +19,6 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import NotFoundError
 
-from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import PromptInitArguments
 from datarobot_genai.drmcp.core.mcp_instance import ResourceInitArguments
@@ -28,6 +27,7 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_prompt
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_resource
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 
 
 @pytest.fixture

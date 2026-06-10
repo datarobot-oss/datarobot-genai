@@ -23,7 +23,8 @@ from pydantic import ConfigDict
 from pydantic import Field
 from tavily import AsyncTavilyClient
 
-from datarobot_genai.drtools.core.auth import get_api_key_from_headers
+from datarobot_genai.drtools.core.auth import resolve_secret
+from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
@@ -48,12 +49,13 @@ async def get_tavily_access_token() -> str:
     ------
         ToolError: If API key is not found in headers
     """
-    if api_key := get_api_key_from_headers("x-tavily-api-key"):
+    creds = get_credentials()
+    if api_key := resolve_secret("x-tavily-api-key", creds.tavily_api_key):
         return api_key
 
-    logger.warning("Tavily API key not found in headers")
+    logger.warning("Tavily API key not found")
     raise ToolError(
-        "Tavily API key not found in headers. Please provide it via 'x-tavily-api-key' header.",
+        "Tavily API key not found.",
         kind=ToolErrorKind.AUTHENTICATION,
     )
 

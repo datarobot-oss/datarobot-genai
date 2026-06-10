@@ -33,6 +33,7 @@ from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.mock_otel_collector import MockOtelCollector
 
+
 OTLP_TRACES_PATH = "/otel/v1/traces"
 TEST_API_TOKEN = "test-token"
 TEST_DEPLOYMENT_ID = "test-deployment-id"

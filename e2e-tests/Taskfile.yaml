@@ -19,6 +19,8 @@ env:
   ENV: '{{.ENV | default "testing"}}'
   AGENT: '{{.AGENT}}'
 
+# LLM-specific values come from cases/*.yaml at runtime. The single .env file
+# carries credentials shared across every case (DATAROBOT_*, AZURE_*, etc.).
 dotenv:
   - '.env.{{.ENV}}'
   - '.env.{{.LLM}}'
@@ -93,4 +95,22 @@ tasks:
       - task: install
       - task dragent:run-{{.AGENT}}
 
+  cases:
+    desc: "📋 List combinations: task cases -- pr-tests.yaml [--case X] [--agents nat,langgraph]"
+    cmds:
+      - uv run --script scripts/cases.py list {{.CLI_ARGS}}
 
+  cases-matrix:
+    desc: "🎯 Print GitHub Actions matrix JSON: task cases-matrix -- pr-tests.yaml [--case X] [--agents ...]"
+    cmds:
+      - uv run --script scripts/cases.py generate-matrix {{.CLI_ARGS}}
+
+  cases-run:
+    desc: "🏃 Run case combinations locally: task cases-run -- pr-tests.yaml [--case X] [KEY=VAL ...]"
+    cmds:
+      - uv run python scripts/run_local.py {{.CLI_ARGS}}
+
+  cases-print:
+    desc: "🔍 Dry-run: task cases-print -- pr-tests.yaml [--case X] [KEY=VAL ...]"
+    cmds:
+      - uv run python scripts/run_local.py --print {{.CLI_ARGS}}

@@ -236,7 +236,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                 yield (
                     ReasoningMessageChunkEvent(
                         type=EventType.REASONING_MESSAGE_CHUNK,
-                        message_id=message_id,
+                        # Its own message id, distinct from the assistant text so a frontend
+                        # grouping by id renders reasoning as its own block instead of folding
+                        # it into the text bubble. Derived (uuid5) from the text id: a valid
+                        # UUID, stable across this message's chunks (so they group), no state.
+                        message_id=str(uuid.uuid5(uuid.NAMESPACE_OID, f"{message_id}-reasoning")),
                         delta=thinking_delta,
                     ),
                     None,
