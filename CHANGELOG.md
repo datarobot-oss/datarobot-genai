@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `core/agents`: the text `{chat_history}` summary now keeps tool calls even when the assistant turn also has text (previously dropped), so all frameworks surface prior tool steps.
 - `langgraph`/`llama_index`: prior turns now replay to the model as native messages with tool calls preserved (`structured_history`), default **on** when the prompt has no `{chat_history}` (opt out with `structured_history=False`). Breaking: such agents now replay prior turns (bounded by `max_history_messages`) where before they got none.
 
+## 0.15.125
+- `dragent/frontends/converters`: registered `convert_run_agent_input_to_chat_request_or_message` so plain `RunAgentInput` from the DRUM `NatAgent.invoke` / `streaming_memory_agent` passthrough boundary converts to NAT `ChatRequestOrMessage` for inner `per_user_tool_calling_agent` workflows.
+
 ## 0.15.124
 - Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
 
