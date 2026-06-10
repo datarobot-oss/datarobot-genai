@@ -86,3 +86,23 @@ def test_truncate_for_llm_depth_and_strings() -> None:
     assert out["a"]["b"]["c"]["d"]["e"]["f"] == "{...} (1 keys)"
     long_string = "x" * 300
     assert truncate_for_llm(long_string).endswith("(100 more chars)")
+
+
+async def test_inspect_panel_tolerates_toolerror_ancestor(
+    review_env: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+
+    child = await review_env.create(
+        Dataset(title="child", parents=["stale-parent"]), source="staging"
+    )
+    original_get = review_env.get
+
+    async def _get(pid: str):
+        if pid == "stale-parent":
+            raise ToolError("not found", kind=ToolErrorKind.NOT_FOUND)
+        return await original_get(pid)
+
+    monkeypatch.setattr(review_env, "get", _get)
+    out = await review_mod.inspect_panel(child.id)
+    assert out["graph"]["stale-parent"] == {"id": "stale-parent", "error": "panel unavailable"}

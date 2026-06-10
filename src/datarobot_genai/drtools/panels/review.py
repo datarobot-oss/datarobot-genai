@@ -80,9 +80,9 @@ async def inspect_panel(
             return
         try:
             panel = await store.get(pid)
-        except ToolError:
-            raise
         except Exception as exc:  # noqa: BLE001 - a missing ancestor shouldn't kill the walk
+            # Includes ToolError: the Files backend maps missing blobs to a
+            # NOT_FOUND ToolError, and a stale parent id must degrade gracefully.
             logger.warning("Could not load ancestor panel %s: %s", pid, exc)
             nodes[pid] = {"id": pid, "error": "panel unavailable"}
             return
