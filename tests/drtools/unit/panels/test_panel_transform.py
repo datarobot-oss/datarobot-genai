@@ -115,3 +115,35 @@ async def test_tools_fail_closed_when_sandbox_absent(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(tf_mod, "_execute_code", None)
     with pytest.raises(ToolError):
         await tf_mod.transform_panel(panel_id="p1", code="_return = []", title="x")
+
+
+async def test_transform_empty_result_keeps_source_columns(
+    transform_env: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = transform_env
+    src_id = await _make_source(store)
+
+    async def _empty_execute_code(code: str, *, inputs: dict[str, Any], **_kw: Any):
+        return {"return_value": [], "stdout": "", "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(tf_mod, "_execute_code", _empty_execute_code)
+    out = await tf_mod.transform_panel(
+        panel_id=src_id, code="_return = []", title="Empty", source="staging"
+    )
+    assert out["row_count"] == 0
+    assert out["columns"] == ["region", "rev"]
+    payload = await store.get_payload(out["id"])
+    frame = pl.read_parquet(io.BytesIO(payload))
+    assert frame.columns == ["region", "rev"]
+    assert frame.height == 0
+
+
+async def test_transform_rejects_non_dataset_panel(transform_env: PanelStore) -> None:
+    store = transform_env
+    text_panel = await store.create(Text(title="T", text="hi"), source="staging")
+    assert text_panel.id is not None
+    with pytest.raises(ToolError) as exc_info:
+        await tf_mod.transform_panel(
+            panel_id=text_panel.id, code="_return = []", title="X", source="staging"
+        )
+    assert "only Dataset panels" in str(exc_info.value)

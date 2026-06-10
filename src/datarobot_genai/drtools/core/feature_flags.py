@@ -32,14 +32,59 @@ tool/prompt registration. The two may be consolidated later.
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from datarobot.rest import RESTClientObject
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_TTL_SECONDS = 300.0
 _MAX_CACHE_ENTRIES = 1024
 _eval_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+
+
+def is_tool_feature_enabled(
+    feature_flag_name: str | None,
+    *,
+    evaluator: Callable[[str], bool],
+) -> bool:
+    """Decide whether a feature-flag-gated tool should be exposed.
+
+    Shared gating policy for every MCP tool registry: ``drmcp``'s static-account
+    registry and ``global-mcp``'s per-user registry both call this, so the
+    "no flag → expose; flag set → evaluate; lookup error → fail closed" decision
+    lives once in the drtools layer instead of being duplicated per server.
+
+    ``evaluator`` performs the actual entitlement check for one flag name. Only
+    the calling registry knows which principal/client to evaluate against (the
+    static container account for ``drmcp``, the requesting user for global-mcp),
+    so it supplies that via the closure rather than this layer reaching for a
+    client it cannot choose correctly.
+
+    Args:
+        feature_flag_name: The entitlement gating the tool, or ``None`` if ungated.
+        evaluator: Callable returning whether ``feature_flag_name`` is enabled.
+
+    Returns
+    -------
+        ``True`` if the tool should be registered. ``False`` if the flag is
+        disabled or its evaluation raised (fail-closed, so a lookup failure
+        never accidentally exposes a gated tool).
+    """
+    if feature_flag_name is None:
+        return True
+    try:
+        return evaluator(feature_flag_name)
+    except Exception:
+        logger.debug(
+            "feature flag %s evaluation failed; gating tool off (fail-closed)",
+            feature_flag_name,
+            exc_info=True,
+        )
+        return False
 
 
 def _principal_key(client: RESTClientObject) -> str:

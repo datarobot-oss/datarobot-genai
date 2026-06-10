@@ -82,6 +82,57 @@ async def test_create_dataset_panel_requires_sql(
     patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
 ) -> None:
     with pytest.raises(ToolError):
-        await ds_mod.create_dataset_panel_from_connector(
-            datastore_id="ds-1", sql="", title="X"
-        )
+        await ds_mod.create_dataset_panel_from_connector(datastore_id="ds-1", sql="", title="X")
+
+
+def test_rows_to_parquet_empty_keeps_columns() -> None:
+    parquet = ds_mod._rows_to_parquet([], ["region", "rev"])
+    frame = pl.read_parquet(io.BytesIO(parquet))
+    assert frame.columns == ["region", "rev"]
+    assert frame.height == 0
+
+
+async def test_create_dataset_panel_empty_query_keeps_column_schema(
+    patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blobs, _rows = patched_datasource
+
+    async def _empty_query(*, datastore_id: str, sql: str, limit: int = 100) -> dict[str, Any]:
+        return {"rows": [], "columns": ["region", "rev"], "row_count": 0}
+
+    monkeypatch.setattr(ds_mod, "catalog_query_datastore", _empty_query)
+    created = await ds_mod.create_dataset_panel_from_connector(
+        datastore_id="ds-1", sql="SELECT 1", title="Empty", source="staging"
+    )
+    assert created["columns"] == ["region", "rev"]
+    payload = await blobs.get(created["payload_files_id"])
+    frame = pl.read_parquet(io.BytesIO(payload))
+    assert frame.columns == ["region", "rev"]
+    assert frame.height == 0
+
+
+async def test_preview_dataset_panel(
+    patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
+) -> None:
+    _blobs, rows = patched_datasource
+    created = await ds_mod.create_dataset_panel_from_connector(
+        datastore_id="ds-1", sql="SELECT 1", title="Sales", source="staging"
+    )
+    preview = await ds_mod.preview_dataset_panel(created["id"], sample_size=1)
+    assert preview["columns"] == ["region", "rev"]
+    assert preview["row_count"] == len(rows)
+    assert preview["sample"] == rows[:1]
+    assert preview["dtypes"]["rev"] == "Int64"
+    assert preview["execution_context"]["kind"] == "connector_query"
+
+
+async def test_preview_dataset_panel_rejects_non_dataset(
+    patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
+) -> None:
+    from datarobot_genai.drtools.panels.models import Text
+
+    store = ds_mod._get_store()
+    text_panel = await store.create(Text(title="T", text="hi"), source="staging")
+    with pytest.raises(ToolError):
+        await ds_mod.preview_dataset_panel(text_panel.id)

@@ -14,6 +14,8 @@
 
 """Unit tests for PanelStore (backed by an in-memory FakeBlobStore)."""
 
+import pytest
+
 from datarobot_genai.drtools.files.store import BlobStore
 from datarobot_genai.drtools.panels.models import Dataset
 from datarobot_genai.drtools.panels.models import PanelType
@@ -72,3 +74,66 @@ async def test_create_with_payload_stores_and_cleans_up_payload_blob(
     await store.delete(created.id)
     assert created.payload_files_id not in fake_blob_store.blobs
     assert created.id not in fake_blob_store.blobs
+
+
+async def test_create_cleans_up_payload_when_manifest_put_fails(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    store = PanelStore(fake_blob_store)
+    original_put = fake_blob_store.put
+    calls = {"n": 0}
+
+    async def _put_fail_second(data: bytes, **kwargs: object):
+        calls["n"] += 1
+        if calls["n"] == 2:  # first put = payload, second = manifest
+            raise RuntimeError("manifest write failed")
+        return await original_put(data, **kwargs)
+
+    fake_blob_store.put = _put_fail_second  # type: ignore[method-assign]
+    panel = Dataset(title="DS")
+    with pytest.raises(RuntimeError):
+        await store.create(panel, source="main", payload=b"DATA", payload_name="d.parquet")
+    # No orphan payload blob is left behind and the panel keeps no stale ref.
+    assert fake_blob_store.blobs == {}
+    assert panel.payload_files_id is None
+
+
+async def test_delete_propagates_transient_get_errors(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="main", payload=b"DATA")
+    original_get = fake_blob_store.get
+
+    async def _get_boom(ref: object):
+        raise RuntimeError("transient backend error")
+
+    fake_blob_store.get = _get_boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        await store.delete(created.id)
+    # Nothing was deleted: the caller can retry without orphaning the payload.
+    assert created.id in fake_blob_store.blobs
+    assert created.payload_files_id in fake_blob_store.blobs
+    fake_blob_store.get = original_get  # type: ignore[method-assign]
+
+
+async def test_delete_with_corrupt_manifest_still_deletes_manifest(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="main")
+    data, ref, tags = fake_blob_store.blobs[created.id]
+    fake_blob_store.blobs[created.id] = (b"not-json", ref, tags)
+    await store.delete(created.id)
+    assert created.id not in fake_blob_store.blobs
+
+
+async def test_list_pages_with_offset(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    for i in range(3):
+        await store.create(Dataset(title=f"DS{i}"), source="main")
+    first = await store.list(source="main", limit=2, offset=0)
+    rest = await store.list(source="main", limit=2, offset=2)
+    assert len(first) == 2
+    assert len(rest) == 1
+    assert {p.id for p in first} | {p.id for p in rest} == {
+        p.id for p in await store.list(source="main")
+    }

@@ -1037,7 +1037,7 @@ wheels = [
 
 [[package]]
 name = "datarobot"
-version = "3.13.0"
+version = "3.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1052,9 +1052,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/28/6794448d1f853ceae0d9f4f9756fe357c095574c6234275caf199533ffc0/datarobot-3.13.0.tar.gz", hash = "sha256:469468636e525f4671fa361d7a743e5ab62e1dbb21889c2a338163cf5d018310", size = 767425, upload-time = "2026-03-10T17:53:21.877Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/2f/41c103556138f6014fb70ea83edea6ae08942fc84aea9ac0146fc76c724d/datarobot-3.16.0.tar.gz", hash = "sha256:77711633b303966acf54d80eb9ba6f1350850ff0493f14c1a4a391ca85fd7aa0", size = 817184, upload-time = "2026-05-27T13:10:11.896Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/b6/a68133d3a62887b232c9002b3c2366b9176305c44a2006a89358f6d94fd8/datarobot-3.13.0-py3-none-any.whl", hash = "sha256:00543ce0d073f7d9bccea8e44a621f766512d3819988278b1d77ca63ff563191", size = 830964, upload-time = "2026-03-10T17:53:19.541Z" },
+    { url = "https://files.pythonhosted.org/packages/48/6a/c180f242725be2808890d92f419dea621d6fdca44ddfb319ed4213fd4b6b/datarobot-3.16.0-py3-none-any.whl", hash = "sha256:52c1fa2dedae96d2717de2d583c3b9bd867f333b3ad82903daeadb219767e3e7", size = 883064, upload-time = "2026-05-27T13:10:09.886Z" },
 ]
 
 [package.optional-dependencies]
@@ -1099,7 +1099,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.110"
+version = "0.15.129"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1186,6 +1186,7 @@ drmcp = [
     { name = "aiohttp-retry" },
     { name = "async-lru" },
     { name = "beautifulsoup4" },
+    { name = "cachetools" },
     { name = "datarobot", extra = ["auth"] },
     { name = "datarobot-asgi-middleware" },
     { name = "datarobot-early-access" },
@@ -1218,6 +1219,7 @@ drmcp = [
 drmcpbase = [
     { name = "aiohttp" },
     { name = "aiohttp-retry" },
+    { name = "cachetools" },
     { name = "datarobot" },
     { name = "fastmcp" },
     { name = "starlette" },
@@ -1361,6 +1363,8 @@ requires-dist = [
     { name = "azure-ai-inference", marker = "extra == 'crewai'", specifier = ">=1.0.0b9,<2.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drmcp'", specifier = ">=4.12.0,<5.0.0" },
     { name = "beautifulsoup4", marker = "extra == 'drtools'", specifier = ">=4.12.0,<5.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcp'", specifier = ">=5.0.0,<8.0.0" },
+    { name = "cachetools", marker = "extra == 'drmcpbase'", specifier = ">=5.0.0,<8.0.0" },
     { name = "colorama", marker = "extra == 'core'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'crewai'", specifier = ">=0.4.6,<1.0.0" },
     { name = "colorama", marker = "extra == 'dragent'", specifier = ">=0.4.6,<1.0.0" },
@@ -1373,7 +1377,8 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'drmcpbase'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'drmcp'", specifier = ">=3.16.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'drmcpbase'", specifier = ">=3.16.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
@@ -1389,12 +1394,12 @@ requires-dist = [
     { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.30,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.30,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.30,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.30,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.30,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'nat'", specifier = ">=11.2.30,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'nat'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1403,8 +1408,8 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'langgraph'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'llamaindex'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
-    { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.2.0,<4.0.0" },
-    { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.2.0,<4.0.0" },
+    { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.4.1,<4.0.0" },
+    { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.4.1,<4.0.0" },
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
@@ -1560,11 +1565,12 @@ dev = [
 
 [[package]]
 name = "datarobot-moderations"
-version = "11.2.30"
+version = "11.2.33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "backoff" },
+    { name = "click" },
     { name = "numpy" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
@@ -1574,11 +1580,12 @@ dependencies = [
     { name = "pillow" },
     { name = "pydantic" },
     { name = "ragas" },
+    { name = "requests" },
     { name = "rouge-score" },
     { name = "tiktoken" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/57/ba/d594bdcb2a21817ca854f593302b31c7dd7c064db76873de73c686e5768b/datarobot_moderations-11.2.30-py3-none-any.whl", hash = "sha256:a31d5d80a946d664d6d267898d41b9041134a0eef4a02037bc31adfe01ed6f28", size = 123894, upload-time = "2026-05-19T16:20:45.444Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/26/763042a9b2ae2f6bcf10aee14a019d3a52d36becb9bb6091f8f40492d660/datarobot_moderations-11.2.33-py3-none-any.whl", hash = "sha256:1b835a8e53306b41407ff30dbd90631cbe0084cdbe5bb0bdb2b79999dc1adcf8", size = 149461, upload-time = "2026-06-03T13:33:56.177Z" },
 ]
 
 [package.optional-dependencies]
@@ -1899,34 +1906,65 @@ wheels = [
 
 [[package]]
 name = "fastmcp"
-version = "3.2.2"
+version = "3.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "fastmcp-slim", extra = ["client", "server"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/18/46beaec18c9f86a599ae3f9cdf6677dd6b50240cfd844d18233710b47f13/fastmcp-3.4.2.tar.gz", hash = "sha256:b468722946fc467c3796a6572f7a14d93d48c014cf8fea12910245220cbbe4e1", size = 28756849, upload-time = "2026-06-06T01:30:35.694Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/4d/8b1ba42251160e11ca34686344572121432c23a082d56ef6bbdec5888fc1/fastmcp-3.4.2-py3-none-any.whl", hash = "sha256:c87a62b029f0c5400ada85f683629345d2466c39169f0cb853e487b2f7308c08", size = 8018, upload-time = "2026-06-06T01:30:38.118Z" },
+]
+
+[[package]]
+name = "fastmcp-slim"
+version = "3.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "platformdirs" },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "rich" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/2e/d627b28b7403ecc526991ef732921b08bde010006e6148635f053fd29f4c/fastmcp_slim-3.4.2.tar.gz", hash = "sha256:290646e0955a516235a317151034559aa48336cb843d3f006131aedad8759bb4", size = 576291, upload-time = "2026-06-06T01:30:12.553Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/58/22afebf18df7260b09148199cbeb90cdcc4b3a4e1b5d7460e3591c3a7add/fastmcp_slim-3.4.2-py3-none-any.whl", hash = "sha256:bdc72492212681ca502755fa8acc0457f559295da1fc3dfc0599adc1c04b82f3", size = 749195, upload-time = "2026-06-06T01:30:11.22Z" },
+]
+
+[package.optional-dependencies]
+client = [
+    { name = "authlib" },
+    { name = "exceptiongroup" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "opentelemetry-api" },
+    { name = "py-key-value-aio", extra = ["filetree", "keyring", "memory"] },
+    { name = "starlette" },
+]
+server = [
     { name = "authlib" },
     { name = "cyclopts" },
     { name = "exceptiongroup" },
+    { name = "griffelib" },
     { name = "httpx" },
+    { name = "joserfc" },
     { name = "jsonref" },
     { name = "jsonschema-path" },
     { name = "mcp" },
     { name = "openapi-pydantic" },
     { name = "opentelemetry-api" },
     { name = "packaging" },
-    { name = "platformdirs" },
     { name = "py-key-value-aio", extra = ["filetree", "keyring", "memory"] },
-    { name = "pydantic", extra = ["email"] },
     { name = "pyperclip" },
-    { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "pyyaml" },
-    { name = "rich" },
+    { name = "starlette" },
     { name = "uncalled-for" },
     { name = "uvicorn" },
     { name = "watchfiles" },
     { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/10/61/a4470e2f590d98a1db3d40cb6f424a1353b2b09d4d0dfe01d0b8d3987984/fastmcp-3.2.2.tar.gz", hash = "sha256:a5351ec8c098844a8d508a53e484b362f5357b890596aaf233ac9686a796a62f", size = 26328077, upload-time = "2026-04-09T01:33:04.558Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/3b/4225e516266146de5fc6e64a7357f0c1460e4f7134b2f0e6447ae35413f5/fastmcp-3.2.2-py3-none-any.whl", hash = "sha256:9d2fe9731bbae43e6979a0bf7194bd076fd014f780c118edfdc52645b9adbe5b", size = 707240, upload-time = "2026-04-09T01:33:00.938Z" },
 ]
 
 [[package]]
@@ -6172,11 +6210,11 @@ wheels = [
 
 [[package]]
 name = "python-multipart"
-version = "0.0.22"
+version = "0.0.32"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/94/01/979e98d542a70714b0cb2b6728ed0b7c46792b695e3eaec3e20711271ca3/python_multipart-0.0.22.tar.gz", hash = "sha256:7340bef99a7e0032613f56dc36027b959fd3b30a787ed62d310e951f7c3a3a58", size = 37612, upload-time = "2026-01-25T10:15:56.219Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/42/55c32bb9b12693c092ad250a0e82edb5b31ddeda6eb772de5f308b3804ad/python_multipart-0.0.32.tar.gz", hash = "sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e", size = 46881, upload-time = "2026-06-04T16:18:58.647Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/d0/397f9626e711ff749a95d96b7af99b9c566a9bb5129b8e4c10fc4d100304/python_multipart-0.0.22-py3-none-any.whl", hash = "sha256:2b2cd894c83d21bf49d702499531c7bafd057d730c201782048f7945d82de155", size = 24579, upload-time = "2026-01-25T10:15:54.811Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl", hash = "sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23", size = 30042, upload-time = "2026-06-04T16:18:57.319Z" },
 ]
 
 [[package]]

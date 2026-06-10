@@ -52,6 +52,23 @@ def test_merge_pagination_metadata_total_count_wins_over_total() -> None:
     assert out["total_count"] == 7
 
 
+def test_merge_pagination_metadata_total_count_from_total_count_camel_case() -> None:
+    """DataRobot list responses often expose totalCount instead of total or total_count."""
+    base: dict = {"workloads": []}
+    body = {"totalCount": 42, "next": "https://example/api?offset=100"}
+    out = data.merge_pagination_metadata(base, body, offset=100, limit=100)
+    assert out["total_count"] == 42
+    assert out["next"] == "https://example/api?offset=100"
+
+
+def test_merge_pagination_metadata_total_count_wins_over_total_count_camel_case() -> None:
+    """Explicit total_count takes precedence over totalCount."""
+    base: dict = {"x": 1}
+    body = {"total_count": 7, "totalCount": 99}
+    out = data.merge_pagination_metadata(base, body)
+    assert out["total_count"] == 7
+
+
 def test_merge_pagination_metadata_list_body_ignored() -> None:
     """Non-dict body does not add next/previous/total (browse/query edge cases)."""
     base: dict = {"k": 1}
@@ -567,7 +584,7 @@ async def test_catalog_browse_datastore_clamps_limit_above_max() -> None:
 async def test_catalog_query_datastore_success() -> None:
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "data": [{"id": 1, "val": "a"}],
+        "records": [{"id": 1, "val": "a"}],
         "columns": ["id", "val"],
     }
     mock_rest_client = MagicMock()
@@ -585,7 +602,7 @@ async def test_catalog_query_datastore_success() -> None:
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_catalog_query_datastore_clamps_limit_above_max() -> None:
     mock_response = MagicMock()
-    mock_response.json.return_value = {"data": [], "columns": []}
+    mock_response.json.return_value = {"records": [], "columns": []}
     mock_rest = MagicMock()
     mock_rest.post.return_value = mock_response
     with patch.object(dr.client, "get_client", return_value=mock_rest):
@@ -593,21 +610,19 @@ async def test_catalog_query_datastore_clamps_limit_above_max() -> None:
         assert out["limit"] == 100
         assert "Limit cannot exceed 100" in (out.get("note") or "")
         mock_rest.post.assert_called_once_with(
-            "externalDataDrivers/ds1/execute/",
-            json={"query": "SELECT 1", "offset": 0, "limit": 100},
+            "externalDataStores/ds1/previewQuery/",
+            json={"sql": "SELECT 1", "maxRows": 100},
         )
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_catalog_query_datastore_pagination_offset_limit_and_response_metadata() -> None:
-    """Query sends offset/limit in the JSON body and merges pagination fields from the response."""
+    """Offset is emulated by over-fetching maxRows and slicing locally."""
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "data": [],
+        "records": [{"a": i} for i in range(75)],
         "columns": ["a"],
-        "next": "https://x/execute?offset=75",
-        "total_count": 200,
     }
     mock_rest = MagicMock()
     mock_rest.post.return_value = mock_response
@@ -618,14 +633,37 @@ async def test_catalog_query_datastore_pagination_offset_limit_and_response_meta
             offset=50,
             limit=25,
         )
-        assert result["row_count"] == 0
+        assert result["row_count"] == 25
+        assert result["rows"][0] == {"a": 50}
         assert result["offset"] == 50
         assert result["limit"] == 25
-        assert result["next"] == "https://x/execute?offset=75"
-        assert result["total_count"] == 200
         mock_rest.post.assert_called_once_with(
-            "externalDataDrivers/ds99/execute/",
-            json={"query": "SELECT 1", "offset": 50, "limit": 25},
+            "externalDataStores/ds99/previewQuery/",
+            json={"sql": "SELECT 1", "maxRows": 75},
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_catalog_query_datastore_positional_records_keyed_by_columns() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "records": [[1, "a"], [2, "b"]],
+        "columns": ["id", "val"],
+    }
+    mock_rest = MagicMock()
+    mock_rest.post.return_value = mock_response
+    with patch.object(dr.client, "get_client", return_value=mock_rest):
+        result = await data.catalog_query_datastore(datastore_id="ds1", sql="SELECT 1")
+        assert result["rows"] == [{"id": 1, "val": "a"}, {"id": 2, "val": "b"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_catalog_query_datastore_rejects_paging_past_preview_cap() -> None:
+    with pytest.raises(ToolError):
+        await data.catalog_query_datastore(
+            datastore_id="ds1", sql="SELECT 1", offset=950, limit=100
         )
 
 

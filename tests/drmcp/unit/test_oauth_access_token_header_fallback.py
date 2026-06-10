@@ -23,7 +23,7 @@ from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
 from datarobot_genai.drtools.core.auth import oauth_access_token_header_name
 from datarobot_genai.drtools.core.auth import resolve_oauth_access_token_from_headers
-from datarobot_genai.drtools.core.auth import set_request_headers_for_context
+from datarobot_genai.drtools.core.auth import set_request_headers
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
@@ -32,7 +32,7 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 def clear_request_headers_ctx() -> None:
     """Avoid leaking request header context between tests."""
     yield
-    set_request_headers_for_context({})
+    set_request_headers({})
 
 
 class TestOauthAccessTokenHeaderName:
@@ -55,58 +55,27 @@ class TestOauthAccessTokenHeaderName:
 
 
 class TestResolveOauthAccessTokenFromHeaders:
-    def test_reads_from_framework_headers(self) -> None:
-        with patch(
-            "datarobot_genai.drtools.core.auth._get_http_headers",
-            return_value={"x-datarobot-google-drive-access-token": "tok-from-fw"},
-        ):
-            assert resolve_oauth_access_token_from_headers("google-drive") == "tok-from-fw"
+    def test_reads_from_injected_headers(self) -> None:
+        set_request_headers(
+            {"x-datarobot-google-drive-access-token": "tok-from-headers"},
+        )
+        assert resolve_oauth_access_token_from_headers("google-drive") == "tok-from-headers"
 
     def test_bearer_prefix_stripped(self) -> None:
-        with patch(
-            "datarobot_genai.drtools.core.auth._get_http_headers",
-            return_value={"x-datarobot-google-drive-access-token": "Bearer abc.def"},
-        ):
-            assert resolve_oauth_access_token_from_headers("google-drive") == "abc.def"
+        set_request_headers(
+            {"x-datarobot-google-drive-access-token": "Bearer abc.def"},
+        )
+        assert resolve_oauth_access_token_from_headers("google-drive") == "abc.def"
 
     def test_mixed_case_header_key(self) -> None:
-        with patch(
-            "datarobot_genai.drtools.core.auth._get_http_headers",
-            return_value={"X-DataRobot-Google-Drive-Access-Token": "plain"},
-        ):
-            assert resolve_oauth_access_token_from_headers("google-drive") == "plain"
-
-    def test_framework_headers_take_priority_over_context(self) -> None:
-        set_request_headers_for_context(
-            {"x-datarobot-google-drive-access-token": "from-ctx"},
+        set_request_headers(
+            {"X-DataRobot-Google-Drive-Access-Token": "plain"},
         )
-        with patch(
-            "datarobot_genai.drtools.core.auth._get_http_headers",
-            return_value={"x-datarobot-google-drive-access-token": "from-fw"},
-        ):
-            assert resolve_oauth_access_token_from_headers("google-drive") == "from-fw"
-
-    def test_falls_back_to_request_headers_context(self) -> None:
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-            set_request_headers_for_context(
-                {"x-datarobot-microsoft-graph-access-token": "ctx-token"},
-            )
-            assert resolve_oauth_access_token_from_headers("microsoft-graph") == "ctx-token"
+        assert resolve_oauth_access_token_from_headers("google-drive") == "plain"
 
     def test_returns_none_when_missing(self) -> None:
-        with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
-            set_request_headers_for_context({})
-            assert resolve_oauth_access_token_from_headers("google-drive") is None
-
-    def test_get_http_headers_exception_falls_back_to_context(self) -> None:
-        with patch(
-            "datarobot_genai.drtools.core.auth._get_http_headers",
-            side_effect=RuntimeError("no http"),
-        ):
-            set_request_headers_for_context(
-                {"x-datarobot-atlassian-access-token": "atlas"},
-            )
-            assert resolve_oauth_access_token_from_headers("atlassian") == "atlas"
+        set_request_headers({})
+        assert resolve_oauth_access_token_from_headers("google-drive") is None
 
 
 class TestGetOauthAccessTokenWithHeaderFallback:
@@ -131,7 +100,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
             new_callable=AsyncMock,
             side_effect=RuntimeError("no context"),
         ):
-            set_request_headers_for_context(
+            set_request_headers(
                 {"x-datarobot-google-drive-access-token": "fallback"},
             )
             out = await get_oauth_access_token_with_header_fallback(
@@ -149,7 +118,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
             side_effect=OAuthServiceClientErr("not granted"),
         ):
             with patch(
-                "datarobot_genai.drtools.core.auth._get_http_headers",
+                "datarobot_genai.drtools.core.auth.get_request_headers",
                 return_value={"x-datarobot-google-drive-access-token": "hdr"},
             ):
                 out = await get_oauth_access_token_with_header_fallback(
@@ -166,7 +135,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
             new_callable=AsyncMock,
             return_value="",
         ):
-            set_request_headers_for_context(
+            set_request_headers(
                 {"x-datarobot-atlassian-access-token": "atok"},
             )
             out = await get_oauth_access_token_with_header_fallback(
@@ -183,7 +152,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
             new_callable=AsyncMock,
             side_effect=OAuthServiceClientErr("denied"),
         ):
-            with patch("datarobot_genai.drtools.core.auth._get_http_headers", return_value={}):
+            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
                 out = await get_oauth_access_token_with_header_fallback(
                     "microsoft",
                     display_name="Microsoft",

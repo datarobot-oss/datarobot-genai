@@ -84,13 +84,20 @@ async def _run_transform(
 
     store = _get_store()
     source_panel = await store.get(panel_id)
+    if not isinstance(source_panel, Dataset):
+        raise ToolError(
+            f"Panel {panel_id} is a {source_panel.type.value} panel; only Dataset panels "
+            "can be transformed.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     raw = await store.get_payload(source_panel)
     if raw is None:
         raise ToolError(
             "Source panel has no dataset payload to transform.",
             kind=ToolErrorKind.VALIDATION,
         )
-    rows = pl.read_parquet(io.BytesIO(raw)).to_dicts()
+    source_frame = pl.read_parquet(io.BytesIO(raw))
+    rows = source_frame.to_dicts()
 
     result = await execute_code(f"{_TRANSFORM_PREAMBLE}\n{code}", inputs={"rows": rows})
     out_rows = result.get("return_value")
@@ -100,7 +107,12 @@ async def _run_transform(
             kind=ToolErrorKind.VALIDATION,
         )
 
-    columns = list(out_rows[0].keys()) if out_rows and isinstance(out_rows[0], dict) else []
+    if out_rows and isinstance(out_rows[0], dict):
+        columns = list(out_rows[0].keys())
+    else:
+        # Zero rows: keep the source schema so downstream consumers still see
+        # the column names (e.g. a filter that matched nothing).
+        columns = source_frame.columns
     child = Dataset(
         title=title,
         description=description,
@@ -112,7 +124,7 @@ async def _run_transform(
     created = await store.create(
         child,
         source=source,
-        payload=_rows_to_parquet(out_rows),
+        payload=_rows_to_parquet(out_rows, columns),
         payload_name=f"{title}.parquet",
         content_type=_PARQUET_CONTENT_TYPE,
     )

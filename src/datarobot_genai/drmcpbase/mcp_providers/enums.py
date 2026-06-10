@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc.
+# Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,4 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from enum import Enum
+from enum import auto
 
+
+class ProviderNamespace(Enum):
+    DATAROBOT_USER_MCP = auto()
+
+    def to_qualified_value(self) -> str:
+        return self.name.lower().replace("_", "-")

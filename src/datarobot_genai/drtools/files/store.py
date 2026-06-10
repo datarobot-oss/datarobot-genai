@@ -44,6 +44,7 @@ from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
 logger = logging.getLogger(__name__)
 
 DEFAULT_LIST_LIMIT = 100
+DEFAULT_PUT_TIMEOUT_SECONDS = 600  # matches the Files SDK default for read_timeout/max_wait
 
 
 class _NamedBytesIO(io.BytesIO):
@@ -94,12 +95,15 @@ class BlobStore(Protocol):
         name: str,
         content_type: str | None = None,
         tags: list[str] | None = None,
+        timeout: int = DEFAULT_PUT_TIMEOUT_SECONDS,
     ) -> BlobRef:
         """Store ``data`` and return a handle to it.
 
         ``content_type`` is advisory: the Files backend does not persist it, so
         it is not reflected on the returned :class:`BlobRef`. Callers that need
         it should record it alongside their own metadata.
+
+        ``timeout`` bounds the upload (seconds); raise it for very large blobs.
         """
         ...
 
@@ -159,6 +163,7 @@ class DataRobotFilesBlobStore:
         name: str,
         content_type: str | None = None,
         tags: list[str] | None = None,
+        timeout: int = DEFAULT_PUT_TIMEOUT_SECONDS,
     ) -> BlobRef:
         # content_type is advisory only — the Files API has no field for it.
         def _upload() -> dr.models.Files:
@@ -168,6 +173,8 @@ class DataRobotFilesBlobStore:
                 filelike=buf,
                 tags=tags,
                 use_archive_contents=False,
+                read_timeout=timeout,
+                max_wait=timeout,
             )
 
         with request_user_dr_sdk(headers_auth_only=self._headers_auth_only):

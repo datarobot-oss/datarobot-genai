@@ -66,9 +66,7 @@ class FakeBlobStore:
     ) -> list[BlobRef]:
         wanted = set(tags or [])
         matches = [
-            ref
-            for _data, ref, blob_tags in self.blobs.values()
-            if wanted.issubset(blob_tags)
+            ref for _data, ref, blob_tags in self.blobs.values() if wanted.issubset(blob_tags)
         ]
         return matches[offset : offset + limit] if limit else matches
 
