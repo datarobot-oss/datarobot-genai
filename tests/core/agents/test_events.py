@@ -98,6 +98,30 @@ def test_keeps_text_with_its_tool_call() -> None:
     assert answer.content == "It's 18C and sunny in Paris."
 
 
+def test_idless_turns_do_not_merge_across_tool_result() -> None:
+    # GIVEN two id-less assistant turns (empty message_id -- e.g. a provider whose
+    # streamed chunks carry no id) separated by a tool call and its result.
+    messages = events_to_messages(
+        [
+            TextMessageContentEvent(message_id="", delta="Let me check."),
+            ToolCallStartEvent(tool_call_id="c1", tool_call_name="get_weather"),
+            ToolCallArgsEvent(tool_call_id="c1", delta='{"city": "Paris"}'),
+            ToolCallResultEvent(message_id="r1", tool_call_id="c1", content="18C"),
+            TextMessageContentEvent(message_id="", delta="It is 18C."),
+        ]
+    )
+
+    # THEN the pre-tool text+call and the post-result answer stay SEPARATE assistant
+    # messages: the id-less second turn must not fold back into the closed first step.
+    assert [m.role for m in messages] == ["assistant", "tool", "assistant"]
+    step, tool_result, answer = messages
+    assert step.content == "Let me check."
+    assert step.tool_calls is not None and [c.id for c in step.tool_calls] == ["c1"]
+    assert tool_result.tool_call_id == "c1"
+    assert answer.content == "It is 18C."
+    assert answer.tool_calls is None
+
+
 def test_parent_message_id_attaches_tool_call_to_named_message() -> None:
     # GIVEN a tool call whose parent_message_id names an EARLIER assistant message,
     # not the most-recently-open one.

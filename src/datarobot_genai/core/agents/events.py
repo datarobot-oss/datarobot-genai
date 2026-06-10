@@ -54,6 +54,12 @@ _REASONING_DELTA_TYPES = frozenset(
 )
 _TOOL_START_TYPES = frozenset({EventType.TOOL_CALL_START, EventType.TOOL_CALL_CHUNK})
 
+# Keyless buckets for id-less text/reasoning turns (a provider whose chunks carry no
+# message_id keys into these). They are dropped on a tool result so a following id-less
+# turn opens a fresh bubble instead of folding back into the just-closed step.
+_KEYLESS_TEXT = "\x00text"
+_KEYLESS_REASONING = "\x00reasoning"
+
 
 def events_to_messages(events: Iterable[Any]) -> list[Message]:
     """Fold a sequence of AG-UI events into ordered ``Message`` objects.
@@ -84,7 +90,7 @@ def events_to_messages(events: Iterable[Any]) -> list[Message]:
 
     def _text_assistant(message_id: str | None) -> AssistantMessage:
         nonlocal current
-        key = message_id or "\x00text"
+        key = message_id or _KEYLESS_TEXT
         assistant = assistants.get(key)
         if assistant is None:
             assistant = AssistantMessage(id=message_id or uuid.uuid4().hex, content="")
@@ -112,7 +118,7 @@ def events_to_messages(events: Iterable[Any]) -> list[Message]:
         return target
 
     def _reasoning(message_id: str | None, delta: str) -> None:
-        key = message_id or "\x00reasoning"
+        key = message_id or _KEYLESS_REASONING
         reasoning = reasonings.get(key)
         if reasoning is None:
             reasoning = ReasoningMessage(id=message_id or uuid.uuid4().hex, content="")
@@ -192,6 +198,11 @@ def events_to_messages(events: Iterable[Any]) -> list[Message]:
                         insert_at += 1
                     messages.insert(insert_at, tool_message)
                 current = None  # the tool-calling step is done; next text opens a new one
+                # An id-less turn after this result is a NEW step: drop the keyless
+                # sentinels so it opens a fresh bubble instead of re-resolving (and
+                # merging into) the step that just closed.
+                assistants.pop(_KEYLESS_TEXT, None)
+                reasonings.pop(_KEYLESS_REASONING, None)
         elif event_type == EventType.REASONING_MESSAGE_START:
             _reasoning(getattr(event, "message_id", None), "")
         elif event_type in _REASONING_DELTA_TYPES:
