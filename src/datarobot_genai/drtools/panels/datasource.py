@@ -46,9 +46,13 @@ logger = logging.getLogger(__name__)
 _PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet"
 
 
-def _rows_to_parquet(rows: list[dict[str, Any]]) -> bytes:
-    """Serialize query rows (list of column→value dicts) to Parquet bytes."""
-    frame = pl.DataFrame(rows)
+def _rows_to_parquet(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
+    """Serialize query rows (list of column→value dicts) to Parquet bytes.
+
+    For an empty result, ``columns`` keeps the Parquet schema in agreement with
+    the panel's ``columns`` metadata instead of producing a column-less file.
+    """
+    frame = pl.DataFrame(rows) if rows else pl.DataFrame({c: [] for c in columns or []})
     buffer = io.BytesIO()
     frame.write_parquet(buffer)
     return buffer.getvalue()
@@ -97,8 +101,53 @@ async def create_dataset_panel_from_connector(
     created = await _get_store().create(
         panel,
         source=source,
-        payload=_rows_to_parquet(rows),
+        payload=_rows_to_parquet(rows, columns),
         payload_name=f"{title}.parquet",
         content_type=_PARQUET_CONTENT_TYPE,
     )
     return created.model_dump(mode="json")
+
+
+@tool_metadata(
+    tags={"panels", "read", "dataset", "preview", "daria"},
+    description=(
+        "[Panels—preview dataset] Preview a Dataset panel's tabular payload: columns, "
+        "dtypes, row count, and the first sample_size rows. Read-only; tabular panels "
+        "only (for Json panels use get_panel). Ported from wren-mcp's preview_data_source."
+    ),
+)
+async def preview_dataset_panel(
+    panel_id: Annotated[str, "Id of the Dataset panel to preview."],
+    *,
+    sample_size: Annotated[int, "Rows to include in the sample (1-100, default 10)."] = 10,
+) -> dict[str, Any]:
+    _require_mcp_sandbox()
+    if not panel_id:
+        raise ToolError("panel_id must be provided", kind=ToolErrorKind.VALIDATION)
+    sample_size = min(max(sample_size, 1), PAGINATION_MAX)
+
+    store = _get_store()
+    panel = await store.get(panel_id)
+    if not isinstance(panel, Dataset):
+        raise ToolError(
+            f"Panel {panel_id} is a {panel.type.value} panel; preview_dataset_panel only "
+            "supports Dataset panels (use get_panel for other types).",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    payload = await store.get_payload(panel)
+    if payload is None:
+        raise ToolError(
+            f"Dataset panel {panel_id} has no stored payload to preview.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
+    frame = pl.read_parquet(io.BytesIO(payload))
+    return {
+        "panel_id": panel_id,
+        "title": panel.title,
+        "columns": frame.columns,
+        "dtypes": {name: str(dtype) for name, dtype in zip(frame.columns, frame.dtypes)},
+        "row_count": frame.height,
+        "sample": frame.head(sample_size).to_dicts(),
+        "execution_context": panel.execution_context,
+    }

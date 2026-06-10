@@ -130,6 +130,14 @@ class PanelStore:
             panels.append(panel)
         return panels
 
+    async def get_payload(self, panel: Panel | str) -> bytes | None:
+        """Fetch a panel's payload blob bytes (by id or loaded panel); None if it has none."""
+        if isinstance(panel, str):
+            panel = await self.get(panel)
+        if not panel.payload_files_id:
+            return None
+        return await self._blobs.get(panel.payload_files_id)
+
     async def delete(self, panel_id: str) -> None:
         """Delete a panel's manifest and its payload blob (if any).
 
