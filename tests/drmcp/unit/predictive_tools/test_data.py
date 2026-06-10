@@ -705,3 +705,16 @@ async def test_catalog_list_datasets_client_error_during_lazy_iteration() -> Non
             await data.catalog_list_datasets()
         assert exc_info.value.kind is ToolErrorKind.UPSTREAM
         assert "500" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_catalog_query_datastore_null_records() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"records": None, "columns": None}
+    mock_rest = MagicMock()
+    mock_rest.post.return_value = mock_response
+    with patch.object(dr.client, "get_client", return_value=mock_rest):
+        result = await data.catalog_query_datastore(datastore_id="ds1", sql="SELECT 1")
+        assert result["rows"] == []
+        assert result["columns"] == []
