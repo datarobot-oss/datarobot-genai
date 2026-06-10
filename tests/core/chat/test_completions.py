@@ -35,6 +35,7 @@ from datarobot_genai.core.agents import BaseAgent
 from datarobot_genai.core.agents import InvokeReturn
 from datarobot_genai.core.agents import UsageMetrics
 from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
+from datarobot_genai.core.chat.completions import backfill_model
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.completions import is_streaming
 
@@ -423,3 +424,24 @@ async def test_agent_chat_completion_wrapper_non_streaming() -> None:
     assert usage_metrics["total_tokens"] == 100
     assert usage_metrics["prompt_tokens"] == 100
     assert usage_metrics["completion_tokens"] == 100
+
+
+@pytest.mark.parametrize(
+    ("current", "requested", "expected"),
+    [
+        # NAT left its placeholder / nothing -> echo the requested model
+        (None, "datarobot-e2e", "datarobot-e2e"),
+        ("unknown-model", "datarobot-e2e", "datarobot-e2e"),
+        # workflow set a real model -> keep it, never override
+        ("claude-sonnet", "datarobot-e2e", "claude-sonnet"),
+        # a deliberately-set model that is not the placeholder is preserved
+        # (e.g. moderation's MODERATION_MODEL_NAME)
+        ("datarobot-moderations", "datarobot-e2e", "datarobot-moderations"),
+        # no requested model available -> leave current untouched
+        ("unknown-model", None, "unknown-model"),
+        ("unknown-model", "", "unknown-model"),
+        (None, None, None),
+    ],
+)
+def test_backfill_model(current: str | None, requested: str | None, expected: str | None) -> None:
+    assert backfill_model(current, requested) == expected

@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import datetime
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from ag_ui.core import RunAgentInput
 from ag_ui.core import StepStartedEvent
@@ -25,13 +27,19 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from langchain_core.messages import ToolMessage as LangchainToolMessage
+from nat.builder.context import ContextState
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
+from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.api_server import Message
 
+# Importing register applies dragent's GlobalTypeConverter registrations (including the
+# str -> ChatResponse override), matching production import side effects.
+import datarobot_genai.dragent.frontends.register  # noqa: E402, F401
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
 from datarobot_genai.dragent.frontends.converters import (
@@ -53,6 +61,7 @@ from datarobot_genai.dragent.frontends.converters import (
 from datarobot_genai.dragent.frontends.converters import (
     convert_run_agent_input_to_chat_request_or_message,
 )
+from datarobot_genai.dragent.frontends.converters import convert_str_to_chat_response
 from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
@@ -696,3 +705,73 @@ def test_openai_chunk_from_nat_matches_dragent_event_path_for_text() -> None:
     via_nat = convert_nat_chat_response_chunk_to_openai_chat_completion_chunk(nat)
     direct = convert_dragent_event_response_to_openai_chat_completion_chunk(response)
     assert direct.choices[0].delta.content == via_nat.choices[0].delta.content == "same"
+
+
+# --- model backfill: echo the requested model into responses ---
+
+
+@contextmanager
+def _request_model_on_context(model: str) -> Iterator[None]:
+    """Set NAT's run-context input_message to a ChatRequest carrying ``model``.
+
+    Mirrors how the frontserver runs a workflow: the inbound ChatRequest is set on
+    the context for the duration of the run, so converters can read the requested
+    model via ``Context.get().input_message``.
+    """
+    token = ContextState.get().input_message.set(
+        ChatRequest(messages=[Message(role="user", content="hi")], model=model)
+    )
+    try:
+        yield
+    finally:
+        ContextState.get().input_message.reset(token)
+
+
+def test_convert_str_to_chat_response_echoes_requested_model_from_context() -> None:
+    # GIVEN the inbound request asked for a specific model
+    with _request_model_on_context("datarobot-e2e"):
+        # WHEN the workflow's plain-string output is converted to a ChatResponse
+        result = convert_str_to_chat_response("hello world")
+
+    # THEN the requested model is echoed back (not NAT's "unknown-model")
+    assert result.model == "datarobot-e2e"
+    # AND the content + simulated usage match NAT's str->ChatResponse behavior
+    assert result.choices[0].message.content == "hello world"
+    assert result.usage.completion_tokens == 2
+
+
+def test_convert_str_to_chat_response_defaults_to_unknown_model_without_context() -> None:
+    # GIVEN no request model is available on the context
+    # WHEN converting the workflow's string output
+    result = convert_str_to_chat_response("hi")
+
+    # THEN NAT's placeholder is preserved (no regression vs the built-in converter)
+    assert result.model == "unknown-model"
+
+
+def test_str_to_chat_response_converter_overrides_nat_builtin() -> None:
+    # GIVEN dragent's converters are registered (module-level register import side effect)
+    # WHEN NAT converts a workflow's plain-string output to a ChatResponse mid-run
+    # (the non-streaming /chat/completions path)
+    with _request_model_on_context("datarobot-e2e"):
+        result = GlobalTypeConverter.convert("hello there", ChatResponse)
+
+    # THEN dragent's converter wins over NAT's built-in and echoes the request model
+    assert isinstance(result, ChatResponse)
+    assert result.model == "datarobot-e2e"
+    assert result.choices[0].message.content == "hello there"
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_backfills_model() -> None:
+    # GIVEN a NAT chunk with the "unknown-model" placeholder and a requested model
+    existing = _make_chat_response_chunk(content="streamed")
+    assert existing.model == "unknown-model"
+    response = DRAgentEventResponse(original_chunk=existing, events=[])
+
+    # WHEN converting within a run whose request carried a model
+    with _request_model_on_context("datarobot-e2e"):
+        result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the streaming chunk carries the requested model
+    assert result.model == "datarobot-e2e"
+    assert result.choices[0].delta.content == "streamed"

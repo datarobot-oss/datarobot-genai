@@ -89,6 +89,20 @@ def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str,
     return bool(value)
 
 
+def backfill_model(current: str | None, requested: str | None) -> str | None:
+    """Echo the requested model when NAT left its ``"unknown-model"`` placeholder.
+
+    NAT defaults ``ChatResponse.model`` / ``ChatResponseChunk.model`` to the literal
+    ``"unknown-model"`` whenever the workflow output didn't carry one. When the caller
+    asked for a specific model, restore it for OpenAI/DRUM parity; otherwise keep the
+    value the workflow produced (a real model name, or a deliberately-set one such as
+    moderation's ``MODERATION_MODEL_NAME``).
+    """
+    if requested and current in (None, "unknown-model"):
+        return requested
+    return current
+
+
 def convert_chat_completion_params_to_run_agent_input(
     chat_completion_params: CompletionCreateParams | Mapping[str, Any],
 ) -> RunAgentInput:

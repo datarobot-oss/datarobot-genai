@@ -49,18 +49,26 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
 
     if stream:
         full_response = ""
+        content_chunk_models: set[str] = set()
         for chunk in response:
             assert chunk.choices
             content = chunk.choices[0].delta.content
             tool_calls = chunk.choices[0].delta.tool_calls
             assert content is not None or tool_calls is not None, "Expected content or tool calls"
-            if content is not None:
+            if content:
+                content_chunk_models.add(chunk.model)
                 full_response += content
 
         assert len(full_response) > 0, "Expected non-empty assistant message content"
+        # content chunks echo the requested model, not NAT's "unknown-model".
+        assert content_chunk_models == {"datarobot-e2e"}, (
+            f"streaming chunks must echo the requested model, saw {content_chunk_models}"
+        )
     else:
         # THEN: the response follows the Chat Completions shape with non-empty assistant text
         assert response.choices
         content = response.choices[0].message.content
         assert content is not None
         assert len(content) > 0, "Expected non-empty assistant message content"
+        # the requested model is echoed back (parity with the DRUM baseline).
+        assert response.model == "datarobot-e2e"

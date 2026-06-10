@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.2
+- `dragent/frontends`: `POST /chat/completions` on the dragent frontserver now echoes the requested `model` (non-streaming body and streaming content chunks) instead of NAT's `"unknown-model"` default, for parity with the DRUM baseline. A registered `str -> ChatResponse` converter and a streaming-chunk backfill read the requested model from the NAT run context, and the shared `core/chat/completions.backfill_model` helper now backs both the inline and frontserver paths. The terminal `finish_reason="stop"` streaming chunk (emitted by NAT after the converters) still reports `"unknown-model"`.
+
 ## 0.16.1
 - `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
 
