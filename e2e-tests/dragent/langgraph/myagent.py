@@ -39,7 +39,7 @@ E2E_INTERRUPT_CONTINUING = "E2E_INTERRUPT_CONTINUING"
 
 prompt_template = ChatPromptTemplate.from_messages(
     [
-        # No {chat_history} placeholder, so BUZZOK-31124 structured_history is active:
+        # No {chat_history} placeholder, so structured_history is active:
         # prior turns (incl. tool calls) replay as native messages instead of a flattened
         # text summary. This is what lets the multi-turn e2e exercise the structured path.
         ("system", "Use any available tools to answer the user's request."),
