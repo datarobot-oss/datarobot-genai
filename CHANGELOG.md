@@ -11,6 +11,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `core/agents`: the text `{chat_history}` summary now keeps tool calls even when the assistant turn also has text (previously dropped), so all frameworks surface prior tool steps.
 - `langgraph`/`llama_index`: prior turns now replay to the model as native messages with tool calls preserved (`structured_history`), default **on** when the prompt has no `{chat_history}` (opt out with `structured_history=False`). Breaking: such agents now replay prior turns (bounded by `max_history_messages`) where before they got none.
 
+## 0.15.124
+- Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
+
+## 0.15.123
+- `drtools/workload`: lifecycle tools.
+  - **New tools**: `workload_create_payload` (builds and validates a create payload without an API call; supports both existing `artifactId` and inline artifact via `artifact_name`, `image_uri`, `port`, `cpu`, `memory_bytes`), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), `workload_wait_for_status`.
+  - **Client additions** (`WorkloadApiClient`): `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload`, and `wait_for_workload_status` polling method (raises `RuntimeError` on `errored`, `TimeoutError` on deadline).
+  - Runtime payload uses the canonical `runtime.containerGroups[].resourceBundles` schema from the OpenAPI spec.
+
+## 0.15.122
+- `nat/helpers`: `NatAgent` (DRUM path) now strips `datarobot_moderation` middleware from the loaded `workflow.yaml` automatically. DRUM applies guardrails via `moderation_config.yaml` outside NAT; keeping the middleware in YAML for DRAgent deployments no longer requires a separate DRUM copy of the file. DRAgent entry points (`load_workflow` default, inline runner, CLI) are unchanged.
+
+## 0.15.121
+- `drmcp/core/config`: `MCPServerConfig` assembles `otel_exporter_otlp_headers` dynamically from `OTEL_ENTITY_ID` + `DATAROBOT_API_TOKEN` when the header is not explicitly set, avoiding stale API tokens baked at `pulumi up` time.
+- `dragent/cli/commands`: `_bridge_pulumi_otel_env()` reads `OTEL_ENTITY_ID` from `pulumi_config.json` and assembles OTel headers with the live `DATAROBOT_API_TOKEN`.
+
 ## 0.15.120
 - Test cases runner for `dragent` e2e-tests.
 

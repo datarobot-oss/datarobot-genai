@@ -43,6 +43,7 @@ where = ["src"]
 datarobot_genai = [
     "py.typed",
     "drmcp/core/dynamic_tools/deployment/schemas/*.json",
+    "drmcpbase/dynamic_tools/deployment/schemas/*.json",
 ]
 
 [tool.uv]

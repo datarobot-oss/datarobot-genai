@@ -135,11 +135,11 @@ eval_deps = [
 
 # drmcpbase is standalone set of dependencies for MCP Servers only (no core).
 drmcpbase = [
-    "starlette>=1.0.1", # CVE-2026-48710 fixed in 1.0.1
-    "fastmcp>=3.2.0,<4.0.0",
+    "starlette>=1.0.1",  # CVE-2026-48710 fixed in 1.0.1
+    "fastmcp>=3.4.1,<4.0.0",
     "aiohttp>=3.13.3,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
-    "datarobot>=3.10.0,<4.0.0",
+    "datarobot>=3.16.0,<4.0.0",
     "cachetools>=5.0.0,<8.0.0",
 ]
 

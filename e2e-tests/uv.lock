@@ -963,7 +963,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.15.120"
+version = "0.15.124"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1107,7 +1107,8 @@ requires-dist = [
     { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'drmcpbase'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'drmcp'", specifier = ">=3.16.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'drmcpbase'", specifier = ">=3.16.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
@@ -1137,8 +1138,8 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'langgraph'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'llamaindex'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'nat'", specifier = ">=1.13.2,<2.0.0" },
-    { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.2.0,<4.0.0" },
-    { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.2.0,<4.0.0" },
+    { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.4.1,<4.0.0" },
+    { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.4.1,<4.0.0" },
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },

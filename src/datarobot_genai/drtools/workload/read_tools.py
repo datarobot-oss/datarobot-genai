@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 from typing import Annotated
 from typing import Any
 
@@ -25,13 +24,6 @@ from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
-
-logger = logging.getLogger(__name__)
-
-
-# ------------------------------------------------------------------ #
-# Workload tools — read                                                #
-# ------------------------------------------------------------------ #
 
 
 @tool_metadata(
@@ -111,11 +103,6 @@ async def workload_get(
         return WorkloadApiClient().get_workload(workload_id.strip())
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
-
-
-# ------------------------------------------------------------------ #
-# Bundle tools                                                         #
-# ------------------------------------------------------------------ #
 
 
 @tool_metadata(

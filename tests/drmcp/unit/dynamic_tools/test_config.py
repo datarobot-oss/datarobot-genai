@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
-from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
+from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
 
 
 @pytest.fixture
