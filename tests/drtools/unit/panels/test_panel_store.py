@@ -137,3 +137,24 @@ async def test_list_pages_with_offset(fake_blob_store: FakeBlobStore) -> None:
     assert {p.id for p in first} | {p.id for p in rest} == {
         p.id for p in await store.list(source="main")
     }
+
+
+async def test_list_skips_corrupt_manifests(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    good = await store.create(Dataset(title="good"), source="main")
+    bad = await store.create(Dataset(title="bad"), source="main")
+    data, ref, tags = fake_blob_store.blobs[bad.id]
+    fake_blob_store.blobs[bad.id] = (b'{"title": "no type field"}', ref, tags)
+    listed = await store.list(source="main")
+    assert [p.id for p in listed] == [good.id]
+
+
+async def test_delete_handles_manifest_missing_type_key(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="main")
+    data, ref, tags = fake_blob_store.blobs[created.id]
+    fake_blob_store.blobs[created.id] = (b'{"title": "decodes but no type"}', ref, tags)
+    await store.delete(created.id)
+    assert created.id not in fake_blob_store.blobs
