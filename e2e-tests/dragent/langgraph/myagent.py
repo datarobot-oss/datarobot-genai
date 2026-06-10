@@ -96,11 +96,15 @@ def graph_factory(
         HITL interrupt; every other run goes straight to the writer so the agent
         completes in a single turn. The multi-turn structured-history e2e relies
         on this (it must not pause on an interrupt).
+
+        The interrupt test sends ``{"topic": "start"}``; ``extract_user_prompt_content``
+        JSON-parses it and the ``{topic}`` template slot is filled, so the human turn
+        arrives here as the bare string ``start`` (the JSON form is kept as a fallback).
         """
         for message in state.get("messages", []):
             content = getattr(message, "content", "")
             if isinstance(content, str) and (
-                '"topic": "start"' in content or "'topic': 'start'" in content
+                content.strip() == "start" or '"topic": "start"' in content
             ):
                 return "human_review"
         return "writer_node"
