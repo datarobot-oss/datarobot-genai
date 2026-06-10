@@ -206,7 +206,8 @@ class WorkloadApiClient:
     def promote_workload_artifact(self, workload_id: str) -> dict[str, Any]:
         """POST /workloads/{id}/promote — lock the running draft artifact (202)."""
         with request_user_dr_client() as client:
-            return client.post(f"workloads/{workload_id}/promote").json()
+            resp = client.post(f"workloads/{workload_id}/promote")
+            return resp.json() if resp.content else {}
 
     def get_workload_related(self, workload_id: str) -> dict[str, Any]:
         """GET /workloads/{id}/related — linked artifacts and related entities."""

@@ -758,13 +758,24 @@ async def test_workload_events_client_error(patched_dr_client: MagicMock) -> Non
 @pytest.mark.asyncio
 async def test_workload_promote_success(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.return_value = MagicMock(
-        json=lambda: {"id": "wkld-abc", "status": "running", "artifactId": "art-locked"}
+        content=b'{"id":"wkld-abc","status":"running","artifactId":"art-locked"}',
+        json=lambda: {"id": "wkld-abc", "status": "running", "artifactId": "art-locked"},
     )
 
     result = await observability_tools.workload_promote(workload_id="wkld-abc")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/promote")
     assert result["artifactId"] == "art-locked"
+
+
+@pytest.mark.asyncio
+async def test_workload_promote_empty_body(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(content=b"", json=lambda: {})
+
+    result = await observability_tools.workload_promote(workload_id="wkld-abc")
+
+    patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/promote")
+    assert result == {}
 
 
 @pytest.mark.asyncio
