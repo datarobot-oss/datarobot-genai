@@ -553,6 +553,81 @@ async def test_tool_call_parent_message_id_links_to_preceding_text(
     assert tool_starts[0].parent_message_id  # non-empty: a real preceding bubble
 
 
+async def test_tool_call_parent_message_id_resets_after_tool_result(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN two tool steps where only the FIRST has a preceding text bubble; the
+    # second tool call is emitted after a tool result with no text in between.
+    events = [
+        AgentInput(
+            input=[ChatMessage(content="weather in Paris and Berlin?", role=MessageRole.USER)],
+            current_agent_name="A",
+        ),
+        AgentStream(delta="Let me check. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Paris"},
+            tool_id="c1",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="18C",
+                raw_input={"city": "Paris"},
+                raw_output="18C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        # Second tool call with NO preceding text bubble (straight after the result).
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Berlin"},
+            tool_id="c2",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="20C",
+                raw_input={"city": "Berlin"},
+                raw_output="20C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="Paris 18C, Berlin 20C.", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="Paris 18C, Berlin 20C.", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+        ),
+    ]
+    agent = MyLlamaAgent(Workflow(events=events, state="S"))
+
+    # WHEN invoking the agent
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    # THEN the first tool call links to its text bubble, but the second (no preceding
+    # text) carries an empty parent: the tool-result reset clears the prior bubble id so
+    # it does not leak across steps. Without the reset, the second call would wrongly
+    # name the first step's text bubble.
+    tool_starts = [e for e in ag_events if isinstance(e, ToolCallStartEvent)]
+    assert len(tool_starts) == 2
+    assert tool_starts[0].parent_message_id  # non-empty: links to "Let me check. "
+    assert tool_starts[1].parent_message_id == ""
+
+
 async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
     # GIVEN a llamaindex agent without prompt placeholders (history disabled so this
     # focuses on the raw user prompt; CapturingWorkflow.run takes no chat_history kwarg)

@@ -14,7 +14,7 @@
 """Multi-turn end-to-end test for structured tool-call history.
 
 Turn 1 forces a deterministic tool call (and, with thinking enabled, reasoning).
-``convert_dragent_event_response_to_messages`` folds that streamed run back into
+``events_to_messages`` folds that streamed run back into
 ``AssistantMessage(tool_calls=...)`` / ``ToolMessage`` / ``ReasoningMessage``,
 which are replayed as conversation history on turn 2. The follow-up turn must
 recall the tool result -- exercising native tool-call history end to end.
