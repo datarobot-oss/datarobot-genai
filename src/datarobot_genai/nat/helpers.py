@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -31,8 +32,65 @@ from datarobot_genai.core.chat.auth import get_authorization_context_from_header
 from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
+logger = logging.getLogger(__name__)
 
-def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> Config:
+DATAROBOT_MODERATION_MIDDLEWARE_TYPE = "datarobot_moderation"
+
+
+def remove_datarobot_moderation_middleware(config_yaml: dict[str, Any]) -> None:
+    """Remove ``datarobot_moderation`` middleware entries from a NAT workflow config.
+
+    DRUM applies LLM guardrails via ``moderation_config.yaml`` outside the NAT workflow.
+    When ``NatAgent`` loads a shared ``workflow.yaml`` through DRUM, strip the NAT
+    middleware so guardrails are not applied twice.
+    """
+    middleware_section = config_yaml.get("middleware")
+    if not isinstance(middleware_section, dict):
+        return
+
+    removed_names = [
+        name
+        for name, cfg in middleware_section.items()
+        if isinstance(cfg, dict) and cfg.get("_type") == DATAROBOT_MODERATION_MIDDLEWARE_TYPE
+    ]
+    if not removed_names:
+        return
+
+    for name in removed_names:
+        del middleware_section[name]
+    if not middleware_section:
+        config_yaml.pop("middleware", None)
+
+    removed = set(removed_names)
+    _strip_middleware_references(config_yaml, removed)
+    logger.info(
+        "Removed datarobot_moderation middleware for DRUM execution: %s",
+        ", ".join(sorted(removed)),
+    )
+
+
+def _strip_middleware_references(node: Any, removed: set[str]) -> None:
+    if isinstance(node, dict):
+        for key, value in list(node.items()):
+            if key == "middleware" and isinstance(value, list):
+                filtered = [name for name in value if name not in removed]
+                if filtered:
+                    node[key] = filtered
+                else:
+                    del node[key]
+            else:
+                _strip_middleware_references(value, removed)
+    elif isinstance(node, list):
+        for item in node:
+            _strip_middleware_references(item, removed)
+
+
+def load_config(
+    config_file: StrPath,
+    headers: dict[str, str] | None = None,
+    *,
+    disable_datarobot_moderation: bool = False,
+) -> Config:
     """
     Load a NAT configuration file with injected headers. It ensures that all plugins are
     loaded and then validates the configuration file against the Config schema.
@@ -41,6 +99,9 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
     ----------
     config_file : StrPath
         The path to the configuration file
+    disable_datarobot_moderation : bool, optional
+        When ``True``, strip ``datarobot_moderation`` middleware from the loaded config.
+        Used by ``NatAgent`` on the DRUM path where guardrails are applied externally.
 
     Returns
     -------
@@ -51,6 +112,9 @@ def load_config(config_file: StrPath, headers: dict[str, str] | None = None) -> 
     discover_and_register_plugins(PluginTypes.CONFIG_OBJECT)
 
     config_yaml = yaml_load(config_file)
+
+    if disable_datarobot_moderation:
+        remove_datarobot_moderation_middleware(config_yaml)
 
     add_headers_to_datarobot_mcp_auth(config_yaml, headers)
     add_headers_to_datarobot_llm_deployment(config_yaml, headers)
@@ -96,7 +160,11 @@ def add_headers_to_datarobot_llm_deployment(
 
 @asynccontextmanager
 async def load_workflow(
-    config_file: StrPath, max_concurrency: int = -1, headers: dict[str, str] | None = None
+    config_file: StrPath,
+    max_concurrency: int = -1,
+    headers: dict[str, str] | None = None,
+    *,
+    disable_datarobot_moderation: bool = False,
 ) -> AsyncGenerator[Workflow, None]:
     """
     Load the NAT configuration file and create a Runner object. This is the primary entry point for
@@ -109,13 +177,20 @@ async def load_workflow(
     max_concurrency : int, optional
         The maximum number of parallel workflow invocations to support. Specifying 0 or -1 will
         allow an unlimited count, by default -1
+    disable_datarobot_moderation : bool, optional
+        When ``True``, strip ``datarobot_moderation`` middleware from the loaded config.
+        Used by ``NatAgent`` on the DRUM path where guardrails are applied externally.
     """
     # Publish the workflow path so middleware (e.g. datarobot_moderation) can locate
     # ``moderation_config.yaml`` next to ``workflow.yaml`` without relying on CWD.
     publish_dragent_config_file_env(config_file)
 
     # Load the config object
-    config = load_config(config_file, headers=headers)
+    config = load_config(
+        config_file,
+        headers=headers,
+        disable_datarobot_moderation=disable_datarobot_moderation,
+    )
 
     # Must yield the workflow function otherwise it cleans up
     async with WorkflowBuilder.from_config(config=config) as builder:

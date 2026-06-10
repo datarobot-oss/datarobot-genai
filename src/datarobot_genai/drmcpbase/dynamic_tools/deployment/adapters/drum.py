@@ -21,7 +21,7 @@ from typing import Literal
 
 from .base import MetadataBase
 
-_DEPLOYMENT_PKG = "datarobot_genai.drmcp.core.dynamic_tools.deployment"
+_DEPLOYMENT_PKG = "datarobot_genai.drmcpbase.dynamic_tools.deployment"
 
 
 class DrumTargetType(StrEnum):

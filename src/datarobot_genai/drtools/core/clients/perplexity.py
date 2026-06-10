@@ -27,7 +27,8 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
-from datarobot_genai.drtools.core.auth import get_api_key_from_headers
+from datarobot_genai.drtools.core.auth import resolve_secret
+from datarobot_genai.drtools.core.credentials import get_credentials
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
@@ -63,13 +64,13 @@ async def get_perplexity_access_token() -> str | ToolError:
         ```
     """
     try:
-        if api_key := get_api_key_from_headers("x-perplexity-api-key"):
+        creds = get_credentials()
+        if api_key := resolve_secret("x-perplexity-api-key", creds.perplexity_api_key):
             return api_key
 
-        logger.warning("Perplexity API key not found in headers.")
+        logger.warning("Perplexity API key not found.")
         return ToolError(
-            "Perplexity API key not found in headers. "
-            "Please provide it via 'x-perplexity-api-key' header.",
+            "Perplexity API key not found.",
             kind=ToolErrorKind.AUTHENTICATION,
         )
     except Exception as e:

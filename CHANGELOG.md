@@ -4,9 +4,86 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.105
+## 0.15.125
 - `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
 - `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`, which now re-exports it) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
+
+## 0.15.124
+- Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
+
+## 0.15.123
+- `drtools/workload`: lifecycle tools.
+  - **New tools**: `workload_create_payload` (builds and validates a create payload without an API call; supports both existing `artifactId` and inline artifact via `artifact_name`, `image_uri`, `port`, `cpu`, `memory_bytes`), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), `workload_wait_for_status`.
+  - **Client additions** (`WorkloadApiClient`): `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload`, and `wait_for_workload_status` polling method (raises `RuntimeError` on `errored`, `TimeoutError` on deadline).
+  - Runtime payload uses the canonical `runtime.containerGroups[].resourceBundles` schema from the OpenAPI spec.
+
+## 0.15.122
+- `nat/helpers`: `NatAgent` (DRUM path) now strips `datarobot_moderation` middleware from the loaded `workflow.yaml` automatically. DRUM applies guardrails via `moderation_config.yaml` outside NAT; keeping the middleware in YAML for DRAgent deployments no longer requires a separate DRUM copy of the file. DRAgent entry points (`load_workflow` default, inline runner, CLI) are unchanged.
+
+## 0.15.121
+- `drmcp/core/config`: `MCPServerConfig` assembles `otel_exporter_otlp_headers` dynamically from `OTEL_ENTITY_ID` + `DATAROBOT_API_TOKEN` when the header is not explicitly set, avoiding stale API tokens baked at `pulumi up` time.
+- `dragent/cli/commands`: `_bridge_pulumi_otel_env()` reads `OTEL_ENTITY_ID` from `pulumi_config.json` and assembles OTel headers with the live `DATAROBOT_API_TOKEN`.
+
+## 0.15.120
+- Test cases runner for `dragent` e2e-tests.
+
+## 0.15.119
+- `drtools/workload`: workload lifecycle tools — `workload_create_payload` (payload builder helper), `workload_create`, `workload_start`, `workload_stop` (with optional `wait_stopped` polling), `workload_delete`, `workload_update` (PATCH name/description/importance), and `workload_wait_for_status` (async polling with terminal-status detection and configurable timeout). Client gains `create_workload`, `start_workload`, `stop_workload`, `delete_workload`, `patch_workload` methods. Payload builder supports both existing-artifact (`artifactId`) and inline-artifact modes, fixed and autoscaling replica configurations, and resource bundle selection — following the source-of-truth `WorkloadRuntime.containerGroups` schema.
+
+## 0.15.118
+- `eval`: migrated third-party dependent modules from `af-component-evaluation` into `datarobot_genai.eval` — `validation` (pyyaml), `generator` (anthropic), `judge` (nemo_evaluator). `judge` fixes a cross-provider incompatibility where NeMo always sends `temperature` + `top_p` together, which Anthropic/Bedrock Claude rejects. Judge sessions are now thread-local to be safe under `parallelism > 1`. Full test coverage added; `nemo_evaluator` is stubbed in `conftest.py` so tests run without flask.
+
+## 0.15.117
+- Initialize `_dask_client` to exit cleanly and not throw error during shutdown
+
+## 0.15.116
+- `nat/datarobot_mem0_memory`: when no memory backend is configured (no `agent_memory_space_id` + `DATAROBOT_API_TOKEN`, and no `api_key` / `MEM0_API_KEY`), the provider yields an `UnconfiguredMemoryEditor` no-op instead of raising at startup. Workflows can declare `dr_mem0_memory` unconditionally and enable memory later via runtime parameters or env vars. The mutually-exclusive guardrail against setting both `agent_memory_space_id` and `api_key` is unchanged.
+- `dragent/plugins/streaming_memory_agent`: passes through to the inner agent when the referenced memory backend is unconfigured (`is_memory_editor_configured` returns false), so a fixed `memory_name` in `workflow.yaml` works with or without credentials wired at deploy time.
+
+## 0.15.115
+- `drmcpbase`: added `class UserMCPProvider` to support user MCP proxy
+
+## 0.15.114
+- `eval`: migrated stdlib foundation layer from `af-component-evaluation` into `datarobot_genai.eval` — `utils`, `status`, `output`, `converter`, `dataset`, `summarize`, `runner`, and JSON schemas. Full test coverage added under `tests/eval/`. Third-party modules (`validation`, `generator`, `judge`), benchmarks subpackage, and top-level orchestrator follow in subsequent PRs.
+
+## 0.15.113
+- `nat/datarobot_mem0_memory`: renamed the `memory_space_id` config field to `agent_memory_space_id` (endpoint path follows: `{datarobot_endpoint}/memory/{agent_memory_space_id}`), and added a default factory that reads `AGENT_MEMORY_SPACE_ID` from env via `DataRobotAppFrameworkBaseSettings`. This lets a minimal `workflow.yaml` memory block target the DataRobot Memory Service when the recipe's agent runtime wires the env var, without requiring an explicit field in YAML. Error messages, docstrings, and the mutually-exclusive guardrail against `api_key` were updated to reference the new field name.
+
+## 0.15.112
+- Upgrade github actions to release 0.0.9
+
+## 0.15.111
+- Bump `datarobot-moderations` to 11.2.33 to fix a bug with `ModerationIterator`
+
+## 0.15.110
+- `nat/datarobot_mem0_memory`: emit OpenTelemetry GenAI memory spans (`update_memory`, `search_memory`, `delete_memory`) for Mem0/DataRobot Memory Service access through `DRMem0Editor`, with `gen_ai.memory.store.*`, query/result counts, and per-user scope attributes. Spans export through the same OTel SDK bootstrap used by `instrument()` in `register.py`.
+- `dragent/datarobot_otelcollector`: bridge NAT intermediate-step span context into the OTel SDK so memory and framework spans share the workflow trace instead of exporting as a separate tree. Falls back to NAT `workflow_trace_id` when the exporter bridge is unavailable.
+- `core/telemetry_nat_tracer`: patch the SDK `TracerProvider` installed by `bootstrap_otel_provider_for_datarobot()` so LangChain/LangGraph, HTTP client, and other auto-instrumentor spans join the active NAT workflow trace. Adds a single-active-run fallback when NAT `Context` is unavailable in framework worker threads.
+
+## 0.15.109
+- `drtools/sandbox`: added a `Sandbox` protocol and `DataRobotWorkloadSandbox` (workload-api backend) plus the `execute_code` function; credentials come from the request/config helpers (not `os.environ`), container stderr is surfaced from OTEL logs, and the security context is gated by `ENABLE_WORKLOAD_API_SECURITY_CONTEXT`.
+- `drtools.core.feature_flags`: added `is_tool_feature_enabled(flag, *, evaluator)`, the shared tool-gating policy reused by `drmcp` and global-mcp registries.
+
+## 0.15.108
+- `drtools` Atlassian (Jira/Confluence): added `AtlassianAuth` with OAuth Bearer (HTTP) and API token Basic auth (config). Config fields: `ATLASSIAN_API_TOKEN`, optional `ATLASSIAN_EMAIL` and `ATLASSIAN_SITE_URL` for Basic auth (cloud ID from `/_edge/tenant_info`); token alone is treated as a static OAuth Bearer token.
+- Docs: added `docs/drtools/auth-atlassian.md` for Atlassian config auth.
+- Tests: added Atlassian API token Basic auth tests for Jira/Confluence clients.
+
+## 0.15.107
+- `drmcpbase`: MCP catalog transforms live in `datarobot_genai.drmcpbase.fastmcp_transforms` (`DataRobotMCPCatalogTransform`, `register_mcp_catalog_transform`). Removed `conditional_code_mode` and `mcp_catalog_transform` modules.
+- `drmcpbase`: in tools mode (`x-datarobot-mcp-mode=tools` or unset), optional header `x-datarobot-mcp-tools` (comma-separated tool names, exact match) filters `tools/list` and `tools/call` resolution; header names are matched case-insensitively; unknown tool names are logged and skipped.
+
+## 0.15.106
+- `drtools`: added `auth_resolution_strategy` on `ToolsAuthCredentials` (`AUTH_RESOLUTION_STRATEGY`: `http` or `config`, default `http`). `AuthResolutionStrategy` is a `StrEnum` so env values parse correctly.
+- `drtools.core.auth`: runtime adapters inject per-request data via `set_request_headers` / `set_auth_context`; resolvers `resolve_datarobot_token`, `resolve_secret`, and `get_oauth_access_token_with_header_fallback` honor `auth_resolution_strategy`. Removed legacy helpers `set_request_headers_for_context`, `resolve_token_from_headers`, and `get_api_key_from_headers`. `get_datarobot_access_token(headers_auth_only=False)` falls back to the server `DATAROBOT_API_TOKEN` when strategy is `http` and no request headers are present (dynamic tool/prompt registration at startup).
+- `drmcpbase`: added FastMCP middleware (`read_http_headers`, `OAuthMiddleWare`, `RequestHeadersMiddleware`, `register_oauth_middleware`) with injectable callbacks so `drmcpbase` stays free of `drtools` imports.
+- `drmcp`: thin `core.middleware` wires `drmcpbase` middleware to `drtools.core.auth` (`initialize_oauth_middleware`, `create_oauth_middleware`). Tool clients use `resolve_datarobot_token` / `resolve_secret`.
+- Docs: added `docs/drtools/auth.md` (MCP/http, LangChain/http, LangChain/config examples) and `AUTH_RESOLUTION_STRATEGY` to `docs/README.md`.
+- Tests: added `tests/drmcp/unit/test_resolve_auth.py` for strategy-aware token/secret resolution; updated middleware, config, and OAuth fallback tests for the new injection model.
+
+## 0.15.105
+- `langgraph`: fix `APIConnectionError: 'str' object has no attribute 'get'` when re-sending streamed reasoning-model history. To align with AG-UI model, reasoning content is sent back to the model as usual text.
+- `langgraph`/`llamaindex`: emit AG-UI Reasoning chunks under their own message id (derived from the text id) so frontends render reasoning as its own block instead of folding it into the assistant text bubble.
 
 ## 0.15.104
 - Added new standalone `eval` extra (`datarobot-genai[eval]`) with `nemo-evaluator-launcher`, `anthropic`, and `pyyaml`, and a new `datarobot_genai.eval` subpackage for agent evaluation utilities.
@@ -43,7 +120,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.15.95
 - Surface reasoning/thinking from reasoning models as AG-UI Reasoning events (LangGraph, LlamaIndex DRAgent adapters) and fix the LangGraph crash on list-form `AIMessage.content`.
-- Added `ENABLE_THINKING` / `THINKING_BUDGET_TOKENS` config to opt into extended thinking on thinking-capable models (the LlamaIndex adapter pins `temperature` to 1 when thinking is active, as Anthropic requires), covered by reasoning end-to-end tests and an `e2e-dragent-reasoning` CI job exercising the LangGraph and LlamaIndex agents on `claude-sonnet-4`.
 
 ## 0.15.94
 - CI: cache only `~/.cache/uv`, not `.venv`, so each job rebuilds a clean venv. Caching `.venv` under a shared key could restore a stale environment, intermittently breaking the `drmcpbase` test job (`ModuleNotFoundError: No module named 'datarobot'`).

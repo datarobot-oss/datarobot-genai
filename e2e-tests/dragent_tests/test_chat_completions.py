@@ -18,14 +18,7 @@ import pytest
 from openai import OpenAI
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import BASE_URL
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping chat completions tests",
-        allow_module_level=True,
-    )
 
 
 @pytest.mark.parametrize("stream", [True, False])

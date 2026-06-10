@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from collections.abc import AsyncIterator
 from enum import Enum
 from enum import auto
@@ -28,6 +29,9 @@ from aiohttp import ClientTimeout
 from aiohttp import TCPConnector
 from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
+from datarobot.utils import from_api
+
+logger = logging.getLogger(__name__)
 
 
 class TimeMeasurement(Enum):
@@ -186,3 +190,56 @@ class DataRobotClientWithAsyncAPI:
             resp.raise_for_status()
             deployment_json_response = await resp.json()
             return dr.Deployment.from_server_data(deployment_json_response)
+
+    async def _get_deployment_directaccess_info(
+        self, deployment_id: str, dr_bearer_token: str
+    ) -> dict[str, Any]:
+        """Fetch and normalise the /directAccess/info/ metadata for a deployment.
+
+        Applies the same camelCase → snake_case normalisation that the synchronous
+        DR SDK client applies when the drmcp server fetches this endpoint.
+        """
+        url = self.get_api_v2_endpoint(
+            self._dr_host, f"/deployments/{deployment_id}/directAccess/info/"
+        )
+        headers = {"Authorization": f"Bearer {dr_bearer_token}"}
+        async with self._retry_client.get(url, headers=headers) as resp:
+            resp.raise_for_status()
+            response_json = await resp.json()
+
+        data = from_api(response_json)
+        if isinstance(data, list):
+            return data[0] if data else {}
+        if isinstance(data, dict):
+            return data
+        return {}
+
+    async def _get_deployment_supports_chat_api(
+        self, deployment_id: str, dr_bearer_token: str
+    ) -> bool:
+        """Return whether the deployment advertises chat completions support.
+
+        Reads ``supports_chat_api`` from the deployment's ``/capabilities/`` endpoint.
+        Defaults to ``False`` on any failure or when the flag is absent.
+        """
+        url = self.get_api_v2_endpoint(self._dr_host, f"/deployments/{deployment_id}/capabilities/")
+        headers = {"Authorization": f"Bearer {dr_bearer_token}"}
+        try:
+            async with self._retry_client.get(url, headers=headers) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+            capabilities = (payload or {}).get("data") or []
+            for capability in capabilities:
+                if not isinstance(capability, dict):
+                    continue
+                if capability.get("name") == "supports_chat_api":
+                    return bool(capability.get("supported", False))
+            return False
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch capabilities for deployment %s; "
+                "assuming chat API not supported: %s",
+                deployment_id,
+                exc,
+            )
+            return False

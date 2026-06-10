@@ -25,12 +25,12 @@ import pytest
 from fastmcp.tools import Tool
 from mcp.types import Tool as MCPTool
 
-from datarobot_genai.drmcp.core.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcp.core.mcp_instance import check_tool_registration_status_after_it_finishes
 
 # Add import for the function we're testing
 from datarobot_genai.drmcp.core.mcp_instance import register_tools
-from datarobot_genai.drmcp.core.utils import format_response_as_tool_result
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.dynamic_tools.utils import format_response_as_tool_result
 
 
 class FormatResponseTestCase(NamedTuple):
