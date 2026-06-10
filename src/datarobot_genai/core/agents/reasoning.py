@@ -96,9 +96,8 @@ def flatten_to_text(content: str | list[Any] | None) -> str:
 
 
 # AG-UI ``AssistantMessage`` has no reasoning field, so prior-turn reasoning is folded
-# into the assistant ``content`` as a plain-text sentinel block. The same format is used
-# wherever reasoning is folded (the OpenAI ingest field, and the AG-UI history message),
-# so it is defined once here.
+# into the assistant ``content`` as a plain-text sentinel block by ``wrap_reasoning``
+# (used during history extraction); the sentinels are defined once here.
 REASONING_OPEN = "<reasoning>"
 REASONING_CLOSE = "</reasoning>"
 
