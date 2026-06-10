@@ -33,12 +33,13 @@ from mcp.types import Icon as MCPIconType
 from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+
 from .config import MCPServerConfig
 from .config import get_config
 from .dynamic_prompts.utils import get_prompt_name_no_duplicate
 from .enums import DataRobotMCPPromptCategory
 from .enums import DataRobotMCPResourceCategory
-from .enums import DataRobotMCPToolCategory
 from .logging import log_execution
 from .telemetry import trace_execution
 

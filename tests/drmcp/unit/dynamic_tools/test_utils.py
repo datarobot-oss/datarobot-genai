@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import (
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import (
     _convert_tool_string as convert_tool_string,
 )
-from datarobot_genai.drmcp.core.dynamic_tools.schema import json_schema_to_python_type
+from datarobot_genai.drmcpbase.dynamic_tools.schema import json_schema_to_python_type
 
 
 @pytest.mark.parametrize(

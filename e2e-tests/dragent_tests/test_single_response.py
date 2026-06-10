@@ -20,7 +20,6 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
 from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
@@ -30,12 +29,6 @@ if AGENT == "nat":
     pytest.skip(
         "NAT returns single response in chat completions format, "
         "and we do not yet care to fix it.",
-        allow_module_level=True,
-    )
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping single response tests",
         allow_module_level=True,
     )
 

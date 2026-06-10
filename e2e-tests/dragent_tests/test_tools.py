@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import httpx
 import pytest
 from ag_ui.core import EventType
@@ -38,13 +40,15 @@ if AGENT == "crewai" and LLM == "external":
 if AGENT == "crewai" and LLM == "deployment":
     pytest.skip("BUZZOK-30224: CrewAI has issues with passing MCP tools to external LLM", allow_module_level=True)
 
+
+# This adds some randomness to the test to avoid cached results
 GENERATE_OBJECTID_PROMPT = (
     "You MUST use the generate_objectid tool to generate an object ID for a deployment. "
     "Do NOT generate it yourself. Call the generate_objectid tool with this exact input: "
     "deployment. "
     "You MUST return the exact object ID from the tool, no explanation, "
     "no formatting, no other text. Do not write anything else. Always return the "
-    "final answer to the user"
+    f"final answer to the user. Here is an ID you SHOULD NOT USE: {uuid.uuid4().hex}."
 )
 
 EXPECTED_GENERATE_OBJECTID_RESULT = "69cbb73789723b6936c6c9e1"

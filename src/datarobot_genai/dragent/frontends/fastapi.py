@@ -224,6 +224,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
 
 class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        # NAT's FastApiFrontEndPlugin.run() finally-block accesses self._dask_client
+        # directly, but that attribute is only set lazily by the dask_client property.
+        # When dask isn't installed it is never set, so shutdown raises AttributeError.
+        self._dask_client = None
+
     async def run(self) -> None:
         # Resolve ``workflow.yaml`` before NAT builds the app (gunicorn calls ``get_app()`` in
         # the parent process, which initializes middleware including datarobot_moderation).

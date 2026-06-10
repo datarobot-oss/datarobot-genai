@@ -19,6 +19,7 @@ import pytest
 
 from datarobot_genai.drtools.core import feature_flags as feature_flags_module
 from datarobot_genai.drtools.core.feature_flags import FeatureFlag
+from datarobot_genai.drtools.core.feature_flags import is_tool_feature_enabled
 
 
 def _mock_client(token: str | None = "tok", *, value: bool = True, name: str = "FLAG") -> Mock:
@@ -194,3 +195,26 @@ class TestFeatureFlag:
         assert ("FLAG_1", "p") in feature_flags_module._eval_cache
         assert ("NEW", _mock_principal_for(client)) in feature_flags_module._eval_cache
         assert len(feature_flags_module._eval_cache) == max_entries
+
+
+class TestIsToolFeatureEnabled:
+    """The shared gating policy used by every MCP tool registry."""
+
+    def test_no_flag_is_always_enabled_without_evaluating(self) -> None:
+        evaluator = Mock()
+        assert is_tool_feature_enabled(None, evaluator=evaluator) is True
+        evaluator.assert_not_called()
+
+    def test_delegates_to_evaluator_when_flagged(self) -> None:
+        evaluator = Mock(return_value=True)
+        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=evaluator) is True
+        evaluator.assert_called_once_with("MCP_SANDBOX")
+
+    def test_disabled_flag_gates_off(self) -> None:
+        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=lambda _: False) is False
+
+    def test_fails_closed_when_evaluator_raises(self) -> None:
+        def boom(_: str) -> bool:
+            raise RuntimeError("DR client unavailable")
+
+        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=boom) is False

@@ -19,11 +19,11 @@ Two backends are exercised against their real services:
 * **DataRobot Memory Service** — a real ``MemorySpace`` is created via the
   DataRobot SDK (``datarobot.models.memory.MemorySpace``, see
   ``public_api_client``'s ``datarobot/models/memory.py``), the provider is
-  built with ``memory_space_id=<that id>``, and add/search/remove round-trip
+  built with ``agent_memory_space_id=<that id>``, and add/search/remove round-trip
   through the path-prefixed mem0-compatible endpoint at
-  ``{DATAROBOT_ENDPOINT}/memory/{memory_space_id}/``. The space is deleted in
+  ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}/``. The space is deleted in
   a finalizer so we never leak resources across runs.
-* **Mem0 SaaS** — same provider, no ``memory_space_id``, just a ``MEM0_API_KEY``.
+* **Mem0 SaaS** — same provider, no ``agent_memory_space_id``, just a ``MEM0_API_KEY``.
   Confirms the existing SaaS path still works after the routing changes.
 
 All tests skip when the required credentials aren't in the environment so
@@ -163,12 +163,12 @@ def dr_memory_space(_dr_client: Any) -> Any:
 async def test_dr_mem0_endpoint_add_search_round_trip(
     dr_memory_space: Any,
 ) -> None:
-    # GIVEN a real DR memory space and the unified provider configured to
-    # route through the path-prefixed DR mem0 endpoint (memory_space_id set,
+    # GIVEN a real DR agent memory space and the unified provider configured to
+    # route through the path-prefixed DR mem0 endpoint (agent_memory_space_id set,
     # DR token used as the auth credential).
     config = DRMem0MemoryClientConfig(
         api_key=None,
-        memory_space_id=dr_memory_space.id,
+        agent_memory_space_id=dr_memory_space.id,
         datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
         datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
     )
@@ -217,11 +217,11 @@ async def test_dr_mem0_endpoint_add_search_round_trip(
 async def test_dr_mem0_endpoint_isolates_memories_per_user(
     dr_memory_space: Any,
 ) -> None:
-    # GIVEN the provider pointed at the same DR memory space, and two
+    # GIVEN the provider pointed at the same DR agent memory space, and two
     # distinct users.
     config = DRMem0MemoryClientConfig(
         api_key=None,
-        memory_space_id=dr_memory_space.id,
+        agent_memory_space_id=dr_memory_space.id,
         datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
         datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
     )
@@ -272,7 +272,7 @@ async def test_dr_mem0_endpoint_isolates_memories_per_user(
 # --------------------------------------------------------------------------- #
 @skip_unless_mem0
 async def test_mem0_saas_add_search_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
-    # GIVEN the unified provider configured *without* memory_space_id — it
+    # GIVEN the unified provider configured *without* agent_memory_space_id — it
     # must fall through to the Mem0 SaaS endpoint and use MEM0_API_KEY.
     # We also ensure no stale DR creds steer the router elsewhere.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
@@ -280,7 +280,7 @@ async def test_mem0_saas_add_search_round_trip(monkeypatch: pytest.MonkeyPatch) 
 
     config = DRMem0MemoryClientConfig(
         api_key=os.environ["MEM0_API_KEY"],
-        memory_space_id=None,
+        agent_memory_space_id=None,
     )
     user_id = f"nat-int-{uuid.uuid4().hex[:12]}"
     secret = f"MEM0-SAAS-INT-{uuid.uuid4().hex[:12]}"
@@ -322,7 +322,9 @@ async def test_mem0_saas_validates_credentials_on_init(
     # GIVEN a deliberately invalid Mem0 API key.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
-    config = DRMem0MemoryClientConfig(api_key="m0-this-key-does-not-exist", memory_space_id=None)
+    config = DRMem0MemoryClientConfig(
+        api_key="m0-this-key-does-not-exist", agent_memory_space_id=None
+    )
 
     # WHEN we try to build the client, THEN Mem0's _validate_api_key surfaces
     # the auth failure as ValueError (it wraps the HTTPError). This proves

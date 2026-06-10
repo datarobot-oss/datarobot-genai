@@ -20,32 +20,25 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from dragent_tests.helpers import AGENT
 
-_E2E_ROOT = Path(__file__).resolve().parent.parent
-_WORKFLOW_CONFIG = _E2E_ROOT / "dragent" / (AGENT or "langgraph") / "workflow.yaml"
+E2E_ROOT = Path(__file__).resolve().parent.parent
+WORKFLOW_CONFIG = E2E_ROOT / "dragent" / (AGENT or "langgraph") / "workflow.yaml"
 
 
-@pytest.mark.skipif(not AGENT, reason="AGENT env var not set")
-@pytest.mark.skipif(
-    not _WORKFLOW_CONFIG.exists(),
-    reason=f"Workflow config not found: {_WORKFLOW_CONFIG}",
-)
 def test_cli_run_produces_output() -> None:
     """``nat dragent run`` executes a workflow in-process and prints output."""
     result = subprocess.run(
         [
             "uv", "run",
             "nat", "dragent", "run",
-            "--config_file", str(_WORKFLOW_CONFIG),
+            "--config_file", str(WORKFLOW_CONFIG),
             "--input", "Say 'hello world' and nothing else.",
         ],
         capture_output=True,
         text=True,
         timeout=120,
-        cwd=str(_E2E_ROOT),
+        cwd=str(E2E_ROOT),
         env={**os.environ},
         check=False,
     )
@@ -71,7 +64,7 @@ def test_cli_query_local_server() -> None:
         capture_output=True,
         text=True,
         timeout=120,
-        cwd=str(_E2E_ROOT),
+        cwd=str(E2E_ROOT),
         env={**os.environ, "AGENT_PORT": "8080"},
         check=False,
     )
