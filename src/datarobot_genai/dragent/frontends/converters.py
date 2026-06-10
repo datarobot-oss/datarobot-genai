@@ -95,6 +95,21 @@ def convert_dragent_run_agent_input_to_chat_request_or_message(
     return ChatRequestOrMessage.model_validate(chat_request.model_dump())
 
 
+def convert_run_agent_input_to_chat_request_or_message(
+    input: RunAgentInput,
+) -> ChatRequestOrMessage:
+    """Bridge plain RunAgentInput to NAT chat completions for inner workflow agents.
+
+    DRAgent registers converters for ``DRAgentRunAgentInput`` only. The DRUM
+    ``NatAgent.invoke`` path produces plain ``RunAgentInput`` at the
+    ``streaming_memory_agent`` passthrough boundary, where inner
+    ``per_user_tool_calling_agent`` expects ``ChatRequestOrMessage``.
+    """
+    return convert_dragent_run_agent_input_to_chat_request_or_message(
+        DRAgentRunAgentInput.model_validate(input.model_dump(by_alias=True))
+    )
+
+
 def _dragent_streaming_delta_from_events(
     events: list[Any],
 ) -> tuple[str | None, list[ChoiceDeltaToolCall]]:
