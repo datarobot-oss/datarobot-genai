@@ -631,6 +631,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
+        mock_tool_config.enable_workload_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -739,6 +740,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
+        mock_tool_config.enable_workload_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -802,6 +804,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
+        mock_tool_config.enable_workload_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config

@@ -167,6 +167,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         )
         processor = BatchSpanProcessor(exporter)
 
+        from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()
             resource = Resource.create(
@@ -177,12 +179,13 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
                     "service.name": _resolve_service_name(),
                 }
             )
-            provider = TracerProvider(resource=resource)
+            provider = wrap_sdk_tracer_provider(TracerProvider(resource=resource))
             provider.add_span_processor(processor)
             trace.set_tracer_provider(provider)
             action = "installed"
         else:  # SDK TracerProvider already installed — attach to it.
-            current.add_span_processor(processor)
+            provider = wrap_sdk_tracer_provider(current)
+            provider.add_span_processor(processor)
             action = "attached"
     except Exception:
         # Never let telemetry setup take down the agent. Log with traceback so

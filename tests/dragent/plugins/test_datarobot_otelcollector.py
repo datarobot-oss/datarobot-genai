@@ -165,7 +165,7 @@ class TestExporterFactory:
     async def test_emits_both_datarobot_headers(self):
         cfg = _make_config()
         with patch(
-            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -184,7 +184,7 @@ class TestExporterFactory:
             },
         )
         with patch(
-            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -200,7 +200,7 @@ class TestExporterFactory:
         # SecretStr wrapper — OTLP exporter expects str values.
         cfg = _make_config()
         with patch(
-            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -215,7 +215,7 @@ class TestExporterFactory:
         # otelcollector exporter.
         cfg = _make_config(project="my-agent")
         with patch(
-            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass
@@ -234,7 +234,7 @@ class TestExporterFactory:
             resource_attributes={"service.name": "override-name", "env": "prod"},
         )
         with patch(
-            "datarobot_genai.dragent.plugins.datarobot_otelcollector.OTLPSpanAdapterExporter"
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
         ) as mock_exporter:
             async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
                 pass

@@ -91,11 +91,6 @@ class ImportChecker(ast.NodeVisitor):
     ) -> None:
         for forbidden in forbidden_imports:
             if _is_under_module(module_name, forbidden):
-                if forbidden == "fastmcp" and (
-                    module_name.startswith("fastmcp.server.dependencies")
-                    or module_name.startswith("fastmcp.server.middleware")
-                ):
-                    continue
                 self.errors.append(
                     (
                         lineno,

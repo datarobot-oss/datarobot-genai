@@ -18,6 +18,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from datarobot_genai.drtools.core.clients.atlassian import AtlassianAuth
 from datarobot_genai.drtools.core.clients.jira import Issue
 from datarobot_genai.drtools.core.clients.jira import JiraClient
 
@@ -212,6 +213,37 @@ class TestJiraClient:
                 )
 
                 assert result == ["summary"]
+
+    @pytest.mark.asyncio
+    async def test_api_token_basic_auth_headers_and_cloud_id_path(
+        self, mock_cloud_id: str, mock_issue_response: dict
+    ) -> None:
+        """API token Basic auth uses tenant_info cloud ID and Basic Authorization header."""
+        import base64
+
+        auth = AtlassianAuth.api_token_basic(
+            email="user@example.com",
+            api_token="api-token-secret",
+            site_url="https://acme.atlassian.net",
+        )
+        expected_basic = base64.b64encode(b"user@example.com:api-token-secret").decode("ascii")
+
+        with patch(
+            "datarobot_genai.drtools.core.clients.jira.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ) as mock_get_cloud_id:
+            async with JiraClient(auth) as client:
+                assert client._client.headers["Authorization"] == f"Basic {expected_basic}"
+
+                async def mock_get(url: str, params: dict | None = None) -> httpx.Response:
+                    return make_response(200, mock_issue_response, mock_cloud_id)
+
+                client._client.get = mock_get
+                await client.get_jira_issue("PROJ-123")
+
+                mock_get_cloud_id.assert_awaited_once()
+                assert mock_get_cloud_id.call_args.kwargs["auth"] == auth
 
 
 class TestIssueModel:

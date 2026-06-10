@@ -25,10 +25,10 @@ from datarobot_genai.drtools.core.exceptions import ToolError
 class TestGetDatarobotAccessToken:
     """Test get_datarobot_access_token function."""
 
-    def test_returns_token_when_resolve_token_from_headers_returns_token(self) -> None:
+    def test_returns_token_when_resolve_datarobot_token_returns_token(self) -> None:
         """Test successful token retrieval from headers."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
             return_value="bearer-token-123",
         ):
             result = get_datarobot_access_token()
@@ -36,9 +36,9 @@ class TestGetDatarobotAccessToken:
         assert isinstance(result, str)
 
     def test_raises_tool_error_when_no_token(self) -> None:
-        """Test that ToolError is raised when resolve_token_from_headers returns None."""
+        """Test that ToolError is raised when resolve_datarobot_token returns None."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
             return_value=None,
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -49,9 +49,9 @@ class TestGetDatarobotAccessToken:
         )
 
     def test_raises_tool_error_when_empty_token(self) -> None:
-        """Test that ToolError is raised when resolve_token_from_headers returns empty string."""
+        """Test that ToolError is raised when resolve_datarobot_token returns empty string."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
+            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
             return_value="",
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -61,7 +61,7 @@ class TestGetDatarobotAccessToken:
     def test_falls_back_to_app_token_when_headers_auth_only_false(self) -> None:
         with (
             patch(
-                "datarobot_genai.drtools.core.clients.datarobot.resolve_token_from_headers",
+                "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
                 return_value=None,
             ),
             patch(

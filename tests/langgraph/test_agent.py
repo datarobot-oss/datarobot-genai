@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import uuid
 from functools import cached_property
 from typing import Any
 from unittest.mock import AsyncMock
@@ -918,9 +919,13 @@ async def test_stream_thinking_blocks_emit_reasoning_chunks(run_agent_input):
 
     deltas = [e.delta for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK]
     assert deltas == ["step 1 ", "step 2 ", "step 3"]
-    # Each chunk carries the message id.
+    # All reasoning chunks of one message share a single id, distinct from the text
+    # id, and it's a valid UUID (so chunks group and strict-uuid consumers accept it).
     message_ids = {e.message_id for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK}
-    assert message_ids == {"m1"}
+    assert len(message_ids) == 1
+    reasoning_id = next(iter(message_ids))
+    assert reasoning_id != "m1"
+    uuid.UUID(reasoning_id)  # raises if not a valid UUID
 
 
 @pytest.mark.asyncio
@@ -942,6 +947,14 @@ async def test_stream_thinking_then_text(run_agent_input):
 
     text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
     assert text_deltas == ["answer"]
+
+    # Reasoning and the assistant text must NOT share a message id, else a frontend
+    # grouping by id renders the reasoning inside the assistant text bubble.
+    reasoning_id = next(e.message_id for e in events if e.type == EventType.REASONING_MESSAGE_CHUNK)
+    text_id = next(e.message_id for e in events if e.type == EventType.TEXT_MESSAGE_START)
+    assert text_id == "m1"
+    assert reasoning_id != text_id
+    uuid.UUID(reasoning_id)  # reasoning id is its own valid UUID
 
 
 @pytest.mark.asyncio

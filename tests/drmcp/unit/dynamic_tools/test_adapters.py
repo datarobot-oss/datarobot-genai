@@ -16,9 +16,9 @@
 
 import pytest
 
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.default import Metadata
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import DrumMetadataAdapter
-from datarobot_genai.drmcp.core.dynamic_tools.deployment.adapters.drum import is_drum
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.default import Metadata
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.drum import DrumMetadataAdapter
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.drum import is_drum
 
 
 # Fixtures for DRUM metadata
