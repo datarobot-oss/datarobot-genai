@@ -101,7 +101,6 @@ class TestDataRobotMCPServer:
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
         "mock_sync_mcp_prompts",
-        "mock_is_mcp_tools_gallery_support_enabled",
     )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch(
@@ -188,7 +187,6 @@ class TestDataRobotMCPServer:
         mock_get_config: MagicMock,
         mock_mcp: MagicMock,
         mock_config: MagicMock,
-        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_prompts: AsyncMock,
         mock_sync_mcp_tools: AsyncMock,
@@ -217,7 +215,6 @@ class TestDataRobotMCPServer:
         mock_mcp.list_tools.assert_called_once()
 
         # Check MCP lineage
-        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mock_mcp)
         mock_sync_mcp_prompts.assert_called_once_with()
         mock_sync_mcp_tools.assert_called_once_with()
@@ -226,7 +223,6 @@ class TestDataRobotMCPServer:
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
         "mock_sync_mcp_prompts",
-        "mock_is_mcp_tools_gallery_support_enabled",
     )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
@@ -260,7 +256,6 @@ class TestDataRobotMCPServer:
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
         "mock_sync_mcp_prompts",
-        "mock_is_mcp_tools_gallery_support_enabled",
     )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
