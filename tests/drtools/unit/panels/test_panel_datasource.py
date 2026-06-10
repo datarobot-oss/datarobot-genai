@@ -136,3 +136,11 @@ async def test_preview_dataset_panel_rejects_non_dataset(
     text_panel = await store.create(Text(title="T", text="hi"), source="staging")
     with pytest.raises(ToolError):
         await ds_mod.preview_dataset_panel(text_panel.id)
+
+
+def test_rows_to_parquet_normalizes_sparse_rows_to_columns() -> None:
+    rows = [{"a": 1}, {"b": "y"}]  # connector JSON often omits null keys
+    parquet = ds_mod._rows_to_parquet(rows, ["a", "b"])
+    frame = pl.read_parquet(io.BytesIO(parquet))
+    assert frame.columns == ["a", "b"]
+    assert frame.to_dicts() == [{"a": 1, "b": None}, {"a": None, "b": "y"}]

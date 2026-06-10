@@ -427,8 +427,8 @@ async def catalog_query_datastore(
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         api_response = response.json()
-        columns = api_response.get("columns", [])
-        records = api_response.get("records", [])
+        columns = api_response.get("columns") or []
+        records = api_response.get("records") or []
         if records and not isinstance(records[0], dict):
             # Some drivers return positional rows; key them by column name.
             records = [dict(zip(columns, row)) for row in records]
