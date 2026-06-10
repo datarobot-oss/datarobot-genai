@@ -14,7 +14,7 @@
 
 import pytest
 
-from datarobot_genai.drmcp.core.dynamic_tools import register
+from datarobot_genai.drmcpbase.dynamic_tools import external_tool
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def incoming_headers():
 
 @pytest.fixture
 def spec_model():
-    return register.ExternalToolRegistrationConfig(
+    return external_tool.ExternalToolRegistrationConfig(
         name="test-tool",
         method="GET",
         base_url="https://example.local",
@@ -44,7 +44,7 @@ def spec_model():
 
 @pytest.fixture
 def mock_get_http_headers(monkeypatch):
-    """Return a helper that replaces register.get_http_headers with a callable
+    """Return a helper that replaces external_tool.get_http_headers with a callable
     returning the provided mapping.
 
     Usage in tests:
@@ -52,7 +52,7 @@ def mock_get_http_headers(monkeypatch):
     """
 
     def _set(headers):
-        monkeypatch.setattr(register, "get_http_headers", lambda: headers)
+        monkeypatch.setattr(external_tool, "get_http_headers", lambda: headers)
 
     return _set
 
@@ -62,7 +62,7 @@ class TestGetOutboundHeaders:
 
     @pytest.mark.asyncio
     async def test_all_request_forwarded_headers_lowercase(self):
-        configured_headers = register.REQUEST_FORWARDED_HEADERS
+        configured_headers = external_tool.REQUEST_FORWARDED_HEADERS
         configured_headers_lowercased = {h.lower() for h in configured_headers}
         assert configured_headers == configured_headers_lowercased, (
             "REQUEST_FORWARDED_HEADERS must be all lowercase, to ensure case-insensitive matching."
@@ -74,7 +74,7 @@ class TestGetOutboundHeaders:
     ):
         mock_get_http_headers(incoming_headers)
 
-        out = await register.get_outbound_headers(spec_model)
+        out = await external_tool.get_outbound_headers(spec_model)
 
         # Spec header should override the forwarded X-Agent-Id header
         assert out["X-Agent-Id"] == "spec-agent"
@@ -92,7 +92,7 @@ class TestGetOutboundHeaders:
         incoming = {"x-agent-id": "agent-lowercase"}
         mock_get_http_headers(incoming)
 
-        out = await register.get_outbound_headers(spec_model)
+        out = await external_tool.get_outbound_headers(spec_model)
 
         # Header names are case-insensitive per RFC; spec headers should
         # override incoming headers regardless of casing.
@@ -108,7 +108,7 @@ class TestGetOutboundHeaders:
         incoming = {"Authorization": "secret", "Cookie": "s=1"}
         mock_get_http_headers(incoming)
 
-        out = await register.get_outbound_headers(spec_model)
+        out = await external_tool.get_outbound_headers(spec_model)
 
         assert "Authorization" not in out
         assert "Cookie" not in out
@@ -119,7 +119,7 @@ class TestGetOutboundHeaders:
     async def test_empty_incoming_uses_spec_only(self, mock_get_http_headers, spec_model):
         mock_get_http_headers({})
 
-        out = await register.get_outbound_headers(spec_model)
+        out = await external_tool.get_outbound_headers(spec_model)
 
         assert out == {"X-Agent-Id": "spec-agent", "Spec-Header": "spec-val"}
 
@@ -132,7 +132,7 @@ class TestGetOutboundHeaders:
         }
         mock_get_http_headers(incoming)
 
-        out = await register.get_outbound_headers(spec_model)
+        out = await external_tool.get_outbound_headers(spec_model)
 
         # spec overrides forwarded for identical keys
         assert out["X-Agent-Id"] == "spec-agent"

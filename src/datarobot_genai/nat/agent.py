@@ -219,7 +219,11 @@ class NatAgent(BaseAgent[None]):
         message_id = str(uuid.uuid4())
         text_started = False
 
-        async with load_workflow(self.workflow_path, headers=self.forwarded_headers) as workflow:
+        async with load_workflow(
+            self.workflow_path,
+            headers=self.forwarded_headers,
+            disable_datarobot_moderation=True,
+        ) as workflow:
             async with workflow.session(user_id=thread_id) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
@@ -299,7 +303,11 @@ class NatAgent(BaseAgent[None]):
             ChatResponse | str: The result from the NAT workflow
             list[IntermediateStep]: The list of intermediate steps
         """
-        async with load_workflow(workflow_path, headers=headers) as workflow:
+        async with load_workflow(
+            workflow_path,
+            headers=headers,
+            disable_datarobot_moderation=True,
+        ) as workflow:
             async with workflow.session(user_id=str(uuid.uuid4())) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()

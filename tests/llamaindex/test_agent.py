@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import uuid
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from typing import Any
@@ -642,6 +643,15 @@ async def test_invoke_emits_reasoning_before_text(
     )
     text = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
     assert [e.delta for e in text] == ["answer"]
+
+    # Reasoning must not share the assistant text's message_id, else a frontend
+    # grouping by id folds the reasoning into the text bubble.
+    reasoning_id = next(
+        e.message_id for e in ag_events if isinstance(e, ReasoningMessageChunkEvent)
+    )
+    text_start_id = next(e.message_id for e in ag_events if isinstance(e, TextMessageStartEvent))
+    assert reasoning_id != text_start_id
+    uuid.UUID(reasoning_id)  # reasoning id is its own valid UUID
 
 
 async def test_invoke_emits_reasoning_from_raw_chunk(

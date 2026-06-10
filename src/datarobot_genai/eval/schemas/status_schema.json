@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evaluation Run Status",
+  "description": "Written to output/eval_status.json throughout a run. External CLI polls this file.",
+  "type": "object",
+  "required": ["status", "run_id", "updated_at", "pipeline", "agent_endpoint"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["running", "complete", "failed"],
+      "description": "Current run state"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Timestamp-based identifier for this run, e.g. 20250526_143022"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last status update"
+    },
+    "pipeline": {
+      "type": "string",
+      "description": "Pipeline YAML filename used for this run"
+    },
+    "agent_endpoint": {
+      "type": "string",
+      "description": "Agent endpoint URL that was evaluated"
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "Error message if status is 'failed', otherwise null"
+    }
+  }
+}

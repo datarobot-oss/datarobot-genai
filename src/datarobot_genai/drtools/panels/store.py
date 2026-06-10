@@ -28,11 +28,14 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import logging
 
 from datarobot_genai.drtools.files.store import BlobStore
 from datarobot_genai.drtools.panels.models import BasePanel
 from datarobot_genai.drtools.panels.models import Panel
 from datarobot_genai.drtools.panels.models import panel_from_manifest
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SOURCE = "main"
 DEFAULT_LIST_LIMIT = 100
@@ -77,12 +80,26 @@ class PanelStore:
             panel.payload_name = payload_ref.name
 
         manifest = json.dumps(panel.model_dump(mode="json", exclude={"id"})).encode("utf-8")
-        manifest_ref = await self._blobs.put(
-            manifest,
-            name=f"panel-{panel.type.value}.json",
-            content_type="application/json",
-            tags=[_MANIFEST_TAG, _source_tag(source), f"dr-panel-type:{panel.type.value}"],
-        )
+        try:
+            manifest_ref = await self._blobs.put(
+                manifest,
+                name=f"panel-{panel.type.value}.json",
+                content_type="application/json",
+                tags=[_MANIFEST_TAG, _source_tag(source), f"dr-panel-type:{panel.type.value}"],
+            )
+        except Exception:
+            # The panel was not created; don't leave the payload blob orphaned.
+            if panel.payload_files_id:
+                try:
+                    await self._blobs.delete(panel.payload_files_id)
+                except Exception:  # noqa: BLE001 - cleanup is best-effort; surface the original error
+                    logger.warning(
+                        "Failed to clean up payload blob %s after manifest write failed",
+                        panel.payload_files_id,
+                    )
+                panel.payload_files_id = None
+                panel.payload_name = None
+            raise
         panel.id = manifest_ref.files_id
         return panel  # type: ignore[return-value]
 
@@ -99,9 +116,12 @@ class PanelStore:
         *,
         source: str = DEFAULT_SOURCE,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> list[Panel]:
-        """List panels in ``source`` (metadata only)."""
-        refs = await self._blobs.list(tags=[_MANIFEST_TAG, _source_tag(source)], limit=limit)
+        """List panels in ``source`` (metadata only); page with ``limit``/``offset``."""
+        refs = await self._blobs.list(
+            tags=[_MANIFEST_TAG, _source_tag(source)], limit=limit, offset=offset
+        )
         panels: list[Panel] = []
         for ref in refs:
             raw = await self._blobs.get(ref.files_id)
@@ -111,12 +131,19 @@ class PanelStore:
         return panels
 
     async def delete(self, panel_id: str) -> None:
-        """Delete a panel's manifest and its payload blob (if any)."""
+        """Delete a panel's manifest and its payload blob (if any).
+
+        Transient fetch errors propagate (so the caller can retry without
+        orphaning the payload); only an unreadable/corrupt manifest falls back
+        to deleting the manifest alone, since the payload id is unknowable.
+        """
         payload_files_id: str | None = None
         try:
             payload_files_id = (await self.get(panel_id)).payload_files_id
-        except Exception:  # noqa: BLE001 - best-effort payload cleanup; manifest delete still proceeds
-            payload_files_id = None
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            logger.warning(
+                "Panel %s manifest is unreadable (%s); deleting the manifest only", panel_id, exc
+            )
         if payload_files_id:
             await self._blobs.delete(payload_files_id)
         await self._blobs.delete(panel_id)

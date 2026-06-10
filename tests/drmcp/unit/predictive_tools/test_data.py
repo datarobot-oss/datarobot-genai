@@ -52,6 +52,23 @@ def test_merge_pagination_metadata_total_count_wins_over_total() -> None:
     assert out["total_count"] == 7
 
 
+def test_merge_pagination_metadata_total_count_from_total_count_camel_case() -> None:
+    """DataRobot list responses often expose totalCount instead of total or total_count."""
+    base: dict = {"workloads": []}
+    body = {"totalCount": 42, "next": "https://example/api?offset=100"}
+    out = data.merge_pagination_metadata(base, body, offset=100, limit=100)
+    assert out["total_count"] == 42
+    assert out["next"] == "https://example/api?offset=100"
+
+
+def test_merge_pagination_metadata_total_count_wins_over_total_count_camel_case() -> None:
+    """Explicit total_count takes precedence over totalCount."""
+    base: dict = {"x": 1}
+    body = {"total_count": 7, "totalCount": 99}
+    out = data.merge_pagination_metadata(base, body)
+    assert out["total_count"] == 7
+
+
 def test_merge_pagination_metadata_list_body_ignored() -> None:
     """Non-dict body does not add next/previous/total (browse/query edge cases)."""
     base: dict = {"k": 1}
