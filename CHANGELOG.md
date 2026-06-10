@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.15.126
+- `drtools/workload`: PR3 — settings and observability tools.
+  - **New tools** (`observability_tools.py`): `workload_settings_get`, `workload_settings_update` (triggers rolling replacement via PATCH /settings), `workload_stats` (aggregated perf stats with quantile + slow-request controls), `workload_history` (artifact deployment history), `workload_events` (status-change and error events), `workload_promote` (lock running draft artifact), `workload_related` (linked artifacts and related entities).
+  - **Client additions** (`WorkloadApiClient`): `get_workload_settings`, `update_workload_settings`, `get_workload_stats`, `list_workload_history`, `list_workload_events`, `promote_workload_artifact`, `get_workload_related`.
+
 ## 0.15.125
 - `dragent/frontends/converters`: registered `convert_run_agent_input_to_chat_request_or_message` so plain `RunAgentInput` from the DRUM `NatAgent.invoke` / `streaming_memory_agent` passthrough boundary converts to NAT `ChatRequestOrMessage` for inner `per_user_tool_calling_agent` workflows.
 
