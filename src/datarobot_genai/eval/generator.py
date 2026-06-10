@@ -72,17 +72,17 @@ class CaseGenerator:
         resolved_model = model_id or os.environ.get("LLM_DEFAULT_MODEL")
 
         if not resolved_url:
-            raise ValueError(
-                "url is required. Pass it explicitly or set DATAROBOT_ENDPOINT."
-            )
+            raise ValueError("url is required. Pass it explicitly or set DATAROBOT_ENDPOINT.")
         if not resolved_model:
-            raise ValueError(
-                "model_id is required. Pass it explicitly or set LLM_DEFAULT_MODEL."
-            )
+            raise ValueError("model_id is required. Pass it explicitly or set LLM_DEFAULT_MODEL.")
 
         # Strip /api/v2 suffix so litellm receives the gateway base URL
         self._api_base = resolved_url.removesuffix("/api/v2")
-        self._model = f"datarobot/{resolved_model}"
+        self._model = (
+            resolved_model
+            if resolved_model.startswith("datarobot/")
+            else f"datarobot/{resolved_model}"
+        )
         self._api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
 
     def generate(self, agent_description: str, n_good: int, n_bad: int) -> list[dict[str, Any]]:

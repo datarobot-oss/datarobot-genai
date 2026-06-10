@@ -85,6 +85,11 @@ def test_init_sets_model_with_prefix() -> None:
     assert gen._model == f"datarobot/{_MODEL}"
 
 
+def test_init_does_not_double_prefix() -> None:
+    gen = CaseGenerator(url=_URL, model_id=f"datarobot/{_MODEL}")
+    assert gen._model == f"datarobot/{_MODEL}"
+
+
 def test_init_reads_api_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok-123")
     gen = _make_gen()
