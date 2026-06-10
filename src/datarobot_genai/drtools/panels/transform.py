@@ -52,9 +52,9 @@ _PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet"
 _TRANSFORM_PREAMBLE = "import polars as pl\ndf = pl.DataFrame(inputs['rows'])"
 
 try:  # pragma: no cover - import wiring; covered indirectly via the _execute_code patch
-    from datarobot_genai.drtools.sandbox.tools import execute_code as _execute_code
+    from datarobot_genai.drtools.sandbox import execute_code as _execute_code
 except ImportError:
-    # The sandbox lands in a separate change (PR #350). Absent here, tools fail closed.
+    # Older versions without the sandbox backend (pre-#350). Absent, tools fail closed.
     _execute_code = None  # type: ignore[assignment]
 
 
@@ -101,13 +101,13 @@ async def _run_transform(
 
     result = await execute_code(f"{_TRANSFORM_PREAMBLE}\n{code}", inputs={"rows": rows})
     out_rows = result.get("return_value")
-    if not isinstance(out_rows, list):
+    if not isinstance(out_rows, list) or not all(isinstance(row, dict) for row in out_rows):
         raise ToolError(
             "Transform code must assign a list of row dicts to `_return`.",
             kind=ToolErrorKind.VALIDATION,
         )
 
-    if out_rows and isinstance(out_rows[0], dict):
+    if out_rows:
         columns = list(out_rows[0].keys())
     else:
         # Zero rows: keep the source schema so downstream consumers still see

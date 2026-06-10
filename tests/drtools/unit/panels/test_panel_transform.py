@@ -147,3 +147,25 @@ async def test_transform_rejects_non_dataset_panel(transform_env: PanelStore) ->
             panel_id=text_panel.id, code="_return = []", title="X", source="staging"
         )
     assert "only Dataset panels" in str(exc_info.value)
+
+
+def test_sandbox_import_is_wired() -> None:
+    # Guards against the defensive import silently failing (wrong module path):
+    # with the sandbox backend present in this repo, _execute_code must be bound.
+    assert tf_mod._execute_code is not None
+
+
+async def test_transform_rejects_non_dict_rows(
+    transform_env: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = transform_env
+    src_id = await _make_source(store)
+
+    async def _bad_execute_code(code: str, *, inputs: dict[str, Any], **_kw: Any):
+        return {"return_value": [1, 2, 3], "stdout": "", "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(tf_mod, "_execute_code", _bad_execute_code)
+    with pytest.raises(ToolError):
+        await tf_mod.transform_panel(
+            panel_id=src_id, code="_return = [1,2,3]", title="X", source="staging"
+        )
