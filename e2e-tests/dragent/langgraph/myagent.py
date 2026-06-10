@@ -122,13 +122,11 @@ def graph_factory(
 
         The interrupt test sends ``{"topic": "start"}``; ``extract_user_prompt_content``
         JSON-parses it and the ``{topic}`` template slot is filled, so the human turn
-        arrives here as the bare string ``start`` (the JSON form is kept as a fallback).
+        arrives here as the bare string ``start``.
         """
         for message in state.get("messages", []):
             content = getattr(message, "content", "")
-            if isinstance(content, str) and (
-                content.strip() == "start" or '"topic": "start"' in content
-            ):
+            if isinstance(content, str) and content.strip() == "start":
                 return "human_review"
         return "planner_to_writer_relay"
 
