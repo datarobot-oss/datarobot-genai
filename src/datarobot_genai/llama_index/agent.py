@@ -215,6 +215,11 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         any_text_emitted = False
+        # Id of the most recently closed assistant text bubble. A following tool call
+        # names it as its parent_message_id so the call attaches to the message that
+        # introduced it (AG-UI grouping) instead of an orphan id; reset on a tool
+        # result so a later text-less step can't reuse a stale bubble id.
+        last_text_message_id: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -349,6 +354,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     if names:
                         logger.info(f"Planning to use tools: {names}")
             elif event_type == "ToolCallResult":
+                # The tool-calling step is complete; clear the captured bubble id so a
+                # later text-less step doesn't attach its tool calls to a stale bubble.
+                last_text_message_id = None
                 tname = getattr(event, "tool_name", None)
                 tid = getattr(event, "tool_id", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -385,6 +393,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     text_started = False
+                    # Capture the closed bubble's id (before minting a fresh one) so the
+                    # tool call below can name it as its parent_message_id.
+                    last_text_message_id = message_id
                     message_id = str(uuid.uuid4())
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -396,6 +407,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         type=EventType.TOOL_CALL_START,
                         tool_call_id=tid,
                         tool_call_name=tname,
+                        parent_message_id=last_text_message_id or "",
                     ),
                     None,
                     usage_metrics,

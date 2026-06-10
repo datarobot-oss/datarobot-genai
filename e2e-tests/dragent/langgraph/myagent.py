@@ -36,7 +36,10 @@ E2E_INTERRUPT_CONTINUING = "E2E_INTERRUPT_CONTINUING"
 
 prompt_template = ChatPromptTemplate.from_messages(
     [
-        ("system", "{chat_history}"),
+        # No {chat_history} placeholder, so BUZZOK-31124 structured_history is active:
+        # prior turns (incl. tool calls) replay as native messages instead of a flattened
+        # text summary. This is what lets the multi-turn e2e exercise the structured path.
+        ("system", "Use any available tools to answer the user's request."),
         ("user", "{topic}"),
     ]
 )
@@ -88,12 +91,26 @@ def graph_factory(
             return END
         return "writer_node"
 
+    def route_after_planner(state: MessagesState) -> str:
+        """Send only the interrupt/resume scenario (topic ``start``) through the
+        HITL interrupt; every other run goes straight to the writer so the agent
+        completes in a single turn. The multi-turn structured-history e2e relies
+        on this (it must not pause on an interrupt).
+        """
+        for message in state.get("messages", []):
+            content = getattr(message, "content", "")
+            if isinstance(content, str) and (
+                '"topic": "start"' in content or "'topic': 'start'" in content
+            ):
+                return "human_review"
+        return "writer_node"
+
     graph = StateGraph(MessagesState)
     graph.add_node("planner_node", agent_planner)
     graph.add_node("writer_node", agent_writer)
     graph.add_node("human_review", human_review)
     graph.add_edge(START, "planner_node")
-    graph.add_edge("planner_node", "human_review")
+    graph.add_conditional_edges("planner_node", route_after_planner)
     graph.add_conditional_edges("human_review", route_after_human_review)
     graph.add_edge("writer_node", END)
     return graph

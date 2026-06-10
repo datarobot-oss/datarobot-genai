@@ -502,6 +502,57 @@ async def test_llama_index_agent_invoke(
     assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
+async def test_tool_call_parent_message_id_links_to_preceding_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN an agent that says something AND then calls a tool in the SAME step
+    events = [
+        AgentInput(
+            input=[ChatMessage(content="weather in Paris?", role=MessageRole.USER)],
+            current_agent_name="A",
+        ),
+        AgentStream(delta="Let me check. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Paris"},
+            tool_id="c1",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="18C",
+                raw_input={"city": "Paris"},
+                raw_output="18C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="It is 18C.", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="It is 18C.", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+        ),
+    ]
+    agent = MyLlamaAgent(Workflow(events=events, state="S"))
+
+    # WHEN invoking the agent
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    # THEN the tool call names the preceding text bubble as its parent, so a client
+    # folding these events back to history keeps the text and the call on one
+    # assistant message (AG-UI grouping).
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    tool_starts = [e for e in ag_events if isinstance(e, ToolCallStartEvent)]
+    assert tool_starts[0].parent_message_id == text_starts[0].message_id
+    assert tool_starts[0].parent_message_id  # non-empty: a real preceding bubble
+
+
 async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
     # GIVEN a llamaindex agent without prompt placeholders (history disabled so this
     # focuses on the raw user prompt; CapturingWorkflow.run takes no chat_history kwarg)
