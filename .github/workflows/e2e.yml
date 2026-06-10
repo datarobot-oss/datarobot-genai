@@ -107,11 +107,17 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "has_combos=$([[ "$count" -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "Generated $count combination(s)."
-          echo "$GITHUB_OUTPUT"
 
   e2e:
     needs: [prepare-matrix]
-    if: needs.prepare-matrix.outputs.has_combos == 'true'
+    # `always()` is required because a skipped ancestor (detect-changes is
+    # skipped on workflow_dispatch) otherwise poisons the implicit `success()`
+    # check and skips this job even when prepare-matrix succeeded. Gate on the
+    # explicit result + has_combos instead.
+    if: |
+      always() &&
+      needs.prepare-matrix.result == 'success' &&
+      needs.prepare-matrix.outputs.has_combos == 'true'
     # `matrix.name` is the per-combo label produced by cases.py — format is
     # "<case>--<matrix-value-1>--<matrix-value-2>...". Without an explicit
     # name GH would label each parallel job with every field in the matrix
