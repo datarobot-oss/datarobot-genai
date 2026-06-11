@@ -24,12 +24,11 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
-from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import LLM
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import parse_sse_responses
+from dragent_tests.helpers import stream_sse_responses
 
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping tool call tests", allow_module_level=True)
@@ -59,10 +58,7 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
     # deployment
     payload = make_generate_payload(GENERATE_OBJECTID_PROMPT)
     # WHEN: the payload is streamed to the generate endpoint
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        # THEN: the response is a valid AG-UI response
-        sse_events = parse_sse_responses(response)
+    sse_events = stream_sse_responses(http_client, payload)
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_events)
@@ -121,10 +117,7 @@ def test_calculator_tool_is_called(http_client: httpx.Client) -> None:  # type: 
     # deployment
     payload = make_generate_payload(CALCULATOR_PROMPT)
     # WHEN: the payload is streamed to the generate endpoint
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        # THEN: the response is a valid AG-UI response
-        sse_events = parse_sse_responses(response)
+    sse_events = stream_sse_responses(http_client, payload)
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_events)

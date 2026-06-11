@@ -4,15 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.15.127
+## 0.16.4
 - `drtools/panels`: added connector-sourced Dataset panels — `create_dataset_panel_from_connector` runs SQL against any DataRobot connector/datastore (source-side filtering via `catalog_query_datastore`) and materializes the result to a Parquet payload stored via the Files API, recording datastore_id + sql in the panel's execution context for lineage/refresh. Gated on the `MCP_SANDBOX` entitlement. Adds `preview_dataset_panel` (columns/dtypes/row count/sample rows from the stored Parquet payload, ported from wren-mcp's preview_data_source) and `PanelStore.get_payload`. Empty query results keep the column schema in the Parquet payload. **Fix**: `catalog_query_datastore` now POSTs to the real `externalDataStores/<id>/previewQuery/` route (the previous `externalDataDrivers/<id>/execute/` route does not exist); offset paging is emulated by over-fetching up to the route's 999-row cap.
 
-## 0.15.126
+## 0.16.3
 - `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `list_panels` clamps/echoes `limit` and supports `offset` paging; `PanelStore.create` cleans up the payload blob if the manifest write fails, and `delete` no longer orphans payloads on transient errors. Also ports the wren-mcp schema tools as `list_panel_schemas`, `describe_panel_schema`, `validate_panel_data` over a new `panels.schema_registry.SchemaRegistry` (namespaced Pydantic schemas for Json panel validation). `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
 
-## 0.15.125
+## 0.16.2
 - `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
-- `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`, which now re-exports it) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
+- `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
+
+## 0.16.1
+- `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
+
+## 0.16.0
+- `core/agents/events.py`: `events_to_messages` folds an AG-UI event stream back into `Message` objects (assistant text + its tool calls on one `AssistantMessage`, paired `ToolMessage` results, reasoning) for replay as history — the Python port of the TS client's `defaultApplyEvents` (messages slice).
+- `llama_index`: tool-call events now carry `parent_message_id`, so a client folding the stream keeps a turn's text and tool calls on one assistant message.
+- `dragent` e2e-tests: multi-turn conversation test (tool calls + reasoning) for langgraph/nat/llama_index; langgraph + llama_index replay structured history. The langgraph e2e agent drops `{chat_history}` and only interrupts for the interrupt/resume case.
+- `core/agents`: the text `{chat_history}` summary now keeps tool calls even when the assistant turn also has text (previously dropped), so all frameworks surface prior tool steps.
+- `langgraph`/`llama_index`: prior turns now replay to the model as native messages with tool calls preserved (`structured_history`), default **on** when the prompt has no `{chat_history}` (opt out with `structured_history=False`). Breaking: such agents now replay prior turns (bounded by `max_history_messages`) where before they got none.
+
+## 0.15.127
+- `drtools/workload`: settings and observability tools.
+  - **New tools** (`observability_tools.py`): `workload_settings_get`, `workload_settings_update` (triggers rolling replacement via PATCH /settings), `workload_stats` (aggregated perf stats with quantile + slow-request controls), `workload_history` (artifact deployment history), `workload_events` (status-change and error events), `workload_promote` (lock running draft artifact), `workload_related` (linked artifacts and related entities).
+  - **Client additions** (`WorkloadApiClient`): `get_workload_settings`, `update_workload_settings`, `get_workload_stats`, `list_workload_history`, `list_workload_events`, `promote_workload_artifact`, `get_workload_related`.
+
+## 0.15.126
+- Removed user MCP lineage feature flag logic
+
+## 0.15.125
+- `dragent/frontends/converters`: registered `convert_run_agent_input_to_chat_request_or_message` so plain `RunAgentInput` from the DRUM `NatAgent.invoke` / `streaming_memory_agent` passthrough boundary converts to NAT `ChatRequestOrMessage` for inner `per_user_tool_calling_agent` workflows.
 
 ## 0.15.124
 - Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP

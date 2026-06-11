@@ -885,7 +885,12 @@ def run_agent_input_to_completion_dict(rai: RunAgentInput) -> dict[str, Any]:
         "stream": True,
     }
     for m in rai.messages:
-        ccp["messages"].append(_ag_ui_message_to_openai(m))
+        converted = _ag_ui_message_to_openai(m)
+        # Skip AG-UI message types with no OpenAI equivalent (e.g. ReasoningMessage),
+        # which map to an empty dict. get_chat_prompt indexes message["role"] and would
+        # raise KeyError on a role-less entry (multi-turn history can replay reasoning).
+        if converted:
+            ccp["messages"].append(converted)
     ccp["tools"] = [
         {
             "type": "function",

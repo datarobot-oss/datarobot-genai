@@ -32,7 +32,10 @@ import yaml
 
 pytest.importorskip("datarobot_dome")
 
+from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall
+from ag_ui.core import ReasoningMessage
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -41,8 +44,10 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCall
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
+from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import _from_dataframe
@@ -391,6 +396,50 @@ def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
 def test_moderation_prompt_from_workflow_input_run_agent_input() -> None:
     run_input = _make_run_input("plan the thing")
     assert moderation_prompt_from_workflow_input(run_input) == "plan the thing"
+
+
+def test_completion_dict_skips_reasoning_message_history() -> None:
+    """Multi-turn history can replay a ReasoningMessage (it has no OpenAI equivalent).
+
+    ``_ag_ui_message_to_openai`` maps it to an empty dict, so it must be dropped rather
+    than appended: ``get_chat_prompt`` indexes ``message["role"]`` and would otherwise
+    raise ``KeyError: 'role'`` (regression: structured tool-call + reasoning history).
+    """
+    run_input = DRAgentRunAgentInput(
+        thread_id="t1",
+        run_id="r1",
+        messages=[
+            UserMessage(id="u1", content="use the tool for a deployment, reply with the id"),
+            ReasoningMessage(id="x1", content="The user wants the generate_objectid tool."),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="tc1",
+                        type="function",
+                        function=FunctionCall(
+                            name="generate_objectid", arguments='{"type": "deployment"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="69cbb73789723b6936c6c9e1", tool_call_id="tc1"),
+            AssistantMessage(id="a2", content="69cbb73789723b6936c6c9e1"),
+            UserMessage(id="u2", content="what id did the tool return? reply with only the id"),
+        ],
+        tools=[],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
+    params = workflow_input_to_completion_dict(run_input)
+    # No role-less entries reach get_chat_prompt (the reasoning turn is dropped).
+    assert all(message.get("role") for message in params["messages"])
+    assert "reasoning" not in {message.get("role") for message in params["messages"]}
+    # The latest user turn is still the moderated prompt; this must not raise.
+    assert "reply with only the id" in get_chat_prompt(params)
+    assert moderation_prompt_from_workflow_input(run_input)
 
 
 def test_moderation_prompt_from_workflow_input_input_message_only() -> None:

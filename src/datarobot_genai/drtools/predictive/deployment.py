@@ -21,6 +21,7 @@ import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.deployment_utils import MODEL_EXTENSIONS
 from datarobot_genai.drtools.core.deployment_utils import REQUIRED_FILES
@@ -28,7 +29,6 @@ from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_im
 from datarobot_genai.drtools.core.deployment_utils import find_model_file_in_folder
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 
