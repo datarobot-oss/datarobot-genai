@@ -27,7 +27,7 @@ from datarobot.context import Context as DRContext
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from tests.drmcp.stub_credentials import force_stub_datarobot_credentials_env
 
@@ -96,7 +96,7 @@ def dr_client() -> Any:
         yield client
 
     with patch(
-        "datarobot_genai.drtools.core.clients.datarobot.request_user_dr_sdk",
+        "datarobot_genai.drmcputils.clients.datarobot.request_user_dr_sdk",
         side_effect=_request_user_dr_sdk,
     ):
         yield client

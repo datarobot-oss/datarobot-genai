@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core import feature_flags as feature_flags_module
-from datarobot_genai.drtools.core.feature_flags import FeatureFlag
-from datarobot_genai.drtools.core.feature_flags import is_tool_feature_enabled
+from datarobot_genai.drmcputils import feature_flags as feature_flags_module
+from datarobot_genai.drmcputils.feature_flags import FeatureFlag
+from datarobot_genai.drmcputils.feature_flags import is_tool_feature_enabled
 
 
 def _mock_client(token: str | None = "tok", *, value: bool = True, name: str = "FLAG") -> Mock:
@@ -41,7 +41,7 @@ def _mock_principal_for(client: Mock) -> str:
 class TestFeatureFlag:
     @pytest.fixture
     def module_under_test(self) -> str:
-        return "datarobot_genai.drtools.core.feature_flags"
+        return "datarobot_genai.drmcputils.feature_flags"
 
     @pytest.fixture(autouse=True)
     def clear_cache(self) -> Iterator[None]:

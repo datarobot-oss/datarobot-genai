@@ -47,9 +47,9 @@ from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
 )
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_template_versions
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_templates
-from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients import datarobot as tools_datarobot_client
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
 
 # Import elicitation test tool to register it with the MCP server
 try:

@@ -14,7 +14,7 @@
 
 """Server-side panel store.
 
-Persists panels through a :class:`~datarobot_genai.drtools.files.store.BlobStore`:
+Persists panels through a :class:`~datarobot_genai.drmcputils.files.store.BlobStore`:
 each panel is a small JSON *manifest* blob (the panel metadata) tagged for
 discovery, plus an optional separate *payload* blob for bulky content (a
 Dataset's Parquet, a Chart's spec). The manifest blob's id is the panel id, so
@@ -30,10 +30,10 @@ import datetime as _dt
 import json
 import logging
 
-from datarobot_genai.drtools.files.store import BlobStore
-from datarobot_genai.drtools.panels.models import BasePanel
-from datarobot_genai.drtools.panels.models import Panel
-from datarobot_genai.drtools.panels.models import panel_from_manifest
+from datarobot_genai.drmcputils.files.store import BlobStore
+from datarobot_genai.drmcputils.panels.models import BasePanel
+from datarobot_genai.drmcputils.panels.models import Panel
+from datarobot_genai.drmcputils.panels.models import panel_from_manifest
 
 logger = logging.getLogger(__name__)
 

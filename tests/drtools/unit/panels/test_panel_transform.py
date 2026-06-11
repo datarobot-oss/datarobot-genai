@@ -20,12 +20,12 @@ from typing import Any
 import polars as pl
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.panels.models import Dataset
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.panels import transform as tf_mod
 from datarobot_genai.drtools.panels.datasource import _rows_to_parquet
-from datarobot_genai.drtools.panels.models import Dataset
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
 
 from .conftest import FakeBlobStore
 

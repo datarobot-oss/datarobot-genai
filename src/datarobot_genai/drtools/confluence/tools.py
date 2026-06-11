@@ -18,12 +18,12 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.atlassian import get_confluence_access_token
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceClient
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
