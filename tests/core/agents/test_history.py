@@ -14,11 +14,16 @@
 
 
 from ag_ui.core import AssistantMessage
+from ag_ui.core import ReasoningMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from ag_ui.core.types import FunctionCall
+from ag_ui.core.types import ToolCall
 
 from datarobot_genai.core.agents.history import _summarize_tool_calls
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.agents.history import drop_unpaired_boundary_tool_turns
 from datarobot_genai.core.agents.history import extract_history_messages
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 
@@ -297,3 +302,197 @@ class TestBuildHistorySummaryFromChatCompletions:
             'assistant: [tool_calls] get_weather({"location": "Boston, MA"})\n'
             'tool: {"temperature": 72, "condition": "sunny"}'
         )
+
+    def test_includes_tool_calls_when_assistant_turn_also_has_content(self) -> None:
+        # GIVEN an assistant turn with BOTH content and a tool call (the common case)
+        params = {
+            "messages": [
+                {"role": "user", "content": "weather in Paris?"},
+                {
+                    "role": "assistant",
+                    "content": "Let me check the weather.",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"city": "Paris"}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "18C, sunny"},
+                {"role": "user", "content": "thanks"},
+            ]
+        }
+
+        # WHEN building the history summary
+        run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+        summary = build_history_summary_from_messages(run_agent_input, max_history=20)
+
+        # THEN the tool call appears even though the turn also has content
+        # (previously the call was dropped whenever content was non-empty).
+        assert summary == (
+            "user: weather in Paris?\n"
+            'assistant: Let me check the weather. [tool_calls] get_weather({"city": "Paris"})\n'
+            "tool: 18C, sunny"
+        )
+
+
+class TestDropUnpairedBoundaryToolTurns:
+    def test_drops_leading_orphan_tool_result(self) -> None:
+        # A tool result whose originating tool call was truncated off the front.
+        history = [
+            {"role": "tool", "content": "18C", "tool_call_id": "c1"},
+            {"role": "user", "content": "and tomorrow?"},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == [
+            {"role": "user", "content": "and tomorrow?"},
+        ]
+
+    def test_drops_trailing_assistant_tool_call_with_no_result(self) -> None:
+        history = [
+            {"role": "user", "content": "weather?"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1"}]},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == [
+            {"role": "user", "content": "weather?"},
+        ]
+
+    def test_keeps_a_well_paired_sequence(self) -> None:
+        history = [
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1"}]},
+            {"role": "tool", "content": "18C", "tool_call_id": "c1"},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == history
+
+
+# ---------------------------------------------------------------------------
+# reasoning folding: standalone `reasoning` messages -> assistant content
+# ---------------------------------------------------------------------------
+
+
+class TestReasoningFold:
+    def test_folds_reasoning_into_next_assistant(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="2+2?"),
+                ReasoningMessage(id="r1", content="adding two and two"),
+                AssistantMessage(id="a1", content="4"),
+                UserMessage(id="u2", content="thanks"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        # The standalone reasoning message is gone; it is folded into the assistant turn.
+        assert [m["role"] for m in history] == ["user", "assistant"]
+        assert history[1]["content"] == "<reasoning>\nadding two and two\n</reasoning>\n4"
+
+    def test_concatenates_consecutive_reasoning(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                ReasoningMessage(id="r1", content="first"),
+                ReasoningMessage(id="r2", content="second"),
+                AssistantMessage(id="a1", content="done"),
+                UserMessage(id="u2", content="ok"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        assert history[0]["content"] == "<reasoning>\nfirst\nsecond\n</reasoning>\ndone"
+
+    def test_folds_into_tool_call_turn_and_preserves_tool_calls(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                ReasoningMessage(id="r1", content="need the weather tool"),
+                AssistantMessage(
+                    id="a1",
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id="c1",
+                            type="function",
+                            function=FunctionCall(
+                                name="get_weather", arguments='{"city": "Paris"}'
+                            ),
+                        )
+                    ],
+                ),
+                ToolMessage(id="t1", content="18C", tool_call_id="c1"),
+                UserMessage(id="u2", content="thanks"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        assistant = next(m for m in history if m["role"] == "assistant")
+        # Reasoning folds into the (empty) content; the tool call rides alongside it.
+        assert assistant["content"] == "<reasoning>\nneed the weather tool\n</reasoning>"
+        assert assistant.get("tool_calls") is not None
+
+    def test_drops_orphan_reasoning_with_no_following_assistant(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="hi"),
+                ReasoningMessage(id="r1", content="orphan thought"),
+                UserMessage(id="u2", content="still there"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        assert all(m["role"] != "reasoning" for m in history)
+        assert all("orphan thought" not in m["content"] for m in history)
+
+    def test_ignores_empty_reasoning(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                ReasoningMessage(id="r1", content=""),
+                AssistantMessage(id="a1", content="answer"),
+                UserMessage(id="u2", content="ok"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        assert history[0]["content"] == "answer"
+
+    def test_summary_folds_reasoning_into_assistant_line(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="2+2?"),
+                ReasoningMessage(id="r1", content="adding"),
+                AssistantMessage(id="a1", content="4"),
+                UserMessage(id="u2", content="thx"),
+            ]
+        )
+        summary = build_history_summary_from_messages(run_input, 50)
+        # One assistant line carrying the reasoning, not a separate `reasoning:` line.
+        assert summary == "user: 2+2?\nassistant: <reasoning>\nadding\n</reasoning>\n4"
+
+    def test_no_reasoning_history_is_unchanged(self) -> None:
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="hi"),
+                AssistantMessage(id="a1", content="hello"),
+                UserMessage(id="u2", content="bye"),
+            ]
+        )
+        history = extract_history_messages(run_input, 50)
+        assert history == [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+
+    def test_fold_runs_before_truncation(self) -> None:
+        # The reasoning fold must run BEFORE max_history truncation: reasoning travels
+        # with its assistant answer and never consumes a history slot. With max_history=2
+        # over [user, reasoning, assistant, user-boundary], BOTH the user turn and the
+        # folded assistant turn survive. If the fold ran AFTER the slice, reasoning would
+        # occupy a slot and push the user turn out (leaving only the assistant) -- this
+        # pins the ordering the fix depends on.
+        run_input = _make_run_agent_input(
+            [
+                UserMessage(id="u1", content="2+2?"),
+                ReasoningMessage(id="r1", content="adding two and two"),
+                AssistantMessage(id="a1", content="4"),
+                UserMessage(id="u2", content="thanks"),
+            ]
+        )
+        history = extract_history_messages(run_input, 2)
+        assert [m["role"] for m in history] == ["user", "assistant"]
+        assert history[0]["content"] == "2+2?"
+        assert history[1]["content"] == "<reasoning>\nadding two and two\n</reasoning>\n4"
