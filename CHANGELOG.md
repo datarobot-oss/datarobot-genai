@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.6
-- `drtools/panels` + `drmcp`: exposed panels as MCP **resources** (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) via the `@resource_metadata` primitive, and taught the drmcp registry to register drtools resources (`dr_mcp_resource` + a new `DataRobotMCPResourceCategory.BUILT_IN_RESOURCE`). Registered the panels domain (`ToolType.PANELS` + `enable_panels_tools`) so the panel CRUD/connector/transform tools (0.16.3–0.16.5) are served by DRMCP. Resources are read-only and `MCP_SANDBOX`-gated. **Fix**: `dr_mcp_resource` registers the handler unwrapped — the previous sync pass-through wrapper hid async handlers' coroutine-ness from FastMCP, so resource reads returned un-awaited coroutines. Also ports the wren-mcp review tools: `inspect_panel` (recursive parent-lineage walk with execution context, no payload hydration) and `view_json_panel` (Json panel data with structure-preserving truncation), plus the `truncate_for_llm` helper.
-- `drtools/core`: added the `resource_metadata` decorator and `get_registered_resources()` — the MCP-*resource* mirror of `tool_metadata`. Lets drtools declare MCP resources (with a required `uri` plus optional name/title/description/mime_type/tags) without depending on `drmcp`/`fastmcp`, so both DRMCP and global-mcp can discover and register them. (Also ships independently as MODEL-23659.)
+- `drtools/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
+- `drtools/core`: added the `@resource_metadata` decorator and `get_registered_resources()` for declaring MCP resources without a fastmcp dependency.
 
 ## 0.16.5
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
