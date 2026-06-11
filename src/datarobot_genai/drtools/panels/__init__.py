@@ -18,24 +18,8 @@
 CRUD tools in :mod:`datarobot_genai.drtools.panels.tools` are registered by each
 MCP server's registry; the drmcp/global-mcp wiring lands with the panel
 resources work (MODEL-23663).
+
+Import directly from the submodules (e.g. :mod:`~datarobot_genai.drtools.panels.models`,
+:mod:`~datarobot_genai.drtools.panels.store`); this package intentionally re-exports
+nothing to avoid a public-API compatibility surface.
 """
-
-from datarobot_genai.drtools.panels.models import BasePanel
-from datarobot_genai.drtools.panels.models import Chart
-from datarobot_genai.drtools.panels.models import Dataset
-from datarobot_genai.drtools.panels.models import Json
-from datarobot_genai.drtools.panels.models import Panel
-from datarobot_genai.drtools.panels.models import PanelType
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
-
-__all__ = [
-    "BasePanel",
-    "Chart",
-    "Dataset",
-    "Json",
-    "Panel",
-    "PanelType",
-    "PanelStore",
-    "Text",
-]
