@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.6
+- `drtools/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
+- `drtools/core`: added the `@resource_metadata` decorator and `get_registered_resources()` for declaring MCP resources without a fastmcp dependency.
+
 ## 0.16.5
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
 

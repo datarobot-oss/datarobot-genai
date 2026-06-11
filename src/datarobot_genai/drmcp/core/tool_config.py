@@ -37,6 +37,7 @@ class ToolType(StrEnum):
     CODE_EXECUTION = "code_execution"
     OPTIMIZATION = "optimization"
     VDB = "vdb"
+    PANELS = "panels"
     WORKLOAD = "workload"
 
 
@@ -122,6 +123,12 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="vdb",
         package_prefix="datarobot_genai.drtools.vdb",
         config_field_name="enable_vdb_tools",
+    ),
+    ToolType.PANELS: ToolConfig(
+        name="panels",
+        directory="panels",
+        package_prefix="datarobot_genai.drtools.panels",
+        config_field_name="enable_panels_tools",
     ),
     ToolType.WORKLOAD: ToolConfig(
         name="workload",
