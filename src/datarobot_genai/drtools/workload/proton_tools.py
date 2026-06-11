@@ -19,23 +19,13 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
+from datarobot_genai.drtools.core.constants import LOG_LEVELS
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
-
-_LOG_LEVELS = ("debug", "info", "warn", "error")
-
-
-def _require_id(value: str, name: str) -> str:
-    if not value or not value.strip():
-        raise ToolError(
-            f"Argument validation error: '{name}' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    return value.strip()
-
 
 # ------------------------------------------------------------------ #
 # Protons                                                              #
@@ -57,7 +47,7 @@ async def proton_list(
     limit: Annotated[int, "Max protons to return (1–100). Default 20."] = 20,
     offset: Annotated[int, "Protons to skip for pagination. Default 0."] = 0,
 ) -> dict[str, Any]:
-    wid = _require_id(workload_id, "workload_id")
+    wid = require_id(workload_id, "workload_id")
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
@@ -93,8 +83,8 @@ async def proton_get(
     workload_id: Annotated[str, "Id of the workload."],
     proton_id: Annotated[str, "Id of the proton to retrieve."],
 ) -> dict[str, Any]:
-    wid = _require_id(workload_id, "workload_id")
-    pid = _require_id(proton_id, "proton_id")
+    wid = require_id(workload_id, "workload_id")
+    pid = require_id(proton_id, "proton_id")
     try:
         return WorkloadApiClient().get_proton(wid, pid)
     except ClientError as exc:
@@ -116,8 +106,8 @@ async def proton_status_details(
     workload_id: Annotated[str, "Id of the workload."],
     proton_id: Annotated[str, "Id of the proton."],
 ) -> dict[str, Any]:
-    wid = _require_id(workload_id, "workload_id")
-    pid = _require_id(proton_id, "proton_id")
+    wid = require_id(workload_id, "workload_id")
+    pid = require_id(proton_id, "proton_id")
     try:
         result = WorkloadApiClient().get_proton_status_details(wid, pid)
     except ClientError as exc:
@@ -169,15 +159,15 @@ async def workload_logs(
     span_id: Annotated[str | None, "Filter to a specific OTel span id."] = None,
     trace_id: Annotated[str | None, "Filter to a specific OTel trace id."] = None,
 ) -> dict[str, Any]:
-    wid = _require_id(workload_id, "workload_id")
+    wid = require_id(workload_id, "workload_id")
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if level.lower() not in _LOG_LEVELS:
+    if level.lower() not in LOG_LEVELS:
         raise ToolError(
-            f"Argument validation error: 'level' must be one of {_LOG_LEVELS}.",
+            f"Argument validation error: 'level' must be one of {LOG_LEVELS}.",
             kind=ToolErrorKind.VALIDATION,
         )
     clamped_limit, note = clamp_limit(limit)

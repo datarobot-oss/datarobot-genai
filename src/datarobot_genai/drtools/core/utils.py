@@ -23,6 +23,15 @@ from .exceptions import ToolError
 from .exceptions import ToolErrorKind
 
 
+def require_id(value: str, name: str) -> str:
+    if not value or not value.strip():
+        raise ToolError(
+            f"Argument validation error: '{name}' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    return value.strip()
+
+
 def is_valid_url(url: str) -> bool:
     """Check if a string is a valid URL."""
     try:
