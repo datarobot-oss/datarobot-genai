@@ -37,14 +37,14 @@ Dataset fields:
 import re
 from typing import Any
 
-from nemo_evaluator.contrib.byob import ScorerInput, benchmark, scorer
+from nemo_evaluator.contrib.byob import ScorerInput
+from nemo_evaluator.contrib.byob import benchmark
+from nemo_evaluator.contrib.byob import scorer
 
 _DETECTORS: dict[str, re.Pattern[str]] = {
     "EMAIL": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     "SSN": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    "PHONE": re.compile(
-        r"(?<!\d)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)"
-    ),
+    "PHONE": re.compile(r"(?<!\d)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)"),
     "IP_ADDRESS": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
 }
 

@@ -32,10 +32,11 @@ to avoid a judge model entirely.
 import os
 from typing import Any
 
-from datarobot_genai.eval.judge import (
-    judge_score,  # provider-compatible wrapper (drops top_p)
-)
-from nemo_evaluator.contrib.byob import ScorerInput, benchmark, scorer
+from nemo_evaluator.contrib.byob import ScorerInput
+from nemo_evaluator.contrib.byob import benchmark
+from nemo_evaluator.contrib.byob import scorer
+
+from datarobot_genai.eval.judge import judge_score  # provider-compatible wrapper (drops top_p)
 
 # Judge endpoint config. ``api_key`` is the NAME of an env var, resolved at
 # runtime by the judge (sent as ``Authorization: Bearer <value>``). run.py
@@ -80,7 +81,5 @@ def score(sample: ScorerInput) -> dict[str, Any]:
     """Likert-5 quality judge over the agent's free-form response."""
     question = sample.metadata.get("input", "")
     criteria = sample.metadata.get("notes", "")
-    result = judge_score(
-        sample, template="likert_5", question=question, criteria=criteria
-    )
+    result = judge_score(sample, template="likert_5", question=question, criteria=criteria)
     return _scored(result, "quality")

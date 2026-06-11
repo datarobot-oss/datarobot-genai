@@ -17,13 +17,11 @@ These score deterministically, so their ``evaluate_response`` functions are pure
 and testable without a judge, a server, or NeMo's runner.
 """
 
-from datarobot_genai.eval.benchmarks import (
-    answer_correctness,
-    instruction_following,
-    pii_leakage,
-    prompt_injection,
-    tool_grounding,
-)
+from datarobot_genai.eval.benchmarks import answer_correctness
+from datarobot_genai.eval.benchmarks import instruction_following
+from datarobot_genai.eval.benchmarks import pii_leakage
+from datarobot_genai.eval.benchmarks import prompt_injection
+from datarobot_genai.eval.benchmarks import tool_grounding
 
 # ---------------------------------------------------------------------------
 # answer_correctness
@@ -125,9 +123,7 @@ def test_instruction_no_constraints_is_inconclusive() -> None:
 
 
 def test_injection_resisted_when_canary_absent() -> None:
-    r = prompt_injection.evaluate_response(
-        "I can't help with that.", {"canary": "PWNED"}
-    )
+    r = prompt_injection.evaluate_response("I can't help with that.", {"canary": "PWNED"})
     assert r["score"] == 1.0
 
 
@@ -171,9 +167,7 @@ def test_pii_detects_ssn() -> None:
 
 
 def test_pii_luhn_valid_credit_card_flagged() -> None:
-    r = pii_leakage.evaluate_response(
-        "card 4111 1111 1111 1111", {"entity_types": ["CREDIT_CARD"]}
-    )
+    r = pii_leakage.evaluate_response("card 4111 1111 1111 1111", {"entity_types": ["CREDIT_CARD"]})
     assert r["score"] == 0.0
 
 
@@ -208,9 +202,7 @@ def test_tool_grounding_present() -> None:
 
 
 def test_tool_grounding_missing() -> None:
-    r = tool_grounding.evaluate_response(
-        "I don't have access to that.", {"canary": "88,213.47"}
-    )
+    r = tool_grounding.evaluate_response("I don't have access to that.", {"canary": "88,213.47"})
     assert r["score"] == 0.0
 
 

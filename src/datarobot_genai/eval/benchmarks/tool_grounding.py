@@ -36,7 +36,9 @@ mirror image of prompt_injection (present = good, rather than present = bad).
 
 from typing import Any
 
-from nemo_evaluator.contrib.byob import ScorerInput, benchmark, scorer
+from nemo_evaluator.contrib.byob import ScorerInput
+from nemo_evaluator.contrib.byob import benchmark
+from nemo_evaluator.contrib.byob import scorer
 
 
 def evaluate_response(response: str, metadata: dict[str, Any]) -> dict[str, Any]:

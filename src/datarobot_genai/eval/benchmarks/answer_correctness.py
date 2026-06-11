@@ -34,7 +34,9 @@ A case with no ``ideal_response`` is scored inconclusive, not failed.
 import re
 from typing import Any
 
-from nemo_evaluator.contrib.byob import ScorerInput, benchmark, scorer
+from nemo_evaluator.contrib.byob import ScorerInput
+from nemo_evaluator.contrib.byob import benchmark
+from nemo_evaluator.contrib.byob import scorer
 
 _VALID_MODES = frozenset({"exact", "normalized", "contains"})
 

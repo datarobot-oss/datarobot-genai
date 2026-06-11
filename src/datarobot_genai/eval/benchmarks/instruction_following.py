@@ -39,7 +39,9 @@ import json
 import re
 from typing import Any
 
-from nemo_evaluator.contrib.byob import ScorerInput, benchmark, scorer
+from nemo_evaluator.contrib.byob import ScorerInput
+from nemo_evaluator.contrib.byob import benchmark
+from nemo_evaluator.contrib.byob import scorer
 
 
 def _as_list(value: Any) -> list[str]:
