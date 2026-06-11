@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `core/agents`: the text `{chat_history}` summary now keeps tool calls even when the assistant turn also has text (previously dropped), so all frameworks surface prior tool steps.
 - `langgraph`/`llama_index`: prior turns now replay to the model as native messages with tool calls preserved (`structured_history`), default **on** when the prompt has no `{chat_history}` (opt out with `structured_history=False`). Breaking: such agents now replay prior turns (bounded by `max_history_messages`) where before they got none.
 
+## 0.15.127
+- `drtools/workload`: settings and observability tools.
+  - **New tools** (`observability_tools.py`): `workload_settings_get`, `workload_settings_update` (triggers rolling replacement via PATCH /settings), `workload_stats` (aggregated perf stats with quantile + slow-request controls), `workload_history` (artifact deployment history), `workload_events` (status-change and error events), `workload_promote` (lock running draft artifact), `workload_related` (linked artifacts and related entities).
+  - **Client additions** (`WorkloadApiClient`): `get_workload_settings`, `update_workload_settings`, `get_workload_stats`, `list_workload_history`, `list_workload_events`, `promote_workload_artifact`, `get_workload_related`.
+
 ## 0.15.126
 - Removed user MCP lineage feature flag logic
 
