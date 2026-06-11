@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.3
+- Migrate benchmark helper classes to genai[eval] package
+
 ## 0.16.2
 - Replace `anthropic` with `litellm` calls in the eval package
 
