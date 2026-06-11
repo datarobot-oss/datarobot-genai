@@ -16,7 +16,7 @@
 
 import pytest
 
-from datarobot_genai.drtools.files.store import BlobRef
+from datarobot_genai.drmcputils.files.store import BlobRef
 
 
 class FakeBlobStore:

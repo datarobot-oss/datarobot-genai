@@ -28,11 +28,11 @@ import pytest
 from datarobot.errors import ClientError
 from datarobot.models import Files
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.files import store as store_mod
-from datarobot_genai.drtools.files.store import BlobRef
-from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.files import store as store_mod
+from datarobot_genai.drmcputils.files.store import BlobRef
+from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
 
 
 @pytest.fixture

@@ -16,13 +16,13 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
+from datarobot_genai.drmcputils.exceptions import ToolError
 
-_MODULE = "datarobot_genai.drtools.core.clients.datarobot"
+_MODULE = "datarobot_genai.drmcputils.clients.datarobot"
 
 
 class TestGetDatarobotAccessTokenExtended:

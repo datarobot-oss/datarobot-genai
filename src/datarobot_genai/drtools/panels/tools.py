@@ -26,48 +26,21 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.panels.access import _get_store
+from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
+from datarobot_genai.drmcputils.panels.models import Json
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import DEFAULT_SOURCE
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.core.feature_flags import FeatureFlag
-from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
-from datarobot_genai.drtools.panels.models import Json
-from datarobot_genai.drtools.panels.models import Text
 from datarobot_genai.drtools.panels.schema_registry import SchemaRegistry
 from datarobot_genai.drtools.panels.schema_registry import SchemaValidationError
-from datarobot_genai.drtools.panels.store import DEFAULT_SOURCE
-from datarobot_genai.drtools.panels.store import PanelStore
 
 logger = logging.getLogger(__name__)
-
-MCP_SANDBOX_FEATURE_FLAG = "MCP_SANDBOX"
-
-
-def _require_mcp_sandbox() -> None:
-    """Fail-closed unless the requesting user holds the MCP_SANDBOX entitlement."""
-    try:
-        with request_user_dr_client() as client:
-            enabled = FeatureFlag.is_enabled(MCP_SANDBOX_FEATURE_FLAG, client=client)
-    except ToolError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - any FF lookup failure denies (fail-closed)
-        raise ToolError(
-            "Could not verify the MCP_SANDBOX entitlement required for panel tools.",
-            kind=ToolErrorKind.AUTHENTICATION,
-        ) from exc
-    if not enabled:
-        raise ToolError(
-            "Panel tools require the MCP_SANDBOX entitlement.",
-            kind=ToolErrorKind.AUTHENTICATION,
-        )
-
-
-def _get_store() -> PanelStore:
-    return PanelStore(DataRobotFilesBlobStore())
 
 
 @tool_metadata(

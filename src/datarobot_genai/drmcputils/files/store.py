@@ -38,8 +38,8 @@ from typing import runtime_checkable
 import datarobot as dr
 from datarobot.errors import ClientError
 
-from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
+from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 
 logger = logging.getLogger(__name__)
 

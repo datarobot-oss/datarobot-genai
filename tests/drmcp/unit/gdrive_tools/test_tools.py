@@ -16,12 +16,12 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.gdrive import GOOGLE_DRIVE_FOLDER_MIME
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveError
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFile
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveFileContent
 from datarobot_genai.drtools.core.clients.gdrive import PaginatedResult
-from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.gdrive.tools import gdrive_create_file
 from datarobot_genai.drtools.gdrive.tools import gdrive_find_contents
 from datarobot_genai.drtools.gdrive.tools import gdrive_manage_access

@@ -16,7 +16,7 @@
 
 Panels are typed, persisted analytical artifacts with lineage. Metadata is a
 small Pydantic record; bulky payloads (a Dataset's Parquet, a Chart's spec) are
-stored separately via a :class:`~datarobot_genai.drtools.files.store.BlobStore`
+stored separately via a :class:`~datarobot_genai.drmcputils.files.store.BlobStore`
 and referenced here by ``payload_files_id`` (the Files container id), keeping
 the manifest cheap to list and serialize.
 """

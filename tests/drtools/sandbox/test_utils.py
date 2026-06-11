@@ -22,8 +22,8 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
@@ -62,7 +62,7 @@ def _isolate_security_context_ff() -> Iterator[None]:
     # that pings `/api/v2/version/` via client_configuration) and then evaluates the
     # FF. Stub both so the suite is hermetic and fast; security-context tests override
     # `is_enabled`. Also clear the per-(flag, principal) cache so results don't bleed.
-    from datarobot_genai.drtools.core import feature_flags as _ff
+    from datarobot_genai.drmcputils import feature_flags as _ff
 
     _ff._eval_cache.clear()
     with (

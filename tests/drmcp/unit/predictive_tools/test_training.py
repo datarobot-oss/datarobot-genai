@@ -19,7 +19,7 @@ import datarobot as dr
 import pandas as pd
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.predictive import training
 
 

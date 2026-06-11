@@ -16,11 +16,11 @@
 
 import pytest
 
-from datarobot_genai.drtools.files.store import BlobStore
-from datarobot_genai.drtools.panels.models import Dataset
-from datarobot_genai.drtools.panels.models import PanelType
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
+from datarobot_genai.drmcputils.files.store import BlobStore
+from datarobot_genai.drmcputils.panels.models import Dataset
+from datarobot_genai.drmcputils.panels.models import PanelType
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import PanelStore
 
 from .conftest import FakeBlobStore
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.16.3"
+version = "0.16.7"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -183,9 +183,6 @@ max-args = 8
 [tool.pytest.ini_options]
 filterwarnings = []
 asyncio_mode = "auto"
-markers = [
-    "integration: tests that exercise the real DataRobot API / SDK over the network (opt-in)",
-]
 
 [tool.coverage.run]
 source = ["datarobot_genai"]
@@ -196,24 +193,29 @@ omit = [
 
 # Custom import restrictions (enforced by scripts/check_imports.py)
 [subpackages.import-restrictions]
-drtools_allowed_subpackages = ["drtools"]
+drtools_allowed_subpackages = ["drtools", "drmcputils"]
 drtools_forbidden = [
     "fastmcp",
     "datarobot_genai.drmcpbase",
 ]
-drmcp_allowed_subpackages = ["drtools", "drmcp", "drmcpbase"]
-drmcpbase_allowed_subpackages = ["drmcpbase"]
+drmcp_allowed_subpackages = ["drtools", "drmcp", "drmcpbase", "drmcputils"]
+drmcpbase_allowed_subpackages = ["drmcpbase", "drmcputils"]
 drmcpbase_forbidden = [
     "datarobot_genai.drtools",
     "datarobot_genai.drmcp",
     "datarobot_genai.core",
+]
+drmcputils_allowed_subpackages = ["drmcputils"]
+# core is reachable only via the datarobot_genai.core.utils.auth carve-out in
+# check_imports.py (shared OAuth primitives that auth.py needs); everything else
+# under core, plus all sibling packages, is blocked by the allowed-subpackages check.
+drmcputils_forbidden = [
+    "fastmcp",
 ]
 
 [tool.coverage.report]
 exclude_lines = [
     "raise NotImplementedError",
     "pass",
-    # Abstract Protocol/stub bodies — never executed.
-    "^\\s*\\.\\.\\.\\s*$",
 ]
 fail_under = 80

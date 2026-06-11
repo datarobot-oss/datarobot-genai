@@ -23,7 +23,7 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
 )
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 
 @pytest.fixture
