@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.eval.runner import _resolve_benchmark_module
 from datarobot_genai.eval.runner import run_byob
 
 
@@ -150,3 +151,41 @@ def test_run_byob_does_not_pass_api_key_flag_when_env_var_unset(tmp_path: Path) 
 
     cmd = mock_run.call_args[0][0]
     assert "--api-key-name" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# _resolve_benchmark_module
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_local_file_wins(tmp_path: Path) -> None:
+    """A local file takes priority over the installed package."""
+    module_dir = tmp_path / "evaluator" / "benchmarks"
+    module_dir.mkdir(parents=True)
+    local_file = module_dir / "my_benchmark.py"
+    local_file.write_text("# custom")
+    result = _resolve_benchmark_module("evaluator/benchmarks/my_benchmark.py", tmp_path)
+    assert result == str(local_file.absolute())
+
+
+def test_resolve_falls_back_to_installed_package(tmp_path: Path) -> None:
+    """When no local file exists, resolves via the installed package."""
+    result = _resolve_benchmark_module(
+        "datarobot_genai/eval/benchmarks/answer_correctness.py", tmp_path
+    )
+    assert "answer_correctness" in result
+    assert Path(result).exists()
+
+
+def test_resolve_strips_py_extension_for_import(tmp_path: Path) -> None:
+    """The .py suffix is stripped before the importlib lookup."""
+    result = _resolve_benchmark_module(
+        "datarobot_genai/eval/benchmarks/pii_leakage.py", tmp_path
+    )
+    assert Path(result).exists()
+
+
+def test_resolve_raises_on_unresolvable_module(tmp_path: Path) -> None:
+    """Neither a local file nor an importable module raises ImportError."""
+    with pytest.raises(ImportError):
+        _resolve_benchmark_module("totally/nonexistent/benchmark.py", tmp_path)

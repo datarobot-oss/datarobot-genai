@@ -191,6 +191,50 @@ def test_validate_inputs_missing_benchmark_module(tmp_path: Path, dataset_path: 
     assert any("Benchmark module not found" in e for e in errors)
 
 
+def test_validate_inputs_benchmark_module_resolves_via_installed_package(
+    tmp_path: Path, dataset_path: Path
+) -> None:
+    """A pipeline referencing datarobot_genai/eval/benchmarks/*.py passes even
+    when no local copy exists — the module resolves from the installed package."""
+    import yaml as _yaml
+
+    pipelines_dir = tmp_path / "user_pipelines"
+    pipelines_dir.mkdir()
+    cfg = {
+        "benchmark": {
+            "module": "datarobot_genai/eval/benchmarks/answer_correctness.py",
+            "name": "answer_correctness",
+        },
+        "target": {},
+    }
+    (pipelines_dir / "p.yaml").write_text(_yaml.dump(cfg))
+    with patch("datarobot_genai.eval.validation.health_check", return_value=None):
+        errors = validate_inputs(
+            "http://localhost/v1", "p.yaml", str(dataset_path), pipelines_dir, tmp_path
+        )
+    assert errors == []
+
+
+def test_validate_inputs_unimportable_module_still_errors(
+    tmp_path: Path, dataset_path: Path
+) -> None:
+    """A module path that is neither a local file nor importable still fails validation."""
+    import yaml as _yaml
+
+    pipelines_dir = tmp_path / "user_pipelines"
+    pipelines_dir.mkdir()
+    cfg = {
+        "benchmark": {"module": "totally/nonexistent/benchmark.py", "name": "x"},
+        "target": {},
+    }
+    (pipelines_dir / "p.yaml").write_text(_yaml.dump(cfg))
+    with patch("datarobot_genai.eval.validation.health_check", return_value=None):
+        errors = validate_inputs(
+            "http://localhost/v1", "p.yaml", str(dataset_path), pipelines_dir, tmp_path
+        )
+    assert any("Benchmark module not found" in e for e in errors)
+
+
 def test_validate_inputs_collects_multiple_errors(tmp_path: Path) -> None:
     pipelines_dir = tmp_path / "pipelines"
     pipelines_dir.mkdir()
