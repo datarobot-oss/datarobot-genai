@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
+from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
@@ -42,8 +43,6 @@ from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
-from nat.data_models.user_info import UserInfo
-
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
@@ -342,23 +341,21 @@ class TestResolveIdentityFromHeaders:
         assert result == _expected_key("dr-uid-abc")
 
     def test_returns_none_for_invalid_jwt(self):
-        result = _resolve_identity_from_headers(
-            {"x-datarobot-authorization-context": "garbage"}
-        )
+        result = _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
         assert result is None
 
     def test_falls_back_to_gateway_user_id_header(self):
-        result = _resolve_identity_from_headers(
-            {"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"}
-        )
+        result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
         assert result == _expected_key("64baa56996fb36e3eeeefc44")
 
     def test_auth_context_takes_precedence_over_gateway_user_id(self):
         with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
-            result = _resolve_identity_from_headers({
-                "x-datarobot-authorization-context": "signed-jwt",
-                "x-datarobot-user-id": "gateway-user",
-            })
+            result = _resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "signed-jwt",
+                    "x-datarobot-user-id": "gateway-user",
+                }
+            )
         assert result == _expected_key("auth-ctx-user")
         assert result != _expected_key("gateway-user")
 
@@ -373,9 +370,7 @@ class TestResolveIdentityFromHeaders:
         for uid in ("alice", "bob"):
             with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
                 results.append(
-                    _resolve_identity_from_headers(
-                        {"x-datarobot-authorization-context": "jwt"}
-                    )
+                    _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
                 )
         assert results[0] != results[1]
 
