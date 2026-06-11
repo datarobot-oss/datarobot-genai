@@ -200,3 +200,71 @@ def test_validate_inputs_collects_multiple_errors(tmp_path: Path) -> None:
             tmp_path,
         )
     assert len(errors) >= 2
+
+
+# ---------------------------------------------------------------------------
+# preflight_judge
+# ---------------------------------------------------------------------------
+
+import io
+from unittest.mock import MagicMock
+
+from datarobot_genai.eval.validation import preflight_judge
+
+
+def test_preflight_judge_raises_when_env_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+    cfg = {
+        "url": "https://example.com/llmgw",
+        "model_id": "azure/gpt-4o",
+        "api_key_name": "DATAROBOT_API_TOKEN",
+    }
+    with pytest.raises(RuntimeError, match="is not set"):
+        preflight_judge(cfg)
+
+
+def test_preflight_judge_succeeds_on_200(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_TOKEN", "tok-abc")
+    cfg = {
+        "url": "https://example.com/llmgw",
+        "model_id": "azure/gpt-4o",
+        "api_key_name": "MY_TOKEN",
+    }
+    mock_resp = MagicMock()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    with patch("datarobot_genai.eval.validation.urlopen", return_value=mock_resp):
+        preflight_judge(cfg)  # should not raise
+
+
+def test_preflight_judge_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_TOKEN", "tok-abc")
+    cfg = {
+        "url": "https://example.com/llmgw",
+        "model_id": "azure/gpt-4o",
+        "api_key_name": "MY_TOKEN",
+    }
+    err = HTTPError(
+        "https://example.com/llmgw/chat/completions",
+        401,
+        "Unauthorized",
+        {},
+        io.BytesIO(b"invalid token"),
+    )
+    with patch("datarobot_genai.eval.validation.urlopen", side_effect=err):
+        with pytest.raises(RuntimeError, match="HTTP 401"):
+            preflight_judge(cfg)
+
+
+def test_preflight_judge_raises_on_url_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_TOKEN", "tok-abc")
+    cfg = {
+        "url": "https://example.com/llmgw",
+        "model_id": "azure/gpt-4o",
+        "api_key_name": "MY_TOKEN",
+    }
+    with patch(
+        "datarobot_genai.eval.validation.urlopen", side_effect=URLError("connection refused")
+    ):
+        with pytest.raises(RuntimeError, match="cannot reach"):
+            preflight_judge(cfg)
