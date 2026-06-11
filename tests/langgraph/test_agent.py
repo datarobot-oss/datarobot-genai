@@ -21,8 +21,11 @@ import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import BaseEvent
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import ToolCall
+from ag_ui.core import ToolMessage as AgToolMessage
 from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
@@ -213,6 +216,18 @@ def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose
     _ = agent.workflow
     assert len(calls) == 2
     assert calls[1] == (mock_llm, extra_tools, True)
+
+
+def test_datarobot_agent_class_from_langgraph_exposes_structured_history() -> None:
+    # The factory must let agents opt into native-message history via structured_history.
+    inner = SimpleLangGraphAgent()
+    cls = datarobot_agent_class_from_langgraph(
+        lambda _l, _t, _v: inner.workflow, inner.prompt_template
+    )
+    assert cls(llm=Mock()).structured_history is True  # default on for langgraph
+    assert (
+        cls(llm=Mock(), structured_history=False).structured_history is False
+    )  # opt-out respected
 
 
 @pytest.mark.asyncio
@@ -487,6 +502,128 @@ async def test_convert_input_message_zero_history_disables_history() -> None:
     assert len(all_messages) == 2
     assert isinstance(all_messages[0], SystemMessage)
     assert isinstance(all_messages[1], HumanMessage)
+
+
+class StructuredHistoryLangGraphAgent(LangGraphAgent):
+    """Template does NOT declare {chat_history}; with structured_history=True the
+    agent injects prior turns as native messages (tool calls preserved).
+    """
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        return SimpleLangGraphAgent().workflow
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {"role": "system", "content": "You are a helper."},
+                {"role": "user", "content": "{topic}"},
+            ]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+def _tool_history_run_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            UserMessage(id="user_1", content="weather in Paris?"),
+            AssistantMessage(
+                id="asst_1",
+                content="Let me check.",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="get_weather", arguments='{"city": "Paris"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="18C, sunny", tool_call_id="c1"),
+            UserMessage(id="user_2", content='{"topic": "and tomorrow?"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+async def test_convert_input_message_structured_history_reconstructs_tool_calls() -> None:
+    """structured_history=True splices native tool-call history before the current turn."""
+    agent = StructuredHistoryLangGraphAgent(structured_history=True)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    # System (template) + 3 structured history turns + current user turn.
+    assert [type(m) for m in msgs] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+    ]
+    assert msgs[1].content == "weather in Paris?"
+    assert msgs[2].content == "Let me check."
+    assert msgs[2].tool_calls[0]["name"] == "get_weather"
+    assert msgs[2].tool_calls[0]["args"] == {"city": "Paris"}
+    assert msgs[3].tool_call_id == "c1"
+    assert "and tomorrow?" in str(msgs[4].content)
+
+
+async def test_convert_input_message_structured_history_off_when_disabled() -> None:
+    """With structured_history=False (and no {chat_history} var), no prior turns are injected."""
+    agent = StructuredHistoryLangGraphAgent(structured_history=False)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    assert [type(m) for m in msgs] == [SystemMessage, HumanMessage]
+    assert "and tomorrow?" in str(msgs[1].content)
+
+
+class TrailingMessageStructuredAgent(StructuredHistoryLangGraphAgent):
+    """Template emits a message AFTER the user turn, so the current turn is not last."""
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {"role": "system", "content": "You are a helper."},
+                {"role": "user", "content": "{topic}"},
+                {"role": "system", "content": "Answer briefly."},
+            ]
+        )
+
+
+async def test_convert_input_message_structured_history_splices_before_user_turn() -> None:
+    """History is inserted before the current user turn, not blindly before the last
+    message (the template here ends on a trailing system message).
+    """
+    agent = TrailingMessageStructuredAgent(structured_history=True)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    # System (template), then structured history, then current user turn, then the
+    # trailing template system message.
+    assert [type(m) for m in msgs] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+        SystemMessage,
+    ]
+    assert msgs[1].content == "weather in Paris?"
+    assert msgs[2].tool_calls[0]["name"] == "get_weather"
+    assert "and tomorrow?" in str(msgs[4].content)
+    assert msgs[5].content == "Answer briefly."
 
 
 class RelayLangGraphAgent(LangGraphAgent):

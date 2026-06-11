@@ -93,3 +93,20 @@ def iter_content_blocks(
 def flatten_to_text(content: str | list[Any] | None) -> str:
     """Collapse any content shape to its text portion, dropping thinking blocks."""
     return "".join(delta for kind, delta in iter_content_blocks(content) if kind == "text")
+
+
+# AG-UI ``AssistantMessage`` has no reasoning field, so prior-turn reasoning is folded
+# into the assistant ``content`` as a plain-text sentinel block by ``wrap_reasoning``
+# (used during history extraction); the sentinels are defined once here.
+REASONING_OPEN = "<reasoning>"
+REASONING_CLOSE = "</reasoning>"
+
+
+def wrap_reasoning(reasoning: str, content: str | None) -> str:
+    """Prepend ``reasoning`` to ``content`` as a ``<reasoning>...</reasoning>`` block.
+
+    Returns the reasoning block followed by the answer text. ``content`` may be ``None``
+    or empty (e.g. a tool-call-only assistant turn), in which case only the reasoning
+    block remains (trailing whitespace stripped).
+    """
+    return f"{REASONING_OPEN}\n{reasoning}\n{REASONING_CLOSE}\n{content or ''}".rstrip()
