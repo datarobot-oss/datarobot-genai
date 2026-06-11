@@ -26,14 +26,10 @@ MCP resource protocol); ``name``, ``title``, ``description``, ``mime_type`` and
 ``tags`` are optional.
 """
 
-import inspect
-from collections.abc import Awaitable
 from collections.abc import Callable
-from functools import wraps
 from typing import Any
 from typing import ParamSpec
 from typing import TypeVar
-from typing import cast
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -45,8 +41,11 @@ _RESOURCE_REGISTRY: list[tuple[Callable, dict[str, Any]]] = []
 def resource_metadata(**metadata: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Store MCP-resource metadata on a function without MCP registration.
 
-    This decorator stores the function and its metadata in a registry that can be
-    discovered by an MCP server when it needs to register the resources.
+    Records the function and its metadata in a registry that each MCP server
+    discovers via :func:`get_registered_resources` to register the resource onto
+    its own FastMCP instance. The function is returned unchanged — no wrapper —
+    so the server registers the real handler and FastMCP sees its true
+    coroutine-ness.
 
     Args:
         **metadata: Keyword arguments for resource metadata. ``uri`` is required
@@ -55,32 +54,16 @@ def resource_metadata(**metadata: Any) -> Callable[[Callable[P, R]], Callable[P,
 
     Returns
     -------
-        Decorator function that preserves the original function while storing metadata.
+        Decorator that registers the function and attaches its metadata, then
+        returns it unchanged.
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        # Store the function and metadata in the registry
         _RESOURCE_REGISTRY.append((func, metadata))
-
-        if inspect.iscoroutinefunction(func):
-            async_func = cast(Callable[P, Awaitable[R]], func)
-
-            @wraps(func)
-            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                return await async_func(*args, **kwargs)
-
-            # Store metadata as an attribute for easy access
-            async_wrapper._resource_metadata = metadata  # type: ignore[attr-defined]
-            return cast(Callable[P, R], async_wrapper)
-
-        @wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            return func(*args, **kwargs)
-
-        # Store metadata as an attribute for easy access
-        sync_wrapper._resource_metadata = metadata  # type: ignore[attr-defined]
-
-        return sync_wrapper
+        # Expose the metadata on the function for direct access; the function
+        # itself is returned untouched so callers and FastMCP see the original.
+        func._resource_metadata = metadata  # type: ignore[attr-defined]
+        return func
 
     return decorator
 
