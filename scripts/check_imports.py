@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 import tomllib
 from typing import Any
+from typing import List
+from typing import Tuple
 
 
 def _is_under_module(module_name: str, parent: str) -> bool:
@@ -64,7 +66,7 @@ class ImportChecker(ast.NodeVisitor):
 
     def __init__(self, filepath: Path, config: dict[str, Any]):
         self.filepath = filepath
-        self.errors: list[tuple[int, str]] = []
+        self.errors: List[Tuple[int, str]] = []
         parts = filepath.parts
         self.is_drtools = "drtools" in parts
         self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts
@@ -176,10 +178,10 @@ class ImportChecker(ast.NodeVisitor):
             )
 
 
-def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
+def check_file(filepath: Path, config: dict[str, Any]) -> List[Tuple[int, str]]:
     """Check a single Python file for import violations."""
     try:
-        with open(filepath, encoding="utf-8") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content, filename=str(filepath))

@@ -22,3 +22,5 @@
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
 /docs/drtools/ @datarobot-oss/mcp
 /README.md @datarobot-oss/mcp
+# Enforces the drtools/drmcp/drmcpbase/drmcputils import boundaries — MCP-owned.
+/scripts/check_imports.py @datarobot-oss/mcp

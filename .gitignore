@@ -82,6 +82,3 @@ dist/
 
 # Profile results
 prof/
-
-# Cursor IDE local hook state (not for VCS)
-.cursor/hooks/
