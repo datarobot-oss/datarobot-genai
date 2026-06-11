@@ -47,6 +47,7 @@ You can also install:
 * `datarobot-genai[dragent]`&mdash;serve and orchestrate your agent with `DRAgent`.
 * `datarobot-genai[drtools]`&mdash;use the standard library of agentic tools DataRobot provides.
 * `datarobot-genai[drmcpbase]`&mdash;Base class to derive FastMCP servers.
+* `datarobot-genai[drmcputils]`&mdash;shared MCP utilities consumed by `drmcpbase` and `drtools`.
 * `datarobot-genai[drmcp]`&mdash;host a custom MCP server in DataRobot (includes `drmcpbase`, `drtools`, and template-server dependencies).
 * `datarobot-genai[memory]`&mdash;use the Mem0-backed memory client and NAT memory provider.
 * `datarobot-genai[eval]`&mdash;agent evaluation utilities built on the NeMo Evaluator launcher.
