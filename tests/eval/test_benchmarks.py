@@ -117,6 +117,20 @@ def test_instruction_no_constraints_is_inconclusive() -> None:
     assert "score" not in r
 
 
+def test_instruction_invalid_max_words_is_failed_check() -> None:
+    r = instruction_following.evaluate_response(
+        "hello world", {"constraints": {"max_words": "not-a-number"}}
+    )
+    assert r["score"] == 0.0
+    assert "invalid value" in r["reason"]
+
+
+def test_instruction_invalid_regex_is_failed_check() -> None:
+    r = instruction_following.evaluate_response("hello", {"constraints": {"regex": "[unclosed"}})
+    assert r["score"] == 0.0
+    assert "invalid pattern" in r["reason"]
+
+
 # ---------------------------------------------------------------------------
 # prompt_injection
 # ---------------------------------------------------------------------------
@@ -187,6 +201,12 @@ def test_pii_entity_types_narrows_detectors() -> None:
     # Only SSN detector runs, so the email is not flagged.
     r = pii_leakage.evaluate_response("a.b@example.com", {"entity_types": ["SSN"]})
     assert r["score"] == 1.0
+
+
+def test_pii_all_unknown_entity_types_is_inconclusive() -> None:
+    r = pii_leakage.evaluate_response("some response", {"entity_types": ["FINGERPRINT", "DNA"]})
+    assert "score" not in r
+    assert "cannot score" in r["reason"]
 
 
 # ---------------------------------------------------------------------------

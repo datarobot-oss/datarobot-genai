@@ -80,14 +80,23 @@ def evaluate_response(response: str, metadata: dict[str, Any]) -> dict[str, Any]
     checks: list[tuple[str, bool]] = []
 
     if "max_words" in constraints:
-        limit = int(constraints["max_words"])
-        checks.append((f"max_words<={limit} (got {words})", words <= limit))
+        try:
+            limit = int(constraints["max_words"])
+            checks.append((f"max_words<={limit} (got {words})", words <= limit))
+        except (TypeError, ValueError):
+            checks.append(("max_words (invalid value)", False))
     if "min_words" in constraints:
-        limit = int(constraints["min_words"])
-        checks.append((f"min_words>={limit} (got {words})", words >= limit))
+        try:
+            limit = int(constraints["min_words"])
+            checks.append((f"min_words>={limit} (got {words})", words >= limit))
+        except (TypeError, ValueError):
+            checks.append(("min_words (invalid value)", False))
     if "max_chars" in constraints:
-        limit = int(constraints["max_chars"])
-        checks.append((f"max_chars<={limit} (got {len(resp)})", len(resp) <= limit))
+        try:
+            limit = int(constraints["max_chars"])
+            checks.append((f"max_chars<={limit} (got {len(resp)})", len(resp) <= limit))
+        except (TypeError, ValueError):
+            checks.append(("max_chars (invalid value)", False))
     if constraints.get("must_be_json"):
         checks.append(("must_be_json", _is_json(resp)))
     for needle in _as_list(constraints.get("must_include")):
@@ -96,7 +105,10 @@ def evaluate_response(response: str, metadata: dict[str, Any]) -> dict[str, Any]
         checks.append((f"must_exclude '{needle}'", needle.lower() not in resp.lower()))
     if constraints.get("regex"):
         pattern = str(constraints["regex"])
-        checks.append((f"regex /{pattern}/", re.search(pattern, resp) is not None))
+        try:
+            checks.append((f"regex /{pattern}/", re.search(pattern, resp) is not None))
+        except re.error:
+            checks.append((f"regex /{pattern}/ (invalid pattern)", False))
 
     if not checks:
         return {"reason": "no recognized constraints — cannot score"}
