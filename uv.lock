@@ -1099,7 +1099,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1241,7 +1241,7 @@ drtools = [
     { name = "tavily-python" },
 ]
 eval = [
-    { name = "anthropic" },
+    { name = "litellm" },
     { name = "nemo-evaluator-launcher" },
     { name = "pyyaml" },
 ]
@@ -1356,7 +1356,6 @@ requires-dist = [
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcpbase'", specifier = ">=2.8.3,<3.0.0" },
     { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.71.0,<1.0.0" },
-    { name = "anthropic", marker = "extra == 'eval'", specifier = ">=0.40.0" },
     { name = "anyio", marker = "extra == 'dragent'", specifier = "==4.11.0" },
     { name = "anyio", marker = "extra == 'nat'", specifier = "==4.11.0" },
     { name = "async-lru", marker = "extra == 'drmcp'", specifier = ">=2.3.0" },
@@ -1418,6 +1417,7 @@ requires-dist = [
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.83.0,<2.0.0" },
+    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.83.0,<2.0.0" },

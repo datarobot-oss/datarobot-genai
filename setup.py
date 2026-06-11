@@ -129,7 +129,7 @@ drtools = auth + [
 # eval is standalone set of dependencies for evaluation utilities only (no core).
 eval_deps = [
     "nemo-evaluator-launcher",
-    "anthropic>=0.40.0",
+    "litellm>=1.83.0,<2.0.0",
     "pyyaml>=6.0",
 ]
 
