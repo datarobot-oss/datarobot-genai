@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.4
-- `drtools/panels`: added connector-sourced Dataset panels — `create_dataset_panel_from_connector` runs SQL against any DataRobot connector/datastore (source-side filtering via `catalog_query_datastore`) and materializes the result to a Parquet payload stored via the Files API, recording datastore_id + sql in the panel's execution context for lineage/refresh. Gated on the `MCP_SANDBOX` entitlement. Adds `preview_dataset_panel` (columns/dtypes/row count/sample rows from the stored Parquet payload, ported from wren-mcp's preview_data_source) and `PanelStore.get_payload`. Empty query results keep the column schema in the Parquet payload. **Fix**: `catalog_query_datastore` now POSTs to the real `externalDataStores/<id>/previewQuery/` route (the previous `externalDataDrivers/<id>/execute/` route does not exist); offset paging is emulated by over-fetching up to the route's 999-row cap.
+- `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).
+- `drtools/predictive`: fixed `catalog_query_datastore` to use the supported `previewQuery` API route.
 
 ## 0.16.3
 - `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
