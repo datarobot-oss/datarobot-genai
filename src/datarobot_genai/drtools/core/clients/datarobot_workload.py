@@ -138,3 +138,78 @@ class WorkloadApiClient:
                     f"'{target_status}'. Last status: {status}"
                 )
             await asyncio.sleep(poll_interval_seconds)
+
+    # ------------------------------------------------------------------ #
+    # Workloads — settings                                                 #
+    # ------------------------------------------------------------------ #
+
+    def get_workload_settings(self, workload_id: str) -> dict[str, Any]:
+        """GET /workloads/{id}/settings — returns WorkloadSettingsResponse."""
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}/settings").json()
+
+    def update_workload_settings(self, workload_id: str, runtime: dict[str, Any]) -> dict[str, Any]:
+        """PATCH /workloads/{id}/settings — triggers rolling replacement (202)."""
+        with request_user_dr_client() as client:
+            return client.patch(
+                f"workloads/{workload_id}/settings", json={"runtime": runtime}
+            ).json()
+
+    # ------------------------------------------------------------------ #
+    # Workloads — observability                                            #
+    # ------------------------------------------------------------------ #
+
+    def get_workload_stats(
+        self,
+        workload_id: str,
+        *,
+        proton_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        response_time_quantile: float = 0.5,
+        slow_requests_threshold: int = 2000,
+    ) -> dict[str, Any]:
+        """GET /workloads/{id}/stats — aggregated performance statistics."""
+        params: dict[str, Any] = {
+            "responseTimeQuantile": response_time_quantile,
+            "slowRequestsThreshold": slow_requests_threshold,
+        }
+        if proton_id:
+            params["protonId"] = proton_id
+        if start_time:
+            params["startTime"] = start_time
+        if end_time:
+            params["endTime"] = end_time
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}/stats", params=params).json()
+
+    def list_workload_history(
+        self, workload_id: str, *, limit: int = 10, offset: int = 0
+    ) -> dict[str, Any]:
+        """GET /workloads/{id}/history — artifact deployment history."""
+        with request_user_dr_client() as client:
+            return client.get(
+                f"workloads/{workload_id}/history",
+                params={"limit": limit, "offset": offset},
+            ).json()
+
+    def list_workload_events(
+        self, workload_id: str, *, limit: int = 10, offset: int = 0
+    ) -> dict[str, Any]:
+        """GET /workloads/{id}/events — status-change and error events."""
+        with request_user_dr_client() as client:
+            return client.get(
+                f"workloads/{workload_id}/events",
+                params={"limit": limit, "offset": offset},
+            ).json()
+
+    def promote_workload_artifact(self, workload_id: str) -> dict[str, Any]:
+        """POST /workloads/{id}/promote — lock the running draft artifact (202)."""
+        with request_user_dr_client() as client:
+            resp = client.post(f"workloads/{workload_id}/promote")
+            return resp.json() if resp.content else {}
+
+    def get_workload_related(self, workload_id: str) -> dict[str, Any]:
+        """GET /workloads/{id}/related — linked artifacts and related entities."""
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}/related").json()
