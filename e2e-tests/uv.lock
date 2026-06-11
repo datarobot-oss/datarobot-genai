@@ -963,7 +963,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.16.3"
+version = "0.16.4"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1086,7 +1086,6 @@ requires-dist = [
     { name = "aiohttp-retry", marker = "extra == 'drmcp'", specifier = ">=2.8.3,<3.0.0" },
     { name = "aiohttp-retry", marker = "extra == 'drmcpbase'", specifier = ">=2.8.3,<3.0.0" },
     { name = "anthropic", marker = "extra == 'crewai'", specifier = "~=0.71.0,<1.0.0" },
-    { name = "anthropic", marker = "extra == 'eval'", specifier = ">=0.40.0" },
     { name = "anyio", marker = "extra == 'dragent'", specifier = "==4.11.0" },
     { name = "anyio", marker = "extra == 'nat'", specifier = "==4.11.0" },
     { name = "async-lru", marker = "extra == 'drmcp'", specifier = ">=2.3.0" },
@@ -1148,6 +1147,7 @@ requires-dist = [
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.83.0,<2.0.0" },
+    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.83.0,<2.0.0" },
@@ -1276,7 +1276,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "eval", "drmcpbase", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent", "memory"]
 
 [package.metadata.requires-dev]
 dev = [
