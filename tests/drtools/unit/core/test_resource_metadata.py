@@ -14,8 +14,22 @@
 
 """Unit tests for the resource_metadata decorator and registry."""
 
+from importlib import import_module
+
+import pytest
+
 from datarobot_genai.drtools.core import get_registered_resources
 from datarobot_genai.drtools.core import resource_metadata
+
+# The package re-exports the decorator under the same name as its module, so
+# fetch the module itself to patch the registry it holds.
+_registry_module = import_module("datarobot_genai.drtools.core.resource_metadata")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each test an empty registry so registrations don't leak between runs."""
+    monkeypatch.setattr(_registry_module, "_RESOURCE_REGISTRY", [])
 
 
 def _metadata_for(name: str) -> dict:
