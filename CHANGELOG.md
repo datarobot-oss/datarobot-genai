@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.6
+- Updated CODEOWNERS to include common files like .gitignore
+
 ## 0.16.5
 - `drtools/workload`: Proton inspection and OTel log tools.
   - **New tools** (`proton_tools.py`): `proton_list` (paginated list of proton instances for a workload), `proton_get` (single proton by id), `proton_status_details` (per-replica pod status — CrashLoopBackOff, OOMKilled, container readiness; returns `{status: pending}` when no update received yet), `workload_logs` (OTel log lines with level, time-window, includes/excludes, span/trace-id filters).
