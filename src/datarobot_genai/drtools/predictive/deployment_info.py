@@ -30,7 +30,7 @@ from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClie
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 

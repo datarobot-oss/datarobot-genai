@@ -24,7 +24,7 @@ from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiC
 from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 
 # ------------------------------------------------------------------ #
 # Settings                                                             #

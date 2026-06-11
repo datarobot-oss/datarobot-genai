@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.8
+- `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
+
 ## 0.16.7
 - `drmcputils`: moved the shared, fastmcp-free base (DataRobot client, auth, credentials, errors, feature flags) here from `drtools.core`, so both the tools and MCP-server layers depend on one foundation.
 

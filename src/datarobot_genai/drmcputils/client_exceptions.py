@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Helpers for DataRobot SDK HTTP errors in predictive tools."""
+"""Shared mapping from DataRobot SDK HTTP errors to :class:`ToolError`.
+
+Lives in ``drmcputils`` so any drtools domain (predictive, files, panels, …)
+can depend on it without taking a dependency on a sibling domain.
+"""
 
 from typing import NoReturn
 
