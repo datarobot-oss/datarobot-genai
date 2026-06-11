@@ -23,8 +23,8 @@ import httpx
 from pydantic import BaseModel
 from pydantic import Field
 
-from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.auth import get_oauth_access_token_with_header_fallback
+from datarobot_genai.drmcputils.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 

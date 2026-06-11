@@ -26,12 +26,12 @@ import logging
 from typing import Annotated
 from typing import Any
 
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.core.feature_flags import FeatureFlag
+from datarobot_genai.drmcputils.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.feature_flags import FeatureFlag
 from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout

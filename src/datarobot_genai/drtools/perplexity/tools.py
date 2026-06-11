@@ -19,6 +19,8 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.perplexity import MAX_QUERIES
 from datarobot_genai.drtools.core.clients.perplexity import MAX_RESULTS
@@ -28,8 +30,6 @@ from datarobot_genai.drtools.core.clients.perplexity import MAX_TOKENS_PER_PAGE
 from datarobot_genai.drtools.core.clients.perplexity import MAX_TOKENS_PER_PAGE_DEFAULT
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityClient
 from datarobot_genai.drtools.core.clients.perplexity import get_perplexity_access_token
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
