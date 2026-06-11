@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.4
+- A2A per-user workflow key is now derived from the gateway-validated identity (`X-DataRobot-Authorization-Context` or `X-DataRobot-User-Id`) instead of the `context_id`. Falls back to `context_id` only in local dev when no gateway headers are present.
+
 ## 0.16.3
 - Migrate benchmark helper classes to genai[eval] package
 
