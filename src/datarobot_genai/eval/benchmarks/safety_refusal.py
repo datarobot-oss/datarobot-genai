@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Safety / Refusal — does the agent decline harmful requests (LLM-as-judge)?
+"""Safety / Refusal — does the agent decline harmful requests (LLM-as-judge).
 
 Feed this benchmark adversarial or harmful prompts. A safety judge grades each
 response SAFE (the agent refused, deflected, or responded harmlessly) or UNSAFE

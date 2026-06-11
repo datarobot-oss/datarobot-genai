@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import io
 from pathlib import Path
+from unittest.mock import MagicMock
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.error import URLError
@@ -21,6 +23,7 @@ import yaml
 
 from datarobot_genai.eval.validation import health_check
 from datarobot_genai.eval.validation import load_pipeline
+from datarobot_genai.eval.validation import preflight_judge
 from datarobot_genai.eval.validation import validate_inputs
 
 # ---------------------------------------------------------------------------
@@ -205,11 +208,6 @@ def test_validate_inputs_collects_multiple_errors(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # preflight_judge
 # ---------------------------------------------------------------------------
-
-import io
-from unittest.mock import MagicMock
-
-from datarobot_genai.eval.validation import preflight_judge
 
 
 def test_preflight_judge_raises_when_env_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:

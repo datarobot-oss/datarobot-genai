@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Instruction Following — does the response obey explicit constraints (judge-free)?
+"""Instruction Following — does the response obey explicit constraints (judge-free).
 
 Checks structural constraints the prompt asked for: length limits, valid JSON,
 required/forbidden phrases, regex shape. Deterministic, so it is reproducible and

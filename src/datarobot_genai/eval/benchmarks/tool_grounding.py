@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tool Grounding — did the agent actually use its tool/data source (judge-free)?
+"""Tool Grounding — did the agent actually use its tool/data source (judge-free).
 
 This component evaluates agents as a black box — it sees only the final response,
 not the tool calls. (Trajectory-level "did it call query_sql with these args" is
