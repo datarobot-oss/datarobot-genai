@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.1
+- `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
+
 ## 0.16.0
 - `core/agents/events.py`: `events_to_messages` folds an AG-UI event stream back into `Message` objects (assistant text + its tool calls on one `AssistantMessage`, paired `ToolMessage` results, reasoning) for replay as history — the Python port of the TS client's `defaultApplyEvents` (messages slice).
 - `llama_index`: tool-call events now carry `parent_message_id`, so a client folding the stream keeps a turn's text and tool calls on one assistant message.

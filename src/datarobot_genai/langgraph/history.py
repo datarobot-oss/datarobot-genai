@@ -17,7 +17,8 @@ The default chat-history path flattens prior turns into the text ``{chat_history
 prompt variable, which drops tool calls. This converter rebuilds real
 ``HumanMessage`` / ``AIMessage(tool_calls=...)`` / ``ToolMessage`` so the model sees
 structured tool history. Reasoning, when carried, is already plain text in
-``content`` (folded at ingest), so it needs no special handling here.
+``content`` (folded into the assistant turn during history extraction), so it needs
+no special handling here.
 """
 
 from __future__ import annotations
