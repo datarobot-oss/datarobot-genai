@@ -19,6 +19,7 @@ from ag_ui.core import UserMessage
 
 from datarobot_genai.core.agents.history import _summarize_tool_calls
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.agents.history import drop_unpaired_boundary_tool_turns
 from datarobot_genai.core.agents.history import extract_history_messages
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 
@@ -297,3 +298,67 @@ class TestBuildHistorySummaryFromChatCompletions:
             'assistant: [tool_calls] get_weather({"location": "Boston, MA"})\n'
             'tool: {"temperature": 72, "condition": "sunny"}'
         )
+
+    def test_includes_tool_calls_when_assistant_turn_also_has_content(self) -> None:
+        # GIVEN an assistant turn with BOTH content and a tool call (the common case)
+        params = {
+            "messages": [
+                {"role": "user", "content": "weather in Paris?"},
+                {
+                    "role": "assistant",
+                    "content": "Let me check the weather.",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"city": "Paris"}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "18C, sunny"},
+                {"role": "user", "content": "thanks"},
+            ]
+        }
+
+        # WHEN building the history summary
+        run_agent_input = convert_chat_completion_params_to_run_agent_input(params)
+        summary = build_history_summary_from_messages(run_agent_input, max_history=20)
+
+        # THEN the tool call appears even though the turn also has content
+        # (previously the call was dropped whenever content was non-empty).
+        assert summary == (
+            "user: weather in Paris?\n"
+            'assistant: Let me check the weather. [tool_calls] get_weather({"city": "Paris"})\n'
+            "tool: 18C, sunny"
+        )
+
+
+class TestDropUnpairedBoundaryToolTurns:
+    def test_drops_leading_orphan_tool_result(self) -> None:
+        # A tool result whose originating tool call was truncated off the front.
+        history = [
+            {"role": "tool", "content": "18C", "tool_call_id": "c1"},
+            {"role": "user", "content": "and tomorrow?"},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == [
+            {"role": "user", "content": "and tomorrow?"},
+        ]
+
+    def test_drops_trailing_assistant_tool_call_with_no_result(self) -> None:
+        history = [
+            {"role": "user", "content": "weather?"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1"}]},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == [
+            {"role": "user", "content": "weather?"},
+        ]
+
+    def test_keeps_a_well_paired_sequence(self) -> None:
+        history = [
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1"}]},
+            {"role": "tool", "content": "18C", "tool_call_id": "c1"},
+        ]
+        assert drop_unpaired_boundary_tool_turns(history) == history
