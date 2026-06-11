@@ -24,10 +24,10 @@ import pytest
 from datarobot.errors import ClientError
 from dotenv import load_dotenv
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.deployment_utils import deploy_custom_model_impl
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import deployment
 
 

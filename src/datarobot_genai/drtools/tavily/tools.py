@@ -19,6 +19,8 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.tavily import CHUNKS_PER_SOURCE_DEFAULT
 from datarobot_genai.drtools.core.clients.tavily import MAX_CHUNKS_PER_SOURCE
@@ -26,8 +28,6 @@ from datarobot_genai.drtools.core.clients.tavily import MAX_RESULTS
 from datarobot_genai.drtools.core.clients.tavily import MAX_RESULTS_DEFAULT
 from datarobot_genai.drtools.core.clients.tavily import TavilyClient
 from datarobot_genai.drtools.core.clients.tavily import get_tavily_access_token
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

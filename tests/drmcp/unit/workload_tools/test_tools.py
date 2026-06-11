@@ -21,8 +21,8 @@ from unittest.mock import patch
 import pytest
 from datarobot.errors import ClientError
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.workload import lifecycle_tools
 from datarobot_genai.drtools.workload import observability_tools
 from datarobot_genai.drtools.workload import proton_tools

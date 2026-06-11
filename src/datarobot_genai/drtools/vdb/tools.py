@@ -21,10 +21,10 @@ from typing import Any
 import datarobot as dr
 from datarobot.errors import ClientError
 
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.pagination import PAGINATION_MAX
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata

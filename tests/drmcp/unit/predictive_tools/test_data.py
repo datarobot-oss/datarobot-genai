@@ -22,8 +22,8 @@ import pytest
 from datarobot.errors import ClientError
 from datarobot.models.data_store import DataStoreParameters
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive import data
 
 

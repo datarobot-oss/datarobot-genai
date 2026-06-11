@@ -117,8 +117,11 @@ class ImportChecker(ast.NodeVisitor):
         subpackage = parts[1]
         if subpackage in allowed_local:
             return
+        # Shared agent-core auth primitives are the one allowed reach into core.
+        # The exception lives with drmcputils (which now owns auth.py); drtools no
+        # longer imports core.utils.auth directly.
         if (
-            package_label == "drtools"
+            package_label == "drmcputils"
             and subpackage == "core"
             and module_name.startswith("datarobot_genai.core.utils.auth")
         ):

@@ -27,10 +27,10 @@ from datarobot.utils import from_api
 from datarobot.utils import is_convertable_to_api
 from datarobot.utils import to_api
 
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)

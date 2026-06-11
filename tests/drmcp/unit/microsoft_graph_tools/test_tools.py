@@ -18,9 +18,9 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphError
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphItem
-from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_create_file
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_search_content
 from datarobot_genai.drtools.microsoft_graph.tools import microsoft_graph_share_item

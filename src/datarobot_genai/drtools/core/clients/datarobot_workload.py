@@ -17,7 +17,7 @@ import logging
 import time
 from typing import Any
 
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
 
