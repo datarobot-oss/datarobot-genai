@@ -3,11 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-## 0.16.4
-- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code 
+
+## 0.16.5
+- Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 
 ## 0.16.4
-- Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
+- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code 
 
 ## 0.16.3
 - Migrate benchmark helper classes to genai[eval] package
