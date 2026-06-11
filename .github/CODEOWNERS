@@ -10,6 +10,7 @@
 /e2e-tests/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
 /README.md @datarobot-oss/buzok @datarobot-oss/mcp
 /.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
+/.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
 /scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
 
 # MCP team overrides for drmcp and drtools (last match wins)
