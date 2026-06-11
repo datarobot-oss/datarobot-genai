@@ -21,8 +21,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from datarobot_genai.drtools.core.auth import set_request_headers
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .constants import MCP_PATH_ENDPOINT
 from .routes_utils import prefix_mount_path

@@ -23,10 +23,10 @@ from pydantic import ConfigDict
 from pydantic import Field
 from tavily import AsyncTavilyClient
 
-from datarobot_genai.drtools.core.auth import resolve_secret
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.auth import resolve_secret
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

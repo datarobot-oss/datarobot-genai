@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
-from .constants import MAX_INLINE_SIZE
-from .exceptions import ToolError
-from .exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 
 def is_valid_url(url: str) -> bool:

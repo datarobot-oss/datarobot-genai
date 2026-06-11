@@ -19,12 +19,12 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.microsoft_graph import MicrosoftGraphClient
 from datarobot_genai.drtools.core.clients.microsoft_graph import get_microsoft_graph_access_token
 from datarobot_genai.drtools.core.clients.microsoft_graph import validate_site_url
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

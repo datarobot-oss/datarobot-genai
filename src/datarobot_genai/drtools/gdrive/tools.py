@@ -19,6 +19,8 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.gdrive import LIMIT
 from datarobot_genai.drtools.core.clients.gdrive import MAX_PAGE_SIZE
@@ -26,8 +28,6 @@ from datarobot_genai.drtools.core.clients.gdrive import SUPPORTED_FIELDS
 from datarobot_genai.drtools.core.clients.gdrive import SUPPORTED_FIELDS_STR
 from datarobot_genai.drtools.core.clients.gdrive import GoogleDriveClient
 from datarobot_genai.drtools.core.clients.gdrive import get_gdrive_access_token
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

@@ -18,13 +18,13 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.tavily import TavilyClient
 from datarobot_genai.drtools.core.clients.tavily import TavilyCrawlResults
 from datarobot_genai.drtools.core.clients.tavily import TavilyExtractResults
 from datarobot_genai.drtools.core.clients.tavily import TavilyMapResults
 from datarobot_genai.drtools.core.clients.tavily import TavilySearchResults
 from datarobot_genai.drtools.core.clients.tavily import get_tavily_access_token
-from datarobot_genai.drtools.core.exceptions import ToolError
 
 
 class TestGetTavilyAccessToken:
