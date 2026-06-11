@@ -5,8 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.2
-- `drtools/files`: added a `BlobStore` Protocol and `DataRobotFilesBlobStore` — a per-user, async wrapper over the DataRobot Files API (`datarobot.models.Files`, v3.10+) for opaque block storage (`put`/`get`/`delete`/`list`). Provides the storage seam that the server-side panels store builds on, decoupled from any concrete backend. `BlobRef` carries only fields the Files API durably round-trips (`files_id`, `name`, `tags`), so a ref from `put()` equals the same blob's ref from `list()`.
-- `drtools.core`: added `client_exceptions.raise_tool_error_for_client_error` (moved from `drtools.predictive`) so any drtools domain can map DataRobot SDK errors to `ToolError` without depending on `predictive`.
+- `drtools/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`).
 
 ## 0.16.1
 - `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
