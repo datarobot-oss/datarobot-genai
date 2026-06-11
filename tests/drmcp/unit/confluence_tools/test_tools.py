@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.confluence.tools import confluence_add_comment
 from datarobot_genai.drtools.confluence.tools import confluence_get_page
 from datarobot_genai.drtools.confluence.tools import confluence_search_space
@@ -24,7 +25,6 @@ from datarobot_genai.drtools.core.clients.confluence import ConfluenceComment
 from datarobot_genai.drtools.core.clients.confluence import ConfluenceError
 from datarobot_genai.drtools.core.clients.confluence import ConfluencePage
 from datarobot_genai.drtools.core.clients.confluence import ContentSearchResult
-from datarobot_genai.drtools.core.exceptions import ToolError
 
 
 @pytest.fixture

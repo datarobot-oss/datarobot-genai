@@ -15,7 +15,7 @@
 """Setup script defining optional dependencies (extras) for the package.
 
 This script defines all extras and automatically merges 'core' dependencies
-into all other extras except standalone extras (`auth`, `drtools`, `drmcpbase`, `drmcp`, `eval`)
+into all other extras except standalone extras (`auth`, `drtools`, `drmcpbase`, `drmcp`, `drmcputils`, `eval`)
 at build time.
 """
 
@@ -108,9 +108,12 @@ auth = [
   "okta-client-python>=0.2.0,<1.0.0",
 ]
 
-# drtools: no subpackages dependencies other than auth.
+# drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
+drmcputils = []
+
+# drtools: no subpackages dependencies other than auth and drmcputils.
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
-drtools = auth + [
+drtools = auth + drmcputils + [
     "beautifulsoup4>=4.12.0,<5.0.0",
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
@@ -134,7 +137,7 @@ eval_deps = [
 ]
 
 # drmcpbase is standalone set of dependencies for MCP Servers only (no core).
-drmcpbase = [
+drmcpbase = drmcputils + [
     "starlette>=1.0.1",  # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.4.1,<4.0.0",
     "aiohttp>=3.13.3,<4.0.0",
@@ -172,6 +175,7 @@ extras_require = {
     "auth": auth,
     "eval": eval_deps,
     "drmcpbase": drmcpbase,
+    "drmcputils": drmcputils,
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,

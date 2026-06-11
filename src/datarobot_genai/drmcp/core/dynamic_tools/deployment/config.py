@@ -28,7 +28,7 @@ from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import (
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import build_deployment_auth_headers
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import get_deployment_base_url
 from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 
 def create_deployment_tool_config(

@@ -22,11 +22,11 @@ from datarobot.auth.identity import Identity
 from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 
-from datarobot_genai.drtools.core.auth import set_request_headers
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
+from datarobot_genai.drmcputils.exceptions import ToolError
 
-_MODULE = "datarobot_genai.drtools.core.clients.datarobot"
+_MODULE = "datarobot_genai.drmcputils.clients.datarobot"
 
 
 class TestRequestUserDrSdk:
@@ -95,7 +95,7 @@ class TestRequestUserDrSdk:
 
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
-    @patch("datarobot_genai.drtools.core.auth.AuthContextHeaderHandler")
+    @patch("datarobot_genai.drmcputils.auth.AuthContextHeaderHandler")
     def test_extracts_token_from_auth_context_when_no_standard_headers(
         self, mock_handler_class, mock_get_creds, mock_client_configuration
     ) -> None:

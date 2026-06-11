@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core.clients.datarobot import get_datarobot_access_token
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients.datarobot import get_datarobot_access_token
+from datarobot_genai.drmcputils.exceptions import ToolError
 
 
 class TestGetDatarobotAccessToken:
@@ -28,7 +28,7 @@ class TestGetDatarobotAccessToken:
     def test_returns_token_when_resolve_datarobot_token_returns_token(self) -> None:
         """Test successful token retrieval from headers."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
+            "datarobot_genai.drmcputils.clients.datarobot.resolve_datarobot_token",
             return_value="bearer-token-123",
         ):
             result = get_datarobot_access_token()
@@ -38,7 +38,7 @@ class TestGetDatarobotAccessToken:
     def test_raises_tool_error_when_no_token(self) -> None:
         """Test that ToolError is raised when resolve_datarobot_token returns None."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
+            "datarobot_genai.drmcputils.clients.datarobot.resolve_datarobot_token",
             return_value=None,
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -51,7 +51,7 @@ class TestGetDatarobotAccessToken:
     def test_raises_tool_error_when_empty_token(self) -> None:
         """Test that ToolError is raised when resolve_datarobot_token returns empty string."""
         with patch(
-            "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
+            "datarobot_genai.drmcputils.clients.datarobot.resolve_datarobot_token",
             return_value="",
         ):
             with pytest.raises(ToolError) as exc_info:
@@ -61,11 +61,11 @@ class TestGetDatarobotAccessToken:
     def test_falls_back_to_app_token_when_headers_auth_only_false(self) -> None:
         with (
             patch(
-                "datarobot_genai.drtools.core.clients.datarobot.resolve_datarobot_token",
+                "datarobot_genai.drmcputils.clients.datarobot.resolve_datarobot_token",
                 return_value=None,
             ),
             patch(
-                "datarobot_genai.drtools.core.clients.datarobot.get_credentials",
+                "datarobot_genai.drmcputils.clients.datarobot.get_credentials",
             ) as mock_get_credentials,
         ):
             mock_get_credentials.return_value.datarobot.datarobot_api_token = "app-tok"

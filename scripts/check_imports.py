@@ -17,9 +17,10 @@
 Custom import checker.
 
 Enforces the following rules:
-1. drtools cannot import from: core, drmcp, drmcpbase, fastmcp
-2. drmcp can only import from drtools, drmcp, and drmcpbase subpackages
-3. drmcpbase can only import from drmcpbase (must not import drtools, drmcp, or core)
+1. drmcputils can only import from drmcputils (must not import core, fastmcp, or any other subpackage)
+2. drtools can only import from drtools and drmcputils (must not import core, drmcp, drmcpbase, or fastmcp)
+3. drmcpbase can only import from drmcpbase and drmcputils (must not import drtools, drmcp, or core)
+4. drmcp can only import from drtools, drmcp, drmcpbase, and drmcputils subpackages
 """
 
 import ast
@@ -27,8 +28,6 @@ import sys
 from pathlib import Path
 import tomllib
 from typing import Any
-from typing import List
-from typing import Tuple
 
 
 def _is_under_module(module_name: str, parent: str) -> bool:
@@ -50,6 +49,8 @@ def load_config(base_dir: Path) -> dict[str, Any]:
                     "drmcp_allowed_subpackages": config["drmcp_allowed_subpackages"],
                     "drmcpbase_allowed_subpackages": config["drmcpbase_allowed_subpackages"],
                     "drmcpbase_forbidden": config["drmcpbase_forbidden"],
+                    "drmcputils_allowed_subpackages": config["drmcputils_allowed_subpackages"],
+                    "drmcputils_forbidden": config["drmcputils_forbidden"],
                 }
         except Exception as e:
             print(f"Warning: Failed to load pyproject.toml: {e}")
@@ -63,11 +64,12 @@ class ImportChecker(ast.NodeVisitor):
 
     def __init__(self, filepath: Path, config: dict[str, Any]):
         self.filepath = filepath
-        self.errors: List[Tuple[int, str]] = []
+        self.errors: list[tuple[int, str]] = []
         parts = filepath.parts
         self.is_drtools = "drtools" in parts
         self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts
         self.is_drmcpbase = "drmcpbase" in parts
+        self.is_drmcputils = "drmcputils" in parts
         self.config = config
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -113,8 +115,11 @@ class ImportChecker(ast.NodeVisitor):
         subpackage = parts[1]
         if subpackage in allowed_local:
             return
+        # Shared agent-core auth primitives are the one allowed reach into core.
+        # The exception lives with drmcputils (which now owns auth.py); drtools no
+        # longer imports core.utils.auth directly.
         if (
-            package_label == "drtools"
+            package_label == "drmcputils"
             and subpackage == "core"
             and module_name.startswith("datarobot_genai.core.utils.auth")
         ):
@@ -159,11 +164,22 @@ class ImportChecker(ast.NodeVisitor):
                 "drmcpbase",
             )
 
+        elif self.is_drmcputils:
+            self._check_forbidden(
+                lineno, module_name, self.config["drmcputils_forbidden"], "drmcputils"
+            )
+            self._check_allowed_local(
+                lineno,
+                module_name,
+                self.config["drmcputils_allowed_subpackages"],
+                "drmcputils",
+            )
 
-def check_file(filepath: Path, config: dict[str, Any]) -> List[Tuple[int, str]]:
+
+def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
     """Check a single Python file for import violations."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content, filename=str(filepath))
@@ -183,7 +199,7 @@ def main():
 
     all_errors = []
 
-    for subpackage in ("drtools", "drmcp", "drmcpbase"):
+    for subpackage in ("drtools", "drmcp", "drmcpbase", "drmcputils"):
         package_dir = src_dir / subpackage
         if package_dir.exists():
             for py_file in package_dir.rglob("*.py"):

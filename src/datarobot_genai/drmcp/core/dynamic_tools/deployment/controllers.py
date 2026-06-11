@@ -23,7 +23,7 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.mcp_instance import mcp
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_sdk
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 
 logger = logging.getLogger(__name__)
 

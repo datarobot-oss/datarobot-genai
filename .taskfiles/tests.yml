@@ -11,7 +11,7 @@ tasks:
           uv run pytest --junitxml=test_results/test-results.xml \
             --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
             -vv -s tests \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration
     silent: true
 
   test-module:
@@ -25,6 +25,7 @@ tasks:
             - langgraph
             - llamaindex
             - drmcpbase
+            - drmcputils
             - drmcp
             - nat
             - dragent
@@ -34,8 +35,8 @@ tasks:
       - |
           echo "pytest path: tests/{{.MODULE}}"
           {{if eq .MODULE "nat"}}uv sync --extra nat --extra crewai --extra llamaindex --extra dragent{{end}}
-          {{if or (eq .MODULE "drmcpbase") (eq .MODULE "eval")}}
-          # drmcpbase and eval are intentionally minimal standalone extras,
+          {{if or (eq .MODULE "drmcpbase") (eq .MODULE "drmcputils") (eq .MODULE "eval")}}
+          # drmcpbase, drmcputils, and eval are intentionally minimal standalone extras,
           # so avoid loading root conftest rather than pulling in the full SDK just to run a package smoke test for now
           uv run pytest tests/{{.MODULE}} \
             --confcutdir=tests/{{.MODULE}} \
@@ -43,7 +44,7 @@ tasks:
           {{else}}
           uv run pytest tests/{{.MODULE}} \
             --junitxml=test_results/test-results.xml -vv -s \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration
           {{end}}
     silent: true
 
