@@ -8,6 +8,10 @@
 /setup.py @datarobot-oss/buzok @datarobot-oss/mcp
 /uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
 /e2e-tests/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
+/README.md @datarobot-oss/buzok @datarobot-oss/mcp
+/.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
+/.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
+/scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
 
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
@@ -21,6 +25,3 @@
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
 /docs/drtools/ @datarobot-oss/mcp
-/README.md @datarobot-oss/mcp
-# Enforces the drtools/drmcp/drmcpbase/drmcputils import boundaries — MCP-owned.
-/scripts/check_imports.py @datarobot-oss/mcp
