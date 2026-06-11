@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.5
-- `drtools/panels`: added sandbox-backed `transform_panel` and `filter_panel` — run filtering/transform code over a Dataset panel inside the workload sandbox (`execute_code`) and save the result as a derived child panel with lineage (`execution_context.kind = "sandbox_transform"`). `execute_code` is imported defensively so the module loads even where the sandbox backend is absent (tools then fail closed). Added `PanelStore.get_payload` to hydrate a panel's stored payload. Gated on the `MCP_SANDBOX` entitlement. Transforms reject non-Dataset source panels with a clear validation error, and a transform returning zero rows keeps the source column schema (metadata and Parquet payload agree).
+- `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
 
 ## 0.16.4
 - `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).
