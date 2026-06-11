@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import json
 import os
 from pathlib import Path
@@ -132,7 +133,19 @@ def validate_inputs(
     else:
         try:
             cfg = load_pipeline(pipeline_path)
-            module = repo_root / cfg["benchmark"]["module"]
+            module_str = str(cfg["benchmark"]["module"])
+            module = repo_root / module_str
+            if not module.exists():
+                # Try resolving as an installed Python package module.
+                dotted = module_str.replace("/", ".").replace("\\", ".")
+                if dotted.endswith(".py"):
+                    dotted = dotted[:-3]
+                try:
+                    mod = importlib.import_module(dotted)
+                    if mod.__file__:
+                        module = Path(mod.__file__)
+                except ImportError:
+                    pass
             if not module.exists():
                 errors.append(f"Benchmark module not found: {module}")
         except (ValueError, KeyError) as e:
