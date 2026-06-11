@@ -59,6 +59,7 @@ crewai = core + [
 ]
 
 langgraph = core + [
+    "langchain>=1.0.0,<2.0.0",  # create_agent middleware (datarobot_genai.langgraph.middleware)
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<2.0.0",
     "langgraph-prebuilt>=1.0.0,<2.0.0",

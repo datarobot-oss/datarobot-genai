@@ -1099,7 +1099,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1252,6 +1252,7 @@ langgraph = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "langchain" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
@@ -1413,6 +1414,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcp'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
+    { name = "langchain", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },

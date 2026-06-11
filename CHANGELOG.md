@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.2
+- `langgraph`: new `FinalAnswerMiddleware` (`datarobot_genai.langgraph.middleware`) for `create_agent` — when a reasoning model (e.g. gpt-oss) ends a turn with no tool calls and no answer text (only reasoning, the "prompted to use tools that aren't bound" dead-end), it re-invokes the model once with an ephemeral "provide your final answer" nudge (`tool_choice="none"` when tools are bound) so the run produces a real answer instead of silently ending. The dead-end message is discarded from graph state; a retry that is still answerless is returned unchanged with a warning (reasoning is never promoted to answer content). Opt in with `create_agent(..., middleware=[FinalAnswerMiddleware()])`. The `langgraph` extra now declares `langchain` explicitly (previously only transitive).
+
 ## 0.16.1
 - `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
 
