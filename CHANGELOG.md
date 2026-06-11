@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.3
-- `drtools/panels`: added the server-side panel store — Pydantic panel models (Dataset, Chart, Text, Json), a `PanelStore` over the `BlobStore` Protocol (payloads via the Files API), and CRUD `@tool_metadata` tools (`list_panels`, `get_panel`, `create_text_panel`, `create_json_panel`, `delete_panel`) gated at call time on the `MCP_SANDBOX` entitlement. `list_panels` clamps/echoes `limit` and supports `offset` paging; `PanelStore.create` cleans up the payload blob if the manifest write fails, and `delete` no longer orphans payloads on transient errors. Also ports the wren-mcp schema tools as `list_panel_schemas`, `describe_panel_schema`, `validate_panel_data` over a new `panels.schema_registry.SchemaRegistry` (namespaced Pydantic schemas for Json panel validation). `fastmcp`-free; the drmcp/global-mcp registration lands with the panel resources work (MODEL-23663).
+- `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
 
 ## 0.16.2
 - `drtools/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`).
