@@ -32,7 +32,10 @@ from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import UserMessage
 
+from datarobot_genai.core.agents.history import NormalizedHistoryMessage
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
+from datarobot_genai.core.agents.history import drop_unpaired_boundary_tool_turns
+from datarobot_genai.core.agents.history import extract_history_messages
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.core.utils.auth import prepare_identity_header
@@ -214,6 +217,24 @@ class BaseAgent(Generic[TTool], abc.ABC):
         ``chat_history`` variable in prompts across different agent types.
         """
         return build_history_summary_from_messages(run_agent_input, self.max_history_messages)
+
+    def history_messages(
+        self,
+        run_agent_input: RunAgentInput,
+    ) -> list[NormalizedHistoryMessage]:
+        """Prior turns as structured dicts (role/content + tool_calls/tool_call_id).
+
+        Same history selection and ``max_history_messages`` truncation as
+        :meth:`build_history_summary`, but preserves structured tool-call metadata so
+        framework adapters can reconstruct native message history instead of
+        flattening to text. See ``datarobot_genai.langgraph.history`` and
+        ``datarobot_genai.llama_index.history``.
+
+        Tool-call/result turns left unpaired by ``max_history`` truncation are dropped
+        so the reconstructed message sequence stays valid for the model.
+        """
+        history = extract_history_messages(run_agent_input, self.max_history_messages)
+        return drop_unpaired_boundary_tool_turns(history)
 
     def _get_memory_client(self) -> BaseMemoryClient | None:
         if self._memory_client is not None:

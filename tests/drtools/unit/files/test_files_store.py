@@ -30,9 +30,9 @@ from datarobot.models import Files
 
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.files import BlobRef
-from datarobot_genai.drtools.files import DataRobotFilesBlobStore
 from datarobot_genai.drtools.files import store as store_mod
+from datarobot_genai.drtools.files.store import BlobRef
+from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
 
 
 @pytest.fixture
