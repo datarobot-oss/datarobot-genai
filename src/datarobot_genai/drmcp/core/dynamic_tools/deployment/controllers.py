@@ -20,7 +20,6 @@ from fastmcp.tools.tool import Tool
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.register import (
     register_tool_of_datarobot_deployment,
 )
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.mcp_instance import mcp
@@ -46,13 +45,12 @@ async def register_tool_for_deployment_id(deployment_id: str) -> Tool:
     with request_user_dr_sdk(headers_auth_only=True):
         deployment = dr.Deployment.get(deployment_id)
     registered_tool = await register_tool_of_datarobot_deployment(deployment)
-    if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
-        try:
-            linear_manager = LineageManager(mcp)
-            await linear_manager.sync_mcp_tools()
-        except LRSEnvVarIsNotSetError as error:
-            error_message = f"MCP item metadata is not sync. {str(error)}"
-            logger.warning(error_message)
+    try:
+        linear_manager = LineageManager(mcp)
+        await linear_manager.sync_mcp_tools()
+    except LRSEnvVarIsNotSetError as error:
+        error_message = f"MCP item metadata is not sync. {str(error)}"
+        logger.warning(error_message)
 
     return registered_tool
 
@@ -73,11 +71,10 @@ async def delete_registered_tool_deployment(deployment_id: str) -> bool:
     tool_name = deployments[deployment_id]
     await mcp.remove_deployment_mapping(deployment_id)
     logger.info(f"Deleted tool {tool_name} for deployment {deployment_id}")
-    if await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user():
-        try:
-            linear_manager = LineageManager(mcp)
-            await linear_manager.sync_mcp_tools()
-        except LRSEnvVarIsNotSetError as error:
-            error_message = f"MCP item metadata is not sync. {str(error)}"
-            logger.warning(error_message)
+    try:
+        linear_manager = LineageManager(mcp)
+        await linear_manager.sync_mcp_tools()
+    except LRSEnvVarIsNotSetError as error:
+        error_message = f"MCP item metadata is not sync. {str(error)}"
+        logger.warning(error_message)
     return True

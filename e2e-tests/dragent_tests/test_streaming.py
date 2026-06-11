@@ -19,11 +19,10 @@ import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
-from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import parse_sse_responses
+from dragent_tests.helpers import stream_sse_responses
 
 
 def test_generate_streaming(http_client: httpx.Client) -> None:
@@ -32,12 +31,7 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     payload = make_generate_payload("Say 'hello world' and nothing else.")
 
     # WHEN: the payload is streamed to the generate endpoint
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        # THEN: the response is streaming
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        # THEN: the response is a valid AG-UI response
-        sse_responses = parse_sse_responses(response)
+    sse_responses = stream_sse_responses(http_client, payload)
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_responses)

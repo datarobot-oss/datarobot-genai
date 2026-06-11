@@ -14,6 +14,7 @@
 
 import datetime
 
+from ag_ui.core import RunAgentInput
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -48,6 +49,9 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.converters import (
     convert_nat_chat_response_chunk_to_openai_chat_completion_chunk,
+)
+from datarobot_genai.dragent.frontends.converters import (
+    convert_run_agent_input_to_chat_request_or_message,
 )
 from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
@@ -162,6 +166,29 @@ def test_convert_dragent_run_agent_input_to_chat_request_or_message() -> None:
     assert isinstance(result, ChatRequestOrMessage)
     # ChatRequestOrMessage can be validated from chat request dump
     assert hasattr(result, "model_dump") or hasattr(result, "messages")
+
+
+def test_convert_run_agent_input_to_chat_request_or_message() -> None:
+    # GIVEN a plain RunAgentInput (e.g. from streaming_memory_agent passthrough)
+    input_obj = RunAgentInput(
+        thread_id="thread-1",
+        run_id="run-1",
+        messages=[UserMessage(id="1", content="Hello")],
+        tools=[],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
+
+    # WHEN converting to ChatRequestOrMessage
+    result = convert_run_agent_input_to_chat_request_or_message(input_obj)
+
+    # THEN result matches the DRAgentRunAgentInput conversion path
+    expected = convert_dragent_run_agent_input_to_chat_request_or_message(
+        DRAgentRunAgentInput.model_validate(input_obj.model_dump(by_alias=True))
+    )
+    assert isinstance(result, ChatRequestOrMessage)
+    assert result.model_dump() == expected.model_dump()
 
 
 # --- Input converters: NAT -> AG-UI ---
