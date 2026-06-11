@@ -1,0 +1,24 @@
+
+define bot should not intervene
+  "FALSE"
+
+define bot should intervene
+  "TRUE"
+
+define subflow self check input
+  $allowed = execute self_check_input
+
+  if not $allowed
+    bot should intervene
+    stop
+
+define subflow check blocked terms
+  $is_blocked = execute check_blocked_terms
+
+  if $is_blocked
+    bot should intervene
+    stop
+
+define subflow allow input
+  bot should not intervene
+  stop
