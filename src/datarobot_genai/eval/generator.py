@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import os
 import warnings
 from pathlib import Path
 from typing import Any
 
-import anthropic
+import litellm
 
 _SYSTEM_PROMPT = """\
 You are a QA engineer designing test cases for an AI agent evaluation suite.
@@ -63,24 +64,35 @@ _REQUIRED_FIELDS = {
 class CaseGenerator:
     def __init__(
         self,
-        client: anthropic.Anthropic | None = None,
-        model: str = "claude-sonnet-4-6",
+        url: str | None = None,
+        model_id: str | None = None,
+        api_key: str | None = None,
     ) -> None:
-        self._client = client or anthropic.Anthropic()
-        self.model = model
+        resolved_url = url or os.environ.get("DATAROBOT_ENDPOINT")
+        resolved_model = model_id or os.environ.get("LLM_DEFAULT_MODEL")
+
+        if not resolved_url:
+            raise ValueError("url is required. Pass it explicitly or set DATAROBOT_ENDPOINT.")
+        if not resolved_model:
+            raise ValueError("model_id is required. Pass it explicitly or set LLM_DEFAULT_MODEL.")
+
+        # Strip /api/v2 suffix so litellm receives the gateway base URL
+        self._api_base = resolved_url.removesuffix("/api/v2")
+        self._model = (
+            resolved_model
+            if resolved_model.startswith("datarobot/")
+            else f"datarobot/{resolved_model}"
+        )
+        self._api_key = api_key or os.environ.get("DATAROBOT_API_TOKEN")
 
     def generate(self, agent_description: str, n_good: int, n_bad: int) -> list[dict[str, Any]]:
-        response = self._client.messages.create(
-            model=self.model,
+        response = litellm.completion(
+            model=self._model,
+            api_base=self._api_base,
+            api_key=self._api_key,
             max_tokens=4096,
-            system=[
-                {
-                    "type": "text",
-                    "text": _SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
             messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
                 {
                     "role": "user",
                     "content": _GENERATION_PROMPT.format(
@@ -88,14 +100,14 @@ class CaseGenerator:
                         n_good=n_good,
                         n_bad=n_bad,
                     ),
-                }
+                },
             ],
         )
 
-        block = response.content[0]
-        if not isinstance(block, anthropic.types.TextBlock):
-            raise ValueError(f"Unexpected response content type: {type(block)}")
-        raw = json.loads(block.text.strip())
+        content = response.choices[0].message.content
+        if not isinstance(content, str):
+            raise ValueError(f"Unexpected response content type: {type(content)}")
+        raw = json.loads(content.strip())
         if not isinstance(raw, list):
             raise ValueError(f"Expected a JSON array from the model, got {type(raw).__name__}")
         cases: list[dict[str, Any]] = raw

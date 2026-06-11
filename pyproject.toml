@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.16.2"
+version = "0.16.5"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -205,16 +205,12 @@ drmcpbase_forbidden = [
     "datarobot_genai.drmcp",
     "datarobot_genai.core",
 ]
-# drmcputils is the shared base: clients + common, fastmcp-free code. It must not
-# depend on any sibling package (tools, servers) or fastmcp. The single allowed
-# exception is the shared agent-core auth primitives under datarobot_genai.core.utils.auth
-# (same exception drtools carries — see check_imports.py).
 drmcputils_allowed_subpackages = ["drmcputils"]
+# core is reachable only via the datarobot_genai.core.utils.auth carve-out in
+# check_imports.py (shared OAuth primitives that auth.py needs); everything else
+# under core, plus all sibling packages, is blocked by the allowed-subpackages check.
 drmcputils_forbidden = [
     "fastmcp",
-    "datarobot_genai.drtools",
-    "datarobot_genai.drmcp",
-    "datarobot_genai.drmcpbase",
 ]
 
 [tool.coverage.report]

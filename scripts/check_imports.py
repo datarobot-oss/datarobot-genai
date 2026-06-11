@@ -17,9 +17,10 @@
 Custom import checker.
 
 Enforces the following rules:
-1. drtools cannot import from: core, drmcp, drmcpbase, fastmcp
-2. drmcp can only import from drtools, drmcp, and drmcpbase subpackages
-3. drmcpbase can only import from drmcpbase (must not import drtools, drmcp, or core)
+1. drmcputils can only import from drmcputils (must not import core, fastmcp, or any other subpackage)
+2. drtools can only import from drtools and drmcputils (must not import core, drmcp, drmcpbase, or fastmcp)
+3. drmcpbase can only import from drmcpbase and drmcputils (must not import drtools, drmcp, or core)
+4. drmcp can only import from drtools, drmcp, drmcpbase, and drmcputils subpackages
 """
 
 import ast
@@ -30,7 +31,7 @@ from typing import Any
 
 
 def _is_under_module(module_name: str, parent: str) -> bool:
-    """Return True if module_name is parent or a submodule of parent."""
+    """True if module_name is parent or a submodule of parent."""
     return module_name == parent or module_name.startswith(f"{parent}.")
 
 
@@ -65,10 +66,10 @@ class ImportChecker(ast.NodeVisitor):
         self.filepath = filepath
         self.errors: list[tuple[int, str]] = []
         parts = filepath.parts
-        self.is_drmcputils = "drmcputils" in parts
         self.is_drtools = "drtools" in parts
-        self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts and not self.is_drmcputils
+        self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts
         self.is_drmcpbase = "drmcpbase" in parts
+        self.is_drmcputils = "drmcputils" in parts
         self.config = config
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -114,8 +115,11 @@ class ImportChecker(ast.NodeVisitor):
         subpackage = parts[1]
         if subpackage in allowed_local:
             return
+        # Shared agent-core auth primitives are the one allowed reach into core.
+        # The exception lives with drmcputils (which now owns auth.py); drtools no
+        # longer imports core.utils.auth directly.
         if (
-            package_label in ("drtools", "drmcputils")
+            package_label == "drmcputils"
             and subpackage == "core"
             and module_name.startswith("datarobot_genai.core.utils.auth")
         ):
@@ -130,18 +134,7 @@ class ImportChecker(ast.NodeVisitor):
 
     def _check_import(self, lineno: int, module_name: str) -> None:
         """Check if an import is allowed based on the rules."""
-        if self.is_drmcputils:
-            self._check_forbidden(
-                lineno, module_name, self.config["drmcputils_forbidden"], "drmcputils"
-            )
-            self._check_allowed_local(
-                lineno,
-                module_name,
-                self.config["drmcputils_allowed_subpackages"],
-                "drmcputils",
-            )
-
-        elif self.is_drtools:
+        if self.is_drtools:
             self._check_forbidden(
                 lineno, module_name, self.config["drtools_forbidden"], "drtools"
             )
@@ -171,6 +164,17 @@ class ImportChecker(ast.NodeVisitor):
                 "drmcpbase",
             )
 
+        elif self.is_drmcputils:
+            self._check_forbidden(
+                lineno, module_name, self.config["drmcputils_forbidden"], "drmcputils"
+            )
+            self._check_allowed_local(
+                lineno,
+                module_name,
+                self.config["drmcputils_allowed_subpackages"],
+                "drmcputils",
+            )
+
 
 def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
     """Check a single Python file for import violations."""
@@ -187,7 +191,7 @@ def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
 
 
 def main():
-    """Run the import checker over the configured subpackages."""
+    """Main entry point."""
     base_dir = Path(__file__).parent.parent
     src_dir = base_dir / "src" / "datarobot_genai"
 
@@ -195,7 +199,7 @@ def main():
 
     all_errors = []
 
-    for subpackage in ("drmcputils", "drtools", "drmcp", "drmcpbase"):
+    for subpackage in ("drtools", "drmcp", "drmcpbase", "drmcputils"):
         package_dir = src_dir / subpackage
         if package_dir.exists():
             for py_file in package_dir.rglob("*.py"):
