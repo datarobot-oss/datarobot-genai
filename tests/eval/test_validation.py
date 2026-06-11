@@ -195,7 +195,8 @@ def test_validate_inputs_benchmark_module_resolves_via_installed_package(
     tmp_path: Path, dataset_path: Path
 ) -> None:
     """A pipeline referencing datarobot_genai/eval/benchmarks/*.py passes even
-    when no local copy exists — the module resolves from the installed package."""
+    when no local copy exists — the module resolves from the installed package.
+    """
     import yaml as _yaml
 
     pipelines_dir = tmp_path / "user_pipelines"

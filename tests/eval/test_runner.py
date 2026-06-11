@@ -179,9 +179,7 @@ def test_resolve_falls_back_to_installed_package(tmp_path: Path) -> None:
 
 def test_resolve_strips_py_extension_for_import(tmp_path: Path) -> None:
     """The .py suffix is stripped before the importlib lookup."""
-    result = _resolve_benchmark_module(
-        "datarobot_genai/eval/benchmarks/pii_leakage.py", tmp_path
-    )
+    result = _resolve_benchmark_module("datarobot_genai/eval/benchmarks/pii_leakage.py", tmp_path)
     assert Path(result).exists()
 
 
