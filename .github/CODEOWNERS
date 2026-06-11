@@ -13,9 +13,12 @@
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
 /src/datarobot_genai/drmcpbase/ @datarobot-oss/mcp
+/src/datarobot_genai/drmcputils/ @datarobot-oss/mcp
 /tests/drmcp/ @datarobot-oss/mcp
 /tests/drmcpbase/ @datarobot-oss/mcp
+/tests/drmcputils/ @datarobot-oss/mcp
 /tests/drtools/ @datarobot-oss/mcp
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
 /docs/drtools/ @datarobot-oss/mcp
+/README.md @datarobot-oss/mcp
