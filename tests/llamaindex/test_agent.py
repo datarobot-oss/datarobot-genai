@@ -21,6 +21,7 @@ from unittest.mock import Mock
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall as AgFunctionCall
 from ag_ui.core import ReasoningMessageChunkEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
@@ -31,9 +32,11 @@ from ag_ui.core import SystemMessage as AgSystemMessage
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCall as AgToolCall
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
+from ag_ui.core import ToolMessage as AgToolMessage
 from ag_ui.core import UserMessage
 from llama_index.core.agent.workflow import AgentInput
 from llama_index.core.agent.workflow import AgentOutput
@@ -94,6 +97,46 @@ class CapturingWorkflow(Workflow):
     def run(self, *, user_msg: str) -> Handler:
         self.captured_user_msgs.append(user_msg)
         return super().run(user_msg=user_msg)
+
+
+class ChatHistoryCapturingWorkflow(Workflow):
+    """AgentWorkflow-like mock that records the structured ``chat_history`` kwarg."""
+
+    def __init__(self, events: list[Any], state: Any) -> None:
+        super().__init__(events, state)
+        self.captured_user_msg: str | None = None
+        self.captured_chat_history: Any = None
+
+    def run(self, *, user_msg: str, chat_history: Any = None) -> Handler:
+        self.captured_user_msg = user_msg
+        self.captured_chat_history = chat_history
+        return Handler(self._events, self._state)
+
+
+def _tool_history_run_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            UserMessage(id="u1", content="weather in Paris?"),
+            AssistantMessage(
+                id="a1",
+                content="Let me check.",
+                tool_calls=[
+                    AgToolCall(
+                        id="c1",
+                        function=AgFunctionCall(name="get_weather", arguments='{"city": "Paris"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="t1", content="18C, sunny", tool_call_id="c1"),
+            UserMessage(id="u2", content="and tomorrow?"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
 
 
 class FakeMemoryClient(BaseMemoryClient):
@@ -258,6 +301,14 @@ def test_datarobot_agent_class_from_llamaindex_allow_parallel_tool_calls_on_func
     assert agent.allow_parallel_tool_calls is False
     assert planner.allow_parallel_tool_calls is False
     assert writer.allow_parallel_tool_calls is False
+
+
+def test_datarobot_agent_class_from_llamaindex_exposes_structured_history() -> None:
+    # The factory __init__ must forward structured_history so agents built from it can
+    # opt into native-message history (the base supports it; this guards the passthrough).
+    cls = datarobot_agent_class_from_llamaindex(Mock(), [], lambda _s, _e: "")
+    assert cls().structured_history is True  # default on for llama_index
+    assert cls(structured_history=False).structured_history is False  # opt-out respected
 
 
 def test_datarobot_agent_class_from_llamaindex_set_tools_merges_original_plus_mcp() -> None:
@@ -451,10 +502,214 @@ async def test_llama_index_agent_invoke(
     assert usage[-1] == {"completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}
 
 
+async def test_tool_call_parent_message_id_links_to_preceding_text(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN an agent that says something AND then calls a tool in the SAME step
+    events = [
+        AgentInput(
+            input=[ChatMessage(content="weather in Paris?", role=MessageRole.USER)],
+            current_agent_name="A",
+        ),
+        AgentStream(delta="Let me check. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Paris"},
+            tool_id="c1",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="18C",
+                raw_input={"city": "Paris"},
+                raw_output="18C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="It is 18C.", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="It is 18C.", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+        ),
+    ]
+    agent = MyLlamaAgent(Workflow(events=events, state="S"))
+
+    # WHEN invoking the agent
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    # THEN the tool call names the preceding text bubble as its parent, so a client
+    # folding these events back to history keeps the text and the call on one
+    # assistant message (AG-UI grouping).
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    tool_starts = [e for e in ag_events if isinstance(e, ToolCallStartEvent)]
+    assert tool_starts[0].parent_message_id == text_starts[0].message_id
+    assert tool_starts[0].parent_message_id  # non-empty: a real preceding bubble
+
+
+async def test_tool_call_parent_message_id_resets_after_tool_result(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN two tool steps where only the FIRST has a preceding text bubble; the
+    # second tool call is emitted after a tool result with no text in between.
+    events = [
+        AgentInput(
+            input=[ChatMessage(content="weather in Paris and Berlin?", role=MessageRole.USER)],
+            current_agent_name="A",
+        ),
+        AgentStream(delta="Let me check. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Paris"},
+            tool_id="c1",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="18C",
+                raw_input={"city": "Paris"},
+                raw_output="18C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        # Second tool call with NO preceding text bubble (straight after the result).
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Berlin"},
+            tool_id="c2",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="20C",
+                raw_input={"city": "Berlin"},
+                raw_output="20C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="Paris 18C, Berlin 20C.", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="Paris 18C, Berlin 20C.", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+        ),
+    ]
+    agent = MyLlamaAgent(Workflow(events=events, state="S"))
+
+    # WHEN invoking the agent
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    # THEN the first tool call links to its text bubble, but the second (no preceding
+    # text) carries an empty parent: the tool-result reset clears the prior bubble id so
+    # it does not leak across steps. Without the reset, the second call would wrongly
+    # name the first step's text bubble.
+    tool_starts = [e for e in ag_events if isinstance(e, ToolCallStartEvent)]
+    assert len(tool_starts) == 2
+    assert tool_starts[0].parent_message_id  # non-empty: links to "Let me check. "
+    assert tool_starts[1].parent_message_id == ""
+
+
+async def test_tool_call_parent_message_id_reparents_to_second_text_bubble(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN two FULL steps, each with its OWN preceding text bubble:
+    # text A -> tool c1 -> result -> text B -> tool c2.
+    events = [
+        AgentInput(
+            input=[ChatMessage(content="weather in Paris then Berlin?", role=MessageRole.USER)],
+            current_agent_name="A",
+        ),
+        AgentStream(delta="Let me check Paris. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Paris"}, tool_id="c1"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Paris"},
+            tool_id="c1",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="18C",
+                raw_input={"city": "Paris"},
+                raw_output="18C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        # Second step opens its OWN text bubble before calling the tool again.
+        AgentStream(delta="Now Berlin. ", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+            tool_calls=[
+                ToolSelection(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2")
+            ],
+        ),
+        ToolCall(tool_name="get_weather", tool_kwargs={"city": "Berlin"}, tool_id="c2"),
+        ToolCallResult(
+            tool_name="get_weather",
+            tool_kwargs={"city": "Berlin"},
+            tool_id="c2",
+            tool_output=ToolOutput(
+                tool_name="get_weather",
+                content="20C",
+                raw_input={"city": "Berlin"},
+                raw_output="20C",
+                is_error=False,
+            ),
+            return_direct=False,
+        ),
+        AgentStream(delta="Paris 18C, Berlin 20C.", response="", current_agent_name="A"),
+        AgentOutput(
+            response=ChatMessage(content="Paris 18C, Berlin 20C.", role=MessageRole.ASSISTANT),
+            current_agent_name="A",
+        ),
+    ]
+    agent = MyLlamaAgent(Workflow(events=events, state="S"))
+
+    # WHEN invoking the agent
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    # THEN each tool call re-parents to ITS OWN step's text bubble: c2 names the second
+    # bubble's fresh id, not the first step's. A capture-once bug (set last_text_message_id
+    # only on the first bubble) passes the earlier tests but mislinks c2 to bubble A.
+    text_starts = [e for e in ag_events if isinstance(e, TextMessageStartEvent)]
+    tool_starts = [e for e in ag_events if isinstance(e, ToolCallStartEvent)]
+    assert len(tool_starts) == 2
+    assert tool_starts[0].parent_message_id == text_starts[0].message_id
+    assert tool_starts[1].parent_message_id == text_starts[1].message_id
+    assert tool_starts[1].parent_message_id != text_starts[0].message_id
+
+
 async def test_invoke_uses_raw_user_prompt(run_agent_input_with_history) -> None:
-    # GIVEN a llamaindex agent without prompt placeholders
+    # GIVEN a llamaindex agent without prompt placeholders (history disabled so this
+    # focuses on the raw user prompt; CapturingWorkflow.run takes no chat_history kwarg)
     workflow = CapturingWorkflow(events=[], state="S")
-    agent = MyLlamaAgent(workflow)
+    agent = MyLlamaAgent(workflow, structured_history=False)
 
     # WHEN invoking the agent
     _ = [event async for event in agent.invoke(run_agent_input_with_history)]
@@ -826,3 +1081,34 @@ async def test_invoke_does_not_store_memory_when_workflow_fails(
         }
     ]
     assert memory_client.store_calls == []
+
+
+async def test_invoke_passes_structured_chat_history_when_enabled(events: list[Any]) -> None:
+    # GIVEN structured_history=True and a prior tool-call turn
+    wf = ChatHistoryCapturingWorkflow(events=events, state="S")
+    agent = MyLlamaAgent(wf, structured_history=True)
+
+    # WHEN invoking with prior history
+    _ = [e async for e in agent.invoke(_tool_history_run_input())]
+
+    # THEN prior turns are passed natively as ChatMessage chat_history (tool calls preserved)
+    chat_history = wf.captured_chat_history
+    assert chat_history is not None
+    assert [m.role for m in chat_history] == ["user", "assistant", "tool"]
+    tool_calls = chat_history[1].additional_kwargs["tool_calls"]
+    assert tool_calls[0]["function"]["name"] == "get_weather"
+    assert tool_calls[0]["function"]["arguments"] == '{"city": "Paris"}'
+    # The current turn is still the user message.
+    assert wf.captured_user_msg == "and tomorrow?"
+
+
+async def test_invoke_omits_chat_history_when_disabled(events: list[Any]) -> None:
+    # GIVEN structured_history=False and no {chat_history} placeholder
+    wf = ChatHistoryCapturingWorkflow(events=events, state="S")
+    agent = MyLlamaAgent(wf, structured_history=False)
+
+    # WHEN invoking with prior history
+    _ = [e async for e in agent.invoke(_tool_history_run_input())]
+
+    # THEN no structured chat_history is passed (history disabled)
+    assert wf.captured_chat_history is None

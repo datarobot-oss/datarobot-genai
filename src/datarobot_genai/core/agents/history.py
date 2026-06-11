@@ -26,6 +26,8 @@ from typing import TypedDict
 
 from ag_ui.core import RunAgentInput
 
+from datarobot_genai.core.agents.reasoning import wrap_reasoning
+
 
 class _NormalizedHistoryMessageRequired(TypedDict):
     """Required fields for a normalized prior chat message."""
@@ -94,6 +96,51 @@ def _summarize_tool_calls(tool_calls: Any) -> str:
     return "[tool_calls]"
 
 
+def _fold_reasoning_messages(messages: list[Any]) -> list[Any]:
+    """Fold standalone ``reasoning`` messages into the following assistant turn.
+
+    AG-UI ``AssistantMessage`` has no reasoning field, so reasoning arrives as separate
+    ``role="reasoning"`` messages in history.
+    Reasoning precedes its answer, so each reasoning message is merged into the next
+    assistant message's content as ``<reasoning>...</reasoning>`` text; the standalone
+    reasoning message is then dropped. This makes the text summary and the structured
+    converters surface reasoning identically, without per-path handling.
+
+    Consecutive reasoning messages before one assistant are concatenated. Reasoning
+    with no following assistant turn (orphan) is dropped. A no-op when there are no
+    reasoning messages, so non-reasoning history is unchanged.
+    """
+    folded: list[Any] = []
+    pending: list[str] = []
+    for message in messages:
+        role = str(_get_message_field(message, "role") or "")
+        if role == "reasoning":
+            text = _get_message_field(message, "content")
+            if text:
+                pending.append(str(text))
+            continue
+        if pending and role == "assistant":
+            content = _get_message_field(message, "content")
+            folded.append(
+                {
+                    "role": "assistant",
+                    "content": wrap_reasoning(
+                        "\n".join(pending), str(content) if content is not None else ""
+                    ),
+                    "tool_calls": _get_message_field(message, "tool_calls"),
+                    "name": _get_message_field(message, "name"),
+                    "tool_call_id": _get_message_field(message, "tool_call_id"),
+                }
+            )
+            pending = []
+            continue
+        # Non-assistant turn (or assistant with no buffered reasoning): any buffered
+        # reasoning has no answer to attach to, so drop it.
+        pending = []
+        folded.append(message)
+    return folded
+
+
 def extract_history_messages(
     run_agent_input: RunAgentInput,
     max_history: int,
@@ -113,7 +160,9 @@ def extract_history_messages(
     - When ``max_history <= 0``, history is disabled and an empty list is returned.
       This matches the documented semantics where 0 means "no history".
     """
-    raw_messages = list(run_agent_input.messages)
+    # Fold standalone reasoning messages into their following assistant turn before
+    # any truncation, so reasoning travels with its answer and never consumes a slot.
+    raw_messages = _fold_reasoning_messages(list(run_agent_input.messages))
     if not raw_messages or max_history <= 0:
         return []
 
@@ -137,9 +186,6 @@ def extract_history_messages(
         tool_calls = _get_message_field(message, "tool_calls")
 
         text = str(content) if content is not None else ""
-        if not text and tool_calls is not None:
-            # Preserve assistant tool-call messages even when content is empty/None.
-            text = _summarize_tool_calls(tool_calls)
         if not text and str(role or "") == "tool":
             # Tool outputs should generally have content, but if they don't,
             # keep a minimal placeholder so downstream adapters don't silently
@@ -148,7 +194,11 @@ def extract_history_messages(
             if not label and tool_call_id is not None:
                 label = str(tool_call_id)
             text = f"[tool] {label}".strip() if label else "[tool]"
-        if not text:
+        # Keep tool-call-only assistant turns even with empty content: the
+        # structured ``tool_calls`` carry them. ``content`` stays as-is (possibly
+        # "") so structured adapters reconstruct it faithfully; the text renderer
+        # surfaces the calls separately (see build_history_summary_from_messages).
+        if not text and tool_calls is None:
             continue
 
         entry: NormalizedHistoryMessage = {
@@ -192,5 +242,43 @@ def build_history_summary_from_messages(
     if not history:
         return ""
 
-    lines = [f"{msg['role']}: {msg['content']}" for msg in history]
+    lines = []
+    for msg in history:
+        # Render content and tool calls in both cases: a turn may have text, a
+        # tool call, or both. Appending the tool-call summary whenever tool_calls
+        # are present (not only when content is empty) keeps tool steps visible
+        # for assistant turns that also say something.
+        parts = []
+        if msg["content"]:
+            parts.append(msg["content"])
+        if msg.get("tool_calls"):
+            parts.append(_summarize_tool_calls(msg["tool_calls"]))
+        lines.append(f"{msg['role']}: {' '.join(parts)}".rstrip())
     return "\n".join(lines)
+
+
+def drop_unpaired_boundary_tool_turns(
+    history: list[NormalizedHistoryMessage],
+) -> list[NormalizedHistoryMessage]:
+    """Drop tool-call/result turns left unpaired at the history boundaries.
+
+    Two boundary cases, both of which most chat APIs reject; the structured
+    (native-message) path drops them (the plain-text summary flattens and is unaffected,
+    so it does not call this):
+
+    - **Leading** ``tool`` result with no preceding tool call — produced by
+      ``max_history`` truncation, which keeps the most recent N turns (removing from the
+      *front*) and so can slice a tool-call/result pair, leaving the result first.
+    - **Trailing** ``assistant`` message with ``tool_calls`` but no following ``tool``
+      result. This is *not* from truncation (truncation only trims the front): it is the
+      supplied history simply *ending* on a tool-call turn (the current user turn is
+      handled separately, so its result may not be in these messages).
+    """
+    result = list(history)
+    # Leading tool result whose originating tool call was truncated off the front.
+    while result and result[0].get("role") == "tool":
+        result.pop(0)
+    # Trailing assistant tool-call the history ends on, with no following tool result.
+    if result and result[-1].get("role") == "assistant" and result[-1].get("tool_calls"):
+        result.pop()
+    return result

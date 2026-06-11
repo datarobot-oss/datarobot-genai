@@ -21,11 +21,11 @@ import datarobot as dr
 from datarobot.errors import ClientError
 
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
 from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
 
 logger = logging.getLogger(__name__)
 

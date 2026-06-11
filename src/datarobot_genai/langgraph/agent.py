@@ -39,6 +39,7 @@ from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
 from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import BaseMessage
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -54,6 +55,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
@@ -116,6 +118,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         max_history_messages: int | None = None,
         memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
+        structured_history: bool = True,
         checkpointer: Any | None = None,
         interrupt_before: Any | None = None,
         interrupt_after: Any | None = None,
@@ -127,6 +130,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         self.interrupt_after = interrupt_after
         self.debug = debug
         self.name = name
+        self._structured_history = structured_history
         super().__init__(
             api_key=api_key,
             api_base=api_base,
@@ -139,6 +143,17 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             memory_client=memory_client,
             model=model,
         )
+
+    @property
+    def structured_history(self) -> bool:
+        """When true, prior turns are fed to the model as structured native messages
+        (tool calls preserved) instead of the text ``{chat_history}`` summary. Only
+        applies when the prompt template does not declare ``{chat_history}``.
+
+        Defaults to ``True`` so multi-turn history is replayed by default; pass
+        ``structured_history=False`` to opt out.
+        """
+        return self._structured_history
 
     @property
     @abc.abstractmethod
@@ -234,12 +249,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         By default this:
         - Extracts the last user message content via `extract_user_prompt_content`
           and feeds it through `prompt_template` to build the current turn.
-        - Includes prior turns only when the prompt template opts in via a
-          `{chat_history}` variable.
+        - Includes prior turns as a plain-text `{chat_history}` variable when the
+          template declares it, or as structured native messages (tool calls
+          preserved) when `structured_history` is set.
         """
         user_prompt = extract_user_prompt_content(run_agent_input)
 
-        # Chat history is opt-in: the model only sees history when the prompt
+        # Chat history is opt-in: the model only sees a text summary when the prompt
         # template declares/uses the `{chat_history}` variable.
         input_vars = getattr(self.prompt_template, "input_variables", [])
         try:
@@ -279,7 +295,31 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
+        # Structured native history is opt-in via `structured_history`, and only when
+        # the template does not already take a text `{chat_history}`.
+        if self.structured_history and not uses_chat_history:
+            current_messages = self._with_structured_history(current_messages, run_agent_input)
         return {"messages": current_messages}
+
+    def _with_structured_history(
+        self,
+        current_messages: list[BaseMessage],
+        run_agent_input: RunAgentInput,
+    ) -> list[BaseMessage]:
+        """Splice structured prior turns (tool calls preserved) before the current
+        turn's first human message, after any leading system prompt.
+        """
+        history = ag_ui_history_to_langchain(self.history_messages(run_agent_input))
+        if not history:
+            return current_messages
+        # Insert history before the current turn's first human message (so it sits
+        # after any leading system prompt). Don't assume the user turn is last — some
+        # templates emit trailing messages after it.
+        insert_at = next(
+            (i for i, m in enumerate(current_messages) if isinstance(m, HumanMessage)),
+            len(current_messages),
+        )
+        return current_messages[:insert_at] + history + current_messages[insert_at:]
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.

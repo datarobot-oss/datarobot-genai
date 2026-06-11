@@ -17,16 +17,7 @@
 Exposes a small :class:`~datarobot_genai.drtools.files.store.BlobStore` Protocol
 plus a Files-API-backed implementation, so higher-level domains (e.g. panels)
 depend on the storage *seam* rather than a concrete backend.
+
+Import directly from :mod:`datarobot_genai.drtools.files.store`; this package
+intentionally re-exports nothing to avoid a public-API compatibility surface.
 """
-
-from datarobot_genai.drtools.files.store import DEFAULT_LIST_LIMIT
-from datarobot_genai.drtools.files.store import BlobRef
-from datarobot_genai.drtools.files.store import BlobStore
-from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
-
-__all__ = [
-    "BlobRef",
-    "BlobStore",
-    "DataRobotFilesBlobStore",
-    "DEFAULT_LIST_LIMIT",
-]
