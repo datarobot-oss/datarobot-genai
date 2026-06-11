@@ -18,8 +18,8 @@ from typing import NoReturn
 
 from datarobot.errors import ClientError
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 
 def raise_tool_error_for_client_error(exc: ClientError) -> NoReturn:

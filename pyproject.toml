@@ -193,17 +193,28 @@ omit = [
 
 # Custom import restrictions (enforced by scripts/check_imports.py)
 [subpackages.import-restrictions]
-drtools_allowed_subpackages = ["drtools"]
+drtools_allowed_subpackages = ["drtools", "drmcputils"]
 drtools_forbidden = [
     "fastmcp",
     "datarobot_genai.drmcpbase",
 ]
-drmcp_allowed_subpackages = ["drtools", "drmcp", "drmcpbase"]
-drmcpbase_allowed_subpackages = ["drmcpbase"]
+drmcp_allowed_subpackages = ["drtools", "drmcp", "drmcpbase", "drmcputils"]
+drmcpbase_allowed_subpackages = ["drmcpbase", "drmcputils"]
 drmcpbase_forbidden = [
     "datarobot_genai.drtools",
     "datarobot_genai.drmcp",
     "datarobot_genai.core",
+]
+# drmcputils is the shared base: clients + common, fastmcp-free code. It must not
+# depend on any sibling package (tools, servers) or fastmcp. The single allowed
+# exception is the shared agent-core auth primitives under datarobot_genai.core.utils.auth
+# (same exception drtools carries — see check_imports.py).
+drmcputils_allowed_subpackages = ["drmcputils"]
+drmcputils_forbidden = [
+    "fastmcp",
+    "datarobot_genai.drtools",
+    "datarobot_genai.drmcp",
+    "datarobot_genai.drmcpbase",
 ]
 
 [tool.coverage.report]

@@ -32,10 +32,10 @@ from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 
-from datarobot_genai.drtools.core.auth import resolve_datarobot_token
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.auth import resolve_datarobot_token
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

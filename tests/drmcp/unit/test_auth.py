@@ -30,9 +30,9 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.drmcp.core.middleware import create_oauth_middleware
 from datarobot_genai.drmcpbase.middleware import OAuthMiddleWare
 from datarobot_genai.drmcpbase.middleware import read_http_headers
-from datarobot_genai.drtools.core.auth import must_get_auth_context
-from datarobot_genai.drtools.core.auth import set_auth_context
-from datarobot_genai.drtools.core.auth import set_request_headers
+from datarobot_genai.drmcputils.auth import must_get_auth_context
+from datarobot_genai.drmcputils.auth import set_auth_context
+from datarobot_genai.drmcputils.auth import set_request_headers
 
 
 @pytest.fixture

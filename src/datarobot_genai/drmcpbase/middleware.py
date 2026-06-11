@@ -16,7 +16,7 @@
 
 These middleware classes are runtime-specific (FastMCP).
 Callers inject header and auth-context hooks so
-each server can wire its own auth resolution (for example ``drtools.core.auth``).
+each server can wire its own auth resolution (for example ``drmcputils.auth``).
 """
 
 import logging
@@ -57,7 +57,7 @@ class OAuthMiddleWare(Middleware):
     Parameters
     ----------
     inject_headers:
-        Called with request headers (for example ``drtools.core.auth.set_request_headers``).
+        Called with request headers (for example ``drmcputils.auth.set_request_headers``).
     extract_auth_context:
         Parses authorization context from headers; return ``None`` when unavailable.
     set_auth_context:

@@ -18,10 +18,10 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityError
 from datarobot_genai.drtools.core.clients.perplexity import PerplexitySearchResult
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityThinkResult
-from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.perplexity.tools import perplexity_search
 from datarobot_genai.drtools.perplexity.tools import perplexity_sonar
 

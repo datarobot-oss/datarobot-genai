@@ -24,8 +24,8 @@ from fastmcp.exceptions import ToolError as FastMCPToolError
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from pydantic import ValidationError as PydanticValidationError
 
-from datarobot_genai.drtools.core.exceptions import ToolError as DRToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError as DRToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 # Secret patterns to redact from logs
 SECRET_PATTERNS = [

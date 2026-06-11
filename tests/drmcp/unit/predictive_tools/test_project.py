@@ -18,8 +18,8 @@ from unittest.mock import patch
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.predictive import project
 
 

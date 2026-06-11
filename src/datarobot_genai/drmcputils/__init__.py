@@ -12,15 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-DataRobot Tools Library.
+"""drmcputils: DataRobot clients and common, fastmcp-free code.
 
-A reusable library for building tools with DataRobot integration.
-
-Subpackages are loaded on first use to avoid pulling in unused dependencies.
-Import by full path, for example::
-
-    from datarobot_genai.drmcputils.clients.datarobot import DataRobotClient
-    from datarobot_genai.drtools.dr_docs import search_datarobot_agentic_docs
-    from datarobot_genai.drtools.predictive import ...
+Shared base for ``drtools`` (tools) and ``drmcpbase`` (resources/prompts) so both,
+and the MCP servers built on them, reuse one client/auth/error/flag foundation.
 """

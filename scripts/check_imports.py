@@ -27,12 +27,10 @@ import sys
 from pathlib import Path
 import tomllib
 from typing import Any
-from typing import List
-from typing import Tuple
 
 
 def _is_under_module(module_name: str, parent: str) -> bool:
-    """True if module_name is parent or a submodule of parent."""
+    """Return True if module_name is parent or a submodule of parent."""
     return module_name == parent or module_name.startswith(f"{parent}.")
 
 
@@ -50,6 +48,8 @@ def load_config(base_dir: Path) -> dict[str, Any]:
                     "drmcp_allowed_subpackages": config["drmcp_allowed_subpackages"],
                     "drmcpbase_allowed_subpackages": config["drmcpbase_allowed_subpackages"],
                     "drmcpbase_forbidden": config["drmcpbase_forbidden"],
+                    "drmcputils_allowed_subpackages": config["drmcputils_allowed_subpackages"],
+                    "drmcputils_forbidden": config["drmcputils_forbidden"],
                 }
         except Exception as e:
             print(f"Warning: Failed to load pyproject.toml: {e}")
@@ -63,10 +63,11 @@ class ImportChecker(ast.NodeVisitor):
 
     def __init__(self, filepath: Path, config: dict[str, Any]):
         self.filepath = filepath
-        self.errors: List[Tuple[int, str]] = []
+        self.errors: list[tuple[int, str]] = []
         parts = filepath.parts
+        self.is_drmcputils = "drmcputils" in parts
         self.is_drtools = "drtools" in parts
-        self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts
+        self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts and not self.is_drmcputils
         self.is_drmcpbase = "drmcpbase" in parts
         self.config = config
 
@@ -114,7 +115,7 @@ class ImportChecker(ast.NodeVisitor):
         if subpackage in allowed_local:
             return
         if (
-            package_label == "drtools"
+            package_label in ("drtools", "drmcputils")
             and subpackage == "core"
             and module_name.startswith("datarobot_genai.core.utils.auth")
         ):
@@ -129,7 +130,18 @@ class ImportChecker(ast.NodeVisitor):
 
     def _check_import(self, lineno: int, module_name: str) -> None:
         """Check if an import is allowed based on the rules."""
-        if self.is_drtools:
+        if self.is_drmcputils:
+            self._check_forbidden(
+                lineno, module_name, self.config["drmcputils_forbidden"], "drmcputils"
+            )
+            self._check_allowed_local(
+                lineno,
+                module_name,
+                self.config["drmcputils_allowed_subpackages"],
+                "drmcputils",
+            )
+
+        elif self.is_drtools:
             self._check_forbidden(
                 lineno, module_name, self.config["drtools_forbidden"], "drtools"
             )
@@ -160,10 +172,10 @@ class ImportChecker(ast.NodeVisitor):
             )
 
 
-def check_file(filepath: Path, config: dict[str, Any]) -> List[Tuple[int, str]]:
+def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
     """Check a single Python file for import violations."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content, filename=str(filepath))
@@ -175,7 +187,7 @@ def check_file(filepath: Path, config: dict[str, Any]) -> List[Tuple[int, str]]:
 
 
 def main():
-    """Main entry point."""
+    """Run the import checker over the configured subpackages."""
     base_dir = Path(__file__).parent.parent
     src_dir = base_dir / "src" / "datarobot_genai"
 
@@ -183,7 +195,7 @@ def main():
 
     all_errors = []
 
-    for subpackage in ("drtools", "drmcp", "drmcpbase"):
+    for subpackage in ("drmcputils", "drtools", "drmcp", "drmcpbase"):
         package_dir = src_dir / subpackage
         if package_dir.exists():
             for py_file in package_dir.rglob("*.py"):
