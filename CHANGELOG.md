@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.12
+- Fix `ResultsSummarizer.print_summary` crash when a case has `expected_behavior: null` or `id: null`
+
 ## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 
