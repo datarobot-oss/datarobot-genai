@@ -18,6 +18,8 @@ from typing import Any
 from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.constants import ARTIFACT_STATUSES
+from datarobot_genai.drmcputils.constants import ARTIFACT_TYPES
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
@@ -25,10 +27,6 @@ from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiC
 from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
-
-_ARTIFACT_STATUSES = ("draft", "locked")
-_ARTIFACT_TYPES = ("service", "nim")
-
 
 # ------------------------------------------------------------------ #
 # artifact_list                                                        #
@@ -62,14 +60,14 @@ async def artifact_list(
             "Argument validation error: 'offset' must be >= 0.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if status and status.lower() not in _ARTIFACT_STATUSES:
+    if status and status.lower() not in ARTIFACT_STATUSES:
         raise ToolError(
-            f"Argument validation error: 'status' must be one of {_ARTIFACT_STATUSES}.",
+            f"Argument validation error: 'status' must be one of {ARTIFACT_STATUSES}.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if artifact_type and artifact_type.lower() not in _ARTIFACT_TYPES:
+    if artifact_type and artifact_type.lower() not in ARTIFACT_TYPES:
         raise ToolError(
-            f"Argument validation error: 'artifact_type' must be one of {_ARTIFACT_TYPES}.",
+            f"Argument validation error: 'artifact_type' must be one of {ARTIFACT_TYPES}.",
             kind=ToolErrorKind.VALIDATION,
         )
     clamped_limit, note = clamp_limit(limit)
