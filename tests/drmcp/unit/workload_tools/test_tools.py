@@ -1205,6 +1205,14 @@ async def test_artifact_update_no_fields_raises() -> None:
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
+@pytest.mark.asyncio
+async def test_artifact_update_whitespace_name_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_update(artifact_id="art-abc", name="   ")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+    assert "name" in str(exc_info.value).lower()
+
+
 # ------------------------------------------------------------------ #
 # artifact_lock                                                        #
 # ------------------------------------------------------------------ #

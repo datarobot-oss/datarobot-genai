@@ -189,18 +189,24 @@ async def artifact_update(
     ] = None,
 ) -> dict[str, Any]:
     aid = require_id(artifact_id, "artifact_id")
-    if not any([name, description, spec]):
-        raise ToolError(
-            "Argument validation error: at least one of name, description, or spec must be set.",
-            kind=ToolErrorKind.VALIDATION,
-        )
     patch: dict[str, Any] = {}
     if name is not None:
-        patch["name"] = name.strip()
+        stripped_name = name.strip()
+        if not stripped_name:
+            raise ToolError(
+                "Argument validation error: 'name' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+        patch["name"] = stripped_name
     if description is not None:
         patch["description"] = description.strip()
     if spec is not None:
         patch["spec"] = spec
+    if not patch:
+        raise ToolError(
+            "Argument validation error: at least one of name, description, or spec must be set.",
+            kind=ToolErrorKind.VALIDATION,
+        )
     try:
         return WorkloadApiClient().patch_artifact(aid, patch)
     except ClientError as exc:
