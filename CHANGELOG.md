@@ -4,12 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.14
+- `drtools/workload`: PR6 — artifact builds and repositories.
+  - **Client** (`WorkloadApiClient`): added `list_artifact_builds`, `trigger_artifact_build`,
+    `get_artifact_build`, `get_artifact_build_logs` (text/plain response), `delete_artifact_build`
+    targeting `GET/POST /artifacts/{id}/builds` and `GET/DELETE /artifacts/{id}/builds/{build_id}`;
+    added `list_artifact_repositories`, `get_artifact_repository`, `delete_artifact_repository`
+    targeting `GET /artifactRepositories` and `GET/DELETE /artifactRepositories/{id}`.
+  - **Tools** (`drtools/workload/build_tools.py`): `artifact_build_list`, `artifact_build_trigger`,
+    `artifact_build_get`, `artifact_build_logs`, `artifact_build_delete`.
+  - **Tools** (`drtools/workload/repository_tools.py`): `artifact_repository_list` (filterable by
+    search/type), `artifact_repository_get`, `artifact_repository_delete`.
+  - **Tests**: 23 new unit tests; total workload-tool suite reaches 98 passing tests.
+
 ## 0.16.13
 - `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
 
 ## 0.16.12
 - A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
--
+
 ## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 

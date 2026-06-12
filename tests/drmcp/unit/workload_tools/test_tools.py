@@ -23,10 +23,12 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drtools.workload import build_tools
 from datarobot_genai.drtools.workload import lifecycle_tools
 from datarobot_genai.drtools.workload import observability_tools
 from datarobot_genai.drtools.workload import proton_tools
 from datarobot_genai.drtools.workload import read_tools
+from datarobot_genai.drtools.workload import repository_tools
 
 # ------------------------------------------------------------------ #
 # Shared fixtures                                                       #
@@ -1012,4 +1014,274 @@ async def test_workload_logs_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("500", status_code=500, json={})
     with pytest.raises(ToolError) as exc_info:
         await proton_tools.workload_logs(workload_id="wkld-abc")
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+# ================================================================== #
+# PR6 — artifact builds + repositories                                 #
+# ================================================================== #
+
+# ------------------------------------------------------------------ #
+# artifact_build_list                                                  #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_list_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "data": [
+                {"id": "bld-1", "status": "success"},
+                {"id": "bld-2", "status": "running"},
+            ],
+            "count": 2,
+            "totalCount": 2,
+        }
+    )
+
+    result = await build_tools.artifact_build_list(artifact_id="art-abc")
+
+    patched_dr_client.get.assert_called_once_with(
+        "artifacts/art-abc/builds", params={"limit": 100, "offset": 0}
+    )
+    assert result["count"] == 2
+    assert result["builds"][0]["id"] == "bld-1"
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_list_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_list(artifact_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_list_negative_offset_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_list(artifact_id="art-abc", offset=-1)
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_list_not_found(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_list(artifact_id="art-missing")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# artifact_build_trigger                                               #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_trigger_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(json=lambda: {"buildIds": ["bld-new"]})
+
+    result = await build_tools.artifact_build_trigger(artifact_id="art-abc")
+
+    patched_dr_client.post.assert_called_once_with("artifacts/art-abc/builds")
+    assert result["buildIds"] == ["bld-new"]
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_trigger_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_trigger(artifact_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_trigger_locked_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.side_effect = ClientError("422", status_code=422, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_trigger(artifact_id="art-locked")
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+# ------------------------------------------------------------------ #
+# artifact_build_get                                                   #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_get_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "bld-xyz", "status": "success"}
+    )
+
+    result = await build_tools.artifact_build_get(artifact_id="art-abc", build_id="bld-xyz")
+
+    patched_dr_client.get.assert_called_once_with("artifacts/art-abc/builds/bld-xyz")
+    assert result["id"] == "bld-xyz"
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_get_empty_build_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_get(artifact_id="art-abc", build_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# artifact_build_logs                                                  #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_logs_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(text="Step 1/3: FROM python:3.11\n")
+
+    result = await build_tools.artifact_build_logs(artifact_id="art-abc", build_id="bld-xyz")
+
+    patched_dr_client.get.assert_called_once_with("artifacts/art-abc/builds/bld-xyz/logs")
+    assert result == {
+        "artifact_id": "art-abc",
+        "build_id": "bld-xyz",
+        "logs": "Step 1/3: FROM python:3.11\n",
+    }
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_logs_not_found(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_logs(artifact_id="art-abc", build_id="bld-xyz")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# artifact_build_delete                                                #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_delete_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.delete.return_value = MagicMock()
+
+    result = await build_tools.artifact_build_delete(artifact_id="art-abc", build_id="bld-xyz")
+
+    patched_dr_client.delete.assert_called_once_with("artifacts/art-abc/builds/bld-xyz")
+    assert result == {"deleted": True, "artifact_id": "art-abc", "build_id": "bld-xyz"}
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_delete_empty_ids_raise() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await build_tools.artifact_build_delete(artifact_id="", build_id="bld-xyz")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# artifact_repository_list                                             #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_list_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "data": [{"id": "repo-1", "name": "my-registry"}],
+            "count": 1,
+            "totalCount": 1,
+        }
+    )
+
+    result = await repository_tools.artifact_repository_list()
+
+    patched_dr_client.get.assert_called_once_with(
+        "artifactRepositories", params={"limit": 100, "offset": 0}
+    )
+    assert result["count"] == 1
+    assert result["repositories"][0]["id"] == "repo-1"
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_list_with_filters(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"data": [], "count": 0, "totalCount": 0}
+    )
+
+    await repository_tools.artifact_repository_list(search="ecr", artifact_type="nim")
+
+    patched_dr_client.get.assert_called_once_with(
+        "artifactRepositories",
+        params={"limit": 100, "offset": 0, "search": "ecr", "type": "nim"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_list_invalid_type_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_list(artifact_type="docker")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_list_negative_offset_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_list(offset=-1)
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# artifact_repository_get                                              #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_get_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "repo-abc", "name": "my-registry"}
+    )
+
+    result = await repository_tools.artifact_repository_get(repository_id="repo-abc")
+
+    patched_dr_client.get.assert_called_once_with("artifactRepositories/repo-abc")
+    assert result["id"] == "repo-abc"
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_get_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_get(repository_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_get_not_found(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_get(repository_id="repo-missing")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# artifact_repository_delete                                           #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_delete_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.delete.return_value = MagicMock()
+
+    result = await repository_tools.artifact_repository_delete(repository_id="repo-abc")
+
+    patched_dr_client.delete.assert_called_once_with("artifactRepositories/repo-abc")
+    assert result == {"deleted": True, "repository_id": "repo-abc"}
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_delete_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_delete(repository_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_repository_delete_conflict(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.delete.side_effect = ClientError("409 Conflict", status_code=409, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await repository_tools.artifact_repository_delete(repository_id="repo-in-use")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
