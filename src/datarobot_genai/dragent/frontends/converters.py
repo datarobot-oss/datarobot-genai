@@ -229,6 +229,10 @@ def _backfill_chunk_model(chunk: ChatResponseChunk) -> ChatResponseChunk:
     moderation's ``MODERATION_MODEL_NAME`` or a real model a native agent propagated —
     is preserved.
     """
+    # Fast path: a real model is already set (every streamed token reaches here, so
+    # avoid the per-chunk default_response_model() -> Config() env read).
+    if chunk.model not in (None, "unknown-model"):
+        return chunk
     model = backfill_model(chunk.model, default_response_model())
     if model == chunk.model:
         return chunk

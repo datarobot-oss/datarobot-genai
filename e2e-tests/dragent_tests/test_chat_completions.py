@@ -63,6 +63,8 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         assert len(full_response) > 0, "Expected non-empty assistant message content"
         # content chunks report the agent's configured LLM, not NAT's "unknown-model"
         # (the request's model is ignored; the agent runs its workflow-configured LLM).
+        # Intent-level guard (independent of the resolver) plus the exact configured value.
+        assert "unknown-model" not in content_chunk_models, content_chunk_models
         assert content_chunk_models == {default_response_model()}, (
             f"streaming chunks must report the configured model, saw {content_chunk_models}"
         )
@@ -73,4 +75,5 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         assert content is not None
         assert len(content) > 0, "Expected non-empty assistant message content"
         # the configured LLM is reported (not NAT's "unknown-model", not the request's model).
+        assert response.model != "unknown-model", response.model
         assert response.model == default_response_model()

@@ -131,5 +131,5 @@ GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_chat_response_chunk)
 # Overrides NAT's built-in str -> ChatResponse so the non-streaming /chat/completions
-# response echoes the requested model instead of NAT's "unknown-model" default.
+# response reports the agent's configured model instead of NAT's "unknown-model" default.
 GlobalTypeConverter.register_converter(convert_str_to_chat_response)
