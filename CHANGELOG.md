@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.14
+- `crewai`: fixed a file-descriptor leak that made long-running `nat dragent serve` processes fail with `[Errno 24] Too many open files`. crewai's sqlite-backed storages (kickoff task outputs, flow persistence) never close their connections; importing `datarobot_genai.crewai` now patches those modules so each connection is closed deterministically after commit/rollback.
+
 ## 0.16.13
 - `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
 
