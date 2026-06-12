@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.14
+- `nat/datarobot_moderation_middleware`: streaming moderation now attaches prescore guard metrics to `TEXT_MESSAGE_START` chunks (matching DRUM/dome first-chunk semantics) and keeps postscore metrics on moderated `TEXT_MESSAGE_CONTENT` chunks.
+
 ## 0.16.13
 - `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
 
