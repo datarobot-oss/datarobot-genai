@@ -18,6 +18,8 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import FastAPI
 from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
@@ -47,6 +49,9 @@ logger = logging.getLogger(__name__)
 
 _AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
 _GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
+_INVALID_AUTH_CONTEXT_MSG = (
+    "X-DataRobot-Authorization-Context header is present but invalid or expired"
+)
 
 
 def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
@@ -59,8 +64,9 @@ def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None
        :data:`_auth_handler` and hashed through
        ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
        key as the AG-UI path.  When this header is present but validation
-       fails, raises ``ValueError`` (no fall-through to other headers or
-       ``context_id``).
+       fails, raises :class:`~a2a.utils.errors.ServerError` with
+       :class:`~a2a.types.InvalidParamsError` (no fall-through to other headers
+       or ``context_id``).
     2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
        gateway, tied to the API-key owner.  Used only when the auth-context
        header is absent.  Same ``_from_session_cookie`` transform is applied
@@ -74,11 +80,13 @@ def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None
         return None
 
     if _AUTH_CONTEXT_HEADER in headers:
-        auth_ctx = _auth_handler.get_context(headers)
+        try:
+            auth_ctx = _auth_handler.get_context(headers)
+        except Exception:
+            logger.warning("Failed to decode auth-context header", exc_info=True)
+            auth_ctx = None
         if auth_ctx is None:
-            raise ValueError(
-                "X-DataRobot-Authorization-Context header is present but invalid or expired"
-            )
+            raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
         return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
 
     raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
@@ -132,23 +140,23 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
                 normalised_headers = {k.lower(): v for k, v in raw_headers.items()}
                 token_headers = _a2a_headers.set(normalised_headers)
 
-        # Derive the per-user workflow key from the gateway-validated identity.
-        # Falls back to context_id when no authenticated identity is present
-        # (local dev without the DataRobot gateway).
-        workflow_key = _resolve_identity_from_headers(normalised_headers)
-        if workflow_key is None and context.context_id:
-            workflow_key = context.context_id
-            logger.warning(
-                "No authenticated identity in A2A headers; falling back to context_id "
-                "for per-user workflow key. This is expected in local dev but should not "
-                "occur in production behind the DataRobot gateway."
-            )
-
+        # Identity resolution must happen *before* super().execute() so that a
+        # ServerError(InvalidParamsError) propagates directly.  The parent's
+        # execute() has a catch-all that re-wraps exceptions as InternalError.
         token = None
-        if workflow_key:
-            token = self.session_manager._context_state.user_id.set(workflow_key)
-
         try:
+            workflow_key = _resolve_identity_from_headers(normalised_headers)
+            if workflow_key is None and context.context_id:
+                workflow_key = UserInfo._from_session_cookie(context.context_id).get_user_id()
+                logger.warning(
+                    "No authenticated identity in A2A headers; falling back to context_id "
+                    "for per-user workflow key. This is expected in local dev but should not "
+                    "occur in production behind the DataRobot gateway."
+                )
+
+            if workflow_key:
+                token = self.session_manager._context_state.user_id.set(workflow_key)
+
             await super().execute(context, event_queue)
         finally:
             if token is not None:

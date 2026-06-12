@@ -20,6 +20,8 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import AgentSkill
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
@@ -341,18 +343,33 @@ class TestResolveIdentityFromHeaders:
         assert result == _expected_key("dr-uid-abc")
 
     def test_raises_for_invalid_jwt(self):
-        with pytest.raises(ValueError, match="invalid or expired"):
+        with pytest.raises(ServerError) as exc_info:
             _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+        assert "invalid or expired" in exc_info.value.error.message
+
+    def test_raises_when_auth_handler_throws(self):
+        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
+        with (
+            patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
+            pytest.raises(ServerError) as exc_info,
+        ):
+            _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
 
     def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
         """A present but invalid auth-context JWT must not fall back to gateway user ID."""
-        with pytest.raises(ValueError, match="invalid or expired"):
+        with pytest.raises(ServerError) as exc_info:
             _resolve_identity_from_headers(
                 {
                     "x-datarobot-authorization-context": "garbage",
                     "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
                 }
             )
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
 
     def test_falls_back_to_gateway_user_id_header(self):
         result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
@@ -457,12 +474,16 @@ class TestPerUserCompatibleAgentExecutor:
     async def test_execute_falls_back_to_context_id_when_no_auth_headers(
         self, executor, session_manager, patch_super_execute
     ):
-        """Without authenticated headers (local dev), context_id is used as fallback."""
+        """Without authenticated headers (local dev), context_id is hashed via
+        _from_session_cookie for key-format consistency with authenticated paths.
+        """
         context = self._make_a2a_context(context_id="local-dev-ctx-id")
 
         await executor.execute(context, MagicMock())
 
-        session_manager._context_state.user_id.set.assert_called_once_with("local-dev-ctx-id")
+        session_manager._context_state.user_id.set.assert_called_once_with(
+            _expected_key("local-dev-ctx-id")
+        )
 
     async def test_execute_skips_user_id_injection_when_no_context_id_and_no_auth(
         self, executor, session_manager, patch_super_execute
@@ -536,12 +557,37 @@ class TestPerUserCompatibleAgentExecutor:
         )
         with (
             patch(_AUTH_HANDLER_PATH, return_value=None),
-            pytest.raises(ValueError, match="invalid or expired"),
+            pytest.raises(ServerError) as exc_info,
         ):
             await executor.execute(context, MagicMock())
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
 
         session_manager._context_state.user_id.set.assert_not_called()
         patch_super_execute.assert_not_awaited()
+
+    async def test_execute_resets_a2a_headers_on_identity_error(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """ContextVar for _a2a_headers must be cleaned up even when identity
+        resolution raises ServerError (no ContextVar leak).
+        """
+        from datarobot_genai.dragent.frontends.session import _a2a_headers
+
+        context = self._make_a2a_context(
+            context_id="ctx",
+            headers={"X-DataRobot-Authorization-Context": "garbage"},
+        )
+        sentinel = object()
+        original = _a2a_headers.get(sentinel)
+
+        with (
+            patch(_AUTH_HANDLER_PATH, return_value=None),
+            pytest.raises(ServerError),
+        ):
+            await executor.execute(context, MagicMock())
+
+        assert _a2a_headers.get(sentinel) is original
 
     async def test_execute_logs_warning_on_unauthenticated_fallback(
         self, executor, session_manager, patch_super_execute
