@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.16
+- `drtools/workload`: artifact builds and repositories.
+  - **Client** (`WorkloadApiClient`): added `list_artifact_builds`, `trigger_artifact_build`,
+    `get_artifact_build`, `get_artifact_build_logs` (text/plain response), `delete_artifact_build`
+    targeting `GET/POST /artifacts/{id}/builds` and `GET/DELETE /artifacts/{id}/builds/{build_id}`;
+    added `list_artifact_repositories`, `get_artifact_repository`, `delete_artifact_repository`
+    targeting `GET /artifactRepositories` and `GET/DELETE /artifactRepositories/{id}`.
+  - **Build Tools** (`drtools/workload/build_tools.py`): `artifact_build_list`, `artifact_build_trigger`,
+    `artifact_build_get`, `artifact_build_logs`, `artifact_build_delete`.
+  - **Repo Tools** (`drtools/workload/repository_tools.py`): `artifact_repository_list` (filterable by
+    search/type), `artifact_repository_get`, `artifact_repository_delete`.
+
 ## 0.16.15
 - `drtools/workload`: artifact core management.
   - **Client** (`WorkloadApiClient`): added `list_artifacts`, `get_artifact`, `create_artifact`,
@@ -23,7 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.12
 - A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
--
+
 ## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 

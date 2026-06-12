@@ -336,3 +336,70 @@ class WorkloadApiClient:
         """POST /artifacts/{id}/clone — duplicate with a new name."""
         with request_user_dr_client() as client:
             return client.post(f"artifacts/{artifact_id}/clone", json={"name": name}).json()
+
+    # ------------------------------------------------------------------ #
+    # Artifact builds                                                      #
+    # ------------------------------------------------------------------ #
+
+    def list_artifact_builds(
+        self,
+        artifact_id: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """GET /artifacts/{id}/builds."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        with request_user_dr_client() as client:
+            return client.get(f"artifacts/{artifact_id}/builds", params=params).json()
+
+    def trigger_artifact_build(self, artifact_id: str) -> dict[str, Any]:
+        """POST /artifacts/{id}/builds — start image build(s) for a draft service artifact."""
+        with request_user_dr_client() as client:
+            return client.post(f"artifacts/{artifact_id}/builds").json()
+
+    def get_artifact_build(self, artifact_id: str, build_id: str) -> dict[str, Any]:
+        """GET /artifacts/{id}/builds/{build_id}."""
+        with request_user_dr_client() as client:
+            return client.get(f"artifacts/{artifact_id}/builds/{build_id}").json()
+
+    def get_artifact_build_logs(self, artifact_id: str, build_id: str) -> str:
+        """GET /artifacts/{id}/builds/{build_id}/logs — returns raw log text."""
+        with request_user_dr_client() as client:
+            return client.get(f"artifacts/{artifact_id}/builds/{build_id}/logs").text
+
+    def delete_artifact_build(self, artifact_id: str, build_id: str) -> None:
+        """DELETE /artifacts/{id}/builds/{build_id} — cancel or delete a build (204)."""
+        with request_user_dr_client() as client:
+            client.delete(f"artifacts/{artifact_id}/builds/{build_id}")
+
+    # ------------------------------------------------------------------ #
+    # Artifact repositories                                                #
+    # ------------------------------------------------------------------ #
+
+    def list_artifact_repositories(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        search: str | None = None,
+        artifact_type: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /artifactRepositories."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if search:
+            params["search"] = search
+        if artifact_type:
+            params["type"] = artifact_type
+        with request_user_dr_client() as client:
+            return client.get("artifactRepositories", params=params).json()
+
+    def get_artifact_repository(self, repository_id: str) -> dict[str, Any]:
+        """GET /artifactRepositories/{id}."""
+        with request_user_dr_client() as client:
+            return client.get(f"artifactRepositories/{repository_id}").json()
+
+    def delete_artifact_repository(self, repository_id: str) -> None:
+        """DELETE /artifactRepositories/{id} — 204 No Content on success."""
+        with request_user_dr_client() as client:
+            client.delete(f"artifactRepositories/{repository_id}")
