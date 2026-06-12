@@ -12,3 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""drmcputils: DataRobot clients and common, fastmcp-free code.
+
+Shared base for ``drtools`` (tools) and ``drmcpbase`` (resources/prompts) so both,
+and the MCP servers built on them, reuse one client/auth/error/flag foundation.
+"""

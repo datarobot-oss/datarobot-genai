@@ -31,7 +31,7 @@ from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
 from .config import get_config

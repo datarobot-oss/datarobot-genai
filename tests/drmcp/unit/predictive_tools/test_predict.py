@@ -19,8 +19,8 @@ from unittest.mock import patch
 import datarobot as dr
 import pytest
 
-from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.predictive import predict
 
 DOWNLOAD_URL = "https://app.example/api/v2/batchPredictions/jobid/download/"

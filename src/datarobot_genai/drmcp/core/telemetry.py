@@ -56,7 +56,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .config import get_config
 

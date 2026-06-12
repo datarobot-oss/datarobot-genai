@@ -17,23 +17,14 @@ from typing import Any
 
 from datarobot.errors import ClientError
 
+from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
-from datarobot_genai.drtools.predictive.client_exceptions import raise_tool_error_for_client_error
-
-
-def _require_workload_id(workload_id: str) -> str:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    return workload_id.strip()
-
 
 # ------------------------------------------------------------------ #
 # Settings                                                             #
@@ -53,7 +44,7 @@ async def workload_settings_get(
     *,
     workload_id: Annotated[str, "Id of the workload."],
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     try:
         return WorkloadApiClient().get_workload_settings(wid)
     except ClientError as exc:
@@ -82,7 +73,7 @@ async def workload_settings_update(
         "Each group may have name, replicaCount, resourceBundles.",
     ],
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     if not runtime or not isinstance(runtime, dict):
         raise ToolError(
             "Argument validation error: 'runtime' must be a non-empty object.",
@@ -131,7 +122,7 @@ async def workload_stats(
         int, "Threshold in ms above which a request is 'slow'. Default 2000."
     ] = 2000,
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     if not (0.0 <= response_time_quantile <= 1.0):
         raise ToolError(
             "Argument validation error: 'response_time_quantile' must be between 0 and 1.",
@@ -174,7 +165,7 @@ async def workload_history(
     limit: Annotated[int, "Max records to return (1–100). Default 20."] = 20,
     offset: Annotated[int, "Records to skip for pagination. Default 0."] = 0,
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
@@ -216,7 +207,7 @@ async def workload_events(
     limit: Annotated[int, "Max events to return (1–100). Default 20."] = 20,
     offset: Annotated[int, "Events to skip for pagination. Default 0."] = 0,
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
@@ -257,7 +248,7 @@ async def workload_promote(
     *,
     workload_id: Annotated[str, "Id of the workload whose artifact to promote."],
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     try:
         return WorkloadApiClient().promote_workload_artifact(wid)
     except ClientError as exc:
@@ -281,7 +272,7 @@ async def workload_related(
     *,
     workload_id: Annotated[str, "Id of the workload."],
 ) -> dict[str, Any]:
-    wid = _require_workload_id(workload_id)
+    wid = require_id(workload_id, "workload_id")
     try:
         return WorkloadApiClient().get_workload_related(wid)
     except ClientError as exc:

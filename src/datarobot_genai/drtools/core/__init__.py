@@ -17,4 +17,7 @@
 from .tool_metadata import get_registered_tools
 from .tool_metadata import tool_metadata
 
-__all__ = ["tool_metadata", "get_registered_tools"]
+__all__ = [
+    "tool_metadata",
+    "get_registered_tools",
+]

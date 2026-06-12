@@ -4,11 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.16.5
+## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 
+## 0.16.10
+- `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).
+- `drtools/predictive`: fixed `catalog_query_datastore` to use the supported `previewQuery` API route.
+
+## 0.16.9
+- `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
+  - Fix import sorting (ruff I001) in drtools modules left behind by the 0.16.8 merge.
+
+## 0.16.8
+- `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
+
+## 0.16.7
+- `drmcputils`: moved the shared, fastmcp-free base (DataRobot client, auth, credentials, errors, feature flags) here from `drtools.core`, so both the tools and MCP-server layers depend on one foundation.
+
+## 0.16.6
+- Updated CODEOWNERS to include common files like .gitignore
+
+## 0.16.5
+- `drtools/workload`: Proton inspection and OTel log tools.
+  - **New tools** (`proton_tools.py`): `proton_list` (paginated list of proton instances for a workload), `proton_get` (single proton by id), `proton_status_details` (per-replica pod status — CrashLoopBackOff, OOMKilled, container readiness; returns `{status: pending}` when no update received yet), `workload_logs` (OTel log lines with level, time-window, includes/excludes, span/trace-id filters).
+  - **Client additions** (`WorkloadApiClient`): `list_protons`, `get_proton`, `get_proton_status_details` (204 → `None`), `list_workload_logs` (GET `/otel/workload/{id}/logs/`).
+
 ## 0.16.4
-- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code 
+- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code
 
 ## 0.16.3
 - Migrate benchmark helper classes to genai[eval] package

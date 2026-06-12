@@ -24,7 +24,7 @@ import pytest
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.predictive.deployment_info import deployment_generate_prediction_sample
 from datarobot_genai.drtools.predictive.deployment_info import deployment_get_features
 from datarobot_genai.drtools.predictive.deployment_info import deployment_get_info
