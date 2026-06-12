@@ -23,6 +23,7 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drtools.workload import artifact_tools
 from datarobot_genai.drtools.workload import lifecycle_tools
 from datarobot_genai.drtools.workload import observability_tools
 from datarobot_genai.drtools.workload import proton_tools
@@ -1012,4 +1013,289 @@ async def test_workload_logs_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("500", status_code=500, json={})
     with pytest.raises(ToolError) as exc_info:
         await proton_tools.workload_logs(workload_id="wkld-abc")
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+# ================================================================== #
+# PR5 — artifacts core                                                 #
+# ================================================================== #
+
+# ------------------------------------------------------------------ #
+# artifact_list                                                        #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_list_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "data": [
+                {"id": "art-1", "name": "my-service", "status": "draft"},
+                {"id": "art-2", "name": "my-nim", "status": "locked"},
+            ],
+            "count": 2,
+            "totalCount": 2,
+        }
+    )
+
+    result = await artifact_tools.artifact_list()
+
+    patched_dr_client.get.assert_called_once_with(
+        "artifacts/",
+        params={"limit": 100, "offset": 0},
+    )
+    assert result["count"] == 2
+    assert result["artifacts"][0]["id"] == "art-1"
+
+
+@pytest.mark.asyncio
+async def test_artifact_list_with_filters(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"data": [], "count": 0, "totalCount": 0}
+    )
+
+    await artifact_tools.artifact_list(
+        search="my-svc", status="draft", artifact_type="service", repository_id="repo-1"
+    )
+
+    patched_dr_client.get.assert_called_once_with(
+        "artifacts/",
+        params={
+            "limit": 100,
+            "offset": 0,
+            "search": "my-svc",
+            "status": "draft",
+            "type": "service",
+            "repositoryId": "repo-1",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_artifact_list_invalid_status_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_list(status="pending")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_list_invalid_type_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_list(artifact_type="docker")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_list_negative_offset_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_list(offset=-1)
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# artifact_get                                                         #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_get_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "art-abc", "name": "my-service", "status": "draft"}
+    )
+
+    result = await artifact_tools.artifact_get(artifact_id="art-abc")
+
+    patched_dr_client.get.assert_called_once_with("artifacts/art-abc")
+    assert result["id"] == "art-abc"
+
+
+@pytest.mark.asyncio
+async def test_artifact_get_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_get(artifact_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_get_not_found(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_get(artifact_id="art-missing")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# artifact_create                                                      #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_create_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(
+        json=lambda: {"id": "art-new", "name": "my-svc", "status": "draft"}
+    )
+    payload = {
+        "name": "my-svc",
+        "spec": {
+            "type": "service",
+            "containerGroups": [{"containers": [{"name": "main", "imageUri": "nginx:latest"}]}],
+        },
+    }
+
+    result = await artifact_tools.artifact_create(payload=payload)
+
+    patched_dr_client.post.assert_called_once_with("artifacts/", json=payload)
+    assert result["id"] == "art-new"
+
+
+@pytest.mark.asyncio
+async def test_artifact_create_missing_name_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_create(payload={"spec": {"type": "service"}})
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_create_missing_spec_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_create(payload={"name": "my-svc"})
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_create_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.side_effect = ClientError("422", status_code=422, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_create(payload={"name": "x", "spec": {"type": "service"}})
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+# ------------------------------------------------------------------ #
+# artifact_update                                                      #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_update_name(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.patch.return_value = MagicMock(
+        json=lambda: {"id": "art-abc", "name": "new-name"}
+    )
+
+    result = await artifact_tools.artifact_update(artifact_id="art-abc", name="new-name")
+
+    patched_dr_client.patch.assert_called_once_with("artifacts/art-abc", json={"name": "new-name"})
+    assert result["name"] == "new-name"
+
+
+@pytest.mark.asyncio
+async def test_artifact_update_multiple_fields(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.patch.return_value = MagicMock(json=lambda: {"id": "art-abc"})
+
+    await artifact_tools.artifact_update(artifact_id="art-abc", name="x", description="desc")
+
+    patched_dr_client.patch.assert_called_once_with(
+        "artifacts/art-abc", json={"name": "x", "description": "desc"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_artifact_update_no_fields_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_update(artifact_id="art-abc")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_update_whitespace_name_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_update(artifact_id="art-abc", name="   ")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+    assert "name" in str(exc_info.value).lower()
+
+
+# ------------------------------------------------------------------ #
+# artifact_lock                                                        #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_lock_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.patch.return_value = MagicMock(
+        json=lambda: {"id": "art-abc", "status": "locked"}
+    )
+
+    result = await artifact_tools.artifact_lock(artifact_id="art-abc")
+
+    patched_dr_client.patch.assert_called_once_with("artifacts/art-abc", json={"status": "locked"})
+    assert result["status"] == "locked"
+
+
+@pytest.mark.asyncio
+async def test_artifact_lock_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_lock(artifact_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# artifact_clone                                                       #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_clone_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(
+        json=lambda: {"id": "art-new", "name": "my-service-v2", "status": "draft"}
+    )
+
+    result = await artifact_tools.artifact_clone(artifact_id="art-abc", name="my-service-v2")
+
+    patched_dr_client.post.assert_called_once_with(
+        "artifacts/art-abc/clone", json={"name": "my-service-v2"}
+    )
+    assert result["name"] == "my-service-v2"
+
+
+@pytest.mark.asyncio
+async def test_artifact_clone_empty_name_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_clone(artifact_id="art-abc", name="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_clone_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_clone(artifact_id="art-missing", name="clone")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# artifact_delete                                                      #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_artifact_delete_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.delete.return_value = MagicMock()
+
+    result = await artifact_tools.artifact_delete(artifact_id="art-abc")
+
+    patched_dr_client.delete.assert_called_once_with("artifacts/art-abc")
+    assert result == {"deleted": True, "artifact_id": "art-abc"}
+
+
+@pytest.mark.asyncio
+async def test_artifact_delete_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_delete(artifact_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_artifact_delete_locked_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.delete.side_effect = ClientError("409 Conflict", status_code=409, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await artifact_tools.artifact_delete(artifact_id="art-locked")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
