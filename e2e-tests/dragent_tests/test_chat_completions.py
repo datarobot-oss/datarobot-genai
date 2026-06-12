@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import pytest
+from datarobot_genai.core.config import default_response_model
 from openai import OpenAI
 
 from dragent_tests.helpers import AGENT
@@ -60,9 +61,10 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
                 full_response += content
 
         assert len(full_response) > 0, "Expected non-empty assistant message content"
-        # content chunks echo the requested model, not NAT's "unknown-model".
-        assert content_chunk_models == {"datarobot-e2e"}, (
-            f"streaming chunks must echo the requested model, saw {content_chunk_models}"
+        # content chunks report the agent's configured LLM, not NAT's "unknown-model"
+        # (the request's model is ignored; the agent runs its workflow-configured LLM).
+        assert content_chunk_models == {default_response_model()}, (
+            f"streaming chunks must report the configured model, saw {content_chunk_models}"
         )
     else:
         # THEN: the response follows the Chat Completions shape with non-empty assistant text
@@ -70,5 +72,5 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         content = response.choices[0].message.content
         assert content is not None
         assert len(content) > 0, "Expected non-empty assistant message content"
-        # the requested model is echoed back (parity with the DRUM baseline).
-        assert response.model == "datarobot-e2e"
+        # the configured LLM is reported (not NAT's "unknown-model", not the request's model).
+        assert response.model == default_response_model()

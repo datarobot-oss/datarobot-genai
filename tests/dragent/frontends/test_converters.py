@@ -13,8 +13,7 @@
 # limitations under the License.
 
 import datetime
-from collections.abc import Iterator
-from contextlib import contextmanager
+from unittest.mock import patch
 
 from ag_ui.core import RunAgentInput
 from ag_ui.core import StepStartedEvent
@@ -27,7 +26,6 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from langchain_core.messages import ToolMessage as LangchainToolMessage
-from nat.builder.context import ContextState
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
@@ -484,19 +482,22 @@ def test_convert_dragent_event_response_to_chat_response_chunk_empty_events() ->
 
 
 def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_chunk() -> None:
-    # GIVEN a response that already carries a NAT ChatResponseChunk
+    # GIVEN a response that already carries a NAT ChatResponseChunk with a real model
     existing = _make_chat_response_chunk(content="from-stream")
+    existing.model = "datarobot/real-model"  # non-placeholder -> backfill is a no-op
     response = DRAgentEventResponse(
         original_chunk=existing,
         events=[TextMessageContentEvent(message_id="m1", delta="ignored when chunk set")],
     )
 
     # WHEN converting
-    result = convert_dragent_event_response_to_chat_response_chunk(response)
+    with patch(_CONVERTERS, return_value=_CONFIGURED):
+        result = convert_dragent_event_response_to_chat_response_chunk(response)
 
-    # THEN the existing chunk is returned unchanged (events are not merged)
+    # THEN the existing chunk is used as-is (events are not merged; real model preserved)
     assert result is existing
     assert result.choices[0].delta.content == "from-stream"
+    assert result.model == "datarobot/real-model"
 
 
 def test_convert_dragent_event_response_to_chat_response_chunk_attaches_datarobot_moderations() -> (
@@ -707,71 +708,70 @@ def test_openai_chunk_from_nat_matches_dragent_event_path_for_text() -> None:
     assert direct.choices[0].delta.content == via_nat.choices[0].delta.content == "same"
 
 
-# --- model backfill: echo the requested model into responses ---
+# --- model backfill: report the configured LLM model in responses ---
+
+# dragent ignores the request's model (the agent runs its workflow-configured LLM),
+# so responses report that configured model — never the request, never "unknown-model".
+_CONFIGURED = "datarobot/anthropic/claude-sonnet-4-20250514"
+_CONVERTERS = "datarobot_genai.dragent.frontends.converters.default_response_model"
 
 
-@contextmanager
-def _request_model_on_context(model: str) -> Iterator[None]:
-    """Set NAT's run-context input_message to a ChatRequest carrying ``model``.
-
-    Mirrors how the frontserver runs a workflow: the inbound ChatRequest is set on
-    the context for the duration of the run, so converters can read the requested
-    model via ``Context.get().input_message``.
-    """
-    token = ContextState.get().input_message.set(
-        ChatRequest(messages=[Message(role="user", content="hi")], model=model)
-    )
-    try:
-        yield
-    finally:
-        ContextState.get().input_message.reset(token)
-
-
-def test_convert_str_to_chat_response_echoes_requested_model_from_context() -> None:
-    # GIVEN the inbound request asked for a specific model
-    with _request_model_on_context("datarobot-e2e"):
-        # WHEN the workflow's plain-string output is converted to a ChatResponse
+def test_convert_str_to_chat_response_reports_configured_model() -> None:
+    # WHEN the workflow's plain-string output is converted to a ChatResponse
+    with patch(_CONVERTERS, return_value=_CONFIGURED):
         result = convert_str_to_chat_response("hello world")
 
-    # THEN the requested model is echoed back (not NAT's "unknown-model")
-    assert result.model == "datarobot-e2e"
+    # THEN the configured model is reported (not the request, not "unknown-model")
+    assert result.model == _CONFIGURED
     # AND the content + simulated usage match NAT's str->ChatResponse behavior
     assert result.choices[0].message.content == "hello world"
     assert result.usage.completion_tokens == 2
 
 
-def test_convert_str_to_chat_response_defaults_to_unknown_model_without_context() -> None:
-    # GIVEN no request model is available on the context
-    # WHEN converting the workflow's string output
-    result = convert_str_to_chat_response("hi")
+def test_convert_str_to_chat_response_never_unknown_model() -> None:
+    # Even with no LLM_DEFAULT_MODEL, the resolver yields the deployed-LLM default,
+    # so the response never carries NAT's "unknown-model" placeholder.
+    with patch(_CONVERTERS, return_value="datarobot/datarobot-deployed-llm"):
+        result = convert_str_to_chat_response("hi")
 
-    # THEN NAT's placeholder is preserved (no regression vs the built-in converter)
-    assert result.model == "unknown-model"
+    assert result.model == "datarobot/datarobot-deployed-llm"
+    assert result.model != "unknown-model"
 
 
 def test_str_to_chat_response_converter_overrides_nat_builtin() -> None:
     # GIVEN dragent's converters are registered (module-level register import side effect)
-    # WHEN NAT converts a workflow's plain-string output to a ChatResponse mid-run
-    # (the non-streaming /chat/completions path)
-    with _request_model_on_context("datarobot-e2e"):
+    # WHEN NAT converts a workflow's plain-string output to a ChatResponse (non-streaming path)
+    with patch(_CONVERTERS, return_value=_CONFIGURED):
         result = GlobalTypeConverter.convert("hello there", ChatResponse)
 
-    # THEN dragent's converter wins over NAT's built-in and echoes the request model
+    # THEN dragent's converter wins over NAT's built-in and reports the configured model
     assert isinstance(result, ChatResponse)
-    assert result.model == "datarobot-e2e"
+    assert result.model == _CONFIGURED
     assert result.choices[0].message.content == "hello there"
 
 
 def test_convert_dragent_event_response_to_chat_response_chunk_backfills_model() -> None:
-    # GIVEN a NAT chunk with the "unknown-model" placeholder and a requested model
+    # GIVEN a NAT chunk with the "unknown-model" placeholder
     existing = _make_chat_response_chunk(content="streamed")
     assert existing.model == "unknown-model"
     response = DRAgentEventResponse(original_chunk=existing, events=[])
 
-    # WHEN converting within a run whose request carried a model
-    with _request_model_on_context("datarobot-e2e"):
+    # WHEN converting
+    with patch(_CONVERTERS, return_value=_CONFIGURED):
         result = convert_dragent_event_response_to_chat_response_chunk(response)
 
-    # THEN the streaming chunk carries the requested model
-    assert result.model == "datarobot-e2e"
+    # THEN the streaming chunk carries the configured model
+    assert result.model == _CONFIGURED
     assert result.choices[0].delta.content == "streamed"
+
+
+def test_backfill_chunk_model_preserves_moderation_model() -> None:
+    # A deliberately-set non-placeholder model (e.g. moderation's) must NOT be overwritten.
+    existing = _make_chat_response_chunk(content="blocked")
+    existing.model = "datarobot-moderations"
+    response = DRAgentEventResponse(original_chunk=existing, events=[])
+
+    with patch(_CONVERTERS, return_value=_CONFIGURED):
+        result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    assert result.model == "datarobot-moderations"
