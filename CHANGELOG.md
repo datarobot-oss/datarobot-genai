@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.16.14
+## 0.16.15
 - `drtools/workload`: artifact core management.
   - **Client** (`WorkloadApiClient`): added `list_artifacts`, `get_artifact`, `create_artifact`,
     `put_artifact`, `patch_artifact`, `delete_artifact`, and `clone_artifact` methods targeting
@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     status/type/repository/search), `artifact_get`, `artifact_create`, `artifact_update` (PATCH
     helper for name/description/spec), `artifact_lock` (PATCH shortcut to set status→locked),
     `artifact_clone`, and `artifact_delete`.
+
+## 0.16.14
+- Fix `ResultsSummarizer.print_summary` crash when a case has `expected_behavior: null` or `id: null`
 
 ## 0.16.13
 - `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
