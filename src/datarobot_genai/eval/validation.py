@@ -22,6 +22,8 @@ from urllib.request import urlopen
 
 import yaml
 
+from datarobot_genai.eval.runner import resolve_benchmark_module
+
 
 def preflight_judge(judge_cfg: dict[str, Any]) -> None:
     """Ping the judge endpoint with a minimal chat-completions call.
@@ -132,9 +134,15 @@ def validate_inputs(
     else:
         try:
             cfg = load_pipeline(pipeline_path)
-            module = repo_root / cfg["benchmark"]["module"]
-            if not module.exists():
-                errors.append(f"Benchmark module not found: {module}")
+            module_str = str(cfg["benchmark"]["module"])
+            # Shared resolver with the runner so validation and execution agree
+            # on where a benchmark lives (local file or installed package). It
+            # raises if the module resolves to neither; we collect that as an
+            # error rather than propagating.
+            try:
+                resolve_benchmark_module(module_str, repo_root)
+            except ImportError:
+                errors.append(f"Benchmark module not found: {repo_root / module_str}")
         except (ValueError, KeyError) as e:
             errors.append(f"Pipeline '{pipeline}' invalid: {e}")
 
