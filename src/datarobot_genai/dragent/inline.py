@@ -100,9 +100,11 @@ async def execute_dragent_inline_async(
     # ``load_workflow`` runs.
     from nat.data_models.api_server import ChatResponse
 
+    from datarobot_genai.core.chat.completions import backfill_model
     from datarobot_genai.core.chat.completions import (
         convert_chat_completion_params_to_run_agent_input,
     )
+    from datarobot_genai.core.config import default_response_model
     from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
     from datarobot_genai.nat.helpers import load_workflow
 
@@ -125,14 +127,10 @@ async def execute_dragent_inline_async(
     # NAT's ``ChatResponse`` is documented as OpenAI Chat Completions API
     # compatible (same field layout); ``mode="json"`` serialises ``created`` as
     # an int via the field serializer so the resulting dict satisfies OpenAI's
-    # stricter typing. Preserve the caller's ``model`` value when the workflow
-    # didn't propagate one (NAT defaults to ``"unknown-model"``).
+    # stricter typing. Report the configured LLM the agent actually ran (NAT defaults
+    # to ``"unknown-model"`` and the request's ``model`` is ignored for execution).
     payload = response.model_dump(mode="json")
-    if (requested_model := chat_completion.get("model")) and payload.get("model") in (
-        None,
-        "unknown-model",
-    ):
-        payload["model"] = requested_model
+    payload["model"] = backfill_model(payload.get("model"), default_response_model())
     return ChatCompletion.model_validate(payload)
 
 

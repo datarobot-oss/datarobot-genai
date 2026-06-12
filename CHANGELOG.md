@@ -4,10 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.13
+- `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
 
 ## 0.16.12
 - A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
-- 
+-
 ## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 

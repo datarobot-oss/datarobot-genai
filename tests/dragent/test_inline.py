@@ -18,6 +18,7 @@ import asyncio
 import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from nat.data_models.api_server import ChatResponse
@@ -147,24 +148,29 @@ async def test_execute_dragent_inline_ignores_stream_flag(
     assert result.choices[0].message.content == "Hi"
 
 
-async def test_execute_dragent_inline_overrides_unknown_model_with_request_model(
+async def test_execute_dragent_inline_reports_configured_model_when_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # GIVEN: a workflow that returns "unknown-model" (NAT's default when the
-    # underlying workflow doesn't set one), with a real model in the request
+    # underlying workflow doesn't set one). The agent ignores the request's model
+    # and runs its configured LLM, so the response must report that configured model.
     _install_fake_workflow(monkeypatch, _make_chat_response(content="ok", model="unknown-model"))
 
-    # WHEN: execute_dragent_inline_async is called with a model in chat_completion
-    result = await execute_dragent_inline_async(
-        chat_completion={
-            "model": "datarobot-e2e",
-            "messages": [{"role": "user", "content": "hi"}],
-        },  # type: ignore[arg-type]
-        custom_model_dir=Path("/tmp"),
-    )
+    # WHEN: execute_dragent_inline_async is called (the request model is irrelevant)
+    with patch(
+        "datarobot_genai.core.config.default_response_model",
+        return_value="datarobot/anthropic/claude-sonnet-4-20250514",
+    ):
+        result = await execute_dragent_inline_async(
+            chat_completion={
+                "model": "ignored-by-agent",
+                "messages": [{"role": "user", "content": "hi"}],
+            },  # type: ignore[arg-type]
+            custom_model_dir=Path("/tmp"),
+        )
 
-    # THEN: the requested model is preserved on the final completion
-    assert result.model == "datarobot-e2e"
+    # THEN: the configured LLM model is reported (not the request, not "unknown-model")
+    assert result.model == "datarobot/anthropic/claude-sonnet-4-20250514"
 
 
 async def test_execute_dragent_inline_keeps_workflow_provided_model(
