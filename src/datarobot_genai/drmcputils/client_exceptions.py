@@ -14,7 +14,7 @@
 
 """Shared mapping from DataRobot SDK HTTP errors to :class:`ToolError`.
 
-Lives in ``drtools.core`` so any drtools domain (predictive, files, panels, …)
+Lives in ``drmcputils`` so any drtools domain (predictive, files, panels, …)
 can depend on it without taking a dependency on a sibling domain.
 """
 
