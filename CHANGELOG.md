@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.16.12
+- A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
+- 
 ## 0.16.11
 - Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 

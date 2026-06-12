@@ -20,11 +20,14 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import AgentSkill
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
+from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
@@ -43,6 +46,7 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
+from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
@@ -295,6 +299,109 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             mock_a2a_worker_cls.assert_not_called()
 
 
+def _expected_key(raw_user_id: str) -> str:
+    """Compute the expected UUID5 workflow key for a raw DataRobot user ID."""
+    return UserInfo._from_session_cookie(raw_user_id).get_user_id()
+
+
+def _make_auth_ctx(user_id: str) -> MagicMock:
+    """Build a mock AuthCtx with the given ``user.id``."""
+    ctx = MagicMock()
+    ctx.user.id = user_id
+    return ctx
+
+
+_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.fastapi._auth_handler.get_context"
+
+
+class TestResolveIdentityFromHeaders:
+    """Tests for the _resolve_identity_from_headers helper."""
+
+    @pytest.fixture(autouse=True)
+    def _no_real_jwt_decode(self):
+        """Prevent the real _auth_handler from touching JWT secrets during tests."""
+        with patch(_AUTH_HANDLER_PATH, return_value=None):
+            yield
+
+    def test_returns_none_for_none_headers(self):
+        assert _resolve_identity_from_headers(None) is None
+
+    def test_returns_none_for_empty_headers(self):
+        assert _resolve_identity_from_headers({}) is None
+
+    def test_returns_none_when_no_identity_headers(self):
+        result = _resolve_identity_from_headers(
+            {"authorization": "Bearer tok", "content-type": "application/json"}
+        )
+        assert result is None
+
+    def test_returns_uuid5_for_valid_signed_jwt(self):
+        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("dr-uid-abc")):
+            result = _resolve_identity_from_headers(
+                {"x-datarobot-authorization-context": "signed-jwt"}
+            )
+        assert result == _expected_key("dr-uid-abc")
+
+    def test_raises_for_invalid_jwt(self):
+        with pytest.raises(ServerError) as exc_info:
+            _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+        assert "invalid or expired" in exc_info.value.error.message
+
+    def test_raises_when_auth_handler_throws(self):
+        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
+        with (
+            patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
+            pytest.raises(ServerError) as exc_info,
+        ):
+            _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+
+    def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
+        """A present but invalid auth-context JWT must not fall back to gateway user ID."""
+        with pytest.raises(ServerError) as exc_info:
+            _resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "garbage",
+                    "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
+                }
+            )
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+
+    def test_falls_back_to_gateway_user_id_header(self):
+        result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        assert result == _expected_key("64baa56996fb36e3eeeefc44")
+
+    def test_auth_context_takes_precedence_over_gateway_user_id(self):
+        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
+            result = _resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "signed-jwt",
+                    "x-datarobot-user-id": "gateway-user",
+                }
+            )
+        assert result == _expected_key("auth-ctx-user")
+        assert result != _expected_key("gateway-user")
+
+    def test_deterministic_same_user(self):
+        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("user-xyz")):
+            r1 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+            r2 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+        assert r1 == r2
+
+    def test_different_users_produce_different_keys(self):
+        results = []
+        for uid in ("alice", "bob"):
+            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
+                results.append(
+                    _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+                )
+        assert results[0] != results[1]
+
+
 class TestPerUserCompatibleAgentExecutor:
     @pytest.fixture
     def session_manager(self):
@@ -315,31 +422,189 @@ class TestPerUserCompatibleAgentExecutor:
         ) as mock:
             yield mock
 
+    @pytest.fixture
+    def captured_keys(self, session_manager):
+        """Capture all values passed to ``_context_state.user_id.set()``."""
+        keys: list[str] = []
+
+        def capture_set(value: str) -> MagicMock:
+            keys.append(value)
+            return MagicMock()
+
+        session_manager._context_state.user_id.set = capture_set
+        return keys
+
+    def _make_a2a_context(
+        self,
+        *,
+        context_id: str | None = "ctx-1",
+        headers: dict[str, str] | None = None,
+    ) -> MagicMock:
+        """Build a mock A2A ``RequestContext`` with optional forwarded headers."""
+        ctx = MagicMock()
+        ctx.context_id = context_id
+        if headers is not None:
+            ctx.call_context.state = {"headers": headers}
+        else:
+            ctx.call_context = None
+        return ctx
+
     def test_init_sets_session_manager(self, executor, session_manager):
         assert executor.session_manager is session_manager
 
-    async def test_execute_injects_context_id_as_user_id(
+    async def test_execute_uses_authenticated_identity_as_workflow_key(
         self, executor, session_manager, patch_super_execute
     ):
-        context = MagicMock()
-        context.context_id = "user-123"
+        """When A2A headers carry a valid auth context, the per-user workflow key
+        is derived from the gateway-validated identity, NOT from context_id.
+        """
+        context = self._make_a2a_context(
+            context_id="attacker-chosen-context-id",
+            headers={"X-DataRobot-Authorization-Context": "signed-jwt"},
+        )
         event_queue = MagicMock()
+        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("real-dr-user")):
+            await executor.execute(context, event_queue)
 
-        await executor.execute(context, event_queue)
-
-        session_manager._context_state.user_id.set.assert_called_once_with("user-123")
+        session_manager._context_state.user_id.set.assert_called_once_with(
+            _expected_key("real-dr-user")
+        )
         patch_super_execute.assert_awaited_once_with(context, event_queue)
 
-    async def test_execute_skips_user_id_injection_when_no_context_id(
+    async def test_execute_falls_back_to_context_id_when_no_auth_headers(
         self, executor, session_manager, patch_super_execute
     ):
-        context = MagicMock()
-        context.context_id = None
-        event_queue = MagicMock()
+        """Without authenticated headers (local dev), context_id is hashed via
+        _from_session_cookie for key-format consistency with authenticated paths.
+        """
+        context = self._make_a2a_context(context_id="local-dev-ctx-id")
 
-        await executor.execute(context, event_queue)
+        await executor.execute(context, MagicMock())
+
+        session_manager._context_state.user_id.set.assert_called_once_with(
+            _expected_key("local-dev-ctx-id")
+        )
+
+    async def test_execute_skips_user_id_injection_when_no_context_id_and_no_auth(
+        self, executor, session_manager, patch_super_execute
+    ):
+        context = self._make_a2a_context(context_id=None)
+
+        await executor.execute(context, MagicMock())
 
         session_manager._context_state.user_id.set.assert_not_called()
+
+    async def test_execute_two_users_same_context_id_get_different_keys(
+        self, session_manager, captured_keys, patch_super_execute
+    ):
+        """Two different authenticated users sending the same context_id must get
+        different per-user workflow keys -- the core isolation guarantee.
+        """
+        for uid in ("alice", "bob"):
+            executor = _PerUserCompatibleAgentExecutor(session_manager)
+            context = self._make_a2a_context(
+                context_id="shared-context-id",
+                headers={"X-DataRobot-Authorization-Context": "jwt"},
+            )
+            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
+                await executor.execute(context, MagicMock())
+
+        assert len(captured_keys) == 2
+        assert captured_keys[0] != captured_keys[1]
+
+    async def test_execute_same_user_different_context_id_gets_same_key(
+        self, session_manager, captured_keys, patch_super_execute
+    ):
+        """The same authenticated user across different conversations must get the
+        same per-user workflow key -- one builder per user, not per conversation.
+        """
+        for ctx_id in ("conversation-1", "conversation-2"):
+            executor = _PerUserCompatibleAgentExecutor(session_manager)
+            context = self._make_a2a_context(
+                context_id=ctx_id,
+                headers={"X-DataRobot-Authorization-Context": "jwt"},
+            )
+            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("consistent-user")):
+                await executor.execute(context, MagicMock())
+
+        assert len(captured_keys) == 2
+        assert captured_keys[0] == captured_keys[1]
+
+    async def test_execute_uses_gateway_user_id_when_no_auth_context(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """When X-DataRobot-Authorization-Context is absent but X-DataRobot-User-Id
+        is present, the gateway user ID is used as the workflow key.
+        """
+        context = self._make_a2a_context(
+            context_id="should-not-be-used",
+            headers={"X-DataRobot-User-Id": "64baa56996fb36e3eeeefc44"},
+        )
+        with patch(_AUTH_HANDLER_PATH, return_value=None):
+            await executor.execute(context, MagicMock())
+
+        session_manager._context_state.user_id.set.assert_called_once_with(
+            _expected_key("64baa56996fb36e3eeeefc44")
+        )
+
+    async def test_execute_raises_when_auth_context_invalid_instead_of_context_id_fallback(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """Invalid auth-context must fail closed; must not fall back to context_id."""
+        context = self._make_a2a_context(
+            context_id="must-not-be-used",
+            headers={"X-DataRobot-Authorization-Context": "garbage"},
+        )
+        with (
+            patch(_AUTH_HANDLER_PATH, return_value=None),
+            pytest.raises(ServerError) as exc_info,
+        ):
+            await executor.execute(context, MagicMock())
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+
+        session_manager._context_state.user_id.set.assert_not_called()
+        patch_super_execute.assert_not_awaited()
+
+    async def test_execute_resets_a2a_headers_on_identity_error(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """ContextVar for _a2a_headers must be cleaned up even when identity
+        resolution raises ServerError (no ContextVar leak).
+        """
+        from datarobot_genai.dragent.frontends.session import _a2a_headers
+
+        context = self._make_a2a_context(
+            context_id="ctx",
+            headers={"X-DataRobot-Authorization-Context": "garbage"},
+        )
+        sentinel = object()
+        original = _a2a_headers.get(sentinel)
+
+        with (
+            patch(_AUTH_HANDLER_PATH, return_value=None),
+            pytest.raises(ServerError),
+        ):
+            await executor.execute(context, MagicMock())
+
+        assert _a2a_headers.get(sentinel) is original
+
+    async def test_execute_logs_warning_on_unauthenticated_fallback(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """Falling back to context_id logs a warning for production visibility."""
+        context = self._make_a2a_context(
+            context_id="unauthenticated-ctx",
+            headers={"some-header": "value"},
+        )
+        with (
+            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch("datarobot_genai.dragent.frontends.fastapi.logger") as mock_logger,
+        ):
+            await executor.execute(context, MagicMock())
+
+        mock_logger.warning.assert_called_once()
+        assert "falling back to context_id" in mock_logger.warning.call_args[0][0].lower()
 
 
 class TestCreateAgentCard:
