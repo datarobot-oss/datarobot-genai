@@ -29,12 +29,14 @@ from ag_ui.core import ToolCallStartEvent
 from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
+from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 from nat.data_models.api_server import Message
+from nat.data_models.api_server import Usage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as OpenAIChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta as OpenAIChoiceDelta
@@ -45,7 +47,9 @@ from openai.types.chat.chat_completion_chunk import (
 from openai.types.completion_usage import CompletionUsage
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.chat.completions import backfill_model
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
+from datarobot_genai.core.config import default_response_model
 
 from .request import DRAgentRunAgentInput
 from .response import DRAgentEventResponse
@@ -202,6 +206,39 @@ def _openai_chat_completion_chunk_with_datarobot_moderations(
     return chunk.model_copy(update={"datarobot_moderations": datarobot_moderations})
 
 
+def convert_str_to_chat_response(data: str) -> ChatResponse:
+    """Convert a workflow's string output to a ChatResponse reporting the configured model.
+
+    Overrides NAT's built-in ``str -> ChatResponse`` converter, which calls
+    ``ChatResponse.from_string(data, usage=usage)`` without a ``model`` and so
+    falls back to its ``"unknown-model"`` default:
+    https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/99e07260fe71872202cdcff1c899f15ef14f4852/packages/nvidia_nat_core/src/nat/data_models/api_server.py#L973
+    dragent ignores the request's ``model`` (the agent runs its configured LLM), so the
+    response reports that configured model (:func:`default_response_model`), independent
+    of what the caller sent.
+    """
+    word_count = len(data.split())
+    usage = Usage(prompt_tokens=0, completion_tokens=word_count, total_tokens=word_count)
+    return ChatResponse.from_string(data, usage=usage, model=default_response_model())
+
+
+def _backfill_chunk_model(chunk: ChatResponseChunk) -> ChatResponseChunk:
+    """Replace NAT's ``"unknown-model"`` placeholder on a chunk with the configured model.
+
+    Only ``None`` / ``"unknown-model"`` are replaced, so a deliberately-set model —
+    moderation's ``MODERATION_MODEL_NAME`` or a real model a native agent propagated —
+    is preserved.
+    """
+    # Fast path: a real model is already set (every streamed token reaches here, so
+    # avoid the per-chunk default_response_model() -> Config() env read).
+    if chunk.model not in (None, "unknown-model"):
+        return chunk
+    model = backfill_model(chunk.model, default_response_model())
+    if model == chunk.model:
+        return chunk
+    return chunk.model_copy(update={"model": model})
+
+
 def convert_dragent_event_response_to_chat_response_chunk(
     response: DRAgentEventResponse,
 ) -> ChatResponseChunk:
@@ -219,6 +256,7 @@ def convert_dragent_event_response_to_chat_response_chunk(
             ],
             created=datetime.datetime.now(datetime.UTC),
         )
+    chunk = _backfill_chunk_model(chunk)
     moderations = _resolve_datarobot_moderations_for_chunk(chunk, response.datarobot_moderations)
     return _nat_chat_response_chunk_with_datarobot_moderations(chunk, moderations)
 
