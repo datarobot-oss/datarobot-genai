@@ -19,10 +19,6 @@ isolated DataRobot workload sandbox (``execute_code``), then materialize the
 result as a derived child panel (with lineage back to the source). Use this for
 derived in-memory transforms/aggregations; push *source-side* filtering into the
 connector SQL instead (see :mod:`datarobot_genai.drtools.panels.datasource`).
-
-The sandbox (``drtools.sandbox``) ships in a separate change; ``execute_code`` is
-imported defensively so this module loads even where the sandbox is absent — the
-tools then fail with a clear message until it is available.
 """
 
 from __future__ import annotations
@@ -42,6 +38,7 @@ from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.store import DEFAULT_SOURCE
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.panels.datasource import _rows_to_parquet
+from datarobot_genai.drtools.sandbox import execute_code as _execute_code
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +47,6 @@ _PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet"
 # The source dataset is bound as a polars DataFrame `df`; user code assigns the
 # result rows to `_return`.
 _TRANSFORM_PREAMBLE = "import polars as pl\ndf = pl.DataFrame(inputs['rows'])"
-
-try:  # pragma: no cover - import wiring; covered indirectly via the _execute_code patch
-    from datarobot_genai.drtools.sandbox import execute_code as _execute_code
-except ImportError:
-    # Older versions without the sandbox backend (pre-#350). Absent, tools fail closed.
-    _execute_code = None  # type: ignore[assignment]
-
-
-def _ensure_sandbox() -> Any:
-    if _execute_code is None:
-        raise ToolError(
-            "Sandbox execution is unavailable (requires the drtools.sandbox backend).",
-            kind=ToolErrorKind.INTERNAL,
-        )
-    return _execute_code
 
 
 async def _run_transform(
@@ -76,7 +58,6 @@ async def _run_transform(
     source: str,
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
-    execute_code = _ensure_sandbox()
     if not panel_id:
         raise ToolError("panel_id must be provided", kind=ToolErrorKind.VALIDATION)
     if not title:
@@ -99,7 +80,7 @@ async def _run_transform(
     source_frame = pl.read_parquet(io.BytesIO(raw))
     rows = source_frame.to_dicts()
 
-    result = await execute_code(f"{_TRANSFORM_PREAMBLE}\n{code}", inputs={"rows": rows})
+    result = await _execute_code(f"{_TRANSFORM_PREAMBLE}\n{code}", inputs={"rows": rows})
     out_rows = result.get("return_value")
     if not isinstance(out_rows, list) or not all(isinstance(row, dict) for row in out_rows):
         raise ToolError(
