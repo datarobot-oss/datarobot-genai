@@ -281,6 +281,63 @@ class WorkloadApiClient:
             return client.get(f"otel/workload/{workload_id}/logs/", params=params).json()
 
     # ------------------------------------------------------------------ #
+    # Artifacts                                                            #
+    # ------------------------------------------------------------------ #
+
+    def list_artifacts(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        artifact_type: str | None = None,
+        repository_id: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /artifacts/ with optional filters and pagination."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if search:
+            params["search"] = search
+        if status:
+            params["status"] = status
+        if artifact_type:
+            params["type"] = artifact_type
+        if repository_id:
+            params["repositoryId"] = repository_id
+        with request_user_dr_client() as client:
+            return client.get("artifacts/", params=params).json()
+
+    def get_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """GET /artifacts/{id}."""
+        with request_user_dr_client() as client:
+            return client.get(f"artifacts/{artifact_id}").json()
+
+    def create_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /artifacts/ — returns the created ArtifactFormatted (201)."""
+        with request_user_dr_client() as client:
+            return client.post("artifacts/", json=payload).json()
+
+    def put_artifact(self, artifact_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """PUT /artifacts/{id} — full replacement with InputArtifact payload."""
+        with request_user_dr_client() as client:
+            return client.put(f"artifacts/{artifact_id}", json=payload).json()
+
+    def patch_artifact(self, artifact_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """PATCH /artifacts/{id} — partial update via UpdateArtifactRequest."""
+        with request_user_dr_client() as client:
+            return client.patch(f"artifacts/{artifact_id}", json=payload).json()
+
+    def delete_artifact(self, artifact_id: str) -> None:
+        """DELETE /artifacts/{id} — 204 No Content on success."""
+        with request_user_dr_client() as client:
+            client.delete(f"artifacts/{artifact_id}")
+
+    def clone_artifact(self, artifact_id: str, name: str) -> dict[str, Any]:
+        """POST /artifacts/{id}/clone — duplicate with a new name."""
+        with request_user_dr_client() as client:
+            return client.post(f"artifacts/{artifact_id}/clone", json={"name": name}).json()
+
+    # ------------------------------------------------------------------ #
     # Artifact builds                                                      #
     # ------------------------------------------------------------------ #
 
