@@ -281,6 +281,24 @@ async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
+async def test_invoke_runs_gc_collect_to_bound_crewai_fd_leak(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    # crewai's kickoff-outputs SQLite storage strands file descriptors until
+    # cyclic GC; invoke() forces a collection so a long-lived serve process
+    # cannot exhaust its fd table. Guard that the collection still runs.
+    out = CrewOutput(
+        raw="agent result",
+        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
+    )
+    agent = AgentForTest(out, api_base="https://x/", api_key="k", verbose=False)
+
+    with patch("datarobot_genai.crewai.agent.gc.collect") as mock_collect:
+        _ = [event async for event in agent.invoke(run_agent_input)]
+
+    mock_collect.assert_called()
+
+
 async def test_invoke_does_not_include_chat_history_by_default(
     mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:

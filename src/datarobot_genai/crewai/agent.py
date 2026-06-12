@@ -24,6 +24,7 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import gc
 import logging
 import uuid
 from collections.abc import Callable
@@ -411,6 +412,15 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             ragas_event_listener.setup_listeners(crewai_event_bus)
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
+
+            # crewai's kickoff-outputs SQLite storage opens a connection per
+            # task-output write via `with sqlite3.connect(...)`, which commits but
+            # never closes, stranding db/-wal/-shm file descriptors until cyclic
+            # GC runs. In a long-lived `nat dragent serve` process that can exhaust
+            # the fd table (-> [Errno 24] Too many open files) before automatic GC
+            # catches up. Reclaim the previous request's stranded connections at
+            # the start of each invocation so the fd count stays bounded.
+            gc.collect()
 
             crew = self.crew
 
