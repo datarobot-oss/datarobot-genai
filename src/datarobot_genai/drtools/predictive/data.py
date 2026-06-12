@@ -35,6 +35,9 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
+# Hard cap of the externalDataStores/<id>/previewQuery/ route's maxRows field.
+_PREVIEW_QUERY_MAX_ROWS = 999
+
 
 def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     """Return JSON-serializable params; DataRobot SDK uses DataStoreParameters, not a dict."""
@@ -371,9 +374,9 @@ async def catalog_browse_datastore(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "write", "delete", "datastore", "query", "sql", "daria"},
+    tags={"predictive", "data", "read", "datastore", "query", "sql", "daria"},
     description=(
-        "[Datastore—run SQL] Use when the user wants to execute SQL (SELECT or DML) against "
+        "[Datastore—run SQL] Use when the user wants to execute a SQL SELECT against "
         "one saved external connection. Requires datastore_id from catalog_list_datastores; "
         "returns "
         "rows, columns, and row count up to limit. Not DataRobot catalog inspection "
@@ -383,7 +386,7 @@ async def catalog_browse_datastore(
 async def catalog_query_datastore(
     *,
     datastore_id: Annotated[str, "Connection id from catalog_list_datastores."] | None = None,
-    sql: Annotated[str, "SQL statement to run against that connection."] | None = None,
+    sql: Annotated[str, "SQL SELECT statement to run against that connection."] | None = None,
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[
         int,
@@ -402,23 +405,39 @@ async def catalog_query_datastore(
 
     limit, message = clamp_limit(limit)
 
+    # previewQuery caps maxRows at 999; offset is emulated by over-fetching and
+    # slicing, so offset + limit must stay under that cap (push deeper paging
+    # into the SQL itself).
+    max_rows = offset + limit
+    if max_rows > _PREVIEW_QUERY_MAX_ROWS:
+        raise ToolError(
+            f"offset + limit cannot exceed {_PREVIEW_QUERY_MAX_ROWS} for datastore queries; "
+            "page within the SQL (e.g. ORDER BY ... OFFSET/LIMIT) instead",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
     with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
-        payload = {"query": sql, "offset": offset, "limit": limit}
+        payload = {"sql": sql, "maxRows": max_rows}
         try:
             response = rest_client.post(
-                f"externalDataDrivers/{datastore_id}/execute/", json=payload
+                f"externalDataStores/{datastore_id}/previewQuery/", json=payload
             )
         except ClientError as e:
             raise_tool_error_for_client_error(e)
         api_response = response.json()
-        row_data = api_response.get("data", [])
+        columns = api_response.get("columns") or []
+        records = api_response.get("records") or []
+        if records and not isinstance(records[0], dict):
+            # Some drivers return positional rows; key them by column name.
+            records = [dict(zip(columns, row)) for row in records]
+        row_data = records[offset : offset + limit]
 
     final_results: dict[str, Any] = {
         "rows": row_data,
-        "row_count": len(row_data) if isinstance(row_data, list) else 0,
-        "columns": api_response.get("columns", []),
+        "row_count": len(row_data),
+        "columns": columns,
     }
     return merge_pagination_metadata(
         final_results=final_results,
