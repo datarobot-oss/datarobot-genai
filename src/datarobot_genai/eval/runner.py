@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _resolve_benchmark_module(module_str: str, repo_root: Path) -> str:
+def resolve_benchmark_module(module_str: str, repo_root: Path) -> str:
     """Resolve a benchmark module path to an absolute file path.
 
     Tries the local path first (for user-defined benchmarks and backward
@@ -54,7 +54,7 @@ def run_byob(
     judge = cfg.get("judge") or {}
     run = cfg.get("run", {})
 
-    module_path = _resolve_benchmark_module(str(benchmark["module"]), repo_root)
+    module_path = resolve_benchmark_module(str(benchmark["module"]), repo_root)
 
     env = {**os.environ}
     # Judge config consumed by judge-based benchmarks/*.py at import time. A

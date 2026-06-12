@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +21,8 @@ from urllib.request import Request
 from urllib.request import urlopen
 
 import yaml
+
+from datarobot_genai.eval.runner import resolve_benchmark_module
 
 
 def preflight_judge(judge_cfg: dict[str, Any]) -> None:
@@ -134,20 +135,14 @@ def validate_inputs(
         try:
             cfg = load_pipeline(pipeline_path)
             module_str = str(cfg["benchmark"]["module"])
-            module = repo_root / module_str
-            if not module.exists():
-                # Try resolving as an installed Python package module.
-                dotted = module_str.replace("/", ".").replace("\\", ".")
-                if dotted.endswith(".py"):
-                    dotted = dotted[:-3]
-                try:
-                    mod = importlib.import_module(dotted)
-                    if mod.__file__:
-                        module = Path(mod.__file__)
-                except ImportError:
-                    pass
-            if not module.exists():
-                errors.append(f"Benchmark module not found: {module}")
+            # Shared resolver with the runner so validation and execution agree
+            # on where a benchmark lives (local file or installed package). It
+            # raises if the module resolves to neither; we collect that as an
+            # error rather than propagating.
+            try:
+                resolve_benchmark_module(module_str, repo_root)
+            except ImportError:
+                errors.append(f"Benchmark module not found: {repo_root / module_str}")
         except (ValueError, KeyError) as e:
             errors.append(f"Pipeline '{pipeline}' invalid: {e}")
 
