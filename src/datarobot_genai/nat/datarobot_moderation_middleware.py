@@ -77,6 +77,7 @@ from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
+from datarobot_dome.chat_helper import build_moderations_attribute_for_completion
 from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
@@ -555,6 +556,62 @@ def _datarobot_moderations_merged_prompt_and_response_eval(
     if response_eval.metrics:
         merged.update(_json_safe_moderation_metadata(response_eval.metrics))
     return cast(dict[str, Any], merged) if merged else None
+
+
+def _prescore_datarobot_moderations_from_df(
+    pipeline: Any,
+    prescore_df: pd.DataFrame,
+) -> dict[str, Any] | None:
+    """Serialize prescore guard metrics the same way dome attaches them to the first stream chunk."""
+    raw = build_moderations_attribute_for_completion(pipeline, prescore_df)
+    if not raw:
+        return None
+    return cast(dict[str, Any], _json_safe_moderation_metadata(raw))
+
+
+def _postscore_only_datarobot_moderations(
+    moderations: dict[str, Any] | None,
+    prescore_moderations: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Drop prescore keys so response-stage metrics stay on moderated text chunks only."""
+    if not moderations:
+        return None
+    if not prescore_moderations:
+        return moderations
+    stripped = {k: v for k, v in moderations.items() if k not in prescore_moderations}
+    return cast(dict[str, Any], stripped) if stripped else None
+
+
+def _is_text_message_start_response(response: DRAgentEventResponse) -> bool:
+    return bool(response.events and response.events[0].type == EventType.TEXT_MESSAGE_START)
+
+
+@dataclass
+class _StreamingPrescoreModerationState:
+    """Track prescore attachment across a moderated DRAgent stream (dome first-chunk semantics)."""
+
+    prescore_moderations: dict[str, Any] | None
+    prescore_attached: bool = False
+    saw_moderated_content: bool = False
+
+    def emit(self, response: DRAgentEventResponse) -> DRAgentEventResponse:
+        if (
+            not self.prescore_attached
+            and self.prescore_moderations
+            and _is_text_message_start_response(response)
+        ):
+            self.prescore_attached = True
+            return response.model_copy(update={"datarobot_moderations": self.prescore_moderations})
+        return response
+
+    def emit_moderated(self, response: DRAgentEventResponse) -> DRAgentEventResponse:
+        mods = response.datarobot_moderations
+        if self.prescore_moderations and mods:
+            if self.prescore_attached or self.saw_moderated_content:
+                mods = _postscore_only_datarobot_moderations(mods, self.prescore_moderations)
+                response = response.model_copy(update={"datarobot_moderations": mods})
+        self.saw_moderated_content = True
+        return response
 
 
 def _infer_parent_message_id_for_tool_calls(
@@ -1178,6 +1235,12 @@ async def _moderated_dragent_stream(
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
     stopped_for_content_filter = False
+    prescore_state = _StreamingPrescoreModerationState(
+        prescore_moderations=_prescore_datarobot_moderations_from_df(
+            moderation._pipeline,
+            stream_state.prescore_df,
+        ),
+    )
 
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
         if response.events and _defer_until_after_moderated_chunk(response.events[0]):
@@ -1209,7 +1272,7 @@ async def _moderated_dragent_stream(
                 first_text = response
                 break
             _track_dragent_response_events(open_text_message_ids, response)
-            yield response
+            yield prescore_state.emit(response)
         if first_text is None:
             return
 
@@ -1223,10 +1286,12 @@ async def _moderated_dragent_stream(
         ) as moderation_stream:
             async for moderated in moderation_stream:
                 source_response = moderation_source_responses.pop(0)
-                moderated_response = dome_chunk_to_dragent_event_response(
-                    moderated,
-                    source_ag_ui_events=source_response.events,
-                    stream_tool_index_map=stream_tool_index_map,
+                moderated_response = prescore_state.emit_moderated(
+                    dome_chunk_to_dragent_event_response(
+                        moderated,
+                        source_ag_ui_events=source_response.events,
+                        stream_tool_index_map=stream_tool_index_map,
+                    )
                 )
                 _track_dragent_response_events(open_text_message_ids, moderated_response)
                 yield moderated_response
@@ -1234,7 +1299,7 @@ async def _moderated_dragent_stream(
                     pending_deferred, pending_pass_through
                 ):
                     _track_dragent_response_events(open_text_message_ids, item)
-                    yield item
+                    yield prescore_state.emit(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     for end_response in _synthetic_text_message_end_responses(
@@ -1249,7 +1314,7 @@ async def _moderated_dragent_stream(
                 pending_deferred, pending_pass_through
             ):
                 _track_dragent_response_events(open_text_message_ids, item)
-                yield item
+                yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
     finally:
