@@ -213,3 +213,69 @@ class WorkloadApiClient:
         """GET /workloads/{id}/related — linked artifacts and related entities."""
         with request_user_dr_client() as client:
             return client.get(f"workloads/{workload_id}/related").json()
+
+    # ------------------------------------------------------------------ #
+    # Protons                                                              #
+    # ------------------------------------------------------------------ #
+
+    def list_protons(self, workload_id: str, *, limit: int = 10, offset: int = 0) -> dict[str, Any]:
+        """GET /workloads/{id}/protons — deployed proton instances for a workload."""
+        with request_user_dr_client() as client:
+            return client.get(
+                f"workloads/{workload_id}/protons",
+                params={"limit": limit, "offset": offset},
+            ).json()
+
+    def get_proton(self, workload_id: str, proton_id: str) -> dict[str, Any]:
+        """GET /workloads/{id}/protons/{proton_id} — single proton record."""
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}/protons/{proton_id}").json()
+
+    def get_proton_status_details(self, workload_id: str, proton_id: str) -> dict[str, Any] | None:
+        """GET /workloads/{id}/protons/{proton_id}/statusDetails.
+
+        Returns the ReplicaStatusesSnapshot when available (200), or
+        ``None`` when no status has been received yet (204).
+        """
+        with request_user_dr_client() as client:
+            resp = client.get(f"workloads/{workload_id}/protons/{proton_id}/statusDetails")
+            return resp.json() if resp.content else None
+
+    # ------------------------------------------------------------------ #
+    # OTel logs                                                            #
+    # ------------------------------------------------------------------ #
+
+    def list_workload_logs(
+        self,
+        workload_id: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        level: str = "debug",
+        start_time: str | None = None,
+        end_time: str | None = None,
+        includes: list[str] | None = None,
+        excludes: list[str] | None = None,
+        span_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /otel/workload/{id}/logs/ — OTel log lines for a workload."""
+        params: list[tuple[str, Any]] = [
+            ("limit", limit),
+            ("offset", offset),
+            ("level", level),
+        ]
+        if start_time:
+            params.append(("startTime", start_time))
+        if end_time:
+            params.append(("endTime", end_time))
+        for v in includes or []:
+            params.append(("includes", v))
+        for v in excludes or []:
+            params.append(("excludes", v))
+        if span_id:
+            params.append(("spanId", span_id))
+        if trace_id:
+            params.append(("traceId", trace_id))
+        with request_user_dr_client() as client:
+            return client.get(f"otel/workload/{workload_id}/logs/", params=params).json()

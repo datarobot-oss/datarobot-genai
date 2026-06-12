@@ -19,6 +19,10 @@ MAX_INLINE_SIZE = 1024 * 1024  # 1MB
 
 AUTH_CTX_KEY = "authorization_context"
 
+LOG_LEVELS = ("debug", "info", "warn", "error")
+
+IMPORTANCE_VALUES = ("low", "moderate", "high", "critical")
+
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",
