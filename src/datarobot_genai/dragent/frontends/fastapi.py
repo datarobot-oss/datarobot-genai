@@ -45,6 +45,7 @@ DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/
 logger = logging.getLogger(__name__)
 
 
+_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
 _GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
 
 
@@ -57,10 +58,13 @@ def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None
        components in the agent application template.  Decoded via
        :data:`_auth_handler` and hashed through
        ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
-       key as the AG-UI path.
+       key as the AG-UI path.  When this header is present but validation
+       fails, raises ``ValueError`` (no fall-through to other headers or
+       ``context_id``).
     2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
-       gateway, tied to the API-key owner.  Same ``_from_session_cookie``
-       transform is applied for key-format consistency.
+       gateway, tied to the API-key owner.  Used only when the auth-context
+       header is absent.  Same ``_from_session_cookie`` transform is applied
+       for key-format consistency.
     3. ``None`` -- no gateway-provided identity (local dev).
 
     Returns ``None`` when *headers* are absent or contain no recognised
@@ -69,8 +73,12 @@ def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None
     if not headers:
         return None
 
-    auth_ctx = _auth_handler.get_context(headers)
-    if auth_ctx is not None:
+    if _AUTH_CONTEXT_HEADER in headers:
+        auth_ctx = _auth_handler.get_context(headers)
+        if auth_ctx is None:
+            raise ValueError(
+                "X-DataRobot-Authorization-Context header is present but invalid or expired"
+            )
         return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
 
     raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)

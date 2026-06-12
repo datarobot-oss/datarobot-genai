@@ -340,9 +340,19 @@ class TestResolveIdentityFromHeaders:
             )
         assert result == _expected_key("dr-uid-abc")
 
-    def test_returns_none_for_invalid_jwt(self):
-        result = _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
-        assert result is None
+    def test_raises_for_invalid_jwt(self):
+        with pytest.raises(ValueError, match="invalid or expired"):
+            _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
+
+    def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
+        """A present but invalid auth-context JWT must not fall back to gateway user ID."""
+        with pytest.raises(ValueError, match="invalid or expired"):
+            _resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "garbage",
+                    "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
+                }
+            )
 
     def test_falls_back_to_gateway_user_id_header(self):
         result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
@@ -515,6 +525,23 @@ class TestPerUserCompatibleAgentExecutor:
         session_manager._context_state.user_id.set.assert_called_once_with(
             _expected_key("64baa56996fb36e3eeeefc44")
         )
+
+    async def test_execute_raises_when_auth_context_invalid_instead_of_context_id_fallback(
+        self, executor, session_manager, patch_super_execute
+    ):
+        """Invalid auth-context must fail closed; must not fall back to context_id."""
+        context = self._make_a2a_context(
+            context_id="must-not-be-used",
+            headers={"X-DataRobot-Authorization-Context": "garbage"},
+        )
+        with (
+            patch(_AUTH_HANDLER_PATH, return_value=None),
+            pytest.raises(ValueError, match="invalid or expired"),
+        ):
+            await executor.execute(context, MagicMock())
+
+        session_manager._context_state.user_id.set.assert_not_called()
+        patch_super_execute.assert_not_awaited()
 
     async def test_execute_logs_warning_on_unauthenticated_fallback(
         self, executor, session_manager, patch_super_execute

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ## 0.16.9
-- A2A per-user workflow key is now derived from the gateway-validated identity (`X-DataRobot-Authorization-Context` or `X-DataRobot-User-Id`) instead of the `context_id`. Falls back to `context_id` only in local dev when no gateway headers are present.
+- A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
 
 ## 0.16.8
 - `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
