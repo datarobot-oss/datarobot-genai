@@ -24,5 +24,4 @@
 /tests/drtools/ @datarobot-oss/mcp
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
-/.taskfiles/tests.yml @datarobot-oss/mcp
 /docs/drtools/ @datarobot-oss/mcp
