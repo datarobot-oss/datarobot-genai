@@ -21,10 +21,11 @@ from unittest.mock import patch
 import pytest
 from datarobot.errors import ClientError
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.workload import lifecycle_tools
 from datarobot_genai.drtools.workload import observability_tools
+from datarobot_genai.drtools.workload import proton_tools
 from datarobot_genai.drtools.workload import read_tools
 
 # ------------------------------------------------------------------ #
@@ -814,3 +815,201 @@ async def test_workload_related_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
         await observability_tools.workload_related(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ================================================================== #
+# Protons + OTel logs                                           #
+# ================================================================== #
+
+# ------------------------------------------------------------------ #
+# proton_list                                                          #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_proton_list_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "data": [{"id": "ptn-1", "status": "running"}, {"id": "ptn-2", "status": "stopped"}],
+            "count": 2,
+            "totalCount": 2,
+        }
+    )
+
+    result = await proton_tools.proton_list(workload_id="wkld-abc")
+
+    patched_dr_client.get.assert_called_once_with(
+        "workloads/wkld-abc/protons", params={"limit": 20, "offset": 0}
+    )
+    assert result["count"] == 2
+    assert result["protons"][0]["id"] == "ptn-1"
+
+
+@pytest.mark.asyncio
+async def test_proton_list_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.proton_list(workload_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_proton_list_negative_offset_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.proton_list(workload_id="wkld-abc", offset=-1)
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_proton_list_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.proton_list(workload_id="wkld-abc")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+# ------------------------------------------------------------------ #
+# proton_get                                                           #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_proton_get_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "ptn-1", "status": "running", "replicaCount": 1}
+    )
+
+    result = await proton_tools.proton_get(workload_id="wkld-abc", proton_id="ptn-1")
+
+    patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/protons/ptn-1")
+    assert result["id"] == "ptn-1"
+
+
+@pytest.mark.asyncio
+async def test_proton_get_empty_proton_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.proton_get(workload_id="wkld-abc", proton_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_proton_get_strips_whitespace(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(json=lambda: {"id": "ptn-1"})
+
+    await proton_tools.proton_get(workload_id="  wkld-abc  ", proton_id="  ptn-1  ")
+
+    patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/protons/ptn-1")
+
+
+# ------------------------------------------------------------------ #
+# proton_status_details                                                #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_proton_status_details_success(patched_dr_client: MagicMock) -> None:
+    snapshot = {"replicas": [{"name": "pod-0", "phase": "Running", "ready": True}]}
+    patched_dr_client.get.return_value = MagicMock(
+        content=b'{"replicas": []}', json=lambda: snapshot
+    )
+
+    result = await proton_tools.proton_status_details(workload_id="wkld-abc", proton_id="ptn-1")
+
+    patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/protons/ptn-1/statusDetails")
+    assert result == snapshot
+
+
+@pytest.mark.asyncio
+async def test_proton_status_details_no_status_yet(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(content=b"", json=lambda: None)
+
+    result = await proton_tools.proton_status_details(workload_id="wkld-abc", proton_id="ptn-1")
+
+    assert result["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_proton_status_details_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.proton_status_details(workload_id="wkld-abc", proton_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+# ------------------------------------------------------------------ #
+# workload_logs                                                         #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_success(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "data": [{"body": "Server started", "severityText": "INFO"}],
+            "count": 1,
+            "totalCount": 1,
+        }
+    )
+
+    result = await proton_tools.workload_logs(workload_id="wkld-abc")
+
+    patched_dr_client.get.assert_called_once_with(
+        "otel/workload/wkld-abc/logs/",
+        params=[("limit", 100), ("offset", 0), ("level", "debug")],
+    )
+    assert result["count"] == 1
+    assert result["logs"][0]["body"] == "Server started"
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_with_filters(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"data": [], "count": 0, "totalCount": 0}
+    )
+
+    await proton_tools.workload_logs(
+        workload_id="wkld-abc",
+        level="error",
+        start_time="2026-01-01T00:00:00Z",
+        end_time="2026-01-02T00:00:00Z",
+        includes=["ERROR", "FATAL"],
+        excludes=["healthcheck"],
+        span_id="span-1",
+        trace_id="trace-1",
+    )
+
+    patched_dr_client.get.assert_called_once_with(
+        "otel/workload/wkld-abc/logs/",
+        params=[
+            ("limit", 100),
+            ("offset", 0),
+            ("level", "error"),
+            ("startTime", "2026-01-01T00:00:00Z"),
+            ("endTime", "2026-01-02T00:00:00Z"),
+            ("includes", "ERROR"),
+            ("includes", "FATAL"),
+            ("excludes", "healthcheck"),
+            ("spanId", "span-1"),
+            ("traceId", "trace-1"),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_invalid_level_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.workload_logs(workload_id="wkld-abc", level="verbose")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_negative_offset_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.workload_logs(workload_id="wkld-abc", offset=-1)
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("500", status_code=500, json={})
+    with pytest.raises(ToolError) as exc_info:
+        await proton_tools.workload_logs(workload_id="wkld-abc")
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM

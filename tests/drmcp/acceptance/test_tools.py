@@ -19,7 +19,7 @@ These tools are loaded by the MCP server and are available for testing purposes.
 """
 
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
-from datarobot_genai.drtools.core.auth import must_get_auth_context
+from datarobot_genai.drmcputils.auth import must_get_auth_context
 
 
 @dr_mcp_integration_tool()

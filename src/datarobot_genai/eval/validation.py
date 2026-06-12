@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
+import os
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -19,6 +21,61 @@ from urllib.request import Request
 from urllib.request import urlopen
 
 import yaml
+
+from datarobot_genai.eval.runner import resolve_benchmark_module
+
+
+def preflight_judge(judge_cfg: dict[str, Any]) -> None:
+    """Ping the judge endpoint with a minimal chat-completions call.
+
+    Raises RuntimeError on any non-200 response or network failure so callers
+    can bail before running the full benchmark — catches missing / invalid /
+    expired tokens, wrong model_id, and gateway outages that would otherwise
+    surface only as a cascade of per-case CALL_ERROR results.
+    """
+    url = judge_cfg["url"].rstrip("/") + "/chat/completions"
+    model_id = judge_cfg["model_id"]
+    api_key_name = judge_cfg["api_key_name"]
+    token = os.environ.get(api_key_name)
+    if not token:
+        raise RuntimeError(
+            f"Judge preflight failed: env var {api_key_name} is not set "
+            f"(judge url={judge_cfg['url']}, model={model_id})"
+        )
+
+    # Reasoning models (o-series, etc.) spend tokens on an internal reasoning
+    # pass before emitting output, so a tight max_tokens budget yields an HTTP
+    # 400 even when auth and model are fine — a false negative. Give the ping
+    # enough headroom to finish reasoning and emit at least one output token.
+    payload = json.dumps(
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 512,
+            "temperature": 0,
+        }
+    ).encode()
+    req = Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        urlopen(req, timeout=15)
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(
+            f"Judge preflight failed: HTTP {e.code} from {url} "
+            f"(model={model_id}, token env={api_key_name}). Response: {body}"
+        ) from e
+    except URLError as e:
+        raise RuntimeError(
+            f"Judge preflight failed: cannot reach {url} (model={model_id}): {e.reason}"
+        ) from e
 
 
 def health_check(endpoint_url: str) -> str | None:
@@ -77,9 +134,15 @@ def validate_inputs(
     else:
         try:
             cfg = load_pipeline(pipeline_path)
-            module = repo_root / cfg["benchmark"]["module"]
-            if not module.exists():
-                errors.append(f"Benchmark module not found: {module}")
+            module_str = str(cfg["benchmark"]["module"])
+            # Shared resolver with the runner so validation and execution agree
+            # on where a benchmark lives (local file or installed package). It
+            # raises if the module resolves to neither; we collect that as an
+            # error rather than propagating.
+            try:
+                resolve_benchmark_module(module_str, repo_root)
+            except ImportError:
+                errors.append(f"Benchmark module not found: {repo_root / module_str}")
         except (ValueError, KeyError) as e:
             errors.append(f"Pipeline '{pipeline}' invalid: {e}")
 

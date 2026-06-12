@@ -4,8 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.16.2
+## 0.16.12
 - `dragent/frontends`: `POST /chat/completions` on the dragent frontserver now reports the agent's **configured** LLM model (non-streaming body and streaming content chunks) instead of NAT's `"unknown-model"` default. dragent ignores the request's `model` (the agent runs its workflow-configured LLM), so the response reports that real model resolved via `core/config.default_response_model` (`LLM_DEFAULT_MODEL` env, else the deployed-LLM default; always `datarobot/`-prefixed, never `None`) — independent of, and not requiring, a `model` in the request. A registered `str -> ChatResponse` converter and a streaming-chunk backfill apply it, and `inline.py` uses the same resolver. Only NAT's `"unknown-model"`/`None` placeholder is replaced, so moderation's `MODERATION_MODEL_NAME` and any real propagated model are preserved. Known gaps: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"` (minted outside the dragent converters), and a per-LLM `model_name` set inline in `workflow.yaml` is not reflected (env/global config only).
+
+## 0.16.11
+- Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
+
+## 0.16.10
+- `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).
+- `drtools/predictive`: fixed `catalog_query_datastore` to use the supported `previewQuery` API route.
+
+## 0.16.9
+- `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
+  - Fix import sorting (ruff I001) in drtools modules left behind by the 0.16.8 merge.
+
+## 0.16.8
+- `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
+
+## 0.16.7
+- `drmcputils`: moved the shared, fastmcp-free base (DataRobot client, auth, credentials, errors, feature flags) here from `drtools.core`, so both the tools and MCP-server layers depend on one foundation.
+
+## 0.16.6
+- Updated CODEOWNERS to include common files like .gitignore
+
+## 0.16.5
+- `drtools/workload`: Proton inspection and OTel log tools.
+  - **New tools** (`proton_tools.py`): `proton_list` (paginated list of proton instances for a workload), `proton_get` (single proton by id), `proton_status_details` (per-replica pod status — CrashLoopBackOff, OOMKilled, container readiness; returns `{status: pending}` when no update received yet), `workload_logs` (OTel log lines with level, time-window, includes/excludes, span/trace-id filters).
+  - **Client additions** (`WorkloadApiClient`): `list_protons`, `get_proton`, `get_proton_status_details` (204 → `None`), `list_workload_logs` (GET `/otel/workload/{id}/logs/`).
+
+## 0.16.4
+- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code
+
+## 0.16.3
+- Migrate benchmark helper classes to genai[eval] package
+
+## 0.16.2
+- Replace `anthropic` with `litellm` calls in the eval package
 
 ## 0.16.1
 - `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.

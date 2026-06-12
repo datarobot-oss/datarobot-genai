@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import datarobot as dr
 
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 
 def get_datarobot_prompt_templates() -> list[dr.genai.PromptTemplate]:

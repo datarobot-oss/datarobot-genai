@@ -19,14 +19,10 @@ creating any dependency on drmcp. The metadata can be discovered and used
 by drmcp to register the tools.
 """
 
-import inspect
-from collections.abc import Awaitable
 from collections.abc import Callable
-from functools import wraps
 from typing import Any
 from typing import ParamSpec
 from typing import TypeVar
-from typing import cast
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -38,40 +34,26 @@ _TOOL_REGISTRY: list[tuple[Callable, dict[str, Any]]] = []
 def tool_metadata(**metadata: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Store tool metadata to a function without MCP registration.
 
-    This decorator stores the function and its metadata in a registry that can be
-    discovered by drmcp when it needs to register the tools.
+    Records the function and its metadata in a registry that drmcp discovers via
+    :func:`get_registered_tools` to register the tool. The function is returned
+    unchanged — no wrapper — so the registry and direct callers see the real
+    function (including its true coroutine-ness).
 
     Args:
         **metadata: Keyword arguments for tool metadata (tags, name, description, etc.)
 
     Returns
     -------
-        Decorator function that preserves the original function while storing metadata.
+        Decorator that registers the function and attaches its metadata, then
+        returns it unchanged.
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        # Store the function and metadata in the registry
         _TOOL_REGISTRY.append((func, metadata))
-
-        if inspect.iscoroutinefunction(func):
-            async_func = cast(Callable[P, Awaitable[R]], func)
-
-            @wraps(func)
-            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                return await async_func(*args, **kwargs)
-
-            # Store metadata as an attribute for easy access
-            async_wrapper._tool_metadata = metadata  # type: ignore[attr-defined]
-            return cast(Callable[P, R], async_wrapper)
-
-        @wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            return func(*args, **kwargs)
-
-        # Store metadata as an attribute for easy access
-        sync_wrapper._tool_metadata = metadata  # type: ignore[attr-defined]
-
-        return sync_wrapper
+        # Expose the metadata on the function for direct access; the function
+        # itself is returned untouched so callers and FastMCP see the original.
+        func._tool_metadata = metadata  # type: ignore[attr-defined]
+        return func
 
     return decorator
 

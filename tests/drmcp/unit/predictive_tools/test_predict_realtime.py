@@ -25,9 +25,9 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from datarobot_genai.drtools.core.clients.datarobot import ThreadSafeDataRobotClient
-from datarobot_genai.drtools.core.constants import MAX_INLINE_SIZE
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
+from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.predictive import predict_realtime
 from datarobot_genai.drtools.predictive.predict_realtime import predict_score_catalog_realtime
 
