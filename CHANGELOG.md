@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.9
+- `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
+  - Fix import sorting (ruff I001) in drtools modules left behind by the 0.16.8 merge.
+
 ## 0.16.8
 - `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
 
