@@ -40,7 +40,6 @@ from crewai import Crew  # noqa: E402
 from crewai import Task  # noqa: E402
 from crewai.utilities.task_output_storage_handler import TaskOutputStorageHandler  # noqa: E402
 
-from datarobot_genai.crewai._kickoff_storage import StatelessCrew  # noqa: E402
 from datarobot_genai.crewai._kickoff_storage import _NoOpTaskOutputHandler  # noqa: E402
 from datarobot_genai.crewai._kickoff_storage import neutralize_kickoff_storage  # noqa: E402
 
@@ -57,15 +56,6 @@ def test_noop_handler_is_a_task_output_storage_handler() -> None:
     # The real handler builds a sqlite-backed `storage`; the no-op must not.
     assert not hasattr(handler, "storage")
     assert handler.load() == []
-
-
-def test_stateless_crew_never_builds_sqlite_handler() -> None:
-    """The default ``crew`` property path builds no sqlite-backed handler."""
-    task = _make_task()
-    crew = StatelessCrew(agents=[task.agent], tasks=[task], verbose=False)
-    handler = crew._task_output_handler
-    assert isinstance(handler, _NoOpTaskOutputHandler)
-    assert not hasattr(handler, "storage")
 
 
 def test_neutralize_swaps_handler_on_prebuilt_crew() -> None:

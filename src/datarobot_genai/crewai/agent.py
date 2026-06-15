@@ -61,7 +61,6 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
-from datarobot_genai.crewai._kickoff_storage import StatelessCrew
 from datarobot_genai.crewai._kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
@@ -303,13 +302,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         Default implementation constructs a Crew with provided agents and tasks.
         Subclasses can override to customize Crew options.
-
-        Uses :class:`StatelessCrew` so crewai's kickoff-outputs SQLite storage is
-        never opened (see :mod:`datarobot_genai.crewai._kickoff_storage`).
         """
-        return StatelessCrew(
-            agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True
-        )
+        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True)
 
     @abc.abstractmethod
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -419,13 +413,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
 
-            # The default `crew` property returns a StatelessCrew whose
-            # kickoff-outputs handler never touches disk. This swap is a safety
-            # net for crews we did not construct ourselves -- a subclass that
-            # overrides `crew` to return a plain crewai.Crew, or the pre-built
-            # crew passed to datarobot_agent_class_from_crew -- whose unclosed
-            # `with sqlite3.connect(...)` blocks would otherwise leak fds.
-            crew = neutralize_kickoff_storage(self.crew)
+            crew = self.crew
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
             # Chat history is opt-in: only populate it if the agent/template
@@ -694,6 +682,10 @@ def datarobot_agent_class_from_crew(
         A new :class:`CrewAIAgent` subclass wired to the provided crew,
         agents, tasks, and kickoff-input builder.
     """
+    # Disable crewai's kickoff-outputs SQLite handler on the supplied crew so a
+    # long-lived serve process can't leak file descriptors (see
+    # :mod:`datarobot_genai.crewai._kickoff_storage`).
+    crew = neutralize_kickoff_storage(crew)
 
     class DataRobotAgent(CrewAIAgent):
         def __init__(

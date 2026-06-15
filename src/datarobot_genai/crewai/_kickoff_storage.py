@@ -14,14 +14,16 @@
 
 """Disable crewai's kickoff-outputs SQLite storage for stateless serving.
 
-crewai's ``Crew`` opens an on-disk SQLite db via ``_task_output_handler`` (at
-construction and every kickoff) with ``with sqlite3.connect(...)`` blocks that
-never close, so a long-lived ``nat dragent serve`` leaks fds until
+crewai's ``Crew`` opens an on-disk SQLite db via ``_task_output_handler`` on
+every kickoff, using ``with sqlite3.connect(...)`` blocks that commit but never
+close -- so a long-lived ``nat dragent serve`` leaks fds until
 ``[Errno 24] Too many open files``. It can't be disabled and only backs
-``Crew.replay()``, which we never use -- so we run crews with a no-op handler:
-:class:`StatelessCrew` (the default ``crew`` property) and
-:func:`neutralize_kickoff_storage` (crews we receive already built). No stdlib
-patch, no crewai version pin.
+``Crew.replay()``, which we never use.
+
+:func:`neutralize_kickoff_storage` swaps that handler for an in-process no-op so
+no further database connections are opened. It is applied to every crew built
+via :func:`datarobot_genai.crewai.agent.datarobot_agent_class_from_crew`. No
+stdlib monkeypatch, no crewai version pin.
 """
 
 from __future__ import annotations
@@ -29,7 +31,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import pydantic
 from crewai import Crew
 from crewai.utilities.task_output_storage_handler import TaskOutputStorageHandler
 
@@ -60,26 +61,12 @@ class _NoOpTaskOutputHandler(TaskOutputStorageHandler):
         return []
 
 
-class StatelessCrew(Crew):
-    """``Crew`` that uses the no-op handler (never opens sqlite).
-
-    A subclass rather than a post-construction swap: the real handler is built
-    inside ``Crew.__init__`` (opening the db / creating the file) before a swap
-    could run, and the ``crew`` property rebuilds per request -- so a swap would
-    leak every request. Overriding the factory means it is never built.
-    """
-
-    _task_output_handler: TaskOutputStorageHandler = pydantic.PrivateAttr(
-        default_factory=_NoOpTaskOutputHandler
-    )
-
-
 def neutralize_kickoff_storage(crew: Crew) -> Crew:
-    """Swap an already-built crew's handler for the no-op.
+    """Replace a crew's kickoff-outputs handler with the no-op (in place).
 
-    For crews we don't construct (e.g. the ``datarobot_agent_class_from_crew``
-    singleton); prefer :class:`StatelessCrew` otherwise. Logged no-op if crewai
-    drops the attribute.
+    Safe to call on any crew. If a future crewai release renames or drops the
+    private ``_task_output_handler`` attribute, this degrades to a logged no-op
+    instead of raising, leaving the crew functionally unchanged.
     """
     if hasattr(crew, "_task_output_handler"):
         crew._task_output_handler = _NoOpTaskOutputHandler()  # type: ignore[assignment]
