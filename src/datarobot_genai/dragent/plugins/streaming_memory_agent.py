@@ -67,6 +67,7 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.memory.models import MemoryItem
 from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
+from datarobot_genai.core.agents.base import STREAMING_MEMORY_CONTEXT_PREFIX
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -123,7 +124,7 @@ def _last_user_text(messages: list[Any]) -> str:
 
 def _with_memory_context(messages: list[Any], memory_text: str) -> list[Any]:
     """Return a new list with a system message inserted before the last user message."""
-    payload = f"Relevant context from memory:\n{memory_text}"
+    payload = f"{STREAMING_MEMORY_CONTEXT_PREFIX}{memory_text}"
     sys_msg = AgUiSystemMessage(id=str(uuid.uuid4()), content=payload)
     out = list(messages)
     for i in range(len(out) - 1, -1, -1):

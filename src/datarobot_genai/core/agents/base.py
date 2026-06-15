@@ -229,13 +229,17 @@ def _message_content_as_str(content: Any) -> str:
     return "".join(getattr(part, "text", "") for part in content if part is not None)
 
 
-def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgentInput:
-    """Fold AG-UI system messages into the latest user turn.
+STREAMING_MEMORY_CONTEXT_PREFIX = "Relevant context from memory:\n"
 
-    ``streaming_memory_agent`` injects retrieved memories as a system message
+
+def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgentInput:
+    """Fold a ``streaming_memory_agent`` memory injection into the latest user turn.
+
+    ``streaming_memory_agent`` inserts retrieved memories as a system message
     immediately before the last user message. Agents that only read the last
-    user turn (for example ``LlamaIndexAgent``) must merge those system
-    messages here so retrieved memory reaches the model.
+    user turn (for example ``LlamaIndexAgent``) must merge that message here
+    so retrieved memory reaches the model. Other system messages are left
+    unchanged.
     """
     messages = list(run_agent_input.messages)
     if not messages:
@@ -250,27 +254,23 @@ def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgen
             last_user_idx = idx
             break
 
-    if last_user_idx is None:
+    if last_user_idx is None or last_user_idx == 0:
         return run_agent_input
 
-    system_texts = [
-        text
-        for message in messages[:last_user_idx]
-        if getattr(message, "role", None) == "system"
-        for text in [_message_content_as_str(getattr(message, "content", None))]
-        if text
-    ]
-    if not system_texts:
+    memory_message = messages[last_user_idx - 1]
+    if getattr(memory_message, "role", None) != "system":
+        return run_agent_input
+
+    memory_text = _message_content_as_str(getattr(memory_message, "content", None))
+    if not memory_text.startswith(STREAMING_MEMORY_CONTEXT_PREFIX):
         return run_agent_input
 
     user_message = messages[last_user_idx]
     user_content = _message_content_as_str(getattr(user_message, "content", None))
-    merged_content = "\n\n".join(system_texts) + "\n\n" + user_content
+    merged_content = memory_text + "\n\n" + user_content
 
     updated_messages = [
-        message
-        for message in messages
-        if message is not user_message and getattr(message, "role", None) != "system"
+        message for message in messages if message not in (memory_message, user_message)
     ]
     updated_messages.append(user_message.model_copy(update={"content": merged_content}))
 
