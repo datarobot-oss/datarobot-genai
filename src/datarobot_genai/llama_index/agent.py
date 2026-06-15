@@ -165,7 +165,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         input_message = str(user_prompt_content)
-        uses_memory = "{memory}" in input_message
 
         # Prior turns reach the model as a text {chat_history} summary when the
         # prompt uses the placeholder, or as structured native ChatMessage history
@@ -181,13 +180,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             structured_chat_history = (
                 ag_ui_history_to_chat_messages(self.history_messages(run_agent_input)) or None
             )
-        if uses_memory:
-            memory = ""
-            try:
-                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory retrieval failed: %s", exc)
-            input_message = input_message.replace("{memory}", memory)
 
         logger.info(f"Running agent with user prompt: {input_message}")
 
@@ -488,11 +480,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             )
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-        if uses_memory:
-            try:
-                await self.store_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory storage failed: %s", exc)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
