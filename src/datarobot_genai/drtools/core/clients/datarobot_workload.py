@@ -403,3 +403,26 @@ class WorkloadApiClient:
         """DELETE /artifactRepositories/{id} — 204 No Content on success."""
         with request_user_dr_client() as client:
             client.delete(f"artifactRepositories/{repository_id}")
+
+    # ------------------------------------------------------------------ #
+    # Workload replacement (rolling update)                                #
+    # ------------------------------------------------------------------ #
+
+    def get_workload_replacement(self, workload_id: str) -> dict[str, Any]:
+        """GET /workloads/{id}/replacement — current replacement status."""
+        with request_user_dr_client() as client:
+            return client.get(f"workloads/{workload_id}/replacement").json()
+
+    def create_workload_replacement(
+        self, workload_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """POST /workloads/{id}/replacement — start a rolling replacement (202)."""
+        with request_user_dr_client() as client:
+            resp = client.post(f"workloads/{workload_id}/replacement", json=payload)
+            return resp.json() if resp.content else {}
+
+    def delete_workload_replacement(self, workload_id: str) -> dict[str, Any]:
+        """DELETE /workloads/{id}/replacement — cancel an in-progress replacement (202)."""
+        with request_user_dr_client() as client:
+            resp = client.delete(f"workloads/{workload_id}/replacement")
+            return resp.json() if resp.content else {}
