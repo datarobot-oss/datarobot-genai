@@ -409,6 +409,20 @@ def test_datarobot_agent_class_from_crew_subclass_and_kickoff_inputs() -> None:
     assert instance.make_kickoff_inputs("hello") == {"topic": "hello", "extra": 1}
 
 
+def test_datarobot_agent_class_from_crew_neutralizes_kickoff_storage() -> None:
+    # The supplied crew's leaking sqlite kickoff-outputs handler must be replaced
+    # with the no-op so a long-lived serve process can't exhaust its fd table.
+    from datarobot_genai.crewai.kickoff_storage import _NoOpTaskOutputHandler
+
+    crew = MagicMock()
+    crew.verbose = True
+    crew._task_output_handler = MagicMock()  # stand-in for the real sqlite handler
+
+    datarobot_agent_class_from_crew(crew, [_mock_crewai_agent()], [MagicMock()], lambda u: {})
+
+    assert isinstance(crew._task_output_handler, _NoOpTaskOutputHandler)
+
+
 def test_datarobot_agent_class_from_crew_set_tools_merges_with_original() -> None:
     crew = MagicMock()
     crew.verbose = True
