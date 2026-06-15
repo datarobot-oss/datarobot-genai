@@ -304,11 +304,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         Default implementation constructs a Crew with provided agents and tasks.
         Subclasses can override to customize Crew options.
 
-        Uses :class:`StatelessCrew` so crewai's kickoff-outputs SQLite handler is
-        never built. That storage only backs ``Crew.replay()`` (which the dragent
-        request path never uses) and leaks file descriptors via unclosed
-        ``with sqlite3.connect(...)`` blocks; skipping it keeps a long-lived serve
-        process from exhausting its fd table and avoids writing local state.
+        Uses :class:`StatelessCrew` so crewai's kickoff-outputs SQLite storage is
+        never opened (see :mod:`datarobot_genai.crewai._kickoff_storage`).
         """
         return StatelessCrew(
             agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True

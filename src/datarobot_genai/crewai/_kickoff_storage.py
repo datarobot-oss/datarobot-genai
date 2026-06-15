@@ -14,36 +14,21 @@
 
 """Disable crewai's kickoff-outputs SQLite storage for stateless serving.
 
-crewai's ``Crew`` persists every task output to an on-disk WAL-mode SQLite
-database via ``_task_output_handler`` (a ``TaskOutputStorageHandler``), built
-unconditionally as a ``PrivateAttr`` at Crew construction. There is no public
-option to turn it off. Each operation runs ``with sqlite3.connect(...) as
-conn``; the stdlib sqlite3 context manager commits but never closes, so every
-kickoff strands db/-wal/-shm file descriptors until cyclic GC happens to run.
-In a long-lived ``nat dragent serve`` process the fd table fills and the next
-open fails with ``OSError: [Errno 24] Too many open files``.
+crewai's ``Crew`` opens an on-disk SQLite db via ``_task_output_handler`` -- at
+construction and on every kickoff -- using ``with sqlite3.connect(...)`` blocks
+that commit but never close. In a long-lived ``nat dragent serve`` process those
+descriptors leak until it hits ``OSError: [Errno 24] Too many open files``. The
+storage can't be disabled and only backs ``Crew.replay()``, which we never use.
 
-That storage exists solely to back ``Crew.replay(task_id)``. The dragent
-request path is stateless -- every request builds and kicks off a fresh crew
-and never replays -- so the storage is pure liability (local disk state, not
-shared-safe for horizontal scaling). Rather than patch crewai or stdlib
-``sqlite3``, we replace the handler with an in-process no-op so no database is
-ever opened. Replay simply returns nothing (which we never call).
+We replace the handler with an in-process no-op so no database is ever opened:
 
-Two entry points cover the two ways the integration produces a crew:
-
-* :class:`StatelessCrew` -- a ``Crew`` subclass that overrides the
-  ``_task_output_handler`` ``PrivateAttr`` default factory so the real
-  sqlite-backed handler is *never constructed*. Used by the base ``crew``
-  property. This opens zero SQLite connections, even across many fresh
-  per-request constructions.
+* :class:`StatelessCrew` -- a ``Crew`` subclass overriding the
+  ``_task_output_handler`` default factory so the real handler is never built
+  (used by the base ``crew`` property).
 * :func:`neutralize_kickoff_storage` -- a post-construction swap for crews we
-  receive already built (the ``datarobot_agent_class_from_crew`` singleton, or
-  a subclass that overrides ``crew`` to return a plain ``crewai.Crew``).
+  receive already built (e.g. the ``datarobot_agent_class_from_crew`` singleton).
 
-Both rely only on crewai's public ``Crew`` subclassing surface and the
-documented ``TaskOutputStorageHandler`` method contract -- no stdlib
-monkeypatch and no crewai version pin.
+No stdlib monkeypatch, no crewai version pin.
 """
 
 from __future__ import annotations
