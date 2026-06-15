@@ -25,6 +25,9 @@ from datarobot.auth.users import User
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from dotenv import load_dotenv
 
+import posthog
+posthog.disabled = True
+
 from .helpers import BASE_URL
 
 # Load .env from e2e-tests root
