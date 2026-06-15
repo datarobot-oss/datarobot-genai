@@ -48,9 +48,9 @@ from llama_index.llms.litellm import LiteLLM
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
-from datarobot_genai.core.agents.base import apply_system_context_to_run_input
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
@@ -161,7 +161,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
 
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the LlamaIndex workflow with the provided completion parameters."""
-        run_agent_input = apply_system_context_to_run_input(run_agent_input)
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         input_message = str(user_prompt_content)
 
@@ -179,6 +178,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             structured_chat_history = (
                 ag_ui_history_to_chat_messages(self.history_messages(run_agent_input)) or None
             )
+
+        input_message = prepend_streaming_memory_to_prompt(input_message, run_agent_input)
 
         logger.info(f"Running agent with user prompt: {input_message}")
 

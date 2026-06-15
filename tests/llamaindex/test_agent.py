@@ -915,7 +915,7 @@ async def test_invoke_merges_streaming_memory_system_message_into_user_turn(
             role="system",
             content="Relevant context from memory:\nUser likes concise answers.",
         ),
-        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
+        UserMessage(id="u2", role="user", content="What about AI?"),
     ]
 
     # WHEN invoking the agent
@@ -925,7 +925,7 @@ async def test_invoke_merges_streaming_memory_system_message_into_user_turn(
     assert isinstance(events[-1][0], RunFinishedEvent)
     assert workflow.captured_user_msgs
     assert "Relevant context from memory:" in workflow.captured_user_msgs[0]
-    assert workflow.captured_user_msgs[0].endswith('{"topic": "AI"}')
+    assert workflow.captured_user_msgs[0].endswith("What about AI?")
 
 
 async def test_invoke_passes_structured_chat_history_when_enabled(events: list[Any]) -> None:

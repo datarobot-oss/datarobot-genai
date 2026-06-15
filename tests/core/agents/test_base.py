@@ -30,8 +30,10 @@ from ragas.messages import HumanMessage
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import apply_system_context_to_run_input
 from datarobot_genai.core.agents.base import default_usage_metrics
+from datarobot_genai.core.agents.base import extract_streaming_memory_context
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
+from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.core.agents.history import extract_history_messages
 
 
@@ -271,6 +273,43 @@ def test_apply_system_context_ignores_non_memory_system_message_before_last_user
     prepared = apply_system_context_to_run_input(run_agent_input)
 
     assert prepared.messages == run_agent_input.messages
+
+
+def test_extract_streaming_memory_context_returns_injected_memory(
+    run_agent_input: RunAgentInput,
+) -> None:
+    run_agent_input.messages = [
+        UserMessage(id="u1", role="user", content="First turn"),
+        SystemMessage(
+            id="s1",
+            role="system",
+            content="Relevant context from memory:\nUser likes concise answers.",
+        ),
+        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
+    ]
+
+    assert extract_streaming_memory_context(run_agent_input) == (
+        "Relevant context from memory:\nUser likes concise answers."
+    )
+
+
+def test_prepend_streaming_memory_to_prompt_preserves_processed_prompt(
+    run_agent_input: RunAgentInput,
+) -> None:
+    run_agent_input.messages = [
+        UserMessage(id="u1", role="user", content="First turn"),
+        SystemMessage(
+            id="s1",
+            role="system",
+            content="Relevant context from memory:\nUser likes concise answers.",
+        ),
+        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
+    ]
+
+    merged = prepend_streaming_memory_to_prompt("Memory:\nUse concise answers.", run_agent_input)
+
+    assert merged.startswith("Relevant context from memory:")
+    assert merged.endswith("Memory:\nUse concise answers.")
 
 
 def test_extract_history_messages_excludes_final_user_turn_only_when_last_message_is_user() -> None:
