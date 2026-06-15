@@ -118,6 +118,16 @@ async def workload_replacement_create(
         },
     }
     if runtime is not None:
+        if not runtime or not isinstance(runtime, dict):
+            raise ToolError(
+                "Argument validation error: 'runtime' must be a non-empty object.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+        if "containerGroups" not in runtime:
+            raise ToolError(
+                "Argument validation error: 'runtime' must contain 'containerGroups'.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         payload["runtime"] = runtime
     try:
         return WorkloadApiClient().create_workload_replacement(wid, payload)

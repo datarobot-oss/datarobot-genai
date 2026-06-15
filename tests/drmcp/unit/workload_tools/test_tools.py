@@ -1660,6 +1660,25 @@ async def test_workload_replacement_create_with_runtime(patched_dr_client: Magic
 
 
 @pytest.mark.asyncio
+async def test_workload_replacement_create_empty_body(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.return_value = MagicMock(content=b"", json=lambda: {})
+
+    result = await replacement_tools.workload_replacement_create(
+        workload_id="wkld-abc", artifact_id="art-xyz"
+    )
+
+    patched_dr_client.post.assert_called_once_with(
+        "workloads/wkld-abc/replacement",
+        json={
+            "artifactId": "art-xyz",
+            "strategy": "rolling",
+            "config": {"warmupDurationMinutes": 0, "keepOldVersionMinutes": 0},
+        },
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
 async def test_workload_replacement_create_empty_workload_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
         await replacement_tools.workload_replacement_create(workload_id="", artifact_id="art-xyz")
@@ -1687,6 +1706,24 @@ async def test_workload_replacement_create_negative_warmup_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
         await replacement_tools.workload_replacement_create(
             workload_id="wkld-abc", artifact_id="art-xyz", warmup_duration_minutes=-1
+        )
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_workload_replacement_create_empty_runtime_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await replacement_tools.workload_replacement_create(
+            workload_id="wkld-abc", artifact_id="art-xyz", runtime={}
+        )
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_workload_replacement_create_missing_container_groups_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await replacement_tools.workload_replacement_create(
+            workload_id="wkld-abc", artifact_id="art-xyz", runtime={"replicaCount": 2}
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 

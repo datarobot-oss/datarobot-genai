@@ -418,7 +418,8 @@ class WorkloadApiClient:
     ) -> dict[str, Any]:
         """POST /workloads/{id}/replacement — start a rolling replacement (202)."""
         with request_user_dr_client() as client:
-            return client.post(f"workloads/{workload_id}/replacement", json=payload).json()
+            resp = client.post(f"workloads/{workload_id}/replacement", json=payload)
+            return resp.json() if resp.content else {}
 
     def delete_workload_replacement(self, workload_id: str) -> dict[str, Any]:
         """DELETE /workloads/{id}/replacement — cancel an in-progress replacement (202)."""
