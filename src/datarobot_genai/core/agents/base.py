@@ -221,6 +221,62 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return MultiTurnSample(user_input=events)
 
 
+def _message_content_as_str(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    return "".join(getattr(part, "text", "") for part in content if part is not None)
+
+
+def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgentInput:
+    """Fold AG-UI system messages into the latest user turn.
+
+    ``streaming_memory_agent`` injects retrieved memories as a system message
+    immediately before the last user message. Agents that only read the last
+    user turn (for example ``LlamaIndexAgent``) must merge those system
+    messages here so retrieved memory reaches the model.
+    """
+    messages = list(run_agent_input.messages)
+    if not messages:
+        return run_agent_input
+
+    last_user_idx: int | None = None
+    for idx in range(len(messages) - 1, -1, -1):
+        message = messages[idx]
+        if getattr(message, "role", None) == "user" and _message_content_as_str(
+            getattr(message, "content", None)
+        ):
+            last_user_idx = idx
+            break
+
+    if last_user_idx is None:
+        return run_agent_input
+
+    system_texts = [
+        text
+        for message in messages[:last_user_idx]
+        if getattr(message, "role", None) == "system"
+        for text in [_message_content_as_str(getattr(message, "content", None))]
+        if text
+    ]
+    if not system_texts:
+        return run_agent_input
+
+    user_message = messages[last_user_idx]
+    user_content = _message_content_as_str(getattr(user_message, "content", None))
+    merged_content = "\n\n".join(system_texts) + "\n\n" + user_content
+
+    updated_messages = [
+        message
+        for message in messages
+        if message is not user_message and getattr(message, "role", None) != "system"
+    ]
+    updated_messages.append(user_message.model_copy(update={"content": merged_content}))
+
+    return run_agent_input.model_copy(update={"messages": updated_messages})
+
+
 def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     """Extract the last user message content from input."""
     user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]

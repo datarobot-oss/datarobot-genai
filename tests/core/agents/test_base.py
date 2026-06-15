@@ -28,6 +28,7 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
+from datarobot_genai.core.agents.base import apply_system_context_to_run_input
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
@@ -211,6 +212,26 @@ def test_extract_user_prompt_content_the_last_user_message_is_a_json_string(
     user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is the last user message
     assert user_prompt == {"foo": "bar"}
+
+
+def test_apply_system_context_merges_memory_into_user_turn(run_agent_input: RunAgentInput) -> None:
+    run_agent_input.messages = [
+        UserMessage(id="u1", role="user", content="First turn"),
+        SystemMessage(
+            id="s1",
+            role="system",
+            content="Relevant context from memory:\nUser likes concise answers.",
+        ),
+        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
+    ]
+
+    prepared = apply_system_context_to_run_input(run_agent_input)
+
+    assert len(prepared.messages) == 2
+    assert prepared.messages[-1].role == "user"
+    assert "Relevant context from memory:" in prepared.messages[-1].content
+    assert prepared.messages[-1].content.endswith('{"topic": "AI"}')
+    assert all(message.role != "system" for message in prepared.messages)
 
 
 def test_extract_history_messages_excludes_final_user_turn_only_when_last_message_is_user() -> None:

@@ -902,6 +902,32 @@ async def test_invoke_replaces_chat_history_placeholder() -> None:
     assert "{chat_history}" not in text
 
 
+async def test_invoke_merges_streaming_memory_system_message_into_user_turn(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a llamaindex agent receiving memory injected as a system message
+    workflow = CapturingWorkflow(events=[], state="S")
+    agent = MyLlamaAgent(workflow, structured_history=False)
+    run_agent_input.messages = [
+        UserMessage(id="u1", role="user", content="First turn"),
+        AgSystemMessage(
+            id="s1",
+            role="system",
+            content="Relevant context from memory:\nUser likes concise answers.",
+        ),
+        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
+    ]
+
+    # WHEN invoking the agent
+    events = [event async for event in agent.invoke(run_agent_input)]
+
+    # THEN retrieved memory is folded into the user prompt passed to the workflow
+    assert isinstance(events[-1][0], RunFinishedEvent)
+    assert workflow.captured_user_msgs
+    assert "Relevant context from memory:" in workflow.captured_user_msgs[0]
+    assert workflow.captured_user_msgs[0].endswith('{"topic": "AI"}')
+
+
 async def test_invoke_passes_structured_chat_history_when_enabled(events: list[Any]) -> None:
     # GIVEN structured_history=True and a prior tool-call turn
     wf = ChatHistoryCapturingWorkflow(events=events, state="S")
