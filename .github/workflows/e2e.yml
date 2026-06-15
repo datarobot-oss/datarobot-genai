@@ -144,6 +144,7 @@ jobs:
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"
+      LITELLM_TELEMETRY: "False"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
