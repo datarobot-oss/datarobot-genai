@@ -24,7 +24,6 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
-import gc
 import logging
 import uuid
 from collections.abc import Callable
@@ -62,6 +61,8 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.crewai._kickoff_storage import StatelessCrew
+from datarobot_genai.crewai._kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -302,8 +303,16 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
         Default implementation constructs a Crew with provided agents and tasks.
         Subclasses can override to customize Crew options.
+
+        Uses :class:`StatelessCrew` so crewai's kickoff-outputs SQLite handler is
+        never built. That storage only backs ``Crew.replay()`` (which the dragent
+        request path never uses) and leaks file descriptors via unclosed
+        ``with sqlite3.connect(...)`` blocks; skipping it keeps a long-lived serve
+        process from exhausting its fd table and avoids writing local state.
         """
-        return Crew(agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True)
+        return StatelessCrew(
+            agents=self.agents, tasks=self.tasks, verbose=self.verbose, stream=True
+        )
 
     @abc.abstractmethod
     def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -413,16 +422,13 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
 
-            # crewai's kickoff-outputs SQLite storage opens a connection per
-            # task-output write via `with sqlite3.connect(...)`, which commits but
-            # never closes, stranding db/-wal/-shm file descriptors until cyclic
-            # GC runs. In a long-lived `nat dragent serve` process that can exhaust
-            # the fd table (-> [Errno 24] Too many open files) before automatic GC
-            # catches up. Reclaim the previous request's stranded connections at
-            # the start of each invocation so the fd count stays bounded.
-            gc.collect()
-
-            crew = self.crew
+            # The default `crew` property returns a StatelessCrew whose
+            # kickoff-outputs handler never touches disk. This swap is a safety
+            # net for crews we did not construct ourselves -- a subclass that
+            # overrides `crew` to return a plain crewai.Crew, or the pre-built
+            # crew passed to datarobot_agent_class_from_crew -- whose unclosed
+            # `with sqlite3.connect(...)` blocks would otherwise leak fds.
+            crew = neutralize_kickoff_storage(self.crew)
 
             kickoff_inputs = self.make_kickoff_inputs(str(user_prompt_content))
             # Chat history is opt-in: only populate it if the agent/template
