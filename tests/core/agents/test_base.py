@@ -261,6 +261,31 @@ def test_apply_system_context_leaves_other_system_messages_untouched(
     assert prepared.messages[-1].content.endswith('{"topic": "AI"}')
 
 
+def test_apply_system_context_preserves_order_with_trailing_empty_user(
+    run_agent_input: RunAgentInput,
+) -> None:
+    run_agent_input.messages = [
+        UserMessage(id="u1", role="user", content="First turn"),
+        SystemMessage(
+            id="s1",
+            role="system",
+            content="Relevant context from memory:\nUser likes concise answers.",
+        ),
+        UserMessage(id="u2", role="user", content="What about AI?"),
+        UserMessage(id="u3", role="user", content=""),
+    ]
+
+    prepared = apply_system_context_to_run_input(run_agent_input)
+
+    assert len(prepared.messages) == 3
+    assert prepared.messages[0].content == "First turn"
+    assert "Relevant context from memory:" in prepared.messages[1].content
+    assert prepared.messages[1].content.endswith("What about AI?")
+    assert prepared.messages[-1].role == "user"
+    assert prepared.messages[-1].content == ""
+    assert extract_user_prompt_content(prepared) == ""
+
+
 def test_apply_system_context_ignores_non_memory_system_message_before_last_user(
     run_agent_input: RunAgentInput,
 ) -> None:

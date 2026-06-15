@@ -293,11 +293,16 @@ def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgen
     user_message = messages[last_user_idx]
     user_content = _message_content_as_str(getattr(user_message, "content", None))
     merged_content = memory_text + "\n\n" + user_content
+    merged_user_message = user_message.model_copy(update={"content": merged_content})
 
-    updated_messages = [
-        message for message in messages if message not in (memory_message, user_message)
-    ]
-    updated_messages.append(user_message.model_copy(update={"content": merged_content}))
+    updated_messages: list[Any] = []
+    for message in messages:
+        if message is memory_message:
+            continue
+        if message is user_message:
+            updated_messages.append(merged_user_message)
+        else:
+            updated_messages.append(message)
 
     return run_agent_input.model_copy(update={"messages": updated_messages})
 
