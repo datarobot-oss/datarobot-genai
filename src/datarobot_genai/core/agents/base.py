@@ -268,45 +268,6 @@ def prepend_streaming_memory_to_prompt(prompt: str, run_agent_input: RunAgentInp
     return streaming_context + "\n\n" + prompt
 
 
-def apply_system_context_to_run_input(run_agent_input: RunAgentInput) -> RunAgentInput:
-    """Fold a ``streaming_memory_agent`` memory injection into the latest user turn.
-
-    ``streaming_memory_agent`` inserts retrieved memories as a system message
-    immediately before the last user message. Agents that only read the last
-    user turn (for example ``LlamaIndexAgent``) must merge that message here
-    so retrieved memory reaches the model. Other system messages are left
-    unchanged.
-    """
-    messages = list(run_agent_input.messages)
-    if not messages:
-        return run_agent_input
-
-    last_user_idx = _last_user_message_index(messages)
-    if last_user_idx is None or last_user_idx == 0:
-        return run_agent_input
-
-    memory_text = extract_streaming_memory_context(run_agent_input)
-    if memory_text is None:
-        return run_agent_input
-
-    memory_message = messages[last_user_idx - 1]
-    user_message = messages[last_user_idx]
-    user_content = _message_content_as_str(getattr(user_message, "content", None))
-    merged_content = memory_text + "\n\n" + user_content
-    merged_user_message = user_message.model_copy(update={"content": merged_content})
-
-    updated_messages: list[Any] = []
-    for message in messages:
-        if message is memory_message:
-            continue
-        if message is user_message:
-            updated_messages.append(merged_user_message)
-        else:
-            updated_messages.append(message)
-
-    return run_agent_input.model_copy(update={"messages": updated_messages})
-
-
 def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     """Extract the last user message content from input."""
     user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]

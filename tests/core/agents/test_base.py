@@ -28,7 +28,6 @@ from ragas.messages import AIMessage
 from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
-from datarobot_genai.core.agents.base import apply_system_context_to_run_input
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_streaming_memory_context
 from datarobot_genai.core.agents.base import extract_user_prompt_content
@@ -214,90 +213,6 @@ def test_extract_user_prompt_content_the_last_user_message_is_a_json_string(
     user_prompt = extract_user_prompt_content(run_agent_input)
     # THEN the user prompt is the last user message
     assert user_prompt == {"foo": "bar"}
-
-
-def test_apply_system_context_merges_memory_into_user_turn(run_agent_input: RunAgentInput) -> None:
-    run_agent_input.messages = [
-        UserMessage(id="u1", role="user", content="First turn"),
-        SystemMessage(
-            id="s1",
-            role="system",
-            content="Relevant context from memory:\nUser likes concise answers.",
-        ),
-        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
-    ]
-
-    prepared = apply_system_context_to_run_input(run_agent_input)
-
-    assert len(prepared.messages) == 2
-    assert prepared.messages[-1].role == "user"
-    assert "Relevant context from memory:" in prepared.messages[-1].content
-    assert prepared.messages[-1].content.endswith('{"topic": "AI"}')
-    assert all(message.role != "system" for message in prepared.messages)
-
-
-def test_apply_system_context_leaves_other_system_messages_untouched(
-    run_agent_input: RunAgentInput,
-) -> None:
-    run_agent_input.messages = [
-        SystemMessage(id="s0", role="system", content="You are a helpful assistant."),
-        UserMessage(id="u1", role="user", content="First turn"),
-        SystemMessage(
-            id="s1",
-            role="system",
-            content="Relevant context from memory:\nUser likes concise answers.",
-        ),
-        UserMessage(id="u2", role="user", content='{"topic": "AI"}'),
-    ]
-
-    prepared = apply_system_context_to_run_input(run_agent_input)
-
-    assert len(prepared.messages) == 3
-    assert prepared.messages[0].role == "system"
-    assert prepared.messages[0].content == "You are a helpful assistant."
-    assert prepared.messages[1].role == "user"
-    assert prepared.messages[1].content == "First turn"
-    assert "Relevant context from memory:" in prepared.messages[-1].content
-    assert prepared.messages[-1].content.endswith('{"topic": "AI"}')
-
-
-def test_apply_system_context_preserves_order_with_trailing_empty_user(
-    run_agent_input: RunAgentInput,
-) -> None:
-    run_agent_input.messages = [
-        UserMessage(id="u1", role="user", content="First turn"),
-        SystemMessage(
-            id="s1",
-            role="system",
-            content="Relevant context from memory:\nUser likes concise answers.",
-        ),
-        UserMessage(id="u2", role="user", content="What about AI?"),
-        UserMessage(id="u3", role="user", content=""),
-    ]
-
-    prepared = apply_system_context_to_run_input(run_agent_input)
-
-    assert len(prepared.messages) == 3
-    assert prepared.messages[0].content == "First turn"
-    assert "Relevant context from memory:" in prepared.messages[1].content
-    assert prepared.messages[1].content.endswith("What about AI?")
-    assert prepared.messages[-1].role == "user"
-    assert prepared.messages[-1].content == ""
-    assert extract_user_prompt_content(prepared) == ""
-
-
-def test_apply_system_context_ignores_non_memory_system_message_before_last_user(
-    run_agent_input: RunAgentInput,
-) -> None:
-    run_agent_input.messages = [
-        UserMessage(id="u1", role="user", content="First turn"),
-        SystemMessage(id="s1", role="system", content="Some other system instruction."),
-        UserMessage(id="u2", role="user", content="Second turn"),
-    ]
-
-    prepared = apply_system_context_to_run_input(run_agent_input)
-
-    assert prepared.messages == run_agent_input.messages
 
 
 def test_extract_streaming_memory_context_returns_injected_memory(
