@@ -40,8 +40,8 @@ from crewai import Crew  # noqa: E402
 from crewai import Task  # noqa: E402
 from crewai.utilities.task_output_storage_handler import TaskOutputStorageHandler  # noqa: E402
 
-from datarobot_genai.crewai._kickoff_storage import _NoOpTaskOutputHandler  # noqa: E402
-from datarobot_genai.crewai._kickoff_storage import neutralize_kickoff_storage  # noqa: E402
+from datarobot_genai.crewai.kickoff_storage import _NoOpTaskOutputHandler  # noqa: E402
+from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage  # noqa: E402
 
 
 def _make_task() -> Task:
@@ -95,5 +95,5 @@ def test_crewai_version_is_validated() -> None:
     major, minor = (int(part) for part in crewai.__version__.split(".")[:2])
     assert (major, minor) == (1, 13), (
         f"crewai is {crewai.__version__}, but kickoff-storage neutralization "
-        "was validated against 1.13.x. Re-verify _kickoff_storage.py."
+        "was validated against 1.13.x. Re-verify kickoff_storage.py."
     )

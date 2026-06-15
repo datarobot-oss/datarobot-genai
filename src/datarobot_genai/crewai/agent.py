@@ -61,7 +61,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.memory.base import BaseMemoryClient
-from datarobot_genai.crewai._kickoff_storage import neutralize_kickoff_storage
+from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -684,7 +684,7 @@ def datarobot_agent_class_from_crew(
     """
     # Disable crewai's kickoff-outputs SQLite handler on the supplied crew so a
     # long-lived serve process can't leak file descriptors (see
-    # :mod:`datarobot_genai.crewai._kickoff_storage`).
+    # :mod:`datarobot_genai.crewai.kickoff_storage`).
     crew = neutralize_kickoff_storage(crew)
 
     class DataRobotAgent(CrewAIAgent):

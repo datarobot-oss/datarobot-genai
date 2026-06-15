@@ -412,7 +412,7 @@ def test_datarobot_agent_class_from_crew_subclass_and_kickoff_inputs() -> None:
 def test_datarobot_agent_class_from_crew_neutralizes_kickoff_storage() -> None:
     # The supplied crew's leaking sqlite kickoff-outputs handler must be replaced
     # with the no-op so a long-lived serve process can't exhaust its fd table.
-    from datarobot_genai.crewai._kickoff_storage import _NoOpTaskOutputHandler
+    from datarobot_genai.crewai.kickoff_storage import _NoOpTaskOutputHandler
 
     crew = MagicMock()
     crew.verbose = True
