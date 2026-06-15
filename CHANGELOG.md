@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.20
+- `core/datarobot_otel`: `resolve_entity_id_from_env()` now falls back to `OTEL_ENTITY_ID` when `MLOPS_DEPLOYMENT_ID` is absent, so `bootstrap_otel_provider_for_datarobot()` exports agent framework spans in local dev and deployments that only have `OTEL_ENTITY_ID` set via Pulumi.
+
 ## 0.16.19
 - `drtools/workload`: artifact replacement / rolling update.
   - **Client** (`WorkloadApiClient`): added `get_workload_replacement`, `create_workload_replacement`, `delete_workload_replacement` against `GET/POST/DELETE /api/v2/workloads/{id}/replacement`.
