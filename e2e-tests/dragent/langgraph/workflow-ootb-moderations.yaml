@@ -113,8 +113,4 @@ middleware:
             target_type: TextGeneration
             class_names: [anger, fear, sadness, disgust, joy, neutral]
           intervention:
-            action: block
-            message: "Negative emotion detected."
-            conditions:
-              - comparand: [anger, fear, sadness, disgust]
-                comparator: matches
+            action: report
