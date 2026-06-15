@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.17
-- `crewai`: fixed a file-descriptor leak that crashed long-running `nat dragent serve` with `[Errno 24] Too many open files`. crewai's kickoff-outputs SQLite storage leaks connections (unclosed `with sqlite3.connect(...)`); the agent now runs crews with an in-process no-op task-output handler, so no database is opened. It only backs `Crew.replay()`, which the stateless serve path never uses.
+- `crewai`: fixed a file-descriptor leak that crashed long-running `nat dragent serve` with `[Errno 24] Too many open files`. crewai's kickoff-outputs SQLite storage leaks connections (unclosed `with sqlite3.connect(...)`); the agent now runs crews with an in-process no-op task-output handler, so no database is opened.
 
 ## 0.16.16
 - `drtools/workload`: artifact builds and repositories.
