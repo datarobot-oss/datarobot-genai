@@ -85,6 +85,12 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _postscore_only_datarobot_moderations,
+)
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _prescore_datarobot_moderations_from_df,
+)
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
 from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
 from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
@@ -346,6 +352,31 @@ async def _content_filter_on_last_stream_response_async(
                 object="chat.completion.chunk",
             )
             return
+        yield current
+        current = peek
+
+
+async def _stream_response_with_merged_moderation_metrics(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Echo streamed chunks with merged prescore + postscore moderation sidecars."""
+    prescore_mods = {"Prompts_token_count": 3, "blocked_promptText": False}
+    response_mods = {"Responses_token_count": 6, "blocked_completion": False}
+    merged = {**prescore_mods, **response_mods}
+    aiter = completion.__aiter__()
+    try:
+        current = await aiter.__anext__()
+    except StopAsyncIteration:
+        return
+    while True:
+        try:
+            peek = await aiter.__anext__()
+        except StopAsyncIteration:
+            setattr(current, DATAROBOT_MODERATIONS_ATTR, merged)
+            yield current
+            return
+        setattr(current, DATAROBOT_MODERATIONS_ATTR, merged)
         yield current
         current = peek
 
@@ -2035,6 +2066,102 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
     stream_next.assert_not_called()
     assert len(chunks) == 1
     assert isinstance(chunks[0], DRAgentEventResponse)
+
+
+def test_postscore_only_datarobot_moderations_strips_prescore_keys() -> None:
+    prescore = {"Prompts_token_count": 3, "blocked_promptText": False}
+    merged = {**prescore, "Responses_token_count": 6, "blocked_completion": False}
+    assert _postscore_only_datarobot_moderations(merged, prescore) == {
+        "Responses_token_count": 6,
+        "blocked_completion": False,
+    }
+
+
+def test_prescore_datarobot_moderations_from_df_uses_pipeline_columns(
+    builder_mock: MagicMock,
+    moderation_config_mode: str,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+        },
+    ):
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
+        )
+        pipeline = mw._get_moderation()._pipeline
+        prompt_col = pipeline.get_input_column(GuardStage.PROMPT)
+        prescore_df = pd.DataFrame(
+            {
+                prompt_col: ["Count moderation tokens for this prompt."],
+                f"blocked_{prompt_col}": [False],
+                f"replaced_{prompt_col}": [False],
+                "Prompts_token_count": [7],
+            }
+        )
+        mods = _prescore_datarobot_moderations_from_df(pipeline, prescore_df)
+    assert mods is not None
+    assert mods["Prompts_token_count"] == 7
+    assert "Responses_token_count" not in mods
+
+
+async def test_function_middleware_stream_attaches_prescore_to_text_message_start(
+    builder_mock: MagicMock,
+) -> None:
+    """Prescore metrics belong on TEXT_MESSAGE_START; content chunks keep postscore only."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _stream_response_with_merged_moderation_metrics
+    prescore_df = _prescore_df_ok("topic")
+    prescore_df["Prompts_token_count"] = [3]
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid = "msg-start"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta="hello")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("topic"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    start_chunks = [
+        c for c in chunks if c.events and c.events[0].type == EventType.TEXT_MESSAGE_START
+    ]
+    content_chunks = [
+        c for c in chunks if any(isinstance(ev, TextMessageContentEvent) for ev in c.events)
+    ]
+    assert len(start_chunks) == 1
+    assert start_chunks[0].datarobot_moderations is not None
+    assert start_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
+    assert "Responses_token_count" not in start_chunks[0].datarobot_moderations
+    assert content_chunks
+    assert content_chunks[0].datarobot_moderations is not None
+    assert content_chunks[0].datarobot_moderations["Responses_token_count"] == 6
+    assert "Prompts_token_count" not in content_chunks[0].datarobot_moderations
 
 
 async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock: MagicMock) -> None:
