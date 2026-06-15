@@ -1,4 +1,4 @@
-# Copyright 2025 DataRobot, Inc. and its affiliates.
+# Copyright 2026 DataRobot, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -95,6 +95,18 @@ class StatelessCrew(Crew):
     so the real sqlite-backed :class:`TaskOutputStorageHandler` is never built.
     Construct this instead of :class:`crewai.Crew` wherever the integration
     builds a crew that will be kicked off in the stateless serving path.
+
+    Why a subclass instead of just swapping ``_task_output_handler`` after
+    construction (as :func:`neutralize_kickoff_storage` does): the real handler
+    is built by this private attribute's ``default_factory`` *inside*
+    ``Crew.__init__`` -- so by the time you could swap it, the db has already
+    been opened and the file already created. crewai also ignores private attrs
+    passed to ``Crew(...)``, so you cannot inject the no-op at construction. And
+    because the ``crew`` property builds a fresh crew per request, that
+    construction-time open would recur every request -- still leaking ~3 fds/req
+    and still writing the local file. Overriding the factory prevents the real
+    handler from ever being built, so no connection is opened and no file is
+    created.
     """
 
     _task_output_handler: TaskOutputStorageHandler = pydantic.PrivateAttr(
