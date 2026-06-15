@@ -50,7 +50,6 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
@@ -119,7 +118,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         structured_history: bool = True,
         allow_parallel_tool_calls: bool = True,
@@ -133,7 +131,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             timeout=timeout,
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
-            memory_client=memory_client,
             model=model,
         )
         self._structured_history = structured_history
@@ -556,7 +553,6 @@ def datarobot_agent_class_from_llamaindex(
             timeout: int = 90,
             forwarded_headers: dict[str, str] | None = None,
             max_history_messages: int | None = None,
-            memory_client: BaseMemoryClient | None = None,
             model: str | None = None,
             structured_history: bool = True,
             allow_parallel_tool_calls: bool = True,
@@ -570,7 +566,6 @@ def datarobot_agent_class_from_llamaindex(
                 timeout=timeout,
                 forwarded_headers=forwarded_headers,
                 max_history_messages=max_history_messages,
-                memory_client=memory_client,
                 model=model,
                 structured_history=structured_history,
                 allow_parallel_tool_calls=allow_parallel_tool_calls,
