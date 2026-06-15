@@ -62,7 +62,11 @@ def resolve_entity_id_from_env() -> str:
     # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
     # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
     deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
+    if deployment_id:
+        return f"{ENTITY_ID_PREFIX}{deployment_id}"
+    # Fall back to OTEL_ENTITY_ID (set by Pulumi infra / af-component-agent)
+    # so local dev and non-DRUM deployments can still export spans.
+    return os.getenv("OTEL_ENTITY_ID", "")
 
 
 def resolve_otel_endpoint_from_env() -> str:
