@@ -321,13 +321,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
           of prior conversation turns. Use ``{chat_history}`` in agent
           goals/backstories or task descriptions to reference it.
 
-        - ``memory`` (optional): Include this key with an empty string value
-          (``""``) to opt into automatic memory retrieval. When present, the
-          base class will populate it with relevant long-term memory before
-          kickoff and store the user turn after a successful run. Use
-          ``{memory}`` in agent goals/backstories or task descriptions to
-          reference it.
-
         Returns
         -------
         dict[str, Any]

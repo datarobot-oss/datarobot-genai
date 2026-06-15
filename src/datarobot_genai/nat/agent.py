@@ -152,8 +152,6 @@ class NatAgent(BaseAgent[None]):
 
         Chat history is automatically appended by `invoke` when
         max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
-        Include a `{memory}` placeholder in the returned prompt to opt into
-        automatic long-term memory retrieval and storage for the run.
 
         Default implementation returns the raw user message content.
         """

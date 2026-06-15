@@ -278,7 +278,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 else:
                     template_input[name] = user_prompt
         else:
-            # No declared variables: preserve pre-history and pre-memory behaviour.
+            # No declared variables: pass the prompt through unchanged.
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
