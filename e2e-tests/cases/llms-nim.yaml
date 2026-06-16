@@ -1,3 +1,4 @@
+cases:
   - name: nim-llm
     env:
       LLM: nim
