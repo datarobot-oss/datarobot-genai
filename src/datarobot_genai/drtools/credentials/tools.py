@@ -23,7 +23,7 @@ from datarobot_genai.drmcputils.constants import KNOWN_CREDENTIAL_TYPES
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotApiClient
 from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
@@ -55,7 +55,7 @@ async def credential_list(
         )
     clamped_limit, note = clamp_limit(limit)
     try:
-        result = WorkloadApiClient().list_credentials(limit=clamped_limit, offset=offset)
+        result = DataRobotApiClient().list_credentials(limit=clamped_limit, offset=offset)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
@@ -89,7 +89,7 @@ async def credential_get(
 ) -> dict[str, Any]:
     cid = require_id(credential_id, "credential_id")
     try:
-        return WorkloadApiClient().get_credential(cid)
+        return DataRobotApiClient().get_credential(cid)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 

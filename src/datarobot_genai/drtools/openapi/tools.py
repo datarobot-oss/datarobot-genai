@@ -22,7 +22,7 @@ from datarobot_genai.drmcputils.constants import OPENAPI_DEFAULT_REMOTE_PATH
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
+from datarobot_genai.drtools.core.clients.datarobot import DataRobotApiClient
 from datarobot_genai.drtools.core.utils import read_spec_file
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"openapi", "workload", "datarobot", "spec"},
+    tags={"openapi", "datarobot", "spec"},
     description=(
-        "[OpenAPI spec—read] Fetch or read the DataRobot Workload API OpenAPI "
+        "[OpenAPI spec—read] Fetch or read the DataRobot API OpenAPI "
         "spec. Useful for discovering available endpoints, request/response "
         "schemas, and operation IDs without browsing external docs.\n\n"
         "Resolution order:\n"
@@ -89,7 +89,7 @@ async def read_openapi_spec(
     # 2. Remote fetch via authenticated DR REST client
     fetch_path = (remote_path or "").strip() or OPENAPI_DEFAULT_REMOTE_PATH
     try:
-        return WorkloadApiClient().get_openapi_spec(fetch_path)
+        return DataRobotApiClient().get_openapi_spec(fetch_path)
     except Exception as exc:
         logger.debug("Remote spec fetch failed (%s); trying bundled paths.", exc)
 
