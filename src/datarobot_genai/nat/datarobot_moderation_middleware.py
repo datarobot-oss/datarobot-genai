@@ -1112,7 +1112,7 @@ def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
     """Track assistant text segments that received content but did not end."""
     if isinstance(event, TextMessageEndEvent):
         open_message_ids.discard(event.message_id)
-    elif isinstance(event, TextMessageContentEvent):
+    elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
         if event.message_id:
             open_message_ids.add(event.message_id)
 
@@ -1173,11 +1173,12 @@ def _defer_until_after_moderated_chunk(event: Event) -> bool:
     If TEXT_MESSAGE_START for the next segment is yielded before moderated content for the
     previous segment, storage switches active_message and can drop or mis-attribute the
     last deltas (truncation in DB). TEXT_MESSAGE_END must stay after moderated text for AG-UI.
+
+    ``RUN_FINISHED`` is buffered separately and only emitted after dangling text segments close.
     """
     return event.type in (
         EventType.TEXT_MESSAGE_END,
         EventType.TEXT_MESSAGE_START,
-        EventType.RUN_FINISHED,
     )
 
 
@@ -1328,6 +1329,7 @@ async def _moderated_dragent_stream(
     emitted_text_message_starts: set[str] = set()
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
+    pending_run_finished: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
     stopped_for_content_filter = False
     prescore_state = _StreamingPrescoreModerationState(
@@ -1338,7 +1340,9 @@ async def _moderated_dragent_stream(
     )
 
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
-        if response.events and _defer_until_after_moderated_chunk(response.events[0]):
+        if response.events and response.events[0].type == EventType.RUN_FINISHED:
+            pending_run_finished.append(response)
+        elif response.events and _defer_until_after_moderated_chunk(response.events[0]):
             pending_deferred.append(response)
         else:
             pending_pass_through.append(response)
@@ -1450,6 +1454,10 @@ async def _moderated_dragent_stream(
             for item in _drain_pending_with_dangling_text_closed(
                 pending_deferred, pending_pass_through, open_text_message_ids
             ):
+                _track_dragent_response_events(open_text_message_ids, item)
+                _record_emitted_text_message_starts(emitted_text_message_starts, item)
+                yield prescore_state.emit(item)
+            for item in pending_run_finished:
                 _track_dragent_response_events(open_text_message_ids, item)
                 _record_emitted_text_message_starts(emitted_text_message_starts, item)
                 yield prescore_state.emit(item)
