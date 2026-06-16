@@ -2552,6 +2552,116 @@ async def test_function_middleware_stream_chunk_only_upstream_passes_ag_ui_valid
     assert all(end_idx < finished_idx for end_idx in end_indices)
 
 
+async def test_function_middleware_stream_closes_dangling_tool_calls_before_run_finished(
+    builder_mock: MagicMock,
+) -> None:
+    """``TOOL_CALL_START`` without ``TOOL_CALL_END`` must finish before ``RUN_FINISHED``."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    tc_id = "tooluse_test"
+    mid = "msg-1"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(tool_call_id=tc_id, tool_call_name="generate_objectid"),
+                ToolCallArgsEvent(tool_call_id=tc_id, delta='{"type":"deployment"}'),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta="hello")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
+    tool_end_indices = [i for i, e in enumerate(flat) if e.type == EventType.TOOL_CALL_END]
+    assert tool_end_indices
+    assert all(end_idx < finished_idx for end_idx in tool_end_indices)
+
+
+async def test_function_middleware_stream_no_text_closes_tool_calls_before_run_finished(
+    builder_mock: MagicMock,
+) -> None:
+    """Tool-only upstream must still close dangling tool calls before ``RUN_FINISHED``."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    tc_id = "tooluse_only"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(tool_call_id=tc_id, tool_call_name="generate_objectid"),
+                ToolCallArgsEvent(tool_call_id=tc_id, delta='{"type":"deployment"}'),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
+    tool_end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TOOL_CALL_END)
+    assert tool_end_idx < finished_idx
+
+
 async def test_function_middleware_stream_emits_deferred_start_before_content(
     builder_mock: MagicMock,
 ) -> None:
