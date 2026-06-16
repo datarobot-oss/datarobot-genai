@@ -17,8 +17,6 @@ from pathlib import Path
 from typing import Annotated
 from typing import Any
 
-from datarobot.errors import ClientError
-
 from datarobot_genai.drmcputils.constants import OPENAPI_BUNDLED_SPEC_CANDIDATES
 from datarobot_genai.drmcputils.constants import OPENAPI_DEFAULT_REMOTE_PATH
 from datarobot_genai.drmcputils.exceptions import ToolError
@@ -74,7 +72,13 @@ async def read_openapi_spec(
                 f"Local spec file not found: {p}",
                 kind=ToolErrorKind.NOT_FOUND,
             )
-        spec = read_spec_file(p)
+        try:
+            spec = read_spec_file(p)
+        except Exception as exc:
+            raise ToolError(
+                f"Failed to parse spec file: {p}",
+                kind=ToolErrorKind.UPSTREAM,
+            ) from exc
         if spec is None:
             raise ToolError(
                 f"Failed to parse spec file: {p}",
@@ -86,7 +90,7 @@ async def read_openapi_spec(
     fetch_path = (remote_path or "").strip() or OPENAPI_DEFAULT_REMOTE_PATH
     try:
         return WorkloadApiClient().get_openapi_spec(fetch_path)
-    except ClientError as exc:
+    except Exception as exc:
         logger.debug("Remote spec fetch failed (%s); trying bundled paths.", exc)
 
     # 3. Bundled fallback

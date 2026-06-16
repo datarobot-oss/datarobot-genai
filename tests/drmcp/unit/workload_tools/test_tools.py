@@ -1958,6 +1958,26 @@ async def test_read_openapi_spec_local_path_yaml(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_read_openapi_spec_local_path_invalid_json_raises(tmp_path: Path) -> None:
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_text("{ this is not valid json !!!")
+
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_tools.read_openapi_spec(local_path=str(bad_file))
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_remote_non_client_error_falls_through(
+    patched_dr_client: MagicMock,
+) -> None:
+    patched_dr_client.get.side_effect = ValueError("unexpected json decode error")
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_tools.read_openapi_spec()
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+@pytest.mark.asyncio
 async def test_read_openapi_spec_remote_error_raises(patched_dr_client: MagicMock) -> None:
     from datarobot.errors import ClientError as _ClientError
 

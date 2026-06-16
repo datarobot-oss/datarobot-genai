@@ -14,6 +14,7 @@
 """Shared utilities for drtools and drmcp."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -24,6 +25,8 @@ from pydantic import BaseModel
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+
+logger = logging.getLogger(__name__)
 
 
 def require_id(value: str, name: str) -> str:
@@ -36,13 +39,21 @@ def require_id(value: str, name: str) -> str:
 
 
 def read_spec_file(path: Path) -> dict[str, Any] | None:
-    """Try to read and parse a local YAML or JSON spec file; return None if not found."""
+    """Try to read and parse a local YAML or JSON spec file.
+
+    Returns ``None`` if the file does not exist or cannot be parsed,
+    so callers can treat all failure cases uniformly.
+    """
     if not path.exists():
         return None
-    raw = path.read_text(encoding="utf-8")
-    if path.suffix in {".yaml", ".yml"}:
-        return yaml.safe_load(raw)
-    return json.loads(raw)
+    try:
+        raw = path.read_text(encoding="utf-8")
+        if path.suffix in {".yaml", ".yml"}:
+            return yaml.safe_load(raw)
+        return json.loads(raw)
+    except Exception:
+        logger.debug("Failed to parse spec file %s", path, exc_info=True)
+        return None
 
 
 def is_valid_url(url: str) -> bool:
