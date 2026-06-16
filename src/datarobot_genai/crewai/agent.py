@@ -60,7 +60,6 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
@@ -109,7 +108,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         roles: Sequence[str] | None = None,
         goals: Sequence[str] | None = None,
@@ -131,7 +129,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             timeout=timeout,
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
-            memory_client=memory_client,
             model=model,
         )
         if roles is not None:
@@ -324,13 +321,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
           of prior conversation turns. Use ``{chat_history}`` in agent
           goals/backstories or task descriptions to reference it.
 
-        - ``memory`` (optional): Include this key with an empty string value
-          (``""``) to opt into automatic memory retrieval. When present, the
-          base class will populate it with relevant long-term memory before
-          kickoff and store the user turn after a successful run. Use
-          ``{memory}`` in agent goals/backstories or task descriptions to
-          reference it.
-
         Returns
         -------
         dict[str, Any]
@@ -425,16 +415,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 if history_summary and not existing_history_text.strip():
                     kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
-            if "memory" in kickoff_inputs:
-                existing_memory_text = str(kickoff_inputs.get("memory") or "")
-                if not existing_memory_text.strip():
-                    try:
-                        kickoff_inputs["memory"] = await self.retrieve_memory_for_run(
-                            user_prompt_content,
-                            run_agent_input,
-                        )
-                    except Exception as exc:
-                        logger.warning("CrewAI memory retrieval failed: %s", exc)
             crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
             current_agent_role = ""
             message_id = str(uuid.uuid4())
@@ -626,11 +606,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     None,
                     usage_metrics,
                 )
-            if "memory" in kickoff_inputs:
-                try:
-                    await self.store_memory_for_run(user_prompt_content, run_agent_input)
-                except Exception as exc:
-                    logger.warning("CrewAI memory storage failed: %s", exc)
             yield (
                 RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
                 pipeline_interactions,
@@ -698,7 +673,6 @@ def datarobot_agent_class_from_crew(
             timeout: int = 90,
             forwarded_headers: dict[str, str] | None = None,
             max_history_messages: int | None = None,
-            memory_client: BaseMemoryClient | None = None,
             model: str | None = None,
             roles: Sequence[str] | None = None,
             goals: Sequence[str] | None = None,
@@ -721,7 +695,6 @@ def datarobot_agent_class_from_crew(
                 timeout=timeout,
                 forwarded_headers=forwarded_headers,
                 max_history_messages=max_history_messages,
-                memory_client=memory_client,
                 model=model,
                 roles=roles,
                 goals=goals,
