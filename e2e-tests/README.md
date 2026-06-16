@@ -13,6 +13,18 @@ Credentials/endpoints shared by every case (DataRobot platform, MCP deployment, 
 
 The `task cases-*` commands below all run through Task, so they pick up the dotenv chain automatically. The runner scripts (`scripts/cases.py`, `scripts/run_local.py`) deliberately do not load `.env` themselves.
 
+### Dependencies
+
+Some tests require additional resources deployed in DataRobot. They are injected as environment variables. Make sure to include said variables before running a specific test case.
+
+```
+# Necessary for all tests using an MCP server
+MCP_DEPLOYMENT_ID=
+
+# Necessary for configurations using DataRobot Deployment as LLM
+LLM_DEPLOYMENT_ID=
+```
+
 ## Inspect what would run
 
 The case file is the first arg after `--` and is required. A bare file name is resolved against `e2e-tests/cases/`; pass an explicit path (e.g. `./tmp.yaml`) to point elsewhere.

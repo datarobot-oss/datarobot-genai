@@ -4,8 +4,63 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.16.11
+## 0.17.3
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
+
+## 0.17.2
+- `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
+
+## 0.17.1
+- Added E2E test cases for moderations: OOTB and NeMo Guardrails
+
+## 0.17.0
+- **Breaking** `core/agents`: removed opt-in long-term memory from framework base agents (`BaseAgent`, LangGraph, LlamaIndex, CrewAI, and `NatAgent`). The `memory_client` constructor argument, `{memory}` prompt placeholder handling, and automatic retrieve/store hooks are gone. Use NAT `auto_memory_agent` or `streaming_memory_agent` with the `dr_mem0_memory` provider instead (see `docs/nat/memory.md`).
+
+## 0.16.19
+- `drtools/workload`: artifact replacement / rolling update.
+  - **Client** (`WorkloadApiClient`): added `get_workload_replacement`, `create_workload_replacement`, `delete_workload_replacement` against `GET/POST/DELETE /api/v2/workloads/{id}/replacement`.
+  - **Tools** (`replacement_tools`): `workload_replacement_get` — fetch current replacement status (candidate artifact, proton ids, config, timestamps); `workload_replacement_create` — start a rolling update by deploying a new artifact alongside the running version with optional warmup/retention config and runtime override; `workload_replacement_delete` — cancel an in-progress replacement and revert traffic to the original version.
+
+## 0.16.18
+- `nat/datarobot_moderation_middleware`: streaming moderation now attaches prescore guard metrics to `TEXT_MESSAGE_START` chunks (matching DRUM/dome first-chunk semantics) and keeps postscore metrics on moderated `TEXT_MESSAGE_CONTENT` chunks.
+
+## 0.16.17
+- `crewai`: fixed a file-descriptor leak that crashed long-running `nat dragent serve` with `[Errno 24] Too many open files`. crewai's kickoff-outputs SQLite storage leaks connections (unclosed `with sqlite3.connect(...)`); the agent now runs crews with an in-process no-op task-output handler, so no database is opened.
+
+## 0.16.16
+- `drtools/workload`: artifact builds and repositories.
+  - **Client** (`WorkloadApiClient`): added `list_artifact_builds`, `trigger_artifact_build`,
+    `get_artifact_build`, `get_artifact_build_logs` (text/plain response), `delete_artifact_build`
+    targeting `GET/POST /artifacts/{id}/builds` and `GET/DELETE /artifacts/{id}/builds/{build_id}`;
+    added `list_artifact_repositories`, `get_artifact_repository`, `delete_artifact_repository`
+    targeting `GET /artifactRepositories` and `GET/DELETE /artifactRepositories/{id}`.
+  - **Build Tools** (`drtools/workload/build_tools.py`): `artifact_build_list`, `artifact_build_trigger`,
+    `artifact_build_get`, `artifact_build_logs`, `artifact_build_delete`.
+  - **Repo Tools** (`drtools/workload/repository_tools.py`): `artifact_repository_list` (filterable by
+    search/type), `artifact_repository_get`, `artifact_repository_delete`.
+
+## 0.16.15
+- `drtools/workload`: artifact core management.
+  - **Client** (`WorkloadApiClient`): added `list_artifacts`, `get_artifact`, `create_artifact`,
+    `put_artifact`, `patch_artifact`, `delete_artifact`, and `clone_artifact` methods targeting
+    `GET/POST /artifacts/`, `GET/PUT/PATCH/DELETE /artifacts/{id}`, and
+    `POST /artifacts/{id}/clone`.
+  - **Tools** (`drtools/workload/artifact_tools.py`): `artifact_list` (paginated, filterable by
+    status/type/repository/search), `artifact_get`, `artifact_create`, `artifact_update` (PATCH
+    helper for name/description/spec), `artifact_lock` (PATCH shortcut to set status→locked),
+    `artifact_clone`, and `artifact_delete`.
+
+## 0.16.14
+- Fix `ResultsSummarizer.print_summary` crash when a case has `expected_behavior: null` or `id: null`
+
+## 0.16.13
+- `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
+
+## 0.16.12
+- A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
+
+## 0.16.11
+- Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
 
 ## 0.16.10
 - `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).

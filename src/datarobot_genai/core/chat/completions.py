@@ -89,6 +89,21 @@ def is_streaming(completion_create_params: CompletionCreateParams | Mapping[str,
     return bool(value)
 
 
+def backfill_model(current: str | None, fallback: str | None) -> str | None:
+    """Replace NAT's ``"unknown-model"`` placeholder (or ``None``) with ``fallback``.
+
+    NAT defaults ``ChatResponse.model`` / ``ChatResponseChunk.model`` to the literal
+    ``"unknown-model"`` whenever the workflow output didn't carry one. Callers pass the
+    agent's configured model (:func:`default_response_model`) as ``fallback`` so the
+    response reports the model the agent actually ran. A real model the workflow
+    produced — or a deliberately-set one such as moderation's ``MODERATION_MODEL_NAME``
+    — is preserved.
+    """
+    if fallback and current in (None, "unknown-model"):
+        return fallback
+    return current
+
+
 def convert_chat_completion_params_to_run_agent_input(
     chat_completion_params: CompletionCreateParams | Mapping[str, Any],
 ) -> RunAgentInput:

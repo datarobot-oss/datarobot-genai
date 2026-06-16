@@ -1,0 +1,30 @@
+cases:
+  - name: ootb
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      WORKFLOW_FILE: workflow-ootb-moderations.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:  # all agents
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+        - base
+
+  - name: nemo-guardrails
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/vertex_ai/gemini-3.1-pro-preview"
+      WORKFLOW_FILE: workflow-nemo-guardrails-moderations.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:  # all agents
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+        - base
