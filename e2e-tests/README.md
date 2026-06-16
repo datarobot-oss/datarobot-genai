@@ -21,7 +21,7 @@ Some tests require additional resources deployed in DataRobot. They are injected
 # Necessary for all tests using an MCP server
 MCP_DEPLOYMENT_ID=
 
-# Necessary for configuratoins using DataRobot Deployment as LLM
+# Necessary for configurations using DataRobot Deployment as LLM
 LLM_DEPLOYMENT_ID=
 ```
 
