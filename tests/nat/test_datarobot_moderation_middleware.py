@@ -2739,6 +2739,75 @@ async def test_function_middleware_stream_flushes_deferred_tool_result_for_histo
     assert object_id in tool_result.content
 
 
+async def test_function_middleware_stream_passthrough_tool_result_from_moderated_batch(
+    builder_mock: MagicMock,
+) -> None:
+    """Tool end/result co-located with a moderated text batch must still reach the client."""
+    from datarobot_genai.core.agents.events import events_to_messages
+
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    object_id = "69cbb73789723b6936c6c9e1"
+    prescore_df = _prescore_df_ok(object_id)
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    tc_id = "tooluse_batch"
+    mid = "msg-batch"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(tool_call_id=tc_id, tool_call_name="generate_objectid"),
+                ToolCallArgsEvent(tool_call_id=tc_id, delta='{"type":"deployment"}'),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageContentEvent(message_id=mid, delta=object_id),
+                ToolCallEndEvent(tool_call_id=tc_id),
+                ToolCallResultEvent(
+                    message_id=tc_id,
+                    tool_call_id=tc_id,
+                    content=object_id,
+                    role="tool",
+                ),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("generate id"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    tool_result = next((m for m in events_to_messages(flat) if m.role == "tool"), None)
+    assert tool_result is not None
+    assert object_id in tool_result.content
+
+
 async def test_function_middleware_stream_emits_deferred_start_before_content(
     builder_mock: MagicMock,
 ) -> None:
