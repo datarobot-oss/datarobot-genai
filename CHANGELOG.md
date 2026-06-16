@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.2
+- `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
+
 ## 0.17.1
 - Added E2E test cases for moderations: OOTB and NeMo Guardrails
 
