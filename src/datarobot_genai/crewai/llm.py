@@ -50,6 +50,13 @@ class LitellmStopWordLLM(LLM):
             return self._apply_stop_words(result)
         return result
 
+    async def acall(self, *args: Any, **kwargs: Any) -> Any:
+        """Async variant of :meth:`call` used by ``Crew.akickoff``."""
+        result = await super().acall(*args, **kwargs)
+        if isinstance(result, str):
+            return self._apply_stop_words(result)
+        return result
+
 
 def _crewai_model_factory(config: dict) -> LLM:
     config["stream_options"] = config.get("stream_options", {"include_usage": True})
