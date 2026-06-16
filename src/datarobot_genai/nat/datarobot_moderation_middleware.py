@@ -1103,6 +1103,20 @@ def _prompt_sent_after_prescore_replacement(
     return original_prompt, False
 
 
+# Moderated streaming lifecycle helpers (_moderated_dragent_stream and below).
+#
+# Three concerns that must stay coordinated:
+#
+# 1. Ordering — defer TEXT_MESSAGE_START/END and RUN_FINISHED until moderated text
+#    deltas drain; close dangling text segments before RUN_FINISHED so AG-UI and
+#    storage see valid segment boundaries.
+# 2. Registry flush — stream_converter / step adaptor defer TOOL_CALL_END + RESULT
+#    via mark_args_done; flush those pairs before synthetic closes so history rebuilds.
+# 3. Passthrough re-emit — dome_chunk_to_dragent_event_response rebuilds moderated
+#    text and drops co-located TOOL_CALL_END / TOOL_CALL_RESULT; re-emit them from
+#    the source batch after each moderated chunk.
+
+
 def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
     """Track assistant text segments that received content but did not end."""
     if isinstance(event, TextMessageEndEvent):
