@@ -4,11 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-<<<<<<< HEAD
 version = "0.17.1"
-=======
-version = "0.17.0"
->>>>>>> 2f4620862146ecd8078f09723cd95a91587f8e53
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
