@@ -46,6 +46,8 @@ from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCall
 from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
@@ -2660,6 +2662,81 @@ async def test_function_middleware_stream_no_text_closes_tool_calls_before_run_f
     finished_idx = next(i for i, e in enumerate(flat) if e.type == EventType.RUN_FINISHED)
     tool_end_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TOOL_CALL_END)
     assert tool_end_idx < finished_idx
+
+
+async def test_function_middleware_stream_flushes_deferred_tool_result_for_history(
+    builder_mock: MagicMock,
+) -> None:
+    """Deferred ``TOOL_CALL_RESULT`` must flush before synthetic ``TOOL_CALL_END`` only."""
+    from datarobot_genai.core.agents.events import events_to_messages
+    from datarobot_genai.dragent.frontends.tool_call_registry import defer_tool_end
+    from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_tool_registry
+
+    reset_tool_registry()
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("69cbb73789723b6936c6c9e1")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    tc_id = "tooluse_deferred"
+    object_id = "69cbb73789723b6936c6c9e1"
+    mid = "msg-1"
+    zero = default_usage_metrics()
+    defer_tool_end(
+        tc_id,
+        [
+            ToolCallEndEvent(tool_call_id=tc_id),
+            ToolCallResultEvent(
+                message_id=tc_id,
+                tool_call_id=tc_id,
+                content=object_id,
+                role="tool",
+            ),
+        ],
+    )
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(tool_call_id=tc_id, tool_call_name="generate_objectid"),
+                ToolCallArgsEvent(tool_call_id=tc_id, delta='{"type":"deployment"}'),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta=object_id)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("generate id"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    tool_result = next((m for m in events_to_messages(flat) if m.role == "tool"), None)
+    assert tool_result is not None
+    assert object_id in tool_result.content
 
 
 async def test_function_middleware_stream_emits_deferred_start_before_content(
