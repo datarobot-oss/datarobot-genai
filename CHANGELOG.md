@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `crewai`: when streaming kickoff completes without TEXT stream chunks, emit the final kickoff result using the text message lifecycle so AG-UI clients still receive the response.
 - `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior, including inline hallucinations after ``Action Input``.
 - `crewai`: after streaming ReAct scaffolding, emit ``crew_output.result.raw`` when it is not already present in streamed text so tool results reach AG-UI clients.
+- `llamaindex`: when streaming deltas stop early but ``AgentOutput`` carries the full response, emit the missing suffix so clients receive the complete answer (for example tool-returned object IDs).
 - `dragent`: defer ``RUN_FINISHED`` in moderated streams, emit buffered ``TEXT_MESSAGE_START`` before moderated ``TEXT_MESSAGE_CONTENT``, and close dangling text segments before ``RUN_FINISHED`` so AG-UI event ordering stays valid.
 
 ## 0.17.5

@@ -207,6 +207,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         message_id = str(uuid.uuid4())
         text_started = False
         any_text_emitted = False
+        streamed_text = ""
         # Id of the most recently closed assistant text bubble. A following tool call
         # names it as its parent_message_id so the call attaches to the message that
         # introduced it (AG-UI grouping) instead of an orphan id; reset on a tool
@@ -229,6 +230,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     text_started = False
+                    streamed_text = ""
                 if current_agent_name is not None:
                     yield (
                         StepFinishedEvent(
@@ -292,6 +294,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     )
                     text_started = True
                     any_text_emitted = True
+                streamed_text += delta
                 yield (
                     TextMessageContentEvent(
                         type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=delta
@@ -321,11 +324,28 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         )
                         text_started = True
                         any_text_emitted = True
+                        streamed_text = content_str
                         yield (
                             TextMessageContentEvent(
                                 type=EventType.TEXT_MESSAGE_CONTENT,
                                 message_id=message_id,
                                 delta=content_str,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                    elif content_str.startswith(streamed_text) and len(content_str) > len(
+                        streamed_text
+                    ):
+                        # Streaming deltas may stop early; AgentOutput carries the full answer.
+                        missing = content_str[len(streamed_text) :]
+                        any_text_emitted = True
+                        streamed_text = content_str
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=message_id,
+                                delta=missing,
                             ),
                             None,
                             usage_metrics,
@@ -385,6 +405,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     text_started = False
+                    streamed_text = ""
                     # Capture the closed bubble's id (before minting a fresh one) so the
                     # tool call below can name it as its parent_message_id.
                     last_text_message_id = message_id
@@ -443,32 +464,50 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         except (AttributeError, TypeError):
             state = None
 
-        # Use subclass-defined response extraction as final fallback when no text was streamed
+        # Use subclass-defined response extraction as final fallback when no text was streamed,
+        # or to append any suffix missing from partial stream deltas.
         fallback_text = self.extract_response_text(state, events)
-        if not any_text_emitted and fallback_text:
-            yield (
-                TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
-                None,
-                usage_metrics,
-            )
-            yield (
-                TextMessageContentEvent(
-                    type=EventType.TEXT_MESSAGE_CONTENT,
-                    message_id=message_id,
-                    delta=fallback_text,
-                ),
-                None,
-                usage_metrics,
-            )
-            yield (
-                TextMessageEndEvent(
-                    type=EventType.TEXT_MESSAGE_END,
-                    message_id=message_id,
-                ),
-                None,
-                usage_metrics,
-            )
-            message_id = str(uuid.uuid4())
+        if fallback_text:
+            if not any_text_emitted:
+                yield (
+                    TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id),
+                    None,
+                    usage_metrics,
+                )
+                yield (
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=message_id,
+                        delta=fallback_text,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                yield (
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=message_id,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                message_id = str(uuid.uuid4())
+            elif (
+                text_started
+                and fallback_text.startswith(streamed_text)
+                and len(fallback_text) > len(streamed_text)
+            ):
+                missing = fallback_text[len(streamed_text) :]
+                yield (
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=message_id,
+                        delta=missing,
+                    ),
+                    None,
+                    usage_metrics,
+                )
+                streamed_text = fallback_text
 
         # Close the final agent's step. Each STEP_STARTED needs a matching
         # STEP_FINISHED; without this, the UI shows the last step as still running.

@@ -737,6 +737,36 @@ async def test_invoke_tool_result_message_id_is_distinct_from_text_bubbles(
     assert text_starts[0].message_id != text_starts[1].message_id
 
 
+async def test_invoke_emits_partial_stream_then_agent_output_suffix(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """Partial AgentStream deltas plus a full AgentOutput must emit the complete text."""
+    full_id = "69cbb73789723b6936c6c9e1"
+    partial_id = full_id[:12]
+    workflow = Workflow(
+        events=[
+            AgentWorkflowStartEvent(),
+            AgentInput(
+                input=[ChatMessage(content="generate id", role=MessageRole.USER)],
+                current_agent_name="A",
+            ),
+            AgentStream(delta=partial_id, response="", current_agent_name="A"),
+            AgentOutput(
+                response=ChatMessage(content=full_id, role=MessageRole.ASSISTANT),
+                current_agent_name="A",
+            ),
+        ],
+        state="S",
+    )
+    agent = MyLlamaAgent(workflow)
+
+    ag_events = [e async for e, _, _ in agent.invoke(run_agent_input)]
+
+    validate_sequence(ag_events)
+    contents = [e for e in ag_events if isinstance(e, TextMessageContentEvent)]
+    assert "".join(e.delta for e in contents) == full_id
+
+
 async def test_invoke_agent_stream_multiple_agents(
     run_agent_input: RunAgentInput,
 ) -> None:
