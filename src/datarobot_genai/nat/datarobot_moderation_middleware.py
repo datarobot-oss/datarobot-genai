@@ -124,6 +124,7 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.tool_call_registry import mark_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.dragent.workflow_paths import discover_workflow_yaml
 from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
@@ -1273,6 +1274,39 @@ def _pending_tool_end_ids(pending_deferred: list[DRAgentEventResponse]) -> set[s
     }
 
 
+def _pending_tool_end_ids_in_responses(responses: list[DRAgentEventResponse]) -> set[str]:
+    """Collect ``tool_call_id`` values from ``TOOL_CALL_END`` events in *responses*."""
+    end_ids: set[str] = set()
+    for item in responses:
+        for event in item.events:
+            if isinstance(event, ToolCallEndEvent) and event.tool_call_id:
+                end_ids.add(event.tool_call_id)
+    return end_ids
+
+
+def _flushed_deferred_tool_call_responses(
+    open_tool_call_ids: set[str],
+) -> list[DRAgentEventResponse]:
+    """Return deferred ``TOOL_CALL_END``/``RESULT`` pairs from the stream-converter registry."""
+    zero = default_usage_metrics()
+    flushed: list[DRAgentEventResponse] = []
+    for tool_call_id in list(open_tool_call_ids):
+        deferred_events = mark_args_done(tool_call_id)
+        if deferred_events:
+            flushed.append(DRAgentEventResponse(events=deferred_events, usage_metrics=zero))
+    return flushed
+
+
+def _prepend_flushed_deferred_tool_call_responses(
+    pending_deferred: list[DRAgentEventResponse],
+    open_tool_call_ids: set[str],
+) -> None:
+    """Flush step-adaptor deferred ``TOOL_CALL_END``/``RESULT`` pairs before synthetic ends."""
+    flushed = _flushed_deferred_tool_call_responses(open_tool_call_ids)
+    if flushed:
+        pending_deferred[:0] = list(reversed(flushed))
+
+
 def _prepend_synthetic_text_message_ends_for_dangling_segments(
     pending_deferred: list[DRAgentEventResponse],
     open_text_message_ids: set[str],
@@ -1293,10 +1327,14 @@ def _prepend_synthetic_text_message_ends_for_dangling_segments(
 
 def _prepend_synthetic_tool_call_ends_for_dangling_calls(
     pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
     open_tool_call_ids: set[str],
 ) -> None:
     """Close dangling tool calls before ``RUN_FINISHED`` reaches the client."""
-    still_open = open_tool_call_ids - _pending_tool_end_ids(pending_deferred)
+    pending_ends = _pending_tool_end_ids(pending_deferred) | _pending_tool_end_ids_in_responses(
+        pending_pass_through
+    )
+    still_open = open_tool_call_ids - pending_ends
     if not still_open:
         return
     ids_to_close = set(still_open)
@@ -1311,7 +1349,16 @@ def _drain_pending_with_dangling_lifecycle_closed(
     open_tool_call_ids: set[str],
 ) -> list[DRAgentEventResponse]:
     """Drain pending events after closing dangling text segments and tool calls."""
-    _prepend_synthetic_tool_call_ends_for_dangling_calls(pending_deferred, open_tool_call_ids)
+    for item in pending_pass_through:
+        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
+    for item in pending_deferred:
+        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
+    _prepend_flushed_deferred_tool_call_responses(pending_deferred, open_tool_call_ids)
+    for item in pending_deferred:
+        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
+    _prepend_synthetic_tool_call_ends_for_dangling_calls(
+        pending_deferred, pending_pass_through, open_tool_call_ids
+    )
     _prepend_synthetic_text_message_ends_for_dangling_segments(
         pending_deferred, open_text_message_ids
     )
@@ -1520,6 +1567,11 @@ async def _moderated_dragent_stream(
                     yield prescore_state.emit(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
+                    for flushed in _flushed_deferred_tool_call_responses(open_tool_call_ids):
+                        _track_dragent_response_events(
+                            open_text_message_ids, open_tool_call_ids, flushed
+                        )
+                        yield flushed
                     for end_response in _synthetic_tool_call_end_responses(open_tool_call_ids):
                         yield end_response
                     for end_response in _synthetic_text_message_end_responses(
