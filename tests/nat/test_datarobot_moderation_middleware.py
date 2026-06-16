@@ -2380,6 +2380,64 @@ async def test_function_middleware_stream_preserves_message_id_per_text_chunk(
     assert content_events[1].delta == "b"
 
 
+async def test_function_middleware_stream_moderates_start_and_content_batch(
+    builder_mock: MagicMock,
+) -> None:
+    """``convert_chunks_to_agui_events`` batches START+CONTENT; moderation must not drop text."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid = "msg-stream"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[
+                TextMessageStartEvent(message_id=mid, role="assistant"),
+                TextMessageContentEvent(message_id=mid, delta="hello"),
+            ],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    content_events = [e for e in flat if isinstance(e, TextMessageContentEvent)]
+    assert "".join(e.delta for e in content_events) == "hello"
+    start_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_START)
+    content_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_CONTENT)
+    assert start_idx < content_idx
+
+
 async def test_function_middleware_stream_defers_text_message_end_before_run_finished(
     builder_mock: MagicMock,
 ) -> None:

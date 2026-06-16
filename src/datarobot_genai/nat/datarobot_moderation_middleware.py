@@ -405,6 +405,15 @@ def _openai_chat_completion_chunk_to_nat_chat_response_chunk(
     )
 
 
+def _first_text_delta_in_events(
+    events: list[Any],
+) -> TextMessageContentEvent | TextMessageChunkEvent | None:
+    for event in events:
+        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+            return event
+    return None
+
+
 def _streaming_text_events_from_openai_chunk(
     completion: ChatCompletionChunk,
     source_ag_ui_events: list[Any] | None,
@@ -413,16 +422,18 @@ def _streaming_text_events_from_openai_chunk(
     delta_content = completion.choices[0].delta.content
     text = "" if delta_content is None else delta_content
     if source_ag_ui_events:
-        ev0 = source_ag_ui_events[0]
-        if isinstance(ev0, TextMessageContentEvent):
+        delta_event = _first_text_delta_in_events(source_ag_ui_events)
+        if isinstance(delta_event, TextMessageContentEvent):
             if text:
-                return [TextMessageContentEvent(message_id=ev0.message_id, delta=text)]
-            return [TextMessageChunkEvent(message_id=ev0.message_id, role="assistant", delta="")]
-        if isinstance(ev0, TextMessageChunkEvent):
+                return [TextMessageContentEvent(message_id=delta_event.message_id, delta=text)]
+            return [
+                TextMessageChunkEvent(message_id=delta_event.message_id, role="assistant", delta="")
+            ]
+        if isinstance(delta_event, TextMessageChunkEvent):
             return [
                 TextMessageChunkEvent(
-                    message_id=ev0.message_id,
-                    role=ev0.role,
+                    message_id=delta_event.message_id,
+                    role=delta_event.role,
                     delta=text or "",
                 )
             ]
@@ -583,7 +594,7 @@ def _postscore_only_datarobot_moderations(
 
 
 def _is_text_message_start_response(response: DRAgentEventResponse) -> bool:
-    return bool(response.events and response.events[0].type == EventType.TEXT_MESSAGE_START)
+    return any(isinstance(ev, TextMessageStartEvent) for ev in response.events)
 
 
 @dataclass
@@ -1248,13 +1259,26 @@ def _drain_pending_with_dangling_text_closed(
     return _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through)
 
 
+def _first_text_delta_event(
+    response: DRAgentEventResponse,
+) -> TextMessageContentEvent | TextMessageChunkEvent | None:
+    return _first_text_delta_in_events(response.events)
+
+
+def _leading_text_message_starts(response: DRAgentEventResponse) -> list[TextMessageStartEvent]:
+    """Return ``TEXT_MESSAGE_START`` events that precede the first text delta in *response*."""
+    starts: list[TextMessageStartEvent] = []
+    for event in response.events:
+        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+            break
+        if isinstance(event, TextMessageStartEvent):
+            starts.append(event)
+    return starts
+
+
 def _text_message_id_from_response(response: DRAgentEventResponse) -> str | None:
-    if not response.events:
-        return None
-    ev0 = response.events[0]
-    if isinstance(ev0, (TextMessageContentEvent, TextMessageChunkEvent)):
-        return ev0.message_id
-    return None
+    delta_event = _first_text_delta_event(response)
+    return delta_event.message_id if delta_event is not None else None
 
 
 def _record_emitted_text_message_starts(
@@ -1271,10 +1295,9 @@ def _take_pending_text_message_start_for_message(
 ) -> DRAgentEventResponse | None:
     """Remove and return a buffered ``TEXT_MESSAGE_START`` for *message_id* only."""
     for index, item in enumerate(pending_deferred):
-        if (
-            item.events
-            and item.events[0].type == EventType.TEXT_MESSAGE_START
-            and item.events[0].message_id == message_id
+        if any(
+            isinstance(event, TextMessageStartEvent) and event.message_id == message_id
+            for event in item.events
         ):
             return pending_deferred.pop(index)
     return None
@@ -1322,7 +1345,7 @@ async def _moderated_dragent_stream(
 
     async def next_text_response() -> DRAgentEventResponse | None:
         async for response in upstream:
-            if not response.events or skip_event_type(response.events[0]):
+            if not response.events or not _response_has_assistant_text_deltas(response):
                 buffer_passthrough(response)
                 continue
             return response
@@ -1340,7 +1363,7 @@ async def _moderated_dragent_stream(
     first_text: DRAgentEventResponse | None = None
     try:
         async for response in upstream:
-            if response.events and not skip_event_type(response.events[0]):
+            if response.events and _response_has_assistant_text_deltas(response):
                 first_text = response
                 break
             _track_dragent_response_events(open_text_message_ids, response)
@@ -1367,22 +1390,30 @@ async def _moderated_dragent_stream(
                     )
                 )
                 message_id = _text_message_id_from_response(source_response)
+                first_delta = _first_text_delta_event(source_response)
                 if (
                     message_id
                     and message_id not in emitted_text_message_starts
-                    and source_response.events
-                    and isinstance(source_response.events[0], TextMessageContentEvent)
+                    and first_delta is not None
                 ):
-                    extra_start_events: list[Any] = []
-                    pending_start = _take_pending_text_message_start_for_message(
-                        pending_deferred, message_id
+                    extra_start_events: list[Any] = list(
+                        _leading_text_message_starts(source_response)
                     )
-                    if pending_start is not None:
-                        extra_start_events.extend(pending_start.events)
-                    else:
-                        extra_start_events.append(
-                            TextMessageStartEvent(message_id=message_id, role="assistant")
+                    if not extra_start_events:
+                        pending_start = _take_pending_text_message_start_for_message(
+                            pending_deferred, message_id
                         )
+                        if pending_start is not None:
+                            extra_start_events.extend(
+                                ev
+                                for ev in pending_start.events
+                                if isinstance(ev, TextMessageStartEvent)
+                                and ev.message_id == message_id
+                            )
+                        else:
+                            extra_start_events.append(
+                                TextMessageStartEvent(message_id=message_id, role="assistant")
+                            )
                     emitted_text_message_starts.add(message_id)
                     moderated_response = moderated_response.model_copy(
                         update={"events": extra_start_events + moderated_response.events}
