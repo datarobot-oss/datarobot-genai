@@ -139,7 +139,7 @@ def collect_ag_ui_events(responses: list[DRAgentEventResponse]) -> list[Event]: 
 
 
 def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
-    """Join text deltas from assistant text and reasoning message events."""
+    """Join text deltas from assistant text, reasoning, and tool-result events."""
     parts = []
     for event in ag_ui_events:
         if event.type in (
@@ -149,4 +149,6 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
             EventType.REASONING_MESSAGE_CHUNK,
         ):
             parts.append(event.delta)
+        elif event.type == EventType.TOOL_CALL_RESULT:
+            parts.append(event.content)
     return "".join(parts)

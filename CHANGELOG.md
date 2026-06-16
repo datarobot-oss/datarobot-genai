@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `crewai`: after streaming ReAct scaffolding, emit ``crew_output.result.raw`` when it is not already present in streamed text so tool results reach AG-UI clients.
 - `llamaindex`: when streaming deltas stop early but ``AgentOutput`` carries the full response, emit the missing suffix so clients receive the complete answer (for example tool-returned object IDs).
 - `dragent`: defer ``RUN_FINISHED`` in moderated streams, emit buffered ``TEXT_MESSAGE_START`` before moderated ``TEXT_MESSAGE_CONTENT``, and close dangling text segments before ``RUN_FINISHED`` so AG-UI event ordering stays valid.
+- `dragent`: close dangling ``TOOL_CALL`` segments before ``RUN_FINISHED`` when upstream ends without ``TOOL_CALL_END`` (for example stream-converter ``mark_args_done`` after workflow ``RUN_FINISHED``).
 - `dragent`: moderated streaming treats responses with batched ``TEXT_MESSAGE_START`` + ``TEXT_MESSAGE_CONTENT`` (NAT ``stream_converter`` shape) as text deltas instead of skipping them when only the start event is first, and preserves the source content ``message_id`` when rebuilding moderated chunks.
 
 ## 0.17.8
