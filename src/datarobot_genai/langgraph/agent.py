@@ -54,7 +54,6 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.reasoning import flatten_to_text
-from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
@@ -116,7 +115,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         structured_history: bool = True,
         checkpointer: Any | None = None,
@@ -140,7 +138,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             timeout=timeout,
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
-            memory_client=memory_client,
             model=model,
         )
 
@@ -265,19 +262,11 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         uses_chat_history = "chat_history" in vars_list
         history_summary = self.build_history_summary(run_agent_input) if uses_chat_history else ""
 
-        memory = ""
-        if "memory" in vars_list:
-            try:
-                memory = await self.retrieve_memory_for_run(user_prompt, run_agent_input)
-            except Exception as exc:
-                logger.warning("LangGraph memory retrieval failed: %s", exc)
-
         # Prefer structured dict input when available so templates can access both
         # the original fields (e.g. {topic}) and a plain-text {chat_history}.
         if isinstance(user_prompt, Mapping):
             template_input: Any = dict(user_prompt)
             template_input.setdefault("chat_history", history_summary)
-            template_input.setdefault("memory", memory)
         elif vars_list:
             # When the prompt is a bare value, best-effort map it into the declared
             # input variables. Known variable "chat_history" always receives the
@@ -286,12 +275,10 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             for name in vars_list:
                 if name == "chat_history":
                     template_input[name] = history_summary
-                elif name == "memory":
-                    template_input[name] = memory
                 else:
                     template_input[name] = user_prompt
         else:
-            # No declared variables: preserve pre-history and pre-memory behaviour.
+            # No declared variables: pass the prompt through unchanged.
             template_input = user_prompt
 
         current_messages = self.prompt_template.invoke(template_input).to_messages()
@@ -615,14 +602,6 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
 
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-
-        vars_list = getattr(self.prompt_template, "input_variables", [])
-        if "memory" in vars_list:
-            user_prompt = extract_user_prompt_content(run_agent_input)
-            try:
-                await self.store_memory_for_run(user_prompt, run_agent_input)
-            except Exception as exc:
-                logger.warning("LangGraph memory storage failed: %s", exc)
 
         yield (
             RunFinishedEvent(thread_id=thread_id, run_id=run_id),

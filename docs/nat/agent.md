@@ -39,9 +39,9 @@ Those names are what you list under **`workflow.tool_names`**.
 
 The example defines **`datarobot_mcp_auth`** so MCP requests carry the same kind of auth as the rest of the DataRobot stack. See [mcp.md](mcp.md).
 
-## `memory` — optional long-term memory
+## `memory` — optional long-term memory (NAT workflows)
 
-Use **`_type: dr_mem0_memory`** under **`memory:`** when wrapping a NAT agent with **`workflow._type: auto_memory_agent`**. The workflow points at the memory entry by name with **`memory_name`**. See [memory.md](memory.md).
+Use **`_type: dr_mem0_memory`** under **`memory:`** when wrapping a NAT agent with **`workflow._type: auto_memory_agent`** or **`streaming_memory_agent`**. The workflow points at the memory entry by name with **`memory_name`**. See [memory.md](memory.md).
 
 ## `workflow` — the top-level runner
 
