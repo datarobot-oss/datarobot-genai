@@ -221,6 +221,53 @@ class BaseAgent(Generic[TTool], abc.ABC):
         return MultiTurnSample(user_input=events)
 
 
+def _message_content_as_str(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    return "".join(getattr(part, "text", "") for part in content if part is not None)
+
+
+STREAMING_MEMORY_CONTEXT_PREFIX = "Relevant context from memory:\n"
+
+
+def _last_user_message_index(messages: list[Any]) -> int | None:
+    for idx in range(len(messages) - 1, -1, -1):
+        message = messages[idx]
+        if getattr(message, "role", None) == "user" and _message_content_as_str(
+            getattr(message, "content", None)
+        ):
+            return idx
+    return None
+
+
+def extract_streaming_memory_context(run_agent_input: RunAgentInput) -> str | None:
+    """Return ``streaming_memory_agent`` context to prepend to a user prompt, or None."""
+    messages = list(run_agent_input.messages)
+    last_user_idx = _last_user_message_index(messages)
+    if last_user_idx is None or last_user_idx == 0:
+        return None
+
+    memory_message = messages[last_user_idx - 1]
+    if getattr(memory_message, "role", None) != "system":
+        return None
+
+    memory_text = _message_content_as_str(getattr(memory_message, "content", None))
+    if not memory_text.startswith(STREAMING_MEMORY_CONTEXT_PREFIX):
+        return None
+
+    return memory_text
+
+
+def prepend_streaming_memory_to_prompt(prompt: str, run_agent_input: RunAgentInput) -> str:
+    """Prepend ``streaming_memory_agent`` context to a processed user prompt."""
+    streaming_context = extract_streaming_memory_context(run_agent_input)
+    if not streaming_context:
+        return prompt
+    return streaming_context + "\n\n" + prompt
+
+
 def extract_user_prompt_content(run_agent_input: RunAgentInput) -> Any:
     """Extract the last user message content from input."""
     user_messages = [msg for msg in run_agent_input.messages if msg.role == "user"]
