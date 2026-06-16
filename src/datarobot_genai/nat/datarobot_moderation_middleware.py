@@ -71,6 +71,7 @@ from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallChunkEvent
 from ag_ui.core import ToolCallEndEvent
+from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
@@ -1187,6 +1188,23 @@ def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
     )
 
 
+def _tool_lifecycle_passthrough_responses(
+    response: DRAgentEventResponse,
+) -> list[DRAgentEventResponse]:
+    """Re-emit tool end/result events from a moderated source batch.
+
+    ``dome_chunk_to_dragent_event_response`` rebuilds text from the moderated OpenAI
+    chunk and drops co-located ``TOOL_CALL_END`` / ``TOOL_CALL_RESULT`` events that
+    ``mark_args_done`` or the step adaptor attached to the same batch.
+    """
+    zero = default_usage_metrics()
+    return [
+        DRAgentEventResponse(events=[event], usage_metrics=zero)
+        for event in response.events
+        if isinstance(event, (ToolCallEndEvent, ToolCallResultEvent))
+    ]
+
+
 def _merge_moderations_into_multi_event_response(
     incoming: DRAgentEventResponse,
     moderated_completion_response: DRAgentEventResponse,
@@ -1559,6 +1577,7 @@ async def _moderated_dragent_stream(
                     open_text_message_ids, open_tool_call_ids, moderated_response
                 )
                 yield moderated_response
+                pending_pass_through.extend(_tool_lifecycle_passthrough_responses(source_response))
                 for item in _drain_pending_after_moderated_chunk(
                     pending_deferred, pending_pass_through
                 ):

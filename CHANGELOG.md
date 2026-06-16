@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent`: defer ``RUN_FINISHED`` in moderated streams, emit buffered ``TEXT_MESSAGE_START`` before moderated ``TEXT_MESSAGE_CONTENT``, and close dangling text segments before ``RUN_FINISHED`` so AG-UI event ordering stays valid.
 - `dragent`: close dangling ``TOOL_CALL`` segments before ``RUN_FINISHED`` when upstream ends without ``TOOL_CALL_END`` (for example stream-converter ``mark_args_done`` after workflow ``RUN_FINISHED``), flushing deferred ``TOOL_CALL_RESULT`` pairs from the stream-converter registry when present.
 - `dragent`: moderated streaming treats responses with batched ``TEXT_MESSAGE_START`` + ``TEXT_MESSAGE_CONTENT`` (NAT ``stream_converter`` shape) as text deltas instead of skipping them when only the start event is first, and preserves the source content ``message_id`` when rebuilding moderated chunks.
+- `dragent`: moderated streaming re-emits ``TOOL_CALL_END`` / ``TOOL_CALL_RESULT`` events that share a source batch with moderated text deltas so ``events_to_messages`` can rebuild tool history.
 
 ## 0.17.8
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
