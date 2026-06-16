@@ -28,10 +28,10 @@ from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
+from datarobot_genai.drmcputils.constants import DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
 from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
-from datarobot_genai.drtools.core.constants import DEFAULT_DATAROBOT_ENDPOINT
-from datarobot_genai.drtools.core.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 from .constants import MCP_CLI_OPTS
 

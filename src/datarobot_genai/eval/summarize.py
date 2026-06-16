@@ -63,7 +63,7 @@ class ResultsSummarizer:
                 passed = "✓" if c.get("passed") else ("✗" if c.get("passed") is False else "?")
                 reason = (c.get("judge_reason") or "")[:50]
                 print(
-                    f"  {c['id']:<15} {c.get('expected_behavior', '?'):<8} "
+                    f"  {(c.get('id') or '?'):<15} {(c.get('expected_behavior') or '?'):<8} "
                     f"{score_str:<7} {passed:<6} {reason}"
                 )
 

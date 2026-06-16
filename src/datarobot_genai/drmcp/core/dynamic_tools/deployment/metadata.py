@@ -23,7 +23,7 @@ from datarobot_genai.drmcpbase.dynamic_tools.deployment.metadata import (
     _is_datarobot_structured_prediction,
 )
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.metadata import build_mcp_tool_metadata
-from datarobot_genai.drtools.core.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
 

@@ -18,12 +18,12 @@ import json
 
 import pytest
 
+from datarobot_genai.drmcputils.panels.models import Dataset
+from datarobot_genai.drmcputils.panels.models import Json
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.core import get_registered_resources
 from datarobot_genai.drtools.panels import resources as res_mod
-from datarobot_genai.drtools.panels.models import Dataset
-from datarobot_genai.drtools.panels.models import Json
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
 
 from .conftest import FakeBlobStore
 

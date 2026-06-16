@@ -16,11 +16,11 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.atlassian import get_jira_access_token
 from datarobot_genai.drtools.core.clients.jira import JiraClient
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

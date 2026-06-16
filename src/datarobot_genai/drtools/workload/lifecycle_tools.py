@@ -17,12 +17,12 @@ from typing import Any
 
 from datarobot.errors import ClientError
 
+from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.constants import IMPORTANCE_VALUES
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
-from datarobot_genai.drtools.core.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
-from datarobot_genai.drtools.workload.constants import IMPORTANCE_VALUES
 
 
 @tool_metadata(

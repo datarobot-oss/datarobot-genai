@@ -30,12 +30,12 @@ from __future__ import annotations
 
 import json
 
+from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
+from datarobot_genai.drmcputils.panels.models import Json
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.core import resource_metadata
-from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
-from datarobot_genai.drtools.panels.models import Json
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
-from datarobot_genai.drtools.panels.tools import _require_mcp_sandbox
 
 
 def _store() -> PanelStore:

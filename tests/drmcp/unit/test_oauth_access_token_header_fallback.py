@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for OAuth access-token header fallback helpers in drtools.core.auth."""
+"""Unit tests for OAuth access-token header fallback helpers in drmcputils.auth."""
 
 from unittest.mock import AsyncMock
 from unittest.mock import patch
@@ -20,12 +20,12 @@ from unittest.mock import patch
 import pytest
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 
-from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
-from datarobot_genai.drtools.core.auth import oauth_access_token_header_name
-from datarobot_genai.drtools.core.auth import resolve_oauth_access_token_from_headers
-from datarobot_genai.drtools.core.auth import set_request_headers
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.auth import get_oauth_access_token_with_header_fallback
+from datarobot_genai.drmcputils.auth import oauth_access_token_header_name
+from datarobot_genai.drmcputils.auth import resolve_oauth_access_token_from_headers
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +82,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_returns_obo_token_when_oauth_succeeds(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             return_value="obo-secret",
         ):
@@ -96,7 +96,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_returns_header_token_when_runtime_error(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=RuntimeError("no context"),
         ):
@@ -113,12 +113,12 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_returns_header_token_when_oauth_service_client_err(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=OAuthServiceClientErr("not granted"),
         ):
             with patch(
-                "datarobot_genai.drtools.core.auth.get_request_headers",
+                "datarobot_genai.drmcputils.auth.get_request_headers",
                 return_value={"x-datarobot-google-drive-access-token": "hdr"},
             ):
                 out = await get_oauth_access_token_with_header_fallback(
@@ -131,7 +131,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_returns_header_when_oauth_returns_empty_string(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             return_value="",
         ):
@@ -148,11 +148,11 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_tool_error_when_oauth_fails_and_no_header(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=OAuthServiceClientErr("denied"),
         ):
-            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
+            with patch("datarobot_genai.drmcputils.auth.get_request_headers", return_value={}):
                 out = await get_oauth_access_token_with_header_fallback(
                     "microsoft",
                     display_name="Microsoft",
@@ -165,7 +165,7 @@ class TestGetOauthAccessTokenWithHeaderFallback:
     @pytest.mark.asyncio
     async def test_tool_error_internal_on_unexpected_exception(self) -> None:
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=ValueError("boom"),
         ):

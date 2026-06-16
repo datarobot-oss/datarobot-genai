@@ -16,12 +16,12 @@
 
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.panels.models import Dataset
+from datarobot_genai.drmcputils.panels.models import Json
+from datarobot_genai.drmcputils.panels.models import Text
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.panels import review as review_mod
-from datarobot_genai.drtools.panels.models import Dataset
-from datarobot_genai.drtools.panels.models import Json
-from datarobot_genai.drtools.panels.models import Text
-from datarobot_genai.drtools.panels.store import PanelStore
 from datarobot_genai.drtools.panels.truncate import truncate_for_llm
 
 from .conftest import FakeBlobStore
@@ -91,7 +91,7 @@ def test_truncate_for_llm_depth_and_strings() -> None:
 async def test_inspect_panel_tolerates_toolerror_ancestor(
     review_env: PanelStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+    from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
     child = await review_env.create(
         Dataset(title="child", parents=["stale-parent"]), source="staging"

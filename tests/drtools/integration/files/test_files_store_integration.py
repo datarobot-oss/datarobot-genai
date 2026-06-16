@@ -36,9 +36,9 @@ import uuid
 
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.files.store import BlobRef
-from datarobot_genai.drtools.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.files.store import BlobRef
+from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
 
 pytestmark = pytest.mark.integration
 

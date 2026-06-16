@@ -16,8 +16,8 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.jira import Issue
-from datarobot_genai.drtools.core.exceptions import ToolError
 from datarobot_genai.drtools.jira.tools import jira_create_issue
 from datarobot_genai.drtools.jira.tools import jira_get_issue
 from datarobot_genai.drtools.jira.tools import jira_search_issues

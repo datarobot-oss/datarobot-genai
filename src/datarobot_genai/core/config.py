@@ -146,6 +146,21 @@ def default_model_name() -> str | None:
     return config.llm_default_model
 
 
+def default_response_model() -> str:
+    """Return the configured model to report in OpenAI ``chat/completions`` responses.
+
+    dragent agents ignore the request's ``model`` and run the LLM configured in
+    ``workflow.yaml`` / env, so the response should report that actual model — not
+    echo the caller's string (which need not be sent at all) nor NAT's
+    ``"unknown-model"`` placeholder. Resolves the same way the LLM client does
+    (:meth:`LLMConfig.to_litellm_params`): ``LLM_DEFAULT_MODEL`` env, else the
+    deployed-LLM default; always ``datarobot/``-prefixed and never ``None`` so the
+    response can never regress to ``"unknown-model"``. (A per-LLM ``model_name`` set
+    inline in ``workflow.yaml`` is not reflected here — env/global config only.)
+    """
+    return _with_datarobot_prefix(default_model_name() or "datarobot-deployed-llm")
+
+
 def default_use_datarobot_llm_gateway() -> bool:
     config = Config()
     return config.use_datarobot_llm_gateway

@@ -18,8 +18,8 @@ from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from pydantic import TypeAdapter
 
 from datarobot_genai.drmcp.core.logging import log_execution
-from datarobot_genai.drtools.core.exceptions import ToolError as DRToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.exceptions import ToolError as DRToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 
 @pytest.mark.asyncio

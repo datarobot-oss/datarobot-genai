@@ -20,9 +20,9 @@ from typing import Any
 import polars as pl
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.panels import datasource as ds_mod
-from datarobot_genai.drtools.panels.store import PanelStore
 
 from .conftest import FakeBlobStore
 
@@ -130,7 +130,7 @@ async def test_preview_dataset_panel(
 async def test_preview_dataset_panel_rejects_non_dataset(
     patched_datasource: tuple[FakeBlobStore, list[dict[str, Any]]],
 ) -> None:
-    from datarobot_genai.drtools.panels.models import Text
+    from datarobot_genai.drmcputils.panels.models import Text
 
     store = ds_mod._get_store()
     text_panel = await store.create(Text(title="T", text="hi"), source="staging")

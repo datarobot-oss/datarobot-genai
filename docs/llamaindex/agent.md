@@ -28,6 +28,6 @@ Aligned with [`e2e-tests/dragent/llamaindex/`](../../e2e-tests/dragent/llamainde
 
 ## `myagent.py`
 
-You define the **AgentWorkflow**, **agents** (e.g. planner / writer), and how the **final answer** is read from streamed events—the sample shows one way to extract text. Placeholders like **`{chat_history}`** or **`{memory}`** in the user message string are filled by the integration when you opt in (see the example’s string patterns).
+You define the **AgentWorkflow**, **agents** (e.g. planner / writer), and how the **final answer** is read from streamed events—the sample shows one way to extract text. The **`{chat_history}`** placeholder in the user message string is filled by the integration when you opt in (see the example’s string patterns).
 
 [`register.py`](../../e2e-tests/dragent/llamaindex/register.py) wires the package for DRAgent.

@@ -138,3 +138,28 @@ def test_print_summary_no_nemo_section_when_empty(
     ResultsSummarizer(tmp_path).print_summary()
     out = capsys.readouterr().out
     assert "NeMo Aggregate" not in out
+
+
+def test_print_summary_null_expected_behavior_renders_as_question_mark(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cases with expected_behavior: null must not raise a format TypeError."""
+    data = _minimal_results()
+    data["cases"][0]["expected_behavior"] = None
+    _write_results(tmp_path / "eval_results.json", data)
+    ResultsSummarizer(tmp_path).print_summary()
+    out = capsys.readouterr().out
+    assert "good-001" in out
+    assert "?" in out
+
+
+def test_print_summary_null_id_renders_as_question_mark(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cases with id: null must not raise a format TypeError."""
+    data = _minimal_results()
+    data["cases"][0]["id"] = None
+    _write_results(tmp_path / "eval_results.json", data)
+    ResultsSummarizer(tmp_path).print_summary()
+    out = capsys.readouterr().out
+    assert "?" in out

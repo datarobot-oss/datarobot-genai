@@ -92,15 +92,6 @@ def spawn_runner(
     )
 
 
-# Prompt/response OOTB token_count guards only in e2e dragent workflow moderation blocks.
-EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS = frozenset(
-    {
-        "Prompts_token_count",
-        "Responses_token_count",
-    }
-)
-
-
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
     uid = uuid.uuid4().hex[:8]
     return {

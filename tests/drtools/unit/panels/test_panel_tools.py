@@ -18,9 +18,10 @@ from contextlib import contextmanager
 
 import pytest
 
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.panels import access as access_mod
+from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.panels import tools as tools_mod
-from datarobot_genai.drtools.panels.store import PanelStore
 
 from .conftest import FakeBlobStore
 
@@ -80,14 +81,14 @@ def test_require_mcp_sandbox_denies_when_entitlement_off(monkeypatch: pytest.Mon
     def _fake_client(**_kwargs: object):
         yield object()
 
-    monkeypatch.setattr(tools_mod, "request_user_dr_client", _fake_client)
+    monkeypatch.setattr(access_mod, "request_user_dr_client", _fake_client)
     monkeypatch.setattr(
-        tools_mod.FeatureFlag,
+        access_mod.FeatureFlag,
         "is_enabled",
         staticmethod(lambda _name, *, client, **_kw: False),
     )
     with pytest.raises(ToolError):
-        tools_mod._require_mcp_sandbox()
+        access_mod._require_mcp_sandbox()
 
 
 def test_require_mcp_sandbox_allows_when_entitlement_on(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,15 +96,15 @@ def test_require_mcp_sandbox_allows_when_entitlement_on(monkeypatch: pytest.Monk
     def _fake_client(**_kwargs: object):
         yield object()
 
-    monkeypatch.setattr(tools_mod, "request_user_dr_client", _fake_client)
+    monkeypatch.setattr(access_mod, "request_user_dr_client", _fake_client)
     monkeypatch.setattr(
-        tools_mod.FeatureFlag,
+        access_mod.FeatureFlag,
         "is_enabled",
         staticmethod(lambda _name, *, client, **_kw: True),
     )
     # Should not raise.
-    tools_mod._require_mcp_sandbox()
+    access_mod._require_mcp_sandbox()
 
 
 def test_get_store_returns_panelstore() -> None:
-    assert isinstance(tools_mod._get_store(), PanelStore)
+    assert isinstance(access_mod._get_store(), PanelStore)

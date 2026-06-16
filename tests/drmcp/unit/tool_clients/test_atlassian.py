@@ -23,7 +23,10 @@ import httpx
 import pytest
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 
-from datarobot_genai.drtools.core.auth import set_request_headers
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core.clients.atlassian import ATLASSIAN_API_BASE
 from datarobot_genai.drtools.core.clients.atlassian import OAUTH_ACCESSIBLE_RESOURCES_PATH
 from datarobot_genai.drtools.core.clients.atlassian import TENANT_INFO_PATH
@@ -37,9 +40,6 @@ from datarobot_genai.drtools.core.clients.atlassian import get_confluence_access
 from datarobot_genai.drtools.core.clients.atlassian import get_jira_access_token
 from datarobot_genai.drtools.core.clients.atlassian import normalize_atlassian_site_url
 from datarobot_genai.drtools.core.clients.atlassian import resolve_config_atlassian_auth
-from datarobot_genai.drtools.core.credentials import AuthResolutionStrategy
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 
 def _mock_creds(
@@ -94,7 +94,7 @@ class TestGetAtlassianServiceAccessToken:
         mock_token = "test_access_token_123"
         mock_get_access_token = AsyncMock(return_value=mock_token)
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             mock_get_access_token,
         ):
             result = await get_token()
@@ -113,11 +113,11 @@ class TestGetAtlassianServiceAccessToken:
     ) -> None:
         """Test handling of empty access token without header fallback."""
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             return_value="",
         ):
-            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
+            with patch("datarobot_genai.drmcputils.auth.get_request_headers", return_value={}):
                 result = await get_token()
         assert isinstance(result, ToolError)
         assert result.kind == ToolErrorKind.AUTHENTICATION
@@ -134,11 +134,11 @@ class TestGetAtlassianServiceAccessToken:
         """Test handling of OAuthServiceClientErr without header fallback."""
         oauth_error = OAuthServiceClientErr("OAuth error occurred")
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=oauth_error,
         ):
-            with patch("datarobot_genai.drtools.core.auth.get_request_headers", return_value={}):
+            with patch("datarobot_genai.drmcputils.auth.get_request_headers", return_value={}):
                 result = await get_token()
         assert isinstance(result, ToolError)
         assert "Could not obtain access token" in str(result)
@@ -154,7 +154,7 @@ class TestGetAtlassianServiceAccessToken:
         """Test handling of unexpected exceptions."""
         unexpected_error = ValueError("Unexpected error")
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=unexpected_error,
         ):
@@ -172,7 +172,7 @@ class TestGetAtlassianServiceAccessToken:
     ) -> None:
         """OBO failure is satisfied by the service-specific access-token header."""
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=RuntimeError("no auth ctx"),
         ):
