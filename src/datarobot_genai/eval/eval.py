@@ -109,23 +109,25 @@ class EvalRunner:
         write_status("running", run_id, self.pipeline, self.endpoint, self.output_dir)
         print("\nStatus: running  (output/eval_status.json)")
 
-        dataset = load_dataset(self.dataset)
-        print(f"Loaded {len(dataset)} test cases")
-
-        # 3. Convert dataset to BYOB JSONL
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False, prefix="byob_dataset_"
-        ) as f:
-            dataset_jsonl = f.name
-        to_byob_jsonl(dataset, dataset_jsonl)
-
         nemo_output_dir = str(self.output_dir / "raw" / run_id)
 
-        # 4. Run BYOB
-        print("Running NeMo Evaluator (BYOB, in-process)...")
+        # 3-4. Load + convert the dataset and run BYOB. Any failure here (including
+        # in load_dataset / to_byob_jsonl) must flip status to failed, otherwise
+        # external tooling sees a run stuck in "running".
+        dataset_jsonl: str | None = None
         try:
+            dataset = load_dataset(self.dataset)
+            print(f"Loaded {len(dataset)} test cases")
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False, prefix="byob_dataset_"
+            ) as f:
+                dataset_jsonl = f.name
+            to_byob_jsonl(dataset, dataset_jsonl)
+
+            print("Running NeMo Evaluator (BYOB, in-process)...")
             run_byob(cfg, self.endpoint, dataset_jsonl, nemo_output_dir, self.repo_root)
-        except RuntimeError as e:
+        except Exception as e:  # noqa: BLE001
             write_status(
                 "failed",
                 run_id,
@@ -137,7 +139,7 @@ class EvalRunner:
             print(f"ERROR: {e}", file=sys.stderr)
             return 2
         finally:
-            if Path(dataset_jsonl).exists():
+            if dataset_jsonl and Path(dataset_jsonl).exists():
                 os.unlink(dataset_jsonl)
 
         # 5. Normalize output

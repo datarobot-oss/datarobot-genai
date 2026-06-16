@@ -207,6 +207,8 @@ def generate_main(
     benchmark_name: str | None = None
     if args.pipeline:
         pipeline_path = Path(args.pipeline)
+        if not pipeline_path.is_absolute():
+            pipeline_path = repo_root / pipeline_path
         if not pipeline_path.exists():
             parser.error(f"Pipeline file not found: {pipeline_path}")
         pipeline_cfg: dict[str, Any] = yaml.safe_load(pipeline_path.read_text())
