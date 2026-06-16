@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.3
+- `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
+
 ## 0.17.2
 - `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
 
