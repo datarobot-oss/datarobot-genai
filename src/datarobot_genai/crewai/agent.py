@@ -415,7 +415,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 if history_summary and not existing_history_text.strip():
                     kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
-            crew_output = await crew.kickoff_async(inputs=kickoff_inputs)
+            crew_output = await crew.akickoff(inputs=kickoff_inputs)
             current_agent_role = ""
             message_id = str(uuid.uuid4())
 
