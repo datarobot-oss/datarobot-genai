@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.9
+- `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
+
 ## 0.17.8
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
 - `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior, including inline hallucinations after ``Action Input``.
