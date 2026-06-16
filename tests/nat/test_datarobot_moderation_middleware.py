@@ -2551,6 +2551,104 @@ async def test_function_middleware_stream_emits_deferred_start_before_content(
     assert start_idx < content_idx
 
 
+async def test_function_middleware_stream_keeps_deferred_start_for_later_segment(
+    builder_mock: MagicMock,
+) -> None:
+    """Do not emit a deferred START for segment B while moderating segment A text."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    planner_mid = "msg-planner"
+    writer_mid = "msg-writer"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=planner_mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=planner_mid, delta="plan-1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=planner_mid, delta=" plan-2")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=planner_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Planner")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepStartedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=writer_mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=writer_mid, delta="hello")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=writer_mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[StepFinishedEvent(step_name="Content Writer")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    writer_start_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.TEXT_MESSAGE_START and e.message_id == writer_mid
+    )
+    writer_content_idx = next(
+        i
+        for i, e in enumerate(flat)
+        if e.type == EventType.TEXT_MESSAGE_CONTENT and e.message_id == writer_mid
+    )
+    assert writer_start_idx < writer_content_idx
+
+
 async def test_function_middleware_stream_preserves_step_order_at_agent_transition(
     builder_mock: MagicMock,
 ) -> None:
