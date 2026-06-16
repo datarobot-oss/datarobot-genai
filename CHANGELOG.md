@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.4
+- Fixing runtime error thrown during E2E tests
+
 ## 0.17.3
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
 
