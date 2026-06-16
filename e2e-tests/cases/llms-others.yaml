@@ -1,0 +1,40 @@
+cases:
+  - name: deployed-llm
+    env:
+      LLM: deployment
+      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: external-llm
+    env:
+      LLM: external
+      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: router-llm
+    env:
+      LLM: router
+      WORKFLOW_FILE: workflow-router-fallback-used.yaml
+    tests:
+      - ./dragent_tests
+    matrix:
+      AGENT:
+        - crewai
+        - langgraph
+        - llamaindex
