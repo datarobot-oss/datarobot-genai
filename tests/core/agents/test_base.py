@@ -262,7 +262,10 @@ def test_extract_history_messages_preserves_tool_call_only_assistant_messages() 
     assert history[0]["role"] == "user"
     assert history[0]["content"] == "u1"
     assert history[1]["role"] == "assistant"
-    assert "search" in history[1]["content"]
+    # Tool-call-only turns keep empty content; the call is preserved structurally
+    # (rendered to text by build_history_summary, reconstructed by structured adapters).
+    assert history[1]["content"] == ""
+    assert history[1]["tool_calls"][0].function.name == "search"
 
 
 def test_extract_history_messages_preserves_tool_messages_even_with_empty_content() -> None:
@@ -297,6 +300,28 @@ def test_build_history_summary_includes_tool_call_summaries() -> None:
     assert "user: u1" in summary
     assert "assistant:" in summary
     assert "t" in summary
+
+
+def test_history_messages_drops_orphan_tool_turn_after_truncation() -> None:
+    # GIVEN a tool-call/result pair in history
+    run_agent_input = _make_run_agent_input_from_dicts(
+        [
+            {"role": "user", "content": "weather?"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "c1", "function": {"name": "get_weather"}}],
+            },
+            {"role": "tool", "tool_call_id": "c1", "content": "18C"},
+            {"role": "user", "content": "and tomorrow?"},
+        ]
+    )
+    # WHEN max_history truncates history down to just the trailing tool result
+    # THEN the orphaned tool result (no preceding tool call) is dropped
+    assert SimpleAgent(max_history_messages=1).history_messages(run_agent_input) == []
+    # WHEN the window keeps the whole pair, it is preserved
+    kept = SimpleAgent(max_history_messages=2).history_messages(run_agent_input)
+    assert [m["role"] for m in kept] == ["assistant", "tool"]
 
 
 def test_make_system_prompt() -> None:

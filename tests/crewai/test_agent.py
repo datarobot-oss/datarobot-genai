@@ -357,6 +357,35 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
     assert captured_inputs["chat_history"] == "CUSTOM OVERRIDE"
 
 
+async def test_invoke_includes_tool_calls_in_history(
+    mock_ragas_event_listener, run_agent_input_with_tool_history
+) -> None:
+    """Tool calls appear in the injected chat_history text in both content cases."""
+    captured_inputs: dict[str, Any] = {}
+
+    class CapturingCrew(CrewForTest):
+        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+            captured_inputs.update(inputs)
+            return super().kickoff_async(inputs=inputs)
+
+    class AgentWithPlaceholder(AgentForTest):
+        def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
+            return {"topic": user_prompt_content, "chat_history": ""}
+
+    out = CrewOutput(raw="agent result")
+    agent = AgentWithPlaceholder(
+        out, api_base="https://x/", api_key="k", verbose=False, crew=CapturingCrew(out)
+    )
+
+    _ = [event async for event in agent.invoke(run_agent_input_with_tool_history)]
+
+    history = captured_inputs["chat_history"]
+    # Assistant turn with content AND a tool call: both are shown.
+    assert "Let me check the weather. [tool_calls] get_weather" in history
+    # Tool-call-only assistant turn (empty content): the call is still shown.
+    assert "[tool_calls] log_event" in history
+
+
 # --- datarobot_agent_class_from_crew ---
 
 
@@ -378,6 +407,20 @@ def test_datarobot_agent_class_from_crew_subclass_and_kickoff_inputs() -> None:
     assert instance.agents == [ca, cb]
     assert instance.tasks == [ta, tb]
     assert instance.make_kickoff_inputs("hello") == {"topic": "hello", "extra": 1}
+
+
+def test_datarobot_agent_class_from_crew_neutralizes_kickoff_storage() -> None:
+    # The supplied crew's leaking sqlite kickoff-outputs handler must be replaced
+    # with the no-op so a long-lived serve process can't exhaust its fd table.
+    from datarobot_genai.crewai.kickoff_storage import _NoOpTaskOutputHandler
+
+    crew = MagicMock()
+    crew.verbose = True
+    crew._task_output_handler = MagicMock()  # stand-in for the real sqlite handler
+
+    datarobot_agent_class_from_crew(crew, [_mock_crewai_agent()], [MagicMock()], lambda u: {})
+
+    assert isinstance(crew._task_output_handler, _NoOpTaskOutputHandler)
 
 
 def test_datarobot_agent_class_from_crew_set_tools_merges_with_original() -> None:

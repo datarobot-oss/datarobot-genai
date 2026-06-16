@@ -23,10 +23,10 @@ def test_eval_package_imports() -> None:
 
 def test_eval_extra_dependencies_import() -> None:
     """The eval extra must be self-contained: its declared deps importable in isolation."""
-    import anthropic
+    import litellm
     import nemo_evaluator_launcher
     import yaml
 
-    assert anthropic is not None
+    assert litellm is not None
     assert nemo_evaluator_launcher is not None
     assert yaml is not None

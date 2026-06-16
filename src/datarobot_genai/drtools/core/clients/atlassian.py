@@ -23,11 +23,11 @@ from typing import Literal
 
 import httpx
 
-from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
-from datarobot_genai.drtools.core.credentials import AuthResolutionStrategy
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.auth import get_oauth_access_token_with_header_fallback
+from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 

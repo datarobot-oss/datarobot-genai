@@ -32,7 +32,10 @@ import yaml
 
 pytest.importorskip("datarobot_dome")
 
+from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall
+from ag_ui.core import ReasoningMessage
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -41,8 +44,10 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ToolCall
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
+from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import _from_dataframe
@@ -80,6 +85,12 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _postscore_only_datarobot_moderations,
+)
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _prescore_datarobot_moderations_from_df,
+)
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
 from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
 from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
@@ -345,6 +356,31 @@ async def _content_filter_on_last_stream_response_async(
         current = peek
 
 
+async def _stream_response_with_merged_moderation_metrics(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Echo streamed chunks with merged prescore + postscore moderation sidecars."""
+    prescore_mods = {"Prompts_token_count": 3, "blocked_promptText": False}
+    response_mods = {"Responses_token_count": 6, "blocked_completion": False}
+    merged = {**prescore_mods, **response_mods}
+    aiter = completion.__aiter__()
+    try:
+        current = await aiter.__anext__()
+    except StopAsyncIteration:
+        return
+    while True:
+        try:
+            peek = await aiter.__anext__()
+        except StopAsyncIteration:
+            setattr(current, DATAROBOT_MODERATIONS_ATTR, merged)
+            yield current
+            return
+        setattr(current, DATAROBOT_MODERATIONS_ATTR, merged)
+        yield current
+        current = peek
+
+
 def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -391,6 +427,50 @@ def test_workflow_input_to_completion_dict_chat_request_or_message() -> None:
 def test_moderation_prompt_from_workflow_input_run_agent_input() -> None:
     run_input = _make_run_input("plan the thing")
     assert moderation_prompt_from_workflow_input(run_input) == "plan the thing"
+
+
+def test_completion_dict_skips_reasoning_message_history() -> None:
+    """Multi-turn history can replay a ReasoningMessage (it has no OpenAI equivalent).
+
+    ``_ag_ui_message_to_openai`` maps it to an empty dict, so it must be dropped rather
+    than appended: ``get_chat_prompt`` indexes ``message["role"]`` and would otherwise
+    raise ``KeyError: 'role'`` (regression: structured tool-call + reasoning history).
+    """
+    run_input = DRAgentRunAgentInput(
+        thread_id="t1",
+        run_id="r1",
+        messages=[
+            UserMessage(id="u1", content="use the tool for a deployment, reply with the id"),
+            ReasoningMessage(id="x1", content="The user wants the generate_objectid tool."),
+            AssistantMessage(
+                id="a1",
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="tc1",
+                        type="function",
+                        function=FunctionCall(
+                            name="generate_objectid", arguments='{"type": "deployment"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(id="t1", content="69cbb73789723b6936c6c9e1", tool_call_id="tc1"),
+            AssistantMessage(id="a2", content="69cbb73789723b6936c6c9e1"),
+            UserMessage(id="u2", content="what id did the tool return? reply with only the id"),
+        ],
+        tools=[],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
+    params = workflow_input_to_completion_dict(run_input)
+    # No role-less entries reach get_chat_prompt (the reasoning turn is dropped).
+    assert all(message.get("role") for message in params["messages"])
+    assert "reasoning" not in {message.get("role") for message in params["messages"]}
+    # The latest user turn is still the moderated prompt; this must not raise.
+    assert "reply with only the id" in get_chat_prompt(params)
+    assert moderation_prompt_from_workflow_input(run_input)
 
 
 def test_moderation_prompt_from_workflow_input_input_message_only() -> None:
@@ -1986,6 +2066,102 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
     stream_next.assert_not_called()
     assert len(chunks) == 1
     assert isinstance(chunks[0], DRAgentEventResponse)
+
+
+def test_postscore_only_datarobot_moderations_strips_prescore_keys() -> None:
+    prescore = {"Prompts_token_count": 3, "blocked_promptText": False}
+    merged = {**prescore, "Responses_token_count": 6, "blocked_completion": False}
+    assert _postscore_only_datarobot_moderations(merged, prescore) == {
+        "Responses_token_count": 6,
+        "blocked_completion": False,
+    }
+
+
+def test_prescore_datarobot_moderations_from_df_uses_pipeline_columns(
+    builder_mock: MagicMock,
+    moderation_config_mode: str,
+) -> None:
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    with patch.dict(
+        os.environ,
+        {
+            "DATAROBOT_API_TOKEN": "test-token",
+            "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+        },
+    ):
+        mw = _moderation_middleware_for_fixture_dir(
+            model_dir, builder_mock, config_mode=moderation_config_mode
+        )
+        pipeline = mw._get_moderation()._pipeline
+        prompt_col = pipeline.get_input_column(GuardStage.PROMPT)
+        prescore_df = pd.DataFrame(
+            {
+                prompt_col: ["Count moderation tokens for this prompt."],
+                f"blocked_{prompt_col}": [False],
+                f"replaced_{prompt_col}": [False],
+                "Prompts_token_count": [7],
+            }
+        )
+        mods = _prescore_datarobot_moderations_from_df(pipeline, prescore_df)
+    assert mods is not None
+    assert mods["Prompts_token_count"] == 7
+    assert "Responses_token_count" not in mods
+
+
+async def test_function_middleware_stream_attaches_prescore_to_text_message_start(
+    builder_mock: MagicMock,
+) -> None:
+    """Prescore metrics belong on TEXT_MESSAGE_START; content chunks keep postscore only."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _stream_response_with_merged_moderation_metrics
+    prescore_df = _prescore_df_ok("topic")
+    prescore_df["Prompts_token_count"] = [3]
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid = "msg-start"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta="hello")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("topic"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    start_chunks = [
+        c for c in chunks if c.events and c.events[0].type == EventType.TEXT_MESSAGE_START
+    ]
+    content_chunks = [
+        c for c in chunks if any(isinstance(ev, TextMessageContentEvent) for ev in c.events)
+    ]
+    assert len(start_chunks) == 1
+    assert start_chunks[0].datarobot_moderations is not None
+    assert start_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
+    assert "Responses_token_count" not in start_chunks[0].datarobot_moderations
+    assert content_chunks
+    assert content_chunks[0].datarobot_moderations is not None
+    assert content_chunks[0].datarobot_moderations["Responses_token_count"] == 6
+    assert "Prompts_token_count" not in content_chunks[0].datarobot_moderations
 
 
 async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock: MagicMock) -> None:

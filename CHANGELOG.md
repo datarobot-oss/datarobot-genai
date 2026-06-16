@@ -4,6 +4,104 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.16.19
+- `drtools/workload`: artifact replacement / rolling update.
+  - **Client** (`WorkloadApiClient`): added `get_workload_replacement`, `create_workload_replacement`, `delete_workload_replacement` against `GET/POST/DELETE /api/v2/workloads/{id}/replacement`.
+  - **Tools** (`replacement_tools`): `workload_replacement_get` — fetch current replacement status (candidate artifact, proton ids, config, timestamps); `workload_replacement_create` — start a rolling update by deploying a new artifact alongside the running version with optional warmup/retention config and runtime override; `workload_replacement_delete` — cancel an in-progress replacement and revert traffic to the original version.
+
+## 0.16.18
+- `nat/datarobot_moderation_middleware`: streaming moderation now attaches prescore guard metrics to `TEXT_MESSAGE_START` chunks (matching DRUM/dome first-chunk semantics) and keeps postscore metrics on moderated `TEXT_MESSAGE_CONTENT` chunks.
+
+## 0.16.17
+- `crewai`: fixed a file-descriptor leak that crashed long-running `nat dragent serve` with `[Errno 24] Too many open files`. crewai's kickoff-outputs SQLite storage leaks connections (unclosed `with sqlite3.connect(...)`); the agent now runs crews with an in-process no-op task-output handler, so no database is opened.
+
+## 0.16.16
+- `drtools/workload`: artifact builds and repositories.
+  - **Client** (`WorkloadApiClient`): added `list_artifact_builds`, `trigger_artifact_build`,
+    `get_artifact_build`, `get_artifact_build_logs` (text/plain response), `delete_artifact_build`
+    targeting `GET/POST /artifacts/{id}/builds` and `GET/DELETE /artifacts/{id}/builds/{build_id}`;
+    added `list_artifact_repositories`, `get_artifact_repository`, `delete_artifact_repository`
+    targeting `GET /artifactRepositories` and `GET/DELETE /artifactRepositories/{id}`.
+  - **Build Tools** (`drtools/workload/build_tools.py`): `artifact_build_list`, `artifact_build_trigger`,
+    `artifact_build_get`, `artifact_build_logs`, `artifact_build_delete`.
+  - **Repo Tools** (`drtools/workload/repository_tools.py`): `artifact_repository_list` (filterable by
+    search/type), `artifact_repository_get`, `artifact_repository_delete`.
+
+## 0.16.15
+- `drtools/workload`: artifact core management.
+  - **Client** (`WorkloadApiClient`): added `list_artifacts`, `get_artifact`, `create_artifact`,
+    `put_artifact`, `patch_artifact`, `delete_artifact`, and `clone_artifact` methods targeting
+    `GET/POST /artifacts/`, `GET/PUT/PATCH/DELETE /artifacts/{id}`, and
+    `POST /artifacts/{id}/clone`.
+  - **Tools** (`drtools/workload/artifact_tools.py`): `artifact_list` (paginated, filterable by
+    status/type/repository/search), `artifact_get`, `artifact_create`, `artifact_update` (PATCH
+    helper for name/description/spec), `artifact_lock` (PATCH shortcut to set status→locked),
+    `artifact_clone`, and `artifact_delete`.
+
+## 0.16.14
+- Fix `ResultsSummarizer.print_summary` crash when a case has `expected_behavior: null` or `id: null`
+
+## 0.16.13
+- `dragent/frontends`: `POST /chat/completions` now reports the agent's configured LLM model (via `core/config.default_response_model`) instead of NAT's `"unknown-model"`, on the non-streaming body and streaming content chunks. The request's `model` is ignored (the agent runs its `workflow.yaml`/env-configured LLM) and need not be sent; moderation's `MODERATION_MODEL_NAME` is preserved. Known gap: NAT's terminal `finish_reason="stop"` streaming chunk still reports `"unknown-model"`.
+
+## 0.16.12
+- A2A per-user workflow keys use gateway identity headers instead of caller-supplied `context_id`; invalid auth context is rejected.
+
+## 0.16.11
+- Fix datarobot_genai.eval.benchmarks pipeline YAML reference retrievals
+
+## 0.16.10
+- `drtools/panels`: create Dataset panels from any saved datastore connection via SQL (`create_dataset_panel_from_connector`) and preview their contents (`preview_dataset_panel`).
+- `drtools/predictive`: fixed `catalog_query_datastore` to use the supported `previewQuery` API route.
+
+## 0.16.9
+- `drtools/panels`: added a server-side panel store — typed panel models (Dataset, Chart, Text, Json) persisted via the Files API, with CRUD and schema-validation tools.
+  - Fix import sorting (ruff I001) in drtools modules left behind by the 0.16.8 merge.
+
+## 0.16.8
+- `drmcputils/files`: added a `BlobStore` protocol with a DataRobot Files API backend for storing and retrieving blobs (`put`/`get`/`delete`/`list`), in the shared base so both tools and resources can use it.
+
+## 0.16.7
+- `drmcputils`: moved the shared, fastmcp-free base (DataRobot client, auth, credentials, errors, feature flags) here from `drtools.core`, so both the tools and MCP-server layers depend on one foundation.
+
+## 0.16.6
+- Updated CODEOWNERS to include common files like .gitignore
+
+## 0.16.5
+- `drtools/workload`: Proton inspection and OTel log tools.
+  - **New tools** (`proton_tools.py`): `proton_list` (paginated list of proton instances for a workload), `proton_get` (single proton by id), `proton_status_details` (per-replica pod status — CrashLoopBackOff, OOMKilled, container readiness; returns `{status: pending}` when no update received yet), `workload_logs` (OTel log lines with level, time-window, includes/excludes, span/trace-id filters).
+  - **Client additions** (`WorkloadApiClient`): `list_protons`, `get_proton`, `get_proton_status_details` (204 → `None`), `list_workload_logs` (GET `/otel/workload/{id}/logs/`).
+
+## 0.16.4
+- Add `drmcputils` subpackage for shared drtools and drmcpbase utilities e.g clients and common code
+
+## 0.16.3
+- Migrate benchmark helper classes to genai[eval] package
+
+## 0.16.2
+- Replace `anthropic` with `litellm` calls in the eval package
+
+## 0.16.1
+- `core/agents`: a prior-turn reasoning message is folded into the following assistant message's `content` as `<reasoning>…</reasoning>` text during history extraction, so chain-of-thought round-trips to the model across all agent frameworks and ingress paths (AG-UI `AssistantMessage` has no reasoning field). The text `{chat_history}` summary and the langgraph/llama_index structured converters both surface it; a reasoning turn with no following assistant turn is dropped. Consumer note: turns that carry reasoning now replay their full chain-of-thought into history, which adds tokens — tune `max_history_messages` if context budget is tight.
+
+## 0.16.0
+- `core/agents/events.py`: `events_to_messages` folds an AG-UI event stream back into `Message` objects (assistant text + its tool calls on one `AssistantMessage`, paired `ToolMessage` results, reasoning) for replay as history — the Python port of the TS client's `defaultApplyEvents` (messages slice).
+- `llama_index`: tool-call events now carry `parent_message_id`, so a client folding the stream keeps a turn's text and tool calls on one assistant message.
+- `dragent` e2e-tests: multi-turn conversation test (tool calls + reasoning) for langgraph/nat/llama_index; langgraph + llama_index replay structured history. The langgraph e2e agent drops `{chat_history}` and only interrupts for the interrupt/resume case.
+- `core/agents`: the text `{chat_history}` summary now keeps tool calls even when the assistant turn also has text (previously dropped), so all frameworks surface prior tool steps.
+- `langgraph`/`llama_index`: prior turns now replay to the model as native messages with tool calls preserved (`structured_history`), default **on** when the prompt has no `{chat_history}` (opt out with `structured_history=False`). Breaking: such agents now replay prior turns (bounded by `max_history_messages`) where before they got none.
+
+## 0.15.127
+- `drtools/workload`: settings and observability tools.
+  - **New tools** (`observability_tools.py`): `workload_settings_get`, `workload_settings_update` (triggers rolling replacement via PATCH /settings), `workload_stats` (aggregated perf stats with quantile + slow-request controls), `workload_history` (artifact deployment history), `workload_events` (status-change and error events), `workload_promote` (lock running draft artifact), `workload_related` (linked artifacts and related entities).
+  - **Client additions** (`WorkloadApiClient`): `get_workload_settings`, `update_workload_settings`, `get_workload_stats`, `list_workload_history`, `list_workload_events`, `promote_workload_artifact`, `get_workload_related`.
+
+## 0.15.126
+- Removed user MCP lineage feature flag logic
+
+## 0.15.125
+- `dragent/frontends/converters`: registered `convert_run_agent_input_to_chat_request_or_message` so plain `RunAgentInput` from the DRUM `NatAgent.invoke` / `streaming_memory_agent` passthrough boundary converts to NAT `ChatRequestOrMessage` for inner `per_user_tool_calling_agent` workflows.
+
 ## 0.15.124
 - Moved `drmcp` dynamic tools core functionality to `drmcpbase` to be used by the global MCP
 

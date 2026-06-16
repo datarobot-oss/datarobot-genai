@@ -27,12 +27,11 @@ from fastmcp.resources import Resource
 from fastmcp.tools import Tool
 from starlette.middleware import Middleware
 
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
 from .config import get_config
@@ -222,17 +221,14 @@ class DataRobotMCPServer:
                 self._logger.info("Registering dynamic prompts from prompt management...")
                 asyncio.run(register_prompts_from_datarobot_prompt_management())
 
-            if asyncio.run(
-                FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
-            ):
-                try:
-                    linear_manager = LineageManager(self._mcp)
-                    asyncio.run(linear_manager.sync_mcp_tools())
-                    asyncio.run(linear_manager.sync_mcp_prompts())
-                    self._logger.info("Sync with MCP lineage")
-                except LRSEnvVarIsNotSetError as error:
-                    error_message = f"MCP item metadata is not sync. {str(error)}"
-                    self._logger.warning(error_message)
+            try:
+                linear_manager = LineageManager(self._mcp)
+                asyncio.run(linear_manager.sync_mcp_tools())
+                asyncio.run(linear_manager.sync_mcp_prompts())
+                self._logger.info("Sync with MCP lineage")
+            except LRSEnvVarIsNotSetError as error:
+                error_message = f"MCP item metadata is not sync. {str(error)}"
+                self._logger.warning(error_message)
 
             # Execute pre-server start actions
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))

@@ -118,6 +118,18 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
     return responses
 
 
+def stream_sse_responses(http_client: httpx.Client, payload: dict) -> list[DRAgentEventResponse]:  # type: ignore[type-arg]
+    """POST ``payload`` to the streaming generate endpoint and parse the SSE stream.
+
+    Asserts a 200 ``text/event-stream`` response, then returns the parsed
+    DRAgentEventResponse chunks. Shared by the streaming e2e tests.
+    """
+    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        return parse_sse_responses(response)
+
+
 def collect_ag_ui_events(responses: list[DRAgentEventResponse]) -> list[Event]:  # type: ignore[type-arg]
     """Flatten AG-UI events from all SSE chunks."""
     all_events: list[Event] = []

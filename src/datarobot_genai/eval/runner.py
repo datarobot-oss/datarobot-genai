@@ -11,11 +11,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+
+def resolve_benchmark_module(module_str: str, repo_root: Path) -> str:
+    """Resolve a benchmark module path to an absolute file path.
+
+    Tries the local path first (for user-defined benchmarks and backward
+    compat), then falls back to importing as a Python dotted module path so
+    installed-package benchmarks like ``datarobot_genai/eval/benchmarks/X.py``
+    resolve correctly without requiring a local copy.
+    """
+    local = repo_root / module_str
+    if local.exists():
+        return str(local.absolute())
+    # Convert slash-separated path to dotted module name and import.
+    # e.g. "datarobot_genai/eval/benchmarks/answer_quality.py"
+    #   -> "datarobot_genai.eval.benchmarks.answer_quality"
+    dotted = module_str.replace("/", ".").replace("\\", ".")
+    if dotted.endswith(".py"):
+        dotted = dotted[:-3]
+    mod = importlib.import_module(dotted)
+    if mod.__file__ is None:
+        raise ImportError(f"Cannot determine file path for module {dotted!r}")
+    return str(Path(mod.__file__).absolute())
 
 
 def run_byob(
@@ -30,7 +54,7 @@ def run_byob(
     judge = cfg.get("judge") or {}
     run = cfg.get("run", {})
 
-    module_path = str((repo_root / benchmark["module"]).absolute())
+    module_path = resolve_benchmark_module(str(benchmark["module"]), repo_root)
 
     env = {**os.environ}
     # Judge config consumed by judge-based benchmarks/*.py at import time. A

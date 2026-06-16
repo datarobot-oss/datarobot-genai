@@ -39,13 +39,13 @@ import logging
 from typing import Annotated
 from typing import Any
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS
 from datarobot_genai.drtools.core.clients.dr_docs import MAX_RESULTS_DEFAULT
 from datarobot_genai.drtools.core.clients.dr_docs import fetch_page_content
 from datarobot_genai.drtools.core.clients.dr_docs import search_docs
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
 
 logger = logging.getLogger(__name__)
 
