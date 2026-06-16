@@ -569,10 +569,26 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     response_text = crew_output.get_full_text() or str(crew_output.result.raw)
                     if response_text:
                         yield (
-                            TextMessageChunkEvent(
-                                type=EventType.TEXT_MESSAGE_CHUNK,
+                            TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START,
+                                message_id=message_id,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
                                 message_id=message_id,
                                 delta=response_text,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        yield (
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END,
+                                message_id=message_id,
                             ),
                             None,
                             usage_metrics,

@@ -652,9 +652,13 @@ async def test_invoke_streaming_falls_back_to_result_when_no_text_chunks(
 
     # THEN the sequence is valid and the final kickoff result is emitted once
     validate_sequence(events)
-    chunks = [e for e in events if isinstance(e, TextMessageChunkEvent)]
-    assert len(chunks) == 1
-    assert chunks[0].delta == "final from result"
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 1
+    assert len(ends) == 1
+    assert len(contents) == 1
+    assert contents[0].delta == "final from result"
 
 
 async def test_invoke_streaming_single_agent_role_uses_single_message(

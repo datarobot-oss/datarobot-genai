@@ -1103,7 +1103,7 @@ def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
         open_message_ids.add(event.message_id)
     elif isinstance(event, TextMessageEndEvent):
         open_message_ids.discard(event.message_id)
-    elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+    elif isinstance(event, TextMessageContentEvent):
         if event.message_id:
             open_message_ids.add(event.message_id)
 
@@ -1168,6 +1168,7 @@ def _defer_until_after_moderated_chunk(event: Event) -> bool:
     return event.type in (
         EventType.TEXT_MESSAGE_END,
         EventType.TEXT_MESSAGE_START,
+        EventType.RUN_FINISHED,
     )
 
 
@@ -1207,6 +1208,46 @@ def _drain_pending_after_moderated_chunk(
     pending_deferred.clear()
     pending_pass_through.clear()
     return ordered
+
+
+def _pending_end_message_ids(pending_deferred: list[DRAgentEventResponse]) -> set[str]:
+    return {
+        item.events[0].message_id
+        for item in pending_deferred
+        if item.events
+        and item.events[0].type == EventType.TEXT_MESSAGE_END
+        and item.events[0].message_id
+    }
+
+
+def _prepend_synthetic_text_message_ends_for_dangling_segments(
+    pending_deferred: list[DRAgentEventResponse],
+    open_text_message_ids: set[str],
+) -> None:
+    """Close dangling text segments before ``RUN_FINISHED`` reaches the client.
+
+    ``TEXT_MESSAGE_CHUNK`` responses (and other deltas without a matching upstream END) leave
+    message ids in ``open_text_message_ids``. Synthetic ends are prepended to the deferred
+    queue so they drain before pass-through lifecycle events such as ``RUN_FINISHED``.
+    """
+    still_open = open_text_message_ids - _pending_end_message_ids(pending_deferred)
+    if not still_open:
+        return
+    ids_to_close = set(still_open)
+    pending_deferred[:0] = _synthetic_text_message_end_responses(ids_to_close)
+    open_text_message_ids.difference_update(ids_to_close)
+
+
+def _drain_pending_with_dangling_text_closed(
+    pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+    open_text_message_ids: set[str],
+) -> list[DRAgentEventResponse]:
+    """Drain pending events after closing any dangling text segments."""
+    _prepend_synthetic_text_message_ends_for_dangling_segments(
+        pending_deferred, open_text_message_ids
+    )
+    return _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through)
 
 
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
@@ -1295,8 +1336,8 @@ async def _moderated_dragent_stream(
                 )
                 _track_dragent_response_events(open_text_message_ids, moderated_response)
                 yield moderated_response
-                for item in _drain_pending_after_moderated_chunk(
-                    pending_deferred, pending_pass_through
+                for item in _drain_pending_with_dangling_text_closed(
+                    pending_deferred, pending_pass_through, open_text_message_ids
                 ):
                     _track_dragent_response_events(open_text_message_ids, item)
                     yield prescore_state.emit(item)
@@ -1310,13 +1351,11 @@ async def _moderated_dragent_stream(
                     break
 
         if not stopped_for_content_filter:
-            for item in _drain_pending_after_moderated_chunk(
-                pending_deferred, pending_pass_through
+            for item in _drain_pending_with_dangling_text_closed(
+                pending_deferred, pending_pass_through, open_text_message_ids
             ):
                 _track_dragent_response_events(open_text_message_ids, item)
                 yield prescore_state.emit(item)
-            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
-                yield end_response
     finally:
         await _aclose_async_iterator(upstream)
 

@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.17.6
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
-- `crewai`: when streaming kickoff completes without TEXT stream chunks, emit the final kickoff result as a text message so AG-UI clients still receive the response.
+- `crewai`: when streaming kickoff completes without TEXT stream chunks, emit the final kickoff result using the text message lifecycle so AG-UI clients still receive the response.
 - `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior.
+- `dragent`: defer ``RUN_FINISHED`` in moderated streams and close dangling ``TEXT_MESSAGE_*`` segments before it so AG-UI event ordering stays valid.
 
 ## 0.17.5
 - `e2e`: fixed NeMo-guardrails dragent tests crashing (SIGILL) on non-AVX-512 runners — excluded `annoy` (an sdist-only `-march=native` AVX-512 build) from the e2e resolution.
