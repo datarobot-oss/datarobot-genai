@@ -27,6 +27,8 @@ ARTIFACT_STATUSES: tuple[str, ...] = ("draft", "locked")
 
 ARTIFACT_TYPES: tuple[str, ...] = ("service", "nim")
 
+WORKLOAD_TERMINAL_FAILURE_STATUS = "errored"
+
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",

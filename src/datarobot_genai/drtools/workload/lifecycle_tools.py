@@ -19,10 +19,35 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drmcputils.constants import IMPORTANCE_VALUES
+from datarobot_genai.drmcputils.constants import WORKLOAD_TERMINAL_FAILURE_STATUS
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
+
+
+def _submit_response_with_note(
+    *,
+    workload_id: str,
+    raw: dict[str, Any],
+    action: str,
+    target_status: str,
+) -> dict[str, Any]:
+    """Wrap a 202 start/stop response with a poll-instruction note.
+
+    Mirrors the predict batch submit pattern: the tool only requests the
+    operation and returns immediately; the caller must poll workload_get_status.
+    """
+    return {
+        "workload_id": workload_id,
+        "accepted": raw,
+        "note": (
+            f"This tool only requests the workload {action}; it does NOT wait for "
+            f"completion. Poll workload_get_status(workload_id={workload_id!r}, "
+            f"target_status={target_status!r}) every few seconds until target_reached "
+            "is true. It raises if the workload enters 'errored'."
+        ),
+    }
 
 
 @tool_metadata(
@@ -211,9 +236,10 @@ async def workload_create(
 @tool_metadata(
     tags={"workload", "datarobot", "start"},
     description=(
-        "[Workload—start] Start a stopped workload. Returns immediately after the "
-        "request is accepted (202). Use workload_wait_for_status with "
-        "target_status='running' to block until live.\n\n"
+        "[Workload—start] Request a stopped workload to start. Returns immediately "
+        "after the request is accepted (202); does NOT wait for completion. "
+        "Required follow-up: poll workload_get_status with target_status='running' "
+        "until target_reached is true.\n\n"
         "Example: workload_start(workload_id='wkld-abc')"
     ),
 )
@@ -226,57 +252,44 @@ async def workload_start(
             "Argument validation error: 'workload_id' cannot be empty.",
             kind=ToolErrorKind.VALIDATION,
         )
+    wid = workload_id.strip()
     try:
-        return WorkloadApiClient().start_workload(workload_id.strip())
+        raw = WorkloadApiClient().start_workload(wid)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
+    return _submit_response_with_note(
+        workload_id=wid, raw=raw, action="start", target_status="running"
+    )
 
 
 @tool_metadata(
     tags={"workload", "datarobot", "stop"},
     description=(
-        "[Workload—stop] Stop a running workload. By default waits until the "
-        "workload reaches 'stopped' status (up to timeout_seconds). Set "
-        "wait_stopped=False to return immediately after the stop request.\n\n"
+        "[Workload—stop] Request a running workload to stop. Returns immediately "
+        "after the request is accepted (202); does NOT wait for completion. "
+        "Required follow-up: poll workload_get_status with target_status='stopped' "
+        "until target_reached is true.\n\n"
         "Example: workload_stop(workload_id='wkld-abc')"
     ),
 )
 async def workload_stop(
     *,
     workload_id: Annotated[str, "Id of the workload to stop."],
-    wait_stopped: Annotated[bool, "Poll until status is 'stopped'. Default true."] = True,
-    timeout_seconds: Annotated[
-        int, "Max seconds to wait when wait_stopped is true. Default 120."
-    ] = 120,
 ) -> dict[str, Any]:
     if not workload_id or not workload_id.strip():
         raise ToolError(
             "Argument validation error: 'workload_id' cannot be empty.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if timeout_seconds < 1:
-        raise ToolError(
-            "Argument validation error: 'timeout_seconds' must be >= 1.",
-            kind=ToolErrorKind.VALIDATION,
-        )
 
-    client = WorkloadApiClient()
+    wid = workload_id.strip()
     try:
-        result = client.stop_workload(workload_id.strip())
+        raw = WorkloadApiClient().stop_workload(wid)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
-
-    if wait_stopped:
-        try:
-            result = await client.wait_for_workload_status(
-                workload_id.strip(), "stopped", timeout_seconds=timeout_seconds
-            )
-        except (RuntimeError, TimeoutError) as exc:
-            raise ToolError(str(exc), kind=ToolErrorKind.UPSTREAM) from exc
-        except ClientError as exc:
-            raise_tool_error_for_client_error(exc)
-
-    return result
+    return _submit_response_with_note(
+        workload_id=wid, raw=raw, action="stop", target_status="stopped"
+    )
 
 
 @tool_metadata(
@@ -352,45 +365,56 @@ async def workload_update(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "wait"},
+    tags={"workload", "datarobot", "status"},
     description=(
-        "[Workload—wait for status] Poll a workload until it reaches a target "
-        "status, raises if it enters 'errored', or times out. "
-        "Common targets: 'running' (after start), 'stopped' (after stop).\n\n"
-        "Example: workload_wait_for_status(workload_id='wkld-abc', target_status='running')"
+        "[Workload—get status] Lightweight single status check for a workload. "
+        "REQUIRED polling step after workload_start or workload_stop. Returns the "
+        "current status and, when target_status is supplied, a target_reached flag. "
+        "Poll every few seconds until target_reached is true. Raises if the workload "
+        "enters 'errored'. Does not block or wait. Common targets: 'running' (after "
+        "start), 'stopped' (after stop).\n\n"
+        "Example: workload_get_status(workload_id='wkld-abc', target_status='running')"
     ),
 )
-async def workload_wait_for_status(
+async def workload_get_status(
     *,
-    workload_id: Annotated[str, "Id of the workload to poll."],
-    target_status: Annotated[str, "Status to wait for, e.g. 'running', 'stopped', 'initializing'."],
-    timeout_seconds: Annotated[
-        int, "Max seconds to wait before raising a timeout error. Default 600."
-    ] = 600,
+    workload_id: Annotated[str, "Id of the workload to check."],
+    target_status: Annotated[
+        str | None,
+        "Optional status to compare against, e.g. 'running', 'stopped'. When set, "
+        "the response includes target_reached.",
+    ] = None,
 ) -> dict[str, Any]:
     if not workload_id or not workload_id.strip():
         raise ToolError(
             "Argument validation error: 'workload_id' cannot be empty.",
             kind=ToolErrorKind.VALIDATION,
         )
-    if not target_status or not target_status.strip():
-        raise ToolError(
-            "Argument validation error: 'target_status' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    if timeout_seconds < 1:
-        raise ToolError(
-            "Argument validation error: 'timeout_seconds' must be >= 1.",
-            kind=ToolErrorKind.VALIDATION,
-        )
 
+    wid = workload_id.strip()
+    if target_status is not None:
+        target = target_status.strip()
+        if not target:
+            raise ToolError(
+                "Argument validation error: 'target_status' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+    else:
+        target = None
     try:
-        return await WorkloadApiClient().wait_for_workload_status(
-            workload_id.strip(),
-            target_status.strip(),
-            timeout_seconds=timeout_seconds,
-        )
-    except (RuntimeError, TimeoutError) as exc:
-        raise ToolError(str(exc), kind=ToolErrorKind.UPSTREAM) from exc
+        obj = WorkloadApiClient().get_workload(wid)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
+
+    status = obj.get("status")
+    if status == WORKLOAD_TERMINAL_FAILURE_STATUS:
+        raise ToolError(
+            f"Workload {wid} entered terminal status {status!r}.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+    return {
+        "workload_id": wid,
+        "status": status,
+        "target_reached": target is None or status == target,
+        "raw": obj,
+    }
