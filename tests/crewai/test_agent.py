@@ -638,6 +638,25 @@ async def test_invoke_streaming_skips_empty_text_chunks(
     assert all(c.delta for c in contents)
 
 
+async def test_invoke_streaming_falls_back_to_result_when_no_text_chunks(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that completes without TEXT stream chunks
+    result = CrewOutput(raw="final from result")
+    streaming = _FakeStreamingOutput([], result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and the final kickoff result is emitted once
+    validate_sequence(events)
+    chunks = [e for e in events if isinstance(e, TextMessageChunkEvent)]
+    assert len(chunks) == 1
+    assert chunks[0].delta == "final from result"
+
+
 async def test_invoke_streaming_single_agent_role_uses_single_message(
     mock_ragas_event_listener, run_agent_input
 ) -> None:

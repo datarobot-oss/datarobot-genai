@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.17.9
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
+- `crewai`: when streaming kickoff completes without TEXT stream chunks, emit the final kickoff result as a text message so AG-UI clients still receive the response.
 
 ## 0.17.8
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
