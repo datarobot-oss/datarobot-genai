@@ -102,11 +102,10 @@ middleware:
       #    intervention:
       #      action: report
 
-      # model is stopped
         - name: Emotion Classifier
           type: model
           stage: prompt
-          deployment_id: "665618bba33eca63e45072de"
+          deployment_id: "6a3120e27aeafd48589cb1b8"
           model_info:
             input_column_name: text
             target_name: target_PREDICTION
