@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.2
+- Migrate the evaluation CLI and wrappers to the datarobot-genai[eval] package.
+
 ## 0.17.1
 - Added E2E test cases for moderations: OOTB and NeMo Guardrails
 
