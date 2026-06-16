@@ -554,6 +554,20 @@ async def test_workload_get_status_empty_id_raises() -> None:
 
 
 @pytest.mark.asyncio
+async def test_workload_get_status_empty_target_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await lifecycle_tools.workload_get_status(workload_id="wkld-abc", target_status="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_workload_get_status_whitespace_target_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await lifecycle_tools.workload_get_status(workload_id="wkld-abc", target_status="   ")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
 async def test_workload_get_status_not_found(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
 

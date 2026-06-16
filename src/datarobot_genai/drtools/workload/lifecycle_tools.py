@@ -393,7 +393,15 @@ async def workload_get_status(
         )
 
     wid = workload_id.strip()
-    target = target_status.strip() if target_status else None
+    if target_status is not None:
+        target = target_status.strip()
+        if not target:
+            raise ToolError(
+                "Argument validation error: 'target_status' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+    else:
+        target = None
     try:
         obj = WorkloadApiClient().get_workload(wid)
     except ClientError as exc:
