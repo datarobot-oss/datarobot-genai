@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import json
 import logging
 import uuid
@@ -593,6 +594,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
+                    with contextlib.suppress(RuntimeError):
+                        await graph_stream.aclose()
                     return
                 events.append(update_event)
                 current_node = next(iter(update_event))
