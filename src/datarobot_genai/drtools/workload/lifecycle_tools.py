@@ -19,12 +19,11 @@ from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drmcputils.constants import IMPORTANCE_VALUES
+from datarobot_genai.drmcputils.constants import WORKLOAD_TERMINAL_FAILURE_STATUS
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
-
-_WORKLOAD_TERMINAL_FAILURE_STATUS = "errored"
 
 
 def _submit_response_with_note(
@@ -408,7 +407,7 @@ async def workload_get_status(
         raise_tool_error_for_client_error(exc)
 
     status = obj.get("status")
-    if status == _WORKLOAD_TERMINAL_FAILURE_STATUS:
+    if status == WORKLOAD_TERMINAL_FAILURE_STATUS:
         raise ToolError(
             f"Workload {wid} entered terminal status {status!r}.",
             kind=ToolErrorKind.UPSTREAM,
