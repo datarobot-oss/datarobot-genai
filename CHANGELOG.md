@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.17.2
-- Migrate the evaluation CLI and wrappers to the datarobot-genai[eval] package.
+- `eval`: moved the evaluation CLI into the package so the thin `run.py`/`generate.py`/`summarize.py` component wrappers just call into it.
+  - **CLI** (`eval/cli.py`): `run_main` (validate → run BYOB → normalize, with `--dry-run`), `generate_main` (synthetic generation or CSV→JSON `--convert`), and `summarize_main`. Each takes an optional `argv` and `repo_root` (defaults to cwd).
+  - **Runner** (`eval/eval.py`): new `EvalRunner` orchestrating a single batch run — input validation, judge preflight, status writes, BYOB execution, and output normalization to the fixed `output/eval_status.json` / `output/eval_results.json` paths.
+  - **Generator** (`eval/generator.py`): `generate()` now takes an optional `benchmark_name` that tailors good/bad case guidance and enforces benchmark-required fields (e.g. `canary`, `context`, `constraints`); without one it uses a generic, non-safety-biased context.
 
 ## 0.17.1
 - Added E2E test cases for moderations: OOTB and NeMo Guardrails
