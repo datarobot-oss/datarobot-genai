@@ -141,6 +141,7 @@ jobs:
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
       LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+      NIM_DEPLOYMENT_ID: ${{ secrets.E2E_NIM_DEPLOYMENT_ID }}
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"

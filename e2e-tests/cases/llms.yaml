@@ -1,0 +1,62 @@
+cases:
+  - name: llm-gateway
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: ""
+      WORKFLOW_FILE: workflow-reasoning.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      LLM_DEFAULT_MODEL:
+      - datarobot/azure/gpt-5-4-2026-03-05
+      - datarobot/anthropic/claude-sonnet-4-6
+      - datarobot/bedrock/meta.llama3-8b-instruct-v1:0
+      - datarobot/vertex_ai/gemini-3.5-flash
+      - datarobot/vertex_ai/claude-opus-4-7
+      - datarobot/vertex_ai/meta/llama-4-scout-17b-16e-instruct-maas
+      - datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: deployed-llm
+    env:
+      LLM: deployment
+      LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: external-llm
+    env:
+      LLM: external
+      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
+      USE_DATAROBOT_LLM_GATEWAY: 0
+    tests:
+      - ./dragent_tests
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: router-llm
+    env:
+      LLM: router
+      WORKFLOW_FILE: workflow-router-fallback-used.yaml
+    tests:
+      - ./dragent_tests
+    matrix:
+      AGENT:
+        - crewai
+        - langgraph
+        - llamaindex
