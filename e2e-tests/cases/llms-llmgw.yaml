@@ -2,7 +2,6 @@ cases:
   - name: llm-gateway
     env:
       LLM: llmgw
-      LLM_DEFAULT_MODEL: ""
       WORKFLOW_FILE: workflow-reasoning.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
