@@ -57,8 +57,7 @@ DEFAULT_PYTHON_VERSION = "3.12"
 DEFAULT_PYTEST_ARGS: tuple[str, ...] = (
     "-vv",
     "-s",
-    # "--timeout=60",
-    "--timeout=360",
+    "--timeout=60",
     "--tb=short",
     "--reruns=1",
     "--reruns-delay=5",
