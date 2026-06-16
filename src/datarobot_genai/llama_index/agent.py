@@ -50,7 +50,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
@@ -119,7 +119,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
         structured_history: bool = True,
         allow_parallel_tool_calls: bool = True,
@@ -133,7 +132,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             timeout=timeout,
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
-            memory_client=memory_client,
             model=model,
         )
         self._structured_history = structured_history
@@ -165,7 +163,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         input_message = str(user_prompt_content)
-        uses_memory = "{memory}" in input_message
 
         # Prior turns reach the model as a text {chat_history} summary when the
         # prompt uses the placeholder, or as structured native ChatMessage history
@@ -181,13 +178,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             structured_chat_history = (
                 ag_ui_history_to_chat_messages(self.history_messages(run_agent_input)) or None
             )
-        if uses_memory:
-            memory = ""
-            try:
-                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory retrieval failed: %s", exc)
-            input_message = input_message.replace("{memory}", memory)
+
+        input_message = prepend_streaming_memory_to_prompt(input_message, run_agent_input)
 
         logger.info(f"Running agent with user prompt: {input_message}")
 
@@ -488,11 +480,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             )
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-        if uses_memory:
-            try:
-                await self.store_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory storage failed: %s", exc)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
@@ -569,7 +556,6 @@ def datarobot_agent_class_from_llamaindex(
             timeout: int = 90,
             forwarded_headers: dict[str, str] | None = None,
             max_history_messages: int | None = None,
-            memory_client: BaseMemoryClient | None = None,
             model: str | None = None,
             structured_history: bool = True,
             allow_parallel_tool_calls: bool = True,
@@ -583,7 +569,6 @@ def datarobot_agent_class_from_llamaindex(
                 timeout=timeout,
                 forwarded_headers=forwarded_headers,
                 max_history_messages=max_history_messages,
-                memory_client=memory_client,
                 model=model,
                 structured_history=structured_history,
                 allow_parallel_tool_calls=allow_parallel_tool_calls,

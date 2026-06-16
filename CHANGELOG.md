@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.3
+- `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
+
+## 0.17.2
+- `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
+
+## 0.17.1
+- Added E2E test cases for moderations: OOTB and NeMo Guardrails
+
+## 0.17.0
+- **Breaking** `core/agents`: removed opt-in long-term memory from framework base agents (`BaseAgent`, LangGraph, LlamaIndex, CrewAI, and `NatAgent`). The `memory_client` constructor argument, `{memory}` prompt placeholder handling, and automatic retrieve/store hooks are gone. Use NAT `auto_memory_agent` or `streaming_memory_agent` with the `dr_mem0_memory` provider instead (see `docs/nat/memory.md`).
+
+## 0.16.19
+- `drtools/workload`: artifact replacement / rolling update.
+  - **Client** (`WorkloadApiClient`): added `get_workload_replacement`, `create_workload_replacement`, `delete_workload_replacement` against `GET/POST/DELETE /api/v2/workloads/{id}/replacement`.
+  - **Tools** (`replacement_tools`): `workload_replacement_get` — fetch current replacement status (candidate artifact, proton ids, config, timestamps); `workload_replacement_create` — start a rolling update by deploying a new artifact alongside the running version with optional warmup/retention config and runtime override; `workload_replacement_delete` — cancel an in-progress replacement and revert traffic to the original version.
+
 ## 0.16.18
 - `nat/datarobot_moderation_middleware`: streaming moderation now attaches prescore guard metrics to `TEXT_MESSAGE_START` chunks (matching DRUM/dome first-chunk semantics) and keeps postscore metrics on moderated `TEXT_MESSAGE_CONTENT` chunks.
 
