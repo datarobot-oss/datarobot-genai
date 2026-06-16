@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.16.19
+- Added E2E test cases for moderations: OOTB and NeMo Guardrails
+
+## 0.16.19
 - `drtools/workload`: artifact replacement / rolling update.
   - **Client** (`WorkloadApiClient`): added `get_workload_replacement`, `create_workload_replacement`, `delete_workload_replacement` against `GET/POST/DELETE /api/v2/workloads/{id}/replacement`.
   - **Tools** (`replacement_tools`): `workload_replacement_get` — fetch current replacement status (candidate artifact, proton ids, config, timestamps); `workload_replacement_create` — start a rolling update by deploying a new artifact alongside the running version with optional warmup/retention config and runtime override; `workload_replacement_delete` — cancel an in-progress replacement and revert traffic to the original version.
