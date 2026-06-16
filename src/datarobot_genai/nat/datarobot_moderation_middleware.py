@@ -1103,13 +1103,6 @@ def _prompt_sent_after_prescore_replacement(
     return original_prompt, False
 
 
-def skip_event_type(event: Event) -> bool:
-    return event.type not in {
-        EventType.TEXT_MESSAGE_CONTENT,
-        EventType.TEXT_MESSAGE_CHUNK,
-    }
-
-
 def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
     """Track assistant text segments that received content but did not end."""
     if isinstance(event, TextMessageEndEvent):
@@ -1138,17 +1131,6 @@ def _synthetic_text_message_end_events(
     return end_events
 
 
-def _synthetic_text_message_end_responses(
-    open_message_ids: set[str],
-) -> list[DRAgentEventResponse]:
-    """Wrap synthetic ``TEXT_MESSAGE_END`` events as ``DRAgentEventResponse`` batches."""
-    zero = default_usage_metrics()
-    return [
-        DRAgentEventResponse(events=[end_event], usage_metrics=zero)
-        for end_event in _synthetic_text_message_end_events(open_message_ids)
-    ]
-
-
 def _synthetic_tool_call_end_events(open_tool_call_ids: set[str]) -> list[ToolCallEndEvent]:
     """Close dangling tool calls when upstream ends the stream without ``TOOL_CALL_END``."""
     end_events = [
@@ -1158,15 +1140,26 @@ def _synthetic_tool_call_end_events(open_tool_call_ids: set[str]) -> list[ToolCa
     return end_events
 
 
+def _zero_metric_event_responses(events: list[Event]) -> list[DRAgentEventResponse]:
+    """Wrap each AG-UI event as its own ``DRAgentEventResponse`` batch."""
+    if not events:
+        return []
+    zero = default_usage_metrics()
+    return [DRAgentEventResponse(events=[event], usage_metrics=zero) for event in events]
+
+
+def _synthetic_text_message_end_responses(
+    open_message_ids: set[str],
+) -> list[DRAgentEventResponse]:
+    """Wrap synthetic ``TEXT_MESSAGE_END`` events as ``DRAgentEventResponse`` batches."""
+    return _zero_metric_event_responses(_synthetic_text_message_end_events(open_message_ids))
+
+
 def _synthetic_tool_call_end_responses(
     open_tool_call_ids: set[str],
 ) -> list[DRAgentEventResponse]:
     """Wrap synthetic ``TOOL_CALL_END`` events as ``DRAgentEventResponse`` batches."""
-    zero = default_usage_metrics()
-    return [
-        DRAgentEventResponse(events=[end_event], usage_metrics=zero)
-        for end_event in _synthetic_tool_call_end_events(open_tool_call_ids)
-    ]
+    return _zero_metric_event_responses(_synthetic_tool_call_end_events(open_tool_call_ids))
 
 
 def _track_dragent_response_events(
@@ -1197,12 +1190,13 @@ def _tool_lifecycle_passthrough_responses(
     chunk and drops co-located ``TOOL_CALL_END`` / ``TOOL_CALL_RESULT`` events that
     ``mark_args_done`` or the step adaptor attached to the same batch.
     """
-    zero = default_usage_metrics()
-    return [
-        DRAgentEventResponse(events=[event], usage_metrics=zero)
-        for event in response.events
-        if isinstance(event, (ToolCallEndEvent, ToolCallResultEvent))
-    ]
+    return _zero_metric_event_responses(
+        [
+            event
+            for event in response.events
+            if isinstance(event, (ToolCallEndEvent, ToolCallResultEvent))
+        ]
+    )
 
 
 def _merge_moderations_into_multi_event_response(
@@ -1282,17 +1276,7 @@ def _pending_end_message_ids(pending_deferred: list[DRAgentEventResponse]) -> se
     }
 
 
-def _pending_tool_end_ids(pending_deferred: list[DRAgentEventResponse]) -> set[str]:
-    return {
-        item.events[0].tool_call_id
-        for item in pending_deferred
-        if item.events
-        and item.events[0].type == EventType.TOOL_CALL_END
-        and item.events[0].tool_call_id
-    }
-
-
-def _pending_tool_end_ids_in_responses(responses: list[DRAgentEventResponse]) -> set[str]:
+def _tool_call_end_ids_in_responses(responses: list[DRAgentEventResponse]) -> set[str]:
     """Collect ``tool_call_id`` values from ``TOOL_CALL_END`` events in *responses*."""
     end_ids: set[str] = set()
     for item in responses:
@@ -1315,49 +1299,48 @@ def _flushed_deferred_tool_call_responses(
     return flushed
 
 
-def _prepend_flushed_deferred_tool_call_responses(
+def _prepare_pending_lifecycle_closure(
     pending_deferred: list[DRAgentEventResponse],
+    pending_pass_through: list[DRAgentEventResponse],
+    open_text_message_ids: set[str],
     open_tool_call_ids: set[str],
 ) -> None:
-    """Flush step-adaptor deferred ``TOOL_CALL_END``/``RESULT`` pairs before synthetic ends."""
+    """Track buffered events, flush deferred tool results, prepend synthetic closes."""
+    for batch in (pending_pass_through, pending_deferred):
+        for item in batch:
+            _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
+
     flushed = _flushed_deferred_tool_call_responses(open_tool_call_ids)
     if flushed:
         pending_deferred[:0] = list(reversed(flushed))
+        for item in flushed:
+            _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
+
+    pending_tool_ends = _tool_call_end_ids_in_responses(pending_deferred + pending_pass_through)
+    still_open_tools = open_tool_call_ids - pending_tool_ends
+    if still_open_tools:
+        ids_to_close = set(still_open_tools)
+        pending_deferred[:0] = _synthetic_tool_call_end_responses(ids_to_close)
+        open_tool_call_ids.difference_update(ids_to_close)
+
+    still_open_text = open_text_message_ids - _pending_end_message_ids(pending_deferred)
+    if still_open_text:
+        ids_to_close = set(still_open_text)
+        pending_deferred[:0] = _synthetic_text_message_end_responses(ids_to_close)
+        open_text_message_ids.difference_update(ids_to_close)
 
 
-def _prepend_synthetic_text_message_ends_for_dangling_segments(
-    pending_deferred: list[DRAgentEventResponse],
+def _lifecycle_closure_responses(
     open_text_message_ids: set[str],
-) -> None:
-    """Close dangling text segments before ``RUN_FINISHED`` reaches the client.
-
-    ``TEXT_MESSAGE_CHUNK`` responses (and other deltas without a matching upstream END) leave
-    message ids in ``open_text_message_ids``. Synthetic ends are prepended to the deferred
-    queue so they drain before pass-through lifecycle events such as ``RUN_FINISHED``.
-    """
-    still_open = open_text_message_ids - _pending_end_message_ids(pending_deferred)
-    if not still_open:
-        return
-    ids_to_close = set(still_open)
-    pending_deferred[:0] = _synthetic_text_message_end_responses(ids_to_close)
-    open_text_message_ids.difference_update(ids_to_close)
-
-
-def _prepend_synthetic_tool_call_ends_for_dangling_calls(
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
     open_tool_call_ids: set[str],
-) -> None:
-    """Close dangling tool calls before ``RUN_FINISHED`` reaches the client."""
-    pending_ends = _pending_tool_end_ids(pending_deferred) | _pending_tool_end_ids_in_responses(
-        pending_pass_through
-    )
-    still_open = open_tool_call_ids - pending_ends
-    if not still_open:
-        return
-    ids_to_close = set(still_open)
-    pending_deferred[:0] = _synthetic_tool_call_end_responses(ids_to_close)
-    open_tool_call_ids.difference_update(ids_to_close)
+) -> list[DRAgentEventResponse]:
+    """Flush deferred tool results and synthesize dangling text/tool closes."""
+    responses = _flushed_deferred_tool_call_responses(open_tool_call_ids)
+    if open_tool_call_ids:
+        responses.extend(_synthetic_tool_call_end_responses(set(open_tool_call_ids)))
+    if open_text_message_ids:
+        responses.extend(_synthetic_text_message_end_responses(set(open_text_message_ids)))
+    return responses
 
 
 def _drain_pending_with_dangling_lifecycle_closed(
@@ -1367,18 +1350,8 @@ def _drain_pending_with_dangling_lifecycle_closed(
     open_tool_call_ids: set[str],
 ) -> list[DRAgentEventResponse]:
     """Drain pending events after closing dangling text segments and tool calls."""
-    for item in pending_pass_through:
-        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-    for item in pending_deferred:
-        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-    _prepend_flushed_deferred_tool_call_responses(pending_deferred, open_tool_call_ids)
-    for item in pending_deferred:
-        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-    _prepend_synthetic_tool_call_ends_for_dangling_calls(
-        pending_deferred, pending_pass_through, open_tool_call_ids
-    )
-    _prepend_synthetic_text_message_ends_for_dangling_segments(
-        pending_deferred, open_text_message_ids
+    _prepare_pending_lifecycle_closure(
+        pending_deferred, pending_pass_through, open_text_message_ids, open_tool_call_ids
     )
     return _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through)
 
@@ -1427,6 +1400,53 @@ def _take_pending_text_message_start_for_message(
     return None
 
 
+def _with_text_message_start_if_needed(
+    moderated_response: DRAgentEventResponse,
+    source_response: DRAgentEventResponse,
+    *,
+    emitted_text_message_starts: set[str],
+    pending_deferred: list[DRAgentEventResponse],
+    prescore_state: _StreamingPrescoreModerationState,
+) -> DRAgentEventResponse:
+    """Prepend ``TEXT_MESSAGE_START`` (and prescore mods) before the first moderated delta."""
+    message_id = _text_message_id_from_response(source_response)
+    first_delta = _first_text_delta_event(source_response)
+    if not (
+        message_id and message_id not in emitted_text_message_starts and first_delta is not None
+    ):
+        return moderated_response
+
+    extra_start_events: list[Any] = list(_leading_text_message_starts(source_response))
+    if not extra_start_events:
+        pending_start = _take_pending_text_message_start_for_message(pending_deferred, message_id)
+        if pending_start is not None:
+            extra_start_events.extend(
+                ev
+                for ev in pending_start.events
+                if isinstance(ev, TextMessageStartEvent) and ev.message_id == message_id
+            )
+        else:
+            extra_start_events.append(
+                TextMessageStartEvent(message_id=message_id, role="assistant")
+            )
+    emitted_text_message_starts.add(message_id)
+    moderated_response = moderated_response.model_copy(
+        update={"events": extra_start_events + moderated_response.events}
+    )
+    if not prescore_state.prescore_attached and prescore_state.prescore_moderations:
+        prescore_state.prescore_attached = True
+        existing_mods = moderated_response.datarobot_moderations or {}
+        moderated_response = moderated_response.model_copy(
+            update={
+                "datarobot_moderations": {
+                    **prescore_state.prescore_moderations,
+                    **existing_mods,
+                }
+            }
+        )
+    return moderated_response
+
+
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
     """Close an async generator, ignoring errors from double-close or partial consumption."""
     try:
@@ -1463,6 +1483,11 @@ async def _moderated_dragent_stream(
         ),
     )
 
+    def emit_buffered(response: DRAgentEventResponse) -> DRAgentEventResponse:
+        _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, response)
+        _record_emitted_text_message_starts(emitted_text_message_starts, response)
+        return prescore_state.emit(response)
+
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
         if response.events and response.events[0].type == EventType.RUN_FINISHED:
             pending_run_finished.append(response)
@@ -1497,9 +1522,7 @@ async def _moderated_dragent_stream(
             if response.events and response.events[0].type == EventType.RUN_FINISHED:
                 pending_run_finished.append(response)
             else:
-                _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, response)
-                _record_emitted_text_message_starts(emitted_text_message_starts, response)
-                yield prescore_state.emit(response)
+                yield emit_buffered(response)
         if first_text is None:
             for item in _drain_pending_with_dangling_lifecycle_closed(
                 pending_deferred,
@@ -1507,13 +1530,9 @@ async def _moderated_dragent_stream(
                 open_text_message_ids,
                 open_tool_call_ids,
             ):
-                _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-                _record_emitted_text_message_starts(emitted_text_message_starts, item)
-                yield prescore_state.emit(item)
+                yield emit_buffered(item)
             for item in pending_run_finished:
-                _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-                _record_emitted_text_message_starts(emitted_text_message_starts, item)
-                yield prescore_state.emit(item)
+                yield emit_buffered(item)
             return
 
         async with contextlib.aclosing(
@@ -1526,53 +1545,19 @@ async def _moderated_dragent_stream(
         ) as moderation_stream:
             async for moderated in moderation_stream:
                 source_response = moderation_source_responses.pop(0)
-                moderated_response = prescore_state.emit_moderated(
-                    dome_chunk_to_dragent_event_response(
-                        moderated,
-                        source_ag_ui_events=source_response.events,
-                        stream_tool_index_map=stream_tool_index_map,
-                    )
+                moderated_response = _with_text_message_start_if_needed(
+                    prescore_state.emit_moderated(
+                        dome_chunk_to_dragent_event_response(
+                            moderated,
+                            source_ag_ui_events=source_response.events,
+                            stream_tool_index_map=stream_tool_index_map,
+                        )
+                    ),
+                    source_response,
+                    emitted_text_message_starts=emitted_text_message_starts,
+                    pending_deferred=pending_deferred,
+                    prescore_state=prescore_state,
                 )
-                message_id = _text_message_id_from_response(source_response)
-                first_delta = _first_text_delta_event(source_response)
-                if (
-                    message_id
-                    and message_id not in emitted_text_message_starts
-                    and first_delta is not None
-                ):
-                    extra_start_events: list[Any] = list(
-                        _leading_text_message_starts(source_response)
-                    )
-                    if not extra_start_events:
-                        pending_start = _take_pending_text_message_start_for_message(
-                            pending_deferred, message_id
-                        )
-                        if pending_start is not None:
-                            extra_start_events.extend(
-                                ev
-                                for ev in pending_start.events
-                                if isinstance(ev, TextMessageStartEvent)
-                                and ev.message_id == message_id
-                            )
-                        else:
-                            extra_start_events.append(
-                                TextMessageStartEvent(message_id=message_id, role="assistant")
-                            )
-                    emitted_text_message_starts.add(message_id)
-                    moderated_response = moderated_response.model_copy(
-                        update={"events": extra_start_events + moderated_response.events}
-                    )
-                    if not prescore_state.prescore_attached and prescore_state.prescore_moderations:
-                        prescore_state.prescore_attached = True
-                        existing_mods = moderated_response.datarobot_moderations or {}
-                        moderated_response = moderated_response.model_copy(
-                            update={
-                                "datarobot_moderations": {
-                                    **prescore_state.prescore_moderations,
-                                    **existing_mods,
-                                }
-                            }
-                        )
                 _track_dragent_response_events(
                     open_text_message_ids, open_tool_call_ids, moderated_response
                 )
@@ -1581,22 +1566,16 @@ async def _moderated_dragent_stream(
                 for item in _drain_pending_after_moderated_chunk(
                     pending_deferred, pending_pass_through
                 ):
-                    _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-                    _record_emitted_text_message_starts(emitted_text_message_starts, item)
-                    yield prescore_state.emit(item)
+                    yield emit_buffered(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
-                    for flushed in _flushed_deferred_tool_call_responses(open_tool_call_ids):
-                        _track_dragent_response_events(
-                            open_text_message_ids, open_tool_call_ids, flushed
-                        )
-                        yield flushed
-                    for end_response in _synthetic_tool_call_end_responses(open_tool_call_ids):
-                        yield end_response
-                    for end_response in _synthetic_text_message_end_responses(
-                        open_text_message_ids
+                    for closure in _lifecycle_closure_responses(
+                        open_text_message_ids, open_tool_call_ids
                     ):
-                        yield end_response
+                        _track_dragent_response_events(
+                            open_text_message_ids, open_tool_call_ids, closure
+                        )
+                        yield closure
                     stopped_for_content_filter = True
                     break
 
@@ -1607,13 +1586,9 @@ async def _moderated_dragent_stream(
                 open_text_message_ids,
                 open_tool_call_ids,
             ):
-                _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-                _record_emitted_text_message_starts(emitted_text_message_starts, item)
-                yield prescore_state.emit(item)
+                yield emit_buffered(item)
             for item in pending_run_finished:
-                _track_dragent_response_events(open_text_message_ids, open_tool_call_ids, item)
-                _record_emitted_text_message_starts(emitted_text_message_starts, item)
-                yield prescore_state.emit(item)
+                yield emit_buffered(item)
     finally:
         await _aclose_async_iterator(upstream)
 
