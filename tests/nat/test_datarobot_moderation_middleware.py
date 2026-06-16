@@ -2494,6 +2494,63 @@ async def test_function_middleware_stream_chunk_only_upstream_passes_ag_ui_valid
     assert all(end_idx < finished_idx for end_idx in end_indices)
 
 
+async def test_function_middleware_stream_emits_deferred_start_before_content(
+    builder_mock: MagicMock,
+) -> None:
+    """Buffered ``TEXT_MESSAGE_START`` must precede the moderated ``CONTENT`` for that segment."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    prescore_df = _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    mid = "msg-1"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid, role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid, delta="hello")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid)],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t1", run_id="r1")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    validate_sequence(flat)
+    start_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_START)
+    content_idx = next(i for i, e in enumerate(flat) if e.type == EventType.TEXT_MESSAGE_CONTENT)
+    assert start_idx < content_idx
+
+
 async def test_function_middleware_stream_preserves_step_order_at_agent_transition(
     builder_mock: MagicMock,
 ) -> None:

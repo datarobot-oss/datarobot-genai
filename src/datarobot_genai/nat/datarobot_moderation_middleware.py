@@ -1098,10 +1098,8 @@ def skip_event_type(event: Event) -> bool:
 
 
 def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
-    """Track assistant text segments that started or received content but did not end."""
-    if isinstance(event, TextMessageStartEvent):
-        open_message_ids.add(event.message_id)
-    elif isinstance(event, TextMessageEndEvent):
+    """Track assistant text segments that received content but did not end."""
+    if isinstance(event, TextMessageEndEvent):
         open_message_ids.discard(event.message_id)
     elif isinstance(event, TextMessageContentEvent):
         if event.message_id:
@@ -1250,6 +1248,21 @@ def _drain_pending_with_dangling_text_closed(
     return _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through)
 
 
+def _take_pending_text_message_starts(
+    pending_deferred: list[DRAgentEventResponse],
+) -> list[DRAgentEventResponse]:
+    """Remove and return buffered ``TEXT_MESSAGE_START`` events in upstream order."""
+    starts: list[DRAgentEventResponse] = []
+    remaining: list[DRAgentEventResponse] = []
+    for item in pending_deferred:
+        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START:
+            starts.append(item)
+        else:
+            remaining.append(item)
+    pending_deferred[:] = remaining
+    return starts
+
+
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
     """Close an async generator, ignoring errors from double-close or partial consumption."""
     try:
@@ -1334,6 +1347,9 @@ async def _moderated_dragent_stream(
                         stream_tool_index_map=stream_tool_index_map,
                     )
                 )
+                for start_response in _take_pending_text_message_starts(pending_deferred):
+                    _track_dragent_response_events(open_text_message_ids, start_response)
+                    yield prescore_state.emit(start_response)
                 _track_dragent_response_events(open_text_message_ids, moderated_response)
                 yield moderated_response
                 for item in _drain_pending_with_dangling_text_closed(
