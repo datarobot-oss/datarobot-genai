@@ -562,6 +562,21 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
+                else:
+                    # ``akickoff`` may complete without emitting TEXT stream chunks even
+                    # when the crew produced a final answer; fall back to the kickoff
+                    # result so AG-UI clients still receive the response text.
+                    response_text = crew_output.get_full_text() or str(crew_output.result.raw)
+                    if response_text:
+                        yield (
+                            TextMessageChunkEvent(
+                                type=EventType.TEXT_MESSAGE_CHUNK,
+                                message_id=message_id,
+                                delta=response_text,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
                 if reasoning_started:
                     yield (
                         ReasoningMessageEndEvent(
