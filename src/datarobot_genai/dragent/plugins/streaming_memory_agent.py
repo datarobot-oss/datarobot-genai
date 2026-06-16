@@ -56,6 +56,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from typing import Any
 
+from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgUiSystemMessage
 from ag_ui.core import UserMessage as AgUiUserMessage
@@ -112,7 +113,7 @@ def _user_id_from_context() -> str:
     return "default_user"
 
 
-def _last_user_text(messages: list[Any]) -> str:
+def _last_user_text(messages: list[Message]) -> str:
     for msg in reversed(messages):
         if isinstance(msg, AgUiUserMessage) and msg.content:
             content = msg.content
@@ -122,7 +123,7 @@ def _last_user_text(messages: list[Any]) -> str:
     return ""
 
 
-def _with_memory_context(messages: list[Any], memory_text: str) -> list[Any]:
+def _with_memory_context(messages: list[Message], memory_text: str) -> list[Message]:
     """Return a new list with a system message inserted before the last user message."""
     payload = f"{STREAMING_MEMORY_CONTEXT_PREFIX}{memory_text}"
     sys_msg = AgUiSystemMessage(id=str(uuid.uuid4()), content=payload)
