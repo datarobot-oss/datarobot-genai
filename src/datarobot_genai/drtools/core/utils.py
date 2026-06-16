@@ -13,9 +13,12 @@
 # limitations under the License.
 """Shared utilities for drtools and drmcp."""
 
+import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import yaml
 from pydantic import BaseModel
 
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
@@ -30,6 +33,16 @@ def require_id(value: str, name: str) -> str:
             kind=ToolErrorKind.VALIDATION,
         )
     return value.strip()
+
+
+def read_spec_file(path: Path) -> dict[str, Any] | None:
+    """Try to read and parse a local YAML or JSON spec file; return None if not found."""
+    if not path.exists():
+        return None
+    raw = path.read_text(encoding="utf-8")
+    if path.suffix in {".yaml", ".yml"}:
+        return yaml.safe_load(raw)
+    return json.loads(raw)
 
 
 def is_valid_url(url: str) -> bool:

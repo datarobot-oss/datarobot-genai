@@ -27,6 +27,29 @@ ARTIFACT_STATUSES: tuple[str, ...] = ("draft", "locked")
 
 ARTIFACT_TYPES: tuple[str, ...] = ("service", "nim")
 
+CREDENTIAL_TYPE_KEYS: dict[str, list[str]] = {
+    "basic": ["login", "password"],
+    "s3": ["awsAccessKeyId", "awsSecretAccessKey", "awsSessionToken"],
+    "azure": ["azureConnectionString"],
+    "gcp": ["gcpKey"],
+    "oauth": ["oauthRefreshToken", "oauthClientId", "oauthClientSecret"],
+    "api_token": ["apiToken"],
+    "snowflake_key_pair_user_account": ["privateKeyStr", "passphrase"],
+    "databricks_access_token": ["token"],
+    "databricks_service_principal": ["clientId", "clientSecret"],
+    "azure_service_principal": ["clientId", "clientSecret", "tenantId"],
+}
+
+KNOWN_CREDENTIAL_TYPES: tuple[str, ...] = tuple(sorted(CREDENTIAL_TYPE_KEYS))
+
+OPENAPI_BUNDLED_SPEC_CANDIDATES: tuple[str, ...] = (
+    "/app/openapi.yaml",
+    "/app/openapi.json",
+    "/workload-api/charts/openapi.yaml",
+)
+
+OPENAPI_DEFAULT_REMOTE_PATH = "openapi.json"
+
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",

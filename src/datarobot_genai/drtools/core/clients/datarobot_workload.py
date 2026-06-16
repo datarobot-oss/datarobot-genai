@@ -426,3 +426,27 @@ class WorkloadApiClient:
         with request_user_dr_client() as client:
             resp = client.delete(f"workloads/{workload_id}/replacement")
             return resp.json() if resp.content else {}
+
+    # ------------------------------------------------------------------ #
+    # Credentials (DataRobot core /api/v2/credentials/)                   #
+    # ------------------------------------------------------------------ #
+
+    def list_credentials(self, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        """GET /credentials/ — list all accessible credentials (id, name, type)."""
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        with request_user_dr_client() as client:
+            return client.get("credentials/", params=params).json()
+
+    def get_credential(self, credential_id: str) -> dict[str, Any]:
+        """GET /credentials/{id}/ — fetch a single credential record."""
+        with request_user_dr_client() as client:
+            return client.get(f"credentials/{credential_id}/").json()
+
+    # ------------------------------------------------------------------ #
+    # OpenAPI spec                                                         #
+    # ------------------------------------------------------------------ #
+
+    def get_openapi_spec(self, path: str = "openapi.json") -> dict[str, Any]:
+        """GET {path} relative to the configured DR endpoint — returns the JSON spec."""
+        with request_user_dr_client() as client:
+            return client.get(path).json()
