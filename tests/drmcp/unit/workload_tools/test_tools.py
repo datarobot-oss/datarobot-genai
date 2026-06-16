@@ -376,7 +376,9 @@ async def test_workload_start_success(patched_dr_client: MagicMock) -> None:
     result = await lifecycle_tools.workload_start(workload_id="wkld-abc")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/start")
-    assert result == {"accepted": True}
+    assert result["workload_id"] == "wkld-abc"
+    assert result["accepted"] == {"accepted": True}
+    assert "workload_get_status" in result["note"]
 
 
 @pytest.mark.asyncio
@@ -392,64 +394,32 @@ async def test_workload_start_empty_id_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_workload_stop_no_wait(patched_dr_client: MagicMock) -> None:
+async def test_workload_stop_success(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.return_value = MagicMock(
         content=b'{"accepted":true}', json=lambda: {"accepted": True}
     )
 
-    result = await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=False)
+    result = await lifecycle_tools.workload_stop(workload_id="wkld-abc")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/stop")
-    assert result == {"accepted": True}
+    assert result["workload_id"] == "wkld-abc"
+    assert result["accepted"] == {"accepted": True}
+    assert "workload_get_status" in result["note"]
 
 
 @pytest.mark.asyncio
-async def test_workload_stop_with_wait(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.post.return_value = MagicMock(content=b"{}", json=lambda: {})
-    patched_dr_client.get.return_value = MagicMock(
-        json=lambda: {"id": "wkld-abc", "status": "stopped"}
-    )
-
-    result = await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
-
-    assert result["status"] == "stopped"
+async def test_workload_stop_empty_id_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await lifecycle_tools.workload_stop(workload_id="")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
-async def test_workload_stop_timeout_raises(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.post.return_value = MagicMock(content=b"{}", json=lambda: {})
-    patched_dr_client.get.return_value = MagicMock(
-        json=lambda: {"id": "wkld-abc", "status": "running"}
-    )
+async def test_workload_stop_client_error(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.post.side_effect = ClientError("404 Not Found", status_code=404, json={})
 
     with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_stop(
-            workload_id="wkld-abc", wait_stopped=True, timeout_seconds=1
-        )
-    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
-
-
-@pytest.mark.asyncio
-async def test_workload_stop_errored_raises(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.post.return_value = MagicMock(content=b"{}", json=lambda: {})
-    patched_dr_client.get.return_value = MagicMock(
-        json=lambda: {"id": "wkld-abc", "status": "errored"}
-    )
-
-    with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_stop(
-            workload_id="wkld-abc", wait_stopped=True, timeout_seconds=30
-        )
-    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
-
-
-@pytest.mark.asyncio
-async def test_workload_stop_wait_client_error(patched_dr_client: MagicMock) -> None:
-    patched_dr_client.post.return_value = MagicMock(content=b"{}", json=lambda: {})
-    patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
-
-    with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_stop(workload_id="wkld-abc", wait_stopped=True)
+        await lifecycle_tools.workload_stop(workload_id="wkld-abc")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -520,50 +490,76 @@ async def test_workload_update_invalid_importance_raises() -> None:
 
 
 # ------------------------------------------------------------------ #
-# workload_wait_for_status                                             #
+# workload_get_status                                                  #
 # ------------------------------------------------------------------ #
 
 
 @pytest.mark.asyncio
-async def test_workload_wait_for_status_immediate(patched_dr_client: MagicMock) -> None:
+async def test_workload_get_status_target_reached(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(
         json=lambda: {"id": "wkld-abc", "status": "running"}
     )
 
-    result = await lifecycle_tools.workload_wait_for_status(
+    result = await lifecycle_tools.workload_get_status(
         workload_id="wkld-abc", target_status="running"
     )
 
+    patched_dr_client.get.assert_called_once_with("workloads/wkld-abc")
     assert result["status"] == "running"
+    assert result["target_reached"] is True
 
 
 @pytest.mark.asyncio
-async def test_workload_wait_for_status_errored_raises(patched_dr_client: MagicMock) -> None:
+async def test_workload_get_status_target_not_reached(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "wkld-abc", "status": "initializing"}
+    )
+
+    result = await lifecycle_tools.workload_get_status(
+        workload_id="wkld-abc", target_status="running"
+    )
+
+    assert result["status"] == "initializing"
+    assert result["target_reached"] is False
+
+
+@pytest.mark.asyncio
+async def test_workload_get_status_no_target(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "wkld-abc", "status": "running"}
+    )
+
+    result = await lifecycle_tools.workload_get_status(workload_id="wkld-abc")
+
+    assert result["status"] == "running"
+    assert result["target_reached"] is True
+
+
+@pytest.mark.asyncio
+async def test_workload_get_status_errored_raises(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(
         json=lambda: {"id": "wkld-abc", "status": "errored"}
     )
 
     with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_wait_for_status(
-            workload_id="wkld-abc", target_status="running"
-        )
+        await lifecycle_tools.workload_get_status(workload_id="wkld-abc", target_status="running")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 @pytest.mark.asyncio
-async def test_workload_wait_for_status_empty_target_raises() -> None:
+async def test_workload_get_status_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_wait_for_status(workload_id="wkld-abc", target_status="")
+        await lifecycle_tools.workload_get_status(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
-async def test_workload_wait_for_status_zero_timeout_raises() -> None:
+async def test_workload_get_status_not_found(patched_dr_client: MagicMock) -> None:
+    patched_dr_client.get.side_effect = ClientError("404 Not Found", status_code=404, json={})
+
     with pytest.raises(ToolError) as exc_info:
-        await lifecycle_tools.workload_wait_for_status(
-            workload_id="wkld-abc", target_status="running", timeout_seconds=0
-        )
-    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+        await lifecycle_tools.workload_get_status(workload_id="wkld-abc")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
 # ================================================================== #
