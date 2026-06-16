@@ -17,7 +17,7 @@
 :func:`execute_code` is a plain async function for now — deliberately *not*
 registered as an MCP tool, so it doesn't collide with the ``execute`` tool that
 FastMCP CodeMode exposes (see #376). A later PR will add the MCP tool layer that
-calls this function, gated by the ``MCP_SANDBOX`` DR entitlement (PR
+calls this function, gated by the ``ENABLE_MCP_SANDBOX`` DR entitlement (PR
 datarobot/DataRobot#154256; pattern mirrors datarobot/global-mcp#120).
 """
 
@@ -39,8 +39,9 @@ from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
 
 logger = logging.getLogger(__name__)
 
-# Entitlement the future MCP tool layer will gate registration on.
-MCP_SANDBOX_FEATURE_FLAG = "MCP_SANDBOX"
+# Entitlement the future MCP tool layer will gate registration on. Must match the
+# platform-registered name exactly; bare "MCP_SANDBOX" is an invalid entitlement (422).
+MCP_SANDBOX_FEATURE_FLAG = "ENABLE_MCP_SANDBOX"
 DEFAULT_SANDBOX_IMAGE = (
     "datarobotdev/datarobot-user-models:"
     "public_dropin_environments_dr_mcp_execute_sandbox_minimal_latest"
@@ -84,7 +85,7 @@ async def execute_code(
     and ships polars, pyarrow, datarobot, requests.
 
     This is a plain function — a later PR adds the MCP tool layer that calls it
-    (gated by ``MCP_SANDBOX``), kept separate so it doesn't override FastMCP
+    (gated by ``ENABLE_MCP_SANDBOX``), kept separate so it doesn't override FastMCP
     CodeMode's ``execute`` tool.
     """
     # Derive credentials the same way the rest of drtools / MCP does, rather

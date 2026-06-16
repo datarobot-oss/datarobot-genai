@@ -23,7 +23,7 @@ own FastMCP instance. URIs:
 * ``panels://{source}/{panel_id}/content`` — a panel's content (inline for
   Text/Json; a payload reference for Dataset/Chart)
 
-All are read-only and gated on the per-user ``MCP_SANDBOX`` entitlement.
+All are read-only and gated on the per-user ``ENABLE_MCP_SANDBOX`` entitlement.
 """
 
 from __future__ import annotations

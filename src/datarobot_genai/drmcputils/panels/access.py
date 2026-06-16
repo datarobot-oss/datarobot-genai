@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared panel access helpers: MCP_SANDBOX entitlement gate and store factory.
+"""Shared panel access helpers: ENABLE_MCP_SANDBOX entitlement gate and store factory.
 
 Used by both the panel tools (drtools) and the panel resources (drmcpbase), so it
 lives in the shared base rather than in either consumer.
@@ -29,11 +29,14 @@ from datarobot_genai.drmcputils.panels.store import PanelStore
 
 logger = logging.getLogger(__name__)
 
-MCP_SANDBOX_FEATURE_FLAG = "MCP_SANDBOX"
+# The platform-registered entitlement name. Must match the DataRobot entitlement
+# exactly — "MCP_SANDBOX" is rejected as an invalid entitlement name (422), which
+# would make is_enabled raise and fail the gate closed for every user.
+MCP_SANDBOX_FEATURE_FLAG = "ENABLE_MCP_SANDBOX"
 
 
 def _require_mcp_sandbox() -> None:
-    """Fail-closed unless the requesting user holds the MCP_SANDBOX entitlement."""
+    """Fail-closed unless the requesting user holds the ENABLE_MCP_SANDBOX entitlement."""
     try:
         with request_user_dr_client() as client:
             enabled = FeatureFlag.is_enabled(MCP_SANDBOX_FEATURE_FLAG, client=client)
@@ -41,12 +44,12 @@ def _require_mcp_sandbox() -> None:
         raise
     except Exception as exc:  # noqa: BLE001 - any FF lookup failure denies (fail-closed)
         raise ToolError(
-            "Could not verify the MCP_SANDBOX entitlement required for panel tools.",
+            "Could not verify the ENABLE_MCP_SANDBOX entitlement required for panel tools.",
             kind=ToolErrorKind.AUTHENTICATION,
         ) from exc
     if not enabled:
         raise ToolError(
-            "Panel tools require the MCP_SANDBOX entitlement.",
+            "Panel tools require the ENABLE_MCP_SANDBOX entitlement.",
             kind=ToolErrorKind.AUTHENTICATION,
         )
 

@@ -14,7 +14,7 @@
 
 """Panel CRUD tools (server-side store).
 
-Each tool is gated at call time on the per-user **MCP_SANDBOX** entitlement
+Each tool is gated at call time on the per-user **ENABLE_MCP_SANDBOX** entitlement
 (fail-closed), reusing the existing sandbox entitlement rather than minting a
 new flag. Panels are persisted via a :class:`PanelStore` backed by the
 DataRobot Files API.

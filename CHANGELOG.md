@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.17.4
 - `drtools/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
 - `drtools/core`: added the `@resource_metadata` decorator and `get_registered_resources()` for declaring MCP resources without a fastmcp dependency.
+- `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
 
 ## 0.17.3
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.

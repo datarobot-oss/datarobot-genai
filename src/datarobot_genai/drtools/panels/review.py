@@ -16,7 +16,7 @@
 
 ``inspect_panel`` walks a panel's ``parents`` lineage without hydrating payloads;
 ``view_json_panel`` returns a Json panel's data, truncated structure-preservingly
-for LLM consumption. Both are read-only and ``MCP_SANDBOX``-gated.
+for LLM consumption. Both are read-only and ``ENABLE_MCP_SANDBOX``-gated.
 """
 
 from __future__ import annotations
