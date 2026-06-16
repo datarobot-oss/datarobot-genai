@@ -1248,19 +1248,36 @@ def _drain_pending_with_dangling_text_closed(
     return _drain_pending_after_moderated_chunk(pending_deferred, pending_pass_through)
 
 
-def _take_pending_text_message_starts(
+def _text_message_id_from_response(response: DRAgentEventResponse) -> str | None:
+    if not response.events:
+        return None
+    ev0 = response.events[0]
+    if isinstance(ev0, (TextMessageContentEvent, TextMessageChunkEvent)):
+        return ev0.message_id
+    return None
+
+
+def _record_emitted_text_message_starts(
+    emitted_message_ids: set[str], response: DRAgentEventResponse
+) -> None:
+    for event in response.events:
+        if isinstance(event, TextMessageStartEvent) and event.message_id:
+            emitted_message_ids.add(event.message_id)
+
+
+def _take_pending_text_message_start_for_message(
     pending_deferred: list[DRAgentEventResponse],
-) -> list[DRAgentEventResponse]:
-    """Remove and return buffered ``TEXT_MESSAGE_START`` events in upstream order."""
-    starts: list[DRAgentEventResponse] = []
-    remaining: list[DRAgentEventResponse] = []
-    for item in pending_deferred:
-        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START:
-            starts.append(item)
-        else:
-            remaining.append(item)
-    pending_deferred[:] = remaining
-    return starts
+    message_id: str,
+) -> DRAgentEventResponse | None:
+    """Remove and return a buffered ``TEXT_MESSAGE_START`` for *message_id* only."""
+    for index, item in enumerate(pending_deferred):
+        if (
+            item.events
+            and item.events[0].type == EventType.TEXT_MESSAGE_START
+            and item.events[0].message_id == message_id
+        ):
+            return pending_deferred.pop(index)
+    return None
 
 
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
@@ -1285,6 +1302,7 @@ async def _moderated_dragent_stream(
     """
     stream_tool_index_map: dict[int, str] = {}
     open_text_message_ids: set[str] = set()
+    emitted_text_message_starts: set[str] = set()
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
@@ -1326,6 +1344,7 @@ async def _moderated_dragent_stream(
                 first_text = response
                 break
             _track_dragent_response_events(open_text_message_ids, response)
+            _record_emitted_text_message_starts(emitted_text_message_starts, response)
             yield prescore_state.emit(response)
         if first_text is None:
             return
@@ -1347,15 +1366,45 @@ async def _moderated_dragent_stream(
                         stream_tool_index_map=stream_tool_index_map,
                     )
                 )
-                for start_response in _take_pending_text_message_starts(pending_deferred):
-                    _track_dragent_response_events(open_text_message_ids, start_response)
-                    yield prescore_state.emit(start_response)
+                message_id = _text_message_id_from_response(source_response)
+                if (
+                    message_id
+                    and message_id not in emitted_text_message_starts
+                    and source_response.events
+                    and isinstance(source_response.events[0], TextMessageContentEvent)
+                ):
+                    extra_start_events: list[Any] = []
+                    pending_start = _take_pending_text_message_start_for_message(
+                        pending_deferred, message_id
+                    )
+                    if pending_start is not None:
+                        extra_start_events.extend(pending_start.events)
+                    else:
+                        extra_start_events.append(
+                            TextMessageStartEvent(message_id=message_id, role="assistant")
+                        )
+                    emitted_text_message_starts.add(message_id)
+                    moderated_response = moderated_response.model_copy(
+                        update={"events": extra_start_events + moderated_response.events}
+                    )
+                    if not prescore_state.prescore_attached and prescore_state.prescore_moderations:
+                        prescore_state.prescore_attached = True
+                        existing_mods = moderated_response.datarobot_moderations or {}
+                        moderated_response = moderated_response.model_copy(
+                            update={
+                                "datarobot_moderations": {
+                                    **prescore_state.prescore_moderations,
+                                    **existing_mods,
+                                }
+                            }
+                        )
                 _track_dragent_response_events(open_text_message_ids, moderated_response)
                 yield moderated_response
-                for item in _drain_pending_with_dangling_text_closed(
-                    pending_deferred, pending_pass_through, open_text_message_ids
+                for item in _drain_pending_after_moderated_chunk(
+                    pending_deferred, pending_pass_through
                 ):
                     _track_dragent_response_events(open_text_message_ids, item)
+                    _record_emitted_text_message_starts(emitted_text_message_starts, item)
                     yield prescore_state.emit(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
@@ -1371,6 +1420,7 @@ async def _moderated_dragent_stream(
                 pending_deferred, pending_pass_through, open_text_message_ids
             ):
                 _track_dragent_response_events(open_text_message_ids, item)
+                _record_emitted_text_message_starts(emitted_text_message_starts, item)
                 yield prescore_state.emit(item)
     finally:
         await _aclose_async_iterator(upstream)
