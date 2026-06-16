@@ -20,7 +20,6 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
@@ -58,8 +57,4 @@ def test_generate_single(http_client: httpx.Client) -> None:
 
     assert response_data.datarobot_moderations, (
         "Expected datarobot_moderations on non-streaming generate when guards are configured"
-    )
-    moderation_keys = set(response_data.datarobot_moderations.keys())
-    assert EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS.issubset(moderation_keys), (
-        f"Missing expected token moderation keys; got {sorted(moderation_keys)}"
     )

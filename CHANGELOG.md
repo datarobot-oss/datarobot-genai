@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.1
+- Added E2E test cases for moderations: OOTB and NeMo Guardrails
+
 ## 0.17.0
 - **Breaking** `core/agents`: removed opt-in long-term memory from framework base agents (`BaseAgent`, LangGraph, LlamaIndex, CrewAI, and `NatAgent`). The `memory_client` constructor argument, `{memory}` prompt placeholder handling, and automatic retrieve/store hooks are gone. Use NAT `auto_memory_agent` or `streaming_memory_agent` with the `dr_mem0_memory` provider instead (see `docs/nat/memory.md`).
 
