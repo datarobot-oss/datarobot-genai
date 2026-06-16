@@ -93,23 +93,3 @@ middleware:
           llm_gateway_model_id: azure/gpt-5-2025-08-07
           intervention:
             action: report
-
-      #  - name: Custom Metric
-      #    type: ootb
-      #    ootb_type: custom_metric
-      #    stage: response
-      #    deployment_id: ???
-      #    intervention:
-      #      action: report
-
-        - name: Emotion Classifier
-          type: model
-          stage: prompt
-          deployment_id: "6a3120e27aeafd48589cb1b8"
-          model_info:
-            input_column_name: text
-            target_name: target_PREDICTION
-            target_type: TextGeneration
-            class_names: [anger, fear, sadness, disgust, joy, neutral]
-          intervention:
-            action: report
