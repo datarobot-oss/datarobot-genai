@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.17.3
+## 0.17.4
 - `drtools/workload`: credentials and OpenAPI spec tools.
   - **Client** (`WorkloadApiClient`): added `list_credentials`, `get_credential` against `GET /api/v2/credentials/` and `GET /api/v2/credentials/{id}/`, and `get_openapi_spec` for fetching the API spec from the configured DR endpoint.
   - **Tools** (`credential_tools`): `credential_list` — paginated list of all accessible credentials with id/name/type; `credential_get` — full record for a credential by id; `credential_keys` — local lookup of valid `key` field names for a given credential type for use in `CredentialEnvironmentVariable` (supports: basic, s3, azure, gcp, oauth, api_token, snowflake_key_pair_user_account, databricks_access_token, databricks_service_principal, azure_service_principal).
   - **Tools** (`openapi_tools`): `read_openapi_spec` — fetch or read the Workload API OpenAPI spec with three resolution strategies: explicit `local_path` (YAML or JSON), authenticated `remote_path` fetch via the DR REST client (defaults to `openapi.json`), and bundled-file fallback for container deployments.
+
+## 0.17.3
+- `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
 
 ## 0.17.2
 - `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
