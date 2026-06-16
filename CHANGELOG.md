@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.17.7
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
+- `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior.
 
 ## 0.17.7
 - `drtools/workload`: consolidated the workload/artifact tool surface from 39 tools to 21 for agent ergonomics, following MCP tool-design guidance. No functionality was lost; every tool still issues a single non-blocking REST call (no client-side polling or waiting).
