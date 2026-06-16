@@ -422,6 +422,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             if isinstance(crew_output, CrewStreamingOutput):
                 reasoning_started = False
                 text_started = False
+                streamed_text = ""
                 async for chunk in crew_output:
                     # Show task transitions
                     logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
@@ -540,6 +541,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                     zero_metrics,
                                 )
                             text_started = True
+                            streamed_text += chunk.content
                             yield (
                                 TextMessageContentEvent(
                                     type=EventType.TEXT_MESSAGE_CONTENT,
@@ -556,18 +558,19 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     ragas_event_listener.messages
                 )
                 usage_metrics = self._extract_usage_metrics(crew_output.result)
+                final_text = str(crew_output.result.raw).strip()
                 if text_started:
                     yield (
                         TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
                         None,
                         usage_metrics,
                     )
-                else:
-                    # ``akickoff`` may complete without emitting TEXT stream chunks even
-                    # when the crew produced a final answer; fall back to the kickoff
-                    # result so AG-UI clients still receive the response text.
-                    response_text = crew_output.get_full_text() or str(crew_output.result.raw)
-                    if response_text:
+                    if (
+                        final_text
+                        and final_text not in streamed_text
+                        and ("Action:" in streamed_text or "Action Input:" in streamed_text)
+                    ):
+                        message_id = str(uuid.uuid4())
                         yield (
                             TextMessageStartEvent(
                                 type=EventType.TEXT_MESSAGE_START,
@@ -580,7 +583,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             TextMessageContentEvent(
                                 type=EventType.TEXT_MESSAGE_CONTENT,
                                 message_id=message_id,
-                                delta=response_text,
+                                delta=final_text,
                             ),
                             None,
                             usage_metrics,
@@ -593,6 +596,35 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             None,
                             usage_metrics,
                         )
+                elif final_text:
+                    # ``akickoff`` may complete without emitting TEXT stream chunks even
+                    # when the crew produced a final answer; fall back to the kickoff
+                    # result so AG-UI clients still receive the response text.
+                    yield (
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        TextMessageContentEvent(
+                            type=EventType.TEXT_MESSAGE_CONTENT,
+                            message_id=message_id,
+                            delta=final_text,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
+                    yield (
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=message_id,
+                        ),
+                        None,
+                        usage_metrics,
+                    )
                 if reasoning_started:
                     yield (
                         ReasoningMessageEndEvent(

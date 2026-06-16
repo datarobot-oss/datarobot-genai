@@ -661,6 +661,25 @@ async def test_invoke_streaming_falls_back_to_result_when_no_text_chunks(
     assert contents[0].delta == "final from result"
 
 
+async def test_invoke_streaming_emits_crew_result_after_react_stream(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN streamed ReAct scaffolding and a clean kickoff result
+    chunks = [
+        _text_chunk("Thought: plan\nAction: tool\nAction Input: x\n", "Planner"),
+    ]
+    result = CrewOutput(raw="69cbb73789723b6936c6c9e1")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    validate_sequence(events)
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert any(c.delta == "69cbb73789723b6936c6c9e1" for c in contents)
+
+
 async def test_invoke_streaming_single_agent_role_uses_single_message(
     mock_ragas_event_listener, run_agent_input
 ) -> None:
