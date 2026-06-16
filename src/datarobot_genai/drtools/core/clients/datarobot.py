@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: This needs to be moved to drmcputils. Also use file api with openapi tools. Also add tool configs in drmcp.
+# TODO: This needs to be moved to drmcputils.
+# Also use file api with openapi tools. Also add tool configs in drmcp.
 
 from typing import Any
 

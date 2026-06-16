@@ -426,4 +426,3 @@ class WorkloadApiClient:
         with request_user_dr_client() as client:
             resp = client.delete(f"workloads/{workload_id}/replacement")
             return resp.json() if resp.content else {}
-

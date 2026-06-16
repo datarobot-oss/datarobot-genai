@@ -33,9 +33,7 @@ def mock_rest_client() -> MagicMock:
 
 @pytest.fixture
 def patched_dr_client(mock_rest_client: MagicMock) -> Iterator[MagicMock]:
-    with patch(
-        "datarobot_genai.drtools.core.clients.datarobot.request_user_dr_client"
-    ) as mock_cm:
+    with patch("datarobot_genai.drtools.core.clients.datarobot.request_user_dr_client") as mock_cm:
         mock_cm.return_value.__enter__.return_value = mock_rest_client
         mock_cm.return_value.__exit__.return_value = False
         yield mock_rest_client

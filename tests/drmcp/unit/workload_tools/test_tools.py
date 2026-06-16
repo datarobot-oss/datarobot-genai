@@ -15,7 +15,6 @@
 """Unit tests for workload tools (PR1 — read-only surface)."""
 
 from collections.abc import Iterator
-from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -1770,4 +1769,3 @@ async def test_workload_replacement_delete_not_found(patched_dr_client: MagicMoc
     with pytest.raises(ToolError) as exc_info:
         await replacement_tools.workload_replacement_delete(workload_id="wkld-missing")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
-
