@@ -20,14 +20,12 @@ from typing import Any
 from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
+from datarobot_genai.drmcputils.constants import REPLACEMENT_STRATEGIES
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
 from datarobot_genai.drtools.core.utils import require_id
-
-_REPLACEMENT_STRATEGIES = ("rolling",)
-
 
 # ------------------------------------------------------------------ #
 # workload_settings  (get when runtime omitted, update when provided) #
@@ -152,9 +150,9 @@ async def workload_replacement(
         except ClientError as exc:
             raise_tool_error_for_client_error(exc)
 
-    if strategy not in _REPLACEMENT_STRATEGIES:
+    if strategy not in REPLACEMENT_STRATEGIES:
         raise ToolError(
-            f"Argument validation error: 'strategy' must be one of {_REPLACEMENT_STRATEGIES}.",
+            f"Argument validation error: 'strategy' must be one of {REPLACEMENT_STRATEGIES}.",
             kind=ToolErrorKind.VALIDATION,
         )
     if warmup_duration_minutes < 0:
