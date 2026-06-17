@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Artifact core management tools: read, create, update, and actions."""
+
 from typing import Annotated
 from typing import Any
+from typing import Literal
 
 from datarobot.errors import ClientError
 
@@ -29,32 +32,44 @@ from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 # ------------------------------------------------------------------ #
-# artifact_list                                                        #
+# artifact_get  (list when no id, single when id)                     #
 # ------------------------------------------------------------------ #
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "list"},
+    tags={"artifact", "workload", "datarobot", "get", "list"},
     description=(
-        "[Artifact—list] Discover artifacts: returns id, name, status (draft/locked), "
-        "type, spec, and timestamps. Supports pagination and optional filters for "
-        "status, type, repository, and search text. "
-        "Not for a single known artifact id (artifact_get).\n\n"
-        "Example: artifact_list()\n"
-        "Example: artifact_list(search='my-service', status='draft')"
+        "[Artifact—get] Read artifacts.\n"
+        "  - Omit artifact_id to LIST artifacts (id, name, status draft/locked, type, "
+        "spec, timestamps); paginated with optional status / type / repository / search "
+        "filters.\n"
+        "  - Set artifact_id to GET a single artifact (full spec, status, type, version, "
+        "repository, timestamps).\n\n"
+        "Example (list): artifact_get(search='my-service', status='draft')\n"
+        "Example (get):  artifact_get(artifact_id='art-abc123')"
     ),
 )
-async def artifact_list(
+async def artifact_get(
     *,
-    search: Annotated[
-        str | None, "Case-insensitive filter on name, description, and partial id."
+    artifact_id: Annotated[
+        str | None, "Id of the artifact. Omit to list artifacts with filters."
     ] = None,
-    status: Annotated[str | None, "Filter by status: 'draft' or 'locked'."] = None,
-    artifact_type: Annotated[str | None, "Filter by type: 'service' or 'nim'."] = None,
-    repository_id: Annotated[str | None, "Filter by artifact repository id."] = None,
-    limit: Annotated[int, "Max artifacts to return (1–100). Default 100."] = 100,
-    offset: Annotated[int, "Artifacts to skip for pagination. Default 0."] = 0,
+    search: Annotated[
+        str | None, "List filter: case-insensitive match on name, description, and partial id."
+    ] = None,
+    status: Annotated[str | None, "List filter by status: 'draft' or 'locked'."] = None,
+    artifact_type: Annotated[str | None, "List filter by type: 'service' or 'nim'."] = None,
+    repository_id: Annotated[str | None, "List filter by artifact repository id."] = None,
+    limit: Annotated[int, "Max artifacts to return when listing (1–100). Default 100."] = 100,
+    offset: Annotated[int, "Artifacts to skip for pagination when listing. Default 0."] = 0,
 ) -> dict[str, Any]:
+    if artifact_id is not None:
+        aid = require_id(artifact_id, "artifact_id")
+        try:
+            return WorkloadApiClient().get_artifact(aid)
+        except ClientError as exc:
+            raise_tool_error_for_client_error(exc)
+
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
@@ -94,31 +109,7 @@ async def artifact_list(
 
 
 # ------------------------------------------------------------------ #
-# artifact_get                                                         #
-# ------------------------------------------------------------------ #
-
-
-@tool_metadata(
-    tags={"artifact", "workload", "datarobot", "get"},
-    description=(
-        "[Artifact—get] Retrieve a single artifact by id: full spec, status, "
-        "type, version, repository, and timestamps.\n\n"
-        "Example: artifact_get(artifact_id='art-abc123')"
-    ),
-)
-async def artifact_get(
-    *,
-    artifact_id: Annotated[str, "Id of the artifact to retrieve."],
-) -> dict[str, Any]:
-    aid = require_id(artifact_id, "artifact_id")
-    try:
-        return WorkloadApiClient().get_artifact(aid)
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-
-# ------------------------------------------------------------------ #
-# artifact_create                                                      #
+# artifact_create                                                     #
 # ------------------------------------------------------------------ #
 
 
@@ -163,7 +154,7 @@ async def artifact_create(
 
 
 # ------------------------------------------------------------------ #
-# artifact_update                                                      #
+# artifact_update                                                     #
 # ------------------------------------------------------------------ #
 
 
@@ -172,7 +163,8 @@ async def artifact_create(
     description=(
         "[Artifact—update] Partially update a draft artifact: name, description, "
         "or spec. Only the supplied fields are changed. At least one field is required. "
-        "Locked artifacts cannot be updated.\n\n"
+        "Locked artifacts cannot be updated. To lock an artifact use "
+        "artifact_action(action='lock').\n\n"
         "Example: artifact_update(artifact_id='art-abc', name='new-name')"
     ),
 )
@@ -212,82 +204,59 @@ async def artifact_update(
 
 
 # ------------------------------------------------------------------ #
-# artifact_lock                                                        #
+# artifact_action  (lock / clone / delete)                            #
 # ------------------------------------------------------------------ #
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "lock"},
+    tags={"artifact", "workload", "datarobot", "lock", "clone", "delete"},
     description=(
-        "[Artifact—lock] Lock a draft artifact so it can be versioned and used "
-        "in production deployments. Once locked, an artifact cannot be updated "
-        "or deleted. Use workload_promote to lock the artifact currently running "
-        "on a workload instead.\n\n"
-        "Example: artifact_lock(artifact_id='art-abc')"
+        "[Artifact—action] Run an action on an artifact. action is one of:\n"
+        "  'lock'   — lock a draft artifact so it can be versioned and used in "
+        "production. Once locked it cannot be updated or deleted. (To lock the "
+        "artifact currently running on a workload, use workload_action "
+        "action='promote'.)\n"
+        "  'clone'  — duplicate the artifact under a new name (requires 'name'). The "
+        "clone is always a draft, regardless of the original's status.\n"
+        "  'delete' — permanently delete a draft artifact. Locked artifacts and "
+        "artifacts in use by a workload cannot be deleted.\n\n"
+        "Example (lock):   artifact_action(artifact_id='art-abc', action='lock')\n"
+        "Example (clone):  artifact_action(artifact_id='art-abc', action='clone', name='svc-v2')\n"
+        "Example (delete): artifact_action(artifact_id='art-abc', action='delete')"
     ),
 )
-async def artifact_lock(
+async def artifact_action(
     *,
-    artifact_id: Annotated[str, "Id of the draft artifact to lock."],
+    artifact_id: Annotated[str, "Id of the artifact to act on."],
+    action: Annotated[
+        Literal["lock", "clone", "delete"],
+        "Action: 'lock' | 'clone' | 'delete'.",
+    ],
+    name: Annotated[
+        str | None, "Name for the cloned artifact. Required when action='clone'."
+    ] = None,
 ) -> dict[str, Any]:
     aid = require_id(artifact_id, "artifact_id")
+    client = WorkloadApiClient()
+
     try:
-        return WorkloadApiClient().patch_artifact(aid, {"status": "locked"})
+        if action == "lock":
+            return client.patch_artifact(aid, {"status": "locked"})
+        if action == "clone":
+            if not name or not name.strip():
+                raise ToolError(
+                    "Argument validation error: 'name' is required when action='clone'.",
+                    kind=ToolErrorKind.VALIDATION,
+                )
+            return client.clone_artifact(aid, name.strip())
+        if action == "delete":
+            client.delete_artifact(aid)
+            return {"deleted": True, "artifact_id": aid}
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
-
-# ------------------------------------------------------------------ #
-# artifact_clone                                                       #
-# ------------------------------------------------------------------ #
-
-
-@tool_metadata(
-    tags={"artifact", "workload", "datarobot", "clone"},
-    description=(
-        "[Artifact—clone] Duplicate an existing artifact under a new name. "
-        "The clone is created as a draft regardless of the original's status, "
-        "allowing further modification before use.\n\n"
-        "Example: artifact_clone(artifact_id='art-abc', name='my-service-v2')"
-    ),
-)
-async def artifact_clone(
-    *,
-    artifact_id: Annotated[str, "Id of the artifact to clone."],
-    name: Annotated[str, "Name for the cloned artifact."],
-) -> dict[str, Any]:
-    aid = require_id(artifact_id, "artifact_id")
-    if not name or not name.strip():
-        raise ToolError(
-            "Argument validation error: 'name' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    try:
-        return WorkloadApiClient().clone_artifact(aid, name.strip())
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-
-# ------------------------------------------------------------------ #
-# artifact_delete                                                      #
-# ------------------------------------------------------------------ #
-
-
-@tool_metadata(
-    tags={"artifact", "workload", "datarobot", "delete"},
-    description=(
-        "[Artifact—delete] Permanently delete a draft artifact. Locked artifacts "
-        "and artifacts currently in use by a workload cannot be deleted.\n\n"
-        "Example: artifact_delete(artifact_id='art-abc')"
-    ),
-)
-async def artifact_delete(
-    *,
-    artifact_id: Annotated[str, "Id of the artifact to delete."],
-) -> dict[str, Any]:
-    aid = require_id(artifact_id, "artifact_id")
-    try:
-        WorkloadApiClient().delete_artifact(aid)
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-    return {"deleted": True, "artifact_id": aid}
+    # pragma: no cover - guarded by Literal typing
+    raise ToolError(
+        f"Argument validation error: unknown action {action!r}.",
+        kind=ToolErrorKind.VALIDATION,
+    )
