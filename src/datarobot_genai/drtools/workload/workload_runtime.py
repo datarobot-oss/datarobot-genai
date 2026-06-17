@@ -133,7 +133,7 @@ async def workload_replacement(
     wid = require_id(workload_id, "workload_id")
     client = WorkloadApiClient()
 
-    if cancel and artifact_id:
+    if cancel and artifact_id and artifact_id.strip():
         raise ToolError(
             "Argument validation error: pass either artifact_id (create) or "
             "cancel=True (cancel), not both.",
