@@ -30,8 +30,8 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
     register_tool_for_deployment_id,
 )
-from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
 
 
 @pytest.fixture
@@ -138,7 +138,6 @@ class TestToolRegistration:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )
@@ -171,7 +170,6 @@ class TestToolRegistration:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )
@@ -213,7 +211,6 @@ class TestToolRegistration:
     @pytest.mark.asyncio
     async def test_sync_mcp_metadata_after_registration(
         self,
-        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_request_user_dr_sdk: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_tools: Mock,
@@ -231,7 +228,6 @@ class TestToolRegistration:
         mock_register_tool_of_datarobot_deployment.assert_called_once_with(
             mock_deployment_get.return_value
         )
-        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_tools.assert_called_once_with()
 
@@ -275,7 +271,6 @@ class TestDeploymentDeletion:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )
@@ -311,7 +306,6 @@ class TestDeploymentDeletion:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )
@@ -357,7 +351,6 @@ class TestDeploymentDeletion:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )
@@ -410,7 +403,6 @@ class TestDeploymentDeletion:
     @pytest.mark.asyncio
     async def test_sync_mcp_metadata_after_deletion(
         self,
-        mock_is_mcp_tools_gallery_support_enabled: Mock,
         mock_lineage_manager_init: Mock,
         mock_sync_mcp_tools: Mock,
         mcp_server: DataRobotMCP,
@@ -420,7 +412,6 @@ class TestDeploymentDeletion:
 
         await delete_registered_tool_deployment(tool_id)
 
-        mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with()
         mock_lineage_manager_init.assert_called_once_with(mcp_server)
         mock_sync_mcp_tools.assert_called_once_with()
 
@@ -430,7 +421,6 @@ class TestIntegratedWorkflow:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",
     )

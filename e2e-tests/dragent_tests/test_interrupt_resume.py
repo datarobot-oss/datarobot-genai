@@ -24,17 +24,9 @@ from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAM
 from dragent.langgraph.myagent import E2E_INTERRUPT_CANCELLED
 from dragent.langgraph.myagent import E2E_INTERRUPT_CONTINUING
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import ALL_TEST_CASES
-from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
-from dragent_tests.helpers import parse_sse_responses
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping interrupt E2E",
-        allow_module_level=True,
-    )
+from dragent_tests.helpers import stream_sse_responses
 
 if AGENT != "langgraph":
     pytest.skip(
@@ -59,10 +51,7 @@ def test_stream_interrupt_then_resume_plain_user_message_no(http_client: httpx.C
         "forwardedProps": {},
         "state": {},
     }
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload_interrupt) as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        sse_1 = parse_sse_responses(response)
+    sse_1 = stream_sse_responses(http_client, payload_interrupt)
 
     events_1 = collect_ag_ui_events(sse_1)
     interrupt_tool_starts = [
@@ -96,9 +85,7 @@ def test_stream_interrupt_then_resume_plain_user_message_no(http_client: httpx.C
         "forwardedProps": {},
         "state": {},
     }
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload_resume) as response:
-        assert response.status_code == 200
-        sse_2 = parse_sse_responses(response)
+    sse_2 = stream_sse_responses(http_client, payload_resume)
 
     events_2 = collect_ag_ui_events(sse_2)
     text = collect_text(events_2)
@@ -121,10 +108,7 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
         "forwardedProps": {},
         "state": {},
     }
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload_interrupt) as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        sse_1 = parse_sse_responses(response)
+    sse_1 = stream_sse_responses(http_client, payload_interrupt)
 
     events_1 = collect_ag_ui_events(sse_1)
     interrupt_tool_starts = [
@@ -150,9 +134,7 @@ def test_stream_interrupt_then_resume_plain_user_message_yes(http_client: httpx.
         "forwardedProps": {},
         "state": {},
     }
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload_resume) as response:
-        assert response.status_code == 200
-        sse_2 = parse_sse_responses(response)
+    sse_2 = stream_sse_responses(http_client, payload_resume)
 
     events_2 = collect_ag_ui_events(sse_2)
     text = collect_text(events_2)

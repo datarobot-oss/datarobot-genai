@@ -1,0 +1,21 @@
+models:
+- engine: nim
+  model: datarobot
+  type: main
+rails:
+  dialog:
+    user_messages:
+      embeddings_only: true
+  output:
+    flows:
+    - self check output
+    - check blocked terms
+    - allow output
+sample_conversation: "user \"Hi there. Can you help me with some questions I have\
+  \ about the company?\"\n  express greeting and ask for assistance\nbot express greeting\
+  \ and confirm and offer assistance\n  \"Hi there! I'm here to help answer any questions\
+  \ you may have about the ABC Company. What would you like to know?\"\nuser \"What's\
+  \ the company policy on paid time off?\"\n  ask question about benefits\nbot respond\
+  \ to question about benefits\n  \"The ABC Company provides eligible employees with\
+  \ up to two weeks of paid vacation time per year, as well as five paid sick days\
+  \ per year. Please refer to the employee handbook for more information.\"\n"

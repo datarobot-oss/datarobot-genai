@@ -19,12 +19,12 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcputils.feature_flags import FeatureFlag
+from datarobot_genai.drmcputils.feature_flags import is_tool_feature_enabled
 from datarobot_genai.drtools.core import get_registered_tools
-from datarobot_genai.drtools.core.feature_flags import FeatureFlag
-from datarobot_genai.drtools.core.feature_flags import is_tool_feature_enabled
 
 from .clients import setup_and_return_dr_api_client_with_static_config_in_container
-from .enums import DataRobotMCPToolCategory
 from .mcp_instance import dr_mcp_tool
 
 logger = logging.getLogger(__name__)

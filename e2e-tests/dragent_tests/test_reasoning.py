@@ -23,21 +23,10 @@ from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import GENERATE_STREAM_PATH
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import parse_sse_responses
-
-REASONING_TESTS = os.environ.get("REASONING_TESTS") == "true"
-
-# Reasoning is only emitted by the langgraph and llama_index agents, and only with a specific model.
-# Skip otherwise
-if not REASONING_TESTS:
-    pytest.skip(
-        "Reasoning tests run only against the LLM Gateway.",
-        allow_module_level=True,
-    )
+from dragent_tests.helpers import stream_sse_responses
 
 if AGENT not in ("langgraph", "llamaindex"):
     pytest.skip(
@@ -84,10 +73,7 @@ def test_generate_streaming_emits_reasoning(http_client: httpx.Client) -> None:
     )
 
     # WHEN: the payload is streamed to the generate endpoint
-    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-        sse_responses = parse_sse_responses(response)
+    sse_responses = stream_sse_responses(http_client, payload)
 
     ag_ui_events = collect_ag_ui_events(sse_responses)
 

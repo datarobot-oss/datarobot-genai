@@ -21,8 +21,11 @@ import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import BaseEvent
 from ag_ui.core import EventType
+from ag_ui.core import FunctionCall
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgSystemMessage
+from ag_ui.core import ToolCall
+from ag_ui.core import ToolMessage as AgToolMessage
 from ag_ui.core import UserMessage
 from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
@@ -34,7 +37,6 @@ from langgraph.graph.message import MessagesState
 from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
 
-from datarobot_genai.core.memory.base import BaseMemoryClient
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
@@ -215,6 +217,18 @@ def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose
     assert calls[1] == (mock_llm, extra_tools, True)
 
 
+def test_datarobot_agent_class_from_langgraph_exposes_structured_history() -> None:
+    # The factory must let agents opt into native-message history via structured_history.
+    inner = SimpleLangGraphAgent()
+    cls = datarobot_agent_class_from_langgraph(
+        lambda _l, _t, _v: inner.workflow, inner.prompt_template
+    )
+    assert cls(llm=Mock()).structured_history is True  # default on for langgraph
+    assert (
+        cls(llm=Mock(), structured_history=False).structured_history is False
+    )  # opt-out respected
+
+
 @pytest.mark.asyncio
 async def test_datarobot_agent_class_from_langgraph_invoke_streams(
     run_agent_input: RunAgentInput,
@@ -265,89 +279,9 @@ class HistoryAwareLangGraphAgent(LangGraphAgent):
         return {}
 
 
-class LangGraphAgentWithMemory(SimpleLangGraphAgent):
-    @property
-    def prompt_template(self) -> ChatPromptTemplate:
-        return ChatPromptTemplate.from_messages(
-            [
-                {
-                    "role": "system",
-                    "content": "Relevant memory:\n{memory}",
-                },
-                {"role": "user", "content": "Hi, tell me about {topic}."},
-            ]
-        )
-
-
 class LegacyOverrideLangGraphAgent(SimpleLangGraphAgent):
     async def convert_input_message(self, run_agent_input: RunAgentInput) -> dict[str, Any]:
         return await super().convert_input_message(run_agent_input)
-
-
-class FakeMemoryClient(BaseMemoryClient):
-    def __init__(self, retrieved: str = "saved memory") -> None:
-        self.retrieved = retrieved
-        self.retrieve_calls: list[dict[str, Any]] = []
-        self.store_calls: list[dict[str, Any]] = []
-
-    async def retrieve(
-        self,
-        prompt: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> str:
-        self.retrieve_calls.append(
-            {
-                "prompt": prompt,
-                "run_id": run_id,
-                "agent_id": agent_id,
-                "app_id": app_id,
-                "attributes": attributes,
-            }
-        )
-        return self.retrieved
-
-    async def store(
-        self,
-        user_message: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> None:
-        self.store_calls.append(
-            {
-                "user_message": user_message,
-                "run_id": run_id,
-                "agent_id": agent_id,
-                "app_id": app_id,
-                "attributes": attributes,
-            }
-        )
-
-
-class FailingMemoryClient(BaseMemoryClient):
-    async def retrieve(
-        self,
-        prompt: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> str:
-        raise RuntimeError("mem0 retrieve unavailable")
-
-    async def store(
-        self,
-        user_message: str,
-        run_id: str | None = None,
-        agent_id: str | None = None,
-        app_id: str | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> None:
-        raise RuntimeError("mem0 store unavailable")
 
 
 async def test_convert_input_message_includes_history() -> None:
@@ -487,6 +421,128 @@ async def test_convert_input_message_zero_history_disables_history() -> None:
     assert len(all_messages) == 2
     assert isinstance(all_messages[0], SystemMessage)
     assert isinstance(all_messages[1], HumanMessage)
+
+
+class StructuredHistoryLangGraphAgent(LangGraphAgent):
+    """Template does NOT declare {chat_history}; with structured_history=True the
+    agent injects prior turns as native messages (tool calls preserved).
+    """
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        return SimpleLangGraphAgent().workflow
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {"role": "system", "content": "You are a helper."},
+                {"role": "user", "content": "{topic}"},
+            ]
+        )
+
+    @property
+    def langgraph_config(self) -> dict[str, Any]:
+        return {}
+
+
+def _tool_history_run_input() -> RunAgentInput:
+    return RunAgentInput(
+        messages=[
+            UserMessage(id="user_1", content="weather in Paris?"),
+            AssistantMessage(
+                id="asst_1",
+                content="Let me check.",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="get_weather", arguments='{"city": "Paris"}'),
+                    )
+                ],
+            ),
+            AgToolMessage(id="tool_1", content="18C, sunny", tool_call_id="c1"),
+            UserMessage(id="user_2", content='{"topic": "and tomorrow?"}'),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+async def test_convert_input_message_structured_history_reconstructs_tool_calls() -> None:
+    """structured_history=True splices native tool-call history before the current turn."""
+    agent = StructuredHistoryLangGraphAgent(structured_history=True)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    # System (template) + 3 structured history turns + current user turn.
+    assert [type(m) for m in msgs] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+    ]
+    assert msgs[1].content == "weather in Paris?"
+    assert msgs[2].content == "Let me check."
+    assert msgs[2].tool_calls[0]["name"] == "get_weather"
+    assert msgs[2].tool_calls[0]["args"] == {"city": "Paris"}
+    assert msgs[3].tool_call_id == "c1"
+    assert "and tomorrow?" in str(msgs[4].content)
+
+
+async def test_convert_input_message_structured_history_off_when_disabled() -> None:
+    """With structured_history=False (and no {chat_history} var), no prior turns are injected."""
+    agent = StructuredHistoryLangGraphAgent(structured_history=False)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    assert [type(m) for m in msgs] == [SystemMessage, HumanMessage]
+    assert "and tomorrow?" in str(msgs[1].content)
+
+
+class TrailingMessageStructuredAgent(StructuredHistoryLangGraphAgent):
+    """Template emits a message AFTER the user turn, so the current turn is not last."""
+
+    @property
+    def prompt_template(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                {"role": "system", "content": "You are a helper."},
+                {"role": "user", "content": "{topic}"},
+                {"role": "system", "content": "Answer briefly."},
+            ]
+        )
+
+
+async def test_convert_input_message_structured_history_splices_before_user_turn() -> None:
+    """History is inserted before the current user turn, not blindly before the last
+    message (the template here ends on a trailing system message).
+    """
+    agent = TrailingMessageStructuredAgent(structured_history=True)
+
+    command = await agent.convert_input_message(_tool_history_run_input())
+    msgs = command["messages"]
+
+    # System (template), then structured history, then current user turn, then the
+    # trailing template system message.
+    assert [type(m) for m in msgs] == [
+        SystemMessage,
+        HumanMessage,
+        AIMessage,
+        ToolMessage,
+        HumanMessage,
+        SystemMessage,
+    ]
+    assert msgs[1].content == "weather in Paris?"
+    assert msgs[2].tool_calls[0]["name"] == "get_weather"
+    assert "and tomorrow?" in str(msgs[4].content)
+    assert msgs[5].content == "Answer briefly."
 
 
 class RelayLangGraphAgent(LangGraphAgent):
@@ -661,67 +717,9 @@ async def test_langgraph_non_streaming(run_agent_input):
     assert usage_metrics["completion_tokens"] == 100
 
 
-async def test_langgraph_invoke_retrieves_and_stores_memory(run_agent_input) -> None:
-    # GIVEN a langgraph agent whose prompt opts into memory
-    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = LangGraphAgentWithMemory(memory_client=memory_client)
-
-    # WHEN invoking the agent
-    _ = [event async for event in agent.invoke(run_agent_input)]
-
-    # THEN memory retrieval is scoped to the thread and storage is scoped to the run
-    assert memory_client.retrieve_calls == [
-        {
-            "prompt": '{"topic": "AI"}',
-            "run_id": None,
-            "agent_id": "LangGraphAgentWithMemory",
-            "app_id": "tests.langgraph.test_agent",
-            "attributes": {"thread_id": "thread_id"},
-        }
-    ]
-    assert memory_client.store_calls == [
-        {
-            "user_message": '{"topic": "AI"}',
-            "run_id": "run_id",
-            "agent_id": "LangGraphAgentWithMemory",
-            "app_id": "tests.langgraph.test_agent",
-            "attributes": {"thread_id": "thread_id"},
-        }
-    ]
-
-
-async def test_langgraph_invoke_skips_memory_retrieval_when_prompt_does_not_use_it(
-    run_agent_input,
-) -> None:
-    # GIVEN a langgraph agent whose prompt does not declare {memory}
-    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = SimpleLangGraphAgent(memory_client=memory_client)
-
-    # WHEN invoking the agent
-    _ = [event async for event in agent.invoke(run_agent_input)]
-
-    # THEN retrieval is skipped but the completed run is still stored
-    assert memory_client.retrieve_calls == []
-    assert memory_client.store_calls == []
-
-
-async def test_langgraph_invoke_gracefully_degrades_when_memory_fails(run_agent_input) -> None:
-    # GIVEN a langgraph agent whose memory provider errors at runtime
-    agent = LangGraphAgentWithMemory(memory_client=FailingMemoryClient())
-
-    # WHEN invoking the agent
-    events = [event async for event in agent.invoke(run_agent_input)]
-
-    # THEN the agent still completes successfully without failing the request
-    assert events
-    assert events[-1][0].type == EventType.RUN_FINISHED
-
-
 async def test_langgraph_invoke_supports_legacy_convert_input_override(run_agent_input) -> None:
     # GIVEN a subclass overriding convert_input_message with the original signature
-    agent = LegacyOverrideLangGraphAgent(
-        memory_client=FakeMemoryClient(retrieved="Use concise answers.")
-    )
+    agent = LegacyOverrideLangGraphAgent()
 
     # WHEN invoking the agent
     events = [event async for event in agent.invoke(run_agent_input)]
@@ -802,30 +800,6 @@ async def test_invoke_emits_interrupt_confirmation_tool_events(
     assert finished.type == EventType.RUN_FINISHED
     assert finished.result is not None
     assert finished.result["langgraph"]["interrupted"] is True
-
-
-async def test_langgraph_does_not_store_memory_when_run_fails(run_agent_input) -> None:
-    # GIVEN an agent whose stream fails before completion
-    class FailingWorkflowAgent(SimpleLangGraphAgent):
-        @cached_property
-        def workflow(self) -> StateGraph[MessagesState]:
-            async def failing_stream():
-                raise RuntimeError("graph failed")
-                yield  # pragma: no cover
-
-            return Mock(
-                compile=Mock(return_value=Mock(astream=Mock(return_value=failing_stream())))
-            )
-
-    memory_client = FakeMemoryClient(retrieved="Use concise answers.")
-    agent = FailingWorkflowAgent(memory_client=memory_client)
-
-    # WHEN invoking the agent and the graph fails
-    with pytest.raises(RuntimeError, match="graph failed"):
-        _ = [event async for event in agent.invoke(run_agent_input)]
-
-    # THEN the user message is not persisted because the run did not finish
-    assert memory_client.store_calls == []
 
 
 def test_create_pipeline_interactions_from_events_filters_tool_messages() -> None:

@@ -28,16 +28,8 @@ import uuid
 import httpx
 import pytest
 
-from dragent_tests.helpers import ALL_TEST_CASES
-
 A2A_PATH = "/a2a/"
 A2A_AGENT_CARD_PATH = "/a2a/.well-known/agent-card.json"
-
-if not ALL_TEST_CASES:
-    pytest.skip(
-        "Running minimal test set for non-LLM Gateway LLM, skipping A2A tests",
-        allow_module_level=True,
-    )
 
 
 def make_a2a_message_send_payload(text: str, message_id: str | None = None) -> dict:  # type: ignore[type-arg]
@@ -73,12 +65,8 @@ def test_a2a_agent_card(http_client: httpx.Client) -> None:
     assert card.get("skills"), "Agent card missing 'skills' or skills list is empty"
 
 
-def test_a2a_message_send(http_client: httpx.Client) -> None:
-    """A message/send request is processed and returns a JSON-RPC result."""
-    payload = make_a2a_message_send_payload("Say 'hello world' and nothing else.")
-
-    response = http_client.post(A2A_PATH, json=payload)
-
+def _assert_successful_message_send(response: httpx.Response, payload: dict) -> None:  # type: ignore[type-arg]
+    """Shared assertions for a successful ``message/send`` JSON-RPC response."""
     assert response.status_code == 200, (
         f"Expected 200 from A2A endpoint, got {response.status_code}: "
         f"{response.text[:500]}"
@@ -104,3 +92,17 @@ def test_a2a_message_send(http_client: httpx.Client) -> None:
     parts = result.get("parts", [])
     text_parts = [p for p in parts if p.get("kind") == "text" and p.get("text")]
     assert text_parts, f"Expected at least one text part. Got: {parts}"
+
+
+def test_a2a_message_send(http_client: httpx.Client) -> None:
+    """message/send with signed auth-context JWT (app-to-app path)."""
+    payload = make_a2a_message_send_payload("Say 'hello world' and nothing else.")
+    response = http_client.post(A2A_PATH, json=payload)
+    _assert_successful_message_send(response, payload)
+
+
+def test_a2a_message_send_gateway_user_id(gateway_http_client: httpx.Client) -> None:
+    """message/send with only X-DataRobot-User-Id (direct API call via gateway)."""
+    payload = make_a2a_message_send_payload("Say 'hello world' and nothing else.")
+    response = gateway_http_client.post(A2A_PATH, json=payload)
+    _assert_successful_message_send(response, payload)

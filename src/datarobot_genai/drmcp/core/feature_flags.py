@@ -16,7 +16,7 @@ from async_lru import alru_cache
 from datarobot_genai.drmcpbase.datarobot_services.feature_flags import (
     is_mcp_tools_gallery_support_enabled,
 )
-from datarobot_genai.drtools.core.credentials import get_credentials
+from datarobot_genai.drmcputils.credentials import get_credentials
 
 
 class FeatureFlag:

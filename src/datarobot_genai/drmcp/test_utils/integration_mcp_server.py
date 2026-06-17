@@ -40,7 +40,6 @@ import datarobot_predict.deployment as _dr_predict_deployment
 
 from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
 from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
@@ -48,9 +47,9 @@ from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
 )
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_template_versions
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import get_stub_prompt_templates
-from datarobot_genai.drtools.core.clients import datarobot as tools_datarobot_client
-from datarobot_genai.drtools.core.credentials import get_credentials
-from datarobot_genai.drtools.core.exceptions import ToolError
+from datarobot_genai.drmcputils.clients import datarobot as tools_datarobot_client
+from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import ToolError
 
 # Import elicitation test tool to register it with the MCP server
 try:
@@ -167,7 +166,6 @@ def apply_lineage_manager_stubs() -> None:
     LineageManager.__init__ = Mock(return_value=None)  # type: ignore[assignment]
     LineageManager.sync_mcp_tools = AsyncMock()  # type: ignore[assignment]
     LineageManager.sync_mcp_prompts = AsyncMock()  # type: ignore[assignment]
-    FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user = AsyncMock()  # type: ignore[assignment]
 
 
 def _apply_dr_sdk_stubs(stub_dr: Any, mock_rest: MagicMock) -> None:

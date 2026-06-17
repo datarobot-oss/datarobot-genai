@@ -547,10 +547,10 @@ def test_create_dr_client() -> StubDRClient:
                     ]
                 }
             )
-        if "externalDataDrivers" in url and "execute" in url:
+        if "externalDataStores" in url and "previewQuery" in url:
             return StubRestResponse(
                 {
-                    "data": [{"id": 1, "name": "test"}],
+                    "records": [{"id": 1, "name": "test"}],
                     "columns": ["id", "name"],
                 }
             )

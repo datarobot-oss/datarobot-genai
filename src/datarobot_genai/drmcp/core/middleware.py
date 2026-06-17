@@ -19,10 +19,10 @@ from typing import Any
 from datarobot_genai.drmcpbase.middleware import AuthContextExtractor
 from datarobot_genai.drmcpbase.middleware import OAuthMiddleWare
 from datarobot_genai.drmcpbase.middleware import register_oauth_middleware
-from datarobot_genai.drtools.core.auth import extract_auth_context_from_headers
-from datarobot_genai.drtools.core.auth import set_auth_context
-from datarobot_genai.drtools.core.auth import set_request_headers
-from datarobot_genai.drtools.core.constants import AUTH_CTX_KEY
+from datarobot_genai.drmcputils.auth import extract_auth_context_from_headers
+from datarobot_genai.drmcputils.auth import set_auth_context
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.constants import AUTH_CTX_KEY
 
 
 def create_oauth_middleware(

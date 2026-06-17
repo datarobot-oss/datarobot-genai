@@ -8,13 +8,19 @@
 /setup.py @datarobot-oss/buzok @datarobot-oss/mcp
 /uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
 /e2e-tests/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
+/README.md @datarobot-oss/buzok @datarobot-oss/mcp
+/.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
+/.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
+/scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
 
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
 /src/datarobot_genai/drmcpbase/ @datarobot-oss/mcp
+/src/datarobot_genai/drmcputils/ @datarobot-oss/mcp
 /tests/drmcp/ @datarobot-oss/mcp
 /tests/drmcpbase/ @datarobot-oss/mcp
+/tests/drmcputils/ @datarobot-oss/mcp
 /tests/drtools/ @datarobot-oss/mcp
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp

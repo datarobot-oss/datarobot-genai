@@ -52,6 +52,58 @@ def run_agent_input_with_history() -> Any:
     return make_run_agent_input_with_history()
 
 
+def make_run_agent_input_with_tool_history() -> Any:
+    """RunAgentInput whose history has tool calls in BOTH content cases.
+
+    - an assistant turn with text content *and* a tool call, and
+    - a tool-call-only assistant turn (empty content).
+    Used to verify tool calls surface in history across frameworks.
+    """
+    from ag_ui.core import AssistantMessage
+    from ag_ui.core import FunctionCall
+    from ag_ui.core import RunAgentInput
+    from ag_ui.core import ToolCall
+    from ag_ui.core import ToolMessage
+    from ag_ui.core import UserMessage
+
+    return RunAgentInput(
+        messages=[
+            UserMessage(id="user_1", content="weather in Paris?"),
+            AssistantMessage(
+                id="asst_1",
+                content="Let me check the weather.",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="get_weather", arguments='{"city": "Paris"}'),
+                    )
+                ],
+            ),
+            ToolMessage(id="tool_1", content="18C, sunny", tool_call_id="c1"),
+            AssistantMessage(
+                id="asst_2",
+                content=None,
+                tool_calls=[
+                    ToolCall(id="c2", function=FunctionCall(name="log_event", arguments="{}"))
+                ],
+            ),
+            UserMessage(id="user_2", content="and tomorrow?"),
+        ],
+        tools=[],
+        forwarded_props=dict(model="m", authorization_context={}, forwarded_headers={}),
+        thread_id="thread_id",
+        run_id="run_id",
+        state={},
+        context=[],
+    )
+
+
+@pytest.fixture
+def run_agent_input_with_tool_history() -> Any:
+    """Fixture: multi-turn history with tool calls in both content cases."""
+    return make_run_agent_input_with_tool_history()
+
+
 @pytest.fixture
 def agent_auth_context_data() -> dict[str, Any]:
     """Return sample authorization context data with required AuthCtx fields."""

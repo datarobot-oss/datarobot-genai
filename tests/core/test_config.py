@@ -26,6 +26,7 @@ from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_model_name
 from datarobot_genai.core.config import default_nim_deployment_id
+from datarobot_genai.core.config import default_response_model
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 from datarobot_genai.core.config import deployment_url
 from datarobot_genai.core.config import get_max_history_messages_default
@@ -126,6 +127,29 @@ def test_default_model_name_returns_none_when_unset() -> None:
     cfg = _make_config(llm_default_model=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_model_name() is None
+
+
+# --- default_response_model (configured model reported in chat/completions responses) ---
+
+
+def test_default_response_model_prefixes_configured_value() -> None:
+    cfg = _make_config(llm_default_model="azure/gpt-4o")
+    with patch.object(config_mod, "Config", return_value=cfg):
+        assert default_response_model() == "datarobot/azure/gpt-4o"
+
+
+def test_default_response_model_keeps_existing_datarobot_prefix() -> None:
+    cfg = _make_config(llm_default_model="datarobot/anthropic/claude-sonnet-4-20250514")
+    with patch.object(config_mod, "Config", return_value=cfg):
+        assert default_response_model() == "datarobot/anthropic/claude-sonnet-4-20250514"
+
+
+def test_default_response_model_falls_back_to_deployed_llm_when_unset() -> None:
+    # Never returns None — must terminate in the same literal the LLM client uses,
+    # otherwise response.model could regress to "unknown-model".
+    cfg = _make_config(llm_default_model=None)
+    with patch.object(config_mod, "Config", return_value=cfg):
+        assert default_response_model() == "datarobot/datarobot-deployed-llm"
 
 
 # --- default_use_datarobot_llm_gateway ---

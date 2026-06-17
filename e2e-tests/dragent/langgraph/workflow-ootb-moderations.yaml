@@ -1,0 +1,95 @@
+---
+# Copyright 2026 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# E2E overlay: gateway extended thinking via workflow ``extra_body`` (see docs/nat/llm.md).
+base: workflow.yaml
+
+middleware:
+  datarobot_guardrails:
+    _type: datarobot_moderation
+    moderation:
+      timeout_sec: 60
+      guards:
+        - name: Token Count Prompt
+          type: ootb
+          ootb_type: token_count
+          stage: prompt
+          intervention:
+            action: report
+
+        - name: Token Count Response
+          type: ootb
+          ootb_type: token_count
+          stage: response
+          intervention:
+            action: report
+
+        - name: Rouge 1
+          type: ootb
+          ootb_type: rouge_1
+          stage: response
+          intervention:
+            action: report
+
+        - name: Cost
+          type: ootb
+          ootb_type: cost
+          stage: response
+          additional_guard_config:
+            cost:
+              currency: USD
+              input_price: 1
+              input_unit: 1
+              output_price: 1
+              output_unit: 1
+          intervention:
+            action: report
+
+        - name: Faithfulness
+          type: ootb
+          ootb_type: faithfulness
+          stage: response
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          intervention:
+            action: report
+
+        - name: Agent Goal Accuracy
+          type: ootb
+          ootb_type: agent_goal_accuracy
+          stage: response
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          intervention:
+            action: report
+
+        - name: Guideline Adherence
+          type: ootb
+          ootb_type: agent_guideline_adherence
+          stage: response
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          additional_guard_config:
+            agent_guideline: "The response should fully answer the query."
+          intervention:
+            action: report
+
+        - name: Task Adherence
+          type: ootb
+          ootb_type: task_adherence
+          stage: response
+          llm_type: llmGateway
+          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          intervention:
+            action: report

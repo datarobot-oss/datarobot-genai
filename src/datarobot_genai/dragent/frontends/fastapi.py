@@ -18,7 +18,10 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import FastAPI
+from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
@@ -36,6 +39,7 @@ from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
+from .session import _auth_handler
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
@@ -43,19 +47,70 @@ DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/
 logger = logging.getLogger(__name__)
 
 
+_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
+_GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
+_INVALID_AUTH_CONTEXT_MSG = (
+    "X-DataRobot-Authorization-Context header is present but invalid or expired"
+)
+
+
+def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
+    """Extract gateway-validated user identity from A2A-forwarded headers.
+
+    Resolution order (first match wins):
+
+    1. ``X-DataRobot-Authorization-Context`` -- signed JWT forwarded by
+       components in the agent application template.  Decoded via
+       :data:`_auth_handler` and hashed through
+       ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
+       key as the AG-UI path.  When this header is present but validation
+       fails, raises :class:`~a2a.utils.errors.ServerError` with
+       :class:`~a2a.types.InvalidParamsError` (no fall-through to other headers
+       or ``context_id``).
+    2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
+       gateway, tied to the API-key owner.  Used only when the auth-context
+       header is absent.  Same ``_from_session_cookie`` transform is applied
+       for key-format consistency.
+    3. ``None`` -- no gateway-provided identity (local dev).
+
+    Returns ``None`` when *headers* are absent or contain no recognised
+    identity header.
+    """
+    if not headers:
+        return None
+
+    if _AUTH_CONTEXT_HEADER in headers:
+        try:
+            auth_ctx = _auth_handler.get_context(headers)
+        except Exception:
+            logger.warning("Failed to decode auth-context header", exc_info=True)
+            auth_ctx = None
+        if auth_ctx is None:
+            raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
+        return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
+
+    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
+    if raw_user_id:
+        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
+
+    return None
+
+
 class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
     """Subclass of NATWorkflowAgentExecutor that supports per-user workflows.
 
-    Two problems with the parent class for per-user workflows:
+    Three problems with the parent class for per-user workflows:
 
     1. ``__init__`` accesses ``session_manager.workflow`` which raises ``ValueError``
        for per-user workflows.  We bypass it and log via ``config.workflow.type`` instead.
 
     2. ``execute`` calls ``self.session_manager.session()`` with no ``user_id``. NAT 1.6+
-       would overwrite a preset ``ContextState.user_id`` with ``None``. We set the A2A
-       ``context_id`` on that context var before delegating; :class:`DRAgentAGUISessionManager`
-       merges it into the ``user_id`` argument so each conversation gets its own per-user
-       workflow instance without requiring a Bearer JWT.
+       would overwrite a preset ``ContextState.user_id`` with ``None``. We resolve the
+       gateway-validated identity from forwarded A2A headers and set *that* on the context
+       var before delegating; :class:`DRAgentAGUISessionManager` merges it into the
+       ``user_id`` argument so each user gets their own per-user workflow instance.
+       When no authenticated identity is available (local dev), we fall back to the A2A
+       ``context_id``.
 
     3. ``execute`` does not forward the incoming A2A HTTP request headers into the NAT
        context.  We forward all headers from the A2A call context so that auth
@@ -73,25 +128,35 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:  # type: ignore[override]
-        # Inject the A2A context_id as user_id before delegating to the parent execute.
-        # DRAgentAGUISessionManager.session copies this into the explicit user_id
-        # parameter because NAT 1.6+ session() replaces the context var with None.
-        token = None
-        if context.context_id:
-            token = self.session_manager._context_state.user_id.set(context.context_id)
-
         # Forward incoming A2A HTTP headers so DRAgentAGUISessionManager.session()
         # can inject them into NAT context metadata.  Auth providers pick the specific
         # headers they need (e.g. x-datarobot-external-access-token, Authorization).
+        # Extracted first because identity resolution reads these headers.
+        normalised_headers: dict[str, str] | None = None
         token_headers = None
         if context.call_context and isinstance(context.call_context.state, dict):
             raw_headers = context.call_context.state.get("headers")
             if raw_headers and isinstance(raw_headers, dict):
-                # Lowercase keys to match NAT's header normalisation convention.
-                normalised = {k.lower(): v for k, v in raw_headers.items()}
-                token_headers = _a2a_headers.set(normalised)
+                normalised_headers = {k.lower(): v for k, v in raw_headers.items()}
+                token_headers = _a2a_headers.set(normalised_headers)
 
+        # Identity resolution must happen *before* super().execute() so that a
+        # ServerError(InvalidParamsError) propagates directly.  The parent's
+        # execute() has a catch-all that re-wraps exceptions as InternalError.
+        token = None
         try:
+            workflow_key = _resolve_identity_from_headers(normalised_headers)
+            if workflow_key is None and context.context_id:
+                workflow_key = UserInfo._from_session_cookie(context.context_id).get_user_id()
+                logger.warning(
+                    "No authenticated identity in A2A headers; falling back to context_id "
+                    "for per-user workflow key. This is expected in local dev but should not "
+                    "occur in production behind the DataRobot gateway."
+                )
+
+            if workflow_key:
+                token = self.session_manager._context_state.user_id.set(workflow_key)
+
             await super().execute(context, event_queue)
         finally:
             if token is not None:
@@ -224,6 +289,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
 
 class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        # NAT's FastApiFrontEndPlugin.run() finally-block accesses self._dask_client
+        # directly, but that attribute is only set lazily by the dask_client property.
+        # When dask isn't installed it is never set, so shutdown raises AttributeError.
+        self._dask_client = None
+
     async def run(self) -> None:
         # Resolve ``workflow.yaml`` before NAT builds the app (gunicorn calls ``get_app()`` in
         # the parent process, which initializes middleware including datarobot_moderation).

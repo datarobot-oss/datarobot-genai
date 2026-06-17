@@ -40,8 +40,15 @@ The configuration surface (``memory_name``, ``inner_agent_name``,
 ``save_user_messages_to_memory``, ``retrieve_memory_for_every_response``,
 ``save_ai_messages_to_memory``, ``search_params``, ``add_params``) is inherited
 from upstream ``AutoMemoryAgentConfig`` so the two wrappers can be swapped
-without reauthoring ``workflow.yaml``.
+without reauthoring ``workflow.yaml``. When the referenced memory backend is
+unconfigured (``dr_mem0_memory`` with no credentials), the wrapper passthroughs
+to the inner agent without memory operations.
 """
+
+import os
+
+# Mem0 reads MEM0_TELEMETRY at import time; set before any transitive mem0 import.
+os.environ["MEM0_TELEMETRY"] = "False"
 
 import logging
 import uuid
@@ -49,6 +56,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from typing import Any
 
+from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgUiSystemMessage
 from ag_ui.core import UserMessage as AgUiUserMessage
@@ -60,9 +68,11 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.memory.models import MemoryItem
 from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
+from datarobot_genai.core.agents.base import STREAMING_MEMORY_CONTEXT_PREFIX
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.nat.datarobot_mem0_memory import is_memory_editor_configured
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +88,8 @@ class StreamingMemoryAgentConfig(  # type: ignore[call-arg, misc]
     ``save_ai_messages_to_memory``, ``search_params``, and ``add_params``
     from :class:`AutoMemoryAgentConfig`.  Only the ``_type`` discriminator
     differs, so a workflow can switch between the two by renaming ``_type``.
+    When the referenced memory backend is unconfigured, the wrapper passthroughs
+    to the inner agent without memory capture or retrieval.
     """
 
 
@@ -101,7 +113,7 @@ def _user_id_from_context() -> str:
     return "default_user"
 
 
-def _last_user_text(messages: list[Any]) -> str:
+def _last_user_text(messages: list[Message]) -> str:
     for msg in reversed(messages):
         if isinstance(msg, AgUiUserMessage) and msg.content:
             content = msg.content
@@ -111,9 +123,9 @@ def _last_user_text(messages: list[Any]) -> str:
     return ""
 
 
-def _with_memory_context(messages: list[Any], memory_text: str) -> list[Any]:
+def _with_memory_context(messages: list[Message], memory_text: str) -> list[Message]:
     """Return a new list with a system message inserted before the last user message."""
-    payload = f"Relevant context from memory:\n{memory_text}"
+    payload = f"{STREAMING_MEMORY_CONTEXT_PREFIX}{memory_text}"
     sys_msg = AgUiSystemMessage(id=str(uuid.uuid4()), content=payload)
     out = list(messages)
     for i in range(len(out) - 1, -1, -1):
@@ -133,8 +145,33 @@ async def streaming_memory_agent(
     config: StreamingMemoryAgentConfig, builder: Builder
 ) -> AsyncGenerator[Any, None]:
     """Build the streaming memory agent workflow."""
-    memory_editor = await builder.get_memory_client(config.memory_name)
     inner_agent_fn = await builder.get_function(config.inner_agent_name)
+
+    async def _stream_to_str(
+        responses: AsyncGenerator[DRAgentEventResponse],
+    ) -> str:
+        aggregated = aggregate_dragent_event_responses([r async for r in responses])
+        return convert_dragent_event_response_to_str(aggregated)
+
+    memory_editor = await builder.get_memory_client(config.memory_name)
+
+    if not is_memory_editor_configured(memory_editor):
+
+        async def _passthrough_stream_fn(
+            input_message: RunAgentInput,
+        ) -> Annotated[
+            AsyncGenerator[DRAgentEventResponse, None],
+            Streaming(convert=aggregate_dragent_event_responses),
+        ]:
+            async for event_response in inner_agent_fn.astream(input_message):
+                yield event_response
+
+        yield FunctionInfo.create(
+            stream_fn=_passthrough_stream_fn,
+            stream_to_single_fn=_stream_to_str,
+            description=config.description,
+        )
+        return
 
     async def _stream_fn(
         input_message: RunAgentInput,
@@ -205,12 +242,6 @@ async def streaming_memory_agent(
                         )
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("memory.add_items(assistant) failed: %s", exc)
-
-    async def _stream_to_str(
-        responses: AsyncGenerator[DRAgentEventResponse],
-    ) -> str:
-        aggregated = aggregate_dragent_event_responses([r async for r in responses])
-        return convert_dragent_event_response_to_str(aggregated)
 
     yield FunctionInfo.create(
         stream_fn=_stream_fn,

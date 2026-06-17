@@ -20,13 +20,13 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drtools.core.auth import get_oauth_access_token_with_header_fallback
-from datarobot_genai.drtools.core.auth import resolve_datarobot_token
-from datarobot_genai.drtools.core.auth import resolve_secret
-from datarobot_genai.drtools.core.auth import set_request_headers
-from datarobot_genai.drtools.core.credentials import AuthResolutionStrategy
-from datarobot_genai.drtools.core.exceptions import ToolError
-from datarobot_genai.drtools.core.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.auth import get_oauth_access_token_with_header_fallback
+from datarobot_genai.drmcputils.auth import resolve_datarobot_token
+from datarobot_genai.drmcputils.auth import resolve_secret
+from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
 
 def _mock_tools_credentials(
@@ -55,7 +55,7 @@ def credentials_holder(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
         return holder["creds"]
 
     monkeypatch.setattr(
-        "datarobot_genai.drtools.core.auth.get_credentials",
+        "datarobot_genai.drmcputils.auth.get_credentials",
         _get_credentials,
     )
     return holder
@@ -90,7 +90,7 @@ class TestResolveDatarobotToken:
 
         assert resolve_datarobot_token() == "config-token"
 
-    @patch("datarobot_genai.drtools.core.auth.get_request_headers")
+    @patch("datarobot_genai.drmcputils.auth.get_request_headers")
     def test_safe_request_headers_on_exception(
         self,
         mock_get_headers: MagicMock,
@@ -136,7 +136,7 @@ class TestResolveSecret:
 
         assert resolve_secret("x-tavily-api-key", "") is None
 
-    @patch("datarobot_genai.drtools.core.auth.get_request_headers")
+    @patch("datarobot_genai.drmcputils.auth.get_request_headers")
     def test_safe_request_headers_on_exception(
         self,
         mock_get_headers: MagicMock,
@@ -174,7 +174,7 @@ class TestGetOauthAccessTokenWithHeaderFallbackStrategy:
         credentials_holder["creds"] = _mock_tools_credentials(strategy=AuthResolutionStrategy.HTTP)
 
         with patch(
-            "datarobot_genai.drtools.core.auth.get_access_token",
+            "datarobot_genai.drmcputils.auth.get_access_token",
             new_callable=AsyncMock,
             side_effect=RuntimeError("no context"),
         ):

@@ -152,8 +152,6 @@ class NatAgent(BaseAgent[None]):
 
         Chat history is automatically appended by `invoke` when
         max_history_messages > 0 (controlled via DATAROBOT_GENAI_MAX_HISTORY_MESSAGES env var).
-        Include a `{memory}` placeholder in the returned prompt to opt into
-        automatic long-term memory retrieval and storage for the run.
 
         Default implementation returns the raw user message content.
         """
@@ -176,17 +174,7 @@ class NatAgent(BaseAgent[None]):
 
         """
         # Build the user prompt from the template
-        user_prompt_content = extract_user_prompt_content(run_agent_input)
         user_prompt = self.make_user_prompt(run_agent_input)
-        uses_memory = "{memory}" in user_prompt
-
-        if uses_memory:
-            memory = ""
-            try:
-                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("NAT memory retrieval failed: %s", exc)
-            user_prompt = user_prompt.replace("{memory}", memory)
 
         # Automatically inject chat history when enabled (max_history_messages > 0)
         history_summary = self.build_history_summary(run_agent_input)
@@ -219,7 +207,11 @@ class NatAgent(BaseAgent[None]):
         message_id = str(uuid.uuid4())
         text_started = False
 
-        async with load_workflow(self.workflow_path, headers=self.forwarded_headers) as workflow:
+        async with load_workflow(
+            self.workflow_path,
+            headers=self.forwarded_headers,
+            disable_datarobot_moderation=True,
+        ) as workflow:
             async with workflow.session(user_id=thread_id) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()
@@ -272,11 +264,6 @@ class NatAgent(BaseAgent[None]):
                             usage_metrics["completion_tokens"] += token_usage.completion_tokens
 
                     pipeline_interactions = self.create_pipeline_interactions_from_steps(steps)
-                    if uses_memory:
-                        try:
-                            await self.store_memory_for_run(user_prompt_content, run_agent_input)
-                        except Exception as exc:
-                            logger.warning("NAT memory storage failed: %s", exc)
                     yield (
                         RunFinishedEvent(
                             type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id
@@ -299,7 +286,11 @@ class NatAgent(BaseAgent[None]):
             ChatResponse | str: The result from the NAT workflow
             list[IntermediateStep]: The list of intermediate steps
         """
-        async with load_workflow(workflow_path, headers=headers) as workflow:
+        async with load_workflow(
+            workflow_path,
+            headers=headers,
+            disable_datarobot_moderation=True,
+        ) as workflow:
             async with workflow.session(user_id=str(uuid.uuid4())) as session:
                 async with session.run(chat_request) as runner:
                     intermediate_future = pull_intermediate_structured()

@@ -37,14 +37,17 @@ _FRONTEND_COMMANDS: dict[str, dict[str, str]] = {
 }
 
 
-_OTEL_ENV_KEYS = ("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS")
-
-
 def _bridge_pulumi_otel_env() -> None:
-    """Read OTel vars from pulumi_config.json into os.environ (lowest priority).
+    """Read OTel vars from pulumi_config.json and assemble headers with live API token.
 
-    Searches from CWD upward. Uses setdefault so explicit env vars are never overridden.
+    Searches from CWD upward for pulumi_config.json. Reads OTEL_ENTITY_ID and
+    OTEL_EXPORTER_OTLP_ENDPOINT from it, then assembles OTEL_EXPORTER_OTLP_HEADERS
+    from the entity ID + the current DATAROBOT_API_TOKEN env var.
+    Skips entirely if OTEL_EXPORTER_OTLP_HEADERS is already set.
     """
+    if os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"):
+        return
+
     cwd = Path.cwd()
     for directory in [cwd, *cwd.parents]:
         config_path = directory / "pulumi_config.json"
@@ -55,9 +58,21 @@ def _bridge_pulumi_otel_env() -> None:
                 return
             if not isinstance(data, dict):
                 return
-            for key in _OTEL_ENV_KEYS:
-                if key in data and data[key]:
-                    os.environ.setdefault(key, str(data[key]))
+            endpoint = data.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+            if endpoint:
+                os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", str(endpoint))
+            entity_id = data.get("OTEL_ENTITY_ID", "")
+            api_token = os.environ.get("DATAROBOT_API_TOKEN", "")
+            if entity_id and api_token:
+                os.environ.setdefault(
+                    "OTEL_EXPORTER_OTLP_HEADERS",
+                    f"x-datarobot-entity-id={entity_id},x-datarobot-api-key={api_token}",
+                )
+            elif data.get("OTEL_EXPORTER_OTLP_HEADERS"):
+                os.environ.setdefault(
+                    "OTEL_EXPORTER_OTLP_HEADERS",
+                    str(data["OTEL_EXPORTER_OTLP_HEADERS"]),
+                )
             return
 
 

@@ -24,9 +24,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import Tool
 from fastmcp.tools.tool import ToolResult
 
-from datarobot_genai.drmcp.core.dynamic_tools.register import ExternalToolRegistrationConfig
-from datarobot_genai.drmcp.core.dynamic_tools.register import _external_tool_callable_factory
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
+from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
+from datarobot_genai.drmcpbase.dynamic_tools.external_tool import _external_tool_callable_factory
 
 
 @pytest.fixture
@@ -382,14 +382,14 @@ class TestExternalToolCallableErrorHandling:
         )
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_http_400_raises_tool_error(self, mock_config, mock_headers, simple_tool_config):
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_http_400_raises_tool_error(self, mock_headers, simple_tool_config):
         """Test that HTTP 400 responses raise ToolError with error details."""
-        mock_config.return_value.tool_registration_allow_empty_schema = True
         error_body = '{"detail": "stop sequence too long"}'
 
-        callable_fn = _external_tool_callable_factory(simple_tool_config)
+        callable_fn = _external_tool_callable_factory(simple_tool_config, allow_empty=True)
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
@@ -399,14 +399,14 @@ class TestExternalToolCallableErrorHandling:
                 await callable_fn(input_model())
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_http_500_raises_tool_error(self, mock_config, mock_headers, simple_tool_config):
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_http_500_raises_tool_error(self, mock_headers, simple_tool_config):
         """Test that HTTP 500 responses raise ToolError."""
-        mock_config.return_value.tool_registration_allow_empty_schema = True
         error_body = '{"detail": "Internal server error"}'
 
-        callable_fn = _external_tool_callable_factory(simple_tool_config)
+        callable_fn = _external_tool_callable_factory(simple_tool_config, allow_empty=True)
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
@@ -416,16 +416,14 @@ class TestExternalToolCallableErrorHandling:
                 await callable_fn(input_model())
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_http_200_returns_tool_result(
-        self, mock_config, mock_headers, simple_tool_config
-    ):
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_http_200_returns_tool_result(self, mock_headers, simple_tool_config):
         """Test that HTTP 200 responses return a ToolResult (regression guard)."""
-        mock_config.return_value.tool_registration_allow_empty_schema = True
         response_body = '{"result": "success"}'
 
-        callable_fn = _external_tool_callable_factory(simple_tool_config)
+        callable_fn = _external_tool_callable_factory(simple_tool_config, allow_empty=True)
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:
@@ -440,19 +438,17 @@ class TestExternalToolCallableErrorHandling:
             assert isinstance(result, ToolResult)
 
     @pytest.mark.asyncio
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_http_headers", return_value={})
-    @patch("datarobot_genai.drmcp.core.dynamic_tools.register.get_config")
-    async def test_error_message_includes_response_body(
-        self, mock_config, mock_headers, simple_tool_config
-    ):
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_error_message_includes_response_body(self, mock_headers, simple_tool_config):
         """Test that the error message includes the deployment's error response body."""
-        mock_config.return_value.tool_registration_allow_empty_schema = True
         error_body = (
             '{"message":"The stop sequence you provided at index 0 is longer than '
             'the model limit of 10 characters."}'
         )
 
-        callable_fn = _external_tool_callable_factory(simple_tool_config)
+        callable_fn = _external_tool_callable_factory(simple_tool_config, allow_empty=True)
         input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
 
         with aioresponses() as mocked:

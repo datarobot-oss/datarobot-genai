@@ -34,8 +34,6 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 
 LLM = os.environ.get("LLM")
 
-ALL_TEST_CASES = os.environ.get("ALL_TEST_CASES") == "true"
-
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
 
@@ -94,15 +92,6 @@ def spawn_runner(
     )
 
 
-# Prompt/response OOTB token_count guards only in e2e dragent workflow moderation blocks.
-EXPECTED_DATAROBOT_MODERATION_TOKEN_KEYS = frozenset(
-    {
-        "Prompts_token_count",
-        "Responses_token_count",
-    }
-)
-
-
 def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
     uid = uuid.uuid4().hex[:8]
     return {
@@ -127,6 +116,18 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
                 break
             responses.append(DRAgentEventResponse.model_validate_json(data))
     return responses
+
+
+def stream_sse_responses(http_client: httpx.Client, payload: dict) -> list[DRAgentEventResponse]:  # type: ignore[type-arg]
+    """POST ``payload`` to the streaming generate endpoint and parse the SSE stream.
+
+    Asserts a 200 ``text/event-stream`` response, then returns the parsed
+    DRAgentEventResponse chunks. Shared by the streaming e2e tests.
+    """
+    with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        return parse_sse_responses(response)
 
 
 def collect_ag_ui_events(responses: list[DRAgentEventResponse]) -> list[Event]:  # type: ignore[type-arg]

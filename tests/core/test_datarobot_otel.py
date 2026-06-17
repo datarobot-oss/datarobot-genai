@@ -23,6 +23,7 @@ from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
 
 from datarobot_genai.core import datarobot_otel
+from datarobot_genai.core.telemetry_nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
@@ -106,6 +107,7 @@ class TestBootstrapOtelProvider:
 
         provider = trace.get_tracer_provider()
         assert isinstance(provider, TracerProvider)
+        assert getattr(provider, _NAT_TRACER_WRAPPED_ATTR, False)
 
         # Resource attributes include service.name derived from MLOPS_DEPLOYMENT_ID.
         attrs = provider.resource.attributes
@@ -189,8 +191,9 @@ class TestBootstrapOtelProvider:
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
 
-        # Provider was kept (not replaced); sentinel resource attrs survive.
+        # SDK provider was kept (not replaced); get_tracer is patched for NAT joins.
         assert trace.get_tracer_provider() is pre_existing
+        assert getattr(pre_existing, _NAT_TRACER_WRAPPED_ATTR, False)
         assert pre_existing.resource.attributes["test.sentinel"] == "yes"
         assert pre_existing.resource.attributes["service.name"] == "preexisting-service"
 

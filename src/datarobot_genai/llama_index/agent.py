@@ -50,7 +50,8 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.core.memory.base import BaseMemoryClient
+from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
+from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
     from ragas import MultiTurnSample
@@ -118,8 +119,8 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         timeout: int = 90,
         forwarded_headers: dict[str, str] | None = None,
         max_history_messages: int | None = None,
-        memory_client: BaseMemoryClient | None = None,
         model: str | None = None,
+        structured_history: bool = True,
         allow_parallel_tool_calls: bool = True,
     ) -> None:
         super().__init__(
@@ -131,10 +132,22 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             timeout=timeout,
             forwarded_headers=forwarded_headers,
             max_history_messages=max_history_messages,
-            memory_client=memory_client,
             model=model,
         )
+        self._structured_history = structured_history
         self.allow_parallel_tool_calls = allow_parallel_tool_calls
+
+    @property
+    def structured_history(self) -> bool:
+        """When true, prior turns are fed to the model as structured native
+        ``ChatMessage`` history (tool calls preserved) instead of the text
+        ``{chat_history}`` summary. Only applies when the prompt has no
+        ``{chat_history}`` placeholder.
+
+        Defaults to ``True`` so multi-turn history is replayed by default; pass
+        ``structured_history=False`` to opt out.
+        """
+        return self._structured_history
 
     @abc.abstractmethod
     async def build_workflow(self) -> Any:
@@ -150,22 +163,23 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         """Run the LlamaIndex workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
         input_message = str(user_prompt_content)
-        uses_memory = "{memory}" in input_message
 
-        # Handle {chat_history} placeholder replacement for subclass templates
+        # Prior turns reach the model as a text {chat_history} summary when the
+        # prompt uses the placeholder, or as structured native ChatMessage history
+        # (tool calls preserved) when structured_history is opt-in.
+        structured_chat_history = None
         if "{chat_history}" in input_message:
             history_summary = self.build_history_summary(run_agent_input)
             formatted_history = (
                 f"\n\nPrior conversation:\n{history_summary}" if history_summary else ""
             )
             input_message = input_message.replace("{chat_history}", formatted_history)
-        if uses_memory:
-            memory = ""
-            try:
-                memory = await self.retrieve_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory retrieval failed: %s", exc)
-            input_message = input_message.replace("{memory}", memory)
+        elif self.structured_history:
+            structured_chat_history = (
+                ag_ui_history_to_chat_messages(self.history_messages(run_agent_input)) or None
+            )
+
+        input_message = prepend_streaming_memory_to_prompt(input_message, run_agent_input)
 
         logger.info(f"Running agent with user prompt: {input_message}")
 
@@ -183,13 +197,21 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
         # Subclasses may implement build_workflow as async or sync; support both.
         built: Any = self.build_workflow()
         workflow = await built if inspect.isawaitable(built) else built
-        handler = workflow.run(user_msg=input_message)
+        run_kwargs: dict[str, Any] = {"user_msg": input_message}
+        if structured_chat_history:
+            run_kwargs["chat_history"] = structured_chat_history
+        handler = workflow.run(**run_kwargs)
 
         events: list[Any] = []
         current_agent_name: str | None = None
         message_id = str(uuid.uuid4())
         text_started = False
         any_text_emitted = False
+        # Id of the most recently closed assistant text bubble. A following tool call
+        # names it as its parent_message_id so the call attaches to the message that
+        # introduced it (AG-UI grouping) instead of an orphan id; reset on a tool
+        # result so a later text-less step can't reuse a stale bubble id.
+        last_text_message_id: str | None = None
 
         async for event in handler.stream_events():
             events.append(event)
@@ -324,6 +346,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                     if names:
                         logger.info(f"Planning to use tools: {names}")
             elif event_type == "ToolCallResult":
+                # The tool-calling step is complete; clear the captured bubble id so a
+                # later text-less step doesn't attach its tool calls to a stale bubble.
+                last_text_message_id = None
                 tname = getattr(event, "tool_name", None)
                 tid = getattr(event, "tool_id", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -360,6 +385,9 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
                     text_started = False
+                    # Capture the closed bubble's id (before minting a fresh one) so the
+                    # tool call below can name it as its parent_message_id.
+                    last_text_message_id = message_id
                     message_id = str(uuid.uuid4())
                 tname = getattr(event, "tool_name", None)
                 tkwargs = getattr(event, "tool_kwargs", None)
@@ -371,6 +399,7 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
                         type=EventType.TOOL_CALL_START,
                         tool_call_id=tid,
                         tool_call_name=tname,
+                        parent_message_id=last_text_message_id or "",
                     ),
                     None,
                     usage_metrics,
@@ -451,11 +480,6 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
             )
 
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
-        if uses_memory:
-            try:
-                await self.store_memory_for_run(user_prompt_content, run_agent_input)
-            except Exception as exc:
-                logger.warning("LlamaIndex memory storage failed: %s", exc)
         # TODO: find a way to count usage (LlamaIndex does not report it)
         yield (
             RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
@@ -532,8 +556,8 @@ def datarobot_agent_class_from_llamaindex(
             timeout: int = 90,
             forwarded_headers: dict[str, str] | None = None,
             max_history_messages: int | None = None,
-            memory_client: BaseMemoryClient | None = None,
             model: str | None = None,
+            structured_history: bool = True,
             allow_parallel_tool_calls: bool = True,
         ) -> None:
             super().__init__(
@@ -545,8 +569,8 @@ def datarobot_agent_class_from_llamaindex(
                 timeout=timeout,
                 forwarded_headers=forwarded_headers,
                 max_history_messages=max_history_messages,
-                memory_client=memory_client,
                 model=model,
+                structured_history=structured_history,
                 allow_parallel_tool_calls=allow_parallel_tool_calls,
             )
             for agent in agents:
