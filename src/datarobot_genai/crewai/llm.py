@@ -43,9 +43,56 @@ class LitellmStopWordLLM(LLM):
         super().__init__(*args, **kwargs)
         self.is_litellm = True
 
+    def _apply_stop_words(self, content: str) -> str:
+        """Apply configured stop words, then truncate inline ReAct hallucinations."""
+        truncated = super()._apply_stop_words(content)
+        return self._truncate_react_hallucination_after_action_input(truncated)
+
+    @staticmethod
+    def _truncate_react_hallucination_after_action_input(content: str) -> str:
+        """Truncate hallucinated text appended after ``Action Input:``.
+
+        Models sometimes emit fake tool results or a second ReAct step inline,
+        without an ``Observation:`` label. Keep only the action-input value:
+        text on the same line as ``Action Input:``, stopping before any inline
+        ``Thought:`` or ``Final Answer:`` label.
+        """
+        marker = "Action Input:"
+        marker_start = content.find(marker)
+        if marker_start == -1:
+            return content
+
+        value_start = marker_start + len(marker)
+        value_text = content[value_start:]
+
+        # Earliest index in ``content`` where hallucinated suffix may begin.
+        truncation_points = [len(content)]
+
+        newline_in_value = value_text.find("\n")
+        if newline_in_value != -1:
+            truncation_points.append(value_start + newline_in_value)
+
+        for react_label in ("Thought:", "Final Answer:"):
+            label_offset = value_text.find(react_label)
+            # Ignore labels glued directly to the marker (offset 0).
+            if label_offset > 0:
+                truncation_points.append(value_start + label_offset)
+
+        cut_end = min(truncation_points)
+        if cut_end == len(content):
+            return content
+        return content[:cut_end].rstrip()
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
         """Enforce client-side stop-word truncation when API ignores stop parameter."""
         result = super().call(*args, **kwargs)
+        if isinstance(result, str):
+            return self._apply_stop_words(result)
+        return result
+
+    async def acall(self, *args: Any, **kwargs: Any) -> Any:
+        """Async variant of :meth:`call` used by ``Crew.akickoff``."""
+        result = await super().acall(*args, **kwargs)
         if isinstance(result, str):
             return self._apply_stop_words(result)
         return result
@@ -211,6 +258,7 @@ def get_router_llm(
             available_tools: list[dict] | None = None,
             **kwargs: Any,
         ) -> str:
+            call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
             response = await self._llm_router.acompletion(
@@ -223,6 +271,10 @@ def get_router_llm(
                 delta = chunk.choices[0].delta
                 if delta.content:
                     accumulated.append(delta.content)
+                    crewai_event_bus.emit(
+                        self,
+                        event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
+                    )
                     if callbacks:
                         for cb in callbacks:
                             if hasattr(cb, "on_llm_new_token"):

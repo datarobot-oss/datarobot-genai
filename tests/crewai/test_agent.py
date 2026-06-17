@@ -67,7 +67,7 @@ class CrewForTest:
         self.output = output
         self.verbose = True
 
-    async def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[name-defined]
+    async def akickoff(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[name-defined]
         return self.output or CrewOutput(raw="final-output")
 
 
@@ -220,9 +220,9 @@ async def test_invoke_does_not_include_chat_history_by_default(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+        def akickoff(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
+            return super().akickoff(inputs=inputs)
 
     out = CrewOutput(raw="agent result")
     agent = AgentForTest(
@@ -241,9 +241,9 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+        def akickoff(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
+            return super().akickoff(inputs=inputs)
 
     class AgentWithPlaceholder(AgentForTest):
         def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -272,9 +272,9 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+        def akickoff(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
+            return super().akickoff(inputs=inputs)
 
     class AgentWithOverride(AgentForTest):
         def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:
@@ -297,9 +297,9 @@ async def test_invoke_includes_tool_calls_in_history(
     captured_inputs: dict[str, Any] = {}
 
     class CapturingCrew(CrewForTest):
-        def kickoff_async(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
+        def akickoff(self, *, inputs: dict[str, Any]) -> CrewOutput | CrewStreamingOutput:  # type: ignore[override]
             captured_inputs.update(inputs)
-            return super().kickoff_async(inputs=inputs)
+            return super().akickoff(inputs=inputs)
 
     class AgentWithPlaceholder(AgentForTest):
         def make_kickoff_inputs(self, user_prompt_content: str) -> dict[str, Any]:

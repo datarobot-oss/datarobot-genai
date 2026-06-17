@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Artifact repository tools: read (list/get) and delete."""
+
 from typing import Annotated
 from typing import Any
 
@@ -28,28 +30,41 @@ from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 # ------------------------------------------------------------------ #
-# artifact_repository_list                                             #
+# artifact_repository_get  (list when no id, single when id)          #
 # ------------------------------------------------------------------ #
 
 
 @tool_metadata(
-    tags={"artifact", "repository", "workload", "datarobot", "list"},
+    tags={"artifact", "repository", "workload", "datarobot", "get", "list"},
     description=(
-        "[Artifact repository—list] Discover artifact repositories. Returns id, name, "
-        "type, and timestamps. Supports pagination and optional search/type filters.\n\n"
-        "Example: artifact_repository_list()\n"
-        "Example: artifact_repository_list(search='my-registry', artifact_type='service')"
+        "[Artifact repository—get] Read artifact repositories.\n"
+        "  - Omit repository_id to LIST repositories (id, name, type, timestamps); "
+        "paginated with optional search / type filters.\n"
+        "  - Set repository_id to GET a single repository (full metadata: name, type, "
+        "spec, timestamps).\n\n"
+        "Example (list): artifact_repository_get(search='my-registry', artifact_type='service')\n"
+        "Example (get):  artifact_repository_get(repository_id='repo-abc123')"
     ),
 )
-async def artifact_repository_list(
+async def artifact_repository_get(
     *,
-    search: Annotated[
-        str | None, "Case-insensitive filter on name, description, and partial id."
+    repository_id: Annotated[
+        str | None, "Id of the repository. Omit to list repositories with filters."
     ] = None,
-    artifact_type: Annotated[str | None, "Filter by type: 'service' or 'nim'."] = None,
-    limit: Annotated[int, "Max repositories to return (1–100). Default 100."] = 100,
-    offset: Annotated[int, "Repositories to skip for pagination. Default 0."] = 0,
+    search: Annotated[
+        str | None, "List filter: case-insensitive match on name, description, and partial id."
+    ] = None,
+    artifact_type: Annotated[str | None, "List filter by type: 'service' or 'nim'."] = None,
+    limit: Annotated[int, "Max repositories to return when listing (1–100). Default 100."] = 100,
+    offset: Annotated[int, "Repositories to skip for pagination when listing. Default 0."] = 0,
 ) -> dict[str, Any]:
+    if repository_id is not None:
+        rid = require_id(repository_id, "repository_id")
+        try:
+            return WorkloadApiClient().get_artifact_repository(rid)
+        except ClientError as exc:
+            raise_tool_error_for_client_error(exc)
+
     if offset < 0:
         raise ToolError(
             "Argument validation error: 'offset' must be >= 0.",
@@ -82,31 +97,7 @@ async def artifact_repository_list(
 
 
 # ------------------------------------------------------------------ #
-# artifact_repository_get                                              #
-# ------------------------------------------------------------------ #
-
-
-@tool_metadata(
-    tags={"artifact", "repository", "workload", "datarobot", "get"},
-    description=(
-        "[Artifact repository—get] Retrieve a single artifact repository by id. "
-        "Returns full metadata including name, type, spec, and timestamps.\n\n"
-        "Example: artifact_repository_get(repository_id='repo-abc123')"
-    ),
-)
-async def artifact_repository_get(
-    *,
-    repository_id: Annotated[str, "Id of the artifact repository to retrieve."],
-) -> dict[str, Any]:
-    rid = require_id(repository_id, "repository_id")
-    try:
-        return WorkloadApiClient().get_artifact_repository(rid)
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-
-# ------------------------------------------------------------------ #
-# artifact_repository_delete                                           #
+# artifact_repository_delete                                          #
 # ------------------------------------------------------------------ #
 
 
