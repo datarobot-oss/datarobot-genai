@@ -50,23 +50,38 @@ class LitellmStopWordLLM(LLM):
 
     @staticmethod
     def _truncate_react_hallucination_after_action_input(content: str) -> str:
-        """Drop inline fake observations that omit the ``Observation:`` label."""
+        """Truncate hallucinated text appended after ``Action Input:``.
+
+        Models sometimes emit fake tool results or a second ReAct step inline,
+        without an ``Observation:`` label. Keep only the action-input value:
+        text on the same line as ``Action Input:``, stopping before any inline
+        ``Thought:`` or ``Final Answer:`` label.
+        """
         marker = "Action Input:"
-        marker_idx = content.find(marker)
-        if marker_idx == -1:
+        marker_start = content.find(marker)
+        if marker_start == -1:
             return content
-        after_marker = content[marker_idx + len(marker) :]
-        cut_at = len(content)
-        line_break = after_marker.find("\n")
-        if line_break != -1:
-            cut_at = min(cut_at, marker_idx + len(marker) + line_break)
-        for stop in ("Thought:", "Final Answer:"):
-            stop_idx = after_marker.find(stop)
-            if stop_idx > 0:
-                cut_at = min(cut_at, marker_idx + len(marker) + stop_idx)
-        if cut_at == len(content):
+
+        value_start = marker_start + len(marker)
+        value_text = content[value_start:]
+
+        # Earliest index in ``content`` where hallucinated suffix may begin.
+        truncation_points = [len(content)]
+
+        newline_in_value = value_text.find("\n")
+        if newline_in_value != -1:
+            truncation_points.append(value_start + newline_in_value)
+
+        for react_label in ("Thought:", "Final Answer:"):
+            label_offset = value_text.find(react_label)
+            # Ignore labels glued directly to the marker (offset 0).
+            if label_offset > 0:
+                truncation_points.append(value_start + label_offset)
+
+        cut_end = min(truncation_points)
+        if cut_end == len(content):
             return content
-        return content[:cut_at].rstrip()
+        return content[:cut_end].rstrip()
 
     def call(self, *args: Any, **kwargs: Any) -> Any:
         """Enforce client-side stop-word truncation when API ignores stop parameter."""
