@@ -43,6 +43,31 @@ class LitellmStopWordLLM(LLM):
         super().__init__(*args, **kwargs)
         self.is_litellm = True
 
+    def _apply_stop_words(self, content: str) -> str:
+        """Apply configured stop words, then truncate inline ReAct hallucinations."""
+        truncated = super()._apply_stop_words(content)
+        return self._truncate_react_hallucination_after_action_input(truncated)
+
+    @staticmethod
+    def _truncate_react_hallucination_after_action_input(content: str) -> str:
+        """Drop inline fake observations that omit the ``Observation:`` label."""
+        marker = "Action Input:"
+        marker_idx = content.find(marker)
+        if marker_idx == -1:
+            return content
+        after_marker = content[marker_idx + len(marker) :]
+        cut_at = len(content)
+        line_break = after_marker.find("\n")
+        if line_break != -1:
+            cut_at = min(cut_at, marker_idx + len(marker) + line_break)
+        for stop in ("Thought:", "Final Answer:"):
+            stop_idx = after_marker.find(stop)
+            if stop_idx > 0:
+                cut_at = min(cut_at, marker_idx + len(marker) + stop_idx)
+        if cut_at == len(content):
+            return content
+        return content[:cut_at].rstrip()
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
         """Enforce client-side stop-word truncation when API ignores stop parameter."""
         result = super().call(*args, **kwargs)
