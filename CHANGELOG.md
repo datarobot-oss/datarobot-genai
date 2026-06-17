@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.7
+- `drtools/workload`: consolidated the workload/artifact tool surface from 39 tools to 21 for agent ergonomics, following MCP tool-design guidance. No functionality was lost; every tool still issues a single non-blocking REST call (no client-side polling or waiting).
+
 ## 0.17.6
 - `drtools/predictive`: raised the `catalog_query_datastore` datastore-preview cap (`_PREVIEW_QUERY_MAX_ROWS`) from 999 to 9999, matching the `externalDataStores/<id>/previewQuery/` route's server-side `maxRows` limit (the `DataStorePreviewQueryValidator` allows up to 10000). Lets `offset`-based paging reach deeper before requiring SQL-level paging.
 
