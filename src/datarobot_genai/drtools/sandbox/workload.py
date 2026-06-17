@@ -76,6 +76,14 @@ _STDERR_LEVELS = {"ERROR", "CRITICAL", "FATAL"}
 # paths. We don't want a hung teardown to block caller cancellation.
 _TEARDOWN_TIMEOUT_S = 5.0
 
+# Port the sandbox runner image serves on. The workload-api requires a port on
+# primary (service) containers and enforces >= 1024.
+_SANDBOX_RUNNER_PORT = 8080
+
+# Names tying the runtime container to its artifact container (matched by name).
+_SANDBOX_GROUP_NAME = "default"
+_SANDBOX_CONTAINER_NAME = "sandbox"
+
 
 class DataRobotWorkloadSandbox:
     """Sandbox implementation backed by the DataRobot workload-api.
@@ -168,9 +176,14 @@ class DataRobotWorkloadSandbox:
         # the runner doesn't see 0 (which means "disabled" inside runner).
         runner_timeout = max(1, int(timeout_s))
         container: dict[str, Any] = {
+            "name": _SANDBOX_CONTAINER_NAME,
             "imageUri": self.image,
             "primary": True,
-            "resourceRequest": {"cpu": 1, "memory": 536870912},
+            # Primary (service) containers must declare a port >= 1024. The
+            # runner is a one-shot job (runs the snippet, emits a result marker
+            # to stdout, exits); we read its result from the OTEL logs, so the
+            # port is only here to satisfy the service schema.
+            "port": _SANDBOX_RUNNER_PORT,
             "environmentVars": [
                 {"name": "DR_SANDBOX_CODE_B64", "value": code_b64},
                 {"name": "DR_SANDBOX_INPUTS_B64", "value": inputs_b64},
@@ -179,13 +192,32 @@ class DataRobotWorkloadSandbox:
         }
         if self.security_context is not None:
             container["securityContext"] = self.security_context.to_workload_api_dict()
+        # The artifact half describes the container (image/port/env); the runtime
+        # half carries deployment knobs (replicas + per-container resources),
+        # matched to the artifact container by name. See the Workload API docs.
         return {
             "name": f"dr-sandbox-{run_id}",
             "artifact": {
                 "name": f"dr-sandbox-artifact-{run_id}",
-                "spec": {"containerGroups": [{"containers": [container]}]},
+                "type": "service",
+                "spec": {
+                    "containerGroups": [{"name": _SANDBOX_GROUP_NAME, "containers": [container]}]
+                },
             },
-            "runtime": {"replicaCount": 1},
+            "runtime": {
+                "containerGroups": [
+                    {
+                        "name": _SANDBOX_GROUP_NAME,
+                        "replicaCount": 1,
+                        "containers": [
+                            {
+                                "name": _SANDBOX_CONTAINER_NAME,
+                                "resourceAllocation": {"cpu": 1, "memory": 536870912},
+                            }
+                        ],
+                    }
+                ]
+            },
         }
 
     def _headers(self) -> dict[str, str]:
@@ -197,7 +229,9 @@ class DataRobotWorkloadSandbox:
 
     def _workloads_url(self, suffix: str = "") -> str:
         # POST to create needs a trailing slash; GET/DELETE by id does not.
-        base = urljoin(self.workload_api_base + "/", "console/workloads/")
+        # The workload-api lives at /api/v2/workloads/ (matches WorkloadApiClient);
+        # the old "console/workloads/" path 404s.
+        base = urljoin(self.workload_api_base + "/", "workloads/")
         if not suffix:
             return base
         return base + suffix.lstrip("/")
