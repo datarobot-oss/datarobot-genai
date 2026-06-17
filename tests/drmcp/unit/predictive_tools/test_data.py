@@ -663,7 +663,7 @@ async def test_catalog_query_datastore_positional_records_keyed_by_columns() -> 
 async def test_catalog_query_datastore_rejects_paging_past_preview_cap() -> None:
     with pytest.raises(ToolError):
         await data.catalog_query_datastore(
-            datastore_id="ds1", sql="SELECT 1", offset=950, limit=100
+            datastore_id="ds1", sql="SELECT 1", offset=9950, limit=100
         )
 
 

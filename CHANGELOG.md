@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.17.6
+## 0.17.7
 -  CrewAI + anthropic/claude-sonnet-4-6: tool calling issues fix
+
+## 0.17.6
+- `drtools/predictive`: raised the `catalog_query_datastore` datastore-preview cap (`_PREVIEW_QUERY_MAX_ROWS`) from 999 to 9999, matching the `externalDataStores/<id>/previewQuery/` route's server-side `maxRows` limit (the `DataStorePreviewQueryValidator` allows up to 10000). Lets `offset`-based paging reach deeper before requiring SQL-level paging.
 
 ## 0.17.5
 - `e2e`: fixed NeMo-guardrails dragent tests crashing (SIGILL) on non-AVX-512 runners — excluded `annoy` (an sdist-only `-march=native` AVX-512 build) from the e2e resolution.
