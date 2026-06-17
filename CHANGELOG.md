@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.5
+- `e2e`: fixed NeMo-guardrails dragent tests crashing (SIGILL) on non-AVX-512 runners — excluded `annoy` (an sdist-only `-march=native` AVX-512 build) from the e2e resolution.
+
 ## 0.17.4
 - `drtools/workload`: submit-and-poll lifecycle workflow — `workload_start` and `workload_stop` return immediately after the request is accepted (202) with `accepted` and a `note` directing the agent to poll status; `workload_stop` no longer accepts `wait_stopped` or `timeout_seconds`. **`workload_wait_for_status` is replaced by `workload_get_status`** (`workload_id`, optional `target_status`): a lightweight single status fetch returning `status`, `target_reached`, and `raw`, raising on terminal `errored` without blocking. Removed `WorkloadApiClient.wait_for_workload_status` server-side polling.
 
