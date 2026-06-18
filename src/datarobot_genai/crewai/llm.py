@@ -90,6 +90,19 @@ class LitellmStopWordLLM(LLM):
             return self._apply_stop_words(result)
         return result
 
+    def _format_messages_for_provider(self, messages: list) -> list:
+        """Ensure conversation does not end with an assistant message.
+
+        Some models routed through the DataRobot LLM Gateway (e.g. claude-sonnet-4-6)
+        reject assistant-message prefill. When the conversation ends with an assistant
+        message we append a minimal user message so the API accepts the request while
+        preserving the full conversation context.
+        """
+        formatted = super()._format_messages_for_provider(messages)
+        if formatted and formatted[-1].get("role") == "assistant":
+            formatted = [*formatted, {"role": "user", "content": "Please continue."}]
+        return formatted
+
     async def acall(self, *args: Any, **kwargs: Any) -> Any:
         """Async variant of :meth:`call` used by ``Crew.akickoff``."""
         result = await super().acall(*args, **kwargs)
