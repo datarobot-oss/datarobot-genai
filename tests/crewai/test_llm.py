@@ -335,3 +335,53 @@ def test_litellm_stop_word_llm_call_multiple_stop_words_truncates_at_earliest() 
     with patch.object(LLM, "call", return_value=response):
         result = llm.call("test message")
     assert result == "Action: search"
+
+
+# ---------------------------------------------------------------------------
+# _format_messages_for_provider – assistant prefill handling
+# ---------------------------------------------------------------------------
+
+
+class TestFormatMessagesForProvider:
+    """Tests for LitellmStopWordLLM._format_messages_for_provider."""
+
+    @pytest.fixture
+    def llm(self) -> LitellmStopWordLLM:
+        return LitellmStopWordLLM(model="datarobot/anthropic/claude-sonnet-4-6")
+
+    def test_appends_user_message_when_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """A trailing assistant message gets followed by a 'Please continue.' user message."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "I'll help you with that."},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "Please continue."}
+        assert result[-2] == {"role": "assistant", "content": "I'll help you with that."}
+
+    def test_no_change_when_trailing_user(self, llm: LitellmStopWordLLM) -> None:
+        """Messages ending with a user message are not modified."""
+        messages = [
+            {"role": "user", "content": "What is 2+2?"},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "What is 2+2?"}
+        assert len(result) == 1
+
+    def test_empty_messages_no_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """Empty message list does not end with an assistant message."""
+        result = llm._format_messages_for_provider([])
+        assert not result or result[-1].get("role") != "assistant"
+
+    def test_multi_turn_conversation_with_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """Multi-turn conversation ending with assistant gets user message appended."""
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello!"},
+            {"role": "user", "content": "Use the tool"},
+            {"role": "assistant", "content": "I'll use the tool now."},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "Please continue."}
+        assert result[-2] == {"role": "assistant", "content": "I'll use the tool now."}
