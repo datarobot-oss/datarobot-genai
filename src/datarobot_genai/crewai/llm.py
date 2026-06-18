@@ -90,7 +90,7 @@ class LitellmStopWordLLM(LLM):
             return self._apply_stop_words(result)
         return result
 
-<<<<<<< HEAD
+
     def _format_messages_for_provider(self, messages: list) -> list:
         """Ensure conversation does not end with an assistant message.
 
@@ -103,14 +103,14 @@ class LitellmStopWordLLM(LLM):
         if formatted and formatted[-1].get("role") == "assistant":
             formatted = [*formatted, {"role": "user", "content": "Please continue."}]
         return formatted
-=======
+
     async def acall(self, *args: Any, **kwargs: Any) -> Any:
         """Async variant of :meth:`call` used by ``Crew.akickoff``."""
         result = await super().acall(*args, **kwargs)
         if isinstance(result, str):
             return self._apply_stop_words(result)
         return result
->>>>>>> main
+
 
 
 def _crewai_model_factory(config: dict) -> LLM:
