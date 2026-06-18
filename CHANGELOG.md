@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.17.9
+## 0.18.0
 -  CrewAI + anthropic/claude-sonnet-4-6: tool calling issues fix
+
+## 0.17.9
+- `e2e-tests`: nemo-guardrails moderation — dropped the invalid `datarobot/` prefix from the guard `llm_gateway_model_id` (the LLM Gateway catalog keys on bare `provider/model`; the prefixed id 404'd and the "stay on topic" guard silently failed open). Added a `dragent_tests` test that asserts the guard blocks disallowed input, so a fail-open guard turns the suite red.
 
 ## 0.17.8
 - `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
