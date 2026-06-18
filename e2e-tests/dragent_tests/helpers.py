@@ -46,7 +46,11 @@ def llm_supports_reasoning(llm_default_model: str) -> bool:
 
 
 def should_run_reasoning_test() -> bool:
-    return llm_supports_reasoning(LLM_DEFAULT_MODEL) and AGENT in ("langgraph", "llamaindex")
+    return (
+        LLM_DEFAULT_MODEL
+        and llm_supports_reasoning(LLM_DEFAULT_MODEL)
+        and AGENT in ("langgraph", "llamaindex")
+    )
 
 
 def agent_dir(agent: str | None = None) -> Path:
