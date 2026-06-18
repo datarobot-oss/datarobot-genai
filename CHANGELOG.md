@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.17.10
+## 0.18.2
 - `e2e-tests`: test cases to test different LLM scenarios with all tests: NIM, external, variety of LLMs in LLMGW.
 
 ## 0.17.9
