@@ -15,33 +15,20 @@
 from __future__ import annotations
 
 import httpx
-import litellm
 import pytest
 from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
-from dragent_tests.helpers import AGENT
-from dragent_tests.helpers import LLM_DEFAULT_MODEL
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
+from dragent_tests.helpers import should_run_reasoning_test
 from dragent_tests.helpers import stream_sse_responses
 
-if AGENT not in ("langgraph", "llamaindex"):
+if not should_run_reasoning_test():
     pytest.skip(
-        "Reasoning is only emitted by the langgraph and llamaindex agents.",
-        allow_module_level=True,
-    )
-
-def llm_supports_reasoning(llm_default_model: str) -> bool:
-    llm_default_model = llm_default_model.removeprefix("datarobot/")
-    return litellm.supports_reasoning(llm_default_model)
-
-
-if not llm_supports_reasoning(LLM_DEFAULT_MODEL):
-    pytest.skip(
-        f"Reasoning is not supported by {LLM_DEFAULT_MODEL}.",
+        "Reasoning is not supported in this configuration.",
         allow_module_level=True,
     )
 

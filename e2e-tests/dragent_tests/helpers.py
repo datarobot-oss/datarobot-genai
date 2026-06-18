@@ -21,6 +21,7 @@ from pathlib import Path
 import httpx
 from ag_ui.core import Event
 from ag_ui.core import EventType
+import litellm
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 BASE_URL = "http://localhost:8080"
@@ -37,6 +38,15 @@ LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
+
+
+def llm_supports_reasoning(llm_default_model: str) -> bool:
+    llm_default_model = llm_default_model.removeprefix("datarobot/")
+    return litellm.supports_reasoning(llm_default_model)
+
+
+def should_run_reasoning_test() -> bool:
+    return llm_supports_reasoning(LLM_DEFAULT_MODEL) and AGENT in ("langgraph", "llamaindex")
 
 
 def agent_dir(agent: str | None = None) -> Path:
