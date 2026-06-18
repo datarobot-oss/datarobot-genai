@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.2
+## 0.18.3
 - Fixed flaky NAT test. Writer being set as `return_direct` prevented reasoning models output to be ignored
+
+## 0.18.2
+- `drtools/files_api`: new read-only DataRobot Files API tool surface for browsing the hierarchical `dr://<catalog_id>/path` filesystem — `file_list` (ls/recursive/glob/tree with pagination), `file_info` (single file/directory metadata), `file_read` (inline UTF-8/base64 content with byte-range reads, capped at `MAX_INLINE_SIZE`), and `file_sign` (temporary signed download URLs for large files). Gated behind the new `enable_files_api_tools` config flag (`ENABLE_FILES_API_TOOLS`), disabled by default, and registered as the `files_api` tool type. Moved the `datarobot-early-access[fs]` dependency into `drmcputils` and dropped the now-redundant `datarobot` pins from `drtools`/`drmcpbase`.
 
 ## 0.18.1
 - Fixing runtime error thrown during E2E tests
