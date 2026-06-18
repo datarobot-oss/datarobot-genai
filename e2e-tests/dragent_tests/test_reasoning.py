@@ -23,6 +23,7 @@ from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
+from dragent_tests.helpers import LLM_DEFAULT_MODEL
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
@@ -31,6 +32,21 @@ from dragent_tests.helpers import stream_sse_responses
 if AGENT not in ("langgraph", "llamaindex"):
     pytest.skip(
         "Reasoning is only emitted by the langgraph and llamaindex agents.",
+        allow_module_level=True,
+    )
+
+LLMS_SUPPORTING_REASONING = {
+    "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "datarobot/anthropic/claude-sonnet-4-6",
+    "datarobot/vertex_ai/gemini-3.5-flash",
+    "datarobot/vertex_ai/claude-opus-4-7",
+    "datarobot/azure/gpt-5-4-2026-03-05",
+    "azure/gpt-5-4-2026-03-05",
+}
+
+if LLM_DEFAULT_MODEL not in LLMS_SUPPORTING_REASONING:
+    pytest.skip(
+        "Reasoning is not supported by this LLM.",
         allow_module_level=True,
     )
 

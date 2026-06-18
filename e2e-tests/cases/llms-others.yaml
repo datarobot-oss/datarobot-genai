@@ -16,7 +16,7 @@ cases:
   - name: external-llm
     env:
       LLM: external
-      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
+      LLM_DEFAULT_MODEL: "azure/gpt-5-4-2026-03-05"
       USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
       - ./dragent_tests

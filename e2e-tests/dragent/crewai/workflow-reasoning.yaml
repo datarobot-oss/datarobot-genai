@@ -19,6 +19,9 @@ llms:
   datarobot_llm:
     temperature: 1
     extra_body:
-      thinking:
+      thinking:  # For Anthropic models
         type: enabled
         budget_tokens: 1024
+      reasoning_effort: low  # For OpenAI models
+      thinking_config:
+        thinking_budget: 1024  # For Gemini models
