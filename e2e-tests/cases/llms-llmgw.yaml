@@ -1,17 +1,59 @@
 cases:
-  - name: llm-gateway
+  - name: llm-gateway-sonnet
     env:
       LLM: llmgw
-      WORKFLOW_FILE: workflow-reasoning.yaml
+      WORKFLOW_FILE: workflow-reasoning-sonnet.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      LLM_DEFAULT_MODEL:
+      - datarobot/anthropic/claude-sonnet-4-6
+      - datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: llm-gateway-opus
+    env:
+      LLM: llmgw
+      WORKFLOW_FILE: workflow-reasoning-opus.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      LLM_DEFAULT_MODEL:
+      - datarobot/vertex_ai/claude-opus-4-7
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: llm-gateway-gemini
+    env:
+      LLM: llmgw
+      WORKFLOW_FILE: workflow-reasoning-gemini.yaml
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      LLM_DEFAULT_MODEL:
+      - datarobot/vertex_ai/gemini-3.5-flash
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+
+  - name: llm-gateway-openai
+    env:
+      LLM: llmgw
+      WORKFLOW_FILE: workflow-reasoning-openai.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
       LLM_DEFAULT_MODEL:
       - datarobot/azure/gpt-5-4-2026-03-05
-      - datarobot/anthropic/claude-sonnet-4-6
-      - datarobot/vertex_ai/gemini-3.5-flash
-      - datarobot/vertex_ai/claude-opus-4-7
-      - datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
       AGENT:
         - nat
         - crewai
