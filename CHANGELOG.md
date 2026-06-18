@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.2
+- Fixed flaky NAT test. Writer being set as `return_direct` prevented reasoning models output to be ignored
+
 ## 0.18.1
 - Fixing runtime error thrown during E2E tests
 
