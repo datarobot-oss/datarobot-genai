@@ -90,7 +90,6 @@ class LitellmStopWordLLM(LLM):
             return self._apply_stop_words(result)
         return result
 
-
     def _format_messages_for_provider(self, messages: list) -> list:
         """Ensure conversation does not end with an assistant message.
 
@@ -110,7 +109,6 @@ class LitellmStopWordLLM(LLM):
         if isinstance(result, str):
             return self._apply_stop_words(result)
         return result
-
 
 
 def _crewai_model_factory(config: dict) -> LLM:
