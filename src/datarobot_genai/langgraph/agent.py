@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import json
 import logging
 import uuid
@@ -389,167 +390,20 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         events = []
         current_message_id = None
         tool_call_id = ""
-        async for _, mode, event in graph_stream:
-            if mode == "messages":
-                message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
-                message = message_event[0]
-                if isinstance(message, ToolMessage):
-                    tool_message_id = (
-                        str(message.id)
-                        if getattr(message, "id", None) is not None
-                        else message.tool_call_id
-                    )
-                    yield (
-                        ToolCallEndEvent(
-                            type=EventType.TOOL_CALL_END, tool_call_id=message.tool_call_id
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    yield (
-                        ToolCallResultEvent(
-                            type=EventType.TOOL_CALL_RESULT,
-                            message_id=tool_message_id,
-                            tool_call_id=message.tool_call_id,
-                            content=str(message.content),
-                            role="tool",
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    tool_call_id = ""
-                elif isinstance(message, AIMessageChunk):
-                    if message.tool_call_chunks:
-                        # This is a tool call message
-                        for tool_call_chunk in message.tool_call_chunks:
-                            if name := tool_call_chunk.get("name"):
-                                # Its a tool call start message
-                                tcid = tool_call_chunk.get("id")
-                                if tcid:
-                                    tool_call_id = str(tcid)
-                                yield (
-                                    ToolCallStartEvent(
-                                        type=EventType.TOOL_CALL_START,
-                                        tool_call_id=tool_call_id,
-                                        tool_call_name=name,
-                                        parent_message_id=str(message.id or ""),
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                            elif args := tool_call_chunk.get("args"):
-                                # Its a tool call args message
-                                yield (
-                                    ToolCallArgsEvent(
-                                        type=EventType.TOOL_CALL_ARGS,
-                                        # Its empty when the tool chunk is not a start message
-                                        # So we use the tool call id from a previous start message
-                                        tool_call_id=tool_call_id,
-                                        delta=args,
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                    elif message.content or message.additional_kwargs.get("reasoning_content"):
-                        for kind, delta in iter_message_blocks(message):
-                            if kind == "thinking":
-                                yield (
-                                    ReasoningMessageChunkEvent(
-                                        type=EventType.REASONING_MESSAGE_CHUNK,
-                                        # Its own message id, distinct from the assistant text
-                                        # so a frontend grouping by id renders reasoning as its
-                                        # own block instead of folding it into the text bubble.
-                                        # Derived (uuid5) from the text id: a valid UUID that is
-                                        # stable across this message's chunks (so they group)
-                                        # without extra state.
-                                        message_id=str(
-                                            uuid.uuid5(
-                                                uuid.NAMESPACE_OID,
-                                                f"{message.id or ''}-reasoning",
-                                            )
-                                        ),
-                                        delta=delta,
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                                continue
-                            # kind == "text": existing text lifecycle
-                            if message.id != current_message_id:
-                                if current_message_id:
-                                    yield (
-                                        TextMessageEndEvent(
-                                            type=EventType.TEXT_MESSAGE_END,
-                                            message_id=current_message_id,
-                                        ),
-                                        None,
-                                        usage_metrics,
-                                    )
-                                current_message_id = str(message.id or "")
-                                yield (
-                                    TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START,
-                                        message_id=current_message_id,
-                                        role="assistant",
-                                    ),
-                                    None,
-                                    usage_metrics,
-                                )
-                            yield (
-                                TextMessageContentEvent(
-                                    type=EventType.TEXT_MESSAGE_CONTENT,
-                                    message_id=current_message_id,
-                                    delta=delta,
-                                ),
-                                None,
-                                usage_metrics,
-                            )
-                elif isinstance(message, HumanMessage):
-                    # Intermediate relay nodes (e.g. planner-to-writer handoffs) may emit
-                    # HumanMessages as state updates. These are not streamed to the caller.
-                    pass
-                else:
-                    raise ValueError(f"Invalid message event: {message_event}")
-            elif mode == "updates":
-                update_event: dict[str, Any] = event  # type: ignore[assignment]
-                if "__interrupt__" in update_event:
-                    intr_tuple = update_event["__interrupt__"]
-                    serialized: list[dict[str, Any]] = []
-                    for intr in intr_tuple:
-                        serialized.append({"id": intr.id, "value": intr.value})
-                    custom_value = {
-                        "kind": "on_interrupt",
-                        "interrupts": serialized,
-                    }
-                    for intr in intr_tuple:
-                        tool_call_id = (
-                            str(intr.id) if getattr(intr, "id", None) else uuid.uuid4().hex
-                        )
-                        args_dict = _confirmation_args_from_interrupt_value(intr.value)
-                        args_json = json.dumps(args_dict)
-                        yield (
-                            ToolCallStartEvent(
-                                type=EventType.TOOL_CALL_START,
-                                tool_call_id=tool_call_id,
-                                tool_call_name=INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME,
-                                parent_message_id="",
-                            ),
-                            None,
-                            usage_metrics,
-                        )
-                        yield (
-                            ToolCallArgsEvent(
-                                type=EventType.TOOL_CALL_ARGS,
-                                tool_call_id=tool_call_id,
-                                delta=args_json,
-                            ),
-                            None,
-                            usage_metrics,
+        async with contextlib.aclosing(graph_stream):
+            async for _, mode, event in graph_stream:
+                if mode == "messages":
+                    message_event: tuple[AIMessageChunk | ToolMessage, dict[str, Any]] = event  # type: ignore[assignment]
+                    message = message_event[0]
+                    if isinstance(message, ToolMessage):
+                        tool_message_id = (
+                            str(message.id)
+                            if getattr(message, "id", None) is not None
+                            else message.tool_call_id
                         )
                         yield (
                             ToolCallEndEvent(
-                                type=EventType.TOOL_CALL_END,
-                                tool_call_id=tool_call_id,
+                                type=EventType.TOOL_CALL_END, tool_call_id=message.tool_call_id
                             ),
                             None,
                             usage_metrics,
@@ -557,48 +411,199 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                         yield (
                             ToolCallResultEvent(
                                 type=EventType.TOOL_CALL_RESULT,
-                                message_id=tool_call_id,
-                                tool_call_id=tool_call_id,
-                                content=json.dumps(
-                                    {
-                                        "langgraphInterrupt": True,
-                                        "interruptId": tool_call_id,
-                                    }
-                                ),
+                                message_id=tool_message_id,
+                                tool_call_id=message.tool_call_id,
+                                content=str(message.content),
                                 role="tool",
                             ),
                             None,
                             usage_metrics,
                         )
+                        tool_call_id = ""
+                    elif isinstance(message, AIMessageChunk):
+                        if message.tool_call_chunks:
+                            # This is a tool call message
+                            for tool_call_chunk in message.tool_call_chunks:
+                                if name := tool_call_chunk.get("name"):
+                                    # Its a tool call start message
+                                    tcid = tool_call_chunk.get("id")
+                                    if tcid:
+                                        tool_call_id = str(tcid)
+                                    yield (
+                                        ToolCallStartEvent(
+                                            type=EventType.TOOL_CALL_START,
+                                            tool_call_id=tool_call_id,
+                                            tool_call_name=name,
+                                            parent_message_id=str(message.id or ""),
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                elif args := tool_call_chunk.get("args"):
+                                    # Its a tool call args message
+                                    yield (
+                                        ToolCallArgsEvent(
+                                            type=EventType.TOOL_CALL_ARGS,
+                                            # Its empty when the tool chunk is not a start message
+                                            # So we use the tool call id from a previous start
+                                            # message
+                                            tool_call_id=tool_call_id,
+                                            delta=args,
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                        elif message.content or message.additional_kwargs.get("reasoning_content"):
+                            for kind, delta in iter_message_blocks(message):
+                                if kind == "thinking":
+                                    yield (
+                                        ReasoningMessageChunkEvent(
+                                            type=EventType.REASONING_MESSAGE_CHUNK,
+                                            # Its own message id, distinct from the assistant text
+                                            # so a frontend grouping by id renders reasoning as its
+                                            # own block instead of folding it into the text bubble.
+                                            # Derived (uuid5) from the text id: a valid UUID that is
+                                            # stable across this message's chunks (so they group)
+                                            # without extra state.
+                                            message_id=str(
+                                                uuid.uuid5(
+                                                    uuid.NAMESPACE_OID,
+                                                    f"{message.id or ''}-reasoning",
+                                                )
+                                            ),
+                                            delta=delta,
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                    continue
+                                # kind == "text": existing text lifecycle
+                                if message.id != current_message_id:
+                                    if current_message_id:
+                                        yield (
+                                            TextMessageEndEvent(
+                                                type=EventType.TEXT_MESSAGE_END,
+                                                message_id=current_message_id,
+                                            ),
+                                            None,
+                                            usage_metrics,
+                                        )
+                                    current_message_id = str(message.id or "")
+                                    yield (
+                                        TextMessageStartEvent(
+                                            type=EventType.TEXT_MESSAGE_START,
+                                            message_id=current_message_id,
+                                            role="assistant",
+                                        ),
+                                        None,
+                                        usage_metrics,
+                                    )
+                                yield (
+                                    TextMessageContentEvent(
+                                        type=EventType.TEXT_MESSAGE_CONTENT,
+                                        message_id=current_message_id,
+                                        delta=delta,
+                                    ),
+                                    None,
+                                    usage_metrics,
+                                )
+                    elif isinstance(message, HumanMessage):
+                        # Intermediate relay nodes (e.g. planner-to-writer handoffs) may emit
+                        # HumanMessages as state updates. These are not streamed to the caller.
+                        pass
+                    else:
+                        raise ValueError(f"Invalid message event: {message_event}")
+                elif mode == "updates":
+                    update_event: dict[str, Any] = event  # type: ignore[assignment]
+                    if "__interrupt__" in update_event:
+                        intr_tuple = update_event["__interrupt__"]
+                        serialized: list[dict[str, Any]] = []
+                        for intr in intr_tuple:
+                            serialized.append({"id": intr.id, "value": intr.value})
+                        custom_value = {
+                            "kind": "on_interrupt",
+                            "interrupts": serialized,
+                        }
+                        for intr in intr_tuple:
+                            tool_call_id = (
+                                str(intr.id) if getattr(intr, "id", None) else uuid.uuid4().hex
+                            )
+                            args_dict = _confirmation_args_from_interrupt_value(intr.value)
+                            args_json = json.dumps(args_dict)
+                            yield (
+                                ToolCallStartEvent(
+                                    type=EventType.TOOL_CALL_START,
+                                    tool_call_id=tool_call_id,
+                                    tool_call_name=INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME,
+                                    parent_message_id="",
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                            yield (
+                                ToolCallArgsEvent(
+                                    type=EventType.TOOL_CALL_ARGS,
+                                    tool_call_id=tool_call_id,
+                                    delta=args_json,
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                            yield (
+                                ToolCallEndEvent(
+                                    type=EventType.TOOL_CALL_END,
+                                    tool_call_id=tool_call_id,
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                            yield (
+                                ToolCallResultEvent(
+                                    type=EventType.TOOL_CALL_RESULT,
+                                    message_id=tool_call_id,
+                                    tool_call_id=tool_call_id,
+                                    content=json.dumps(
+                                        {
+                                            "langgraphInterrupt": True,
+                                            "interruptId": tool_call_id,
+                                        }
+                                    ),
+                                    role="tool",
+                                ),
+                                None,
+                                usage_metrics,
+                            )
+                        events.append(update_event)
+                        yield (
+                            RunFinishedEvent(
+                                thread_id=thread_id,
+                                run_id=run_id,
+                                result={"langgraph": {"interrupted": True, **custom_value}},
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        return
                     events.append(update_event)
-                    yield (
-                        RunFinishedEvent(
-                            thread_id=thread_id,
-                            run_id=run_id,
-                            result={"langgraph": {"interrupted": True, **custom_value}},
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    return
-                events.append(update_event)
-                current_node = next(iter(update_event))
-                node_data = update_event[current_node]
-                current_usage = node_data.get("usage", {}) if node_data is not None else {}
-                if current_usage:
-                    usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
-                    usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
-                    usage_metrics["completion_tokens"] += current_usage.get("completion_tokens", 0)
-                if current_message_id:
-                    yield (
-                        TextMessageEndEvent(
-                            type=EventType.TEXT_MESSAGE_END,
-                            message_id=current_message_id,
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    current_message_id = None
+                    current_node = next(iter(update_event))
+                    node_data = update_event[current_node]
+                    current_usage = node_data.get("usage", {}) if node_data is not None else {}
+                    if current_usage:
+                        usage_metrics["total_tokens"] += current_usage.get("total_tokens", 0)
+                        usage_metrics["prompt_tokens"] += current_usage.get("prompt_tokens", 0)
+                        usage_metrics["completion_tokens"] += current_usage.get(
+                            "completion_tokens", 0
+                        )
+                    if current_message_id:
+                        yield (
+                            TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END,
+                                message_id=current_message_id,
+                            ),
+                            None,
+                            usage_metrics,
+                        )
+                        current_message_id = None
 
         # Create a list of events from the event listener
         pipeline_interactions = self.create_pipeline_interactions_from_events(events)
