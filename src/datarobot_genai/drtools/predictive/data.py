@@ -36,7 +36,9 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 logger = logging.getLogger(__name__)
 
 # Hard cap of the externalDataStores/<id>/previewQuery/ route's maxRows field.
-_PREVIEW_QUERY_MAX_ROWS = 999
+# The server-side validator (DataStorePreviewQueryValidator) allows up to 10_000;
+# we stay just under it.
+_PREVIEW_QUERY_MAX_ROWS = 9999
 
 
 def _serialize_datastore_params(params: Any) -> dict[str, Any]:
@@ -405,7 +407,7 @@ async def catalog_query_datastore(
 
     limit, message = clamp_limit(limit)
 
-    # previewQuery caps maxRows at 999; offset is emulated by over-fetching and
+    # previewQuery caps maxRows at 9999; offset is emulated by over-fetching and
     # slicing, so offset + limit must stay under that cap (push deeper paging
     # into the SQL itself).
     max_rows = offset + limit

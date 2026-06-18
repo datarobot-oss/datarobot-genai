@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import logging
-import time
 from typing import Any
 
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
@@ -94,50 +92,6 @@ class WorkloadApiClient:
         """PATCH /workloads/{id} — partial update of name / description / importance."""
         with request_user_dr_client() as client:
             return client.patch(f"workloads/{workload_id}", json=payload).json()
-
-    # ------------------------------------------------------------------ #
-    # Workloads — polling                                                  #
-    # ------------------------------------------------------------------ #
-
-    async def wait_for_workload_status(
-        self,
-        workload_id: str,
-        target_status: str,
-        *,
-        timeout_seconds: int = 600,
-        poll_interval_seconds: int = 1,
-    ) -> dict[str, Any]:
-        """Poll until the workload reaches *target_status*, enters errored, or times out.
-
-        Uses :func:`asyncio.sleep` between polls so async callers do not block the event loop.
-
-        Raises
-        ------
-        RuntimeError
-            When the workload enters ``errored`` before reaching *target_status*.
-        TimeoutError
-            When *timeout_seconds* elapses before reaching *target_status*.
-        """
-        deadline = time.monotonic() + timeout_seconds
-        last_status: str | None = None
-        while True:
-            obj = self.get_workload(workload_id)
-            status = obj.get("status")
-            if status != last_status:
-                logger.info("Workload %s status: %s", workload_id, status)
-                last_status = status
-            if status == target_status:
-                return obj
-            if status == "errored":
-                raise RuntimeError(
-                    f"Workload {workload_id} errored while waiting for '{target_status}'"
-                )
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"Timeout waiting for workload {workload_id} to reach "
-                    f"'{target_status}'. Last status: {status}"
-                )
-            await asyncio.sleep(poll_interval_seconds)
 
     # ------------------------------------------------------------------ #
     # Workloads — settings                                                 #

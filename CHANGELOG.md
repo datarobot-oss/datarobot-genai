@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.17.8
+- `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
+- `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior, including inline hallucinations after ``Action Input``.
+- `crewai`: emit ``LLMStreamChunkEvent`` from router ``acall`` so ``Crew.akickoff`` streaming receives text chunks.
+
+## 0.17.7
+- `drtools/workload`: consolidated the workload/artifact tool surface from 39 tools to 21 for agent ergonomics, following MCP tool-design guidance. No functionality was lost; every tool still issues a single non-blocking REST call (no client-side polling or waiting).
+
+## 0.17.6
+- `drtools/predictive`: raised the `catalog_query_datastore` datastore-preview cap (`_PREVIEW_QUERY_MAX_ROWS`) from 999 to 9999, matching the `externalDataStores/<id>/previewQuery/` route's server-side `maxRows` limit (the `DataStorePreviewQueryValidator` allows up to 10000). Lets `offset`-based paging reach deeper before requiring SQL-level paging.
+
+## 0.17.5
+- `e2e`: fixed NeMo-guardrails dragent tests crashing (SIGILL) on non-AVX-512 runners — excluded `annoy` (an sdist-only `-march=native` AVX-512 build) from the e2e resolution.
+
+## 0.17.4
+- `drtools/workload`: submit-and-poll lifecycle workflow — `workload_start` and `workload_stop` return immediately after the request is accepted (202) with `accepted` and a `note` directing the agent to poll status; `workload_stop` no longer accepts `wait_stopped` or `timeout_seconds`. **`workload_wait_for_status` is replaced by `workload_get_status`** (`workload_id`, optional `target_status`): a lightweight single status fetch returning `status`, `target_reached`, and `raw`, raising on terminal `errored` without blocking. Removed `WorkloadApiClient.wait_for_workload_status` server-side polling.
+
+## 0.17.3
+- `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.
+
 ## 0.17.2
 - `llamaindex`: ``LlamaIndexAgent.invoke`` now prepends the ``streaming_memory_agent`` memory injection (system message immediately before the latest user turn) to the processed user prompt so retrieved memory reaches the workflow.
 

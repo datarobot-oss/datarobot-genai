@@ -66,6 +66,7 @@ override-dependencies = [
     "opentelemetry-instrumentation>=0.60b1,<0.61",
 ]
 exclude-dependencies = [
+    "annoy",                    # nemoguardrails ANN index; sdist -march=native build SIGILLs on non-AVX-512 runners (BUZZOK-31265)
     "llama-index-llms-azure-openai",
     "llama-index-llms-bedrock",
     "llama-index-llms-nvidia",

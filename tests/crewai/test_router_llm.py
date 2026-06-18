@@ -153,3 +153,43 @@ async def test_router_llm_acall_streams_and_accumulates() -> None:
 
     result = await llm.acall(messages=[{"role": "user", "content": "hi"}])
     assert result == "Async result"
+
+
+@pytest.mark.asyncio
+async def test_router_llm_acall_emits_llm_stream_chunk_events() -> None:
+    """Verify acall() emits LLMStreamChunkEvent for Crew.akickoff streaming."""
+    from crewai.events import crewai_event_bus
+    from crewai.events.types.llm_events import LLMStreamChunkEvent
+
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    chunks = [_make_chunk("Hello"), _make_chunk(" world")]
+
+    async def fake_acompletion(*args: Any, **kwargs: Any) -> Any:
+        async def gen() -> Any:
+            for c in chunks:
+                yield c
+
+        return gen()
+
+    mock_router = MagicMock()
+    mock_router.acompletion = fake_acompletion
+
+    with patch("litellm.Router", return_value=mock_router):
+        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [fb])
+
+    emitted: list[LLMStreamChunkEvent] = []
+
+    def capture(_: object, event: object) -> None:
+        if isinstance(event, LLMStreamChunkEvent):
+            emitted.append(event)
+
+    with crewai_event_bus.scoped_handlers():
+        crewai_event_bus.register_handler(LLMStreamChunkEvent, capture)
+        await llm.acall(messages=[{"role": "user", "content": "hi"}])
+
+    assert len(emitted) == 2
+    assert emitted[0].chunk == "Hello"
+    assert emitted[1].chunk == " world"
