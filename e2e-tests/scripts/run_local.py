@@ -51,6 +51,7 @@ HEALTH_URL = "http://localhost:8080/health"
 HEALTH_TIMEOUT_S = 60
 HEALTH_POLL_S = 1.0
 SERVER_GRACE_S = 5.0
+CUSTOM_METRIC_PORT = os.getenv("CUSTOM_METRIC_PORT", "18080")
 
 
 class ComboResult(NamedTuple):
@@ -109,12 +110,12 @@ def _uv_sync(agent: str) -> None:
     )
 
 
-def _wait_for_health() -> bool:
-    """Poll the agent ``/health`` endpoint until 200 or timeout."""
-    deadline = time.monotonic() + HEALTH_TIMEOUT_S
+def _wait_for_health(url: str = HEALTH_URL, timeout: int = HEALTH_TIMEOUT_S) -> bool:
+    """Poll ``/health`` endpoint until 200 or timeout."""
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(HEALTH_URL, timeout=2) as resp:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=2) as resp:
                 if resp.status == 200:
                     return True
         except (urllib.error.URLError, ConnectionError, OSError):
@@ -139,7 +140,7 @@ def _stop_server(proc: subprocess.Popen[bytes]) -> None:
     if proc.poll() is not None:
         return
     pgid = os.getpgid(proc.pid)
-    print(f">>> stopping agent (pgid={pgid})", file=sys.stderr)
+    print(f">>> stopping process (pgid={pgid})", file=sys.stderr)
     try:
         os.killpg(pgid, signal.SIGTERM)
     except ProcessLookupError:
@@ -152,6 +153,15 @@ def _stop_server(proc: subprocess.Popen[bytes]) -> None:
         except ProcessLookupError:
             pass
         proc.wait(timeout=SERVER_GRACE_S)
+
+
+def _start_guards_server() -> subprocess.Popen[bytes]:
+    print(f">>> uvicorn custom_metric_app.app:app --port {CUSTOM_METRIC_PORT}", file=sys.stderr)
+    return subprocess.Popen(
+        ["uvicorn", "custom_metric_app.app:app", "--port", CUSTOM_METRIC_PORT],
+        cwd=str(E2E_ROOT),
+        start_new_session=True,
+    )
 
 
 def _run_pytest(combo: Combination, env: dict[str, str]) -> int:
@@ -269,33 +279,46 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
-    for combo in combos:
-        if interrupted:
-            results.append(ComboResult(combo.name, "SKIPPED", "interrupted"))
-            continue
+    needs_custom_metric_server = any(c.case == "custom-moderations" for c in combos)
+    custom_metric_server: subprocess.Popen[bytes] | None = None
+    if needs_custom_metric_server:
+        custom_metric_server = _start_guards_server()
+        if not _wait_for_health(url=f"http://localhost:{CUSTOM_METRIC_PORT}/health", timeout=10):
+            print("error: guards server failed to start", file=sys.stderr)
+            return 1
 
-        if not args.no_install and combo.agent != last_agent:
-            try:
-                _uv_sync(combo.agent)
-            except subprocess.CalledProcessError as exc:
-                results.append(ComboResult(
-                    combo.name, "FAIL", f"uv sync failed (rc={exc.returncode})",
-                ))
-                if not args.keep_going:
-                    break
+    try:
+        for combo in combos:
+            if interrupted:
+                results.append(ComboResult(combo.name, "SKIPPED", "interrupted"))
                 continue
-            last_agent = combo.agent
 
-        try:
-            result = _run_one(combo, no_server=args.no_server)
-        except KeyboardInterrupt:
-            results.append(ComboResult(combo.name, "SKIPPED", "interrupted"))
-            interrupted = True
-            continue
+            if not args.no_install and combo.agent != last_agent:
+                try:
+                    _uv_sync(combo.agent)
+                except subprocess.CalledProcessError as exc:
+                    results.append(ComboResult(
+                        combo.name, "FAIL", f"uv sync failed (rc={exc.returncode})",
+                    ))
+                    if not args.keep_going:
+                        break
+                    continue
+                last_agent = combo.agent
 
-        results.append(result)
-        if result.status != "PASS" and not args.keep_going:
-            break
+            try:
+                result = _run_one(combo, no_server=args.no_server)
+            except KeyboardInterrupt:
+                results.append(ComboResult(combo.name, "SKIPPED", "interrupted"))
+                interrupted = True
+                continue
+
+            results.append(result)
+            if result.status != "PASS" and not args.keep_going:
+                break
+
+    finally:
+        if custom_metric_server is not None:
+            _stop_server(custom_metric_server)
 
     _print_summary(results)
 

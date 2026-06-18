@@ -141,6 +141,10 @@ jobs:
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
       LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+      EMOTION_CLASSIFIER_DEPLOYMENT_ID: ${{ secrets.E2E_EMOTION_CLASSIFIER_DEPLOYMENT_ID }}
+      NEMO_EVALUATOR_DEPLOYMENT_ID: ${{ secrets.E2E_NEMO_EVALUATOR_DEPLOYMENT_ID }}
+      EMBEDDING_MODEL_DEPLOYMENT_ID: ${{ secrets.E2E_EMBEDDING_MODEL_DEPLOYMENT_ID }}
+      CUSTOM_METRIC_PORT: "18080"
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"
@@ -181,6 +185,15 @@ jobs:
       - name: Install dependencies
         working-directory: e2e-tests
         run: uv sync --group dragent-${{ matrix.agent }}
+
+      - name: Run custom metric server in background
+        if: startsWith(matrix.name, 'ootb-custom')
+        uses: JarvusInnovations/background-action@v1
+        with:
+          working-directory: e2e-tests
+          run: uvicorn custom_metric_app.app:app --port ${{ env.CUSTOM_METRIC_PORT }} &
+          wait-on: http-get://localhost:${{ env.CUSTOM_METRIC_PORT }}/health
+          wait-for: 10s
 
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1

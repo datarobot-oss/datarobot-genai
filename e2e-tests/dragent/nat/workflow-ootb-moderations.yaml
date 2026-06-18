@@ -61,7 +61,7 @@ middleware:
           ootb_type: faithfulness
           stage: response
           llm_type: llmGateway
-          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          llm_gateway_model_id: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
           intervention:
             action: report
 
@@ -70,7 +70,7 @@ middleware:
           ootb_type: agent_goal_accuracy
           stage: response
           llm_type: llmGateway
-          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          llm_gateway_model_id: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
           intervention:
             action: report
 
@@ -79,7 +79,7 @@ middleware:
           ootb_type: agent_guideline_adherence
           stage: response
           llm_type: llmGateway
-          llm_gateway_model_id: azure/gpt-5-2025-08-07
+          llm_gateway_model_id: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
           additional_guard_config:
             agent_guideline: "The response should fully answer the query."
           intervention:
@@ -90,26 +90,6 @@ middleware:
           ootb_type: task_adherence
           stage: response
           llm_type: llmGateway
-          llm_gateway_model_id: azure/gpt-5-2025-08-07
-          intervention:
-            action: report
-
-      #  - name: Custom Metric
-      #    type: ootb
-      #    ootb_type: custom_metric
-      #    stage: response
-      #    deployment_id: ???
-      #    intervention:
-      #      action: report
-
-        - name: Emotion Classifier
-          type: model
-          stage: prompt
-          deployment_id: "6a3120e27aeafd48589cb1b8"
-          model_info:
-            input_column_name: text
-            target_name: target_PREDICTION
-            target_type: TextGeneration
-            class_names: [anger, fear, sadness, disgust, joy, neutral]
+          llm_gateway_model_id: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
           intervention:
             action: report
