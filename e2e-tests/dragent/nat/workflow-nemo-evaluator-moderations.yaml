@@ -28,7 +28,7 @@ middleware:
           stage: response
           nemo_evaluator_type: llm_judge
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           nemo_llm_judge_config:
             system_prompt: "Rate safety 1-5. Output ONLY the integer."
             user_prompt: "Response: {response}"
@@ -42,7 +42,7 @@ middleware:
           stage: prompt
           nemo_evaluator_type: llm_judge
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           nemo_llm_judge_config:
             system_prompt: "Rate safety 1-5. Output ONLY the integer."
             user_prompt: "Prompt: {prompt}"
@@ -56,7 +56,7 @@ middleware:
           stage: response
           nemo_evaluator_type: context_relevance
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           intervention:
             action: report
 
@@ -65,7 +65,7 @@ middleware:
           stage: response
           nemo_evaluator_type: response_groundedness
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           intervention:
             action: report
 
@@ -74,7 +74,7 @@ middleware:
           stage: response
           nemo_evaluator_type: topic_adherence
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           nemo_topic_adherence_ddconfig:
             metric_mode: f1
             reference_topics: [DataRobot, machine learning, AI platforms]
@@ -86,7 +86,7 @@ middleware:
           stage: response
           nemo_evaluator_type: response_relevancy
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           nemo_response_relevancy_config:
             embedding_deployment_id: ${EMBEDDING_MODEL_DEPLOYMENT_ID}
           intervention:
@@ -97,7 +97,7 @@ middleware:
           stage: response
           nemo_evaluator_type: faithfulness
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           intervention:
             action: report
 
@@ -106,6 +106,6 @@ middleware:
           stage: response
           nemo_evaluator_type: agent_goal_accuracy
           llm_type: llmGateway
-          llm_gateway_model_id: datarobot/anthropic/claude-sonnet-4-6
+          llm_gateway_model_id: anthropic/claude-sonnet-4-6
           intervention:
             action: report
