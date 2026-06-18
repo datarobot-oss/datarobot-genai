@@ -14,9 +14,8 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
+import litellm
 import pytest
 from ag_ui.core import Event
 from ag_ui.core import EventType
@@ -35,18 +34,14 @@ if AGENT not in ("langgraph", "llamaindex"):
         allow_module_level=True,
     )
 
-LLMS_SUPPORTING_REASONING = {
-    "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
-    "datarobot/anthropic/claude-sonnet-4-6",
-    "datarobot/vertex_ai/gemini-3.5-flash",
-    "datarobot/vertex_ai/claude-opus-4-7",
-    "datarobot/azure/gpt-5-4-2026-03-05",
-    "azure/gpt-5-4-2026-03-05",
-}
+def llm_supports_reasoning(llm_default_model: str) -> bool:
+    llm_default_model = llm_default_model.removeprefix("datarobot/")
+    return litellm.supports_reasoning(llm_default_model)
 
-if LLM_DEFAULT_MODEL not in LLMS_SUPPORTING_REASONING:
+
+if not llm_supports_reasoning(LLM_DEFAULT_MODEL):
     pytest.skip(
-        "Reasoning is not supported by this LLM.",
+        f"Reasoning is not supported by {LLM_DEFAULT_MODEL}.",
         allow_module_level=True,
     )
 
