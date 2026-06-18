@@ -156,6 +156,15 @@ class MCPToolConfig(BaseSettings):
         description="Enable/disable DataRobot Workload API tools",
     )
 
+    enable_files_api_tools: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_FILES_API_TOOLS",
+            "ENABLE_FILES_API_TOOLS",
+        ),
+        description="Enable/disable DataRobot Files API (filesystem) tools",
+    )
+
     @field_validator(
         "enable_predictive_tools",
         "enable_jira_tools",
@@ -170,6 +179,7 @@ class MCPToolConfig(BaseSettings):
         "enable_optimization_tools",
         "enable_vdb_tools",
         "enable_workload_tools",
+        "enable_files_api_tools",
         mode="before",
     )
     @classmethod

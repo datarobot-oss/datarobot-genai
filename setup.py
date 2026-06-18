@@ -109,11 +109,13 @@ auth = [
 ]
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
-drmcputils = []
+drmcputils = auth + [
+    "datarobot-early-access[fs]==3.14.0.2026.3.18.162920",
+]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
 # polars for internal tabular data; pandas only at predict API boundary (datarobot-predict).
-drtools = auth + drmcputils + [
+drtools =  drmcputils + [
     "beautifulsoup4>=4.12.0,<5.0.0",
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
@@ -125,7 +127,6 @@ drtools = auth + drmcputils + [
     "python-dateutil>=2.9.0,<3.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
-    "datarobot>=3.10.0,<4.0.0",
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
 ]
 
@@ -142,7 +143,6 @@ drmcpbase = drmcputils + [
     "fastmcp>=3.4.1,<4.0.0",
     "aiohttp>=3.13.3,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
-    "datarobot>=3.16.0,<4.0.0",
     "cachetools>=5.0.0,<8.0.0",
 ]
 
@@ -162,7 +162,6 @@ drmcp = drmcpbase + drtools + [
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
-    "datarobot-early-access==3.14.0.2026.3.18.162920",
     "async-lru>=2.3.0",
 ]
 
