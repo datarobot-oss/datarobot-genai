@@ -439,6 +439,15 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
+    def test_files_api_enabled_when_in_mcp_cli_configs(self) -> None:
+        """files_api has default False; when in MCP_CLI_CONFIGS and no env, becomes True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "files_api"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_files_api_tools is True
+            assert config.tool_config.enable_workload_tools is False
+            self._reset_config()
+
 
 class TestOtelStandardFields:
     """Test standard OTel env var fields on MCPServerConfig."""
