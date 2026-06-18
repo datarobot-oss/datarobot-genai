@@ -12,8 +12,8 @@ on:
         default: pr-tests.yaml
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.case_file }}
+  cancel-in-progress: true
 
 env:
   TASK_VERSION: 3.48.0
