@@ -279,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
-    needs_custom_metric_server = any(c.case == "custom-moderations" for c in combos)
+    needs_custom_metric_server = any(c.case == "ootb-custom" for c in combos)
     custom_metric_server: subprocess.Popen[bytes] | None = None
     if needs_custom_metric_server:
         custom_metric_server = _start_guards_server()

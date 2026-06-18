@@ -62,7 +62,7 @@ cases:
   - name: nemo-evaluator
     env:
       LLM: llmgw
-      LLM_DEFAULT_MODEL: "datarobot/anthropic/claude-sonnet-4-6" # todo: change model and change llm_gateway_model_id in the file
+      LLM_DEFAULT_MODEL: "datarobot/anthropic/claude-sonnet-4-6"
       WORKFLOW_FILE: workflow-nemo-evaluator-moderations.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
