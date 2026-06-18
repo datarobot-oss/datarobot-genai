@@ -14,6 +14,13 @@ cases:
         - llamaindex
         - base
 
+  # NOTE: the streaming / multi-turn agents (crewai, langgraph, llamaindex, nat) are
+  # expected RED here until datarobot-moderations >= 11.2.35 is published. With the
+  # model-id prefix fixed the guard now reaches the gateway, but datarobot_dome runs
+  # each guard call on a fresh asyncio event loop while reusing one shared NeMo client,
+  # so it raises "Event is bound to a different event loop" and the guard fails open.
+  # Fixed in moderations PR #648 (pending release); tracked in BUZZOK-31306. This case
+  # is workflow_dispatch-only, so a red run does not gate PRs.
   - name: nemo-guardrails
     env:
       LLM: llmgw
