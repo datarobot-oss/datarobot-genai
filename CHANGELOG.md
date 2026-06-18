@@ -9,6 +9,7 @@ Addd to `e2e-tests` for moderations:
 - ootb custom_metric guard
 - Custom model guard
 - All NeMo Evaluator guards
+- `e2e-tests`: run the custom metric server through `uv run uvicorn` so CI and local ootb-custom runs use the e2e virtualenv without requiring activation.
 
 ## 0.18.2
 - `drtools/files_api`: new read-only DataRobot Files API tool surface for browsing the hierarchical `dr://<catalog_id>/path` filesystem — `file_list` (ls/recursive/glob/tree with pagination), `file_info` (single file/directory metadata), `file_read` (inline UTF-8/base64 content with byte-range reads, capped at `MAX_INLINE_SIZE`), and `file_sign` (temporary signed download URLs for large files). Gated behind the new `enable_files_api_tools` config flag (`ENABLE_FILES_API_TOOLS`), disabled by default, and registered as the `files_api` tool type. Moved the `datarobot-early-access[fs]` dependency into `drmcputils` and dropped the now-redundant `datarobot` pins from `drtools`/`drmcpbase`.
