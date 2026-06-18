@@ -21,4 +21,3 @@ llms:
     extra_body:
       thinking:
         type: adaptive
-        budget_tokens: 1024
