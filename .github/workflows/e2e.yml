@@ -191,7 +191,7 @@ jobs:
         uses: JarvusInnovations/background-action@v1
         with:
           working-directory: e2e-tests
-          run: uvicorn custom_metric_app.app:app --port ${{ env.CUSTOM_METRIC_PORT }} &
+          run: uv run uvicorn custom_metric_app.app:app --port ${{ env.CUSTOM_METRIC_PORT }} &
           wait-on: http-get://localhost:${{ env.CUSTOM_METRIC_PORT }}/health
           wait-for: 10s
 

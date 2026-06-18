@@ -156,9 +156,10 @@ def _stop_server(proc: subprocess.Popen[bytes]) -> None:
 
 
 def _start_guards_server() -> subprocess.Popen[bytes]:
-    print(f">>> uvicorn custom_metric_app.app:app --port {CUSTOM_METRIC_PORT}", file=sys.stderr)
+    cmd = ["uv", "run", "uvicorn", "custom_metric_app.app:app", "--port", CUSTOM_METRIC_PORT]
+    print(f">>> {' '.join(shlex.quote(p) for p in cmd)}", file=sys.stderr)
     return subprocess.Popen(
-        ["uvicorn", "custom_metric_app.app:app", "--port", CUSTOM_METRIC_PORT],
+        cmd,
         cwd=str(E2E_ROOT),
         start_new_session=True,
     )
