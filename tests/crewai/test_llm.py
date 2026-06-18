@@ -261,6 +261,44 @@ def test_litellm_stop_word_llm_call_applies_stop_words(
     assert "Final Answer:" not in result
 
 
+async def test_litellm_stop_word_llm_acall_applies_stop_words(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Async kickoff uses ``acall``; stop words must truncate there too."""
+    hallucinated = (
+        "Thought: I need to search.\n"
+        "Action: search\n"
+        "Action Input: query\n"
+        "Observation: fake result\n"
+        "Final Answer: hallucinated"
+    )
+    with patch.object(LLM, "acall", return_value=hallucinated):
+        result = await stop_word_llm.acall("test message")
+    assert result == "Thought: I need to search.\nAction: search\nAction Input: query"
+    assert "Observation:" not in result
+    assert "Final Answer:" not in result
+
+
+def test_litellm_stop_word_llm_truncates_inline_react_after_action_input(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Models may hallucinate a second ``Thought`` without an ``Observation:`` label."""
+    hallucinated = (
+        "Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+        'Action Input: {"type":"deployment"}\n'
+        "dff6ff5bc0f04cf69bf4c020cff634c0Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+    )
+    with patch.object(LLM, "call", return_value=hallucinated):
+        result = stop_word_llm.call("test message")
+    assert result == (
+        "Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+        'Action Input: {"type":"deployment"}'
+    )
+
+
 def test_litellm_stop_word_llm_call_no_stop_words_returns_unchanged() -> None:
     """Without stop words configured, responses pass through unchanged."""
     llm = LitellmStopWordLLM(model="openai/gpt-4o")
