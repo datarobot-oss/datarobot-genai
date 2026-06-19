@@ -30,6 +30,9 @@ from pathlib import Path
 
 from openai.types.chat import ChatCompletion
 from openai.types.chat.completion_create_params import CompletionCreateParamsBase
+from opentelemetry.context import attach
+from opentelemetry.context import detach
+from opentelemetry.context import get_current
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +159,26 @@ def execute_dragent_inline(
         config_file=config_file,
         default_headers=default_headers,
     )
+
     try:
         asyncio.get_running_loop()
     except RuntimeError:
+        # No loop on this thread: run inline. The current otel context is
+        # already active here, so the coroutine inherits it automatically.
         return asyncio.run(coro)
+
+    # A loop is already running on this thread, so we hand off to a worker
+    # thread with its own loop. contextvars are NOT copied into worker
+    # threads, so capture the current otel context here and re-attach it
+    # inside the worker before the coroutine runs.
+    ctx = get_current()
+
+    def _run_in_worker() -> ChatCompletion:
+        token = attach(ctx)
+        try:
+            return asyncio.run(coro)
+        finally:
+            detach(token)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(asyncio.run, coro).result()
+        return executor.submit(_run_in_worker).result()
