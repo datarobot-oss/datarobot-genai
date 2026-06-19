@@ -36,8 +36,11 @@ from dragent_tests.mock_otel_collector import MockOtelCollector
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
 TEST_API_TOKEN = "test-token"
-TEST_DEPLOYMENT_ID = "test-deployment-id"
-EXPECTED_ENTITY_ID = f"deployment-{TEST_DEPLOYMENT_ID}"
+TEST_USE_CASE_ID = "test-use-case-id"
+EXPECTED_ENTITY_ID = f"use-case-{TEST_USE_CASE_ID}"
+OTEL_EXPORTER_OTLP_HEADERS = (
+    f"X-DataRobot-Api-Key={TEST_API_TOKEN},X-DataRobot-Entity-Id={EXPECTED_ENTITY_ID}"
+)
 
 
 def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
@@ -49,9 +52,9 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
     with MockOtelCollector() as collector:
         env = {
             **os.environ,
-            "DATAROBOT_ENDPOINT": collector.endpoint,
-            "DATAROBOT_API_TOKEN": TEST_API_TOKEN,
-            "MLOPS_DEPLOYMENT_ID": TEST_DEPLOYMENT_ID,
+            # Use the setup close to Codespaces
+            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint,
+            "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
         }
 
         # WHEN: the inline runner is executed against workflow-tracing.yaml
