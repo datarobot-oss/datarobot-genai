@@ -32,11 +32,6 @@ from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 from datarobot_genai.drmcputils.credentials import ToolsAuthCredentials
 from datarobot_genai.drmcputils.credentials import get_credentials
-from datarobot_genai.drtools.core.config_utils import (
-    extract_datarobot_credential_runtime_param_payload,
-)
-from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
-from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
 
 from .core.config import MCPServerConfig
 from .core.config import get_config
@@ -69,9 +64,6 @@ __all__ = [
     "ToolKwargs",
     # Utilities
     "MCPLogging",
-    "extract_datarobot_runtime_param_payload",
-    "extract_datarobot_dict_runtime_param_payload",
-    "extract_datarobot_credential_runtime_param_payload",
     "filter_tools_by_tags",
     # Test utilities
     "get_dr_mcp_server_url",

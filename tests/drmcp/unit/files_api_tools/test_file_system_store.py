@@ -79,6 +79,17 @@ class FakeFS:
         self.recorded = ("pipe_file", path, value, mode)
         return self._resolve("pipe_file", None)
 
+    def put(
+        self,
+        lpath: Any,
+        rpath: Any,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        overwrite_strategy: Any = None,
+    ) -> Any:
+        self.recorded = ("put", lpath, rpath, recursive, maxdepth, overwrite_strategy)
+        return self._resolve("put", None)
+
     def create_catalog_item_dir(self) -> Any:
         return self._resolve("create_catalog_item_dir", "")
 
@@ -244,6 +255,25 @@ async def test_write_delegates_to_pipe_file() -> None:
     store, fs = _store_and_fs()
     await store.write("dr://abc/x.txt", b"data", mode="create")
     assert fs.recorded == ("pipe_file", "dr://abc/x.txt", b"data", "create")
+
+
+async def test_upload_delegates_to_put_with_overwrite_strategy() -> None:
+    store, fs = _store_and_fs()
+    await store.upload(
+        "/local/data",
+        "dr://abc/data/",
+        recursive=True,
+        maxdepth=3,
+        overwrite="replace",
+    )
+    assert fs.recorded == (
+        "put",
+        "/local/data",
+        "dr://abc/data/",
+        True,
+        3,
+        FilesOverwriteStrategy.REPLACE,
+    )
 
 
 async def test_create_dir_returns_catalog_id() -> None:

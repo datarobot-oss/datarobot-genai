@@ -17,13 +17,15 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
-from datarobot_genai.drtools.files_api import mutations as mut_mod
+from datarobot_genai.drtools.files_api import common_utils
+from datarobot_genai.drtools.files_api import mutations_tools as mut_mod
 
 
 class FakeStore:
@@ -38,6 +40,19 @@ class FakeStore:
 
     async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
         self._record("write", path, data, mode=mode)
+
+    async def upload(
+        self,
+        local_path: Any,
+        dest: Any,
+        *,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        overwrite: str = "rename",
+    ) -> None:
+        self._record(
+            "upload", local_path, dest, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite
+        )
 
     async def create_dir(self) -> str:
         self._record("create_dir")
@@ -74,7 +89,12 @@ def _use_store(monkeypatch: pytest.MonkeyPatch, store: FakeStore) -> FakeStore:
 async def test_file_write_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _use_store(monkeypatch, FakeStore())
     result = await mut_mod.file_write(path="dr://abc/notes.txt", content="hello")
-    assert result == {"path": "dr://abc/notes.txt", "bytes_written": 5, "mode": "overwrite"}
+    assert result == {
+        "path": "dr://abc/notes.txt",
+        "bytes_written": 5,
+        "mode": "overwrite",
+        "source": "content",
+    }
     name, args, kwargs = store.calls[0]
     assert name == "write"
     assert args[1] == b"hello"
@@ -111,6 +131,186 @@ async def test_file_write_rejects_root_or_empty(monkeypatch: pytest.MonkeyPatch,
     _use_store(monkeypatch, FakeStore())
     with pytest.raises(ToolError):
         await mut_mod.file_write(path=path, content="x")
+
+
+# ------------------------------------------------------------------ #
+# local-disk access (allowlist) + file_write(local_path) + file_upload #
+# ------------------------------------------------------------------ #
+
+
+@pytest.fixture
+def allow_local(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Allow local access rooted at a tmp dir and clear caches between tests."""
+    monkeypatch.setenv("FILES_API_LOCAL_ALLOWED_ROOTS", str(tmp_path))
+    return tmp_path
+
+
+async def test_file_write_from_local_path(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    local = allow_local / "notes.txt"
+    local.write_bytes(b"hello local")
+    result = await mut_mod.file_write(path="dr://abc/notes.txt", local_path=str(local))
+    assert result == {
+        "path": "dr://abc/notes.txt",
+        "bytes_written": 11,
+        "mode": "overwrite",
+        "source": "local_path",
+    }
+    name, args, _ = store.calls[0]
+    assert name == "write"
+    assert args[1] == b"hello local"
+
+
+async def test_file_write_rejects_both_content_and_local_path(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    local = allow_local / "a.txt"
+    local.write_bytes(b"x")
+    with pytest.raises(ToolError, match="exactly one"):
+        await mut_mod.file_write(path="dr://abc/a.txt", content="x", local_path=str(local))
+
+
+async def test_file_write_rejects_neither_content_nor_local_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    with pytest.raises(ToolError, match="exactly one"):
+        await mut_mod.file_write(path="dr://abc/a.txt")
+
+
+async def test_file_write_local_oversize_rejected(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    local = allow_local / "big.bin"
+    local.write_bytes(b"a" * (MAX_INLINE_SIZE + 1))
+    with pytest.raises(ToolError, match="inline limit"):
+        await mut_mod.file_write(path="dr://abc/big.bin", local_path=str(local))
+
+
+async def test_file_write_local_disabled_without_allowlist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("FILES_API_LOCAL_ALLOWED_ROOTS", raising=False)
+    monkeypatch.setattr(common_utils, "_allowed_local_roots", lambda: [])
+    _use_store(monkeypatch, FakeStore())
+    local = tmp_path / "a.txt"
+    local.write_bytes(b"x")
+    with pytest.raises(ToolError, match="disabled"):
+        await mut_mod.file_write(path="dr://abc/a.txt", local_path=str(local))
+
+
+async def test_file_write_local_outside_allowlist(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    outside = tmp_path_factory.mktemp("outside") / "secret.txt"
+    outside.write_bytes(b"secret")
+    with pytest.raises(ToolError, match="outside the allowed"):
+        await mut_mod.file_write(path="dr://abc/secret.txt", local_path=str(outside))
+
+
+async def test_file_upload_single_file(monkeypatch: pytest.MonkeyPatch, allow_local: Path) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    local = allow_local / "report.pdf"
+    local.write_bytes(b"%PDF-1.4 data")
+    result = await mut_mod.file_upload(local_path=str(local), path="dr://abc/docs/")
+    assert result["uploaded"] is True
+    assert result["file_count"] == 1
+    assert result["total_bytes"] == len(b"%PDF-1.4 data")
+    assert result["overwrite"] == "rename"
+    name, args, kwargs = store.calls[0]
+    assert name == "upload"
+    assert args == (str(local), "dr://abc/docs/")
+    assert kwargs == {"recursive": False, "maxdepth": None, "overwrite": "rename"}
+
+
+async def test_file_upload_directory_recursive(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    (allow_local / "a.txt").write_bytes(b"aa")
+    sub = allow_local / "sub"
+    sub.mkdir()
+    (sub / "b.txt").write_bytes(b"bbb")
+    result = await mut_mod.file_upload(
+        local_path=str(allow_local), path="dr://abc/data/", recursive=True, overwrite="replace"
+    )
+    assert result["file_count"] == 2
+    assert result["total_bytes"] == 5
+    assert store.calls[0][2]["overwrite"] == "replace"
+    assert store.calls[0][2]["recursive"] is True
+
+
+async def test_file_upload_glob(monkeypatch: pytest.MonkeyPatch, allow_local: Path) -> None:
+    _use_store(monkeypatch, FakeStore())
+    (allow_local / "x.csv").write_bytes(b"1,2")
+    (allow_local / "y.csv").write_bytes(b"3,4")
+    (allow_local / "z.txt").write_bytes(b"nope")
+    result = await mut_mod.file_upload(
+        local_path=str(allow_local / "*.csv"), path="dr://abc/csv/", recursive=True
+    )
+    assert result["file_count"] == 2
+
+
+async def test_file_upload_directory_without_recursive_rejected(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    with pytest.raises(ToolError, match="recursive=True"):
+        await mut_mod.file_upload(local_path=str(allow_local), path="dr://abc/data/")
+
+
+async def test_file_upload_no_match_rejected(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    with pytest.raises(ToolError, match="No files matched"):
+        await mut_mod.file_upload(
+            local_path=str(allow_local / "*.csv"), path="dr://abc/csv/", recursive=True
+        )
+
+
+async def test_file_upload_missing_path_rejected(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    with pytest.raises(ToolError, match="No files matched"):
+        await mut_mod.file_upload(local_path=str(allow_local / "nope.txt"), path="dr://abc/")
+
+
+async def test_file_upload_disabled_without_allowlist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(common_utils, "_allowed_local_roots", lambda: [])
+    _use_store(monkeypatch, FakeStore())
+    local = tmp_path / "a.txt"
+    local.write_bytes(b"x")
+    with pytest.raises(ToolError, match="disabled"):
+        await mut_mod.file_upload(local_path=str(local), path="dr://abc/")
+
+
+async def test_file_upload_outside_allowlist_rejected(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    outside = tmp_path_factory.mktemp("outside") / "secret.txt"
+    outside.write_bytes(b"secret")
+    with pytest.raises(ToolError, match="outside the allowed"):
+        await mut_mod.file_upload(local_path=str(outside), path="dr://abc/")
+
+
+async def test_file_upload_rejects_bad_maxdepth(
+    monkeypatch: pytest.MonkeyPatch, allow_local: Path
+) -> None:
+    _use_store(monkeypatch, FakeStore())
+    with pytest.raises(ToolError, match="maxdepth"):
+        await mut_mod.file_upload(
+            local_path=str(allow_local), path="dr://abc/", recursive=True, maxdepth=0
+        )
 
 
 # ------------------------------------------------------------------ #
