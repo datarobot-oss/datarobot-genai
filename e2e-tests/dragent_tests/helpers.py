@@ -19,9 +19,9 @@ import uuid
 from pathlib import Path
 
 import httpx
+import litellm
 from ag_ui.core import Event
 from ag_ui.core import EventType
-import litellm
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 BASE_URL = "http://localhost:8080"
@@ -29,12 +29,14 @@ BASE_URL = "http://localhost:8080"
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
 
-AGENT = os.environ.get("AGENT")
+AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]
 
-LLM = os.environ.get("LLM")
+LLM = os.environ.get("LLM", "llmgw")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
+
+WORKFLOW_FILE = os.environ.get("WORKFLOW_FILE", "workflow.yaml")
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
@@ -53,9 +55,14 @@ def should_run_reasoning_test() -> bool:
     )
 
 
-def agent_dir(agent: str | None = None) -> Path:
+def agent_dir() -> Path:
     """Path to the dragent agent config directory for *agent* (defaults to AGENT/base)."""
-    return E2E_ROOT / "dragent" / (agent or AGENT or "base")
+    return E2E_ROOT / "dragent" / AGENT
+
+
+def workflow_file() -> Path:
+    """Path to the dragent agent workflow file for *agent* (defaults to WORKFLOW_FILE)."""
+    return agent_dir() / WORKFLOW_FILE
 
 
 def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]

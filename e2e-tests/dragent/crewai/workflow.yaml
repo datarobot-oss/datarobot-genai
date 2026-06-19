@@ -21,6 +21,11 @@ general:
       server:
         name: "E2E CrewAI Agent"
         description: "CrewAI agent for end-to-end testing."
+  telemetry:
+    tracing:
+      otelcollector:
+        _type: datarobot_otelcollector
+        project: "crewai"
 
 llms:
   datarobot_llm:
