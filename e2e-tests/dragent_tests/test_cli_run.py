@@ -35,6 +35,7 @@ def test_cli_run_produces_output() -> None:
         capture_output=True,
         text=True,
         timeout=120,
+        cwd=str(E2E_ROOT),
         env={**os.environ},
         check=False,
     )
