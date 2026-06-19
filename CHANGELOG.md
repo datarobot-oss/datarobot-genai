@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.18.5
 - `e2e-tests`: overrided WORKFLOW_FILE when run agent inline and in CLI
-- `dragent`: ensured that conventional OTLP_EXPORTER environment variables are used by default to configure exporter
+- `dragent`: ensured that conventional OTLP_EXPORTER environment variables are used by default to configure exporter, and fixed OTEL context propagation in `execute_dragent_inline`
 
 ## 0.18.4
 - `llama_index`: omit `temperature` when unconfigured so the model uses its own default (matching langgraph/crewai/nat). LlamaIndex's `LiteLLM` baked in `temperature=0.1`, breaking Anthropic extended thinking. Explicit values are still forwarded.
