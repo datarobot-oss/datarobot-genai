@@ -36,7 +36,7 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 LLM = os.environ.get("LLM")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
 
-WORKFLOW_FILE = os.environ.get("WORKFLOW_FILE")
+WORKFLOW_FILE = os.environ.get("WORKFLOW_FILE", "workflow.yaml")
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"
