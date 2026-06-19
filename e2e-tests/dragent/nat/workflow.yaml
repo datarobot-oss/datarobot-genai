@@ -38,6 +38,7 @@ functions:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+    temperature: 0
 
 function_groups:
   mcp_tools:
