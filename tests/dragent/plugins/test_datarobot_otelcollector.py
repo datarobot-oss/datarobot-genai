@@ -38,6 +38,7 @@ _ENV_VARS = (
     "MLOPS_DEPLOYMENT_ID",
     "DATAROBOT_ENDPOINT",
     "DATAROBOT_PUBLIC_API_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
 )
 
 
@@ -244,3 +245,70 @@ class TestExporterFactory:
         assert attrs["env"] == "prod"
         # SDK defaults still merged in.
         assert attrs["telemetry.sdk.language"] == "python"
+
+
+class TestOtlpHeadersEnvOverride:
+    """When OTEL_EXPORTER_OTLP_HEADERS is set, the standard OTel header env var
+    wins over the DataRobot auth headers derived from config.
+    """
+
+    async def test_headers_parsed_from_env(self, clean_env):
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "X-DataRobot-Api-Key=env-key,X-DataRobot-Entity-Id=deployment-env",
+        )
+        cfg = _make_config()
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        headers = mock_exporter.call_args.kwargs["headers"]
+        # Env-provided headers replace the config-derived DR auth headers.
+        assert headers["X-DataRobot-Api-Key"] == "env-key"
+        assert headers["X-DataRobot-Entity-Id"] == "deployment-env"
+
+    async def test_env_headers_take_precedence_over_config(self, clean_env):
+        # Config still supplies API key + entity id, but the env header var
+        # must override them entirely.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", "X-DataRobot-Api-Key=env-key")
+        cfg = _make_config()
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        headers = mock_exporter.call_args.kwargs["headers"]
+        assert headers["X-DataRobot-Api-Key"] == "env-key"
+        # The config-derived value did not leak through.
+        assert headers["X-DataRobot-Api-Key"] != API_KEY
+
+    async def test_extra_headers_still_merged_over_env_headers(self, clean_env):
+        # extra_headers always win on collision, even over env-supplied headers.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", "X-DataRobot-Api-Key=env-key")
+        cfg = _make_config(extra_headers={"X-DataRobot-Api-Key": "extra-key", "X-Custom": "v"})
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        headers = mock_exporter.call_args.kwargs["headers"]
+        assert headers["X-DataRobot-Api-Key"] == "extra-key"
+        assert headers["X-Custom"] == "v"
+
+    async def test_config_headers_used_when_env_unset(self, clean_env):
+        # Sanity check the default path: with no env var, the DR auth headers
+        # are derived from config as before.
+        cfg = _make_config()
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        headers = mock_exporter.call_args.kwargs["headers"]
+        assert headers["X-DataRobot-Api-Key"] == API_KEY
+        assert headers["X-DataRobot-Entity-Id"] == ENTITY_ID
