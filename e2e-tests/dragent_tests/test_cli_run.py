@@ -18,12 +18,9 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 
-from dragent_tests.helpers import AGENT
-
-E2E_ROOT = Path(__file__).resolve().parent.parent
-WORKFLOW_CONFIG = E2E_ROOT / "dragent" / (AGENT or "langgraph") / "workflow.yaml"
+from dragent_tests.helpers import E2E_ROOT
+from dragent_tests.helpers import workflow_file
 
 
 def test_cli_run_produces_output() -> None:
@@ -32,13 +29,12 @@ def test_cli_run_produces_output() -> None:
         [
             "uv", "run",
             "nat", "dragent", "run",
-            "--config_file", str(WORKFLOW_CONFIG),
+            "--config_file", str(workflow_file()),
             "--input", "Say 'hello world' and nothing else.",
         ],
         capture_output=True,
         text=True,
         timeout=120,
-        cwd=str(E2E_ROOT),
         env={**os.environ},
         check=False,
     )
