@@ -205,9 +205,10 @@ async def datarobot_otelcollector_telemetry_exporter(
     # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
     if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
-        headers: dict[str, str] = {
-            header.split("=")[0]: header.split("=")[1] for header in headers_list
-        }
+        headers: dict[str, str] = {}
+        for header in headers_list:
+            key, value = header.split("=", 1)
+            headers[key.strip()] = value.strip()
     else:
         headers = {
             "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),

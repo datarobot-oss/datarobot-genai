@@ -299,6 +299,25 @@ class TestOtlpHeadersEnvOverride:
         assert headers["X-DataRobot-Api-Key"] == "extra-key"
         assert headers["X-Custom"] == "v"
 
+    async def test_header_value_with_equals_preserved(self, clean_env):
+        # A header value can legitimately contain '=' (e.g. base64 padding or
+        # a token with '='). Splitting on the first '=' only must keep the
+        # full value intact rather than truncating at the first '='.
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "Authorization=Basic dXNlcjpwYXNz==,X-Token=a=b=c",
+        )
+        cfg = _make_config()
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        headers = mock_exporter.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Basic dXNlcjpwYXNz=="
+        assert headers["X-Token"] == "a=b=c"
+
     async def test_config_headers_used_when_env_unset(self, clean_env):
         # Sanity check the default path: with no env var, the DR auth headers
         # are derived from config as before.
