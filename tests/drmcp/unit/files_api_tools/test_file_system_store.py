@@ -27,6 +27,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from datarobot.enums import FilesOverwriteStrategy
 from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.exceptions import ToolError
@@ -34,6 +35,9 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.file_system_store import DataRobotFileSystemStore
 from datarobot_genai.drmcputils.files.file_system_store import FileEntry
 from datarobot_genai.drmcputils.files.file_system_store import FileSystemStore
+from datarobot_genai.drmcputils.files.file_system_store import extract_status_id
+from datarobot_genai.drmcputils.files.file_system_store import is_terminal_import_failure_status
+from datarobot_genai.drmcputils.files.file_system_store import normalize_status_location
 
 
 class FakeFS:
@@ -94,6 +98,34 @@ class FakeFS:
         self.recorded = ("clone", path_or_id, files_to_omit)
         return self._resolve("clone_catalog_item_dir", "")
 
+    def _split_path(self, path: str) -> tuple[str, str]:
+        stripped = path.removeprefix("dr://").strip("/")
+        catalog_id, _, rest = stripped.partition("/")
+        return catalog_id, rest
+
+    def _get_files_wrapper_for_folder_id(self, catalog_id: str) -> FakeFilesWrapper:
+        self.recorded = ("files_wrapper", catalog_id)
+        return self._files_wrapper
+
+
+class FakeFilesEntity:
+    def __init__(self, async_location: str) -> None:
+        self._async_status_location = async_location
+
+
+class FakeFilesWrapper:
+    def __init__(self, *, async_location: str = "status/job123/") -> None:
+        self._async_location = async_location
+        self.last_call: tuple[str, dict[str, Any]] | None = None
+
+    def upload_from_url(self, **kwargs: Any) -> FakeFilesEntity:
+        self.last_call = ("upload_from_url", kwargs)
+        return FakeFilesEntity(self._async_location)
+
+    def upload_from_data_source(self, **kwargs: Any) -> FakeFilesEntity:
+        self.last_call = ("upload_from_data_source", kwargs)
+        return FakeFilesEntity(self._async_location)
+
 
 @contextmanager
 def _noop_sdk(**_: Any) -> Iterator[None]:
@@ -103,6 +135,9 @@ def _noop_sdk(**_: Any) -> Iterator[None]:
 def _store_and_fs(**behavior: Any) -> tuple[DataRobotFileSystemStore, FakeFS]:
     """Patch the SDK + fsspec backend; return the store and the shared fake fs."""
     fs = FakeFS(**behavior)
+    fs._files_wrapper = FakeFilesWrapper(
+        async_location=behavior.get("async_location", "status/job123/")
+    )
     patch(
         "datarobot_genai.drmcputils.files.file_system_store.request_user_dr_sdk",
         _noop_sdk,
@@ -230,3 +265,114 @@ async def test_clone_returns_new_catalog_id() -> None:
     store, fs = _store_and_fs(clone_catalog_item_dir="clone1")
     assert await store.clone("dr://abc/", files_to_omit=["s.txt"]) == "clone1"
     assert fs.recorded == ("clone", "dr://abc/", ["s.txt"])
+
+
+async def test_import_from_url_returns_status_id() -> None:
+    store, fs = _store_and_fs()
+    status_id = await store.import_from_url(
+        "dr://abc123/data/",
+        "https://example.com/file.zip",
+        unpack_archive=False,
+        overwrite="replace",
+    )
+    assert status_id == "job123"
+    assert fs.recorded == ("files_wrapper", "abc123")
+    assert fs._files_wrapper.last_call == (
+        "upload_from_url",
+        {
+            "url": "https://example.com/file.zip",
+            "use_archive_contents": False,
+            "overwrite": FilesOverwriteStrategy.REPLACE,
+            "wait_for_completion": False,
+            "prefix": "data/",
+        },
+    )
+
+
+async def test_import_from_data_source_returns_status_id() -> None:
+    store, fs = _store_and_fs(async_location="https://host/api/v2/status/ds-job/")
+    status_id = await store.import_from_data_source(
+        "dr://abc123/in/",
+        "ds-456",
+        credential_id="cred-1",
+    )
+    assert status_id == "ds-job"
+    assert fs._files_wrapper.last_call[0] == "upload_from_data_source"
+    assert fs._files_wrapper.last_call[1]["data_source_id"] == "ds-456"
+    assert fs._files_wrapper.last_call[1]["credential_id"] == "cred-1"
+    assert fs._files_wrapper.last_call[1]["wait_for_completion"] is False
+
+
+async def test_get_status_fetches_json_payload() -> None:
+    store = _store_with()
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"status": "INPROGRESS"}
+
+    fake_client = type("C", (), {"get": lambda _s, _loc, allow_redirects=False: FakeResponse()})()
+    with patch(
+        "datarobot_genai.drmcputils.files.file_system_store.dr.client.get_client",
+        return_value=fake_client,
+    ):
+        payload = await store.get_status("job123")
+    assert payload == {"status": "INPROGRESS"}
+
+
+def test_status_helpers() -> None:
+    assert normalize_status_location("job123") == "status/job123/"
+    assert normalize_status_location("status/job123/") == "status/job123/"
+    assert normalize_status_location("https://host/api/v2/status/job123/") == "status/job123/"
+    assert extract_status_id("status/job123/") == "job123"
+    assert extract_status_id("https://host/api/v2/status/job123/") == "job123"
+    assert is_terminal_import_failure_status("ERROR")
+    assert is_terminal_import_failure_status("aborted")
+    assert not is_terminal_import_failure_status("completed")
+
+
+async def test_get_status_accepts_full_async_url() -> None:
+    store = _store_with()
+    requested: list[str] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"status": "INPROGRESS"}
+
+    fake_client = type(
+        "C",
+        (),
+        {
+            "get": lambda _s, loc, allow_redirects=False: requested.append(loc) or FakeResponse(),
+        },
+    )()
+    with patch(
+        "datarobot_genai.drmcputils.files.file_system_store.dr.client.get_client",
+        return_value=fake_client,
+    ):
+        await store.get_status("https://host/api/v2/status/job123/")
+    assert requested == ["status/job123/"]
+
+
+async def test_get_status_307_without_location_raises_tool_error() -> None:
+    store = _store_with()
+
+    class RedirectResponse:
+        status_code = 307
+        headers: dict[str, str] = {}
+
+    fake_client = type(
+        "C",
+        (),
+        {"get": lambda _s, _loc, allow_redirects=False: RedirectResponse()},
+    )()
+    with patch(
+        "datarobot_genai.drmcputils.files.file_system_store.dr.client.get_client",
+        return_value=fake_client,
+    ):
+        with pytest.raises(ToolError, match="307") as exc:
+            await store.get_status("job123")
+    assert exc.value.kind == ToolErrorKind.UPSTREAM
