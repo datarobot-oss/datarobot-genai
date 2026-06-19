@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.7
+- `drtools/files_api`: async import tools for large or remote files — `file_import` (background ingest from a URL or data source, returns a `status_id`) and `file_get_status` (single non-blocking status fetch with optional `target_status` / `target_reached`, raises on terminal failure). Backed by new store methods on `DataRobotFileSystemStore` (`import_from_url`, `import_from_data_source`, `get_status`).
+
 ## 0.18.6
 - `drtools/files_api`: write and structural tools for the DataRobot Files API filesystem — `file_write` (inline UTF-8/base64 content, `overwrite`/`create` modes, capped at `MAX_INLINE_SIZE`) and `file_manage` (consolidated `create_dir` | `delete` | `copy` | `move` | `clone` lifecycle actions). Backed by new store methods on `DataRobotFileSystemStore` (`write`, `create_dir`, `delete`, `copy`, `move`, `clone`); shared path/content helpers live in `common_utils.py`.
 
