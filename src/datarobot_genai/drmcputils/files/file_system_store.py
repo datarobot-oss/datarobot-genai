@@ -72,11 +72,15 @@ OverwriteStrategyName = Literal["rename", "replace", "skip", "error"]
 
 
 def normalize_status_location(status_id: str) -> str:
-    """Return a relative API route for ``status/<id>/`` from a bare id or route."""
-    cleaned = status_id.strip().strip("/")
-    if cleaned.startswith("status/"):
-        return f"{cleaned}/"
-    return f"status/{cleaned}/"
+    """Return a relative API route for ``status/<id>/`` from a bare id, route, or URL."""
+    cleaned = status_id.strip()
+    if not cleaned:
+        raise ToolError(
+            "Argument validation error: 'status_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    bare_id = extract_status_id(cleaned)
+    return f"status/{bare_id}/"
 
 
 def extract_status_id(async_location: str) -> str:
@@ -432,7 +436,13 @@ class DataRobotFileSystemStore:
             client = dr.client.get_client()
             response = client.get(location, allow_redirects=False)
             if response.status_code == 307:
-                response = client.get(response.headers["Location"], allow_redirects=False)
+                redirect = response.headers.get("Location")
+                if not redirect:
+                    raise ToolError(
+                        "Status redirect (307) missing Location header.",
+                        kind=ToolErrorKind.UPSTREAM,
+                    )
+                response = client.get(redirect, allow_redirects=False)
             if response.status_code == 303:
                 return {
                     "status": FILE_IMPORT_COMPLETED_STATUS,

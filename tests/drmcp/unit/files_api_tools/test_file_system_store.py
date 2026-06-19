@@ -324,8 +324,55 @@ async def test_get_status_fetches_json_payload() -> None:
 def test_status_helpers() -> None:
     assert normalize_status_location("job123") == "status/job123/"
     assert normalize_status_location("status/job123/") == "status/job123/"
+    assert normalize_status_location("https://host/api/v2/status/job123/") == "status/job123/"
     assert extract_status_id("status/job123/") == "job123"
     assert extract_status_id("https://host/api/v2/status/job123/") == "job123"
     assert is_terminal_import_failure_status("ERROR")
     assert is_terminal_import_failure_status("aborted")
     assert not is_terminal_import_failure_status("completed")
+
+
+async def test_get_status_accepts_full_async_url() -> None:
+    store = _store_with()
+    requested: list[str] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"status": "INPROGRESS"}
+
+    fake_client = type(
+        "C",
+        (),
+        {
+            "get": lambda _s, loc, allow_redirects=False: requested.append(loc) or FakeResponse(),
+        },
+    )()
+    with patch(
+        "datarobot_genai.drmcputils.files.file_system_store.dr.client.get_client",
+        return_value=fake_client,
+    ):
+        await store.get_status("https://host/api/v2/status/job123/")
+    assert requested == ["status/job123/"]
+
+
+async def test_get_status_307_without_location_raises_tool_error() -> None:
+    store = _store_with()
+
+    class RedirectResponse:
+        status_code = 307
+        headers: dict[str, str] = {}
+
+    fake_client = type(
+        "C",
+        (),
+        {"get": lambda _s, _loc, allow_redirects=False: RedirectResponse()},
+    )()
+    with patch(
+        "datarobot_genai.drmcputils.files.file_system_store.dr.client.get_client",
+        return_value=fake_client,
+    ):
+        with pytest.raises(ToolError, match="307") as exc:
+            await store.get_status("job123")
+    assert exc.value.kind == ToolErrorKind.UPSTREAM
