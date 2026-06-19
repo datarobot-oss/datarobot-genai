@@ -114,3 +114,11 @@ tasks:
     desc: "🔍 Dry-run: task cases-print -- pr-tests.yaml [--case X] [KEY=VAL ...]"
     cmds:
       - uv run python scripts/run_local.py --print {{.CLI_ARGS}}
+
+  cases-ci:
+    desc: "☁️  Run a case as a GitHub Action on the current branch: task cases-ci -- pr-tests.yaml"
+    vars:
+      BRANCH:
+        sh: git rev-parse --abbrev-ref HEAD
+    cmds:
+      - gh workflow run e2e.yml --ref {{.BRANCH}} -f case_file={{.CLI_ARGS}}

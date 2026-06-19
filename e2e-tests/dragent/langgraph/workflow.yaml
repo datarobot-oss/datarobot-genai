@@ -21,10 +21,16 @@ general:
       server:
         name: "E2E LangGraph Agent"
         description: "LangGraph agent for end-to-end testing."
+  telemetry:
+    tracing:
+      otelcollector:
+        _type: datarobot_otelcollector
+        project: "langgraph"
 
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+    temperature: 0
 
 middleware:
   datarobot_guardrails:

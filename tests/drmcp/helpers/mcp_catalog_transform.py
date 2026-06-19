@@ -19,6 +19,23 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_TOOLS_HEADER
 
 CODE_EXECUTE_TOOL_NAMES = frozenset({"search", "get_schema", "execute"})
 
+# Tools verified to succeed when invoked with an empty argument dict (see integration tests).
+EMPTY_ARGS_CALLABLE_TOOL_NAMES = frozenset(
+    {
+        "bundle_list",
+        "catalog_list_datasets",
+        "catalog_list_datastores",
+        "datarobot_usecases_list",
+        "deployment_get_list",
+        "file_list",
+        "get_auth_context_user_info",
+        "get_user_greeting",
+        "modeling_list_projects",
+        "vdb_list",
+        "workload_list",
+    }
+)
+
 
 def catalog_transform_headers(
     *,
@@ -35,3 +52,10 @@ def catalog_transform_headers(
 
 def tool_names_from_list_tools_result(tools_result: object) -> set[str]:
     return {tool.name for tool in tools_result.tools}  # type: ignore[attr-defined]
+
+
+def tool_name_callable_with_empty_args(tools_result: object) -> str | None:
+    """Return the lexicographically first tool known to accept an empty argument dict."""
+    baseline = tool_names_from_list_tools_result(tools_result)
+    candidates = sorted(baseline & EMPTY_ARGS_CALLABLE_TOOL_NAMES)
+    return candidates[0] if candidates else None

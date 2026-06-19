@@ -50,6 +50,7 @@ pin them in ``workflow.yaml`` to point at a non-default collector.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 
 from nat.builder.builder import Builder
@@ -201,10 +202,18 @@ async def datarobot_otelcollector_telemetry_exporter(
     builder: Builder,
 ) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
-    headers: dict[str, str] = {
-        "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
-        "X-DataRobot-Entity-Id": config.datarobot_entity_id,
-    }
+    # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
+    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+        headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
+        headers: dict[str, str] = {}
+        for header in headers_list:
+            key, value = header.split("=", 1)
+            headers[key.strip()] = value.strip()
+    else:
+        headers = {
+            "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
+            "X-DataRobot-Entity-Id": config.datarobot_entity_id,
+        }
     # Caller-supplied headers win on collision; lets you e.g. add request-
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)

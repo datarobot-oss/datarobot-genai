@@ -35,6 +35,7 @@ from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
+from dragent_tests.helpers import should_run_reasoning_test
 from dragent_tests.helpers import stream_sse_responses
 
 # Runs for every framework that streams tool-call events, so the fold can rebuild
@@ -99,9 +100,11 @@ def test_multiturn_replays_tool_call_and_reasoning_history(http_client: httpx.Cl
         f"tool result {EXPECTED_OBJECT_ID} not captured in history: "
         f"{getattr(tool_result, 'content', None)!r}"
     )
-    # Reasoning is only emitted by langgraph and llama_index (with thinking enabled);
-    # for those the fold must also carry it as a reasoning message.
-    if AGENT in ("langgraph", "llamaindex"):
+
+    if should_run_reasoning_test():
+        # Reasoning is only emitted by langgraph and llama_index (with thinking enabled);
+        # for those the fold must also carry it as a reasoning message.
+        # And not models support it.
         assert "reasoning" in roles, (
             "expected the run to emit reasoning (thinking enabled) and the helper to "
             f"capture it; history roles were {roles}"

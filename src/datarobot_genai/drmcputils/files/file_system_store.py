@@ -31,9 +31,6 @@ Design mirrors :mod:`datarobot_genai.drmcputils.files.store`:
   inside the thread.
 - DataRobot/fsspec errors are normalised to :class:`ToolError` so tool code
   never leaks SDK or OS exception types.
-
-Only read operations live here for now; write, structural, and async-import
-operations are layered on in later changes.
 """
 
 from __future__ import annotations
@@ -45,11 +42,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from typing import Literal
 from typing import NoReturn
 from typing import Protocol
 from typing import TypeVar
 from typing import runtime_checkable
+from urllib.parse import urlparse
 
+import datarobot as dr
+from datarobot.enums import FilesOverwriteStrategy
 from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
@@ -64,6 +65,44 @@ T = TypeVar("T")
 DR_PROTOCOL = "dr://"
 DEFAULT_LIST_LIMIT = 100
 DEFAULT_SIGN_EXPIRATION_SECONDS = 100
+FILE_IMPORT_COMPLETED_STATUS = "completed"
+FILE_IMPORT_TERMINAL_FAILURE_PREFIXES = ("error", "abort")
+
+OverwriteStrategyName = Literal["rename", "replace", "skip", "error"]
+
+
+def normalize_status_location(status_id: str) -> str:
+    """Return a relative API route for ``status/<id>/`` from a bare id, route, or URL."""
+    cleaned = status_id.strip()
+    if not cleaned:
+        raise ToolError(
+            "Argument validation error: 'status_id' cannot be empty.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    bare_id = extract_status_id(cleaned)
+    return f"status/{bare_id}/"
+
+
+def extract_status_id(async_location: str) -> str:
+    """Extract the bare status id from an async Location header or route."""
+    location = async_location.strip().rstrip("/")
+    if location.startswith("http://") or location.startswith("https://"):
+        path = urlparse(location).path.rstrip("/")
+        location = path.split("/api/v2/", 1)[-1] if "/api/v2/" in path else path.lstrip("/")
+    if location.startswith("status/"):
+        return location.split("/", 1)[1].split("/", 1)[0]
+    return location.split("/")[-1]
+
+
+def overwrite_strategy_from_name(name: OverwriteStrategyName) -> FilesOverwriteStrategy:
+    return FilesOverwriteStrategy(name)
+
+
+def is_terminal_import_failure_status(status: str | None) -> bool:
+    if not status:
+        return False
+    lowered = status.lower()
+    return lowered[:5] in FILE_IMPORT_TERMINAL_FAILURE_PREFIXES
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +185,63 @@ class FileSystemStore(Protocol):
 
     async def sign(self, path: str, *, expiration: int = DEFAULT_SIGN_EXPIRATION_SECONDS) -> str:
         """Return a temporary signed download URL for the file at ``path``."""
+        ...
+
+    async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
+        """Write ``data`` to the file at ``path`` ('overwrite' or 'create' if absent)."""
+        ...
+
+    async def create_dir(self) -> str:
+        """Create an empty catalog item directory and return its id."""
+        ...
+
+    async def delete(
+        self, path: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Delete file(s) or director(ies) at ``path`` (silent if absent)."""
+        ...
+
+    async def copy(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Copy ``source`` to ``dest`` within the filesystem."""
+        ...
+
+    async def move(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Move/rename ``source`` to ``dest`` within the filesystem."""
+        ...
+
+    async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
+        """Clone a catalog item directory and return the new catalog item id."""
+        ...
+
+    async def import_from_url(
+        self,
+        path: str,
+        url: str,
+        *,
+        unpack_archive: bool = True,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> str:
+        """Start a URL import and return the async status id."""
+        ...
+
+    async def import_from_data_source(
+        self,
+        path: str,
+        data_source_id: str,
+        *,
+        credential_id: str | None = None,
+        unpack_archive: bool = True,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> str:
+        """Start a data-source import and return the async status id."""
+        ...
+
+    async def get_status(self, status_id: str) -> dict[str, Any]:
+        """Fetch the current async status payload for a single import job."""
         ...
 
 
@@ -244,3 +340,118 @@ class DataRobotFileSystemStore:
 
     async def sign(self, path: str, *, expiration: int = DEFAULT_SIGN_EXPIRATION_SECONDS) -> str:
         return await self._run(lambda fs: fs.sign(path, expiration=expiration))
+
+    async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
+        await self._run(lambda fs: fs.pipe_file(path, value=data, mode=mode))
+
+    async def create_dir(self) -> str:
+        return await self._run(lambda fs: fs.create_catalog_item_dir())
+
+    async def delete(
+        self, path: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.rm(path, recursive=recursive, maxdepth=maxdepth))
+
+    async def copy(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.copy(source, dest, recursive=recursive, maxdepth=maxdepth))
+
+    async def move(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.mv(source, dest, recursive=recursive, maxdepth=maxdepth))
+
+    async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
+        return await self._run(
+            lambda fs: fs.clone_catalog_item_dir(path_or_id, files_to_omit=files_to_omit)
+        )
+
+    async def import_from_url(
+        self,
+        path: str,
+        url: str,
+        *,
+        unpack_archive: bool = True,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> str:
+        strategy = overwrite_strategy_from_name(overwrite)
+
+        def _call(fs: Any) -> str:
+            catalog_id, internal_path = fs._split_path(path)
+            prefix = f"{internal_path.rstrip('/')}/" if internal_path else None
+            entity = fs._get_files_wrapper_for_folder_id(catalog_id).upload_from_url(
+                url=url,
+                use_archive_contents=unpack_archive,
+                overwrite=strategy,
+                wait_for_completion=False,
+                prefix=prefix,
+            )
+            location = entity._async_status_location
+            if not location:
+                raise ToolError(
+                    "Import did not return an async status location.",
+                    kind=ToolErrorKind.UPSTREAM,
+                )
+            return extract_status_id(location)
+
+        return await self._run(_call)
+
+    async def import_from_data_source(
+        self,
+        path: str,
+        data_source_id: str,
+        *,
+        credential_id: str | None = None,
+        unpack_archive: bool = True,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> str:
+        strategy = overwrite_strategy_from_name(overwrite)
+
+        def _call(fs: Any) -> str:
+            catalog_id, internal_path = fs._split_path(path)
+            prefix = f"{internal_path.rstrip('/')}/" if internal_path else None
+            entity = fs._get_files_wrapper_for_folder_id(catalog_id).upload_from_data_source(
+                data_source_id=data_source_id,
+                credential_id=credential_id,
+                prefix=prefix,
+                use_archive_contents=unpack_archive,
+                overwrite=strategy,
+                wait_for_completion=False,
+            )
+            location = entity._async_status_location
+            if not location:
+                raise ToolError(
+                    "Import did not return an async status location.",
+                    kind=ToolErrorKind.UPSTREAM,
+                )
+            return extract_status_id(location)
+
+        return await self._run(_call)
+
+    async def get_status(self, status_id: str) -> dict[str, Any]:
+        location = normalize_status_location(status_id)
+
+        def _fetch() -> dict[str, Any]:
+            client = dr.client.get_client()
+            response = client.get(location, allow_redirects=False)
+            if response.status_code == 307:
+                redirect = response.headers.get("Location")
+                if not redirect:
+                    raise ToolError(
+                        "Status redirect (307) missing Location header.",
+                        kind=ToolErrorKind.UPSTREAM,
+                    )
+                response = client.get(redirect, allow_redirects=False)
+            if response.status_code == 303:
+                return {
+                    "status": FILE_IMPORT_COMPLETED_STATUS,
+                    "redirect_location": response.headers.get("Location"),
+                }
+            return response.json()
+
+        with request_user_dr_sdk(headers_auth_only=self._headers_auth_only):
+            try:
+                return await asyncio.to_thread(_fetch)
+            except ClientError as exc:
+                raise_tool_error_for_client_error(exc)

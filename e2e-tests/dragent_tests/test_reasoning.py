@@ -14,23 +14,21 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
 import pytest
 from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
-from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
+from dragent_tests.helpers import should_run_reasoning_test
 from dragent_tests.helpers import stream_sse_responses
 
-if AGENT not in ("langgraph", "llamaindex"):
+if not should_run_reasoning_test():
     pytest.skip(
-        "Reasoning is only emitted by the langgraph and llamaindex agents.",
+        "Reasoning is not supported in this configuration.",
         allow_module_level=True,
     )
 

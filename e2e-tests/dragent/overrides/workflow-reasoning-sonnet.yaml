@@ -12,15 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# E2E overlay: gateway extended thinking via workflow ``extra_body`` (see docs/nat/llm.md).
 base: workflow.yaml
 
 llms:
   datarobot_llm:
-    _type: datarobot-llm-router
-    primary:
-      use_datarobot_llm_gateway: true
-      llm_default_model: invalid-model-that-does-not-exist
-    fallbacks:
-      - use_datarobot_llm_gateway: true
-        llm_default_model: azure/gpt-4o-2024-11-20
-    num_retries: 1
+    temperature: ~  # unset inherited base temperature: thinking is incompatible with temperature
+    extra_body:
+      thinking:
+        type: enabled
+        budget_tokens: 1024
