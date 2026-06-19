@@ -19,9 +19,9 @@ import uuid
 from pathlib import Path
 
 import httpx
+import litellm
 from ag_ui.core import Event
 from ag_ui.core import EventType
-import litellm
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 BASE_URL = "http://localhost:8080"
@@ -35,6 +35,8 @@ AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"
 
 LLM = os.environ.get("LLM")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
+
+WORKFLOW_FILE = os.environ.get("WORKFLOW_FILE")
 
 E2E_ROOT = Path(__file__).resolve().parent.parent
 RUNNER_MODULE = "dragent.run_agent"

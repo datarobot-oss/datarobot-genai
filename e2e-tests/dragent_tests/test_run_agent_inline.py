@@ -28,13 +28,14 @@ from pathlib import Path
 from openai.types.chat import ChatCompletion
 
 from dragent_tests.helpers import E2E_ROOT
+from dragent_tests.helpers import WORKFLOW_FILE
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 AGENT_DIR = agent_dir()
-WORKFLOW_CONFIG = AGENT_DIR / "workflow.yaml"
+WORKFLOW_CONFIG = AGENT_DIR / WORKFLOW_FILE
 
 
 def test_run_agent_inline(tmp_path: Path) -> None:
@@ -44,7 +45,9 @@ def test_run_agent_inline(tmp_path: Path) -> None:
     chat_completion = build_chat_completion()
 
     # WHEN: the inline runner is executed as a subprocess
-    result = spawn_runner(chat_completion=chat_completion, output_path=output_path)
+    result = spawn_runner(
+        chat_completion=chat_completion, output_path=output_path, config_file=WORKFLOW_CONFIG
+    )
 
     # THEN: the runner exits cleanly and the file parses as a ChatCompletion
     assert result.returncode == 0, f"runner failed (exit {result.returncode}).\n{result.stderr}"

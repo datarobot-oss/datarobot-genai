@@ -28,11 +28,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dragent_tests.helpers import WORKFLOW_FILE
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.mock_otel_collector import MockOtelCollector
-
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
 TEST_API_TOKEN = "test-token"
@@ -44,7 +44,7 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
     """Spans leave the dragent process with DR auth headers and the right path."""
     # GIVEN: a mock OTLP collector and a chat completion request
     base_agent_dir = agent_dir("base")
-    config_file = base_agent_dir / "workflow-tracing.yaml"
+    config_file = base_agent_dir / WORKFLOW_FILE
     assert config_file.exists(), f"missing tracing workflow at {config_file}"
 
     output_path = tmp_path / "output.json"
