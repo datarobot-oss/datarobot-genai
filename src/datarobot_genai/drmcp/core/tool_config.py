@@ -38,6 +38,7 @@ class ToolType(StrEnum):
     OPTIMIZATION = "optimization"
     VDB = "vdb"
     WORKLOAD = "workload"
+    FILES_API = "files_api"
 
 
 class ToolConfig(TypedDict):
@@ -128,6 +129,12 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="workload",
         package_prefix="datarobot_genai.drtools.workload",
         config_field_name="enable_workload_tools",
+    ),
+    ToolType.FILES_API: ToolConfig(
+        name="files_api",
+        directory="files_api",
+        package_prefix="datarobot_genai.drtools.files_api",
+        config_field_name="enable_files_api_tools",
     ),
 }
 
