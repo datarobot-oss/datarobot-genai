@@ -44,7 +44,8 @@ def test_run_agent_inline(tmp_path: Path) -> None:
 
     # WHEN: the inline runner is executed as a subprocess
     result = spawn_runner(
-        chat_completion=chat_completion, output_path=output_path,
+        chat_completion=chat_completion,
+        output_path=output_path,
         custom_model_dir=agent_dir(),
         config_file=WORKFLOW_FILE
     )
