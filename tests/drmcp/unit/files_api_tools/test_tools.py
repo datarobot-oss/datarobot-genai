@@ -28,7 +28,7 @@ import pytest
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.files.file_system_store import FileEntry
-from datarobot_genai.drtools.files_api import tools as tools_mod
+from datarobot_genai.drtools.files_api import read_tools as tools_mod
 
 
 class FakeStore:

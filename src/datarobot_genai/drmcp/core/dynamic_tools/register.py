@@ -38,7 +38,7 @@ async def register_external_tool(config: ExternalToolRegistrationConfig, **kwarg
     """
     external_tool_callable = _external_tool_callable_factory(
         config,
-        allow_empty=get_config().tool_registration_allow_empty_schema,
+        allow_empty=get_config().mcp_server_tool_registration_allow_empty_schema,
     )
 
     registered_tool = await register_tools(

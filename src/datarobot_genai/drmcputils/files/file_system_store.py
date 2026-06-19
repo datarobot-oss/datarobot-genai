@@ -191,6 +191,22 @@ class FileSystemStore(Protocol):
         """Write ``data`` to the file at ``path`` ('overwrite' or 'create' if absent)."""
         ...
 
+    async def upload(
+        self,
+        local_path: str | list[str],
+        dest: str | list[str],
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> None:
+        """Upload local file(s)/director(ies) into the filesystem.
+
+        Content is streamed in chunks (no inline size cap) and multiple files are
+        batched into a single optimized request when possible.
+        """
+        ...
+
     async def create_dir(self) -> str:
         """Create an empty catalog item directory and return its id."""
         ...
@@ -343,6 +359,26 @@ class DataRobotFileSystemStore:
 
     async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
         await self._run(lambda fs: fs.pipe_file(path, value=data, mode=mode))
+
+    async def upload(
+        self,
+        local_path: str | list[str],
+        dest: str | list[str],
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
+    ) -> None:
+        strategy = overwrite_strategy_from_name(overwrite)
+        await self._run(
+            lambda fs: fs.put(
+                local_path,
+                dest,
+                recursive=recursive,
+                maxdepth=maxdepth,
+                overwrite_strategy=strategy,
+            )
+        )
 
     async def create_dir(self) -> str:
         return await self._run(lambda fs: fs.create_catalog_item_dir())

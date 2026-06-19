@@ -115,13 +115,13 @@ def register_routes(mcp: DataRobotMCP) -> None:
                         config.mcp_server_register_dynamic_prompts_on_startup
                     ),
                     "tool_registration_allow_empty_schema": (
-                        config.tool_registration_allow_empty_schema
+                        config.mcp_server_tool_registration_allow_empty_schema
                     ),
                     "tool_registration_duplicate_behavior": (
-                        config.tool_registration_duplicate_behavior
+                        config.mcp_server_tool_registration_duplicate_behavior
                     ),
                     "prompt_registration_duplicate_behavior": (
-                        config.prompt_registration_duplicate_behavior
+                        config.mcp_server_prompt_registration_duplicate_behavior
                     ),
                 },
                 "tool_config": tool_config_status,
