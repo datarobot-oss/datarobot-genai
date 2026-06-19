@@ -55,9 +55,9 @@ def should_run_reasoning_test() -> bool:
     )
 
 
-def agent_dir(agent: str | None = None) -> Path:
+def agent_dir() -> Path:
     """Path to the dragent agent config directory for *agent* (defaults to AGENT/base)."""
-    return E2E_ROOT / "dragent" / (agent or AGENT or "base")
+    return E2E_ROOT / "dragent" / AGENT
 
 
 def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]
