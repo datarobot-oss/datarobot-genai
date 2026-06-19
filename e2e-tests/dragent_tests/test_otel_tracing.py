@@ -28,10 +28,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from dragent_tests.helpers import WORKFLOW_FILE
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
+from dragent_tests.helpers import workflow_file
 from dragent_tests.mock_otel_collector import MockOtelCollector
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
@@ -59,7 +59,7 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
             chat_completion=chat_completion,
             output_path=output_path,
             custom_model_dir=agent_dir(),
-            config_file=WORKFLOW_FILE,
+            config_file=workflow_file(),
             env=env,
         )
 

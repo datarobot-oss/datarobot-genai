@@ -60,6 +60,11 @@ def agent_dir() -> Path:
     return E2E_ROOT / "dragent" / AGENT
 
 
+def workflow_file() -> Path:
+    """Path to the dragent agent workflow file for *agent* (defaults to WORKFLOW_FILE)."""
+    return agent_dir() / WORKFLOW_FILE
+
+
 def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]
     """Build the one-shot chat completion payload used by the inline runner tests."""
     return {
