@@ -36,6 +36,16 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
         """
 
         @property
+        def _model_kwargs(self) -> dict[str, Any]:
+            kwargs = super()._model_kwargs
+            # LlamaIndex's LiteLLM defaults temperature to 0.1 and always sends it;
+            # omit it when unconfigured so the model uses its own default (else a
+            # baked-in value trips guards like Anthropic thinking's temperature==1).
+            if "temperature" not in config:
+                kwargs.pop("temperature", None)
+            return kwargs
+
+        @property
         def metadata(self) -> LLMMetadata:
             """Returns the metadata for the LLM.
 
