@@ -17,6 +17,7 @@ base: workflow.yaml
 
 llms:
   datarobot_llm:
+    temperature: ~  # unset inherited base temperature: thinking is incompatible with temperature
     extra_body:
       thinking_config:
         thinking_budget: 1024
