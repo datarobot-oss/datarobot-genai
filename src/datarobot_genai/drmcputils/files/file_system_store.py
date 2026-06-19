@@ -148,6 +148,36 @@ class FileSystemStore(Protocol):
         """Return a temporary signed download URL for the file at ``path``."""
         ...
 
+    async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
+        """Write ``data`` to the file at ``path`` ('overwrite' or 'create' if absent)."""
+        ...
+
+    async def create_dir(self) -> str:
+        """Create an empty catalog item directory and return its id."""
+        ...
+
+    async def delete(
+        self, path: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Delete file(s) or director(ies) at ``path`` (silent if absent)."""
+        ...
+
+    async def copy(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Copy ``source`` to ``dest`` within the filesystem."""
+        ...
+
+    async def move(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        """Move/rename ``source`` to ``dest`` within the filesystem."""
+        ...
+
+    async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
+        """Clone a catalog item directory and return the new catalog item id."""
+        ...
+
 
 def _raise_tool_error_for_fs_error(exc: Exception) -> NoReturn:
     """Normalise fsspec/OS exceptions to :class:`ToolError`.
@@ -244,3 +274,29 @@ class DataRobotFileSystemStore:
 
     async def sign(self, path: str, *, expiration: int = DEFAULT_SIGN_EXPIRATION_SECONDS) -> str:
         return await self._run(lambda fs: fs.sign(path, expiration=expiration))
+
+    async def write(self, path: str, data: bytes, *, mode: str = "overwrite") -> None:
+        await self._run(lambda fs: fs.pipe_file(path, value=data, mode=mode))
+
+    async def create_dir(self) -> str:
+        return await self._run(lambda fs: fs.create_catalog_item_dir())
+
+    async def delete(
+        self, path: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.rm(path, recursive=recursive, maxdepth=maxdepth))
+
+    async def copy(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.copy(source, dest, recursive=recursive, maxdepth=maxdepth))
+
+    async def move(
+        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+    ) -> None:
+        await self._run(lambda fs: fs.mv(source, dest, recursive=recursive, maxdepth=maxdepth))
+
+    async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
+        return await self._run(
+            lambda fs: fs.clone_catalog_item_dir(path_or_id, files_to_omit=files_to_omit)
+        )
