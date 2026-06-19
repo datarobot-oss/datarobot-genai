@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `e2e-tests`: overrided WORKFLOW_FILE when run agent inline and in CLI
 - `dragent`: ensured that conventional OTLP_EXPORTER environment variables are used by default to configure exporter
 
+## 0.18.4
+- `llama_index`: omit `temperature` when unconfigured so the model uses its own default (matching langgraph/crewai/nat). LlamaIndex's `LiteLLM` baked in `temperature=0.1`, breaking Anthropic extended thinking. Explicit values are still forwarded.
+- `e2e-tests`: set `temperature: 0` on the non-reasoning dragent configs for deterministic runs; reasoning overlays unset it (`temperature: ~`) because extended thinking is incompatible with any temperature modification.
+
 ## 0.18.3
 - `e2e-tests`: test cases to test different LLM scenarios with all tests: NIM, external, variety of LLMs in LLMGW.
 

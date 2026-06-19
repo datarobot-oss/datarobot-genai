@@ -30,6 +30,7 @@ general:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+    temperature: 0
 
 middleware:
   datarobot_guardrails:
