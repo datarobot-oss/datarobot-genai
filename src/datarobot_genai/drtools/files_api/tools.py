@@ -35,46 +35,15 @@ from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.file_system_store import DEFAULT_SIGN_EXPIRATION_SECONDS
-from datarobot_genai.drmcputils.files.file_system_store import DR_PROTOCOL
-from datarobot_genai.drmcputils.files.file_system_store import DataRobotFileSystemStore
-from datarobot_genai.drmcputils.files.file_system_store import FileSystemStore
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.files_api.common_utils import ROOT_PATH
+from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
+from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
+from datarobot_genai.drtools.files_api.common_utils import require_path as _require_path
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
-
-ROOT_PATH = DR_PROTOCOL
-
-
-def _get_store() -> FileSystemStore:
-    """Return the filesystem store. Indirection keeps tools easy to patch in tests."""
-    return DataRobotFileSystemStore()
-
-
-def _require_path(path: str, name: str = "path") -> str:
-    if not path or not path.strip():
-        raise ToolError(
-            f"Argument validation error: '{name}' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    return path.strip()
-
-
-def _is_root(path: str) -> bool:
-    return path.rstrip("/").lower() in (DR_PROTOCOL.rstrip("/"), "dr:", "")
-
-
-def _require_file_path(path: str, name: str = "path") -> str:
-    """Validate a path that must reference a file under a catalog item, not the root."""
-    cleaned = _require_path(path, name)
-    if _is_root(cleaned):
-        raise ToolError(
-            f"Argument validation error: '{name}' must reference a file under a catalog item "
-            f"(e.g. dr://<catalog_id>/file.txt), not the filesystem root.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    return cleaned
 
 
 # ------------------------------------------------------------------ #

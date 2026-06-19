@@ -19,6 +19,7 @@ import pytest
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
 from tests.drmcp.helpers.mcp_catalog_transform import catalog_transform_headers
+from tests.drmcp.helpers.mcp_catalog_transform import tool_name_callable_with_empty_args
 from tests.drmcp.helpers.mcp_catalog_transform import tool_names_from_list_tools_result
 
 pytestmark = pytest.mark.skipif(
@@ -33,10 +34,13 @@ class TestMcpCatalogTransformE2E:
 
     async def test_list_then_call_allowed_tool(self) -> None:
         async with ete_test_mcp_session() as session:
-            baseline = tool_names_from_list_tools_result(await session.list_tools())
+            tools_result = await session.list_tools()
+        baseline = tool_names_from_list_tools_result(tools_result)
         assert baseline
 
-        allowed = sorted(baseline)[0]
+        allowed = tool_name_callable_with_empty_args(tools_result)
+        if allowed is None:
+            pytest.skip("No known empty-args-callable tool in catalog")
         headers = catalog_transform_headers(tools=allowed)
 
         async with ete_test_mcp_session(additional_headers=headers) as session:

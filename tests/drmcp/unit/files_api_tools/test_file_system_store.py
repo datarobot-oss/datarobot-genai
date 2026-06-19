@@ -71,20 +71,50 @@ class FakeFS:
     def sign(self, path: str, expiration: int = 100) -> Any:
         return self._resolve("sign", "")
 
+    def pipe_file(self, path: str, value: bytes, mode: str = "overwrite") -> Any:
+        self.recorded = ("pipe_file", path, value, mode)
+        return self._resolve("pipe_file", None)
+
+    def create_catalog_item_dir(self) -> Any:
+        return self._resolve("create_catalog_item_dir", "")
+
+    def rm(self, path: str, recursive: bool = False, maxdepth: Any = None) -> Any:
+        self.recorded = ("rm", path, recursive, maxdepth)
+        return self._resolve("rm", None)
+
+    def copy(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
+        self.recorded = ("copy", path1, path2, recursive, maxdepth)
+        return self._resolve("copy", None)
+
+    def mv(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
+        self.recorded = ("mv", path1, path2, recursive, maxdepth)
+        return self._resolve("mv", None)
+
+    def clone_catalog_item_dir(self, path_or_id: str, files_to_omit: Any = None) -> Any:
+        self.recorded = ("clone", path_or_id, files_to_omit)
+        return self._resolve("clone_catalog_item_dir", "")
+
 
 @contextmanager
 def _noop_sdk(**_: Any) -> Iterator[None]:
     yield None
 
 
-def _store_with(**behavior: Any) -> DataRobotFileSystemStore:
-    """Patch the request-scoped SDK and the fsspec backend, returning a live store."""
+def _store_and_fs(**behavior: Any) -> tuple[DataRobotFileSystemStore, FakeFS]:
+    """Patch the SDK + fsspec backend; return the store and the shared fake fs."""
+    fs = FakeFS(**behavior)
     patch(
         "datarobot_genai.drmcputils.files.file_system_store.request_user_dr_sdk",
         _noop_sdk,
     ).start()
-    patch("datarobot.fs.DataRobotFileSystem", lambda *a, **k: FakeFS(**behavior)).start()
-    return DataRobotFileSystemStore()
+    patch("datarobot.fs.DataRobotFileSystem", lambda *a, **k: fs).start()
+    return DataRobotFileSystemStore(), fs
+
+
+def _store_with(**behavior: Any) -> DataRobotFileSystemStore:
+    """Patch the request-scoped SDK and the fsspec backend, returning a live store."""
+    store, _ = _store_and_fs(**behavior)
+    return store
 
 
 @pytest.fixture(autouse=True)
@@ -173,3 +203,30 @@ async def test_client_error_maps_via_helper() -> None:
     with pytest.raises(ToolError) as exc:
         await store.info("dr://abc/x")
     assert exc.value.kind == ToolErrorKind.NOT_FOUND
+
+
+async def test_write_delegates_to_pipe_file() -> None:
+    store, fs = _store_and_fs()
+    await store.write("dr://abc/x.txt", b"data", mode="create")
+    assert fs.recorded == ("pipe_file", "dr://abc/x.txt", b"data", "create")
+
+
+async def test_create_dir_returns_catalog_id() -> None:
+    store, _ = _store_and_fs(create_catalog_item_dir="cat1")
+    assert await store.create_dir() == "cat1"
+
+
+async def test_delete_copy_move_delegate() -> None:
+    store, fs = _store_and_fs()
+    await store.delete("dr://abc/x", recursive=True, maxdepth=2)
+    assert fs.recorded == ("rm", "dr://abc/x", True, 2)
+    await store.copy("dr://abc/a", "dr://abc/b", recursive=True)
+    assert fs.recorded == ("copy", "dr://abc/a", "dr://abc/b", True, None)
+    await store.move("dr://abc/a", "dr://abc/b")
+    assert fs.recorded == ("mv", "dr://abc/a", "dr://abc/b", False, None)
+
+
+async def test_clone_returns_new_catalog_id() -> None:
+    store, fs = _store_and_fs(clone_catalog_item_dir="clone1")
+    assert await store.clone("dr://abc/", files_to_omit=["s.txt"]) == "clone1"
+    assert fs.recorded == ("clone", "dr://abc/", ["s.txt"])

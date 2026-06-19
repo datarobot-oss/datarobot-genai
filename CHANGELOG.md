@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.6
+- `drtools/files_api`: write and structural tools for the DataRobot Files API filesystem — `file_write` (inline UTF-8/base64 content, `overwrite`/`create` modes, capped at `MAX_INLINE_SIZE`) and `file_manage` (consolidated `create_dir` | `delete` | `copy` | `move` | `clone` lifecycle actions). Backed by new store methods on `DataRobotFileSystemStore` (`write`, `create_dir`, `delete`, `copy`, `move`, `clone`); shared path/content helpers live in `common_utils.py`.
+
 ## 0.18.5
 - `e2e-tests`: overrided WORKFLOW_FILE when run agent inline and in CLI
 - `dragent`: ensured that conventional OTLP_EXPORTER environment variables are used by default to configure exporter, and fixed OTEL context propagation in `execute_dragent_inline`
