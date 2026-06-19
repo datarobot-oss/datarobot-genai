@@ -53,7 +53,7 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
         env = {
             **os.environ,
             # Use the setup close to Codespaces
-            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint + OTLP_TRACES_PATH,
             "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
         }
 
