@@ -25,6 +25,6 @@ middleware:
           type: ootb
           ootb_type: custom_metric
           stage: [prompt, response]
-          faas_url: http://127.0.0.1:${CUSTOM_METRIC_PORT}
+          faas_url: ${OOTB_CUSTOM_METRIC_ENDPOINT}
           intervention:
             action: report
