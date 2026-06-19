@@ -30,7 +30,7 @@ cases:
   - name: router-llm
     env:
       LLM: router
-      WORKFLOW_FILE: workflow-router-fallback-used.yaml
+      WORKFLOW_FILE: workflow-router-fallback.yaml
     tests:
       - ./dragent_tests
     matrix:

@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -154,6 +155,22 @@ def _stop_server(proc: subprocess.Popen[bytes]) -> None:
         proc.wait(timeout=SERVER_GRACE_S)
 
 
+def _apply_override(combo: Combination) -> Path | None:
+    """Copy the combo's WORKFLOW_FILE from dragent/overrides into the agent dir.
+
+    Shared overlays live once in ``dragent/overrides``; copying the one in use
+    next to the agent's ``workflow.yaml`` lets its relative ``base:`` resolve.
+    Skips when the agent already has its own file. Returns the copy to remove.
+    """
+    workflow_file = combo.env.get("WORKFLOW_FILE", "workflow.yaml")
+    src = E2E_ROOT / "dragent" / "overrides" / workflow_file
+    dst = E2E_ROOT / "dragent" / combo.agent / workflow_file
+    if not src.exists() or dst.exists():
+        return None
+    shutil.copyfile(src, dst)
+    return dst
+
+
 def _run_pytest(combo: Combination, env: dict[str, str]) -> int:
     results_dir = E2E_ROOT / "test_results"
     results_dir.mkdir(exist_ok=True)
@@ -175,6 +192,10 @@ def _run_one(
 ) -> ComboResult:
     env = _build_env(combo)
 
+    # Materialize the workflow overlay in use next to the agent's workflow.yaml
+    # so its relative ``base: workflow.yaml`` resolves; removed again below.
+    override_copy = _apply_override(combo)
+
     server: subprocess.Popen[bytes] | None = None
     try:
         if not no_server:
@@ -195,6 +216,8 @@ def _run_one(
     finally:
         if server is not None:
             _stop_server(server)
+        if override_copy is not None:
+            override_copy.unlink(missing_ok=True)
 
 
 def _print_summary(results: list[ComboResult]) -> None:

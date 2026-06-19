@@ -103,9 +103,9 @@ workflow:
 
 Reference examples:
 
-- `e2e-tests/dragent/langgraph/workflow-router-fallback-used.yaml`
-- `e2e-tests/dragent/crewai/workflow-router-fallback-used.yaml`
-- `e2e-tests/dragent/llamaindex/workflow-router-fallback-used.yaml`
+- `e2e-tests/dragent/langgraph/workflow-router-fallback.yaml`
+- `e2e-tests/dragent/crewai/workflow-router-fallback.yaml`
+- `e2e-tests/dragent/llamaindex/workflow-router-fallback.yaml`
 
 ## Python API (non-NAT path)
 

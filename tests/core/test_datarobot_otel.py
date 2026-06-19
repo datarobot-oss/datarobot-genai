@@ -31,6 +31,7 @@ _ENV_VARS = (
     "DATAROBOT_ENDPOINT",
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "OTEL_SERVICE_NAME",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
 )
 
 
@@ -81,6 +82,23 @@ class TestEnvResolvers:
     def test_endpoint_empty_for_malformed_url(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "not-a-url")
         assert datarobot_otel.resolve_otel_endpoint_from_env() == ""
+
+    def test_explicit_otlp_endpoint_returned_verbatim(self, clean_env):
+        # OTEL_EXPORTER_OTLP_ENDPOINT is the standard OTel override. When set
+        # it is returned as-is, with no host extraction or /otel/v1/traces
+        # rewriting.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test:4318/v1/traces")
+        assert (
+            datarobot_otel.resolve_otel_endpoint_from_env()
+            == "https://collector.test:4318/v1/traces"
+        )
+
+    def test_explicit_otlp_endpoint_wins_over_datarobot_endpoint(self, clean_env):
+        # The standard OTel override takes precedence over the DR-derived
+        # endpoint so an operator can point spans at any collector.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test/v1/traces")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        assert datarobot_otel.resolve_otel_endpoint_from_env() == "https://collector.test/v1/traces"
 
 
 class TestBootstrapOtelProvider:

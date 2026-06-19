@@ -66,6 +66,9 @@ def resolve_entity_id_from_env() -> str:
 
 
 def resolve_otel_endpoint_from_env() -> str:
+    # if OTEL_EXPORTER_OTLP_ENDPOINT is set: do not override it
+    if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
     # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
     # → https://app.datarobot.com/otel/v1/traces. The OTel collector ingress
     # lives at the same host, off /otel/v1/traces, not under /api/v2. We

@@ -183,6 +183,16 @@ jobs:
         working-directory: e2e-tests
         run: uv sync --group dragent-${{ matrix.agent }}
 
+      - name: Materialize workflow override
+        working-directory: e2e-tests
+        run: |
+          f="${WORKFLOW_FILE:-workflow.yaml}"
+          src="dragent/overrides/$f"
+          dst="dragent/${{ matrix.agent }}/$f"
+          if [ -f "$src" ] && [ ! -f "$dst" ]; then
+            cp "$src" "$dst"
+          fi
+
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1
         with:
