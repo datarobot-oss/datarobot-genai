@@ -34,8 +34,6 @@ from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
-AGENT_DIR = agent_dir()
-WORKFLOW_CONFIG = AGENT_DIR / WORKFLOW_FILE
 
 
 def test_run_agent_inline(tmp_path: Path) -> None:
@@ -46,7 +44,9 @@ def test_run_agent_inline(tmp_path: Path) -> None:
 
     # WHEN: the inline runner is executed as a subprocess
     result = spawn_runner(
-        chat_completion=chat_completion, output_path=output_path, config_file=WORKFLOW_CONFIG
+        chat_completion=chat_completion, output_path=output_path,
+        custom_model_dir=agent_dir(),
+        config_file=WORKFLOW_FILE
     )
 
     # THEN: the runner exits cleanly and the file parses as a ChatCompletion

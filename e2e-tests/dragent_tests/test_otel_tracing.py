@@ -43,10 +43,6 @@ EXPECTED_ENTITY_ID = f"deployment-{TEST_DEPLOYMENT_ID}"
 def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
     """Spans leave the dragent process with DR auth headers and the right path."""
     # GIVEN: a mock OTLP collector and a chat completion request
-    base_agent_dir = agent_dir("base")
-    config_file = base_agent_dir / WORKFLOW_FILE
-    assert config_file.exists(), f"missing tracing workflow at {config_file}"
-
     output_path = tmp_path / "output.json"
     chat_completion = build_chat_completion()
 
@@ -62,8 +58,8 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
         result = spawn_runner(
             chat_completion=chat_completion,
             output_path=output_path,
-            custom_model_dir=base_agent_dir,
-            config_file=config_file,
+            custom_model_dir=agent_dir(),
+            config_file=WORKFLOW_FILE,
             env=env,
         )
 

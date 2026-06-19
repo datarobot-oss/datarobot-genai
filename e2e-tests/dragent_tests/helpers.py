@@ -29,11 +29,11 @@ BASE_URL = "http://localhost:8080"
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
 
-AGENT = os.environ.get("AGENT")
+AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]
 
-LLM = os.environ.get("LLM")
+LLM = os.environ.get("LLM", "llmgw")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
 
 WORKFLOW_FILE = os.environ.get("WORKFLOW_FILE", "workflow.yaml")
