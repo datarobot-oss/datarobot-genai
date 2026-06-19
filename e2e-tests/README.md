@@ -24,6 +24,9 @@ MCP_DEPLOYMENT_ID=
 # Necessary for configurations using DataRobot Deployment as LLM
 LLM_DEPLOYMENT_ID=
 
+# Necessary for OOTB custom_metric:
+OOTB_CUSTOM_METRIC_ENDPOINT=
+
 # Necessary for configurations using the Emotion Classifier custom model:
 EMOTION_CLASSIFIER_DEPLOYMENT_ID=
 
