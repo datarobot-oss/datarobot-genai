@@ -3,7 +3,7 @@ cases:
     env:
       LLM: llmgw
       LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
-      WORKFLOW_FILE: workflow-reasoning.yaml
+      WORKFLOW_FILE: workflow-reasoning-sonnet.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
