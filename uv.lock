@@ -1104,7 +1104,7 @@ fs = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.18.10"
+version = "0.18.13"
 source = { editable = "." }
 
 [package.optional-dependencies]

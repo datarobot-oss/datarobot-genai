@@ -83,8 +83,6 @@ workflow:
     - writer
     - mcp_tools
     - generate_objectid
-  return_direct:
-    - writer
   system_prompt: |
     Call planner, then writer. Return writer's output.
     If asked to generate an object ID, call generate_objectid and return its exact result.
