@@ -166,16 +166,47 @@ class TestDataRobotMCPServer:
         mock_deployment_get.assert_any_call("id2")
         assert mock_get_mcp_tool_metadata.call_count == 2
 
+    @patch(
+        "datarobot_genai.drmcp.core.dr_mcp_server.register_prompts_from_datarobot_prompt_management"
+    )
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.register_tools_of_datarobot_deployments")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.LineageManager")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_credentials")
-    def test_run_missing_config(self, mock_get_credentials: MagicMock, mock_mcp: MagicMock) -> None:
-        """Test server run with missing configuration."""
+    def test_run_missing_credentials_skips_registration(
+        self,
+        mock_get_credentials: MagicMock,
+        mock_asyncio: MagicMock,
+        mock_get_config: MagicMock,
+        mock_lineage_manager: MagicMock,
+        mock_register_tools: MagicMock,
+        mock_register_prompts: MagicMock,
+        mock_mcp: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Server should still start when credentials are missing, skipping dynamic registration."""
+        mock_config.mcp_server_register_dynamic_tools_on_startup = True
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = True
+        mock_get_config.return_value = mock_config
         mock_creds = MagicMock()
         mock_creds.has_datarobot_credentials.return_value = False
         mock_get_credentials.return_value = mock_creds
 
-        server = DataRobotMCPServer(mock_mcp)
-        with pytest.raises(ValueError, match="Missing required DataRobot credentials"):
-            server.run()
+        mock_loop = MagicMock()
+        mock_asyncio.new_event_loop.return_value = mock_loop
+
+        server = DataRobotMCPServer(mock_mcp, transport="stdio")
+        # Should not raise even though credentials are missing.
+        server.run()
+
+        # Credential-dependent steps must be skipped.
+        mock_register_tools.assert_not_called()
+        mock_register_prompts.assert_not_called()
+        mock_lineage_manager.assert_not_called()
+
+        # Server should still have been started.
+        mock_asyncio.new_event_loop.assert_called_once()
 
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")

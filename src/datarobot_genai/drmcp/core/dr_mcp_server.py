@@ -210,25 +210,28 @@ class DataRobotMCPServer:
         try:
             # Validate configuration
             if not self._credentials.has_datarobot_credentials():
-                self._logger.error("DataRobot credentials not configured")
-                raise ValueError("Missing required DataRobot credentials")
+                self._logger.warning(
+                    "DataRobot credentials not configured; skipping dynamic tool/prompt "
+                    "registration and MCP lineage sync. The server will start with only "
+                    "statically registered items."
+                )
+            else:
+                if self._config.mcp_server_register_dynamic_tools_on_startup:
+                    self._logger.info("Registering dynamic tools from deployments...")
+                    asyncio.run(register_tools_of_datarobot_deployments())
 
-            if self._config.mcp_server_register_dynamic_tools_on_startup:
-                self._logger.info("Registering dynamic tools from deployments...")
-                asyncio.run(register_tools_of_datarobot_deployments())
+                if self._config.mcp_server_register_dynamic_prompts_on_startup:
+                    self._logger.info("Registering dynamic prompts from prompt management...")
+                    asyncio.run(register_prompts_from_datarobot_prompt_management())
 
-            if self._config.mcp_server_register_dynamic_prompts_on_startup:
-                self._logger.info("Registering dynamic prompts from prompt management...")
-                asyncio.run(register_prompts_from_datarobot_prompt_management())
-
-            try:
-                linear_manager = LineageManager(self._mcp)
-                asyncio.run(linear_manager.sync_mcp_tools())
-                asyncio.run(linear_manager.sync_mcp_prompts())
-                self._logger.info("Sync with MCP lineage")
-            except LRSEnvVarIsNotSetError as error:
-                error_message = f"MCP item metadata is not sync. {str(error)}"
-                self._logger.warning(error_message)
+                try:
+                    linear_manager = LineageManager(self._mcp)
+                    asyncio.run(linear_manager.sync_mcp_tools())
+                    asyncio.run(linear_manager.sync_mcp_prompts())
+                    self._logger.info("Sync with MCP lineage")
+                except LRSEnvVarIsNotSetError as error:
+                    error_message = f"MCP item metadata is not sync. {str(error)}"
+                    self._logger.warning(error_message)
 
             # Execute pre-server start actions
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))
