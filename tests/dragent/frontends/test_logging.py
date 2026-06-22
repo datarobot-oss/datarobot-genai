@@ -18,22 +18,22 @@ import subprocess
 import sys
 
 
-def test_setup_logging_dedupes_litellm_even_when_imported_after() -> None:
+def test_unify_litellm_logging_dedupes_even_when_imported_after() -> None:
     """LiteLLM logs must not be duplicated.
 
     LiteLLM attaches its own stderr handler to the ``LiteLLM`` logger at import
-    time while leaving ``propagate=True``, so each line is emitted twice (once by
-    LiteLLM's handler, once by the root handler). ``setup_logging`` must leave the
-    logger with no own handler and ``propagate=True`` even when LiteLLM is imported
-    AFTER ``setup_logging`` runs (the real dragent serve ordering).
+    while leaving ``propagate=True``, so each line is emitted twice. After
+    ``unify_litellm_logging()`` the logger must have no own handler and still
+    ``propagate=True`` (so records flow through the unified root handler once) —
+    and a later ``import litellm`` must not re-add a handler.
     """
-    # Run in a fresh interpreter so we control import order: setup_logging FIRST,
-    # then `import litellm` (which is when LiteLLM adds its handler).
+    # Fresh interpreter: call unify_litellm_logging() (it imports litellm itself),
+    # then import litellm again to prove no handler is re-added.
     script = (
         "import logging;"
-        "from datarobot_genai.core.utils.logging import setup_logging;"
-        "setup_logging();"
-        "import litellm;"  # noqa: F401 -- adds LiteLLM's own handler at import time
+        "from datarobot_genai.dragent.frontends.logging import unify_litellm_logging;"
+        "unify_litellm_logging();"
+        "import litellm;"  # noqa: F401 -- must not re-add LiteLLM's handler
         "lg = logging.getLogger('LiteLLM');"
         "print(f'HANDLERS={len(lg.handlers)} PROPAGATE={lg.propagate}')"
     )

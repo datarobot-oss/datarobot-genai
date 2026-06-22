@@ -21,18 +21,3 @@ def setup_logging() -> None:
     """Setup uniform logging for the application."""  # noqa: D401
     current_log_level = logging.getLogger().getEffectiveLevel()
     logger.info(f"Setting up logging, log level: {logging._levelToName[current_log_level]}")
-
-    # Import LiteLLM first: it attaches its own stderr handler at import time while
-    # leaving propagate=True, so each line is logged twice. Importing here ensures
-    # that handler exists before we strip it, even when callers import litellm later.
-    try:
-        import litellm  # noqa: F401  (imported for its logging side effect)
-    except ImportError:
-        pass
-
-    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
-        lg = logging.getLogger(name)
-        if lg:
-            logger.debug(f"Resetting logger {name}")
-            lg.handlers.clear()
-            lg.propagate = True
