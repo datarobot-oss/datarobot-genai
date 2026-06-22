@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.9
+- `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.
+
 ## 0.18.8
 - `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.
 - `drmcp`: `MCPServerConfig` and `MCPToolConfig` now extend `DataRobotAppFrameworkBaseSettings`, consolidating env, `.env`, file secrets, pulumi config, and `MLOPS_RUNTIME_PARAM_` resolution; removed `drtools.core.config_utils` and its re-exports from `datarobot_genai.drmcp`, config attributes renamed to `mcp_server_tool_registration_allow_empty_schema`, `mcp_server_tool_registration_duplicate_behavior`, and `mcp_server_prompt_registration_duplicate_behavior`.
