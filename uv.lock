@@ -1415,12 +1415,12 @@ requires-dist = [
     { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.33,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.33,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.33,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.33,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.33,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'nat'", specifier = ">=11.2.33,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.35,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.35,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.35,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.35,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.35,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'nat'", specifier = ">=11.2.35,<12.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1595,7 +1595,7 @@ dev = [
 
 [[package]]
 name = "datarobot-moderations"
-version = "11.2.33"
+version = "11.2.36"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1615,7 +1615,7 @@ dependencies = [
     { name = "tiktoken" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/26/763042a9b2ae2f6bcf10aee14a019d3a52d36becb9bb6091f8f40492d660/datarobot_moderations-11.2.33-py3-none-any.whl", hash = "sha256:1b835a8e53306b41407ff30dbd90631cbe0084cdbe5bb0bdb2b79999dc1adcf8", size = 149461, upload-time = "2026-06-03T13:33:56.177Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/62/04f07e2f111d69f6394068e6703cb68f084e6f29d85f4a12ddb804d768ba/datarobot_moderations-11.2.36-py3-none-any.whl", hash = "sha256:fa04563579cfc1ad281e983f88b92f35d2f829313bf69d24eb5b57472c611eca", size = 160583, upload-time = "2026-06-22T13:50:47.921Z" },
 ]
 
 [package.optional-dependencies]
