@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.18.11
-- `crewai`: don't open an AG-UI step for an empty/whitespace `agent_role`, so a run can't emit `RUN_FINISHED` while an orphan step is still active (AG-UI verifier `EventSequenceError`). The empty role comes from CrewAI's forced final answer when an agent hits `max_iter`.
-- `e2e-tests`: cap CrewAI `max_iter` on the dragent crew so gpt-5 (sent no stop words → may never emit a parseable `Final Answer`) terminates within the test timeout instead of looping to the per-agent default.
-- `dragent`: deduplicate LiteLLM logs — strip LiteLLM's import-time stderr handler in the dragent logging setup and keep `propagate=True`, so each LiteLLM/Router/Proxy line is logged once via the unified root handler instead of twice (BUZZOK-31333).
-- `crewai`: surface more of a run under dragent — log the output and tool calls at INFO and tool arguments at DEBUG, matching the langgraph/llamaindex agents' wording (partial BUZZOK-30089).
+- `crewai`: skip empty/whitespace `agent_role` so it can't leave an orphan AG-UI step open at `RUN_FINISHED` (BUZZOK-31332).
+- `e2e-tests`: cap CrewAI `max_iter` on the dragent crew so gpt-5 can't loop past the test timeout (BUZZOK-31332).
+- `dragent`: log each LiteLLM line once — strip its import-time handler, keep `propagate=True` (BUZZOK-31333).
+- `crewai`: log output + tool calls (INFO) and tool args (DEBUG), matching the langgraph/llamaindex agents (partial BUZZOK-30089).
 
 ## 0.18.10
 Added to `e2e-tests` for moderations:
