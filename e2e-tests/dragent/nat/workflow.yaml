@@ -19,6 +19,11 @@ general:
       server:
         name: "E2E NAT Agent"
         description: "NAT agent for end-to-end testing."
+  telemetry:
+    tracing:
+      otelcollector:
+        _type: datarobot_otelcollector
+        project: "nat"
 
 functions:
   planner:
@@ -38,6 +43,7 @@ functions:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+    temperature: 0
 
 function_groups:
   mcp_tools:

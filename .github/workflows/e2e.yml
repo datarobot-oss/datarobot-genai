@@ -12,8 +12,8 @@ on:
         default: pr-tests.yaml
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.case_file }}
+  cancel-in-progress: true
 
 env:
   TASK_VERSION: 3.48.0
@@ -141,6 +141,9 @@ jobs:
       MCP_DEPLOYMENT_ID: ${{ secrets.E2E_MCP_DEPLOYMENT_ID }}
       SESSION_SECRET_KEY: ${{ secrets.E2E_SESSION_SECRET_KEY }}
       LLM_DEPLOYMENT_ID: ${{ secrets.E2E_LLM_DEPLOYMENT_ID }}
+      NIM_DEPLOYMENT_ID: ${{ secrets.E2E_NIM_DEPLOYMENT_ID }}
+      EMOTION_CLASSIFIER_DEPLOYMENT_ID: ${{ secrets.E2E_EMOTION_CLASSIFIER_DEPLOYMENT_ID }}
+      OOTB_CUSTOM_METRIC_ENDPOINT: ${{ secrets.E2E_OOTB_CUSTOM_METRIC_ENDPOINT }}
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"
@@ -181,6 +184,16 @@ jobs:
       - name: Install dependencies
         working-directory: e2e-tests
         run: uv sync --group dragent-${{ matrix.agent }}
+
+      - name: Materialize workflow override
+        working-directory: e2e-tests
+        run: |
+          f="${WORKFLOW_FILE:-workflow.yaml}"
+          src="dragent/overrides/$f"
+          dst="dragent/${{ matrix.agent }}/$f"
+          if [ -f "$src" ] && [ ! -f "$dst" ]; then
+            cp "$src" "$dst"
+          fi
 
       - name: Run dragent server in background
         uses: JarvusInnovations/background-action@v1

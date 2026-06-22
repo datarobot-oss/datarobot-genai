@@ -31,39 +31,38 @@ from pathlib import Path
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
+from dragent_tests.helpers import workflow_file
 from dragent_tests.mock_otel_collector import MockOtelCollector
-
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
 TEST_API_TOKEN = "test-token"
-TEST_DEPLOYMENT_ID = "test-deployment-id"
-EXPECTED_ENTITY_ID = f"deployment-{TEST_DEPLOYMENT_ID}"
+TEST_USE_CASE_ID = "test-use-case-id"
+EXPECTED_ENTITY_ID = f"use-case-{TEST_USE_CASE_ID}"
+OTEL_EXPORTER_OTLP_HEADERS = (
+    f"X-DataRobot-Api-Key={TEST_API_TOKEN},X-DataRobot-Entity-Id={EXPECTED_ENTITY_ID}"
+)
 
 
 def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
     """Spans leave the dragent process with DR auth headers and the right path."""
     # GIVEN: a mock OTLP collector and a chat completion request
-    base_agent_dir = agent_dir("base")
-    config_file = base_agent_dir / "workflow-tracing.yaml"
-    assert config_file.exists(), f"missing tracing workflow at {config_file}"
-
     output_path = tmp_path / "output.json"
     chat_completion = build_chat_completion()
 
     with MockOtelCollector() as collector:
         env = {
             **os.environ,
-            "DATAROBOT_ENDPOINT": collector.endpoint,
-            "DATAROBOT_API_TOKEN": TEST_API_TOKEN,
-            "MLOPS_DEPLOYMENT_ID": TEST_DEPLOYMENT_ID,
+            # Use the setup close to Codespaces
+            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint + OTLP_TRACES_PATH,
+            "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
         }
 
         # WHEN: the inline runner is executed against workflow-tracing.yaml
         result = spawn_runner(
             chat_completion=chat_completion,
             output_path=output_path,
-            custom_model_dir=base_agent_dir,
-            config_file=config_file,
+            custom_model_dir=agent_dir(),
+            config_file=workflow_file(),
             env=env,
         )
 

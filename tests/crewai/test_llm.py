@@ -261,6 +261,44 @@ def test_litellm_stop_word_llm_call_applies_stop_words(
     assert "Final Answer:" not in result
 
 
+async def test_litellm_stop_word_llm_acall_applies_stop_words(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Async kickoff uses ``acall``; stop words must truncate there too."""
+    hallucinated = (
+        "Thought: I need to search.\n"
+        "Action: search\n"
+        "Action Input: query\n"
+        "Observation: fake result\n"
+        "Final Answer: hallucinated"
+    )
+    with patch.object(LLM, "acall", return_value=hallucinated):
+        result = await stop_word_llm.acall("test message")
+    assert result == "Thought: I need to search.\nAction: search\nAction Input: query"
+    assert "Observation:" not in result
+    assert "Final Answer:" not in result
+
+
+def test_litellm_stop_word_llm_truncates_inline_react_after_action_input(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Models may hallucinate a second ``Thought`` without an ``Observation:`` label."""
+    hallucinated = (
+        "Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+        'Action Input: {"type":"deployment"}\n'
+        "dff6ff5bc0f04cf69bf4c020cff634c0Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+    )
+    with patch.object(LLM, "call", return_value=hallucinated):
+        result = stop_word_llm.call("test message")
+    assert result == (
+        "Thought: you should always think about what to do\n"
+        "Action: generate_objectid\n"
+        'Action Input: {"type":"deployment"}'
+    )
+
+
 def test_litellm_stop_word_llm_call_no_stop_words_returns_unchanged() -> None:
     """Without stop words configured, responses pass through unchanged."""
     llm = LitellmStopWordLLM(model="openai/gpt-4o")
@@ -297,3 +335,53 @@ def test_litellm_stop_word_llm_call_multiple_stop_words_truncates_at_earliest() 
     with patch.object(LLM, "call", return_value=response):
         result = llm.call("test message")
     assert result == "Action: search"
+
+
+# ---------------------------------------------------------------------------
+# _format_messages_for_provider – assistant prefill handling
+# ---------------------------------------------------------------------------
+
+
+class TestFormatMessagesForProvider:
+    """Tests for LitellmStopWordLLM._format_messages_for_provider."""
+
+    @pytest.fixture
+    def llm(self) -> LitellmStopWordLLM:
+        return LitellmStopWordLLM(model="datarobot/anthropic/claude-sonnet-4-6")
+
+    def test_appends_user_message_when_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """A trailing assistant message gets followed by a 'Please continue.' user message."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "I'll help you with that."},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "Please continue."}
+        assert result[-2] == {"role": "assistant", "content": "I'll help you with that."}
+
+    def test_no_change_when_trailing_user(self, llm: LitellmStopWordLLM) -> None:
+        """Messages ending with a user message are not modified."""
+        messages = [
+            {"role": "user", "content": "What is 2+2?"},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "What is 2+2?"}
+        assert len(result) == 1
+
+    def test_empty_messages_no_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """Empty message list does not end with an assistant message."""
+        result = llm._format_messages_for_provider([])
+        assert not result or result[-1].get("role") != "assistant"
+
+    def test_multi_turn_conversation_with_trailing_assistant(self, llm: LitellmStopWordLLM) -> None:
+        """Multi-turn conversation ending with assistant gets user message appended."""
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello!"},
+            {"role": "user", "content": "Use the tool"},
+            {"role": "assistant", "content": "I'll use the tool now."},
+        ]
+        result = llm._format_messages_for_provider(messages)
+        assert result[-1] == {"role": "user", "content": "Please continue."}
+        assert result[-2] == {"role": "assistant", "content": "I'll use the tool now."}

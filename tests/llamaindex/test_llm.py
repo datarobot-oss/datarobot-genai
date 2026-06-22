@@ -84,6 +84,17 @@ def test_get_datarobot_gateway_llm_merges_parameters() -> None:
     assert llm.temperature == 0.25
 
 
+def test_get_datarobot_gateway_llm_omits_temperature_when_unconfigured() -> None:
+    """An unconfigured temperature is not sent, so the model uses its own default."""
+    llm = llama_index_llm.get_datarobot_gateway_llm()
+    assert "temperature" not in llm._model_kwargs
+
+
+def test_get_datarobot_gateway_llm_keeps_explicit_temperature_on_the_wire() -> None:
+    llm = llama_index_llm.get_datarobot_gateway_llm(parameters={"temperature": 0.25})
+    assert llm._model_kwargs["temperature"] == 0.25
+
+
 def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base() -> None:
     llm = llama_index_llm.get_datarobot_deployment_llm("dep-abc-123")
     assert isinstance(llm, LiteLLM)
