@@ -21,9 +21,12 @@ future backends — e.g. a local-Docker dev/test sandbox) without code churn.
 
 from datarobot_genai.drtools.sandbox.base import Sandbox
 from datarobot_genai.drtools.sandbox.base import SandboxError
+from datarobot_genai.drtools.sandbox.base import SandboxInfraError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.sandbox.observability import InstrumentedSandbox
+from datarobot_genai.drtools.sandbox.observability import classify_outcome
 from datarobot_genai.drtools.sandbox.utils import MCP_SANDBOX_FEATURE_FLAG
 from datarobot_genai.drtools.sandbox.utils import execute_code
 from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
@@ -31,10 +34,13 @@ from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
 __all__ = [
     "MCP_SANDBOX_FEATURE_FLAG",
     "DataRobotWorkloadSandbox",
+    "InstrumentedSandbox",
     "Sandbox",
     "SandboxError",
+    "SandboxInfraError",
     "SandboxResult",
     "SandboxSecurityContext",
     "SandboxTimeout",
+    "classify_outcome",
     "execute_code",
 ]
