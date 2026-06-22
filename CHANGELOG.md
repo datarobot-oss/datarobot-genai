@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.18.9
-- `drtools/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
-- `drtools/core`: added the `@resource_metadata` decorator and `get_registered_resources()` for declaring MCP resources without a fastmcp dependency.
+- `drmcpbase/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
+- `drmcpbase/panels`: the panel resource handlers live in `drmcpbase` (the shared resources layer) and are registered onto a server's FastMCP instance via `register_panel_resources(mcp)`, so both DRMCP and global-mcp can reuse them without reaching either server's mcp singleton.
 - `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
 - `drtools/sandbox`: **fix** the workload-api request to match the current API — submit to `workloads/` (not `console/workloads/`), declare the service artifact `type`/named container groups + a primary-container `port`, and carry resources as `runtime.containerGroups[].containers[].resourceAllocation` instead of the now-rejected per-container `resourceRequest` / `runtime.replicaCount`. Verified end to end against staging (workload now schedules).
 

@@ -34,13 +34,11 @@ class DataRobotMCPPromptCategory(Enum):
 
 class DataRobotMCPResourceCategory(Enum):
     USER_RESOURCE = auto()  # resource created by users
-    BUILT_IN_RESOURCE = auto()  # resource provided by drtools (e.g. panels)
 
     @staticmethod
     def from_string(enum_str: str) -> "DataRobotMCPResourceCategory":
         enum_str_map = {
             "USER_RESOURCE": DataRobotMCPResourceCategory.USER_RESOURCE,
-            "BUILT_IN_RESOURCE": DataRobotMCPResourceCategory.BUILT_IN_RESOURCE,
         }
         if enum_str not in enum_str_map:
             error_msg = f"Enum string should be one of {', '.join(enum_str_map.keys())}"

@@ -12,18 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the panel MCP resource handlers."""
+"""Unit tests for the panel MCP resource handlers (drmcpbase)."""
 
+import inspect
 import json
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
+from datarobot_genai.drmcpbase.panels import register_panel_resources
+from datarobot_genai.drmcpbase.panels import resources as res_mod
 from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.models import Json
 from datarobot_genai.drmcputils.panels.models import Text
 from datarobot_genai.drmcputils.panels.store import PanelStore
-from datarobot_genai.drtools.core import get_registered_resources
-from datarobot_genai.drtools.panels import resources as res_mod
 
 from .conftest import FakeBlobStore
 
@@ -76,8 +79,29 @@ async def test_panel_content_resource_dataset_is_reference(panel_resources: Pane
     assert out["payload_files_id"] == panel.payload_files_id
 
 
-def test_resources_registered_with_expected_uris() -> None:
-    uris = {md.get("uri") for _func, md in get_registered_resources()}
-    assert "panels://{source}" in uris
-    assert "panels://{source}/{panel_id}" in uris
-    assert "panels://{source}/{panel_id}/content" in uris
+def test_register_panel_resources_registers_expected_uris() -> None:
+    """register_panel_resources wires every handler onto the passed instance.
+
+    The handlers must be registered *unwrapped* (real coroutine functions) so
+    FastMCP awaits them rather than returning an un-awaited coroutine.
+    """
+    calls: list[tuple[dict[str, Any], Callable]] = []
+
+    class FakeMCP:
+        def resource(self, **kwargs: Any) -> Callable[[Callable], Callable]:
+            def decorator(func: Callable) -> Callable:
+                calls.append((kwargs, func))
+                return func
+
+            return decorator
+
+    register_panel_resources(FakeMCP())
+
+    uris = {kwargs["uri"] for kwargs, _func in calls}
+    assert uris == {
+        "panels://{source}",
+        "panels://{source}/{panel_id}",
+        "panels://{source}/{panel_id}/content",
+    }
+    for _kwargs, func in calls:
+        assert inspect.iscoroutinefunction(func)

@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Core utilities and shared components for DataRobot tools."""
+"""Panels exposed as read-only MCP resources.
 
-from .tool_metadata import get_registered_tools
-from .tool_metadata import tool_metadata
+Resources live in ``drmcpbase`` (the shared resources/prompts layer) rather than
+``drtools`` (tools) so both DRMCP and global-mcp can register them onto their own
+FastMCP instance via :func:`register_panel_resources` — neither server's mcp
+singleton is reachable from a shared layer, so registration is instance-passing.
+"""
 
-__all__ = [
-    "tool_metadata",
-    "get_registered_tools",
-]
+from .resources import register_panel_resources
+
+__all__ = ["register_panel_resources"]

@@ -31,6 +31,7 @@ from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
+from datarobot_genai.drmcpbase.panels import register_panel_resources
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
@@ -48,6 +49,7 @@ from .server_life_cycle import BaseServerLifecycle
 from .telemetry import OtelASGIMiddleware
 from .telemetry import initialize_telemetry
 from .tool_config import TOOL_CONFIGS
+from .tool_config import ToolType
 from .tool_config import is_tool_enabled
 
 
@@ -163,6 +165,13 @@ class DataRobotMCPServer:
                     )
                 else:
                     self._logger.debug(f"Skipping {tool_type} tools - not enabled")
+
+            # Panel resources live in drmcpbase (shared with global-mcp), so they
+            # are registered explicitly onto this instance rather than discovered
+            # via the drtools tool registry. Gated on the same panels enablement.
+            if is_tool_enabled(ToolType.PANELS, self._config):
+                self._logger.debug("Registering panel resources")
+                register_panel_resources(mcp)
 
         # Load additional recipe user modules if provided
         if additional_module_paths:
