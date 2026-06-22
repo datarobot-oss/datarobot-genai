@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.10
+Added to `e2e-tests` for moderations:
+- ootb custom_metric guard
+- Custom model guard
+- All NeMo Evaluator guards
+
 ## 0.18.9
 - `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.
 
