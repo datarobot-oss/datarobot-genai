@@ -822,15 +822,12 @@ async def test_invoke_streaming_whitespace_agent_role_does_not_open_orphan_step(
     assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
 
 
-async def test_invoke_streaming_logs_final_answer_and_token_usage(
+async def test_invoke_streaming_logs_output(
     mock_ragas_event_listener, run_agent_input, caplog
 ) -> None:
-    # GIVEN a crew with a known final result and token usage (BUZZOK-30089).
+    # GIVEN a crew with a known final output (BUZZOK-30089).
     chunks = [_text_chunk("hello", "Solo")]
-    result = CrewOutput(
-        raw="THE-FINAL-ANSWER",
-        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
-    )
+    result = CrewOutput(raw="THE-FINAL-ANSWER")
     streaming = _FakeStreamingOutput(chunks, result)
     agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
     agent._crew_for_test = CrewForTest(streaming)
@@ -838,13 +835,9 @@ async def test_invoke_streaming_logs_final_answer_and_token_usage(
     with caplog.at_level(logging.INFO, logger="datarobot_genai.crewai.agent"):
         _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
-    # THEN the final answer and the real token-usage values (not just the label) log at INFO.
+    # THEN the final output logs at INFO as "Output:" (matching the other agents).
     messages = "\n".join(r.message for r in caplog.records)
-    assert "Final answer: THE-FINAL-ANSWER" in messages
-    assert "Token usage:" in messages
-    assert "'completion_tokens': 1" in messages
-    assert "'prompt_tokens': 2" in messages
-    assert "'total_tokens': 3" in messages
+    assert "Output: THE-FINAL-ANSWER" in messages
 
 
 async def test_invoke_streaming_logs_tool_arguments_at_debug(
@@ -865,7 +858,7 @@ async def test_invoke_streaming_logs_tool_arguments_at_debug(
 
     messages = "\n".join(r.message for r in caplog.records)
     # THEN tool names log at INFO; only non-empty arguments log at DEBUG.
-    assert "Using tool: calculator" in messages
-    assert "Using tool: noargs_tool" in messages
-    assert 'Tool arguments: {"expression": "2+2"}' in messages
-    assert messages.count("Tool arguments:") == 1
+    assert "Calling Tool: calculator" in messages
+    assert "Calling Tool: noargs_tool" in messages
+    assert 'With arguments: {"expression": "2+2"}' in messages
+    assert messages.count("With arguments:") == 1
