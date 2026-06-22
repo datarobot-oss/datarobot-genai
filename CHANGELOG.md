@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.18.13
 - drmcp - removed the api key enforcment on startup, we get it through the headers and if not provided we will skip the startup functionality, still required for deploy through pulumi. 
+- drtools - Removed the local_path from file_write.
 
 ## 0.18.12
 - `eval`: moved the evaluation CLI into the package so the thin `run.py`/`generate.py`/`summarize.py` component wrappers just call into it.

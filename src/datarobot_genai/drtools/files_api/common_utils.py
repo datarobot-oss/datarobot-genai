@@ -48,9 +48,8 @@ class FilesApiLocalSettings(DataRobotAppFrameworkBaseSettings):
     files_api_local_allowed_roots: str = Field(
         default="",
         description=(
-            "Comma-separated absolute directories that file_upload and "
-            "file_write(local_path=...) may read from. Empty (default) disables all "
-            "local-disk access."
+            "Comma-separated absolute directories that file_upload may read from. "
+            "Empty (default) disables all local-disk access."
         ),
     )
 
@@ -87,8 +86,7 @@ def ensure_local_path_allowed(local_path: str) -> Path:
     if not roots:
         raise ToolError(
             "Local filesystem access is disabled. Set FILES_API_LOCAL_ALLOWED_ROOTS to a "
-            "comma-separated list of allowed base directories to enable file_upload and "
-            "file_write(local_path=...).",
+            "comma-separated list of allowed base directories to enable file_upload.",
             kind=ToolErrorKind.VALIDATION,
         )
     resolved = Path(local_path).expanduser().resolve()
@@ -129,38 +127,6 @@ def require_file_path(path: str | None, name: str = "path") -> str:
             kind=ToolErrorKind.VALIDATION,
         )
     return cleaned
-
-
-async def read_local_file(local_path: str, *, max_bytes: int | None = None) -> bytes:
-    """Read a local file's bytes off the event loop.
-
-    Reads run in a worker thread so a large file never blocks the loop. When
-    ``max_bytes`` is set, at most ``max_bytes + 1`` bytes are read so the caller
-    can detect (and reject) oversized files without loading the whole thing.
-    """
-    cleaned = require_path(local_path, "local_path")
-    resolved = str(ensure_local_path_allowed(cleaned))
-
-    def _read() -> bytes:
-        if os.path.isdir(resolved):
-            raise ToolError(
-                f"Local path {cleaned!r} is a directory; use file_upload(recursive=True) "
-                "to upload a directory tree.",
-                kind=ToolErrorKind.VALIDATION,
-            )
-        try:
-            with open(resolved, "rb") as handle:
-                return handle.read(max_bytes + 1) if max_bytes is not None else handle.read()
-        except FileNotFoundError as exc:
-            raise ToolError(
-                f"Local file not found: {cleaned}", kind=ToolErrorKind.NOT_FOUND
-            ) from exc
-        except OSError as exc:
-            raise ToolError(
-                f"Could not read local file {cleaned!r}: {exc}", kind=ToolErrorKind.UPSTREAM
-            ) from exc
-
-    return await asyncio.to_thread(_read)
 
 
 async def resolve_local_sources(
