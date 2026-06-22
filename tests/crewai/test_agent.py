@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # ruff: noqa: I001
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock
@@ -791,3 +792,27 @@ async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
     step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
     assert [s.step_name for s in step_started] == ["Planner", "Writer"]
     assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+
+async def test_invoke_streaming_logs_final_answer_and_token_usage(
+    mock_ragas_event_listener, run_agent_input, caplog
+) -> None:
+    # GIVEN a streaming crew with a known final result and token usage (BUZZOK-30089:
+    # CrewAI under dragent logged almost nothing at INFO).
+    chunks = [_text_chunk("hello", "Solo")]
+    result = CrewOutput(
+        raw="THE-FINAL-ANSWER",
+        token_usage=UsageMetrics(completion_tokens=1, prompt_tokens=2, total_tokens=3),
+    )
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN the agent runs
+    with caplog.at_level(logging.INFO, logger="datarobot_genai.crewai.agent"):
+        _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the final answer and token usage are surfaced at INFO
+    messages = "\n".join(r.message for r in caplog.records)
+    assert "Final answer: THE-FINAL-ANSWER" in messages
+    assert "Token usage:" in messages

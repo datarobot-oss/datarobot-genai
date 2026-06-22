@@ -553,6 +553,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     # Display tool calls
                     elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
                         logger.info(f"Using tool: {chunk.tool_call.tool_name}")
+                        if chunk.tool_call.arguments:
+                            # DEBUG: tool args can be large / contain sensitive input.
+                            logger.debug(f"Tool arguments: {chunk.tool_call.arguments}")
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
                     ragas_event_listener.messages
                 )
@@ -597,6 +600,14 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         None,
                         usage_metrics,
                     )
+
+            result_obj = (
+                crew_output.result if isinstance(crew_output, CrewStreamingOutput) else crew_output
+            )
+            final_answer = str(getattr(result_obj, "raw", "") or "")
+            if final_answer:
+                logger.info(f"Final answer: {final_answer[:500]}")
+            logger.info(f"Token usage: {usage_metrics}")
 
             if current_agent_role:
                 yield (
