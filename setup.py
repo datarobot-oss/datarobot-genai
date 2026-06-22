@@ -43,10 +43,6 @@ core = [
     "colorama>=0.4.6,<1.0.0",
 ]
 
-memory = [
-    "mem0ai>=1.0.4,<2.0.0",
-]
-
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
@@ -92,6 +88,7 @@ nat = core + [
 dragent = nat + [
     "starlette>=1.0.1",
     "opentelemetry-instrumentation-fastapi>=0.43b0,<1.0.0",
+    "mem0ai>=1.0.4,<2.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
@@ -176,7 +173,6 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
-    "memory": memory,
 }
 
 setup(extras_require=extras_require)
