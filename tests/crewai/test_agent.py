@@ -777,9 +777,7 @@ async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
 async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
     mock_ragas_event_listener, run_agent_input
 ) -> None:
-    # GIVEN a streaming crew that emits a chunk with an empty agent_role between
-    # two real agent roles. CrewAI leaves agent_role unset ("") on some chunks,
-    # so a multi-agent run can produce Planner -> "" -> Writer transitions.
+    # GIVEN a crew that emits an empty agent_role between two real roles.
     chunks = [
         _text_chunk("plan-a", "Planner"),
         _text_chunk("interlude", ""),
@@ -790,15 +788,10 @@ async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
     agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
     agent._crew_for_test = CrewForTest(streaming)
 
-    # WHEN we collect the AG-UI event stream
     events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
-    # THEN the sequence is valid: RUN_FINISHED is not emitted while an
-    # (empty-named) step is still active.
+    # THEN the sequence is valid and the empty role never opens a step.
     validate_sequence(events)
-
-    # THEN the empty agent_role never opens a step; only the real roles do,
-    # and every started step is finished.
     step_started = [e for e in events if isinstance(e, StepStartedEvent)]
     step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
     assert [s.step_name for s in step_started] == ["Planner", "Writer"]
@@ -808,9 +801,7 @@ async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
 async def test_invoke_streaming_whitespace_agent_role_does_not_open_orphan_step(
     mock_ragas_event_listener, run_agent_input
 ) -> None:
-    # GIVEN a streaming crew that emits a chunk with a WHITESPACE-only agent_role
-    # between two real roles (a whitespace role is as meaningless as an empty one
-    # and must not open an AG-UI step that never closes).
+    # GIVEN a crew that emits a whitespace-only agent_role between two real roles.
     chunks = [
         _text_chunk("plan-a", "Planner"),
         _text_chunk("interlude", " "),
@@ -821,7 +812,6 @@ async def test_invoke_streaming_whitespace_agent_role_does_not_open_orphan_step(
     agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
     agent._crew_for_test = CrewForTest(streaming)
 
-    # WHEN we collect the AG-UI event stream
     events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
     # THEN the sequence is valid and the whitespace role never opens a step.
@@ -835,8 +825,7 @@ async def test_invoke_streaming_whitespace_agent_role_does_not_open_orphan_step(
 async def test_invoke_streaming_logs_final_answer_and_token_usage(
     mock_ragas_event_listener, run_agent_input, caplog
 ) -> None:
-    # GIVEN a streaming crew with a known final result and token usage (BUZZOK-30089:
-    # CrewAI under dragent logged almost nothing at INFO).
+    # GIVEN a crew with a known final result and token usage (BUZZOK-30089).
     chunks = [_text_chunk("hello", "Solo")]
     result = CrewOutput(
         raw="THE-FINAL-ANSWER",
@@ -846,12 +835,10 @@ async def test_invoke_streaming_logs_final_answer_and_token_usage(
     agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
     agent._crew_for_test = CrewForTest(streaming)
 
-    # WHEN the agent runs
     with caplog.at_level(logging.INFO, logger="datarobot_genai.crewai.agent"):
         _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
-    # THEN the final answer and token usage (with the real metric values, not just
-    # the label) are surfaced at INFO
+    # THEN the final answer and the real token-usage values (not just the label) log at INFO.
     messages = "\n".join(r.message for r in caplog.records)
     assert "Final answer: THE-FINAL-ANSWER" in messages
     assert "Token usage:" in messages
@@ -863,8 +850,7 @@ async def test_invoke_streaming_logs_final_answer_and_token_usage(
 async def test_invoke_streaming_logs_tool_arguments_at_debug(
     mock_ragas_event_listener, run_agent_input, caplog
 ) -> None:
-    # GIVEN a streaming crew that emits TOOL_CALL chunks (BUZZOK-30089: surface
-    # tool calls). One carries arguments; one has empty arguments.
+    # GIVEN TOOL_CALL chunks (BUZZOK-30089): one with arguments, one without.
     chunks = [
         _tool_chunk("calculator", '{"expression": "2+2"}'),
         _tool_chunk("noargs_tool", ""),
@@ -874,14 +860,12 @@ async def test_invoke_streaming_logs_tool_arguments_at_debug(
     agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
     agent._crew_for_test = CrewForTest(streaming)
 
-    # WHEN the agent runs with DEBUG capture
     with caplog.at_level(logging.DEBUG, logger="datarobot_genai.crewai.agent"):
         _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
     messages = "\n".join(r.message for r in caplog.records)
-    # THEN tool names log at INFO and non-empty arguments log at DEBUG...
+    # THEN tool names log at INFO; only non-empty arguments log at DEBUG.
     assert "Using tool: calculator" in messages
     assert "Using tool: noargs_tool" in messages
     assert 'Tool arguments: {"expression": "2+2"}' in messages
-    # ...and empty arguments do NOT produce a "Tool arguments:" line (only one total)
     assert messages.count("Tool arguments:") == 1

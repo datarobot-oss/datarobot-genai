@@ -15,6 +15,18 @@
 import logging
 
 
+def unify_litellm_logging() -> None:
+    """Log LiteLLM lines once: import litellm (dragent depends on it) so its
+    import-time stderr handler exists, then strip it and keep propagate=True.
+    """
+    import litellm  # noqa: F401
+
+    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+
+
 def logging_handler_setup() -> None:
     # Noisy NAT messages that are safe to suppress globally.
     suppressed_nat_messages = [
@@ -59,3 +71,5 @@ def logging_handler_setup() -> None:
         return orig_handler_handle(self, record)
 
     logging.Handler.handle = _filtered_handle  # type: ignore[assignment]
+
+    unify_litellm_logging()
