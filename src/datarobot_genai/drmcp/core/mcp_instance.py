@@ -230,20 +230,20 @@ class DataRobotMCP(FastMCP):
 mcp_server_configs: MCPServerConfig = get_config()
 
 if (
-    mcp_server_configs.tool_registration_duplicate_behavior
-    != mcp_server_configs.prompt_registration_duplicate_behavior
+    mcp_server_configs.mcp_server_tool_registration_duplicate_behavior
+    != mcp_server_configs.mcp_server_prompt_registration_duplicate_behavior
 ):
     logger.warning(
         "FastMCP 3.x uses a single on_duplicate setting for all component types. "
-        "tool_registration_duplicate_behavior=%s will be used; "
-        "prompt_registration_duplicate_behavior=%s will be ignored for FastMCP.",
-        mcp_server_configs.tool_registration_duplicate_behavior,
-        mcp_server_configs.prompt_registration_duplicate_behavior,
+        "mcp_server_tool_registration_duplicate_behavior=%s will be used; "
+        "mcp_server_prompt_registration_duplicate_behavior=%s will be ignored for FastMCP.",
+        mcp_server_configs.mcp_server_tool_registration_duplicate_behavior,
+        mcp_server_configs.mcp_server_prompt_registration_duplicate_behavior,
     )
 
 mcp = DataRobotMCP(
     name=mcp_server_configs.mcp_server_name,
-    on_duplicate=mcp_server_configs.tool_registration_duplicate_behavior,
+    on_duplicate=mcp_server_configs.mcp_server_tool_registration_duplicate_behavior,
 )
 
 

@@ -43,7 +43,7 @@ def test_config_defaults() -> None:
 
         # The default behavior for duplicate tool registrations is aligned
         # with FastMCP default.
-        assert config.tool_registration_duplicate_behavior == "warn"
+        assert config.mcp_server_tool_registration_duplicate_behavior == "warn"
 
         # Dynamic prompt registration should be disabled by default
         # as it can cause startup delays and is not always desired.
@@ -51,7 +51,7 @@ def test_config_defaults() -> None:
 
         # The default behavior for duplicate prompt registrations is aligned
         # with FastMCP default.
-        assert config.prompt_registration_duplicate_behavior == "warn"
+        assert config.mcp_server_prompt_registration_duplicate_behavior == "warn"
 
         # Tool enablement defaults
         assert config.tool_config.enable_predictive_tools is False
@@ -77,8 +77,12 @@ class TestDuplicateBehavior:
         # allowed values match, if there are any changes in the future,
         # please review the tool registration logic to ensure it still works
         # as intended.
-        tools_field_info = MCPServerConfig.model_fields["tool_registration_duplicate_behavior"]
-        prompts_field_info = MCPServerConfig.model_fields["prompt_registration_duplicate_behavior"]
+        tools_field_info = MCPServerConfig.model_fields[
+            "mcp_server_tool_registration_duplicate_behavior"
+        ]
+        prompts_field_info = MCPServerConfig.model_fields[
+            "mcp_server_prompt_registration_duplicate_behavior"
+        ]
         allowed_tools_behaviors = set(get_args(tools_field_info.annotation))
         allowed_prompts_behaviors = set(get_args(prompts_field_info.annotation))
 
@@ -99,7 +103,7 @@ class TestDuplicateBehavior:
 
             test_mcp = DataRobotMCP(
                 name=config.mcp_server_name,
-                on_duplicate=config.tool_registration_duplicate_behavior,
+                on_duplicate=config.mcp_server_tool_registration_duplicate_behavior,
             )
 
             # Verify the setting was applied correctly
@@ -437,6 +441,15 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_microsoft_graph_tools is False
             assert config.tool_config.enable_perplexity_tools is False
             assert config.tool_config.enable_tavily_tools is False
+            self._reset_config()
+
+    def test_files_api_enabled_when_in_mcp_cli_configs(self) -> None:
+        """files_api has default False; when in MCP_CLI_CONFIGS and no env, becomes True."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "files_api"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_files_api_tools is True
+            assert config.tool_config.enable_workload_tools is False
             self._reset_config()
 
 

@@ -12,17 +12,145 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Workload discovery, creation, and lifecycle tools.
+
+All tools issue a single REST call and return immediately. Asynchronous
+operations (start / stop) never block: they return a note directing the agent
+to call ``workload_get`` with a ``target_status`` for a non-blocking status
+check.
+"""
+
 from typing import Annotated
 from typing import Any
+from typing import Literal
 
 from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drmcputils.constants import IMPORTANCE_VALUES
+from datarobot_genai.drmcputils.constants import WORKLOAD_TERMINAL_FAILURE_STATUS
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
+from datarobot_genai.drtools.core.utils import require_id
+from datarobot_genai.drtools.pagination import clamp_limit
+from datarobot_genai.drtools.pagination import merge_pagination_metadata
+
+# ------------------------------------------------------------------ #
+# workload_list                                                        #
+# ------------------------------------------------------------------ #
+
+
+@tool_metadata(
+    tags={"workload", "datarobot", "list", "search"},
+    description=(
+        "[Workload—list] Discover workloads: returns id, name, status, "
+        "artifactId, importance, and runtime for each. Use workload_get for a "
+        "single known workload id, not this.\n\n"
+        "Example: workload_list(limit=50) or workload_list(search='my-app', limit=20)."
+    ),
+)
+async def workload_list(
+    *,
+    search: Annotated[
+        str | None,
+        "Optional server-side filter; matches workload name or id.",
+    ] = None,
+    limit: Annotated[int, "Maximum workloads to return (1–100). Default 100."] = 100,
+    offset: Annotated[int, "Number of workloads to skip for pagination. Default 0."] = 0,
+) -> dict[str, Any]:
+    if offset < 0:
+        raise ToolError(
+            "Argument validation error: 'offset' must be >= 0.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
+    clamped_limit, note = clamp_limit(limit)
+
+    try:
+        result = WorkloadApiClient().list_workloads(
+            limit=clamped_limit, offset=offset, search=search
+        )
+    except ClientError as exc:
+        raise_tool_error_for_client_error(exc)
+
+    data = result.get("data", []) or []
+    return merge_pagination_metadata(
+        {"workloads": data, "count": len(data)},
+        result,
+        note,
+        offset=offset,
+        limit=clamped_limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# workload_get  (single record + optional non-blocking status check)  #
+# ------------------------------------------------------------------ #
+
+
+@tool_metadata(
+    tags={"workload", "datarobot", "get", "status"},
+    description=(
+        "[Workload—get] Fetch a single workload by id: status, runtime, artifact "
+        "reference, endpoint URL, creator, and timestamps. This is also the status "
+        "check used after workload_action(start/stop): pass target_status to get a "
+        "target_reached flag. It performs ONE non-blocking fetch — it does not wait "
+        "or poll. Call it again yourself every few seconds until target_reached is "
+        "true. Raises if the workload enters 'errored'.\n\n"
+        "Example: workload_get(workload_id='wkld-abc')\n"
+        "Example (status check): workload_get(workload_id='wkld-abc', target_status='running')"
+    ),
+)
+async def workload_get(
+    *,
+    workload_id: Annotated[
+        str,
+        "The unique id of the workload (from workload_list or workload_create).",
+    ],
+    target_status: Annotated[
+        str | None,
+        "Optional status to compare against, e.g. 'running', 'stopped'. When set, "
+        "the response includes target_reached. Does not block.",
+    ] = None,
+) -> dict[str, Any]:
+    wid = require_id(workload_id, "workload_id")
+    if target_status is not None:
+        target = target_status.strip()
+        if not target:
+            raise ToolError(
+                "Argument validation error: 'target_status' cannot be empty.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+    else:
+        target = None
+
+    try:
+        obj = WorkloadApiClient().get_workload(wid)
+    except ClientError as exc:
+        raise_tool_error_for_client_error(exc)
+
+    if target is None:
+        return obj
+
+    status = obj.get("status")
+    if status == WORKLOAD_TERMINAL_FAILURE_STATUS:
+        raise ToolError(
+            f"Workload {wid} entered terminal status {status!r}.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+    return {
+        "workload_id": wid,
+        "status": status,
+        "target_reached": status == target,
+        "raw": obj,
+    }
+
+
+# ------------------------------------------------------------------ #
+# workload_create_payload                                              #
+# ------------------------------------------------------------------ #
 
 
 @tool_metadata(
@@ -168,6 +296,11 @@ async def workload_create_payload(
     return {"payload": payload, "usage": "Pass payload to workload_create(payload=...)."}
 
 
+# ------------------------------------------------------------------ #
+# workload_create                                                      #
+# ------------------------------------------------------------------ #
+
+
 @tool_metadata(
     tags={"workload", "datarobot", "create"},
     description=(
@@ -208,100 +341,9 @@ async def workload_create(
         raise_tool_error_for_client_error(exc)
 
 
-@tool_metadata(
-    tags={"workload", "datarobot", "start"},
-    description=(
-        "[Workload—start] Start a stopped workload. Returns immediately after the "
-        "request is accepted (202). Use workload_wait_for_status with "
-        "target_status='running' to block until live.\n\n"
-        "Example: workload_start(workload_id='wkld-abc')"
-    ),
-)
-async def workload_start(
-    *,
-    workload_id: Annotated[str, "Id of the workload to start."],
-) -> dict[str, Any]:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    try:
-        return WorkloadApiClient().start_workload(workload_id.strip())
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-
-@tool_metadata(
-    tags={"workload", "datarobot", "stop"},
-    description=(
-        "[Workload—stop] Stop a running workload. By default waits until the "
-        "workload reaches 'stopped' status (up to timeout_seconds). Set "
-        "wait_stopped=False to return immediately after the stop request.\n\n"
-        "Example: workload_stop(workload_id='wkld-abc')"
-    ),
-)
-async def workload_stop(
-    *,
-    workload_id: Annotated[str, "Id of the workload to stop."],
-    wait_stopped: Annotated[bool, "Poll until status is 'stopped'. Default true."] = True,
-    timeout_seconds: Annotated[
-        int, "Max seconds to wait when wait_stopped is true. Default 120."
-    ] = 120,
-) -> dict[str, Any]:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    if timeout_seconds < 1:
-        raise ToolError(
-            "Argument validation error: 'timeout_seconds' must be >= 1.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-
-    client = WorkloadApiClient()
-    try:
-        result = client.stop_workload(workload_id.strip())
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-    if wait_stopped:
-        try:
-            result = await client.wait_for_workload_status(
-                workload_id.strip(), "stopped", timeout_seconds=timeout_seconds
-            )
-        except (RuntimeError, TimeoutError) as exc:
-            raise ToolError(str(exc), kind=ToolErrorKind.UPSTREAM) from exc
-        except ClientError as exc:
-            raise_tool_error_for_client_error(exc)
-
-    return result
-
-
-@tool_metadata(
-    tags={"workload", "datarobot", "delete"},
-    description=(
-        "[Workload—delete] Permanently delete a workload. The workload must be "
-        "stopped first — use workload_stop then workload_delete.\n\n"
-        "Example: workload_delete(workload_id='wkld-abc')"
-    ),
-)
-async def workload_delete(
-    *,
-    workload_id: Annotated[str, "Id of the workload to delete."],
-) -> dict[str, Any]:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    try:
-        WorkloadApiClient().delete_workload(workload_id.strip())
-    except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
-
-    return {"deleted": True, "workload_id": workload_id.strip()}
+# ------------------------------------------------------------------ #
+# workload_update                                                      #
+# ------------------------------------------------------------------ #
 
 
 @tool_metadata(
@@ -321,11 +363,7 @@ async def workload_update(
         str | None, "New importance: 'low' | 'moderate' | 'high' | 'critical'."
     ] = None,
 ) -> dict[str, Any]:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
+    wid = require_id(workload_id, "workload_id")
     if not any([name, description, importance]):
         raise ToolError(
             "Argument validation error: at least one of name, description, or importance must be set.",  # noqa: E501
@@ -346,51 +384,91 @@ async def workload_update(
         patch["importance"] = importance.lower()
 
     try:
-        return WorkloadApiClient().patch_workload(workload_id.strip(), patch)
+        return WorkloadApiClient().patch_workload(wid, patch)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
 
+# ------------------------------------------------------------------ #
+# workload_action  (start / stop / delete / promote)                  #
+# ------------------------------------------------------------------ #
+
+_ACTION_TARGET_STATUS: dict[str, str] = {"start": "running", "stop": "stopped"}
+
+
 @tool_metadata(
-    tags={"workload", "datarobot", "wait"},
+    tags={"workload", "datarobot", "start", "stop", "delete", "promote"},
     description=(
-        "[Workload—wait for status] Poll a workload until it reaches a target "
-        "status, raises if it enters 'errored', or times out. "
-        "Common targets: 'running' (after start), 'stopped' (after stop).\n\n"
-        "Example: workload_wait_for_status(workload_id='wkld-abc', target_status='running')"
+        "[Workload—action] Run a lifecycle action on a workload. action is one of:\n"
+        "  'start'   — request a stopped workload to start (returns immediately, 202).\n"
+        "  'stop'    — request a running workload to stop (returns immediately, 202).\n"
+        "  'delete'  — permanently delete a workload (it must be stopped first).\n"
+        "  'promote' — lock the running draft artifact, assigning it a version "
+        "(stats reset; recorded in history).\n\n"
+        "start and stop are asynchronous and do NOT wait for completion: poll "
+        "workload_get(workload_id, target_status=...) yourself until target_reached.\n\n"
+        "Example: workload_action(workload_id='wkld-abc', action='start')"
     ),
 )
-async def workload_wait_for_status(
+async def workload_action(
     *,
-    workload_id: Annotated[str, "Id of the workload to poll."],
-    target_status: Annotated[str, "Status to wait for, e.g. 'running', 'stopped', 'initializing'."],
-    timeout_seconds: Annotated[
-        int, "Max seconds to wait before raising a timeout error. Default 600."
-    ] = 600,
+    workload_id: Annotated[str, "Id of the workload to act on."],
+    action: Annotated[
+        Literal["start", "stop", "delete", "promote"],
+        "Lifecycle action: 'start' | 'stop' | 'delete' | 'promote'.",
+    ],
 ) -> dict[str, Any]:
-    if not workload_id or not workload_id.strip():
-        raise ToolError(
-            "Argument validation error: 'workload_id' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    if not target_status or not target_status.strip():
-        raise ToolError(
-            "Argument validation error: 'target_status' cannot be empty.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-    if timeout_seconds < 1:
-        raise ToolError(
-            "Argument validation error: 'timeout_seconds' must be >= 1.",
-            kind=ToolErrorKind.VALIDATION,
-        )
+    wid = require_id(workload_id, "workload_id")
+    client = WorkloadApiClient()
 
     try:
-        return await WorkloadApiClient().wait_for_workload_status(
-            workload_id.strip(),
-            target_status.strip(),
-            timeout_seconds=timeout_seconds,
-        )
-    except (RuntimeError, TimeoutError) as exc:
-        raise ToolError(str(exc), kind=ToolErrorKind.UPSTREAM) from exc
+        if action == "start":
+            raw = client.start_workload(wid)
+        elif action == "stop":
+            raw = client.stop_workload(wid)
+        elif action == "delete":
+            client.delete_workload(wid)
+            return {"deleted": True, "workload_id": wid}
+        elif action == "promote":
+            return client.promote_workload_artifact(wid)
+        else:  # pragma: no cover - guarded by Literal typing
+            raise ToolError(
+                f"Argument validation error: unknown action {action!r}.",
+                kind=ToolErrorKind.VALIDATION,
+            )
+    except ClientError as exc:
+        raise_tool_error_for_client_error(exc)
+
+    target_status = _ACTION_TARGET_STATUS[action]
+    return {
+        "workload_id": wid,
+        "accepted": raw,
+        "note": (
+            f"This tool only requests the workload {action}; it does NOT wait for "
+            f"completion. Call workload_get(workload_id={wid!r}, "
+            f"target_status={target_status!r}) every few seconds until target_reached "
+            "is true. It raises if the workload enters 'errored'."
+        ),
+    }
+
+
+# ------------------------------------------------------------------ #
+# bundle_list                                                          #
+# ------------------------------------------------------------------ #
+
+
+@tool_metadata(
+    tags={"workload", "bundle", "datarobot", "list"},
+    description=(
+        "[Workload—bundle list] Discover available compute resource bundles "
+        "(CPU count, memory, GPU type and VRAM). GPU type and VRAM are always "
+        "determined by the bundle — there is no separate gpuType parameter. Use "
+        "the bundle id when creating or updating a workload.\n\n"
+        "Example: bundle_list()."
+    ),
+)
+async def bundle_list() -> dict[str, Any]:
+    try:
+        return WorkloadApiClient().list_bundles()
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)

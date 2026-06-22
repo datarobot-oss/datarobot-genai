@@ -4,11 +4,61 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.17.4
+## 0.18.9
 - `drtools/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
 - `drtools/core`: added the `@resource_metadata` decorator and `get_registered_resources()` for declaring MCP resources without a fastmcp dependency.
 - `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
 - `drtools/sandbox`: **fix** the workload-api request to match the current API — submit to `workloads/` (not `console/workloads/`), declare the service artifact `type`/named container groups + a primary-container `port`, and carry resources as `runtime.containerGroups[].containers[].resourceAllocation` instead of the now-rejected per-container `resourceRequest` / `runtime.replicaCount`. Verified end to end against staging (workload now schedules).
+
+## 0.18.8
+- `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.
+- `drmcp`: `MCPServerConfig` and `MCPToolConfig` now extend `DataRobotAppFrameworkBaseSettings`, consolidating env, `.env`, file secrets, pulumi config, and `MLOPS_RUNTIME_PARAM_` resolution; removed `drtools.core.config_utils` and its re-exports from `datarobot_genai.drmcp`, config attributes renamed to `mcp_server_tool_registration_allow_empty_schema`, `mcp_server_tool_registration_duplicate_behavior`, and `mcp_server_prompt_registration_duplicate_behavior`.
+
+## 0.18.7
+- `drtools/files_api`: async import tools for large or remote files — `file_import` (background ingest from a URL or data source, returns a `status_id`) and `file_get_status` (single non-blocking status fetch with optional `target_status` / `target_reached`, raises on terminal failure). Backed by new store methods on `DataRobotFileSystemStore` (`import_from_url`, `import_from_data_source`, `get_status`).
+
+## 0.18.6
+- `drtools/files_api`: write and structural tools for the DataRobot Files API filesystem — `file_write` (inline UTF-8/base64 content, `overwrite`/`create` modes, capped at `MAX_INLINE_SIZE`) and `file_manage` (consolidated `create_dir` | `delete` | `copy` | `move` | `clone` lifecycle actions). Backed by new store methods on `DataRobotFileSystemStore` (`write`, `create_dir`, `delete`, `copy`, `move`, `clone`); shared path/content helpers live in `common_utils.py`.
+
+## 0.18.5
+- `e2e-tests`: overrided WORKFLOW_FILE when run agent inline and in CLI
+- `dragent`: ensured that conventional OTLP_EXPORTER environment variables are used by default to configure exporter, and fixed OTEL context propagation in `execute_dragent_inline`
+
+## 0.18.4
+- `llama_index`: omit `temperature` when unconfigured so the model uses its own default (matching langgraph/crewai/nat). LlamaIndex's `LiteLLM` baked in `temperature=0.1`, breaking Anthropic extended thinking. Explicit values are still forwarded.
+- `e2e-tests`: set `temperature: 0` on the non-reasoning dragent configs for deterministic runs; reasoning overlays unset it (`temperature: ~`) because extended thinking is incompatible with any temperature modification.
+
+## 0.18.3
+- `e2e-tests`: test cases to test different LLM scenarios with all tests: NIM, external, variety of LLMs in LLMGW.
+
+## 0.18.2
+- `drtools/files_api`: new read-only DataRobot Files API tool surface for browsing the hierarchical `dr://<catalog_id>/path` filesystem — `file_list` (ls/recursive/glob/tree with pagination), `file_info` (single file/directory metadata), `file_read` (inline UTF-8/base64 content with byte-range reads, capped at `MAX_INLINE_SIZE`), and `file_sign` (temporary signed download URLs for large files). Gated behind the new `enable_files_api_tools` config flag (`ENABLE_FILES_API_TOOLS`), disabled by default, and registered as the `files_api` tool type. Moved the `datarobot-early-access[fs]` dependency into `drmcputils` and dropped the now-redundant `datarobot` pins from `drtools`/`drmcpbase`.
+
+## 0.18.1
+- Fixing runtime error thrown during E2E tests
+
+## 0.18.0
+-  CrewAI + anthropic/claude-sonnet-4-6: tool calling issues fix
+
+## 0.17.9
+- `e2e-tests`: nemo-guardrails moderation — dropped the invalid `datarobot/` prefix from the guard `llm_gateway_model_id` (the LLM Gateway catalog keys on bare `provider/model`; the prefixed id 404'd and the "stay on topic" guard silently failed open). Added a `dragent_tests` test that asserts the guard blocks disallowed input, so a fail-open guard turns the suite red.
+
+## 0.17.8
+- `crewai`: `CrewAIAgent.invoke` now calls `crew.akickoff` instead of the deprecated `kickoff_async`.
+- `crewai`: apply client-side stop-word truncation in ``LitellmStopWordLLM.acall`` so native async kickoff preserves ReAct tool-loop behavior, including inline hallucinations after ``Action Input``.
+- `crewai`: emit ``LLMStreamChunkEvent`` from router ``acall`` so ``Crew.akickoff`` streaming receives text chunks.
+
+## 0.17.7
+- `drtools/workload`: consolidated the workload/artifact tool surface from 39 tools to 21 for agent ergonomics, following MCP tool-design guidance. No functionality was lost; every tool still issues a single non-blocking REST call (no client-side polling or waiting).
+
+## 0.17.6
+- `drtools/predictive`: raised the `catalog_query_datastore` datastore-preview cap (`_PREVIEW_QUERY_MAX_ROWS`) from 999 to 9999, matching the `externalDataStores/<id>/previewQuery/` route's server-side `maxRows` limit (the `DataStorePreviewQueryValidator` allows up to 10000). Lets `offset`-based paging reach deeper before requiring SQL-level paging.
+
+## 0.17.5
+- `e2e`: fixed NeMo-guardrails dragent tests crashing (SIGILL) on non-AVX-512 runners — excluded `annoy` (an sdist-only `-march=native` AVX-512 build) from the e2e resolution.
+
+## 0.17.4
+- `drtools/workload`: submit-and-poll lifecycle workflow — `workload_start` and `workload_stop` return immediately after the request is accepted (202) with `accepted` and a `note` directing the agent to poll status; `workload_stop` no longer accepts `wait_stopped` or `timeout_seconds`. **`workload_wait_for_status` is replaced by `workload_get_status`** (`workload_id`, optional `target_status`): a lightweight single status fetch returning `status`, `target_reached`, and `raw`, raising on terminal `errored` without blocking. Removed `WorkloadApiClient.wait_for_workload_status` server-side polling.
 
 ## 0.17.3
 - `drtools/panels`: filter and transform Dataset panels with sandboxed code execution (`filter_panel`, `transform_panel`), saving results as derived child panels with lineage.

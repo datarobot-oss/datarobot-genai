@@ -21,10 +21,16 @@ general:
       server:
         name: "E2E Base Agent"
         description: "Base agent for end-to-end testing."
+  telemetry:
+    tracing:
+      otelcollector:
+        _type: datarobot_otelcollector
+        project: "base"
 
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
+    temperature: 0
 
 middleware:
   datarobot_guardrails:

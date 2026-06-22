@@ -1,0 +1,15 @@
+cases:
+  - name: nim-llm
+    env:
+      LLM: nim
+      LLM_DEFAULT_MODEL: "datarobot/openai/gpt-oss-20b"
+      USE_DATAROBOT_LLM_GATEWAY: 0
+      LLM_DEPLOYMENT_ID: ""  # Explicitly set to empty string to avoid deployment used in external-llm
+    tests:
+      - ./dragent_tests
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
