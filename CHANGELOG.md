@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.9
+## 0.18.10
 - `drmcpbase/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
 - `drmcpbase/panels`: the panel resource handlers live in `drmcpbase` (the shared resources layer) and are registered onto a server's FastMCP instance via `register_panel_resources(mcp)`, so both DRMCP and global-mcp can reuse them without reaching either server's mcp singleton.
 - `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
 - `drtools/sandbox`: **fix** the workload-api request to match the current API — submit to `workloads/` (not `console/workloads/`), declare the service artifact `type`/named container groups + a primary-container `port`, and carry resources as `runtime.containerGroups[].containers[].resourceAllocation` instead of the now-rejected per-container `resourceRequest` / `runtime.replicaCount`. Verified end to end against staging (workload now schedules).
+
+## 0.18.9
+- `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.
 
 ## 0.18.8
 - `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.
