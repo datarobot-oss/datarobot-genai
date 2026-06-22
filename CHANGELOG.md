@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.18.9
+- `crewai`: don't open an AG-UI step for an empty/whitespace `agent_role`, so a run can't emit `RUN_FINISHED` while an orphan step is still active (AG-UI verifier `EventSequenceError`). The empty role comes from CrewAI's forced final answer when an agent hits `max_iter`.
+- `e2e-tests`: cap CrewAI `max_iter` on the dragent crew so gpt-5 (sent no stop words → may never emit a parseable `Final Answer`) terminates within the test timeout instead of looping to the per-agent default.
+
 ## 0.18.8
 - `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.
 - `drmcp`: `MCPServerConfig` and `MCPToolConfig` now extend `DataRobotAppFrameworkBaseSettings`, consolidating env, `.env`, file secrets, pulumi config, and `MLOPS_RUNTIME_PARAM_` resolution; removed `drtools.core.config_utils` and its re-exports from `datarobot_genai.drmcp`, config attributes renamed to `mcp_server_tool_registration_allow_empty_schema`, `mcp_server_tool_registration_duplicate_behavior`, and `mcp_server_prompt_registration_duplicate_behavior`.

@@ -36,6 +36,9 @@ agent_planner = Agent(
     backstory="Replies with tool result only, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool, calculator_tool],
+    # Bound the ReAct loop: gpt-5 sends no stop words and may never emit a
+    # parseable Final Answer, looping to the 25/agent default and timing out.
+    max_iter=6,
 )
 
 agent_writer = Agent(
@@ -44,6 +47,7 @@ agent_writer = Agent(
     backstory="Replies with tool result only, or 1 brief line.",
     llm=llm,
     tools=[generate_objectid_tool, calculator_tool],
+    max_iter=6,
 )
 
 agents = [agent_planner, agent_writer]

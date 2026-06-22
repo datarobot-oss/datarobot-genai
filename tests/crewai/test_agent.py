@@ -760,3 +760,34 @@ async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
     assert (
         reasoning_msg_end_idx < reasoning_end_idx < planner_step_finish_idx < writer_step_start_idx
     )
+
+
+async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits a chunk with an empty agent_role between
+    # two real agent roles. CrewAI leaves agent_role unset ("") on some chunks,
+    # so a multi-agent run can produce Planner -> "" -> Writer transitions.
+    chunks = [
+        _text_chunk("plan-a", "Planner"),
+        _text_chunk("interlude", ""),
+        _text_chunk("write-a", "Writer"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid: RUN_FINISHED is not emitted while an
+    # (empty-named) step is still active.
+    validate_sequence(events)
+
+    # THEN the empty agent_role never opens a step; only the real roles do,
+    # and every started step is finished.
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
