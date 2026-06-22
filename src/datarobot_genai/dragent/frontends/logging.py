@@ -15,23 +15,6 @@
 import logging
 
 
-def unify_litellm_logging() -> None:
-    """Make LiteLLM logs appear once, in the unified dragent format.
-
-    LiteLLM attaches its own stderr handler to the ``LiteLLM`` / ``Router`` /
-    ``Proxy`` loggers at import and leaves ``propagate=True``, so every line is
-    logged twice (its own handler + the root handler). Strip those handlers and
-    keep propagation so records flow through the root handler only. ``dragent``
-    depends on litellm, so importing it here is honest.
-    """
-    import litellm  # noqa: F401  -- force its import-time handlers to exist, then strip them
-
-    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
-        lg = logging.getLogger(name)
-        lg.handlers.clear()
-        lg.propagate = True
-
-
 def logging_handler_setup() -> None:
     # Noisy NAT messages that are safe to suppress globally.
     suppressed_nat_messages = [
@@ -76,5 +59,3 @@ def logging_handler_setup() -> None:
         return orig_handler_handle(self, record)
 
     logging.Handler.handle = _filtered_handle  # type: ignore[assignment]
-
-    unify_litellm_logging()

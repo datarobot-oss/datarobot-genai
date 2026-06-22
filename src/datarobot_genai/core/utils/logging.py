@@ -21,3 +21,14 @@ def setup_logging() -> None:
     """Setup uniform logging for the application."""  # noqa: D401
     current_log_level = logging.getLogger().getEffectiveLevel()
     logger.info(f"Setting up logging, log level: {logging._levelToName[current_log_level]}")
+
+    # Deduplicate LiteLLM logs: it attaches its own stderr handler at import and
+    # leaves propagate=True, so each line is logged twice. Import it here (only
+    # reached on the dragent path, which depends on litellm) so the handler exists,
+    # then strip it and keep propagation so records flow through the root handler once.
+    import litellm  # noqa: F401  -- force its import-time handlers to exist, then strip them
+
+    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
