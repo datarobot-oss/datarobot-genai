@@ -29,9 +29,6 @@ from datarobot_genai.drmcputils.panels.store import PanelStore
 
 logger = logging.getLogger(__name__)
 
-# The platform-registered entitlement name. Must match the DataRobot entitlement
-# exactly — "MCP_SANDBOX" is rejected as an invalid entitlement name (422), which
-# would make is_enabled raise and fail the gate closed for every user.
 MCP_SANDBOX_FEATURE_FLAG = "ENABLE_MCP_SANDBOX"
 
 

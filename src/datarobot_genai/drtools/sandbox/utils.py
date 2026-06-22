@@ -39,8 +39,6 @@ from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
 
 logger = logging.getLogger(__name__)
 
-# Entitlement the future MCP tool layer will gate registration on. Must match the
-# platform-registered name exactly; bare "MCP_SANDBOX" is an invalid entitlement (422).
 MCP_SANDBOX_FEATURE_FLAG = "ENABLE_MCP_SANDBOX"
 DEFAULT_SANDBOX_IMAGE = (
     "datarobotdev/datarobot-user-models:"

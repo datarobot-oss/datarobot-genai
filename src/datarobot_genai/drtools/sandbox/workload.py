@@ -229,8 +229,6 @@ class DataRobotWorkloadSandbox:
 
     def _workloads_url(self, suffix: str = "") -> str:
         # POST to create needs a trailing slash; GET/DELETE by id does not.
-        # The workload-api lives at /api/v2/workloads/ (matches WorkloadApiClient);
-        # the old "console/workloads/" path 404s.
         base = urljoin(self.workload_api_base + "/", "workloads/")
         if not suffix:
             return base
