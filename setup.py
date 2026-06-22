@@ -83,12 +83,12 @@ nat = core + [
     "nvidia-nat-langchain==1.7.0",  # NAT built-in agents require this
     "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
+    "mem0ai>=1.0.4,<2.0.0",
 ]
 
 dragent = nat + [
     "starlette>=1.0.1",
     "opentelemetry-instrumentation-fastapi>=0.43b0,<1.0.0",
-    "mem0ai>=1.0.4,<2.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
