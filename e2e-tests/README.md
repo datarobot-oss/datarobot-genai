@@ -29,13 +29,6 @@ OOTB_CUSTOM_METRIC_ENDPOINT=
 
 # Necessary for configurations using the Emotion Classifier custom model:
 EMOTION_CLASSIFIER_DEPLOYMENT_ID=
-
-# Necessary for configurations using NeMo Evaluator:
-NEMO_EVALUATOR_DEPLOYMENT_ID=
-
-# Necessary for the NeMo Evaluator response_relevancy guard type:
-NEMO_EVALUATOR_DEPLOYMENT_ID=
-EMBEDDING_MODEL_DEPLOYMENT_ID=
 ```
 
 ## Inspect what would run

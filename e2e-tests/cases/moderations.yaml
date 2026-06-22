@@ -14,6 +14,7 @@ cases:
         - llamaindex
         - base
 
+  # NOTE: custom metric tests are expected RED until drauth is added to custom metric endpoint call in moderations
   - name: ootb-custom
     env:
       LLM: llmgw
@@ -66,17 +67,18 @@ cases:
         - llamaindex
         - base
 
-  - name: nemo-evaluator
-    env:
-      LLM: llmgw
-      LLM_DEFAULT_MODEL: "datarobot/anthropic/claude-sonnet-4-6"
-      WORKFLOW_FILE: workflow-nemo-evaluator-moderations.yaml
-    tests:
-      - ./dragent_tests  # all tests indiscriminately
-    matrix:
-      AGENT:  # all agents
-        - nat
-        - crewai
-        - langgraph
-        - llamaindex
-        - base
+  # NOTE: Currently, the evaluator is not available for deployment in MTS
+#  - name: nemo-evaluator
+#    env:
+#      LLM: llmgw
+#      LLM_DEFAULT_MODEL: "datarobot/anthropic/claude-sonnet-4-6"
+#      WORKFLOW_FILE: workflow-nemo-evaluator-moderations.yaml
+#    tests:
+#      - ./dragent_tests  # all tests indiscriminately
+#    matrix:
+#      AGENT:  # all agents
+#        - nat
+#        - crewai
+#        - langgraph
+#        - llamaindex
+#        - base
