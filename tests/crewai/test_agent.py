@@ -22,6 +22,7 @@ from unittest.mock import patch
 from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunk
 from crewai.types.streaming import StreamChunkType
+from crewai.types.streaming import ToolCallChunk
 import pytest
 from ag_ui.core import ReasoningEndEvent
 from ag_ui.core import ReasoningMessageContentEvent
@@ -530,6 +531,16 @@ def _text_chunk(content: str, agent_role: str) -> StreamChunk:
     )
 
 
+def _tool_chunk(tool_name: str, arguments: str, agent_role: str = "Solo") -> StreamChunk:
+    return StreamChunk(
+        content="",
+        chunk_type=StreamChunkType.TOOL_CALL,
+        agent_role=agent_role,
+        task_name=f"{agent_role}-task",
+        tool_call=ToolCallChunk(tool_name=tool_name, arguments=arguments),
+    )
+
+
 class _FakeStreamingOutput(CrewStreamingOutput):
     """CrewStreamingOutput double that yields a fixed chunk list and a result."""
 
@@ -794,6 +805,33 @@ async def test_invoke_streaming_empty_agent_role_does_not_open_orphan_step(
     assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
 
 
+async def test_invoke_streaming_whitespace_agent_role_does_not_open_orphan_step(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew that emits a chunk with a WHITESPACE-only agent_role
+    # between two real roles (a whitespace role is as meaningless as an empty one
+    # and must not open an AG-UI step that never closes).
+    chunks = [
+        _text_chunk("plan-a", "Planner"),
+        _text_chunk("interlude", " "),
+        _text_chunk("write-a", "Writer"),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN we collect the AG-UI event stream
+    events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and the whitespace role never opens a step.
+    validate_sequence(events)
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+
 async def test_invoke_streaming_logs_final_answer_and_token_usage(
     mock_ragas_event_listener, run_agent_input, caplog
 ) -> None:
@@ -812,7 +850,38 @@ async def test_invoke_streaming_logs_final_answer_and_token_usage(
     with caplog.at_level(logging.INFO, logger="datarobot_genai.crewai.agent"):
         _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
 
-    # THEN the final answer and token usage are surfaced at INFO
+    # THEN the final answer and token usage (with the real metric values, not just
+    # the label) are surfaced at INFO
     messages = "\n".join(r.message for r in caplog.records)
     assert "Final answer: THE-FINAL-ANSWER" in messages
     assert "Token usage:" in messages
+    assert "'completion_tokens': 1" in messages
+    assert "'prompt_tokens': 2" in messages
+    assert "'total_tokens': 3" in messages
+
+
+async def test_invoke_streaming_logs_tool_arguments_at_debug(
+    mock_ragas_event_listener, run_agent_input, caplog
+) -> None:
+    # GIVEN a streaming crew that emits TOOL_CALL chunks (BUZZOK-30089: surface
+    # tool calls). One carries arguments; one has empty arguments.
+    chunks = [
+        _tool_chunk("calculator", '{"expression": "2+2"}'),
+        _tool_chunk("noargs_tool", ""),
+    ]
+    result = CrewOutput(raw="ignored")
+    streaming = _FakeStreamingOutput(chunks, result)
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(streaming)
+
+    # WHEN the agent runs with DEBUG capture
+    with caplog.at_level(logging.DEBUG, logger="datarobot_genai.crewai.agent"):
+        _ = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    messages = "\n".join(r.message for r in caplog.records)
+    # THEN tool names log at INFO and non-empty arguments log at DEBUG...
+    assert "Using tool: calculator" in messages
+    assert "Using tool: noargs_tool" in messages
+    assert 'Tool arguments: {"expression": "2+2"}' in messages
+    # ...and empty arguments do NOT produce a "Tool arguments:" line (only one total)
+    assert messages.count("Tool arguments:") == 1

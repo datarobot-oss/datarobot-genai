@@ -425,8 +425,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 async for chunk in crew_output:
                     # Show task transitions
                     logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
-                    # Skip empty agent_role: it opens a step that never closes
-                    if chunk.agent_role and chunk.agent_role != current_agent_role:
+                    # Skip empty/whitespace agent_role: it opens a step that never
+                    # closes (finish is gated on a real role) → RUN_FINISHED verifier error.
+                    if chunk.agent_role.strip() and chunk.agent_role != current_agent_role:
                         logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
                         if current_agent_role:
                             # Close any open text/reasoning message scoped to the

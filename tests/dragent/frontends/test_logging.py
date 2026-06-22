@@ -45,3 +45,30 @@ def test_unify_litellm_logging_dedupes_even_when_imported_after() -> None:
     assert out == "HANDLERS=0 PROPAGATE=True", (
         f"LiteLLM logger should have no own handler and propagate to root; got: {out}"
     )
+
+
+def test_register_import_wires_litellm_dedup() -> None:
+    """The dedup must run via the real entry point, not only the helper.
+
+    Importing the dragent frontend (the ``nat.front_ends`` entry point) runs
+    ``logging_handler_setup()`` at module load, which must call
+    ``unify_litellm_logging()`` — so a subsequent ``import litellm`` leaves the
+    ``LiteLLM`` logger with no own handler and ``propagate=True``. This guards the
+    wiring (logging_handler_setup -> unify_litellm_logging), which a direct-call
+    test would miss if the call were removed.
+    """
+    script = (
+        "import logging;"
+        "import datarobot_genai.dragent.frontends.register;"  # noqa: F401 -- module-load runs logging_handler_setup()
+        "import litellm;"  # noqa: F401
+        "lg = logging.getLogger('LiteLLM');"
+        "print(f'HANDLERS={len(lg.handlers)} PROPAGATE={lg.propagate}')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=180, check=False
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    out = result.stdout.strip().splitlines()[-1]
+    assert out == "HANDLERS=0 PROPAGATE=True", (
+        f"importing the dragent frontend should dedupe LiteLLM logging; got: {out}"
+    )
