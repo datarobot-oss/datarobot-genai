@@ -114,7 +114,17 @@ def build_instruments(meter: Any) -> SandboxInstruments:
             # SDK default buckets (0,5,10,25,...) collapse everything into one bucket
             # and make p95 meaningless. These give an informative latency SLI.
             explicit_bucket_boundaries_advisory=[
-                0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0
+                0.05,
+                0.1,
+                0.25,
+                0.5,
+                1.0,
+                2.0,
+                3.0,
+                5.0,
+                10.0,
+                20.0,
+                30.0,
             ],
         ),
         execution_failures=meter.create_counter(

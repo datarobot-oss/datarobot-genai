@@ -69,9 +69,7 @@ def test_endpoint_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://collector:4318/v1/metrics")
     seen = {}
     monkeypatch.setattr(otel_metrics, "set_meter_provider", lambda _p: None)
-    monkeypatch.setattr(
-        http_exp, "OTLPMetricExporter", lambda **kw: seen.update(kw) or MagicMock()
-    )
+    monkeypatch.setattr(http_exp, "OTLPMetricExporter", lambda **kw: seen.update(kw) or MagicMock())
     monkeypatch.setattr(sdk_export, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
     monkeypatch.setattr(sdk_metrics, "MeterProvider", lambda **_kw: MagicMock())
 
