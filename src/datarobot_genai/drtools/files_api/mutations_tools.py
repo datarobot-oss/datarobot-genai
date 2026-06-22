@@ -14,11 +14,12 @@
 
 """Write and structural DataRobot Files API tools.
 
-These tools mutate the filesystem: writing file content and the structural
-lifecycle actions (create directory, delete, copy, move, clone). Each issues a
-single filesystem call and returns immediately. Content is supplied inline and
-bounded by ``MAX_INLINE_SIZE``; to ingest large or remote files, use the import
-tools instead.
+These tools mutate the filesystem: writing file content, uploading local files,
+and the structural lifecycle actions (create directory, delete, copy, move,
+clone). ``file_write`` supplies content inline (or from a small local file)
+bounded by ``MAX_INLINE_SIZE``; ``file_upload`` streams larger files, whole
+directory trees, or many files at once from the local filesystem. To ingest
+remote files (by URL or data source), use the import tools instead.
 """
 
 from __future__ import annotations
@@ -34,7 +35,12 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.files_api.common_utils import decode_content
 from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
+from datarobot_genai.drtools.files_api.common_utils import read_local_file as _read_local_file
 from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
+from datarobot_genai.drtools.files_api.common_utils import require_path as _require_path
+from datarobot_genai.drtools.files_api.common_utils import (
+    resolve_local_sources as _resolve_local_sources,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,23 +53,39 @@ logger = logging.getLogger(__name__)
 @tool_metadata(
     tags={"file", "datarobot", "write", "create", "upload"},
     description=(
-        "[Files—write] Write content to a file at dr://<catalog_id>/path, creating "
+        "[Files—write] Write a single file to dr://<catalog_id>/path, creating "
         "parent folders implicitly (DataRobot has no empty directories). The path "
         "must be under a catalog item; create one first with "
         "file_manage(action='create_dir') if needed.\n"
-        "  - encoding: 'utf-8' for text (default) or 'base64' for binary content.\n"
+        "Provide the bytes one of two ways:\n"
+        "  - content: inline text/base64 (see 'encoding'); or\n"
+        "  - local_path: read the bytes from a file on the server's local disk "
+        "(requires the server's local-access allowlist to be configured).\n"
+        "Provide exactly one of 'content' or 'local_path'.\n"
+        "  - encoding: 'utf-8' for text (default) or 'base64' for binary content "
+        "(ignored when local_path is used).\n"
         "  - mode: 'overwrite' (default) or 'create' (fails if the file exists).\n"
-        f"Content is capped at {MAX_INLINE_SIZE} bytes; use file_import for larger "
-        "or remote files.\n\n"
+        f"Capped at {MAX_INLINE_SIZE} bytes; for larger files, whole directories, or "
+        "many local files at once use file_upload, and for remote files use file_import.\n\n"
         "Example: file_write(path='dr://abc123/notes.txt', content='hello')\n"
         "Example (binary): file_write(path='dr://abc123/logo.png', content='<b64>', "
-        "encoding='base64')"
+        "encoding='base64')\n"
+        "Example (local): file_write(path='dr://abc123/notes.txt', local_path='/tmp/notes.txt')"
     ),
 )
 async def file_write(
     *,
     path: Annotated[str, "Target file path (dr://<catalog_id>/...). Must be under a catalog item."],
-    content: Annotated[str, "File content. UTF-8 text, or base64 when encoding='base64'."],
+    content: Annotated[
+        str | None,
+        "Inline file content (UTF-8 text, or base64 when encoding='base64'). "
+        "Omit when using local_path.",
+    ] = None,
+    local_path: Annotated[
+        str | None,
+        "Path to a file on the server's local disk to read the bytes from. "
+        "Omit when using content.",
+    ] = None,
     encoding: Annotated[
         Literal["utf-8", "base64"],
         "How 'content' is encoded: 'utf-8' (text) or 'base64' (binary). Default 'utf-8'.",
@@ -74,16 +96,111 @@ async def file_write(
     ] = "overwrite",
 ) -> dict[str, Any]:
     cleaned = _require_file_path(path)
-    data = decode_content(content, encoding)
+
+    if (content is None) == (local_path is None):
+        raise ToolError(
+            "Argument validation error: provide exactly one of 'content' or 'local_path'.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
+    if local_path is not None:
+        data = await _read_local_file(local_path, max_bytes=MAX_INLINE_SIZE)
+        source = "local_path"
+    else:
+        data = decode_content(content, encoding)  # type: ignore[arg-type]
+        source = "content"
+
     if len(data) > MAX_INLINE_SIZE:
         raise ToolError(
-            f"Content is {len(data)} bytes, exceeding the inline limit of "
-            f"{MAX_INLINE_SIZE} bytes. Use file_import for large or remote files.",
+            f"File is over the inline limit of {MAX_INLINE_SIZE} bytes. Use file_upload "
+            "for large or multiple local files, or file_import for remote files.",
             kind=ToolErrorKind.VALIDATION,
         )
 
     await _get_store().write(cleaned, data, mode=mode)
-    return {"path": cleaned, "bytes_written": len(data), "mode": mode}
+    return {"path": cleaned, "bytes_written": len(data), "mode": mode, "source": source}
+
+
+# ------------------------------------------------------------------ #
+# file_upload                                                          #
+# ------------------------------------------------------------------ #
+
+
+@tool_metadata(
+    tags={"file", "datarobot", "upload", "local", "create", "write"},
+    description=(
+        "[Files—upload] Upload file(s) from the server's local disk into a catalog "
+        "directory at dr://<catalog_id>/path. Content is streamed in chunks (no "
+        "inline size cap) and many files are batched into one optimized request, so "
+        "prefer this over file_write for large files, whole directories, or many "
+        "files at once. Reads are restricted to the server's configured local-access "
+        "allowlist. The destination must be under an existing catalog item "
+        "(create one with file_manage(action='create_dir')).\n"
+        "  - local_path: a file, a directory (set recursive=True), or a glob such as "
+        "'/data/**/*.csv' (set recursive=True).\n"
+        "  - path: destination. End with '/' to upload into a directory; give a full "
+        "file path to upload a single file under that name.\n"
+        "  - overwrite: 'rename' (default), 'replace', 'skip', or 'error' on conflicts.\n\n"
+        "Example: file_upload(local_path='/tmp/report.pdf', path='dr://abc123/docs/')\n"
+        "Example (tree): file_upload(local_path='/tmp/data', path='dr://abc123/data/', "
+        "recursive=True)\n"
+        "Example (glob): file_upload(local_path='/tmp/**/*.csv', path='dr://abc123/csv/', "
+        "recursive=True)"
+    ),
+)
+async def file_upload(
+    *,
+    local_path: Annotated[
+        str,
+        "Local file, directory, or glob on the server's disk to upload from.",
+    ],
+    path: Annotated[
+        str,
+        "Destination under a catalog item (dr://<catalog_id>/...). End with '/' for a directory.",
+    ],
+    recursive: Annotated[
+        bool,
+        "Recurse into directories / expand '**' globs. Required to upload a directory. Default False.",  # noqa: E501
+    ] = False,
+    maxdepth: Annotated[
+        int | None,
+        "Maximum recursion depth when recursive. None means unlimited.",
+    ] = None,
+    overwrite: Annotated[
+        Literal["rename", "replace", "skip", "error"],
+        "Conflict strategy when a destination file already exists. Default 'rename'.",
+    ] = "rename",
+) -> dict[str, Any]:
+    cleaned_local = _require_path(local_path, "local_path")
+    dest = _require_file_path(path)
+    if maxdepth is not None and maxdepth < 1:
+        raise ToolError(
+            "Argument validation error: 'maxdepth' must be >= 1 when provided.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
+    sources = await _resolve_local_sources(cleaned_local, recursive=recursive, maxdepth=maxdepth)
+    if not sources:
+        raise ToolError(
+            f"No files matched local_path {cleaned_local!r}.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
+    await _get_store().upload(
+        cleaned_local,
+        dest,
+        recursive=recursive,
+        maxdepth=maxdepth,
+        overwrite=overwrite,
+    )
+    return {
+        "uploaded": True,
+        "source": cleaned_local,
+        "path": dest,
+        "file_count": len(sources),
+        "total_bytes": sum(size for _, size in sources),
+        "overwrite": overwrite,
+    }
 
 
 # ------------------------------------------------------------------ #

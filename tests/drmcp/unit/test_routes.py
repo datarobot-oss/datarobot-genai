@@ -613,9 +613,9 @@ class TestMetadataRoute:
         mock_config.mount_path = "/"
         mock_config.mcp_server_register_dynamic_tools_on_startup = False
         mock_config.mcp_server_register_dynamic_prompts_on_startup = True
-        mock_config.tool_registration_allow_empty_schema = False
-        mock_config.tool_registration_duplicate_behavior = "warn"
-        mock_config.prompt_registration_duplicate_behavior = "replace"
+        mock_config.mcp_server_tool_registration_allow_empty_schema = False
+        mock_config.mcp_server_tool_registration_duplicate_behavior = "warn"
+        mock_config.mcp_server_prompt_registration_duplicate_behavior = "replace"
 
         # Create mock tool_config (all ToolType config_field_name values to avoid Mock in JSON)
         mock_tool_config = Mock()
@@ -724,9 +724,9 @@ class TestMetadataRoute:
         mock_config.mount_path = "/"
         mock_config.mcp_server_register_dynamic_tools_on_startup = False
         mock_config.mcp_server_register_dynamic_prompts_on_startup = False
-        mock_config.tool_registration_allow_empty_schema = False
-        mock_config.tool_registration_duplicate_behavior = "error"
-        mock_config.prompt_registration_duplicate_behavior = "ignore"
+        mock_config.mcp_server_tool_registration_allow_empty_schema = False
+        mock_config.mcp_server_tool_registration_duplicate_behavior = "error"
+        mock_config.mcp_server_prompt_registration_duplicate_behavior = "ignore"
 
         mock_tool_config = Mock()
         mock_tool_config.enable_predictive_tools = False
@@ -789,9 +789,9 @@ class TestMetadataRoute:
         mock_config.mount_path = "/"
         mock_config.mcp_server_register_dynamic_tools_on_startup = False
         mock_config.mcp_server_register_dynamic_prompts_on_startup = False
-        mock_config.tool_registration_allow_empty_schema = False
-        mock_config.tool_registration_duplicate_behavior = "warn"
-        mock_config.prompt_registration_duplicate_behavior = "warn"
+        mock_config.mcp_server_tool_registration_allow_empty_schema = False
+        mock_config.mcp_server_tool_registration_duplicate_behavior = "warn"
+        mock_config.mcp_server_prompt_registration_duplicate_behavior = "warn"
 
         mock_tool_config = Mock()
         mock_tool_config.enable_predictive_tools = False

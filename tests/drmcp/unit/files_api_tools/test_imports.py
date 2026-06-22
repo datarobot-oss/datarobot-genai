@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 
 from datarobot_genai.drmcputils.exceptions import ToolError
-from datarobot_genai.drtools.files_api import imports as imports_mod
+from datarobot_genai.drtools.files_api import imports_tools as imports_mod
 
 
 class FakeStore:

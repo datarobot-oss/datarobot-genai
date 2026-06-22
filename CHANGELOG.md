@@ -4,8 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.8
+## 0.18.11
 - Fixed flaky NAT test. Writer being set as `return_direct` prevented reasoning models output to be ignored
+
+## 0.18.10
+Added to `e2e-tests` for moderations:
+- ootb custom_metric guard
+- Custom model guard
+- All NeMo Evaluator guards
+
+## 0.18.9
+- `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.
+
+## 0.18.8
+- `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.
+- `drmcp`: `MCPServerConfig` and `MCPToolConfig` now extend `DataRobotAppFrameworkBaseSettings`, consolidating env, `.env`, file secrets, pulumi config, and `MLOPS_RUNTIME_PARAM_` resolution; removed `drtools.core.config_utils` and its re-exports from `datarobot_genai.drmcp`, config attributes renamed to `mcp_server_tool_registration_allow_empty_schema`, `mcp_server_tool_registration_duplicate_behavior`, and `mcp_server_prompt_registration_duplicate_behavior`.
 
 ## 0.18.7
 - `drtools/files_api`: async import tools for large or remote files — `file_import` (background ingest from a URL or data source, returns a `status_id`) and `file_get_status` (single non-blocking status fetch with optional `target_status` / `target_reached`, raises on terminal failure). Backed by new store methods on `DataRobotFileSystemStore` (`import_from_url`, `import_from_data_source`, `get_status`).

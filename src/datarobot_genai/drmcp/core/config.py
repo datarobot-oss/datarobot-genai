@@ -18,224 +18,122 @@ from typing import Literal
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
 
-from datarobot.core.config import PulumiConfigSettingsSource
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from fastmcp.settings import DuplicateBehavior
-from pydantic import AliasChoices
 from pydantic import Field
 from pydantic import ValidationInfo
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
-from pydantic_settings.sources import PydanticBaseSettingsSource
 
 from datarobot_genai.drmcputils.constants import DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
-from datarobot_genai.drtools.core.config_utils import extract_datarobot_dict_runtime_param_payload
-from datarobot_genai.drtools.core.config_utils import extract_datarobot_runtime_param_payload
 
 from .constants import MCP_CLI_OPTS
 
 
-class MCPToolConfig(BaseSettings):
-    """Tool configuration for MCP server."""
+class MCPToolConfig(DataRobotAppFrameworkBaseSettings):
+    """Tool configuration for MCP server.
+
+    Extends ``DataRobotAppFrameworkBaseSettings`` so each field resolves from env
+    vars, ``.env``, file secrets, and ``pulumi_config.json``. Fields map by name:
+    ``enable_predictive_tools`` reads ``ENABLE_PREDICTIVE_TOOLS`` (and the
+    ``MLOPS_RUNTIME_PARAM_`` prefixed runtime-parameter variant), with payload
+    extraction handled by the base settings sources.
+    """
 
     enable_predictive_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PREDICTIVE_TOOLS",
-            "ENABLE_PREDICTIVE_TOOLS",
-        ),
         description="Enable/disable predictive tools",
     )
-
     enable_jira_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_JIRA_TOOLS",
-            "ENABLE_JIRA_TOOLS",
-        ),
         description="Enable/disable Jira tools",
     )
-
     enable_confluence_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CONFLUENCE_TOOLS",
-            "ENABLE_CONFLUENCE_TOOLS",
-        ),
         description="Enable/disable Confluence tools",
     )
-
     enable_gdrive_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_GDRIVE_TOOLS",
-            "ENABLE_GDRIVE_TOOLS",
-        ),
         description="Enable/disable GDrive tools",
     )
-
     enable_microsoft_graph_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_MICROSOFT_GRAPH_TOOLS",
-            "ENABLE_MICROSOFT_GRAPH_TOOLS",
-        ),
         description="Enable/disable Microsoft Graph (Sharepoint/OneDrive) tools",
     )
-
     enable_perplexity_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_PERPLEXITY_TOOLS",
-            "ENABLE_PERPLEXITY_TOOLS",
-        ),
         description="Enable/disable Perplexity tools",
     )
-
     enable_tavily_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_TAVILY_TOOLS",
-            "ENABLE_TAVILY_TOOLS",
-        ),
         description="Enable/disable Tavily search tools",
     )
-
     enable_dr_docs_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_DR_DOCS_TOOLS",
-            "ENABLE_DR_DOCS_TOOLS",
-        ),
         description="Enable/disable DataRobot documentation search tools",
     )
-
     enable_use_case_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_USE_CASE_TOOLS",
-            "ENABLE_USE_CASE_TOOLS",
-        ),
         description="Enable/disable use case tools",
     )
-
     enable_code_execution_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_CODE_EXECUTION_TOOLS",
-            "ENABLE_CODE_EXECUTION_TOOLS",
-        ),
         description="Enable/disable code execution tools",
     )
-
     enable_optimization_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_OPTIMIZATION_TOOLS",
-            "ENABLE_OPTIMIZATION_TOOLS",
-        ),
         description="Enable/disable optimization tools",
     )
-
     enable_vdb_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_VDB_TOOLS",
-            "ENABLE_VDB_TOOLS",
-        ),
         description="Enable/disable vector database tools",
     )
-
     enable_workload_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_WORKLOAD_TOOLS",
-            "ENABLE_WORKLOAD_TOOLS",
-        ),
         description="Enable/disable DataRobot Workload API tools",
     )
-
     enable_files_api_tools: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "ENABLE_FILES_API_TOOLS",
-            "ENABLE_FILES_API_TOOLS",
-        ),
         description="Enable/disable DataRobot Files API (filesystem) tools",
     )
 
-    @field_validator(
-        "enable_predictive_tools",
-        "enable_jira_tools",
-        "enable_confluence_tools",
-        "enable_gdrive_tools",
-        "enable_microsoft_graph_tools",
-        "enable_perplexity_tools",
-        "enable_tavily_tools",
-        "enable_dr_docs_tools",
-        "enable_use_case_tools",
-        "enable_code_execution_tools",
-        "enable_optimization_tools",
-        "enable_vdb_tools",
-        "enable_workload_tools",
-        "enable_files_api_tools",
-        mode="before",
-    )
-    @classmethod
-    def validate_runtime_params(cls, v: Any) -> Any:
-        """Validate runtime parameters."""
-        return extract_datarobot_runtime_param_payload(v)
-
+    # Treat empty env values as unset so a runtime parameter (resolved by the base
+    # settings sources) is not shadowed by an empty plain env var.
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False,
-        env_file_encoding="utf-8",
         extra="ignore",
+        env_ignore_empty=True,
     )
 
 
-class MCPServerConfig(BaseSettings):
-    """MCP Server configuration using pydantic settings."""
+class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
+    """MCP Server configuration.
+
+    Extends ``DataRobotAppFrameworkBaseSettings`` so each field resolves from env
+    vars (including ``MLOPS_RUNTIME_PARAM_`` runtime parameters), ``.env``, file
+    secrets, and ``pulumi_config.json``. Fields map by name: ``mcp_server_name``
+    reads ``MCP_SERVER_NAME``.
+    """
 
     mcp_server_name: str = Field(
         default="datarobot-mcp-server",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_NAME",
-            "MCP_SERVER_NAME",
-        ),
         description="Name of the MCP server",
     )
     mcp_server_port: int = Field(
         default=8080,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_PORT",
-            "MCP_SERVER_PORT",
-        ),
         description="Port number for the MCP server",
     )
     mcp_server_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="WARNING",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_LOG_LEVEL",
-            "MCP_SERVER_LOG_LEVEL",
-        ),
         description="Log level for the MCP server",
     )
     mcp_server_host: str = Field(
         default="0.0.0.0",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_HOST",
-            "MCP_SERVER_HOST",
-        ),
         description="Host address for the MCP server",
     )
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "APP_LOG_LEVEL",
-            "APP_LOG_LEVEL",
-        ),
         description="App log level",
     )
     # When the server is run in a custom model, it is important to mount all routes under the
@@ -251,58 +149,30 @@ class MCPServerConfig(BaseSettings):
 
     otel_collector_base_url: str = Field(
         default=_get_default_otel_endpoint(),
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_COLLECTOR_BASE_URL",
-            "OTEL_COLLECTOR_BASE_URL",
-        ),
         description="Base URL for the OpenTelemetry collector",
     )
     otel_entity_id: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_ENTITY_ID",
-            "OTEL_ENTITY_ID",
-        ),
         description="Entity ID for tracing",
     )
     otel_attributes: dict[str, Any] = Field(
         default={},
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_ATTRIBUTES",
-            "OTEL_ATTRIBUTES",
-        ),
         description="Attributes for tracing (as JSON string)",
     )
     otel_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_ENABLED",
-            "OTEL_ENABLED",
-        ),
         description="Enable/disable OpenTelemetry",
     )
     otel_enabled_http_instrumentors: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_ENABLED_HTTP_INSTRUMENTORS",
-            "OTEL_ENABLED_HTTP_INSTRUMENTORS",
-        ),
         description="Enable/disable HTTP instrumentors",
     )
     otel_exporter_otlp_endpoint: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "OTEL_EXPORTER_OTLP_ENDPOINT",
-        ),
         description="Standard OTel OTLP endpoint. Takes priority over otel_collector_base_url.",
     )
     otel_exporter_otlp_headers: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "OTEL_EXPORTER_OTLP_HEADERS",
-            "OTEL_EXPORTER_OTLP_HEADERS",
-        ),
         description="Standard OTel OTLP headers. Takes priority over entity_id construction.",
     )
 
@@ -319,31 +189,19 @@ class MCPServerConfig(BaseSettings):
 
     mcp_server_register_dynamic_tools_on_startup: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP",
-            "MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP",
-        ),
         description="Register dynamic tools on startup. When enabled, the MCP server will "
         "automatically register all DataRobot tool deployments as MCP tools during startup.",
     )
-    tool_registration_allow_empty_schema: bool = Field(
+    mcp_server_tool_registration_allow_empty_schema: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_TOOL_REGISTRATION_ALLOW_EMPTY_SCHEMA",
-            "MCP_SERVER_TOOL_REGISTRATION_ALLOW_EMPTY_SCHEMA",
-        ),
         description="Allow registration of tools with no input parameters. When enabled, "
         "tools can be registered with empty schemas for static endpoints that don't require any "
         "inputs. "
         "Disabled by default, as this is not typical use case and can hide potential issues with "
         "schema.",
     )
-    tool_registration_duplicate_behavior: DuplicateBehavior = Field(
+    mcp_server_tool_registration_duplicate_behavior: DuplicateBehavior = Field(
         default="warn",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_TOOL_REGISTRATION_DUPLICATE_BEHAVIOR",
-            "MCP_SERVER_TOOL_REGISTRATION_DUPLICATE_BEHAVIOR",
-        ),
         description="Behavior when a tool with the same name already exists in the MCP server. "
         " - 'warn': will log a warning and replace the existing tool. "
         " - 'replace': will replace the existing tool without a warning. "
@@ -352,20 +210,12 @@ class MCPServerConfig(BaseSettings):
     )
     mcp_server_register_dynamic_prompts_on_startup: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP",
-            "MCP_SERVER_REGISTER_DYNAMIC_PROMPTS_ON_STARTUP",
-        ),
         description="Register dynamic prompts on startup. When enabled, the MCP server will "
         "automatically register all prompts from DataRobot Prompt Management "
         "as MCP prompts during startup.",
     )
-    prompt_registration_duplicate_behavior: DuplicateBehavior = Field(
+    mcp_server_prompt_registration_duplicate_behavior: DuplicateBehavior = Field(
         default="warn",
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_SERVER_PROMPT_REGISTRATION_DUPLICATE_BEHAVIOR",
-            "MCP_SERVER_PROMPT_REGISTRATION_DUPLICATE_BEHAVIOR",
-        ),
         description="Behavior when a prompt with the same name already exists in the MCP server. "
         " - 'warn': will log a warning and replace the existing tool. "
         " - 'replace': will replace the existing tool without a warning. "
@@ -374,10 +224,6 @@ class MCPServerConfig(BaseSettings):
     )
     mcp_cli_configs: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + "MCP_CLI_CONFIGS",
-            "MCP_CLI_CONFIGS",
-        ),
         description="Comma-separated list of features to enable: dynamic_tools, dynamic_prompts, "
         "predictive, gdrive, microsoft_graph, jira, confluence, perplexity, tavily. "
         "When unset (None), defaults apply. When set to empty string, all listed features are "
@@ -389,59 +235,12 @@ class MCPServerConfig(BaseSettings):
         description="Tool configuration",
     )
 
-    @field_validator(
-        "otel_attributes",
-        mode="before",
-    )
-    @classmethod
-    def validate_dict_runtime_params(cls, v: Any) -> Any:
-        """Validate dict runtime parameters."""
-        return extract_datarobot_dict_runtime_param_payload(v)
-
-    @field_validator(
-        "mcp_server_name",
-        "mcp_server_log_level",
-        "app_log_level",
-        "otel_collector_base_url",
-        "otel_entity_id",
-        "otel_enabled",
-        "otel_enabled_http_instrumentors",
-        "otel_exporter_otlp_endpoint",
-        "otel_exporter_otlp_headers",
-        "mcp_cli_configs",
-        "tool_registration_allow_empty_schema",
-        "mcp_server_register_dynamic_tools_on_startup",
-        "tool_registration_duplicate_behavior",
-        "mcp_server_register_dynamic_prompts_on_startup",
-        mode="before",
-    )
-    @classmethod
-    def validate_runtime_params(cls, v: Any) -> Any:
-        """Validate runtime parameters."""
-        return extract_datarobot_runtime_param_payload(v)
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
-            PulumiConfigSettingsSource(settings_cls),
-        )
-
+    # Treat empty env values as unset so a runtime parameter (resolved by the base
+    # settings sources) is not shadowed by an empty plain env var.
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False,
-        env_file_encoding="utf-8",
         extra="ignore",
+        env_ignore_empty=True,
     )
 
 
@@ -449,20 +248,15 @@ class MCPServerConfig(BaseSettings):
 _config: MCPServerConfig | None = None
 
 
-def _individual_env_set_for_field(
-    model: type[MCPServerConfig] | type[MCPToolConfig], attr: str
-) -> bool:
-    """Return True if the user set this field via env (any of its validation_alias names)."""
-    info = model.model_fields[attr]
-    alias = getattr(info, "validation_alias", None)
-    if alias is None:
-        return False
-    if isinstance(alias, str):
-        names = [alias]
-    elif hasattr(alias, "choices"):
-        names = list(alias.choices)
-    else:
-        names = []
+def _individual_env_set_for_field(attr: str) -> bool:
+    """Return True if the user set this field via env.
+
+    ``DataRobotAppFrameworkBaseSettings`` resolves fields by name, so a field maps
+    to its uppercase env var (e.g. ``ENABLE_GDRIVE_TOOLS``) and the DataRobot
+    runtime-parameter variant (``MLOPS_RUNTIME_PARAM_ENABLE_GDRIVE_TOOLS``).
+    """
+    env_name = attr.upper()
+    names = [env_name, RUNTIME_PARAM_ENV_VAR_NAME_PREFIX + env_name]
     return any(os.environ.get(name, "").strip() for name in names)
 
 
@@ -483,10 +277,7 @@ def _apply_mcp_cli_configs_overrides(config: MCPServerConfig) -> MCPServerConfig
     for mcp_opt, root_attr, tool_attr in MCP_CLI_OPTS:
         attr = root_attr if root_attr is not None else tool_attr
         assert attr is not None  # each MCP_CLI_OPTS row has either root_attr or tool_attr
-        model: type[MCPServerConfig] | type[MCPToolConfig] = (
-            MCPServerConfig if root_attr else MCPToolConfig
-        )
-        if _individual_env_set_for_field(model, attr):
+        if _individual_env_set_for_field(attr):
             continue
         if mcp_opt in enabled:
             if root_attr is not None:
