@@ -19,6 +19,7 @@ wrapper.
 """
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -217,3 +218,29 @@ async def test_wrapper_span_records_failure_reason() -> None:
     span = next(s for s in spans if s.name == "sandbox.execute")
     assert span.attributes.get("sandbox.outcome") == "failure"
     assert span.attributes.get("sandbox.failure_reason") == "oom"
+
+
+def test_get_instruments_rebuilds_when_meter_provider_changes(monkeypatch) -> None:
+    # Guards against pinning a no-op/proxy provider: if get_instruments() runs
+    # before bootstrap installs the SDK provider, a later provider swap must
+    # rebuild the instruments rather than keep emitting to the old provider.
+    import opentelemetry.metrics as om
+
+    saved = dict(obs._STATE)
+    try:
+        obs._STATE["instruments"] = None
+        obs._STATE["provider"] = None
+        provider_a, provider_b = object(), object()
+        seq = iter([provider_a, provider_a, provider_b])
+        monkeypatch.setattr(om, "get_meter_provider", lambda: next(seq))
+        monkeypatch.setattr(om, "get_meter", lambda _name: MagicMock())
+
+        first = obs.get_instruments()
+        cached = obs.get_instruments()  # same provider → cached
+        rebuilt = obs.get_instruments()  # provider changed → rebuilt
+
+        assert first is cached
+        assert rebuilt is not first
+    finally:
+        obs._STATE.clear()
+        obs._STATE.update(saved)

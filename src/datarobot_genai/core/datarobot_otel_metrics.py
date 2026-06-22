@@ -41,15 +41,16 @@ _DEFAULT_EXPORT_INTERVAL_MS = 10_000
 
 
 def resolve_metrics_endpoint_from_env() -> str:
-    """Metrics OTLP endpoint from the standard OTel env vars (``""`` if unset).
+    """Metrics-specific OTLP endpoint from env (``""`` if unset).
 
-    Honors the metrics-specific override before the shared base endpoint, per
-    the OpenTelemetry exporter env conventions.
+    Deliberately honors only ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` — *not* the
+    shared ``OTEL_EXPORTER_OTLP_ENDPOINT``. In this repo the shared var can hold a
+    traces-specific URL (e.g. ``…/otel/v1/traces``, see ``core/datarobot_otel.py``),
+    and passing that to ``OTLPMetricExporter`` would send metrics to the wrong
+    signal path. Callers that want the shared base endpoint should pass
+    ``endpoint=`` explicitly (and include the ``/v1/metrics`` path themselves).
     """
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") or os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT"
-    )
-    return endpoint or ""
+    return os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
 
 
 def _resolve_service_name() -> str:

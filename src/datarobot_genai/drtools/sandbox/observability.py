@@ -137,22 +137,28 @@ def build_instruments(meter: Any) -> SandboxInstruments:
 
 # Lazily-initialized singletons. A mutable dict avoids the ``global`` statement
 # (mirrors the ``_BOOTSTRAP_STATE`` pattern in ``core/datarobot_otel.py``).
-_STATE: dict[str, Any] = {"instruments": None, "tracer": None}
+_STATE: dict[str, Any] = {"instruments": None, "provider": None, "tracer": None}
 
 
 def get_instruments() -> SandboxInstruments | None:
     """Lazily build instruments from the global meter; ``None`` if OTel absent.
 
-    Cached after first call. Returns ``None`` (so callers no-op) when the
-    optional OpenTelemetry stack is not installed, keeping ``drtools`` usable
-    without the ``dragent`` extra.
+    Instruments are cached, but keyed on the active global ``MeterProvider``: if
+    the provider changes (e.g. a no-op/proxy provider was current on first use
+    and ``bootstrap_metrics_provider`` later installs the real SDK provider), the
+    instruments are rebuilt against the new provider rather than staying pinned
+    to the old one. Returns ``None`` (callers no-op) when the optional
+    OpenTelemetry stack is not installed, keeping ``drtools`` usable without the
+    ``dragent`` extra.
     """
-    if _STATE["instruments"] is None:
-        try:
-            from opentelemetry import metrics
-        except ImportError:
-            return None
+    try:
+        from opentelemetry import metrics
+    except ImportError:
+        return None
+    provider = metrics.get_meter_provider()
+    if _STATE["instruments"] is None or _STATE["provider"] is not provider:
         _STATE["instruments"] = build_instruments(metrics.get_meter(METER_NAME))
+        _STATE["provider"] = provider
     return _STATE["instruments"]
 
 
