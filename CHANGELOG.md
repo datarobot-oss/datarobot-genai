@@ -4,11 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.9
+## 0.18.11
 - `crewai`: don't open an AG-UI step for an empty/whitespace `agent_role`, so a run can't emit `RUN_FINISHED` while an orphan step is still active (AG-UI verifier `EventSequenceError`). The empty role comes from CrewAI's forced final answer when an agent hits `max_iter`.
 - `e2e-tests`: cap CrewAI `max_iter` on the dragent crew so gpt-5 (sent no stop words → may never emit a parseable `Final Answer`) terminates within the test timeout instead of looping to the per-agent default.
 - `dragent`: deduplicate LiteLLM logs — strip LiteLLM's import-time stderr handler in the dragent logging setup and keep `propagate=True`, so each LiteLLM/Router/Proxy line is logged once via the unified root handler instead of twice (BUZZOK-31333).
 - `crewai`: surface more of a run under dragent — log the final answer and token usage at INFO and tool-call arguments at DEBUG (partial BUZZOK-30089).
+
+## 0.18.10
+Added to `e2e-tests` for moderations:
+- ootb custom_metric guard
+- Custom model guard
+- All NeMo Evaluator guards
+
+## 0.18.9
+- `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.
 
 ## 0.18.8
 - `drtools/files_api`: local-disk upload — `file_upload` streams files, directory trees, or globs from the server's filesystem into a catalog path (no inline size cap; batched `put`), and `file_write` accepts an optional `local_path` for small files still bounded by `MAX_INLINE_SIZE`. Both require `FILES_API_LOCAL_ALLOWED_ROOTS` (comma-separated allowlist; empty disables local access). Backed by new `DataRobotFileSystemStore.upload`.

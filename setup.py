@@ -39,7 +39,7 @@ core = [
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
-    "pyarrow==21.0.0",
+    "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
     "colorama>=0.4.6,<1.0.0",
 ]
 
@@ -123,7 +123,7 @@ drtools =  drmcputils + [
     "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
     "polars>=1.0.0,<2.0.0",
     # Required indirectly by polars->pandas conversion.
-    "pyarrow>=21.0.0,<22.0.0",
+    "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
     "python-dateutil>=2.9.0,<3.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
