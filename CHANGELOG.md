@@ -4,8 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.20.2
-- Move mem0ai dependency to nat since `streaming_memory_agent` and `dr_mem0_memory` could be used with any NeMo Agent Toolkit workflow.
+## 0.21.0
+- **Breaking** Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
 
 ## 0.20.1
 - `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.
