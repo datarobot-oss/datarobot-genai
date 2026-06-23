@@ -21,7 +21,6 @@ import pytest
 
 from datarobot_genai.core.mcp import MCPConfig
 
-
 # aiohttp 3.14 added a required keyword-only ``stream_writer`` argument to
 # ``ClientResponse.__init__``. aioresponses (<=0.7.8) builds mocked responses
 # without it, so every mocked request raises ``TypeError: ... missing 1
