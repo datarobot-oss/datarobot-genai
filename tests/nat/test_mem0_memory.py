@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import UTC
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from nat.builder.context import Context
@@ -505,18 +506,46 @@ def test_memory_client_config_uses_settings_mem0_api_key(monkeypatch: Any) -> No
 def test_memory_client_config_uses_settings_default_agent_memory_space_id(
     monkeypatch: Any,
 ) -> None:
-    # GIVEN AGENT_MEMORY_SPACE_ID is set in the env by the recipe's agent runtime
-    # parameter wiring.
+    # GIVEN AGENT_MEMORY_SPACE_ID and AGENT_LLM_MODEL_NAME are set in the env by
+    # the recipe's agent runtime parameter wiring.
     monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "space-from-runtime")
+    monkeypatch.setenv("AGENT_LLM_MODEL_NAME", "gpt-4o")
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
 
-    # WHEN the NAT memory config is created without an explicit agent_memory_space_id.
+    # WHEN the NAT memory config is created without explicit fields.
     config = DRMem0MemoryClientConfig(api_key=None)
 
-    # THEN the agent_memory_space_id defaults from settings, so minimal workflow.yaml
-    # memory blocks can still target the DataRobot Memory Service.
+    # THEN both fields default from settings, so minimal workflow.yaml memory
+    # blocks can target the DataRobot Memory Service.
     assert Config().agent_memory_space_id == "space-from-runtime"
     assert config.agent_memory_space_id == "space-from-runtime"
+
+
+def test_memory_client_config_uses_settings_default_llm_model_name(
+    monkeypatch: Any,
+) -> None:
+    # GIVEN AGENT_LLM_MODEL_NAME is set in the env.
+    monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "space-from-runtime")
+    monkeypatch.setenv("AGENT_LLM_MODEL_NAME", "gpt-4o-from-env")
+    monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    config = DRMem0MemoryClientConfig(api_key=None)
+
+    # THEN llm_model_name defaults from the env var.
+    assert Config().agent_llm_model_name == "gpt-4o-from-env"
+    assert config.llm_model_name == "gpt-4o-from-env"
+
+
+def test_memory_client_config_requires_llm_model_name_for_dr_backend(
+    monkeypatch: Any,
+) -> None:
+    # GIVEN agent_memory_space_id is set but llm_model_name is not.
+    monkeypatch.delenv("AGENT_LLM_MODEL_NAME", raising=False)
+    monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    # THEN constructing the config raises — the service no longer has a default.
+    with pytest.raises(ValueError, match="llm_model_name is required"):
+        DRMem0MemoryClientConfig(api_key=None, agent_memory_space_id="space-42")
 
 
 def test_memory_client_config_explicit_agent_memory_space_id_beats_env(
@@ -524,7 +553,11 @@ def test_memory_client_config_explicit_agent_memory_space_id_beats_env(
 ) -> None:
     monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "space-from-runtime")
 
-    config = DRMem0MemoryClientConfig(api_key=None, agent_memory_space_id="space-explicit")
+    config = DRMem0MemoryClientConfig(
+        api_key=None,
+        agent_memory_space_id="space-explicit",
+        llm_model_name="gpt-4o",
+    )
 
     assert config.agent_memory_space_id == "space-explicit"
 
@@ -598,6 +631,7 @@ def test_dr_mem0_endpoint_builds_path_prefixed_url(monkeypatch: Any) -> None:
     config = DRMem0MemoryClientConfig(
         agent_memory_space_id="space-123",
         datarobot_endpoint="https://app.datarobot.com/api/v2/",
+        llm_model_name="gpt-4o",
     )
     assert (
         datarobot_mem0_memory._dr_mem0_endpoint(config)
@@ -608,7 +642,7 @@ def test_dr_mem0_endpoint_builds_path_prefixed_url(monkeypatch: Any) -> None:
 def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any) -> None:
     # GIVEN no explicit datarobot_endpoint on the config but DATAROBOT_ENDPOINT in env.
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://staging.datarobot.com/api/v2")
-    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz", llm_model_name="gpt-4o")
 
     # THEN the env var is used as the base.
     assert (
@@ -620,7 +654,7 @@ def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any)
 def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
     # GIVEN no datarobot_endpoint configured and no env var.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
-    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz", llm_model_name="gpt-4o")
 
     # THEN the builder refuses to fabricate a URL — better to fail loud than to
     # point at a wrong host.
@@ -662,6 +696,7 @@ def test_create_mem0_client_routes_to_dr_endpoint_when_agent_memory_space_id_set
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         org_id="org-1",
         project_id="proj-1",
+        llm_model_name="gpt-4o",
     )
 
     # WHEN the Mem0Client is constructed.
@@ -724,11 +759,13 @@ async def test_registered_memory_client_uses_dr_token_when_agent_memory_space_id
 
     monkeypatch.setattr(datarobot_mem0_memory, "_create_mem0_client", fake_create_mem0_client)
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+    monkeypatch.setattr(datarobot_mem0_memory, "_patch_memory_space_llm_name", AsyncMock())
 
     config = DRMem0MemoryClientConfig(
         api_key=None,
         agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
+        llm_model_name="gpt-4o",
     )
 
     # WHEN NAT builds the memory client.
@@ -757,11 +794,13 @@ async def test_registered_memory_client_prefers_explicit_dr_token_over_env(
 
     monkeypatch.setattr(datarobot_mem0_memory, "_create_mem0_client", fake_create_mem0_client)
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+    monkeypatch.setattr(datarobot_mem0_memory, "_patch_memory_space_llm_name", AsyncMock())
 
     config = DRMem0MemoryClientConfig(
         agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="explicit-token",
+        llm_model_name="gpt-4o",
     )
 
     # WHEN NAT builds the memory client.
@@ -776,6 +815,7 @@ async def test_registered_memory_client_yields_unconfigured_editor_without_dr_to
     monkeypatch: Any,
 ) -> None:
     # GIVEN an agent_memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
+    # _patch_memory_space_llm_name returns early (no token → no HTTP call) so no mock needed.
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
 
@@ -783,6 +823,7 @@ async def test_registered_memory_client_yields_unconfigured_editor_without_dr_to
         DRMem0MemoryClientConfig(
             agent_memory_space_id="space-42",
             datarobot_endpoint="https://app.datarobot.com/api/v2",
+            llm_model_name="gpt-4o",
         ),
         object(),
     ) as editor:
@@ -808,6 +849,7 @@ async def test_registered_memory_client_rejects_agent_memory_space_id_and_api_ke
                 agent_memory_space_id="space-42",
                 datarobot_endpoint="https://app.datarobot.com/api/v2",
                 datarobot_api_token="dr-token",
+                llm_model_name="gpt-4o",
             ),
             object(),
         ):
@@ -823,7 +865,7 @@ async def test_registered_memory_client_rejects_agent_memory_space_id_with_env_m
     monkeypatch.setenv("MEM0_API_KEY", "stray-env-key")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "dr-token")
 
-    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-42")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-42", llm_model_name="gpt-4o")
     # Confirm the env did hydrate api_key — this is the exact ambiguity the
     # guardrail exists to catch.
     assert config.api_key == "stray-env-key"
@@ -846,12 +888,14 @@ async def test_registered_memory_client_allows_agent_memory_space_id_with_explic
         datarobot_mem0_memory, "_create_mem0_client", lambda *_a, **_k: FakeMem0Client()
     )
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+    monkeypatch.setattr(datarobot_mem0_memory, "_patch_memory_space_llm_name", AsyncMock())
 
     config = DRMem0MemoryClientConfig(
         api_key=None,  # explicit override beats the env default_factory
         agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="dr-token",
+        llm_model_name="gpt-4o",
     )
 
     # WHEN NAT builds the client, THEN it routes to DR without complaint —
@@ -867,11 +911,13 @@ async def test_registered_memory_client_sets_store_metadata_for_dr_route(
         datarobot_mem0_memory, "_create_mem0_client", lambda *_a, **_k: FakeMem0Client()
     )
     monkeypatch.setattr(datarobot_mem0_memory, "patch_with_retry", lambda ed, **_: ed)
+    monkeypatch.setattr(datarobot_mem0_memory, "_patch_memory_space_llm_name", AsyncMock())
 
     config = DRMem0MemoryClientConfig(
         agent_memory_space_id="space-42",
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="dr-token",
+        llm_model_name="gpt-4o",
     )
 
     async with datarobot_mem0_memory.dr_mem0_memory_client(config, object()) as editor:

@@ -55,6 +55,7 @@ from nat.memory.interfaces import MemoryEditor
 from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
+from pydantic import model_validator
 
 from datarobot_genai.core.telemetry_memory import trace_memory_operation
 from datarobot_genai.core.telemetry_memory import truncate_memory_text
@@ -190,8 +191,9 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
         default_factory=_get_default_llm_model_name,
         description=(
             "LLM model name to use for memory extraction in the DataRobot Memory Service. "
-            "When set with ``agent_memory_space_id``, the memory space is updated to this "
-            "model on editor initialization. "
+            "Required when ``agent_memory_space_id`` is set — the memory service no longer "
+            "provides a built-in default. "
+            "When set, the memory space is updated to this model on editor initialization. "
             "Defaults from the ``AGENT_LLM_MODEL_NAME`` env var."
         ),
     )
@@ -209,6 +211,17 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
             "``AGENT_MEMORY_TTL_SECONDS`` env var."
         ),
     )
+
+    @model_validator(mode="after")
+    def _require_llm_model_name_for_dr_backend(self) -> "DRMem0MemoryClientConfig":
+        if self.agent_memory_space_id and not self.llm_model_name:
+            raise ValueError(
+                "llm_model_name is required when agent_memory_space_id is set. "
+                "The DataRobot Memory Service no longer provides a built-in default. "
+                "Set it via the llm_model_name config field or the "
+                "AGENT_LLM_MODEL_NAME environment variable."
+            )
+        return self
 
 
 class UnconfiguredMemoryEditor(MemoryEditor):  # type: ignore[misc]
@@ -500,7 +513,7 @@ async def dr_mem0_memory_client(
             "either unset it or pass api_key=None explicitly when using agent_memory_space_id."
         )
 
-    if config.agent_memory_space_id and config.llm_model_name:
+    if config.agent_memory_space_id:
         await _patch_memory_space_llm_name(config)
 
     resolved = _resolve_memory_backend(config)
