@@ -58,7 +58,7 @@ workflow:
   description: CrewAI planner/writer agent
   middleware:
     - datarobot_guardrails
-  max_iter: 5  # cap the ReAct act-loop so a runaway can't hit the 60s test timeout
+  max_iter: 5  # cap the ReAct act-loop so a runaway can't stall the stream past the 60s httpx read timeout
   max_rpm: 30
   max_execution_time: 600
   allow_delegation: false

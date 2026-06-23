@@ -119,7 +119,7 @@ def test_tool_call_logs_name_args_result_and_role_at_info(caplog: pytest.LogCapt
     assert "Planner" in text
     assert "generate_objectid" in text
     assert "deployment" in text
-    assert "2" in text  # run attempt surfaces the loop
+    assert "attempt=2" in text  # run attempt surfaces the loop
     assert "69cbb737" in text
 
 
@@ -226,3 +226,28 @@ def test_role_falls_back_to_task_agent(caplog: pytest.LogCaptureFixture) -> None
 
     # THEN the role is resolved from event.task.agent.role
     assert "[Writer]" in caplog.text
+
+
+@dataclass
+class _NamedTask:
+    name: str
+    agent: Any
+
+
+def test_task_name_falls_back_to_event_task(caplog: pytest.LogCaptureFixture) -> None:
+    # GIVEN CrewAI's TaskStartedEvent does not populate task_name; the name lives
+    # on the attached task object instead
+    bus = _bus_with_listener()
+
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        bus.fire(
+            TaskStartedEvent,
+            _TaskStartedNoRole(
+                agent_role="",
+                task_name="",
+                task=_NamedTask(name="plan_the_post", agent=_Agent(role="Planner")),
+            ),
+        )
+
+    # THEN the task name is resolved from event.task.name instead of logged blank
+    assert "[Planner] task started: plan_the_post" in caplog.text

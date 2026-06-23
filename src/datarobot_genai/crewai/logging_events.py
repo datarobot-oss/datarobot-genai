@@ -57,6 +57,16 @@ def _role(event: Any) -> str:
     return getattr(agent, "role", "") or ""
 
 
+def _task_name(event: Any) -> str:
+    # CrewAI does not populate `task_name` on TaskStartedEvent, so fall back to
+    # the attached task's name (or description) instead of logging an empty value.
+    name = getattr(event, "task_name", "") or ""
+    if name:
+        return name
+    task = getattr(event, "task", None)
+    return getattr(task, "name", "") or getattr(task, "description", "") or ""
+
+
 class CrewAILoggingEventListener:
     """Logs the CrewAI agent/task/tool lifecycle for dragent observability."""
 
@@ -81,7 +91,7 @@ class CrewAILoggingEventListener:
         )
         _register(
             TaskStartedEvent,
-            lambda e: logger.info("[%s] task started: %s", _role(e), getattr(e, "task_name", "")),
+            lambda e: logger.info("[%s] task started: %s", _role(e), _truncate(_task_name(e))),
         )
         _register(
             TaskCompletedEvent,
