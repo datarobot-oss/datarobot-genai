@@ -61,6 +61,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
+from datarobot_genai.crewai.logging_events import CrewAILoggingEventListener
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
@@ -402,6 +403,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             ragas_event_listener.setup_listeners(crewai_event_bus)
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
+            logging_event_listener = CrewAILoggingEventListener()
+            logging_event_listener.setup_listeners(crewai_event_bus)
 
             crew = self.crew
 
@@ -423,10 +426,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 reasoning_started = False
                 text_started = False
                 async for chunk in crew_output:
-                    # Show task transitions
                     logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
                     if chunk.agent_role != current_agent_role:
-                        logger.info(f"[{chunk.agent_role}] Working on task: {chunk.task_name}")
                         if current_agent_role:
                             # Close any open text/reasoning message scoped to the
                             # outgoing step so each step gets its own AG-UI message
@@ -468,14 +469,19 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 zero_metrics,
                             )
                             message_id = str(uuid.uuid4())
-                        yield (
-                            StepStartedEvent(
-                                type=EventType.STEP_STARTED,
-                                step_name=chunk.agent_role,
-                            ),
-                            None,
-                            zero_metrics,
-                        )
+                        # Only non-empty roles open a step. CrewAI emits boundary
+                        # chunks with an empty agent_role ("[] Working on task:");
+                        # opening a step for one is never closed -> trips the AG-UI
+                        # verifier at RUN_FINISHED.
+                        if chunk.agent_role:
+                            yield (
+                                StepStartedEvent(
+                                    type=EventType.STEP_STARTED,
+                                    step_name=chunk.agent_role,
+                                ),
+                                None,
+                                zero_metrics,
+                            )
                         current_agent_role = chunk.agent_role
 
                     if streaming_event_listener.reasoning_event:
@@ -549,9 +555,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                                 None,
                                 zero_metrics,
                             )
-                    # Display tool calls
-                    elif chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
-                        logger.info(f"Using tool: {chunk.tool_call.tool_name}")
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
                     ragas_event_listener.messages
                 )
