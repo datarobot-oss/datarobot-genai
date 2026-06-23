@@ -165,13 +165,13 @@ async def test_list_logs_when_page_limit_is_hit(
 @pytest.mark.asyncio
 async def test_put_and_list_refs_are_equal(fake_dr: MagicMock) -> None:
     """The asymmetry fix: a ref from put() equals the same blob's ref from list()."""
-    stored = _files_obj(id="p1", name="panel.json", tags=["dr-panel"])
+    stored = _files_obj(id="p1", name="panel.json", tags=["dr_panel"])
     fake_dr.models.Files.create_from_file.return_value = stored
     fake_dr.models.Files.search_catalog.return_value = [stored]
 
     store = DataRobotFilesBlobStore()
     put_ref = await store.put(
-        b"{}", name="panel.json", content_type="application/json", tags=["dr-panel"]
+        b"{}", name="panel.json", content_type="application/json", tags=["dr_panel"]
     )
     [list_ref] = await store.list(search="panel.json")
 

@@ -27,9 +27,9 @@ from datarobot_genai.drtools.sandbox import SandboxTimeout
 
 API_BASE = "https://app.datarobot.com/api/v2"
 WORKLOAD_ID = "wkl_123"
-CREATE_URL = f"{API_BASE}/console/workloads/"
-GET_URL = f"{API_BASE}/console/workloads/{WORKLOAD_ID}"
-DELETE_URL = f"{API_BASE}/console/workloads/{WORKLOAD_ID}"
+CREATE_URL = f"{API_BASE}/workloads/"
+GET_URL = f"{API_BASE}/workloads/{WORKLOAD_ID}"
+DELETE_URL = f"{API_BASE}/workloads/{WORKLOAD_ID}"
 LOGS_URL = f"{API_BASE}/otel/workload/{WORKLOAD_ID}/logs/"
 
 
@@ -427,3 +427,30 @@ def test_security_context_override_honored() -> None:
     payload = sb._build_workload_payload("x = 1", None, timeout_s=30.0)
     sc = payload["artifact"]["spec"]["containerGroups"][0]["containers"][0]["securityContext"]
     assert sc["readOnlyRootFilesystem"] is False
+
+
+def test_create_payload_matches_workload_api_schema() -> None:
+    """Lock in the Workload API contract: service artifact, a port on the primary
+    container, and the resource signal carried as runtime resourceAllocation
+    (matched to the artifact container by name) — not the old per-container
+    resourceRequest / runtime.replicaCount, which the API now rejects.
+    """
+    payload = _sandbox()._build_workload_payload("_return = 1", None, timeout_s=30.0)
+
+    assert payload["artifact"]["type"] == "service"
+    group = payload["artifact"]["spec"]["containerGroups"][0]
+    container = group["containers"][0]
+    assert container["primary"] is True
+    assert container["port"] >= 1024
+    assert container.get("name")
+    # The old fields the current Workload API rejects must be gone.
+    assert "resourceRequest" not in container
+
+    runtime_group = payload["runtime"]["containerGroups"][0]
+    runtime_container = runtime_group["containers"][0]
+    # Runtime container is matched to the artifact container by name.
+    assert runtime_container["name"] == container["name"]
+    assert runtime_group["name"] == group["name"]
+    assert runtime_container["resourceAllocation"]["cpu"] >= 1
+    assert "replicaCount" not in payload["runtime"]  # lives under the container group now
+    assert runtime_group["replicaCount"] == 1
