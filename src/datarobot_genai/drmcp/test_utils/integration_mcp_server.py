@@ -196,6 +196,10 @@ def _apply_dr_client_stubs() -> None:
         mock_rest.get = stub_dr.stub_rest_get
     if stub_dr.stub_rest_post:
         mock_rest.post = stub_dr.stub_rest_post
+    if stub_dr.stub_rest_patch:
+        mock_rest.patch = stub_dr.stub_rest_patch
+    if stub_dr.stub_rest_delete:
+        mock_rest.delete = stub_dr.stub_rest_delete
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
