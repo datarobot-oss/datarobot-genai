@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.19.2
+- `nat/dr_mem0_memory`: adapt to the DataRobot Memory Service no longer shipping a default LLM model name (memory-service commit `1d7acd8e`). `DRMem0MemoryClientConfig` gains a `llm_model_name` field (also readable from the `AGENT_LLM_MODEL_NAME` env var). When `agent_memory_space_id` and `llm_model_name` are both set, the provider PATCHes the memory space with that model name at editor-init time, ensuring the service can run fact-extraction without a pre-configured LLM. Integration tests updated: `dr_memory_space` fixture now passes `llm_model_name="gpt-4o"` to `MemorySpace.create`, and a new test (`test_dr_mem0_config_llm_model_name_patches_memory_space`) verifies the PATCH path end-to-end.
+
 ## 0.19.1
 - `crewai`: an empty `agent_role` streaming chunk (CrewAI's `[] Working on task:` task boundary) no longer opens an AG-UI step that is never closed → fixes the `RUN_FINISHED while steps are still active` verifier error.
 - `e2e-tests` (crewai): lower `max_iter` to 5 in the dragent crewai workflow config (was 20) so a runaway ReAct loop is forced to a final answer instead of stalling the stream past the 60s httpx read timeout (the pytest global timeout is 300s).
