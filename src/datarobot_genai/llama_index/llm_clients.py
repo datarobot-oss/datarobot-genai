@@ -15,9 +15,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import TypeVar
 
-from llama_index.llms.litellm import LiteLLM
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
@@ -35,6 +35,9 @@ from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMRouterConf
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotNIMModelConfig
 
 ModelType = TypeVar("ModelType")
+
+if TYPE_CHECKING:
+    from llama_index.llms.litellm import LiteLLM
 
 
 @register_llm_client(

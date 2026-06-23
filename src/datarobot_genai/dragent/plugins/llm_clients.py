@@ -15,9 +15,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from typing import TypeVar
 
-from langchain_openai import ChatOpenAI
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_llm_client
@@ -37,6 +37,9 @@ from .llm_providers import DataRobotLLMRouterConfig
 from .llm_providers import DataRobotNIMModelConfig
 
 ModelType = TypeVar("ModelType")
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 EXCLUDE_FIELDS = {
     "type",
