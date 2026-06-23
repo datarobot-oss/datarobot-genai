@@ -13,8 +13,33 @@
 # limitations under the License.
 
 import pytest
+from nat.builder.context import ContextState
+from nat.data_models.api_server import Request
+from nat.runtime.user_metadata import RequestAttributes
+from starlette.datastructures import Headers
 
 from datarobot_genai.dragent.context import extract_headers_from_context
+
+
+@pytest.fixture
+def nat_context_set_headers():
+    """Set NAT context metadata (e.g. request headers) for the test; reset on teardown."""
+    context_state = ContextState.get()
+    tokens = []
+
+    def reset_context():
+        while tokens:
+            context_state._metadata.reset(tokens.pop())
+
+    def set_headers(headers):
+        """Set request headers in context. Pass a dict or None for no headers."""
+        reset_context()
+        attrs = RequestAttributes()
+        attrs._request = Request(headers=Headers(headers) if headers is not None else None)
+        tokens.append(context_state._metadata.set(attrs))
+
+    yield set_headers
+    reset_context()
 
 
 @pytest.mark.parametrize(
