@@ -29,7 +29,6 @@ from datarobot_genai.nat.helpers import add_headers_to_datarobot_llm_deployment
 from datarobot_genai.nat.helpers import add_headers_to_datarobot_mcp_auth
 from datarobot_genai.nat.helpers import extract_authorization_from_context
 from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
-from datarobot_genai.nat.helpers import extract_headers_from_context
 from datarobot_genai.nat.helpers import load_config
 from datarobot_genai.nat.helpers import load_workflow
 from datarobot_genai.nat.helpers import remove_datarobot_moderation_middleware
@@ -390,31 +389,6 @@ def nat_context_set_headers():
 
     yield set_headers
     reset_context()
-
-
-@pytest.mark.parametrize(
-    "headers,headers_to_forward,expected_headers",
-    [
-        (None, ["Authorization"], {}),
-        ({}, ["Authorization"], {}),
-        (
-            {"Authorization": "Bearer secret", "X-Request-Id": "req-123"},
-            ["Authorization"],
-            {"Authorization": "Bearer secret"},
-        ),
-        (
-            {"Authorization": "Bearer secret"},
-            ["Authorization", "X-Request-Id"],
-            {"Authorization": "Bearer secret"},
-        ),
-    ],
-)
-def test_extract_headers_from_context(
-    headers, headers_to_forward, expected_headers, nat_context_set_headers
-):
-    nat_context_set_headers(headers)
-    result = extract_headers_from_context(headers_to_forward)
-    assert result == expected_headers
 
 
 @pytest.mark.parametrize(

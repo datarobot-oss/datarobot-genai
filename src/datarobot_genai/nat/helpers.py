@@ -204,20 +204,6 @@ async def load_workflow(
             await session_manager.shutdown()
 
 
-def extract_headers_from_context(headers_to_forward: list[str]) -> dict[str, str]:
-    context = Context.get()
-    headers = context.metadata.headers
-    extracted_headers: dict[str, str] = {}
-    if not headers:
-        return extracted_headers
-
-    for header in headers_to_forward:
-        if header in headers:
-            extracted_headers[header] = headers[header]
-
-    return extracted_headers
-
-
 def extract_datarobot_headers_from_context() -> dict[str, str]:
     context = Context.get()
     headers = context.metadata.headers

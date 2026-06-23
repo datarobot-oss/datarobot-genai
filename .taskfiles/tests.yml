@@ -34,7 +34,6 @@ tasks:
       - mkdir -p test_results
       - |
           echo "pytest path: tests/{{.MODULE}}"
-          {{if eq .MODULE "nat"}}uv sync --extra nat --extra crewai --extra llamaindex --extra dragent{{end}}
           {{if or (eq .MODULE "drmcpbase") (eq .MODULE "drmcputils") (eq .MODULE "eval")}}
           # drmcpbase, drmcputils, and eval are intentionally minimal standalone extras,
           # so avoid loading root conftest rather than pulling in the full SDK just to run a package smoke test for now
