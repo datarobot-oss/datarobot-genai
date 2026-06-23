@@ -4,12 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.13
+## 0.18.14
 - `drmcputils/panels`: **fix** panel Files-API tags used `-` (e.g. `dr-panel-source:…`), which the DataRobot Files API rejects with a 422 (`Tag cannot contain '-'`), so every panel create/list failed against the real backend (only ever exercised against an in-memory store in tests). Tags now use `_` (`dr_panel`, `dr_panel_payload`, `dr_panel_source:…`, `dr_panel_type:…`). Verified end to end against staging.
 - `drmcpbase/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
 - `drmcpbase/panels`: the panel resource handlers live in `drmcpbase` (the shared resources layer) and are registered onto a server's FastMCP instance via `register_panel_resources(mcp)`, so both DRMCP and global-mcp can reuse them without reaching either server's mcp singleton.
 - `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
 - `drtools/sandbox`: **fix** the workload-api request to match the current API — submit to `workloads/` (not `console/workloads/`), declare the service artifact `type`/named container groups + a primary-container `port`, and carry resources as `runtime.containerGroups[].containers[].resourceAllocation` instead of the now-rejected per-container `resourceRequest` / `runtime.replicaCount`. Verified end to end against staging (workload now schedules).
+
+## 0.18.13
+- drmcp - removed the api key enforcment on startup, we get it through the headers and if not provided we will skip the startup functionality, still required for deploy through pulumi. 
+- drtools - Removed the local_path from file_write.
 
 ## 0.18.12
 - `eval`: moved the evaluation CLI into the package so the thin `run.py`/`generate.py`/`summarize.py` component wrappers just call into it.
