@@ -21,6 +21,7 @@ from langchain_core.language_models import BaseChatModel
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
+import datarobot_genai.crewai.llm_clients  # noqa: F401
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLitellmConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMComponentModelConfig
