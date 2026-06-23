@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.19.2
+- Updated dependency constraints to fix CVEs.
+
 ## 0.19.1
 - `crewai`: an empty `agent_role` streaming chunk (CrewAI's `[] Working on task:` task boundary) no longer opens an AG-UI step that is never closed → fixes the `RUN_FINISHED while steps are still active` verifier error.
 - `e2e-tests` (crewai): lower `max_iter` to 5 in the dragent crewai workflow config (was 20) so a runaway ReAct loop is forced to a final answer instead of stalling the stream past the 60s httpx read timeout (the pytest global timeout is 300s).
