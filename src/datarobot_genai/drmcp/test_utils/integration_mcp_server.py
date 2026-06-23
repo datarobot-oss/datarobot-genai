@@ -146,6 +146,21 @@ def _stub_request_user_dr_sdk(*, headers_auth_only: bool = True) -> Generator[An
     yield dr
 
 
+def _make_stub_request_user_dr_client(
+    mock_rest: MagicMock,
+) -> Any:
+    """Return a stub for request_user_dr_client that skips client_configuration."""
+
+    @contextmanager
+    def _stub_request_user_dr_client(
+        *, headers_auth_only: bool = True
+    ) -> Generator[MagicMock, None, None]:
+        del headers_auth_only
+        yield mock_rest
+
+    return _stub_request_user_dr_client
+
+
 def _patch_datarobot_token_for_stdio() -> None:
     """Patch get_datarobot_access_token for stdio (no headers)."""
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
@@ -206,6 +221,7 @@ def _apply_dr_client_stubs() -> None:
     _apply_dr_sdk_stubs(stub_dr, mock_rest)
 
     tools_datarobot_client.request_user_dr_sdk = _stub_request_user_dr_sdk
+    tools_datarobot_client.request_user_dr_client = _make_stub_request_user_dr_client(mock_rest)
     thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
     thread_safe_client.request_user_client = _stub_thread_safe_request_user_client  # type: ignore[method-assign]
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
