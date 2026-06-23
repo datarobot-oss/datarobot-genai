@@ -44,6 +44,7 @@ from datetime import datetime
 from datetime import timedelta
 from typing import Any
 
+import httpx
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.builder.context import Context
@@ -71,6 +72,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
     mem0_api_key: str | None = None
     agent_memory_space_id: str | None = None
     agent_memory_ttl_seconds: int | None = None
+    agent_llm_model_name: str | None = None
 
 
 def _get_default_memory_backend_config() -> Config:
@@ -90,6 +92,10 @@ def _get_default_agent_memory_space_id() -> str | None:
 
 def _get_default_ttl_seconds() -> int | None:
     return Config().agent_memory_ttl_seconds
+
+
+def _get_default_llm_model_name() -> str | None:
+    return _get_default_memory_backend_config().agent_llm_model_name
 
 
 def _ttl_to_expiration_date(ttl_seconds: int) -> str:
@@ -178,6 +184,15 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
         description=(
             "DataRobot API token used when ``agent_memory_space_id`` is set. "
             "Defaults to the ``DATAROBOT_API_TOKEN`` env var."
+        ),
+    )
+    llm_model_name: str | None = Field(
+        default_factory=_get_default_llm_model_name,
+        description=(
+            "LLM model name to use for memory extraction in the DataRobot Memory Service. "
+            "When set with ``agent_memory_space_id``, the memory space is updated to this "
+            "model on editor initialization. "
+            "Defaults from the ``AGENT_LLM_MODEL_NAME`` env var."
         ),
     )
     default_ttl_seconds: int | None = Field(
@@ -380,6 +395,38 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             await self._mem0.delete_all(user_id=user_id)
 
 
+async def _patch_memory_space_llm_name(config: DRMem0MemoryClientConfig) -> None:
+    """PATCH the DataRobot Memory Space to set llm_model_name.
+
+    The memory service no longer ships a default LLM name. When a workflow
+    configures ``llm_model_name`` alongside ``agent_memory_space_id``, this
+    function ensures the memory space reflects that name before any add/search
+    calls are made, so the service can instantiate ``DataRobotMemoryConfig``
+    successfully.
+    """
+    base = config.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
+    api_token = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
+    if not base or not api_token:
+        logger.warning(
+            "Cannot update memory space llm_model_name: missing datarobot_endpoint or api_token"
+        )
+        return
+
+    url = f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}/"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.patch(
+            url,
+            json={"llmModelName": config.llm_model_name},
+            headers={"Authorization": f"Token {api_token}"},
+        )
+    if resp.status_code not in (200, 204):
+        logger.warning(
+            "Failed to update memory space llm_model_name: HTTP %s — %s",
+            resp.status_code,
+            resp.text,
+        )
+
+
 def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     """Build the DataRobot Memory Service mem0 endpoint for an agent memory space.
 
@@ -452,6 +499,9 @@ async def dr_mem0_memory_client(
             "different auth tokens. Set exactly one. If MEM0_API_KEY is in env, "
             "either unset it or pass api_key=None explicitly when using agent_memory_space_id."
         )
+
+    if config.agent_memory_space_id and config.llm_model_name:
+        await _patch_memory_space_llm_name(config)
 
     resolved = _resolve_memory_backend(config)
     if resolved is None:

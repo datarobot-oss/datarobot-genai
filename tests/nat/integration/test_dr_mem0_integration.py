@@ -148,11 +148,16 @@ def dr_memory_space(_dr_client: Any) -> Any:
 
     The space is named per-test (uuid suffix) so concurrent runs don't
     collide, and is deleted in the finalizer even when the test fails.
+    ``llm_model_name`` is required since the memory service no longer
+    provides a default (commit 1d7acd8e).
     """
     from datarobot.models.memory import MemorySpace  # type: ignore[import-not-found]
 
     test_id = uuid.uuid4().hex
-    space = MemorySpace.create(description=f"NAT dr-mem0 integration test {test_id}")
+    space = MemorySpace.create(
+        description=f"NAT dr-mem0 integration test {test_id}",
+        llm_model_name="gpt-4o",
+    )
     try:
         yield space
     finally:
@@ -265,6 +270,58 @@ async def test_dr_mem0_endpoint_isolates_memories_per_user(
 
         await editor.remove_items(user_id=user_a)
         await editor.remove_items(user_id=user_b)
+
+
+@skip_unless_dr
+async def test_dr_mem0_config_llm_model_name_patches_memory_space(
+    _dr_client: Any,
+) -> None:
+    # GIVEN a memory space created WITHOUT llm_model_name (the service no longer
+    # provides a default after commit 1d7acd8e). Any add() call against it would
+    # return HTTP 400.
+    from datarobot.models.memory import MemorySpace  # type: ignore[import-not-found]
+
+    test_id = uuid.uuid4().hex
+    space = MemorySpace.create(description=f"NAT dr-mem0 llm-name patch test {test_id}")
+    try:
+        assert space.llm_model_name is None
+
+        # WHEN the editor is built with llm_model_name set in the config, the
+        # provider PATCHes the memory space so the service can proceed.
+        config = DRMem0MemoryClientConfig(
+            api_key=None,
+            agent_memory_space_id=space.id,
+            datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
+            datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
+            llm_model_name="gpt-4o",
+        )
+        user_id = _unique_user_id()
+        secret = f"PATCH-LLM-NAME-{uuid.uuid4().hex[:10]}"
+
+        async for editor in _build_editor(config):
+            # THEN add succeeds (memory space now has llm_model_name) and the
+            # secret is retrievable.
+            await editor.add_items(
+                [
+                    MemoryItem(
+                        conversation=[
+                            {"role": "user", "content": f"My code is {secret}."},
+                        ],
+                        user_id=user_id,
+                    )
+                ]
+            )
+            memories = await _search_until_visible(
+                editor, query="code", user_id=user_id, needle=secret
+            )
+            joined = " ".join(m.memory or "" for m in memories)
+            assert secret in joined, (
+                f"Expected {secret!r} after llm_model_name patch; got: "
+                f"{[m.memory for m in memories]!r}"
+            )
+            await editor.remove_items(user_id=user_id)
+    finally:
+        space.delete()
 
 
 # --------------------------------------------------------------------------- #
