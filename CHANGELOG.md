@@ -4,8 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.18.10
+## 0.18.13
 - `drtools/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `core.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+
+## 0.18.12
+- `eval`: moved the evaluation CLI into the package so the thin `run.py`/`generate.py`/`summarize.py` component wrappers just call into it.
+  - **CLI** (`eval/cli.py`): `run_main` (validate → run BYOB → normalize, with `--dry-run`), `generate_main` (synthetic generation or CSV→JSON `--convert`), and `summarize_main`. Each takes an optional `argv` and `repo_root` (defaults to cwd).
+  - **Runner** (`eval/eval.py`): new `EvalRunner` orchestrating a single batch run — input validation, judge preflight, status writes, BYOB execution, and output normalization to the fixed `output/eval_status.json` / `output/eval_results.json` paths.
+  - **Generator** (`eval/generator.py`): `generate()` now takes an optional `benchmark_name` that tailors good/bad case guidance and enforces benchmark-required fields (e.g. `canary`, `context`, `constraints`); without one it uses a generic, non-safety-biased context.
+
+## 0.18.11
+- Fixed flaky NAT test. Writer being set as `return_direct` prevented reasoning models output to be ignored
+
+## 0.18.10
+Added to `e2e-tests` for moderations:
+- ootb custom_metric guard
+- Custom model guard
+- All NeMo Evaluator guards
 
 ## 0.18.9
 - `core`/`drtools`: upgraded `pyarrow` from `21.0.0` to `>=23.0.1,<24.0.0` to fix CVE-2026-25087 (HIGH). `pyarrow` is not imported directly; it backs the polars→pandas conversion in `drtools/predictive` and other Arrow boundaries. The full unit suite and a polars/pandas/pyarrow round-trip pass on 23.0.1.

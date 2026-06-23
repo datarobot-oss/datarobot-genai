@@ -170,6 +170,55 @@ def test_generate_warns_on_count_mismatch() -> None:
 
 
 # ---------------------------------------------------------------------------
+# generate() — benchmark_name enrichment + extra-field validation
+# ---------------------------------------------------------------------------
+
+
+def _user_prompt(mock_completion: MagicMock) -> str:
+    return mock_completion.call_args[1]["messages"][1]["content"]
+
+
+def test_generate_injects_benchmark_context() -> None:
+    with patch("datarobot_genai.eval.generator.litellm.completion") as mock_completion:
+        mock_completion.return_value = _mock_completion([_valid_case()])
+        _make_gen().generate("test agent", n_good=1, n_bad=0, benchmark_name="answer_quality")
+    assert "Benchmark: answer_quality" in _user_prompt(mock_completion)
+
+
+def test_generate_uses_generic_context_without_benchmark() -> None:
+    with patch("datarobot_genai.eval.generator.litellm.completion") as mock_completion:
+        mock_completion.return_value = _mock_completion([_valid_case()])
+        _make_gen().generate("test agent", n_good=1, n_bad=0)
+    assert "No specific benchmark was selected" in _user_prompt(mock_completion)
+
+
+def test_generate_notes_benchmark_required_fields_in_prompt() -> None:
+    with patch("datarobot_genai.eval.generator.litellm.completion") as mock_completion:
+        case = {**_valid_case(), "context": "some passage"}
+        mock_completion.return_value = _mock_completion([case])
+        _make_gen().generate("test agent", n_good=1, n_bad=0, benchmark_name="faithfulness")
+    assert "`context`" in _user_prompt(mock_completion)
+
+
+def test_generate_raises_on_missing_benchmark_field() -> None:
+    # faithfulness requires a `context` field on every case.
+    with patch("datarobot_genai.eval.generator.litellm.completion") as mock_completion:
+        mock_completion.return_value = _mock_completion([_valid_case()])
+        with pytest.raises(ValueError, match="benchmark-required fields"):
+            _make_gen().generate("test agent", n_good=1, n_bad=0, benchmark_name="faithfulness")
+
+
+def test_generate_accepts_cases_with_benchmark_field() -> None:
+    with patch("datarobot_genai.eval.generator.litellm.completion") as mock_completion:
+        case = {**_valid_case(), "canary": "REF-CANARY-001"}
+        mock_completion.return_value = _mock_completion([case])
+        result = _make_gen().generate(
+            "test agent", n_good=1, n_bad=0, benchmark_name="tool_grounding"
+        )
+    assert result[0]["canary"] == "REF-CANARY-001"
+
+
+# ---------------------------------------------------------------------------
 # save()
 # ---------------------------------------------------------------------------
 
