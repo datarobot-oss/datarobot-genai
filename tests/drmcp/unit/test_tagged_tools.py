@@ -100,19 +100,42 @@ def test_dr_mcp_server_error_handling() -> None:
 
 
 def test_dr_mcp_server_run_without_credentials() -> None:
-    """Test DataRobotMCPServer run method without credentials."""
+    """Test DataRobotMCPServer run method without credentials.
+
+    The server should still start (skipping credential-dependent registration) rather
+    than raising. asyncio is mocked so the server start does not block.
+    """
     # Mock credentials to return False for has_datarobot_credentials
     mock_credentials = Mock()
     mock_credentials.has_datarobot_credentials.return_value = False
 
-    with patch(
-        "datarobot_genai.drmcp.core.dr_mcp_server.get_credentials", return_value=mock_credentials
+    with (
+        patch(
+            "datarobot_genai.drmcp.core.dr_mcp_server.get_credentials",
+            return_value=mock_credentials,
+        ),
+        patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio") as mock_asyncio,
+        patch(
+            "datarobot_genai.drmcp.core.dr_mcp_server.register_tools_of_datarobot_deployments"
+        ) as mock_register_tools,
+        patch(
+            "datarobot_genai.drmcp.core.dr_mcp_server."
+            "register_prompts_from_datarobot_prompt_management"
+        ) as mock_register_prompts,
+        patch("datarobot_genai.drmcp.core.dr_mcp_server.LineageManager") as mock_lineage_manager,
     ):
         server = DataRobotMCPServer(mcp)
 
-        # Should raise ValueError when credentials are missing
-        with pytest.raises(ValueError, match="Missing required DataRobot credentials"):
-            server.run()
+        # Should not raise even though credentials are missing.
+        server.run()
+
+        # Credential-dependent steps must be skipped.
+        mock_register_tools.assert_not_called()
+        mock_register_prompts.assert_not_called()
+        mock_lineage_manager.assert_not_called()
+
+        # Server should still have been started.
+        mock_asyncio.new_event_loop.assert_called_once()
 
 
 def test_telemetry_functions() -> None:

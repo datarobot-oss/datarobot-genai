@@ -16,8 +16,8 @@
 
 These tools mutate the filesystem: writing file content, uploading local files,
 and the structural lifecycle actions (create directory, delete, copy, move,
-clone). ``file_write`` supplies content inline (or from a small local file)
-bounded by ``MAX_INLINE_SIZE``; ``file_upload`` streams larger files, whole
+clone). ``file_write`` supplies content inline, bounded by ``MAX_INLINE_SIZE``;
+``file_upload`` streams larger files, whole
 directory trees, or many files at once from the local filesystem. To ingest
 remote files (by URL or data source), use the import tools instead.
 """
@@ -35,7 +35,6 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.files_api.common_utils import decode_content
 from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
-from datarobot_genai.drtools.files_api.common_utils import read_local_file as _read_local_file
 from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
 from datarobot_genai.drtools.files_api.common_utils import require_path as _require_path
 from datarobot_genai.drtools.files_api.common_utils import (
@@ -53,39 +52,23 @@ logger = logging.getLogger(__name__)
 @tool_metadata(
     tags={"file", "datarobot", "write", "create", "upload"},
     description=(
-        "[Files—write] Write a single file to dr://<catalog_id>/path, creating "
+        "[Files—write] Write content to a file at dr://<catalog_id>/path, creating "
         "parent folders implicitly (DataRobot has no empty directories). The path "
         "must be under a catalog item; create one first with "
         "file_manage(action='create_dir') if needed.\n"
-        "Provide the bytes one of two ways:\n"
-        "  - content: inline text/base64 (see 'encoding'); or\n"
-        "  - local_path: read the bytes from a file on the server's local disk "
-        "(requires the server's local-access allowlist to be configured).\n"
-        "Provide exactly one of 'content' or 'local_path'.\n"
-        "  - encoding: 'utf-8' for text (default) or 'base64' for binary content "
-        "(ignored when local_path is used).\n"
+        "  - encoding: 'utf-8' for text (default) or 'base64' for binary content.\n"
         "  - mode: 'overwrite' (default) or 'create' (fails if the file exists).\n"
-        f"Capped at {MAX_INLINE_SIZE} bytes; for larger files, whole directories, or "
-        "many local files at once use file_upload, and for remote files use file_import.\n\n"
+        f"Content is capped at {MAX_INLINE_SIZE} bytes; use file_import for larger "
+        "or remote files.\n\n"
         "Example: file_write(path='dr://abc123/notes.txt', content='hello')\n"
         "Example (binary): file_write(path='dr://abc123/logo.png', content='<b64>', "
-        "encoding='base64')\n"
-        "Example (local): file_write(path='dr://abc123/notes.txt', local_path='/tmp/notes.txt')"
+        "encoding='base64')"
     ),
 )
 async def file_write(
     *,
     path: Annotated[str, "Target file path (dr://<catalog_id>/...). Must be under a catalog item."],
-    content: Annotated[
-        str | None,
-        "Inline file content (UTF-8 text, or base64 when encoding='base64'). "
-        "Omit when using local_path.",
-    ] = None,
-    local_path: Annotated[
-        str | None,
-        "Path to a file on the server's local disk to read the bytes from. "
-        "Omit when using content.",
-    ] = None,
+    content: Annotated[str, "File content. UTF-8 text, or base64 when encoding='base64'."],
     encoding: Annotated[
         Literal["utf-8", "base64"],
         "How 'content' is encoded: 'utf-8' (text) or 'base64' (binary). Default 'utf-8'.",
@@ -96,29 +79,16 @@ async def file_write(
     ] = "overwrite",
 ) -> dict[str, Any]:
     cleaned = _require_file_path(path)
-
-    if (content is None) == (local_path is None):
-        raise ToolError(
-            "Argument validation error: provide exactly one of 'content' or 'local_path'.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-
-    if local_path is not None:
-        data = await _read_local_file(local_path, max_bytes=MAX_INLINE_SIZE)
-        source = "local_path"
-    else:
-        data = decode_content(content, encoding)  # type: ignore[arg-type]
-        source = "content"
-
+    data = decode_content(content, encoding)
     if len(data) > MAX_INLINE_SIZE:
         raise ToolError(
-            f"File is over the inline limit of {MAX_INLINE_SIZE} bytes. Use file_upload "
-            "for large or multiple local files, or file_import for remote files.",
+            f"Content is {len(data)} bytes, exceeding the inline limit of "
+            f"{MAX_INLINE_SIZE} bytes. Use file_import for large or remote files.",
             kind=ToolErrorKind.VALIDATION,
         )
 
     await _get_store().write(cleaned, data, mode=mode)
-    return {"path": cleaned, "bytes_written": len(data), "mode": mode, "source": source}
+    return {"path": cleaned, "bytes_written": len(data), "mode": mode}
 
 
 # ------------------------------------------------------------------ #
