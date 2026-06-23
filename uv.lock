@@ -1104,7 +1104,7 @@ fs = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.18.13"
+version = "0.19.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1168,7 +1168,6 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
-    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1328,7 +1327,6 @@ nat = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
-    { name = "litellm" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1440,11 +1438,9 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.83.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'dragent'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.83.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.83.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'nat'", specifier = ">=1.83.0,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.8.0,<1.0.0" },
