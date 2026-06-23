@@ -74,8 +74,8 @@ class CrewAILoggingEventListener:
         def _register(event_type: Any, render: Any) -> None:
             @crewai_event_bus.on(event_type)
             def _handler(_: Any, event: Any) -> None:
-                # A logging handler must never break the crew run, so swallow
-                # anything an unexpected payload throws.
+                # CrewAI's bus already isolates handler exceptions; swallow here too so a
+                # malformed payload logs at DEBUG instead of the bus's error level.
                 try:
                     render(event)
                 except Exception:
