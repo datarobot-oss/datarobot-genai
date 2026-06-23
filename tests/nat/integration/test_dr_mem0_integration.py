@@ -156,7 +156,7 @@ def dr_memory_space(_dr_client: Any) -> Any:
     test_id = uuid.uuid4().hex
     space = MemorySpace.create(
         description=f"NAT dr-mem0 integration test {test_id}",
-        llm_model_name="gpt-4o",
+        llm_model_name="azure/gpt-4o-2024-11-20",
     )
     try:
         yield space
@@ -176,6 +176,7 @@ async def test_dr_mem0_endpoint_add_search_round_trip(
         agent_memory_space_id=dr_memory_space.id,
         datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
         datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
+        llm_model_name="azure/gpt-4o-2024-11-20",
     )
     user_id = _unique_user_id()
     secret = f"DR-MEM0-INT-{uuid.uuid4().hex[:12]}"
@@ -229,43 +230,73 @@ async def test_dr_mem0_endpoint_isolates_memories_per_user(
         agent_memory_space_id=dr_memory_space.id,
         datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
         datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
+        llm_model_name="azure/gpt-4o-2024-11-20",
     )
     user_a, user_b = _unique_user_id(), _unique_user_id()
     secret_a = f"A-{uuid.uuid4().hex[:10]}"
     secret_b = f"B-{uuid.uuid4().hex[:10]}"
 
     async for editor in _build_editor(config):
+        # --- Phase 1: store user_a's memory and wait for extraction ----------
+        # Use a two-turn conversation with an explicit "please remember" prompt
+        # so the LLM extraction pipeline reliably produces a fact to index
+        # (matching the pattern used in the add/search round-trip test).
         await editor.add_items(
             [
                 MemoryItem(
-                    conversation=[{"role": "user", "content": f"My code is {secret_a}."}],
+                    conversation=[
+                        {
+                            "role": "user",
+                            "content": f"Please remember my secret code: {secret_a}.",
+                        },
+                        {"role": "assistant", "content": "Got it, I'll remember that."},
+                    ],
                     user_id=user_a,
-                ),
-                MemoryItem(
-                    conversation=[{"role": "user", "content": f"My code is {secret_b}."}],
-                    user_id=user_b,
-                ),
+                )
             ]
         )
-
-        # WHEN each user searches their own scope (after async ingest lands).
         results_a = await _search_until_visible(
-            editor, query="code", user_id=user_a, needle=secret_a
+            editor, query="secret code", user_id=user_a, needle=secret_a, timeout_s=120.0
+        )
+        text_a = " ".join(m.memory or "" for m in results_a)
+        assert secret_a in text_a, (
+            f"user_a's memory was not indexed within timeout: {[m.memory for m in results_a]!r}"
+        )
+
+        # Isolation check A→B: once user_a's memory IS indexed, user_b must
+        # NOT see it (this is the core isolation guarantee we're testing).
+        cross_b = await editor.search("secret code", top_k=5, user_id=user_b)
+        assert all(secret_a not in (m.memory or "") for m in cross_b), (
+            f"user_a's memory bled into user_b scope: {[m.memory for m in cross_b]!r}"
+        )
+
+        # --- Phase 2: store user_b's memory and verify symmetric isolation ---
+        await editor.add_items(
+            [
+                MemoryItem(
+                    conversation=[
+                        {
+                            "role": "user",
+                            "content": f"Please remember my secret code: {secret_b}.",
+                        },
+                        {"role": "assistant", "content": "Got it, I'll remember that."},
+                    ],
+                    user_id=user_b,
+                )
+            ]
         )
         results_b = await _search_until_visible(
-            editor, query="code", user_id=user_b, needle=secret_b
+            editor, query="secret code", user_id=user_b, needle=secret_b, timeout_s=120.0
+        )
+        text_b = " ".join(m.memory or "" for m in results_b)
+        assert secret_b in text_b, (
+            f"user_b's memory was not indexed within timeout: {[m.memory for m in results_b]!r}"
         )
 
-        # THEN each user only sees their own memory — the mem0 v2 filters
-        # ({"AND": [{"user_id": ...}]}) are correctly forwarded through the
-        # DR endpoint, not collapsed into a global scope.
-        text_a = " ".join(m.memory or "" for m in results_a)
-        text_b = " ".join(m.memory or "" for m in results_b)
-        assert secret_a in text_a and secret_b not in text_a, (
-            f"user_a results bled across users: {text_a!r}"
-        )
-        assert secret_b in text_b and secret_a not in text_b, (
-            f"user_b results bled across users: {text_b!r}"
+        # Isolation check B→A: user_a must NOT see user_b's memory.
+        cross_a = await editor.search("secret code", top_k=5, user_id=user_a)
+        assert all(secret_b not in (m.memory or "") for m in cross_a), (
+            f"user_b's memory bled into user_a scope: {[m.memory for m in cross_a]!r}"
         )
 
         await editor.remove_items(user_id=user_a)
@@ -278,7 +309,7 @@ async def test_dr_mem0_config_llm_model_name_patches_memory_space(
 ) -> None:
     # GIVEN a memory space created WITHOUT llm_model_name (the service no longer
     # provides a default after commit 1d7acd8e). Any add() call against it would
-    # return HTTP 400.
+    # return HTTP 400 — proven by the direct probe at the start of this test.
     from datarobot.models.memory import MemorySpace  # type: ignore[import-not-found]
 
     test_id = uuid.uuid4().hex
@@ -286,38 +317,49 @@ async def test_dr_mem0_config_llm_model_name_patches_memory_space(
     try:
         assert space.llm_model_name is None
 
-        # WHEN the editor is built with llm_model_name set in the config, the
-        # provider PATCHes the memory space so the service can proceed.
+        # Sanity-check: a direct add to the unpatched space MUST fail with HTTP 400
+        # so that the rest of the test is meaningful.
+        import httpx as _httpx
+
+        probe = _httpx.post(
+            f"{os.environ['DATAROBOT_ENDPOINT']}/memory/{space.id}/v1/memories/",
+            json={"messages": [{"role": "user", "content": "probe"}], "user_id": "probe"},
+            headers={"Authorization": f"Token {os.environ['DATAROBOT_API_TOKEN']}"},
+            timeout=30,
+        )
+        assert probe.status_code == 400, (
+            f"Expected HTTP 400 from unpatched space, got {probe.status_code}: {probe.text}"
+        )
+
+        # WHEN the editor is built with llm_model_name set in the config, the provider
+        # PATCHes the memory space before yielding the editor.
         config = DRMem0MemoryClientConfig(
             api_key=None,
             agent_memory_space_id=space.id,
             datarobot_endpoint=os.environ["DATAROBOT_ENDPOINT"],
             datarobot_api_token=os.environ["DATAROBOT_API_TOKEN"],
-            llm_model_name="gpt-4o",
+            llm_model_name="azure/gpt-4o-2024-11-20",
         )
         user_id = _unique_user_id()
-        secret = f"PATCH-LLM-NAME-{uuid.uuid4().hex[:10]}"
 
         async for editor in _build_editor(config):
-            # THEN add succeeds (memory space now has llm_model_name) and the
-            # secret is retrievable.
+            # THEN the memory space now has llm_model_name set (verified via the DR SDK).
+            refreshed = MemorySpace.get(space.id)
+            assert refreshed.llm_model_name == "azure/gpt-4o-2024-11-20", (
+                f"PATCH did not update llm_model_name: got {refreshed.llm_model_name!r}"
+            )
+
+            # AND add no longer raises (HTTP 400 is gone now that the space has an LLM).
+            # mem0's async extraction may not complete within this test's window,
+            # so we assert only that add() doesn't raise — not on search results
+            # (which are covered end-to-end by test_dr_mem0_endpoint_add_search_round_trip).
             await editor.add_items(
                 [
                     MemoryItem(
-                        conversation=[
-                            {"role": "user", "content": f"My code is {secret}."},
-                        ],
+                        conversation=[{"role": "user", "content": "My favourite colour is blue."}],
                         user_id=user_id,
                     )
                 ]
-            )
-            memories = await _search_until_visible(
-                editor, query="code", user_id=user_id, needle=secret
-            )
-            joined = " ".join(m.memory or "" for m in memories)
-            assert secret in joined, (
-                f"Expected {secret!r} after llm_model_name patch; got: "
-                f"{[m.memory for m in memories]!r}"
             )
             await editor.remove_items(user_id=user_id)
     finally:

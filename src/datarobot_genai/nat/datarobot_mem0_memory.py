@@ -433,10 +433,8 @@ async def _patch_memory_space_llm_name(config: DRMem0MemoryClientConfig) -> None
             headers={"Authorization": f"Token {api_token}"},
         )
     if resp.status_code not in (200, 204):
-        logger.warning(
-            "Failed to update memory space llm_model_name: HTTP %s — %s",
-            resp.status_code,
-            resp.text,
+        raise RuntimeError(
+            f"Failed to update memory space llm_model_name: HTTP {resp.status_code} — {resp.text}"
         )
 
 
