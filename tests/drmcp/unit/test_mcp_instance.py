@@ -398,8 +398,7 @@ class TestMCPResourceDecorator:
         )
         mock_datarobot_mcp_server_resource_func = mock_datarobot_mcp_server_resource.return_value
         call_args = mock_datarobot_mcp_server_resource_func.call_args.args
-        (inner_wrapper_func,) = call_args
-        assert (
-            inner_wrapper_func.__qualname__
-            == "dr_mcp_resource.<locals>.resource_decorator.<locals>._inner_decorator"
-        )
+        (registered_func,) = call_args
+        # The handler must be registered unwrapped: a sync pass-through wrapper
+        # would hide an async handler's coroutine-ness from FastMCP.
+        assert registered_func is mock_mcp_resource_callable

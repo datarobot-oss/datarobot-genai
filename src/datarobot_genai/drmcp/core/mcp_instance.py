@@ -581,12 +581,11 @@ def dr_mcp_resource(
     resource_category: DataRobotMCPResourceCategory = DataRobotMCPResourceCategory.USER_RESOURCE,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def resource_decorator(func: Callable[P, T]) -> Callable[P, T]:
-        @wraps(func)
-        def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
-            return func(*args, **kwargs)
-
+        # Register the handler directly: a sync pass-through wrapper would hide
+        # an async handler's coroutine-ness from FastMCP, which would then return
+        # the un-awaited coroutine as the resource content.
         resource_init_args.set_resource_category(resource_category)
-        registered = mcp.resource(**resource_init_args.to_dict())(_inner_decorator)
+        registered = mcp.resource(**resource_init_args.to_dict())(func)
         if resource_init_args.enabled is False:
             mcp.disable(names={resource_init_args.name or func.__name__}, components={"resource"})
         return registered
