@@ -89,6 +89,10 @@ class MCPToolConfig(DataRobotAppFrameworkBaseSettings):
         default=False,
         description="Enable/disable vector database tools",
     )
+    enable_panels_tools: bool = Field(
+        default=False,
+        description="Enable/disable panel tools and resources",
+    )
     enable_workload_tools: bool = Field(
         default=False,
         description="Enable/disable DataRobot Workload API tools",

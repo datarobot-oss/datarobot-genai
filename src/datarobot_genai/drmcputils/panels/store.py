@@ -40,12 +40,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_SOURCE = "main"
 DEFAULT_LIST_LIMIT = 100
 
-_MANIFEST_TAG = "dr-panel"
-_PAYLOAD_TAG = "dr-panel-payload"
+# NOTE: the DataRobot Files API rejects tags containing "-" (422), so panel tags
+# use "_" as the word separator. ":" is permitted and used for key:value tags.
+_MANIFEST_TAG = "dr_panel"
+_PAYLOAD_TAG = "dr_panel_payload"
 
 
 def _source_tag(source: str) -> str:
-    return f"dr-panel-source:{source}"
+    return f"dr_panel_source:{source}"
 
 
 def _now_iso() -> str:
@@ -85,7 +87,7 @@ class PanelStore:
                 manifest,
                 name=f"panel-{panel.type.value}.json",
                 content_type="application/json",
-                tags=[_MANIFEST_TAG, _source_tag(source), f"dr-panel-type:{panel.type.value}"],
+                tags=[_MANIFEST_TAG, _source_tag(source), f"dr_panel_type:{panel.type.value}"],
             )
         except Exception:
             # The panel was not created; don't leave the payload blob orphaned.
