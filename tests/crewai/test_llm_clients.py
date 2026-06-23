@@ -17,7 +17,6 @@ from unittest.mock import patch
 
 import pytest
 from crewai import LLM
-from langchain_core.language_models import BaseChatModel
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.workflow_builder import WorkflowBuilder
 
@@ -38,16 +37,6 @@ async def test_datarobot_llm_gateway_crewai():
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
-
-
-async def test_datarobot_llm_deployment_langchain():
-    llm_config = DataRobotLLMDeploymentModelConfig(
-        llm_deployment_id="123", temperature=0.0, api_key="some_token"
-    )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, BaseChatModel)
 
 
 async def test_datarobot_llm_deployment_crewai():
@@ -89,16 +78,6 @@ async def test_datarobot_nim_crewai():
         await builder.add_llm("datarobot_llm", llm_config)
         llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
         assert isinstance(llm, LLM)
-
-
-async def test_datarobot_llm_component_langchain_use_gateway():
-    llm_config = DataRobotLLMComponentModelConfig(
-        api_key="some_token", model_name="azure/gpt-4o-2024-11-20"
-    )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, BaseChatModel)
 
 
 @pytest.mark.parametrize(
