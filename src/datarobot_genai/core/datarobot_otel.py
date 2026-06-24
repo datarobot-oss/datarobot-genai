@@ -89,9 +89,13 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
 def resolve_otel_traces_endpoint_from_env() -> str:
     # if OTEL_EXPORTER_OTLP_ENDPOINT is set: do not override it
     if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        # The convention for OTEL_EXPORTER_OTLP_ENDPOINT is to be base url,
-        # but we want the traces endpoint, so append /v1/traces
+        # The convention for OTEL_EXPORTER_OTLP_ENDPOINT is to be base url
+        # so we need to append /v1/traces
         otel_endpoint = os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"].rstrip("/")
+        # But in some cases for unknonw reasons we have OTEL_EXPORTER_OTLP_ENDPOINT
+        # with /v1/traces already
+        if otel_endpoint.endswith("/v1/traces"):
+            return otel_endpoint
         return f"{otel_endpoint}/v1/traces"
 
     # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
