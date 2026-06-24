@@ -125,12 +125,16 @@ def instrument(
     # spans through a separate channel that does not touch the OTel SDK
     # global provider — so without this bootstrap, the framework
     # instrumentors patched below would emit spans through a no-op tracer
-    # and nothing reaches DataRobot. Silently no-ops when DR deployment env
-    # is incomplete (local dev) or when another component already installed
-    # a provider.
-    from datarobot_genai.core.datarobot_otel import bootstrap_otel_provider_for_datarobot
+    # and nothing reaches DataRobot.
+    #
+    # TODO (BUZZOK-31396): Call bootstrap from the deployment/notebook entrypoint instead of
+    # here so notebook hosts that already install their own TracerProvider
+    # (via setup_otel_env_variables) are not double-bootstrapped. See
+    # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
+    if os.getenv("MLOPS_DEPLOYMENT_ID"):
+        from datarobot_genai.core.datarobot_otel import bootstrap_otel_provider_for_datarobot
 
-    bootstrap_otel_provider_for_datarobot()
+        bootstrap_otel_provider_for_datarobot()
 
     _instrument_threading()
     _instrument_http_clients()
