@@ -37,8 +37,6 @@ import logging
 import os
 import urllib.parse
 
-from pydantic import SecretStr
-
 logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
@@ -55,7 +53,7 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 ENTITY_ID_PREFIX = "deployment-"
 
 
-def resolve_api_key_from_env() -> SecretStr:
+def resolve_api_key_from_env() -> str:
     return os.getenv("DATAROBOT_API_TOKEN", "")
 
 
@@ -92,10 +90,6 @@ def resolve_otel_traces_endpoint_from_env() -> str:
         # The convention for OTEL_EXPORTER_OTLP_ENDPOINT is to be base url
         # so we need to append /v1/traces
         otel_endpoint = os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"].rstrip("/")
-        # But in some cases for unknonw reasons we have OTEL_EXPORTER_OTLP_ENDPOINT
-        # with /v1/traces already
-        if otel_endpoint.endswith("/v1/traces"):
-            return otel_endpoint
         return f"{otel_endpoint}/v1/traces"
 
     # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
