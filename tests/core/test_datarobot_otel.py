@@ -32,6 +32,7 @@ _ENV_VARS = (
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "OTEL_SERVICE_NAME",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_HEADERS",
 )
 
 
@@ -66,39 +67,89 @@ class TestEnvResolvers:
     def test_endpoint_strips_api_path(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
         assert (
-            datarobot_otel.resolve_otel_endpoint_from_env() == "https://example.test/otel/v1/traces"
+            datarobot_otel.resolve_otel_traces_endpoint_from_env()
+            == "https://example.test/otel/v1/traces"
         )
 
     def test_public_endpoint_priority(self, clean_env):
         clean_env.setenv("DATAROBOT_PUBLIC_API_ENDPOINT", "https://public.test/api/v2")
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://internal.test/api/v2")
         assert (
-            datarobot_otel.resolve_otel_endpoint_from_env() == "https://public.test/otel/v1/traces"
+            datarobot_otel.resolve_otel_traces_endpoint_from_env()
+            == "https://public.test/otel/v1/traces"
         )
 
     def test_endpoint_empty_when_unset(self, clean_env):
-        assert datarobot_otel.resolve_otel_endpoint_from_env() == ""
+        assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
 
     def test_endpoint_empty_for_malformed_url(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "not-a-url")
-        assert datarobot_otel.resolve_otel_endpoint_from_env() == ""
+        assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
 
-    def test_explicit_otlp_endpoint_returned_verbatim(self, clean_env):
-        # OTEL_EXPORTER_OTLP_ENDPOINT is the standard OTel override. When set
-        # it is returned as-is, with no host extraction or /otel/v1/traces
-        # rewriting.
-        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test:4318/v1/traces")
+    def test_explicit_otlp_base_url_appends_traces_path(self, clean_env):
+        # OTEL_EXPORTER_OTLP_ENDPOINT is the standard OTel base URL; we append
+        # /v1/traces rather than returning it verbatim.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test:4318")
         assert (
-            datarobot_otel.resolve_otel_endpoint_from_env()
+            datarobot_otel.resolve_otel_traces_endpoint_from_env()
+            == "https://collector.test:4318/v1/traces"
+        )
+
+    def test_explicit_otlp_base_url_strips_trailing_slash(self, clean_env):
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test:4318/")
+        assert (
+            datarobot_otel.resolve_otel_traces_endpoint_from_env()
             == "https://collector.test:4318/v1/traces"
         )
 
     def test_explicit_otlp_endpoint_wins_over_datarobot_endpoint(self, clean_env):
         # The standard OTel override takes precedence over the DR-derived
         # endpoint so an operator can point spans at any collector.
-        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test/v1/traces")
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test")
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-        assert datarobot_otel.resolve_otel_endpoint_from_env() == "https://collector.test/v1/traces"
+        assert (
+            datarobot_otel.resolve_otel_traces_endpoint_from_env()
+            == "https://collector.test/v1/traces"
+        )
+
+
+class TestHeaderResolvers:
+    def test_headers_from_datarobot_env(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "tok",
+            "X-DataRobot-Entity-Id": "deployment-abc123",
+        }
+
+    def test_headers_empty_when_env_unset(self, clean_env):
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "",
+            "X-DataRobot-Entity-Id": "",
+        }
+
+    def test_headers_parsed_from_otlp_env(self, clean_env):
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "X-DataRobot-Api-Key=env-key,X-DataRobot-Entity-Id=deployment-env",
+        )
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "env-key",
+            "X-DataRobot-Entity-Id": "deployment-env",
+        }
+
+    def test_headers_value_with_equals_preserved(self, clean_env):
+        # A header value can legitimately contain '=' (e.g. base64 padding or
+        # a token with '='). Splitting on the first '=' only must keep the
+        # full value intact rather than truncating at the first '='.
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "Authorization=Basic dXNlcjpwYXNz==,X-Token=a=b=c",
+        )
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "Authorization": "Basic dXNlcjpwYXNz==",
+            "X-Token": "a=b=c",
+        }
 
 
 class TestBootstrapOtelProvider:
