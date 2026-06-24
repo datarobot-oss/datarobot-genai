@@ -37,7 +37,6 @@ import logging
 import os
 import urllib.parse
 
-from nat.data_models.common import get_secret_value
 from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
@@ -56,8 +55,8 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 ENTITY_ID_PREFIX = "deployment-"
 
 
-def resolve_api_key_from_env() -> str:
-    return SecretStr(os.getenv("DATAROBOT_API_TOKEN", ""))
+def resolve_api_key_from_env() -> SecretStr:
+    return os.getenv("DATAROBOT_API_TOKEN", "")
 
 
 def resolve_entity_id_from_env() -> str:
@@ -68,7 +67,7 @@ def resolve_entity_id_from_env() -> str:
     return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
 
 
-def resolve_datarobot_headers_from_env() -> dict[str, str]:
+def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
     # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
     if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
@@ -77,10 +76,14 @@ def resolve_datarobot_headers_from_env() -> dict[str, str]:
             key, value = header.split("=", 1)
             headers[key.strip()] = value.strip()
         return headers
-    return {
-        "X-DataRobot-Api-Key": get_secret_value(resolve_api_key_from_env()),
-        "X-DataRobot-Entity-Id": resolve_entity_id_from_env(),
-    }
+    api_key = resolve_api_key_from_env()
+    entity_id = resolve_entity_id_from_env()
+    if api_key and entity_id:
+        return {
+            "X-DataRobot-Api-Key": api_key,
+            "X-DataRobot-Entity-Id": entity_id,
+        }
+    return None
 
 
 def resolve_otel_traces_endpoint_from_env() -> str:

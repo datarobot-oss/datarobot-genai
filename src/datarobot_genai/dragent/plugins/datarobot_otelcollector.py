@@ -155,7 +155,7 @@ async def datarobot_otelcollector_telemetry_exporter(
     builder: Builder,
 ) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
-    headers = resolve_datarobot_headers_from_env()
+    headers = resolve_datarobot_headers_from_env() or {}
     # Caller-supplied headers win on collision; lets you e.g. add request-
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)

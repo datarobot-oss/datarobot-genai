@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.core.datarobot_otel import resolve_datarobot_headers_from_env
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     DataRobotOtelCollectorTelemetryExporter,
 )
@@ -123,6 +124,19 @@ class TestEnvDerivation:
         assert cfg.endpoint == "https://collector.test/v1/traces"
 
 
+class TestHeaderResolvers:
+    def test_headers_none_when_datarobot_env_incomplete(self, clean_env):
+        assert resolve_datarobot_headers_from_env() is None
+
+    def test_headers_none_when_api_key_only(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", API_KEY)
+        assert resolve_datarobot_headers_from_env() is None
+
+    def test_headers_none_when_entity_id_only(self, clean_env):
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        assert resolve_datarobot_headers_from_env() is None
+
+
 class TestExporterFactory:
     # The @register_telemetry_exporter decorator wraps the function in
     # asynccontextmanager, so each call below uses ``async with``.
@@ -177,7 +191,10 @@ class TestExporterFactory:
         assert isinstance(api_key_header, str)
         assert api_key_header == API_KEY
 
-    async def test_project_becomes_service_name(self):
+    async def test_project_becomes_service_name(self, clean_env):
+        # Resource attributes are independent of auth headers, but the exporter
+        # factory still needs resolvable headers — supply DR env here.
+        _set_datarobot_env(clean_env)
         # The inherited ``project`` field should populate the OTel
         # ``service.name`` resource attribute, matching NAT's built-in
         # otelcollector exporter.
@@ -194,7 +211,8 @@ class TestExporterFactory:
         assert attrs["telemetry.sdk.name"] == "opentelemetry"
         assert "telemetry.sdk.version" in attrs
 
-    async def test_resource_attributes_override_defaults(self):
+    async def test_resource_attributes_override_defaults(self, clean_env):
+        _set_datarobot_env(clean_env)
         # Explicit resource_attributes win over the defaults derived from
         # ``project`` / SDK metadata.
         cfg = _make_config(

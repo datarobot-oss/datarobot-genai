@@ -122,11 +122,18 @@ class TestHeaderResolvers:
             "X-DataRobot-Entity-Id": "deployment-abc123",
         }
 
-    def test_headers_empty_when_env_unset(self, clean_env):
-        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
-            "X-DataRobot-Api-Key": "",
-            "X-DataRobot-Entity-Id": "",
-        }
+    def test_headers_none_when_env_unset(self, clean_env):
+        # Both DATAROBOT_API_TOKEN and MLOPS_DEPLOYMENT_ID must be set; otherwise
+        # the resolver returns None so callers can skip auth header injection.
+        assert datarobot_otel.resolve_datarobot_headers_from_env() is None
+
+    def test_headers_none_when_api_key_only(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        assert datarobot_otel.resolve_datarobot_headers_from_env() is None
+
+    def test_headers_none_when_entity_id_only(self, clean_env):
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        assert datarobot_otel.resolve_datarobot_headers_from_env() is None
 
     def test_headers_parsed_from_otlp_env(self, clean_env):
         clean_env.setenv(
@@ -167,6 +174,11 @@ class TestBootstrapOtelProvider:
 
     def test_skips_when_api_key_only(self, clean_env):
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
+        assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
+
+    def test_skips_when_entity_id_only(self, clean_env):
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
 
