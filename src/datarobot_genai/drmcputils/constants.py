@@ -35,6 +35,7 @@ REPLACEMENT_STRATEGIES: tuple[str, ...] = ("rolling",)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",
     "x-datarobot-api-key",
+    "x-datarobot-external-access-token",
     "x-datarobot-api-token",
     "authorization",
 ]
