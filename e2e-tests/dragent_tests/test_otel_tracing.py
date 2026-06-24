@@ -35,6 +35,7 @@ from dragent_tests.helpers import workflow_file
 from dragent_tests.mock_otel_collector import MockOtelCollector
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
+OTLP_PATH = "/otel"
 TEST_API_TOKEN = "test-token"
 TEST_USE_CASE_ID = "test-use-case-id"
 EXPECTED_ENTITY_ID = f"use-case-{TEST_USE_CASE_ID}"
@@ -53,7 +54,7 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
         env = {
             **os.environ,
             # Use the setup close to Codespaces
-            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint + OTLP_TRACES_PATH,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint + OTLP_PATH,
             "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
         }
 

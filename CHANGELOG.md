@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.19.2
+## 0.19.4
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
+
+## 0.19.3
+- Fixed OTEL traces endpoint resolution.
+
+## 0.19.2
+- Updated dependency constraints to fix CVEs.
 
 ## 0.19.1
 - `crewai`: an empty `agent_role` streaming chunk (CrewAI's `[] Working on task:` task boundary) no longer opens an AG-UI step that is never closed → fixes the `RUN_FINISHED while steps are still active` verifier error.
