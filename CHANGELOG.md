@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.19.3
+- Fixed OTEL traces endpoint resolution.
+
 ## 0.19.2
 - Updated dependency constraints to fix CVEs.
 
