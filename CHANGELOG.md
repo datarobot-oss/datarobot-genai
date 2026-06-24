@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.19.4
+## 0.19.5
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
+
+## 0.19.4
+- Added x-datarobot-external-access-token header support for okta integration
 
 ## 0.19.3
 - Fixed OTEL traces endpoint resolution.
