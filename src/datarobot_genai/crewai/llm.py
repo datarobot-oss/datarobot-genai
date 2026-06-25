@@ -13,9 +13,13 @@
 # limitations under the License.
 
 import json
+import re
+import uuid
 from typing import Any
 
 from crewai import LLM
+from crewai.events import crewai_event_bus
+from crewai.events.types.llm_events import LLMStreamChunkEvent
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
@@ -25,6 +29,132 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.model_info import get_model_info
+
+
+def _model_supports_tool_calling(model: str) -> bool | None:
+    """Tool-calling support for *model* via litellm, or ``None`` if unresolved."""
+    try:
+        info = get_model_info(model)
+    except Exception:
+        return None
+    return bool(info.get("supports_function_calling")) or bool(info.get("supports_tool_choice"))
+
+
+# Recover tool calls a model emits as text markup (Anthropic <invoke>, MCP
+# <use_mcp_tool>, or a bare <use_tool>) — name via `name=` attribute or <tool_name>
+# child; args via <parameter name=> children or a <parameters>/<arguments> block
+# (JSON or <k>v</k>). The model invents the call tag, so all observed forms are matched.
+_CALL_BLOCK_RE = re.compile(r"<(invoke|use_mcp_tool|use_tool)\b([^>]*)>(.*?)</\1>", re.DOTALL)
+_NAME_ATTR_RE = re.compile(r'name\s*=\s*"([^"]+)"')
+_TOOL_NAME_RE = re.compile(r"<tool_name>\s*(.*?)\s*</tool_name>", re.DOTALL)
+_PARAM_ATTR_RE = re.compile(r'<parameter\s+name="([^"]+)"[^>]*>(.*?)</parameter>', re.DOTALL)
+_ARGS_BLOCK_RE = re.compile(
+    r"<(?:parameters|arguments)>(.*?)</(?:parameters|arguments)>", re.DOTALL
+)
+_CHILD_TAG_RE = re.compile(r"<([^/>\s]+)>(.*?)</\1>", re.DOTALL)
+
+
+def _parse_tool_args(block: str) -> dict:
+    """Extract a tool call's arguments from a recovered call body.
+
+    Handles ``<parameter name="k">v</parameter>`` children (Anthropic), a
+    ``<parameters>``/``<arguments>`` block holding JSON or ``<k>v</k>`` child tags, or
+    bare ``<k>v</k>`` children directly in the body (the tool-name-as-tag form).
+    """
+    params = _PARAM_ATTR_RE.findall(block)
+    if params:
+        return {key: value.strip() for key, value in params}
+    block_match = _ARGS_BLOCK_RE.search(block)
+    if block_match:
+        body = block_match.group(1).strip()
+        try:
+            parsed = json.loads(body)
+            return parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            return {key: value.strip() for key, value in _CHILD_TAG_RE.findall(body)}
+    return {key: value.strip() for key, value in _CHILD_TAG_RE.findall(block) if key != "tool_name"}
+
+
+def _openai_tool_names(tools: Any) -> list[str]:
+    """Names from an OpenAI ``tools`` schema list (``[{"function": {"name": ...}}]``)."""
+    names = []
+    for tool in tools or []:
+        function = tool.get("function") if isinstance(tool, dict) else None
+        name = function.get("name") if isinstance(function, dict) else None
+        if name:
+            names.append(name)
+    return names
+
+
+# Keywords that are invalid when null/empty under JSON Schema draft 2020-12.
+_EMPTY_INVALID_KEYS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems", "enum"})
+
+
+def _sanitize_tool_schema(node: Any) -> Any:
+    """Strip JSON-Schema-invalid placeholder keys before sending tools to the gateway.
+
+    ``mcpadapt`` renders MCP tool params with ``"anyOf": []``, ``"enum": null``,
+    ``"items": null`` etc.; bedrock rejects the whole request as not draft-2020-12
+    compliant. Drop ``null`` values and empty array-keywords, recursively.
+    """
+    if isinstance(node, dict):
+        cleaned = {}
+        for key, value in node.items():
+            if value is None or (key in _EMPTY_INVALID_KEYS and value == []):
+                continue
+            cleaned[key] = _sanitize_tool_schema(value)
+        return cleaned
+    if isinstance(node, list):
+        return [_sanitize_tool_schema(item) for item in node]
+    return node
+
+
+def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> list[dict]:
+    """Recover tool calls a model emitted as TEXT into OpenAI tool-call dicts.
+
+    Claude under extended thinking emits a call as text markup instead of a structured
+    ``tool_call``, leaking it to the final answer unexecuted. The wrapper it invents varies
+    (``<function_calls><invoke>``, ``<use_mcp_tool>``, ``<use_tool>``, ``<budget:function_calls>``)
+    and it sometimes drops the wrapper entirely and uses the tool name as the tag
+    (``<generate_objectid><object_type>x</object_type></generate_objectid>``). So rather than
+    chase wrappers, recover two ways: known wrapper tags, and — anchored on the actual
+    ``tool_names`` from the request so prose can't trigger it — the tool-name-as-tag form.
+    Duplicates across forms are collapsed. Returns ``[]`` when nothing recoverable is found.
+    """
+    calls: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(name: str, body: str) -> None:
+        name = name.strip()
+        if not name:
+            return
+        arguments = json.dumps(_parse_tool_args(body))
+        if (name, arguments) in seen:
+            return
+        seen.add((name, arguments))
+        calls.append(
+            {
+                "id": f"call_{len(calls)}",
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            }
+        )
+
+    # Wrapper forms. Gated on a known call tag (``function_calls`` matched namespace-agnostically)
+    # so prose merely quoting a bare ``<invoke>`` is not mistaken for a real call.
+    if any(tag in text for tag in ("function_calls", "<use_mcp_tool", "<use_tool")):
+        for _tag, attrs, body in _CALL_BLOCK_RE.findall(text):
+            match = _NAME_ATTR_RE.search(attrs) or _TOOL_NAME_RE.search(body)
+            add(match.group(1) if match else "", body)
+
+    # Tool-name-as-tag form, anchored on real tool names (safe against arbitrary prose markup).
+    for name in tool_names or []:
+        block_re = re.compile(rf"<{re.escape(name)}\b[^>]*>(.*?)</{re.escape(name)}>", re.DOTALL)
+        for body in block_re.findall(text):
+            add(name, body)
+
+    return calls
 
 
 class LitellmStopWordLLM(LLM):
@@ -42,6 +172,41 @@ class LitellmStopWordLLM(LLM):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.is_litellm = True
+
+    def _collect_delta(
+        self,
+        delta: Any,
+        text: list[str],
+        tool_calls: list[Any],
+        call_id: str,
+        callbacks: list | None,
+    ) -> None:
+        """Accumulate one stream delta: emit content tokens, gather tool-call parts."""
+        if delta.content:
+            text.append(delta.content)
+            event = LLMStreamChunkEvent(chunk=delta.content, call_id=call_id)
+            crewai_event_bus.emit(self, event=event)
+            for cb in callbacks or []:
+                if hasattr(cb, "on_llm_new_token"):
+                    cb.on_llm_new_token(delta.content)
+        if getattr(delta, "tool_calls", None):
+            tool_calls.extend(delta.tool_calls)
+
+    def _finalize_native(
+        self, text: list[str], tool_calls: list[Any], tool_names: list[str] | None = None
+    ) -> list[dict] | str:
+        """Return the tool calls for CrewAI's native loop (a bare list it runs), else text.
+
+        Prefer structured streamed ``tool_calls``; otherwise recover any the model
+        emitted as markup text (``tool_names`` anchors the tool-name-as-tag form);
+        otherwise return the stop-word-truncated text.
+        """
+        if tool_calls:
+            from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
+
+            return merge_streaming_tool_calls(tool_calls)
+        joined = "".join(text)
+        return _recover_text_tool_calls(joined, tool_names) or self._apply_stop_words(joined)
 
     def _apply_stop_words(self, content: str) -> str:
         """Apply configured stop words, then truncate inline ReAct hallucinations."""
@@ -83,12 +248,36 @@ class LitellmStopWordLLM(LLM):
             return content
         return content[:cut_end].rstrip()
 
+    @staticmethod
+    def _wants_native_tool_calls(kwargs: dict) -> bool:
+        """CrewAI's native loop calls us with ``tools`` set and ``available_functions=None``."""
+        return bool(kwargs.get("tools")) and kwargs.get("available_functions") is None
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
-        """Enforce client-side stop-word truncation when API ignores stop parameter."""
+        """Stream and return native tool calls, else stop-word-truncated text.
+
+        CrewAI's streaming response handler discards the assembled ``tool_calls`` and
+        returns the (empty) text for a tool-call response, breaking its native loop. So
+        when CrewAI asks for native tool calls we stream the completion ourselves and
+        return the assembled calls (as :class:`RouterLitellmOnlyLLM` does); the ReAct
+        path is unchanged.
+        """
+        if self._wants_native_tool_calls(kwargs):
+            import litellm  # noqa: PLC0415
+
+            tools = _sanitize_tool_schema(kwargs["tools"])
+            params = self._prepare_completion_params(args[0], tools)
+            params["stream"] = True
+            call_id = str(uuid.uuid4())
+            text: list[str] = []
+            tool_calls: list[Any] = []
+            for chunk in litellm.completion(**params):
+                self._collect_delta(
+                    chunk.choices[0].delta, text, tool_calls, call_id, kwargs.get("callbacks")
+                )
+            return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
         result = super().call(*args, **kwargs)
-        if isinstance(result, str):
-            return self._apply_stop_words(result)
-        return result
+        return self._apply_stop_words(result) if isinstance(result, str) else result
 
     def _format_messages_for_provider(self, messages: list) -> list:
         """Ensure conversation does not end with an assistant message.
@@ -105,10 +294,26 @@ class LitellmStopWordLLM(LLM):
 
     async def acall(self, *args: Any, **kwargs: Any) -> Any:
         """Async variant of :meth:`call` used by ``Crew.akickoff``."""
+        if self._wants_native_tool_calls(kwargs):
+            import litellm  # noqa: PLC0415
+
+            tools = _sanitize_tool_schema(kwargs["tools"])
+            params = self._prepare_completion_params(args[0], tools)
+            params["stream"] = True
+            call_id = str(uuid.uuid4())
+            text: list[str] = []
+            tool_calls: list[Any] = []
+            async for chunk in await litellm.acompletion(**params):
+                self._collect_delta(
+                    chunk.choices[0].delta, text, tool_calls, call_id, kwargs.get("callbacks")
+                )
+            return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
         result = await super().acall(*args, **kwargs)
-        if isinstance(result, str):
-            return self._apply_stop_words(result)
-        return result
+        return self._apply_stop_words(result) if isinstance(result, str) else result
+
+    def supports_function_calling(self) -> bool:
+        supported = _model_supports_tool_calling(self.model)
+        return supported if supported is not None else super().supports_function_calling()
 
 
 def _crewai_model_factory(config: dict) -> LLM:
@@ -219,6 +424,7 @@ def get_router_llm(
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
+    primary_model = primary.to_litellm_params().get("model", "")
 
     class RouterLitellmOnlyLLM(LLM):
         def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
@@ -228,6 +434,11 @@ def get_router_llm(
             super().__init__(*args, **kwargs)
             self.is_litellm = True
             self._llm_router = router
+
+        def supports_function_calling(self) -> bool:
+            # self.model is a sentinel; resolve the routed primary model instead.
+            supported = _model_supports_tool_calling(primary_model)
+            return supported if supported is not None else super().supports_function_calling()
 
         def call(
             self,

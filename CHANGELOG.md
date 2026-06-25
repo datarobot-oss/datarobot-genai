@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.19.6
 - `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
+- `core`: add `get_model_info(model)` — `litellm.get_model_info` that resolves `datarobot/`-prefixed gateway models (strips the prefix, defers to litellm; azure deployment names normalized, `gpt-5-1` → `gpt-5.1`). Read any capability off it (`supports_function_calling`, `supports_reasoning`, …) as you would from litellm.
+- `crewai`: `supports_function_calling` uses `get_model_info` so gateway models aren't wrongly reported `False` (litellm's map has no `datarobot/*` entries) and dropped to CrewAI's prompt-based tool path.
+- `crewai`: native tool calling now works for gateway models — `LitellmStopWordLLM` streams native calls (`tools` + `available_functions=None`) and returns the assembled `tool_calls` itself, since CrewAI's streaming handler discards them and returns empty text (→ `Invalid response from LLM call - None or empty`).
+- `crewai`: recover tool calls a model emits as *text* under extended thinking (Anthropic `<function_calls>` / MCP `<use_mcp_tool>` markup) into structured calls, so they're executed instead of leaking into the answer.
 
 ## 0.19.5
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
