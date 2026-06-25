@@ -34,12 +34,12 @@ from nat.memory.models import MemoryItem
 from nat.plugins.langchain.agent.auto_memory_wrapper.register import AutoMemoryAgentConfig
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import UnconfiguredMemoryEditor
 from datarobot_genai.dragent.plugins.streaming_memory_agent import StreamingMemoryAgentConfig
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _last_user_text
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _user_id_from_context
 from datarobot_genai.dragent.plugins.streaming_memory_agent import _with_memory_context
 from datarobot_genai.dragent.plugins.streaming_memory_agent import streaming_memory_agent
-from datarobot_genai.nat.datarobot_mem0_memory import UnconfiguredMemoryEditor
 
 _MODULE = "datarobot_genai.dragent.plugins.streaming_memory_agent"
 

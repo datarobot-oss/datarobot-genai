@@ -28,12 +28,12 @@ from opentelemetry.trace import SpanKind
 from opentelemetry.util._once import Once
 
 from datarobot_genai.core.telemetry import memory
-from datarobot_genai.nat import datarobot_mem0_memory
-from datarobot_genai.nat.datarobot_mem0_memory import Config
-from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
-from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
-from datarobot_genai.nat.datarobot_mem0_memory import UnconfiguredMemoryEditor
-from datarobot_genai.nat.datarobot_mem0_memory import is_memory_editor_configured
+from datarobot_genai.dragent.plugins import datarobot_mem0_memory
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import Config
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import DRMem0Editor
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import DRMem0MemoryClientConfig
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import UnconfiguredMemoryEditor
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import is_memory_editor_configured
 
 # Matches ``DataRobotMemoryClient.user_id`` (= ``sha256(api_key)``). The editor
 # falls back to this when no per-session user_id is supplied (e.g. direct calls
@@ -259,7 +259,7 @@ def test_ttl_to_expiration_date_returns_calendar_date() -> None:
     from datetime import datetime
     from datetime import timedelta
 
-    from datarobot_genai.nat.datarobot_mem0_memory import _ttl_to_expiration_date
+    from datarobot_genai.dragent.plugins.datarobot_mem0_memory import _ttl_to_expiration_date
 
     before = datetime.now(UTC)
     result = _ttl_to_expiration_date(7 * 86_400)

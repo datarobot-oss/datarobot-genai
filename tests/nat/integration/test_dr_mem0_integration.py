@@ -42,9 +42,9 @@ from typing import Any
 import pytest
 from nat.memory.models import MemoryItem
 
-from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
-from datarobot_genai.nat.datarobot_mem0_memory import DRMem0MemoryClientConfig
-from datarobot_genai.nat.datarobot_mem0_memory import dr_mem0_memory_client
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import DRMem0Editor
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import DRMem0MemoryClientConfig
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import dr_mem0_memory_client
 
 
 # --------------------------------------------------------------------------- #

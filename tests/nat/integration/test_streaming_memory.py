@@ -31,14 +31,14 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.function import FunctionBaseConfig
 from nat.runtime.session import SessionManager
 
+import datarobot_genai.dragent.plugins.datarobot_mem0_memory  # noqa: F401
 import datarobot_genai.dragent.plugins.streaming_memory_agent  # noqa: F401
-import datarobot_genai.nat.datarobot_mem0_memory  # noqa: F401
 from datarobot_genai.core.memory.mem0client import Mem0Client
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat import datarobot_mem0_memory
-from datarobot_genai.nat.datarobot_mem0_memory import Config as Mem0Settings
+from datarobot_genai.dragent.plugins import datarobot_mem0_memory
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import Config as Mem0Settings
 from datarobot_genai.nat.helpers import load_workflow
 
 WORKFLOW_WITH_STREAMING_MEMORY_PATH = Path(__file__).parent / "workflow_with_streaming_memory.yaml"

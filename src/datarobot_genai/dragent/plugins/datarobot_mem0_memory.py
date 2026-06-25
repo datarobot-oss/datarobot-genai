@@ -14,7 +14,7 @@
 
 """NAT memory provider backed by DataRobot's Mem0 client.
 
-This provider wires ``datarobot-genai[nat]`` into NAT's ``MemoryEditor``
+This provider wires ``datarobot-genai[dragent]`` into NAT's ``MemoryEditor``
 interface so ``auto_memory_agent`` can store and retrieve long-term memory.
 
 Backend selection is driven by config:
@@ -407,8 +407,8 @@ def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -
         from datarobot_genai.core.memory.mem0client import Mem0Client
     except ImportError as exc:
         raise RuntimeError(
-            "The DataRobot Mem0 NAT memory provider requires the nat extra. "
-            'Install it with `pip install "datarobot-genai[nat]"`.'
+            "The DataRobot Mem0 NAT memory provider requires the dragent extra. "
+            'Install it with `pip install "datarobot-genai[dragent]"`.'
         ) from exc
 
     host = _dr_mem0_endpoint(config) if config.agent_memory_space_id else config.host
