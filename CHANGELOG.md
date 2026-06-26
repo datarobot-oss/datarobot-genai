@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
   - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
 
+## 0.19.7
+- MCP - Added pre-defined MCP tool category filters and improved tool registration.
+
 ## 0.19.6
 - `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
 

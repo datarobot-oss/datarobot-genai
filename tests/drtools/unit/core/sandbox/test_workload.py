@@ -20,10 +20,10 @@ import httpx
 import pytest
 import respx
 
-from datarobot_genai.drtools.sandbox import DataRobotWorkloadSandbox
-from datarobot_genai.drtools.sandbox import SandboxError
-from datarobot_genai.drtools.sandbox import SandboxSecurityContext
-from datarobot_genai.drtools.sandbox import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox import DataRobotWorkloadSandbox
+from datarobot_genai.drtools.core.sandbox import SandboxError
+from datarobot_genai.drtools.core.sandbox import SandboxSecurityContext
+from datarobot_genai.drtools.core.sandbox import SandboxTimeout
 
 API_BASE = "https://app.datarobot.com/api/v2"
 WORKLOAD_ID = "wkl_123"

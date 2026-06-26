@@ -22,6 +22,7 @@ from typing import Any
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcputils.feature_flags import FeatureFlag
 from datarobot_genai.drmcputils.feature_flags import is_tool_feature_enabled
+from datarobot_genai.drmcputils.tool_gallery import DRTOOLS_PRIVATE_METADATA_KEYS
 from datarobot_genai.drtools.core import get_registered_tools
 
 from .clients import setup_and_return_dr_api_client_with_static_config_in_container
@@ -65,6 +66,11 @@ def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
             feature_flag,
         )
         return
+
+    # Strip private @tool_metadata keys that must not reach the MCP client
+    # (UI/gallery metadata and server-side registration hints).
+    for key in DRTOOLS_PRIVATE_METADATA_KEYS:
+        metadata.pop(key, None)
 
     # Apply the dr_mcp_tool decorator with the metadata
     dr_mcp_tool(tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL, **metadata)(func)

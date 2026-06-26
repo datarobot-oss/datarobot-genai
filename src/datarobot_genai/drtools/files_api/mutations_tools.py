@@ -117,6 +117,7 @@ async def file_write(
         "Example (glob): file_upload(local_path='/tmp/**/*.csv', path='dr://abc123/csv/', "
         "recursive=True)"
     ),
+    excluded_from_global_mcp=True,
 )
 async def file_upload(
     *,
