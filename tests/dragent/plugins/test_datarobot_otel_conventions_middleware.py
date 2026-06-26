@@ -24,7 +24,6 @@ look at the spans/attributes that would actually be exported.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from contextlib import nullcontext
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -71,7 +70,6 @@ def span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     monkeypatch.setattr(mod, "tracer", provider.get_tracer(__name__))
-    monkeypatch.setattr(mod, "use_nat_workflow_trace_context", nullcontext)
     return exporter
 
 
