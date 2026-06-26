@@ -24,7 +24,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.util._once import Once
 
 from datarobot_genai.core import telemetry_nat_context
-from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+from datarobot_genai.core.telemetry.nat_tracer import wrap_sdk_tracer_provider
 
 
 @pytest.fixture

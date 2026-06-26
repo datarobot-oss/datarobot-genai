@@ -61,7 +61,7 @@ Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are 
 The NAT exporter only carries NAT's own spans. To also route framework auto-instrumentor spans (CrewAI / LangChain / LlamaIndex / OpenAI) to DataRobot, call `instrument(framework=...)` at module-import time in your agent's `register.py`, before the framework constructs any agents:
 
 ```python
-from datarobot_genai.core.telemetry_agent import instrument
+from datarobot_genai.core.telemetry.agent import instrument
 
 instrument(framework="langgraph")  # "crewai" | "langgraph" | "llamaindex" | "nat" | None
 ```

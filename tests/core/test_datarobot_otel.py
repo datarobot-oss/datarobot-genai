@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for datarobot_genai.core.datarobot_otel."""
-
 from __future__ import annotations
 
 import pytest
-from datarobot_genai.core.telemetry_nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
 
-from datarobot_genai.core import datarobot_otel
+from datarobot_genai.core.telemetry import datarobot_otel
+from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
@@ -219,7 +217,7 @@ class TestBootstrapOtelProvider:
             return real_exporter_cls(**kwargs)
 
         monkeypatch.setattr(
-            "datarobot_genai.core.datarobot_otel.OTLPSpanExporter",
+            "datarobot_genai.core.telemetry.datarobot_otel.OTLPSpanExporter",
             spy_exporter,
             raising=False,
         )
