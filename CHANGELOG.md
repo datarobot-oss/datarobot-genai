@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.19.9
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning
+- Updated test to assert when model supports reasoning events
+
 ## 0.19.8
 - `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
 
