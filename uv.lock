@@ -1364,15 +1364,21 @@ nat = [
 [package.dev-dependencies]
 dev = [
     { name = "aioresponses" },
+    { name = "beautifulsoup4" },
+    { name = "datarobot-predict" },
     { name = "ipdb" },
     { name = "mypy" },
+    { name = "perplexityai" },
+    { name = "polars" },
     { name = "pre-commit" },
+    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "responses" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "tavily-python" },
     { name = "twine" },
 ]
 
@@ -1594,15 +1600,21 @@ provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "
 [package.metadata.requires-dev]
 dev = [
     { name = "aioresponses", specifier = ">=0.7.8" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
+    { name = "datarobot-predict", specifier = ">=1.13.2" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "mypy", specifier = ">=1.10.0" },
+    { name = "perplexityai", specifier = ">=0.27" },
+    { name = "polars", specifier = ">=1.0.0" },
     { name = "pre-commit" },
+    { name = "pypdf", specifier = ">=6.10.1" },
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
     { name = "responses", specifier = ">=0.25.8" },
     { name = "respx", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.6.0" },
+    { name = "tavily-python", specifier = ">=0.7.20" },
     { name = "twine", specifier = ">=5.0.0" },
 ]
 

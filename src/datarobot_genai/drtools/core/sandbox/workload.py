@@ -18,7 +18,7 @@ Submits a single-container workload to the DataRobot workload-api console
 endpoints, polls the workload until terminal, fetches container output
 (stdout + stderr, split by OTEL severity) from the OTEL log endpoint, and
 parses the ``__DR_SANDBOX_RESULT__:`` marker
-(see :mod:`datarobot_genai.drtools.sandbox.protocol`) emitted by the
+(see :mod:`datarobot_genai.drtools.core.sandbox.protocol`) emitted by the
 container runner shipped in the sandbox image (datarobot-user-models#2137).
 
 Endpoint surface
@@ -49,12 +49,12 @@ from urllib.parse import urljoin
 
 import httpx
 
-from datarobot_genai.drtools.sandbox.base import SandboxError
-from datarobot_genai.drtools.sandbox.base import SandboxResult
-from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
-from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
-from datarobot_genai.drtools.sandbox.protocol import parse_result_marker
+from datarobot_genai.drtools.core.sandbox.base import SandboxError
+from datarobot_genai.drtools.core.sandbox.base import SandboxResult
+from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
+from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
+from datarobot_genai.drtools.core.sandbox.protocol import parse_result_marker
 
 logger = logging.getLogger(__name__)
 
