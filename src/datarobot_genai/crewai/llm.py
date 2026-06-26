@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import re
 import uuid
 from typing import Any
 
@@ -42,47 +40,6 @@ def _model_supports_tool_calling(model: str) -> bool | None:
     return bool(info.get("supports_function_calling")) or bool(info.get("supports_tool_choice"))
 
 
-# Recover tool calls a model emits as text markup (Anthropic <invoke>, MCP
-# <use_mcp_tool>, or a bare <use_tool>) — name via `name=` attribute or <tool_name>
-# child; args via <parameter name=> children or a <parameters>/<arguments> block
-# (JSON or <k>v</k>). The model invents the call tag, so all observed forms are matched.
-_CALL_BLOCK_RE = re.compile(r"<(invoke|use_mcp_tool|use_tool)\b([^>]*)>(.*?)</\1>", re.DOTALL)
-_NAME_ATTR_RE = re.compile(r'name\s*=\s*"([^"]+)"')
-_TOOL_NAME_RE = re.compile(r"<tool_name>\s*(.*?)\s*</tool_name>", re.DOTALL)
-_PARAM_ATTR_RE = re.compile(r'<parameter\s+name="([^"]+)"[^>]*>(.*?)</parameter>', re.DOTALL)
-_ARGS_BLOCK_RE = re.compile(
-    r"<(?:parameters|arguments)>(.*?)</(?:parameters|arguments)>", re.DOTALL
-)
-_CHILD_TAG_RE = re.compile(r"<([^/>\s]+)>(.*?)</\1>", re.DOTALL)
-
-
-def _parse_tool_args(block: str) -> dict:
-    """Parse args from a recovered call body's markup (params block, JSON, or child tags)."""
-    params = _PARAM_ATTR_RE.findall(block)
-    if params:
-        return {key: value.strip() for key, value in params}
-    block_match = _ARGS_BLOCK_RE.search(block)
-    if block_match:
-        body = block_match.group(1).strip()
-        try:
-            parsed = json.loads(body)
-            return parsed if isinstance(parsed, dict) else {}
-        except ValueError:
-            return {key: value.strip() for key, value in _CHILD_TAG_RE.findall(body)}
-    return {key: value.strip() for key, value in _CHILD_TAG_RE.findall(block) if key != "tool_name"}
-
-
-def _openai_tool_names(tools: Any) -> list[str]:
-    """Names from an OpenAI ``tools`` schema list (``[{"function": {"name": ...}}]``)."""
-    names = []
-    for tool in tools or []:
-        function = tool.get("function") if isinstance(tool, dict) else None
-        name = function.get("name") if isinstance(function, dict) else None
-        if name:
-            names.append(name)
-    return names
-
-
 # Keywords that are invalid when null/empty under JSON Schema draft 2020-12.
 _EMPTY_INVALID_KEYS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems", "enum"})
 
@@ -99,56 +56,6 @@ def _sanitize_tool_schema(node: Any) -> Any:
     if isinstance(node, list):
         return [_sanitize_tool_schema(item) for item in node]
     return node
-
-
-def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> list[dict]:
-    """Recover a tool call a model leaked as TEXT markup into OpenAI tool-call dicts.
-
-    Matches known wrapper tags, and — anchored on ``tool_names`` so prose can't trigger it —
-    the bare tool-name-as-tag form. Duplicates are collapsed; returns ``[]`` if nothing matches.
-    """
-    calls: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-
-    def add(name: str, body: str) -> None:
-        name = name.strip()
-        if not name:
-            return
-        arguments = json.dumps(_parse_tool_args(body))
-        if (name, arguments) in seen:
-            return
-        seen.add((name, arguments))
-        calls.append(
-            {
-                "id": f"call_{len(calls)}",
-                "type": "function",
-                "function": {"name": name, "arguments": arguments},
-            }
-        )
-
-    # Wrapper forms. Gated on a known call tag (``function_calls`` matched namespace-agnostically)
-    # so prose merely quoting a bare ``<invoke>`` is not mistaken for a real call.
-    if any(tag in text for tag in ("function_calls", "<use_mcp_tool", "<use_tool")):
-        for _tag, attrs, body in _CALL_BLOCK_RE.findall(text):
-            match = _NAME_ATTR_RE.search(attrs) or _TOOL_NAME_RE.search(body)
-            add(match.group(1) if match else "", body)
-
-    # Tool-name-as-tag form, anchored on real tool names. A real answer can contain such markup
-    # too, so recover a block only when it carries arguments, or when the tags are the whole
-    # message (a no-arg call emitted alone) — otherwise treat it as prose.
-    name_calls: list[tuple[str, str]] = []
-    remainder = text
-    for name in tool_names or []:
-        block_re = re.compile(rf"<{re.escape(name)}\b[^>]*>(.*?)</{re.escape(name)}>", re.DOTALL)
-        for body in block_re.findall(text):
-            name_calls.append((name, body))
-        remainder = block_re.sub("", remainder)
-    whole_message = bool(name_calls) and not remainder.strip()
-    for name, body in name_calls:
-        if whole_message or _parse_tool_args(body):
-            add(name, body)
-
-    return calls
 
 
 class LitellmStopWordLLM(LLM):
@@ -195,16 +102,13 @@ class LitellmStopWordLLM(LLM):
         if usage:
             self._track_token_usage_internal(self._usage_to_dict(usage) or {})
 
-    def _finalize_native(
-        self, text: list[str], tool_calls: list[Any], tool_names: list[str] | None = None
-    ) -> list[dict] | str:
-        """Return tool calls (streamed or recovered) as the bare list CrewAI runs, else text."""
+    def _finalize_native(self, text: list[str], tool_calls: list[Any]) -> list[dict] | str:
+        """Return streamed tool calls as the bare list CrewAI runs, else truncated text."""
         if tool_calls:
             from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
             return merge_streaming_tool_calls(tool_calls)
-        joined = "".join(text)
-        return _recover_text_tool_calls(joined, tool_names) or self._apply_stop_words(joined)
+        return self._apply_stop_words("".join(text))
 
     def _apply_stop_words(self, content: str) -> str:
         """Apply configured stop words, then truncate inline ReAct hallucinations."""
@@ -280,7 +184,7 @@ class LitellmStopWordLLM(LLM):
                 )
                 raise
             self._track_native_usage(usage)
-            return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
+            return self._finalize_native(text, tool_calls)
         result = super().call(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
 
@@ -323,7 +227,7 @@ class LitellmStopWordLLM(LLM):
                 )
                 raise
             self._track_native_usage(usage)
-            return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
+            return self._finalize_native(text, tool_calls)
         result = await super().acall(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
 
