@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `crewai`: `supports_function_calling` uses `get_model_info` so gateway models aren't wrongly reported `False` (litellm's map has no `datarobot/*` entries) and dropped to CrewAI's prompt-based tool path.
 - `crewai`: native tool calling now works for gateway models — `LitellmStopWordLLM` streams native calls (`tools` + `available_functions=None`) and returns the assembled `tool_calls` itself, since CrewAI's streaming handler discards them and returns empty text (→ `Invalid response from LLM call - None or empty`).
 - `crewai`: recover tool calls a model emits as *text* under extended thinking (Anthropic `<function_calls>` / MCP `<use_mcp_tool>` markup) into structured calls, so they're executed instead of leaking into the answer.
+- `crewai`: the router LLM (`get_router_llm`) now returns tool calls as a bare list rather than `json.dumps({"tool_calls": …})`. Once the router reports `supports_function_calling`, CrewAI's native loop runs a *list* of tool calls; a string fell through to a final answer, so a router whose primary resolves to a tool-calling model never executed its tools.
 
 ## 0.19.5
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools

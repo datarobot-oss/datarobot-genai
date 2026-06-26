@@ -447,7 +447,7 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
             **kwargs: Any,
-        ) -> str:
+        ) -> list[dict] | str:
             call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
@@ -470,8 +470,10 @@ def get_router_llm(
                                 cb.on_llm_new_token(delta.content)
                 if getattr(delta, "tool_calls", None):
                     tool_calls_seen.extend(delta.tool_calls)
+            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+            # dicts; a string falls through to a final answer so the calls would never run.
             if tool_calls_seen:
-                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+                return merge_streaming_tool_calls(tool_calls_seen)
             return "".join(accumulated)
 
         async def acall(
@@ -481,7 +483,7 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
             **kwargs: Any,
-        ) -> str:
+        ) -> list[dict] | str:
             call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
@@ -505,8 +507,10 @@ def get_router_llm(
                                 cb.on_llm_new_token(delta.content)
                 if getattr(delta, "tool_calls", None):
                     tool_calls_seen.extend(delta.tool_calls)
+            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+            # dicts; a string falls through to a final answer so the calls would never run.
             if tool_calls_seen:
-                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+                return merge_streaming_tool_calls(tool_calls_seen)
             return "".join(accumulated)
 
     return RouterLitellmOnlyLLM(model="datarobot-router")
