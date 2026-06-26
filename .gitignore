@@ -85,3 +85,6 @@ prof/
 
 # Cursor IDE local hook state (not for VCS)
 .cursor/hooks/
+
+# Docs build output
+docs/site/

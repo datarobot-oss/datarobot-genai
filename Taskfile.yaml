@@ -49,3 +49,19 @@ tasks:
       - rm -rf dist/
       - uv build
       - echo "Build complete! Distribution files in dist/"
+
+  docs-serve:
+    silent: true
+    desc: "Serve documentation site locally"
+    dir: docs
+    cmds:
+      - uv sync
+      - uv run properdocs serve
+
+  docs-build:
+    silent: true
+    desc: "Build documentation site"
+    dir: docs
+    cmds:
+      - uv sync
+      - uv run properdocs build
