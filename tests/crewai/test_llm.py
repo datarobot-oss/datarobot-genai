@@ -357,6 +357,76 @@ def test_litellm_stop_word_llm_call_native_without_tool_calls_returns_truncated_
     assert result == "Final Answer: hi"
 
 
+async def test_litellm_stop_word_llm_acall_streams_and_returns_native_tool_calls(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """The async native path assembles streamed tool-call deltas like the sync path."""
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="generate_objectid", arguments='{"type":"deployment"}'),
+    )
+
+    async def fake_acompletion(**kwargs: object) -> object:
+        async def gen() -> object:
+            yield _delta(content=None, tool_calls=[tc])
+
+        return gen()
+
+    with patch("litellm.acompletion", fake_acompletion):
+        result = await stop_word_llm.acall(
+            "m", tools=[{"type": "function"}], available_functions=None
+        )
+    assert result == [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "generate_objectid", "arguments": '{"type":"deployment"}'},
+        }
+    ]
+
+
+def test_litellm_stop_word_llm_call_tracks_token_usage_and_skips_empty_choices(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """The native path records the trailing usage chunk into CrewAI's token metrics, and the
+    empty-``choices`` usage chunk (from ``stream_options.include_usage``) doesn't IndexError.
+    """
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="generate_objectid", arguments="{}"),
+    )
+    tool_chunk = _delta(content=None, tool_calls=[tc])
+    usage_chunk = SimpleNamespace(choices=[], usage={"prompt_tokens": 12, "completion_tokens": 3})
+    with patch("litellm.completion", return_value=iter([tool_chunk, usage_chunk])):
+        stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+    assert stop_word_llm._token_usage["prompt_tokens"] == 12
+    assert stop_word_llm._token_usage["completion_tokens"] == 3
+    assert stop_word_llm._token_usage["total_tokens"] == 15
+
+
+def test_litellm_stop_word_llm_call_native_emits_failure_event_and_reraises(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """A mid-stream error on the native path emits LLMCallFailedEvent and re-raises."""
+    from crewai.events import crewai_event_bus
+    from crewai.events.types.llm_events import LLMCallFailedEvent
+
+    def boom(**kwargs: object) -> object:
+        raise RuntimeError("stream blew up")
+
+    emitted: list[LLMCallFailedEvent] = []
+
+    with crewai_event_bus.scoped_handlers():
+        crewai_event_bus.register_handler(LLMCallFailedEvent, lambda _s, e: emitted.append(e))
+        with patch("litellm.completion", boom), pytest.raises(RuntimeError, match="stream blew up"):
+            stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+
+    assert len(emitted) == 1
+    assert "stream blew up" in emitted[0].error
+
+
 def test_recover_text_tool_calls_child_tag_format() -> None:
     """The `<invoke><tool_name>` child-tag form — exactly what the primary-test gateway
     leak emitted (bedrock sonnet under thinking).
@@ -412,6 +482,16 @@ def test_recover_text_tool_calls_tool_name_as_tag_needs_known_names() -> None:
     """The tool-name-as-tag form is anchored on real tool names, so prose markup is ignored."""
     text = "<generate_objectid><object_type>deployment</object_type></generate_objectid>"
     assert crewai_llm._recover_text_tool_calls(text) == []
+
+
+def test_recover_text_tool_calls_tool_name_as_tag_in_prose_ignored() -> None:
+    """A real final answer that merely contains <toolname> markup is not hijacked as a call.
+
+    The tool-name-as-tag form recovers only when the tags are the whole message; here prose
+    surrounds a <code> block for a tool literally named ``code``.
+    """
+    text = "Here is the snippet you asked for: <code>print(1)</code> — hope it helps."
+    assert crewai_llm._recover_text_tool_calls(text, ["code"]) == []
 
 
 def test_sanitize_tool_schema_strips_invalid_placeholders() -> None:

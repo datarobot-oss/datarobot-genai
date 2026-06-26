@@ -19,6 +19,7 @@ from typing import Any
 
 from crewai import LLM
 from crewai.events import crewai_event_bus
+from crewai.events.types.llm_events import LLMCallFailedEvent
 from crewai.events.types.llm_events import LLMStreamChunkEvent
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
@@ -148,10 +149,18 @@ def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> 
             match = _NAME_ATTR_RE.search(attrs) or _TOOL_NAME_RE.search(body)
             add(match.group(1) if match else "", body)
 
-    # Tool-name-as-tag form, anchored on real tool names (safe against arbitrary prose markup).
+    # Tool-name-as-tag form, anchored on real tool names. A legitimate final answer can also
+    # contain <toolname>…</toolname> markup, so recover only when the tags are essentially the
+    # whole message (nothing but whitespace left once removed) — otherwise treat it as prose.
+    name_calls: list[tuple[str, str]] = []
+    remainder = text
     for name in tool_names or []:
         block_re = re.compile(rf"<{re.escape(name)}\b[^>]*>(.*?)</{re.escape(name)}>", re.DOTALL)
         for body in block_re.findall(text):
+            name_calls.append((name, body))
+        remainder = block_re.sub("", remainder)
+    if name_calls and not remainder.strip():
+        for name, body in name_calls:
             add(name, body)
 
     return calls
@@ -173,24 +182,41 @@ class LitellmStopWordLLM(LLM):
         super().__init__(*args, **kwargs)
         self.is_litellm = True
 
-    def _collect_delta(
+    def _collect_chunk(
         self,
-        delta: Any,
+        chunk: Any,
         text: list[str],
         tool_calls: list[Any],
         call_id: str,
         callbacks: list | None,
-    ) -> None:
-        """Accumulate one stream delta: emit content tokens, gather tool-call parts."""
-        if delta.content:
-            text.append(delta.content)
-            event = LLMStreamChunkEvent(chunk=delta.content, call_id=call_id)
-            crewai_event_bus.emit(self, event=event)
-            for cb in callbacks or []:
-                if hasattr(cb, "on_llm_new_token"):
-                    cb.on_llm_new_token(delta.content)
-        if getattr(delta, "tool_calls", None):
-            tool_calls.extend(delta.tool_calls)
+    ) -> Any:
+        """Accumulate one stream chunk (content tokens + tool-call parts); return its usage.
+
+        Guards the empty-``choices`` usage chunk that ``stream_options.include_usage`` emits,
+        as CrewAI's own streaming handler does.
+        """
+        if chunk.choices:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                text.append(delta.content)
+                event = LLMStreamChunkEvent(chunk=delta.content, call_id=call_id)
+                crewai_event_bus.emit(self, event=event)
+                for cb in callbacks or []:
+                    if hasattr(cb, "on_llm_new_token"):
+                        cb.on_llm_new_token(delta.content)
+            if getattr(delta, "tool_calls", None):
+                tool_calls.extend(delta.tool_calls)
+        usage = getattr(chunk, "usage", None)
+        return usage if not isinstance(usage, type) else None
+
+    def _track_native_usage(self, usage: Any) -> None:
+        """Record streamed token usage into CrewAI's metrics.
+
+        The base streaming path tracks usage itself; the native loop streams the completion
+        directly, so without this every tool-calling turn would report zero tokens.
+        """
+        if usage:
+            self._track_token_usage_internal(self._usage_to_dict(usage) or {})
 
     def _finalize_native(
         self, text: list[str], tool_calls: list[Any], tool_names: list[str] | None = None
@@ -271,10 +297,21 @@ class LitellmStopWordLLM(LLM):
             call_id = str(uuid.uuid4())
             text: list[str] = []
             tool_calls: list[Any] = []
-            for chunk in litellm.completion(**params):
-                self._collect_delta(
-                    chunk.choices[0].delta, text, tool_calls, call_id, kwargs.get("callbacks")
+            usage: Any = None
+            try:
+                for chunk in litellm.completion(**params):
+                    usage = (
+                        self._collect_chunk(
+                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                        )
+                        or usage
+                    )
+            except Exception as exc:
+                crewai_event_bus.emit(
+                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
                 )
+                raise
+            self._track_native_usage(usage)
             return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
         result = super().call(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
@@ -303,10 +340,21 @@ class LitellmStopWordLLM(LLM):
             call_id = str(uuid.uuid4())
             text: list[str] = []
             tool_calls: list[Any] = []
-            async for chunk in await litellm.acompletion(**params):
-                self._collect_delta(
-                    chunk.choices[0].delta, text, tool_calls, call_id, kwargs.get("callbacks")
+            usage: Any = None
+            try:
+                async for chunk in await litellm.acompletion(**params):
+                    usage = (
+                        self._collect_chunk(
+                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                        )
+                        or usage
+                    )
+            except Exception as exc:
+                crewai_event_bus.emit(
+                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
                 )
+                raise
+            self._track_native_usage(usage)
             return self._finalize_native(text, tool_calls, _openai_tool_names(tools))
         result = await super().acall(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
@@ -415,11 +463,6 @@ def get_router_llm(
         fallbacks: Ordered list of ``LLMConfig`` fallback configs.
         router_settings: Extra kwargs forwarded to ``litellm.Router``.
     """
-    import uuid  # noqa: PLC0415
-
-    from crewai.events import crewai_event_bus  # noqa: PLC0415
-    from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
-
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
