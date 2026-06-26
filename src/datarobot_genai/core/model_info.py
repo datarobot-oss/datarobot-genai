@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``litellm.get_model_info`` for DataRobot-routed models.
-
-litellm has no ``datarobot/*`` entries, so this strips the ``datarobot/`` prefix
-and resolves the inner provider; other models pass through. Read capabilities
-(``supports_function_calling``, ``supports_reasoning``, …) off the result as you
-would from ``litellm.get_model_info``.
-"""
+"""``litellm.get_model_info`` for ``datarobot/``-prefixed gateway models."""
 
 from __future__ import annotations
 
@@ -30,11 +24,7 @@ if TYPE_CHECKING:
 
 
 def get_model_info(model: str) -> ModelInfo:
-    """``litellm.get_model_info``, resolving the ``datarobot/`` prefix.
-
-    Azure deployment names dot their dashed version to litellm's key
-    (``gpt-5-1`` -> ``gpt-5.1``).
-    """
+    """``litellm.get_model_info``, resolving the ``datarobot/`` prefix and azure names."""
     import litellm  # noqa: PLC0415 — lazy so importing this module stays cheap
 
     if model.startswith("datarobot/"):

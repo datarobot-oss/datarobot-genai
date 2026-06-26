@@ -11,11 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
 
 ## 0.19.7
-- `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info` (strips the prefix, normalizes azure names e.g. `gpt-5-1` → `gpt-5.1`).
-- `crewai`: `supports_function_calling` uses `get_model_info` so gateway models aren't wrongly reported `False` (litellm's map has no `datarobot/*` entries) and dropped to the prompt-based tool path.
-- `crewai`: native tool calling for gateway models — `LitellmStopWordLLM` streams native calls and returns the assembled `tool_calls` (CrewAI's handler otherwise discards them), sanitizes invalid tool schemas, tracks token usage, and emits `LLMCallFailedEvent` on stream errors. Tool calls a model leaks as text markup are recovered into structured calls (only when they're the whole message, so a real answer isn't hijacked).
-- `crewai`: the router LLM returns tool calls as a bare list (not a json string CrewAI treats as a final answer) and reports `supports_function_calling` from its whole failover chain, so a placeholder/retired primary doesn't force the ReAct path when a fallback supports tools.
-- `crewai`: reset each agent's executor per request — a reused crew leaked accumulated `messages`/`iterations` across requests (stale `tool_use` history → bedrock "tool calling without tools=" errors; bloated context → text-leaked tool calls). Intended history is still injected via `chat_history`.
+- `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info`.
+- `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas, tracking usage, and recovering calls a model leaks as text.
+- `crewai`: the router LLM returns tool calls as a bare list (not a json string) and reads `supports_function_calling` from its whole failover chain.
+- `crewai`: reset each agent's executor per request — a reused crew leaked `messages`/`iterations` across requests (bedrock "tool calling without tools=" errors; text-leaked tool calls).
 
 ## 0.19.6
 - `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.

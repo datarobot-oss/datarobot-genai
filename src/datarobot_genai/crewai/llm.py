@@ -57,12 +57,7 @@ _CHILD_TAG_RE = re.compile(r"<([^/>\s]+)>(.*?)</\1>", re.DOTALL)
 
 
 def _parse_tool_args(block: str) -> dict:
-    """Extract a tool call's arguments from a recovered call body.
-
-    Handles ``<parameter name="k">v</parameter>`` children (Anthropic), a
-    ``<parameters>``/``<arguments>`` block holding JSON or ``<k>v</k>`` child tags, or
-    bare ``<k>v</k>`` children directly in the body (the tool-name-as-tag form).
-    """
+    """Parse args from a recovered call body's markup (params block, JSON, or child tags)."""
     params = _PARAM_ATTR_RE.findall(block)
     if params:
         return {key: value.strip() for key, value in params}
@@ -93,12 +88,7 @@ _EMPTY_INVALID_KEYS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems", "enum
 
 
 def _sanitize_tool_schema(node: Any) -> Any:
-    """Strip JSON-Schema-invalid placeholder keys before sending tools to the gateway.
-
-    ``mcpadapt`` renders MCP tool params with ``"anyOf": []``, ``"enum": null``,
-    ``"items": null`` etc.; bedrock rejects the whole request as not draft-2020-12
-    compliant. Drop ``null`` values and empty array-keywords, recursively.
-    """
+    """Recursively drop null values + empty array-keywords (``anyOf: []``) that bedrock rejects."""
     if isinstance(node, dict):
         cleaned = {}
         for key, value in node.items():
@@ -112,16 +102,10 @@ def _sanitize_tool_schema(node: Any) -> Any:
 
 
 def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> list[dict]:
-    """Recover tool calls a model emitted as TEXT into OpenAI tool-call dicts.
+    """Recover a tool call a model leaked as TEXT markup into OpenAI tool-call dicts.
 
-    Claude under extended thinking emits a call as text markup instead of a structured
-    ``tool_call``, leaking it to the final answer unexecuted. The wrapper it invents varies
-    (``<function_calls><invoke>``, ``<use_mcp_tool>``, ``<use_tool>``, ``<budget:function_calls>``)
-    and it sometimes drops the wrapper entirely and uses the tool name as the tag
-    (``<generate_objectid><object_type>x</object_type></generate_objectid>``). So rather than
-    chase wrappers, recover two ways: known wrapper tags, and — anchored on the actual
-    ``tool_names`` from the request so prose can't trigger it — the tool-name-as-tag form.
-    Duplicates across forms are collapsed. Returns ``[]`` when nothing recoverable is found.
+    Matches known wrapper tags, and — anchored on ``tool_names`` so prose can't trigger it —
+    the bare tool-name-as-tag form. Duplicates are collapsed; returns ``[]`` if nothing matches.
     """
     calls: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -149,19 +133,13 @@ def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> 
             match = _NAME_ATTR_RE.search(attrs) or _TOOL_NAME_RE.search(body)
             add(match.group(1) if match else "", body)
 
-    # Tool-name-as-tag form, anchored on real tool names. A legitimate final answer can also
-    # contain <toolname>…</toolname> markup, so recover only when the tags are essentially the
-    # whole message (nothing but whitespace left once removed) — otherwise treat it as prose.
-    name_calls: list[tuple[str, str]] = []
-    remainder = text
+    # Tool-name-as-tag form, anchored on real tool names. A real answer can contain such markup
+    # too, so recover a block only when its body parses to arguments (else treat it as prose).
     for name in tool_names or []:
         block_re = re.compile(rf"<{re.escape(name)}\b[^>]*>(.*?)</{re.escape(name)}>", re.DOTALL)
         for body in block_re.findall(text):
-            name_calls.append((name, body))
-        remainder = block_re.sub("", remainder)
-    if name_calls and not remainder.strip():
-        for name, body in name_calls:
-            add(name, body)
+            if _parse_tool_args(body):
+                add(name, body)
 
     return calls
 
@@ -190,11 +168,7 @@ class LitellmStopWordLLM(LLM):
         call_id: str,
         callbacks: list | None,
     ) -> Any:
-        """Accumulate one stream chunk (content tokens + tool-call parts); return its usage.
-
-        Guards the empty-``choices`` usage chunk that ``stream_options.include_usage`` emits,
-        as CrewAI's own streaming handler does.
-        """
+        """Gather a chunk's content + tool-call parts; return its usage (skips empty choices)."""
         if chunk.choices:
             delta = chunk.choices[0].delta
             if delta.content:
@@ -210,23 +184,14 @@ class LitellmStopWordLLM(LLM):
         return usage if not isinstance(usage, type) else None
 
     def _track_native_usage(self, usage: Any) -> None:
-        """Record streamed token usage into CrewAI's metrics.
-
-        The base streaming path tracks usage itself; the native loop streams the completion
-        directly, so without this every tool-calling turn would report zero tokens.
-        """
+        """Track streamed usage in CrewAI's metrics (the native loop bypasses the base path)."""
         if usage:
             self._track_token_usage_internal(self._usage_to_dict(usage) or {})
 
     def _finalize_native(
         self, text: list[str], tool_calls: list[Any], tool_names: list[str] | None = None
     ) -> list[dict] | str:
-        """Return the tool calls for CrewAI's native loop (a bare list it runs), else text.
-
-        Prefer structured streamed ``tool_calls``; otherwise recover any the model
-        emitted as markup text (``tool_names`` anchors the tool-name-as-tag form);
-        otherwise return the stop-word-truncated text.
-        """
+        """Return tool calls (streamed or recovered) as the bare list CrewAI runs, else text."""
         if tool_calls:
             from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
@@ -280,13 +245,9 @@ class LitellmStopWordLLM(LLM):
         return bool(kwargs.get("tools")) and kwargs.get("available_functions") is None
 
     def call(self, *args: Any, **kwargs: Any) -> Any:
-        """Stream and return native tool calls, else stop-word-truncated text.
+        """Stream and return native tool calls ourselves — CrewAI's handler drops them.
 
-        CrewAI's streaming response handler discards the assembled ``tool_calls`` and
-        returns the (empty) text for a tool-call response, breaking its native loop. So
-        when CrewAI asks for native tool calls we stream the completion ourselves and
-        return the assembled calls (as :class:`RouterLitellmOnlyLLM` does); the ReAct
-        path is unchanged.
+        Non-native calls delegate to the base, stop-word-truncating any text result.
         """
         if self._wants_native_tool_calls(kwargs):
             import litellm  # noqa: PLC0415
@@ -456,13 +417,7 @@ def get_router_llm(
     fallbacks: list[LLMConfig],
     router_settings: dict | None = None,
 ) -> LLM:
-    """Return a CrewAI ``LLM`` whose calls are routed through a ``litellm.Router``.
-
-    Args:
-        primary: ``LLMConfig`` for the primary model.
-        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
-        router_settings: Extra kwargs forwarded to ``litellm.Router``.
-    """
+    """Return a CrewAI ``LLM`` routing calls through a ``litellm.Router`` (primary → fallbacks)."""
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 

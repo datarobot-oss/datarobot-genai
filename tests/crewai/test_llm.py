@@ -389,9 +389,7 @@ async def test_litellm_stop_word_llm_acall_streams_and_returns_native_tool_calls
 def test_litellm_stop_word_llm_call_tracks_token_usage_and_skips_empty_choices(
     stop_word_llm: LitellmStopWordLLM,
 ) -> None:
-    """The native path records the trailing usage chunk into CrewAI's token metrics, and the
-    empty-``choices`` usage chunk (from ``stream_options.include_usage``) doesn't IndexError.
-    """
+    """Native path tracks the trailing usage chunk; the empty-choices chunk doesn't IndexError."""
     tc = SimpleNamespace(
         index=0,
         id="call_1",
@@ -485,13 +483,25 @@ def test_recover_text_tool_calls_tool_name_as_tag_needs_known_names() -> None:
 
 
 def test_recover_text_tool_calls_tool_name_as_tag_in_prose_ignored() -> None:
-    """A real final answer that merely contains <toolname> markup is not hijacked as a call.
-
-    The tool-name-as-tag form recovers only when the tags are the whole message; here prose
-    surrounds a <code> block for a tool literally named ``code``.
-    """
+    """A real answer merely containing <toolname> markup isn't hijacked into a call."""
     text = "Here is the snippet you asked for: <code>print(1)</code> — hope it helps."
     assert crewai_llm._recover_text_tool_calls(text, ["code"]) == []
+
+
+def test_recover_text_tool_calls_tool_name_as_tag_with_prose_recovered() -> None:
+    """A real tool-name-as-tag call (body has args) is recovered even with surrounding prose."""
+    text = (
+        "Let me look that up.\n"
+        "<generate_objectid><object_type>deployment</object_type></generate_objectid>"
+    )
+    calls = crewai_llm._recover_text_tool_calls(text, ["generate_objectid"])
+    assert calls == [
+        {
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "generate_objectid", "arguments": '{"object_type": "deployment"}'},
+        }
+    ]
 
 
 def test_sanitize_tool_schema_strips_invalid_placeholders() -> None:
