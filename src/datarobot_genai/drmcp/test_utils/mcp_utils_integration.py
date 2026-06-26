@@ -29,6 +29,7 @@ from datarobot_genai.drmcp.test_utils.stub_credentials import STUB_DATAROBOT_END
 # Default tool groups enabled for integration/acceptance MCP servers (model default is off).
 _TEST_SUITE_ENABLED_TOOLS_ENV: dict[str, str] = {
     "ENABLE_PREDICTIVE_TOOLS": "true",
+    "ENABLE_WORKLOAD_TOOLS": "true",
 }
 
 

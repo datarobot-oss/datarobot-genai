@@ -33,6 +33,7 @@ tasks:
         OTEL_ENABLED=false \
         OTEL_SDK_DISABLED=true \
         ENABLE_PREDICTIVE_TOOLS=true \
+        ENABLE_WORKLOAD_TOOLS=true \
         MCP_SERVER_PORT={{.PORT}} uv run tests/drmcp/acceptance/ete_test_server.py &
       - |
         for i in {1..30}; do
@@ -109,7 +110,7 @@ tasks:
           echo "Stopping Jaeger"
           docker stop jaeger || true
       - echo "Running DR MCP Library acceptance tests"
-      - DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
+      - ENABLE_WORKLOAD_TOOLS=true DR_MCP_SERVER_URL=http://localhost:{{.PORT}}/mcp DR_MCP_SERVER_HTTP_URL=http://localhost:{{.PORT}}/ uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/acceptance/{{end}} -s -vv
     silent: true
 
   drmcp-test-interactive:

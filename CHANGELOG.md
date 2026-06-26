@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.19.8
+- `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
+
+## 0.19.7
+- MCP - Added pre-defined MCP tool category filters and improved tool registration.
+
+## 0.19.6
+- `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
+
+## 0.19.5
+- `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
+
+## 0.19.4
+- Added x-datarobot-external-access-token header support for okta integration
+
+## 0.19.3
+- Fixed OTEL traces endpoint resolution.
+
+## 0.19.2
+- Updated dependency constraints to fix CVEs.
+
 ## 0.19.1
 - `crewai`: an empty `agent_role` streaming chunk (CrewAI's `[] Working on task:` task boundary) no longer opens an AG-UI step that is never closed → fixes the `RUN_FINISHED while steps are still active` verifier error.
 - `e2e-tests` (crewai): lower `max_iter` to 5 in the dragent crewai workflow config (was 20) so a runaway ReAct loop is forced to a final answer instead of stalling the stream past the 60s httpx read timeout (the pytest global timeout is 300s).

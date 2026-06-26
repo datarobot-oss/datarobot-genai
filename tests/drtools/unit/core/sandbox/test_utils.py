@@ -24,10 +24,10 @@ import pytest
 
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
-from datarobot_genai.drtools.sandbox.base import SandboxError
-from datarobot_genai.drtools.sandbox.base import SandboxResult
-from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.utils import execute_code
+from datarobot_genai.drtools.core.sandbox.base import SandboxError
+from datarobot_genai.drtools.core.sandbox.base import SandboxResult
+from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.utils import execute_code
 
 
 @pytest.fixture
@@ -37,10 +37,10 @@ def dr_env() -> Iterator[None]:
     # endpoint rather than setting env vars.
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.get_datarobot_access_token",
+            "datarobot_genai.drtools.core.sandbox.utils.get_datarobot_access_token",
             return_value="test-token",
         ),
-        patch("datarobot_genai.drtools.sandbox.utils.get_credentials") as mock_creds,
+        patch("datarobot_genai.drtools.core.sandbox.utils.get_credentials") as mock_creds,
     ):
         mock_creds.return_value.datarobot.datarobot_endpoint = "https://app.example.com/api/v2"
         yield
@@ -67,11 +67,11 @@ def _isolate_security_context_ff() -> Iterator[None]:
     _ff._eval_cache.clear()
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.request_user_dr_client",
+            "datarobot_genai.drtools.core.sandbox.utils.request_user_dr_client",
             return_value=MagicMock(),
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.FeatureFlag.is_enabled",
+            "datarobot_genai.drtools.core.sandbox.utils.FeatureFlag.is_enabled",
             return_value=False,
         ),
     ):
@@ -82,7 +82,7 @@ def _isolate_security_context_ff() -> Iterator[None]:
 async def test_execute_code_happy_path(dr_env: None) -> None:
     mock_run = AsyncMock(return_value=_result(return_value=42))
     with patch(
-        "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+        "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
         new=mock_run,
     ):
         out = await execute_code("_return = 42")
@@ -98,7 +98,7 @@ async def test_execute_code_happy_path(dr_env: None) -> None:
 
 @pytest.mark.asyncio
 async def test_execute_code_passes_security_context_when_ff_enabled(dr_env: None) -> None:
-    from datarobot_genai.drtools.sandbox import utils as sandbox_utils
+    from datarobot_genai.drtools.core.sandbox import utils as sandbox_utils
 
     mock_run = AsyncMock(return_value=_result())
     captured: dict[str, Any] = {}
@@ -110,15 +110,15 @@ async def test_execute_code_passes_security_context_when_ff_enabled(dr_env: None
 
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
             new=mock_run,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.__init__",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.__init__",
             new=_spy_init,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.FeatureFlag.is_enabled",
+            "datarobot_genai.drtools.core.sandbox.utils.FeatureFlag.is_enabled",
             return_value=True,
         ),
     ):
@@ -130,7 +130,7 @@ async def test_execute_code_passes_security_context_when_ff_enabled(dr_env: None
 
 @pytest.mark.asyncio
 async def test_execute_code_omits_security_context_when_ff_disabled(dr_env: None) -> None:
-    from datarobot_genai.drtools.sandbox import utils as sandbox_utils
+    from datarobot_genai.drtools.core.sandbox import utils as sandbox_utils
 
     mock_run = AsyncMock(return_value=_result())
     captured: dict[str, Any] = {}
@@ -142,15 +142,15 @@ async def test_execute_code_omits_security_context_when_ff_disabled(dr_env: None
 
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
             new=mock_run,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.__init__",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.__init__",
             new=_spy_init,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.FeatureFlag.is_enabled",
+            "datarobot_genai.drtools.core.sandbox.utils.FeatureFlag.is_enabled",
             return_value=False,
         ),
     ):
@@ -161,7 +161,7 @@ async def test_execute_code_omits_security_context_when_ff_disabled(dr_env: None
 
 @pytest.mark.asyncio
 async def test_execute_code_omits_security_context_when_ff_check_raises(dr_env: None) -> None:
-    from datarobot_genai.drtools.sandbox import utils as sandbox_utils
+    from datarobot_genai.drtools.core.sandbox import utils as sandbox_utils
 
     mock_run = AsyncMock(return_value=_result())
     captured: dict[str, Any] = {}
@@ -173,15 +173,15 @@ async def test_execute_code_omits_security_context_when_ff_check_raises(dr_env: 
 
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
             new=mock_run,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.__init__",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.__init__",
             new=_spy_init,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.FeatureFlag.is_enabled",
+            "datarobot_genai.drtools.core.sandbox.utils.FeatureFlag.is_enabled",
             side_effect=RuntimeError("DR client unavailable"),
         ),
     ):
@@ -195,7 +195,7 @@ async def test_execute_code_derives_credentials_from_request(
     dr_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Credentials come from the request helpers, never os.environ."""
-    from datarobot_genai.drtools.sandbox import utils as sandbox_utils
+    from datarobot_genai.drtools.core.sandbox import utils as sandbox_utils
 
     # Bogus env vars to prove they are ignored.
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://env-must-not-be-used.example/api/v2")
@@ -211,11 +211,11 @@ async def test_execute_code_derives_credentials_from_request(
 
     with (
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
             new=mock_run,
         ),
         patch(
-            "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.__init__",
+            "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.__init__",
             new=_spy_init,
         ),
     ):
@@ -229,7 +229,7 @@ async def test_execute_code_derives_credentials_from_request(
 async def test_execute_code_missing_token() -> None:
     """A missing/unauthorized token surfaces as ToolError(AUTHENTICATION)."""
     with patch(
-        "datarobot_genai.drtools.sandbox.utils.get_datarobot_access_token",
+        "datarobot_genai.drtools.core.sandbox.utils.get_datarobot_access_token",
         side_effect=ToolError("no token in headers", kind=ToolErrorKind.AUTHENTICATION),
     ):
         with pytest.raises(ToolError) as excinfo:
@@ -242,7 +242,7 @@ async def test_execute_code_missing_token() -> None:
 async def test_execute_code_timeout_translates(dr_env: None) -> None:
     mock_run = AsyncMock(side_effect=SandboxTimeout("workload timed out"))
     with patch(
-        "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+        "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
         new=mock_run,
     ):
         with pytest.raises(ToolError) as excinfo:
@@ -256,7 +256,7 @@ async def test_execute_code_timeout_translates(dr_env: None) -> None:
 async def test_execute_code_sandbox_error_translates(dr_env: None) -> None:
     mock_run = AsyncMock(side_effect=SandboxError("workload failed"))
     with patch(
-        "datarobot_genai.drtools.sandbox.utils.DataRobotWorkloadSandbox.run",
+        "datarobot_genai.drtools.core.sandbox.utils.DataRobotWorkloadSandbox.run",
         new=mock_run,
     ):
         with pytest.raises(ToolError) as excinfo:

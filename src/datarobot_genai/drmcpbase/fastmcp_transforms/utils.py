@@ -23,8 +23,13 @@ from typing import Any
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 
+from datarobot_genai.drmcpbase.fastmcp_transforms.categories import resolve_to_tool_names
+
 MCP_MODE_HEADER = "x-datarobot-mcp-mode"
 MCP_TOOLS_HEADER = "x-datarobot-mcp-tools"
+# Extension point for user-defined toolsets (global-mcp only, resolved from mongo).
+# Parsed here so the constant is co-located with the other header names.
+MCP_TOOLSETS_HEADER = "x-datarobot-mcp-toolsets"
 
 
 def get_fast_mcp_http_headers(**kwargs: Any) -> dict[str, str]:
@@ -63,16 +68,42 @@ class MCPRequestMode(Enum):
             return cls.TOOLS
 
 
-def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:
+def _parse_header_entries(raw: str | None) -> frozenset[str] | None:
+    """Split a comma-separated header value into a frozenset of stripped tokens.
+
+    Returns None when the header is absent or blank (means "no filter").
+    """
     if raw is None:
         return None
     stripped = raw.strip()
     if not stripped:
         return None
     entries = frozenset(part.strip() for part in stripped.split(",") if part.strip())
-    if not entries:
+    return entries if entries else None
+
+
+def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:
+    """Parse the x-datarobot-mcp-tools header and resolve any category names.
+
+    Category names (e.g. ``dr_connectors``, ``dr_connector_jira``) are expanded
+    to the set of tool function names they contain.  Plain tool names and unknown
+    entries are kept as-is.  Returns None when the header is absent or blank,
+    meaning no tool filtering should be applied.
+    """
+    entries = _parse_header_entries(raw)
+    if entries is None:
         return None
-    return entries
+    return resolve_to_tool_names(entries)
+
+
+def _resolve_toolsets(raw: str | None) -> frozenset[str]:
+    """Stub: resolve x-datarobot-mcp-toolsets to tool names.
+
+    User-defined toolsets are fetched from mongo by the global-mcp server and
+    cached per request.  This stub always returns an empty set; the real
+    implementation will be added in a future release for global-mcp only.
+    """
+    return frozenset()
 
 
 def filter_tools_by_allowlist(
@@ -93,9 +124,19 @@ class MCPRequestContext:
 
     @classmethod
     def from_headers(cls, headers: Mapping[str, str]) -> "MCPRequestContext":
+        tools_allowlist = parse_tool_allowlist_header(get_header_value(headers, MCP_TOOLS_HEADER))
+        toolsets_names = _resolve_toolsets(get_header_value(headers, MCP_TOOLSETS_HEADER))
+        # Union the two resolved sets.  If either header is absent its result is
+        # empty/None, so the union only matters when both headers are present.
+        if tools_allowlist is not None and toolsets_names:
+            combined: frozenset[str] | None = tools_allowlist | toolsets_names
+        elif toolsets_names:
+            combined = toolsets_names
+        else:
+            combined = tools_allowlist
         return cls(
             mode=MCPRequestMode.from_headers(headers),
-            tool_allowlist=parse_tool_allowlist_header(get_header_value(headers, MCP_TOOLS_HEADER)),
+            tool_allowlist=combined,
         )
 
     @classmethod

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import patch
+
 from datarobot_genai.core.telemetry_agent import instrument
 
 
@@ -34,3 +36,17 @@ def test_instrument_with_frameworks() -> None:
 def test_instrument_nat() -> None:
     instrument("nat")
     instrument("nat")
+
+
+def test_instrument_skips_bootstrap_without_deployment_id(monkeypatch) -> None:
+    monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+    with patch("datarobot_genai.core.datarobot_otel.bootstrap_otel_provider_for_datarobot") as mock:
+        instrument()
+    mock.assert_not_called()
+
+
+def test_instrument_bootstraps_when_deployment_id_set(monkeypatch) -> None:
+    monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+    with patch("datarobot_genai.core.datarobot_otel.bootstrap_otel_provider_for_datarobot") as mock:
+        instrument()
+    mock.assert_called_once()
