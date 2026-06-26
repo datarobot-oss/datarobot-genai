@@ -131,7 +131,8 @@ class TestFilesApiToolsE2E(ToolBaseE2E):
         """LLM lists catalog items at the filesystem root via file_list."""
         prompt = (
             "List the top-level catalog items in the DataRobot filesystem. "
-            "Use file_list with path='dr://' and summarize what you find."
+            "Use file_list with path='dr://' and provide a detailed summary in complete "
+            "sentences of what catalog items and files you find."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -152,8 +153,9 @@ class TestFilesApiToolsE2E(ToolBaseE2E):
     ) -> None:
         """LLM fetches file metadata via file_info."""
         prompt = (
-            f"Get metadata for the DataRobot filesystem file at '{files_file_path}' "
-            "using file_info. Tell me its type and size."
+            f"Use file_info to inspect the DataRobot filesystem file at '{files_file_path}'. "
+            "Provide a detailed summary in complete sentences describing the file type, "
+            "size in bytes, format, and created_at timestamp from the tool result."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -174,8 +176,9 @@ class TestFilesApiToolsE2E(ToolBaseE2E):
     ) -> None:
         """LLM reads a file inline via file_read."""
         prompt = (
-            f"Read the contents of '{files_file_path}' using file_read and summarize "
-            "what the file contains."
+            f"Read the contents of '{files_file_path}' using file_read. "
+            "Provide a detailed summary in complete sentences of the file encoding, "
+            "how many bytes were read, and what the content says."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -197,7 +200,8 @@ class TestFilesApiToolsE2E(ToolBaseE2E):
         """LLM creates a signed download URL via file_sign."""
         prompt = (
             f"Create a temporary signed download URL for '{files_file_path}' using "
-            "file_sign with expiration=300. Share the URL in your response."
+            "file_sign with expiration=300. Provide a detailed summary in complete sentences "
+            "that includes the signed URL and how long it remains valid."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -218,8 +222,9 @@ class TestFilesApiToolsE2E(ToolBaseE2E):
     ) -> None:
         """LLM handles a missing filesystem path from file_info."""
         prompt = (
-            f"Fetch metadata for '{nonexistent_files_path}' with file_info and explain "
-            "what happened if the path cannot be found."
+            f"Fetch metadata for '{nonexistent_files_path}' with file_info. "
+            "If the path cannot be found, explain in detail in complete sentences "
+            "what error occurred and why the lookup failed."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
