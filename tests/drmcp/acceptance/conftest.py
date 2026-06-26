@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from datarobot.fs import DataRobotFileSystem
 
 from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_client_config
@@ -121,12 +122,8 @@ def nonexistent_workload_id() -> str:
 
 def _discover_files_catalog_and_file_path() -> tuple[str, str]:
     """Return (catalog_id, dr:// path) for the first file found under any catalog."""
-    from datarobot.fs import DataRobotFileSystem
-
     fs = DataRobotFileSystem()
     catalogs = fs.ls("dr://", detail=True)
-    if not catalogs:
-        pytest.skip("No Files API catalog items available for acceptance tests")
 
     for cat_info in catalogs:
         cat_name = str(cat_info.get("name", "")).rstrip("/")
