@@ -95,3 +95,25 @@ def classification_dataset_id(classification_project: dict[str, Any]) -> str:
 @pytest.fixture(scope="session")
 def nonexistent_dataset_name() -> str:
     return "nonexistent_dataset_name"
+
+
+@pytest.fixture(scope="session")
+def workload_id(dr_client: Any) -> str:
+    """Workload ID for acceptance tests (``TEST_WORKLOAD_ID`` env or first from API)."""
+    override = os.environ.get("TEST_WORKLOAD_ID")
+    if override:
+        return override
+    try:
+        result = dr_client.client.get_client().get("workloads/", params={"limit": 1}).json()
+        workloads = result.get("data") or []
+        if not workloads:
+            pytest.skip("No workloads available for acceptance tests")
+        return str(workloads[0]["id"])
+    except Exception as exc:
+        pytest.skip(f"Could not list workloads for acceptance tests: {exc}")
+
+
+@pytest.fixture(scope="session")
+def nonexistent_workload_id() -> str:
+    # Workload API validates MongoDB ObjectId shape (24 hex chars); bad format → 422.
+    return "000000000000000000000001"

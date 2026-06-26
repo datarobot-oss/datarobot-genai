@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.19.6
+## 0.19.8
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
+
+## 0.19.7
+- MCP - Added pre-defined MCP tool category filters and improved tool registration.
+
+## 0.19.6
+- `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
 
 ## 0.19.5
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools

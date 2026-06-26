@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.19.6"
+version = "0.19.8"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -112,6 +112,13 @@ dev = [
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
   "respx>=0.22.0",
+  # drtools top-level imports needed by TestTaxonomyCompleteness (_walk imports all drtools modules)
+  "beautifulsoup4>=4.12.0",
+  "pypdf>=6.10.1",
+  "polars>=1.0.0",
+  "tavily-python>=0.7.20",
+  "perplexityai>=0.27",
+  "datarobot-predict>=1.13.2",
 ]
 
 [tool.mypy]
