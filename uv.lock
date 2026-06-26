@@ -1364,6 +1364,7 @@ nat = [
 [package.dev-dependencies]
 dev = [
     { name = "aioresponses" },
+    { name = "beautifulsoup4" },
     { name = "ipdb" },
     { name = "mypy" },
     { name = "pre-commit" },
@@ -1594,6 +1595,7 @@ provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "
 [package.metadata.requires-dev]
 dev = [
     { name = "aioresponses", specifier = ">=0.7.8" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "pre-commit" },
