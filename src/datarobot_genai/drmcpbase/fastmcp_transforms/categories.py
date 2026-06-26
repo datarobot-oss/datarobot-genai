@@ -320,10 +320,6 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
     ),
 }
 
-# Pre-compute the set of all recognised category strings for fast membership
-# checks in resolve_to_tool_names.
-_ALL_CATEGORY_NAMES: frozenset[str] = frozenset(MCPToolCategory)
-
 
 def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
     """Expand category names in *entries* to their constituent tool names.
