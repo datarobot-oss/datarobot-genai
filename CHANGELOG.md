@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.20.0
 - Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- Instrumented `fastapi` in `dragent`
 - *Breaking change*: consolidated telemetry modules in one parent module:
   - `core.telemetry_agent`=>`core.telemetry.agent`
   - `core.telemetry_memory` => `core.telemetry.memory`
