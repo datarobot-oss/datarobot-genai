@@ -42,6 +42,7 @@ from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
+from datarobot_genai.drmcp.test_utils.stubs.files_api_stubs import apply_files_api_stubs
 from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
     test_create_prediction_result,
 )
@@ -227,6 +228,7 @@ def _apply_dr_client_stubs() -> None:
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()
     _apply_prompt_stubs()
+    apply_files_api_stubs()
 
 
 def main() -> None:
