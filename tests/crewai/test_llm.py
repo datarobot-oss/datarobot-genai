@@ -504,6 +504,20 @@ def test_recover_text_tool_calls_tool_name_as_tag_with_prose_recovered() -> None
     ]
 
 
+def test_recover_text_tool_calls_no_arg_tool_name_as_tag_recovered() -> None:
+    """A no-arg call emitted as a whole-message bare tag is recovered (empty args, no prose)."""
+    calls = crewai_llm._recover_text_tool_calls(
+        "<list_deployments></list_deployments>", ["list_deployments"]
+    )
+    assert calls == [
+        {
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "list_deployments", "arguments": "{}"},
+        }
+    ]
+
+
 def test_sanitize_tool_schema_strips_invalid_placeholders() -> None:
     """Strip the `anyOf: []` / `enum: null` / `items: null` placeholders mcpadapt emits.
 

@@ -134,12 +134,19 @@ def _recover_text_tool_calls(text: str, tool_names: list[str] | None = None) -> 
             add(match.group(1) if match else "", body)
 
     # Tool-name-as-tag form, anchored on real tool names. A real answer can contain such markup
-    # too, so recover a block only when its body parses to arguments (else treat it as prose).
+    # too, so recover a block only when it carries arguments, or when the tags are the whole
+    # message (a no-arg call emitted alone) — otherwise treat it as prose.
+    name_calls: list[tuple[str, str]] = []
+    remainder = text
     for name in tool_names or []:
         block_re = re.compile(rf"<{re.escape(name)}\b[^>]*>(.*?)</{re.escape(name)}>", re.DOTALL)
         for body in block_re.findall(text):
-            if _parse_tool_args(body):
-                add(name, body)
+            name_calls.append((name, body))
+        remainder = block_re.sub("", remainder)
+    whole_message = bool(name_calls) and not remainder.strip()
+    for name, body in name_calls:
+        if whole_message or _parse_tool_args(body):
+            add(name, body)
 
     return calls
 
