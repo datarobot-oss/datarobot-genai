@@ -424,7 +424,10 @@ def get_router_llm(
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
-    primary_model = primary.to_litellm_params().get("model", "")
+    # The router fails over primary → fallbacks at runtime, so capability detection considers the
+    # whole chain: a placeholder/retired primary shouldn't force the router onto the ReAct path
+    # (where models can hallucinate the tool result) when a reachable fallback supports tools.
+    chain_models = [cfg.to_litellm_params().get("model", "") for cfg in (primary, *fallbacks)]
 
     class RouterLitellmOnlyLLM(LLM):
         def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
@@ -436,9 +439,13 @@ def get_router_llm(
             self._llm_router = router
 
         def supports_function_calling(self) -> bool:
-            # self.model is a sentinel; resolve the routed primary model instead.
-            supported = _model_supports_tool_calling(primary_model)
-            return supported if supported is not None else super().supports_function_calling()
+            # self.model is a sentinel; report the first model in the failover chain that
+            # litellm can resolve (the primary may be a placeholder the router never uses).
+            for model in chain_models:
+                supported = _model_supports_tool_calling(model)
+                if supported is not None:
+                    return supported
+            return super().supports_function_calling()
 
         def call(
             self,

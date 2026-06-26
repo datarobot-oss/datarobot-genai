@@ -130,6 +130,22 @@ async def test_router_llm_acall_returns_tool_call_list_not_json_string() -> None
     assert result[0]["function"]["name"] == "generate_objectid"
 
 
+def test_router_llm_supports_function_calling_scans_failover_chain() -> None:
+    """Capability detection considers the whole failover chain: an unresolvable primary must not
+    force the router onto the ReAct path when a reachable fallback supports tool calling.
+    """
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        primary = LLMConfig(
+            use_datarobot_llm_gateway=True, llm_default_model="invalid-model-that-does-not-exist"
+        )
+        fb = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="azure/gpt-4o-2024-11-20")
+        llm = get_router_llm(primary, [fb])
+
+    assert llm.supports_function_calling() is True
+
+
 def test_router_llm_call_invokes_callbacks_per_chunk() -> None:
     from datarobot_genai.crewai.llm import get_router_llm
 
