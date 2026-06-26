@@ -155,7 +155,7 @@ async def datarobot_otelcollector_telemetry_exporter(
     builder: Builder,
 ) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
-    headers = resolve_datarobot_headers_from_env() or {}
+    headers = dict(resolve_datarobot_headers_from_env() or {})
     # Caller-supplied headers win on collision; lets you e.g. add request-
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)
@@ -175,10 +175,11 @@ async def datarobot_otelcollector_telemetry_exporter(
     }
 
     # Never log the secret. Sorted keys only.
+    lower_headers = {k.lower(): v for k, v in headers.items()}
     logger.info(
         "Configuring datarobot_otelcollector exporter endpoint=%s entity_id=%s header_keys=%s",
         config.endpoint,
-        headers.get("X-DataRobot-Entity-Id", ""),
+        lower_headers.get("x-datarobot-entity-id", ""),
         sorted(headers.keys()),
     )
 

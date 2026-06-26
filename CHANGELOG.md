@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.19.8
+
+- `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
+
 ## 0.19.7
 - MCP - Added pre-defined MCP tool category filters and improved tool registration.
 
