@@ -117,3 +117,54 @@ def workload_id(dr_client: Any) -> str:
 def nonexistent_workload_id() -> str:
     # Workload API validates MongoDB ObjectId shape (24 hex chars); bad format → 422.
     return "000000000000000000000001"
+
+
+def _discover_files_catalog_and_file_path() -> tuple[str, str]:
+    """Return (catalog_id, dr:// path) for the first file found under any catalog."""
+    from datarobot.fs import DataRobotFileSystem
+
+    fs = DataRobotFileSystem()
+    catalogs = fs.ls("dr://", detail=True)
+    if not catalogs:
+        pytest.skip("No Files API catalog items available for acceptance tests")
+
+    for cat_info in catalogs:
+        cat_name = str(cat_info.get("name", "")).rstrip("/")
+        catalog_id = cat_name.split("/")[0]
+        if not catalog_id:
+            continue
+        found = fs.find(f"dr://{catalog_id}/", withdirs=False, detail=True)
+        for rel_path, info in found.items():
+            if info.get("type") != "file":
+                continue
+            if rel_path.startswith("dr://"):
+                return catalog_id, rel_path
+            return catalog_id, f"dr://{rel_path}"
+
+    pytest.skip("No files found under any Files API catalog for acceptance tests")
+
+
+@pytest.fixture(scope="session")
+def files_catalog_id() -> str:
+    """Catalog id for Files API tests (``TEST_FILES_CATALOG_ID`` or auto-discovered)."""
+    override = os.environ.get("TEST_FILES_CATALOG_ID")
+    if override:
+        return override
+    catalog_id, _ = _discover_files_catalog_and_file_path()
+    return catalog_id
+
+
+@pytest.fixture(scope="session")
+def files_file_path() -> str:
+    """``dr://`` path to a file for Files API acceptance tests."""
+    override = os.environ.get("TEST_FILES_FILE_PATH")
+    if override:
+        return override
+    _, file_path = _discover_files_catalog_and_file_path()
+    return file_path
+
+
+@pytest.fixture(scope="session")
+def nonexistent_files_path() -> str:
+    """Filesystem path that should not exist (valid catalog id shape, missing file)."""
+    return "dr://000000000000000000000001/nonexistent.txt"
