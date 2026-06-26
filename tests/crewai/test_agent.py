@@ -214,6 +214,24 @@ async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
     assert usage == {"completion_tokens": 1, "prompt_tokens": 2, "total_tokens": 3}
 
 
+async def test_invoke_resets_agent_executors_per_request(
+    run_agent_input, mock_ragas_event_listener
+) -> None:
+    """Each request must start with fresh agent executors. CrewAI caches each agent's executor
+    and never clears its accumulated ``messages``/``iterations`` on reuse, so reusing the crew
+    across requests would leak prior-request state (stale tool_use history -> bedrock errors;
+    bloated context -> the model leaking tool calls as text). ``invoke`` resets them per run.
+    """
+    agent = AgentForTest(CrewOutput(raw="ok"), api_base="https://x/", api_key="k")
+    # Simulate executors left over from a previous request.
+    for a in agent.agents:
+        a.agent_executor = object()
+
+    _ = [event async for event in agent.invoke(run_agent_input)]
+
+    assert all(a.agent_executor is None for a in agent.agents)
+
+
 async def test_invoke_does_not_include_chat_history_by_default(
     mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:

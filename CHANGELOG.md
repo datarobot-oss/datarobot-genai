@@ -11,15 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
 
 ## 0.19.7
-- MCP - Added pre-defined MCP tool category filters and improved tool registration.
-
-## 0.19.6
-- `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
 - `core`: add `get_model_info(model)` — `litellm.get_model_info` that resolves `datarobot/`-prefixed gateway models (strips the prefix, defers to litellm; azure deployment names normalized, `gpt-5-1` → `gpt-5.1`). Read any capability off it (`supports_function_calling`, `supports_reasoning`, …) as you would from litellm.
 - `crewai`: `supports_function_calling` uses `get_model_info` so gateway models aren't wrongly reported `False` (litellm's map has no `datarobot/*` entries) and dropped to CrewAI's prompt-based tool path.
 - `crewai`: native tool calling now works for gateway models — `LitellmStopWordLLM` streams native calls (`tools` + `available_functions=None`) and returns the assembled `tool_calls` itself, since CrewAI's streaming handler discards them and returns empty text (→ `Invalid response from LLM call - None or empty`).
 - `crewai`: recover tool calls a model emits as *text* under extended thinking (Anthropic `<function_calls>` / MCP `<use_mcp_tool>` markup) into structured calls, so they're executed instead of leaking into the answer.
 - `crewai`: the router LLM (`get_router_llm`) now returns tool calls as a bare list rather than `json.dumps({"tool_calls": …})`. Once the router reports `supports_function_calling`, CrewAI's native loop runs a *list* of tool calls; a string fell through to a final answer, so a router whose primary resolves to a tool-calling model never executed its tools.
+- `crewai`: reset each agent's executor per request so a reused crew starts fresh. CrewAI caches an agent's executor and never clears its accumulated `messages`/`iterations` on reuse, so prior-request state leaked across requests (stale `tool_use` history → bedrock "tool calling without tools=" errors; bloated context → the model leaking tool calls as text). Intended conversation history is still injected via `chat_history`.
+
+## 0.19.6
+- `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
 
 ## 0.19.5
 - `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
