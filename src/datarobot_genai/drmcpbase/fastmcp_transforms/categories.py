@@ -169,6 +169,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "catalog_analyze_dataset",
             "catalog_suggest_ml_problems",
             "catalog_get_eda_insights",
+            "catalog_check_timeseries_eligibility",
         }
     ),
     MCPToolCategory.DR_MODELING: frozenset(
@@ -181,6 +182,8 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "modeling_get_model_roc",
             "modeling_get_model_feature_impact",
             "modeling_get_model_lift_chart",
+            "modeling_list_models",
+            "modeling_get_modeldetails",
         }
     ),
     MCPToolCategory.DR_DEPLOYMENTS: frozenset(
