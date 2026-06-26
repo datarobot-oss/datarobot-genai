@@ -14,13 +14,12 @@
 
 """E2E test: dragent OTel spans reach the DataRobot ingest with auth headers.
 
-Boots the inline dragent subprocess against ``base/workflow-tracing.yaml`` (which
+Boots the inline dragent subprocess against ``base/workflow.yaml`` (which
 enables ``datarobot_otelcollector``), pointed at an in-process mock OTLP/HTTP
 collector via env vars. After the subprocess exits, asserts that the mock saw
 ≥ 1 POST to ``/otel/v1/traces`` carrying the ``X-DataRobot-Api-Key`` and
-``X-DataRobot-Entity-Id`` headers — the precise contract a real DataRobot OTel
-ingest checks. This is the e2e equivalent of "deploy → chat → look at the
-Tracing tab" that we have been verifying by hand.
+``X-DataRobot-Entity-Id`` headers, then parses the OTLP payload and checks the
+exported spans carry the expected attributes.
 """
 
 from __future__ import annotations
@@ -28,11 +27,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+from dragent_tests.helpers import AGENT
+from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.helpers import workflow_file
 from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.test_tools import GENERATE_OBJECTID_PROMPT
 
 OTLP_TRACES_PATH = "/otel/v1/traces"
 OTLP_PATH = "/otel"
@@ -43,12 +48,37 @@ OTEL_EXPORTER_OTLP_HEADERS = (
     f"X-DataRobot-Api-Key={TEST_API_TOKEN},X-DataRobot-Entity-Id={EXPECTED_ENTITY_ID}"
 )
 
+# Span attributes that map to the deployment Tracing table columns, per
+# https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-tracing-code.html#map-spans-and-attributes-to-the-tracing-table
+EXPECTED_SPAN_ATTRIBUTES = {
+    "gen_ai.prompt",  # Prompt
+    "gen_ai.completion",  # Completion
+}
 
-def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
-    """Spans leave the dragent process with DR auth headers and the right path."""
+# Only expected for frameworks which idenify tool calls in AG-UI events.
+# Not expected in: crewai, base, NAT in non-streaming mode
+TOOL_NAME = "tool_name"
+
+
+def _exported_span_attribute_keys(bodies: list[bytes]) -> set[str]:
+    """Union of attribute keys across every span in the OTLP export bodies."""
+    keys: set[str] = set()
+    for body in bodies:
+        request = ExportTraceServiceRequest()
+        request.ParseFromString(body)
+        for resource_spans in request.resource_spans:
+            for scope_spans in resource_spans.scope_spans:
+                for span in scope_spans.spans:
+                    keys.update(attribute.key for attribute in span.attributes)
+    return keys
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_otel_spans_export_with_datarobot_headers(tmp_path: Path, stream: bool) -> None:
+    """Spans leave the dragent process with DR auth headers and expected attributes."""
     # GIVEN: a mock OTLP collector and a chat completion request
     output_path = tmp_path / "output.json"
-    chat_completion = build_chat_completion()
+    chat_completion = build_chat_completion(GENERATE_OBJECTID_PROMPT, stream=stream)
 
     with MockOtelCollector() as collector:
         env = {
@@ -56,9 +86,12 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
             # Use the setup close to Codespaces
             "OTEL_EXPORTER_OTLP_ENDPOINT": collector.endpoint + OTLP_PATH,
             "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
+            # TODO (BUZZOK-31396): only necessary because of the bootstrap hack
+            # src/datarobot_genai/core/telemetry/agent.py
+            "MLOPS_DEPLOYMENT_ID": "test-deployment-id",
         }
 
-        # WHEN: the inline runner is executed against workflow-tracing.yaml
+        # WHEN: the inline runner is executed against workflow.yaml
         result = spawn_runner(
             chat_completion=chat_completion,
             output_path=output_path,
@@ -91,3 +124,17 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path) -> None:
         f"{[sorted(r.headers.keys()) for r in collector.requests]}."
     )
     assert auth_requests[0].body, "Expected the OTLP request body to be non-empty."
+
+    # THEN: the exported spans carry the expected attributes
+    attribute_keys = _exported_span_attribute_keys([req.body for req in auth_requests])
+    missing = EXPECTED_SPAN_ATTRIBUTES - attribute_keys
+    assert not missing, (
+        f"Exported spans missing expected attributes {sorted(missing)}; "
+        f"got {sorted(attribute_keys)}."
+    )
+
+    if AGENT_SUPPORTS_TOOL_CALLS_STREAMING and not (stream and AGENT == "nat"):
+        assert TOOL_NAME in attribute_keys, (
+            f"Exported spans missing expected attribute {TOOL_NAME}; "
+            f"got {sorted(attribute_keys)}."
+        )

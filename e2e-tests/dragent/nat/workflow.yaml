@@ -71,6 +71,8 @@ middleware:
           stage: response
           type: ootb
       timeout_sec: 60
+  datarobot_otel_conventions:
+    _type: datarobot_otel_conventions
 
 
 workflow:
@@ -78,6 +80,7 @@ workflow:
   llm_name: datarobot_llm
   middleware:
     - datarobot_guardrails
+    - datarobot_otel_conventions
   tool_names:
     - planner
     - writer

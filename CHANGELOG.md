@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.0
+- Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- *Breaking change*: consolidated telemetry modules in one parent module:
+  - `core.telemetry_agent`=>`core.telemetry.agent`
+  - `core.telemetry_memory` => `core.telemetry.memory`
+  - `core.telemetry_nat_context` => `core.telemetry.nat_context`
+  - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
+  - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
+
 ## 0.19.6
 - `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
 

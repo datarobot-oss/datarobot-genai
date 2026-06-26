@@ -189,7 +189,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         )
         processor = BatchSpanProcessor(exporter)
 
-        from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+        from .nat_tracer import wrap_sdk_tracer_provider
 
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()

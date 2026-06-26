@@ -27,7 +27,7 @@ from opentelemetry.trace import SpanKind
 from opentelemetry.trace import Tracer
 from opentelemetry.util.types import Attributes
 
-from datarobot_genai.core.telemetry_nat_context import use_nat_workflow_trace_context
+from .nat_context import use_nat_workflow_trace_context
 
 
 class NatWorkflowTracer(Tracer):
