@@ -120,45 +120,34 @@ def nonexistent_workload_id() -> str:
     return "000000000000000000000001"
 
 
-def _discover_files_catalog_and_file_path() -> tuple[str, str]:
-    """Return (catalog_id, dr:// path) for the first file found under any catalog."""
+_FILES_API_TEST_FILENAME = "acceptance-test.txt"
+_FILES_API_TEST_CONTENT = b"mcp files api acceptance test\n"
+
+
+@pytest.fixture(scope="session")
+def files_api_test_file(dr_client: Any) -> dict[str, str]:
+    """Create a small catalog file for Files API acceptance tests."""
+    del dr_client  # ensure DataRobot client is configured for the session
     fs = DataRobotFileSystem()
-    catalogs = fs.ls("dr://", detail=True)
-
-    for cat_info in catalogs:
-        cat_name = str(cat_info.get("name", "")).rstrip("/")
-        catalog_id = cat_name.split("/")[0]
-        if not catalog_id:
-            continue
-        found = fs.find(f"dr://{catalog_id}/", withdirs=False, detail=True)
-        for rel_path, info in found.items():
-            if info.get("type") != "file":
-                continue
-            if rel_path.startswith("dr://"):
-                return catalog_id, rel_path
-            return catalog_id, f"dr://{rel_path}"
-
-    pytest.skip("No files found under any Files API catalog for acceptance tests")
+    try:
+        catalog_id = fs.create_catalog_item_dir()
+        file_path = f"dr://{catalog_id}/{_FILES_API_TEST_FILENAME}"
+        fs.pipe_file(file_path, value=_FILES_API_TEST_CONTENT, mode="create")
+    except Exception as exc:
+        pytest.skip(f"Could not provision Files API test file: {exc}")
+    return {"catalog_id": catalog_id, "file_path": file_path}
 
 
 @pytest.fixture(scope="session")
-def files_catalog_id() -> str:
-    """Catalog id for Files API tests (``TEST_FILES_CATALOG_ID`` or auto-discovered)."""
-    override = os.environ.get("TEST_FILES_CATALOG_ID")
-    if override:
-        return override
-    catalog_id, _ = _discover_files_catalog_and_file_path()
-    return catalog_id
+def files_catalog_id(files_api_test_file: dict[str, str]) -> str:
+    """Catalog id for Files API acceptance tests."""
+    return files_api_test_file["catalog_id"]
 
 
 @pytest.fixture(scope="session")
-def files_file_path() -> str:
+def files_file_path(files_api_test_file: dict[str, str]) -> str:
     """``dr://`` path to a file for Files API acceptance tests."""
-    override = os.environ.get("TEST_FILES_FILE_PATH")
-    if override:
-        return override
-    _, file_path = _discover_files_catalog_and_file_path()
-    return file_path
+    return files_api_test_file["file_path"]
 
 
 @pytest.fixture(scope="session")
