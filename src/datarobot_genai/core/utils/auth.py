@@ -121,7 +121,8 @@ class AuthContextHeaderHandler:
         if not self.secret_key:
             warnings.warn(
                 "No secret key provided. Please make sure SESSION_SECRET_KEY is set. "
-                "JWT tokens will be signed with an insecure key. This should only be used for testing."
+                "JWT tokens will be signed with an insecure key. This should only be "
+                "used for testing."
             )
 
         # PyJWT rejects empty string keys; use a dummy key when none is configured
