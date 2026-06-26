@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datarobot_genai.drtools.sandbox import SandboxSecurityContext
+from datarobot_genai.drtools.core.sandbox import SandboxSecurityContext
 
 
 def test_defaults_are_restrictive() -> None:

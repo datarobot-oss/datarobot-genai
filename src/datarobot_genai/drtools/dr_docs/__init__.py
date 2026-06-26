@@ -29,3 +29,5 @@ Example use with LangGraph::
         "max_results": 5
     })
 """
+
+GLOBAL_MCP_ENABLED: bool = True

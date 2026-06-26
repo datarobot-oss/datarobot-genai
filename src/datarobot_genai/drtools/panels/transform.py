@@ -37,8 +37,8 @@ from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
 from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.store import DEFAULT_SOURCE
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.sandbox import execute_code as _execute_code
 from datarobot_genai.drtools.panels.datasource import _rows_to_parquet
-from datarobot_genai.drtools.sandbox import execute_code as _execute_code
 
 logger = logging.getLogger(__name__)
 
