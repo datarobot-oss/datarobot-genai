@@ -32,10 +32,10 @@ from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.feature_flags import FeatureFlag
-from datarobot_genai.drtools.sandbox.base import SandboxError
-from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
-from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.workload import DataRobotWorkloadSandbox
+from datarobot_genai.drtools.core.sandbox.base import SandboxError
+from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
+from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.workload import DataRobotWorkloadSandbox
 
 logger = logging.getLogger(__name__)
 
