@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.1
+- `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.
+
 ## 0.20.0
 - Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
 - Instrumented `fastapi` in `dragent`

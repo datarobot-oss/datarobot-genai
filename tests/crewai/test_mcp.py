@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import socket
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -208,3 +209,23 @@ class TestMCPToolsContext:
         ):
             async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
+
+    async def test_unreachable_local_server_skips_adapter(self):
+        """A local MCP server that isn't running short-circuits before the adapter
+        is built, avoiding the ~30s blocking connect and background-thread traceback.
+        """
+        # Reserve then release a loopback port so nothing is listening on it.
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        closed_port = probe.getsockname()[1]
+        probe.close()
+
+        mcp_config = MCPConfig(mcp_server_port=closed_port)
+        with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock_adapter:
+            instance = MagicMock()
+            instance.__enter__.return_value = []
+            instance.__exit__.return_value = None
+            mock_adapter.return_value = instance
+            async with mcp_tools_context(mcp_config) as tools:
+                assert tools == []
+            mock_adapter.assert_not_called()
