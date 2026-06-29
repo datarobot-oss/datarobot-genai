@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.19.10
+
+- `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
+
 ## 0.19.9
 - `drmcp`/`drtools/files_api`: acceptance E2E tests for read-only Files API tools (`file_list`, `file_info`, `file_read`, `file_sign`) against a live MCP server with `ENABLE_FILES_API_TOOLS=true`.
 

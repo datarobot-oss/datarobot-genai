@@ -37,6 +37,8 @@ import logging
 import os
 import urllib.parse
 
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+
 logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
@@ -53,22 +55,34 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 ENTITY_ID_PREFIX = "deployment-"
 
 
+class _OtelSettings(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+    """Minimal settings for assembling OTel auth headers locally.
+
+    Mirrors the ``otel_entity_id`` field in the agent template's ``Config``.
+    Inheriting ``DataRobotAppFrameworkBaseSettings`` means the value is loaded
+    from env vars, ``.env`` files, Pulumi outputs, and DataRobot runtime
+    parameters — not just raw ``os.environ``.
+    """
+
+    otel_entity_id: str = ""
+
+
 def resolve_api_key_from_env() -> str:
     return os.getenv("DATAROBOT_API_TOKEN", "")
 
 
 def resolve_entity_id_from_env() -> str:
-    # MLOPS_DEPLOYMENT_ID holds the bare deployment ID inside a DR deployment;
-    # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
-    # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
     deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
+    if deployment_id:
+        return f"{ENTITY_ID_PREFIX}{deployment_id}"
+    settings = _OtelSettings()
+    return settings.otel_entity_id
 
 
 def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
-    # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
-    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-        headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
+    otlp_headers_env = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+    if otlp_headers_env:
+        headers_list = otlp_headers_env.split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
             key, value = header.split("=", 1)
