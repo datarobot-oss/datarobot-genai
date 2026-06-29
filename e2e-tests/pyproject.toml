@@ -18,7 +18,7 @@ dependencies = [
 
 [dependency-groups]
 dragent-nat = [
-    "datarobot-genai[dragent]"
+    "datarobot-genai[dragent,memory]"
 ]
 dragent-langgraph = [
     "datarobot-genai[dragent,langgraph]"

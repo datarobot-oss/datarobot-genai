@@ -195,6 +195,14 @@ jobs:
         run: |
           echo '${{ toJson(matrix.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
 
+      - name: Provision DataRobot MemorySpace
+        if: env.E2E_PROVISION_MEMORY_SPACE == 'true'
+        working-directory: e2e-tests
+        run: |
+          SPACE_ID=$(uv run python scripts/memory_space.py create)
+          echo "AGENT_MEMORY_SPACE_ID=$SPACE_ID" >> "$GITHUB_ENV"
+          echo "E2E_MEMORY_SPACE_ID=$SPACE_ID" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         working-directory: e2e-tests
         run: uv sync --group dragent-${{ matrix.agent }}
@@ -229,3 +237,11 @@ jobs:
           name: e2e-results-${{ matrix.name }}-py${{ matrix.python_version }}
           path: e2e-tests/test_results/
           if-no-files-found: ignore
+
+      - name: Delete DataRobot MemorySpace
+        if: always() && env.E2E_PROVISION_MEMORY_SPACE == 'true'
+        working-directory: e2e-tests
+        run: |
+          if [ -n "${E2E_MEMORY_SPACE_ID:-}" ]; then
+            uv run python scripts/memory_space.py delete "$E2E_MEMORY_SPACE_ID" || true
+          fi
