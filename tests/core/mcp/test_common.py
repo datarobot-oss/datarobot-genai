@@ -58,10 +58,36 @@ class TestMCPConfig:
         with patch.dict(os.environ, {}, clear=True):
             assert MCPConfig().is_local_server is False
 
+    def test_is_local_server_false_when_deployment_takes_priority(self):
+        # mcp_server_port set but a deployment also configured -> deployment wins.
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(
+                mcp_server_port=9000,
+                mcp_deployment_id="a" * 24,
+                datarobot_endpoint="https://app.datarobot.com",
+                datarobot_api_token="tok",
+            )
+        assert config.is_local_server is False
+        assert "directAccess/mcp" in config.server_config["url"]
+
+    def test_is_local_server_false_when_external_takes_priority(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=9000, external_mcp_url="https://mcp.example.com/mcp")
+        assert config.is_local_server is False
+        assert config.server_config["url"] == "https://mcp.example.com/mcp"
+
+    def test_invalid_mcp_server_port_ignored(self):
+        # Out-of-range port is dropped (warn + None), never crashing server_reachable.
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=99999)
+        assert config.mcp_server_port is None
+        assert config.is_local_server is False
+        assert config.server_reachable() is False
+
     def test_server_reachable_true_when_listening(self):
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
+        listener.listen(128)
         port = listener.getsockname()[1]
         try:
             with patch.dict(os.environ, {}, clear=True):
@@ -70,13 +96,16 @@ class TestMCPConfig:
             listener.close()
 
     def test_server_reachable_false_when_closed(self):
-        # Reserve then release a port so nothing is listening on it.
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        closed_port = probe.getsockname()[1]
-        probe.close()
-        with patch.dict(os.environ, {}, clear=True):
-            assert MCPConfig(mcp_server_port=closed_port).server_reachable() is False
+        # Hold a bound-but-not-listening socket: connections are refused, and
+        # keeping it open reserves the port so the OS can't reuse it mid-test.
+        bound = socket.socket()
+        bound.bind(("127.0.0.1", 0))
+        port = bound.getsockname()[1]
+        try:
+            with patch.dict(os.environ, {}, clear=True):
+                assert MCPConfig(mcp_server_port=port).server_reachable() is False
+        finally:
+            bound.close()
 
     def test_mcp_config_with_external_url(self):
         """Test MCP config with external URL."""
