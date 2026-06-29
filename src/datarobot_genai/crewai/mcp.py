@@ -19,10 +19,8 @@ This module provides MCP server connection management for CrewAI agents.
 """
 
 import logging
-import socket
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from urllib.parse import urlparse
 
 from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
@@ -31,27 +29,6 @@ from pydantic import BaseModel
 from datarobot_genai.core.mcp import MCPConfig
 
 logger = logging.getLogger(__name__)
-
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
-
-
-def _local_mcp_server_reachable(url: str, timeout: float = 1.0) -> bool:
-    """Probe a loopback MCP URL for a listening server.
-
-    Returns False only when the URL targets loopback and the connection is
-    refused (the "local MCP server not started" case) — letting the caller skip
-    the blocking MCPServerAdapter setup, which otherwise stalls ~30s and leaks a
-    background-thread traceback. Remote URLs are not probed and return True.
-    """
-    parsed = urlparse(url)
-    if parsed.hostname not in _LOOPBACK_HOSTS:
-        return True
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        with socket.create_connection((parsed.hostname, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
 
 
 class _EmptyArgsSchema(BaseModel):
@@ -81,7 +58,7 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
 
     # A local MCP server that isn't running would otherwise block ~30s and dump
     # a background-thread traceback; skip the adapter and degrade cleanly.
-    if not _local_mcp_server_reachable(url):
+    if mcp_config.is_local_server and not mcp_config.server_reachable():
         logger.warning(
             "Local MCP server at %s is not reachable. Continuing without MCP tools.",
             url,

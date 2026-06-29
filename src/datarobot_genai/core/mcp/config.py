@@ -15,8 +15,10 @@
 import json
 import logging
 import re
+import socket
 from typing import Any
 from typing import Literal
+from urllib.parse import urlparse
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
@@ -100,6 +102,34 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         if self._server_config is None:
             self._server_config = self._build_server_config()
         return self._server_config
+
+    @property
+    def is_local_server(self) -> bool:
+        """True when the MCP server is a local process we start (resolved via
+        mcp_server_port), as opposed to a DataRobot deployment or external URL.
+        """
+        return bool(
+            self.mcp_server_port and not self.mcp_deployment_id and not self.external_mcp_url
+        )
+
+    def server_reachable(self, timeout: float = 1.0) -> bool:
+        """TCP-probe the resolved MCP server's host:port.
+
+        A reliable up/down signal for a local server (process listening or not).
+        For remote hosts a load balancer may answer even when the MCP endpoint is
+        down, so callers should gate this with `is_local_server`.
+        """
+        config = self.server_config
+        if not config:
+            return False
+        parsed = urlparse(config["url"])
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
 
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""

@@ -14,6 +14,7 @@
 
 import json
 import os
+import socket
 from http import HTTPStatus
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -43,6 +44,39 @@ class TestMCPConfig:
         assert config.mcp_deployment_id is None
         assert config.datarobot_api_token is None
         assert config.server_config is None
+
+    def test_is_local_server_true_for_mcp_server_port(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert MCPConfig(mcp_server_port=9000).is_local_server is True
+
+    def test_is_local_server_false_for_external_url(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(external_mcp_url="https://mcp.example.com/mcp")
+        assert config.is_local_server is False
+
+    def test_is_local_server_false_when_unconfigured(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert MCPConfig().is_local_server is False
+
+    def test_server_reachable_true_when_listening(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        try:
+            with patch.dict(os.environ, {}, clear=True):
+                assert MCPConfig(mcp_server_port=port).server_reachable() is True
+        finally:
+            listener.close()
+
+    def test_server_reachable_false_when_closed(self):
+        # Reserve then release a port so nothing is listening on it.
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        closed_port = probe.getsockname()[1]
+        probe.close()
+        with patch.dict(os.environ, {}, clear=True):
+            assert MCPConfig(mcp_server_port=closed_port).server_reachable() is False
 
     def test_mcp_config_with_external_url(self):
         """Test MCP config with external URL."""
