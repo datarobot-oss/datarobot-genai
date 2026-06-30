@@ -17,3 +17,6 @@ cases:
     matrix:
       AGENT:
         - nat
+        - crewai
+        - langgraph
+        - llamaindex

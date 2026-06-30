@@ -19,10 +19,10 @@ message via ``dr_mem0_memory`` (backed by a real ``MemorySpace``), then a
 follow-up turn retrieves the fact and the inner agent recalls it in the
 response.
 
-Requires ``cases/memory.yaml`` (or equivalent env): ``AGENT=nat``,
-``WORKFLOW_FILE=workflow-memory.yaml``, and ``AGENT_MEMORY_SPACE_ID`` set
-before the dragent server starts (``E2E_PROVISION_MEMORY_SPACE=true`` handles
-that in ``run_local.py`` / CI).
+Requires ``cases/memory.yaml`` (or equivalent env): ``WORKFLOW_FILE=workflow-memory.yaml``
+and ``AGENT_MEMORY_SPACE_ID`` set before the dragent server starts
+(``E2E_PROVISION_MEMORY_SPACE=true`` handles that in ``run_local.py`` / CI).
+Works with any dragent agent framework (NAT, CrewAI, LangGraph, LlamaIndex).
 """
 
 from __future__ import annotations
@@ -35,18 +35,11 @@ import httpx
 import pytest
 from datarobot_genai.core.agents.verify import validate_sequence
 
-from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import WORKFLOW_FILE
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
-
-if AGENT != "nat":
-    pytest.skip(
-        "DataRobot Memory Service e2e tests require AGENT=nat (streaming_memory_agent).",
-        allow_module_level=True,
-    )
 
 if WORKFLOW_FILE != "workflow-memory.yaml":
     pytest.skip(
