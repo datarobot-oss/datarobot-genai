@@ -17,7 +17,7 @@
 Two responsibilities, intentionally co-located so a single import covers
 both the NAT telemetry exporter
 (``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
-the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry_agent``):
+the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 
 * ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``DATAROBOT_API_TOKEN`` /
   ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into the values the OTel ingest
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
 # dict so the inner ``["installed"]`` write doesn't need a ``global``
-# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry_agent.py``).
+# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry/agent.py``).
 # Repeated calls — which happen via plugin discovery + custom.py in the same
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
@@ -65,10 +65,33 @@ def resolve_entity_id_from_env() -> str:
     return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
 
 
-def resolve_otel_endpoint_from_env() -> str:
+def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
+    # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
+    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+        headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
+        headers: dict[str, str] = {}
+        for header in headers_list:
+            key, value = header.split("=", 1)
+            headers[key.strip()] = value.strip()
+        return headers
+    api_key = resolve_api_key_from_env()
+    entity_id = resolve_entity_id_from_env()
+    if api_key and entity_id:
+        return {
+            "X-DataRobot-Api-Key": api_key,
+            "X-DataRobot-Entity-Id": entity_id,
+        }
+    return None
+
+
+def resolve_otel_traces_endpoint_from_env() -> str:
     # if OTEL_EXPORTER_OTLP_ENDPOINT is set: do not override it
     if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        return os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
+        # The convention for OTEL_EXPORTER_OTLP_ENDPOINT is to be base url
+        # so we need to append /v1/traces
+        otel_endpoint = os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"].rstrip("/")
+        return f"{otel_endpoint}/v1/traces"
+
     # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
     # → https://app.datarobot.com/otel/v1/traces. The OTel collector ingress
     # lives at the same host, off /otel/v1/traces, not under /api/v2. We
@@ -128,10 +151,9 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     if _BOOTSTRAP_STATE["installed"]:
         return False
 
-    api_key = resolve_api_key_from_env()
-    entity_id = resolve_entity_id_from_env()
-    endpoint = resolve_otel_endpoint_from_env()
-    if not api_key or not entity_id or not endpoint:
+    headers = resolve_datarobot_headers_from_env()
+    endpoint = resolve_otel_traces_endpoint_from_env()
+    if not headers or not endpoint:
         logger.info(
             "Skipping OTel TracerProvider bootstrap: DataRobot deployment env "
             "(MLOPS_DEPLOYMENT_ID / DATAROBOT_API_TOKEN / "
@@ -163,14 +185,11 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
 
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
-            headers={
-                "X-DataRobot-Api-Key": api_key,
-                "X-DataRobot-Entity-Id": entity_id,
-            },
+            headers=headers,
         )
         processor = BatchSpanProcessor(exporter)
 
-        from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+        from .nat_tracer import wrap_sdk_tracer_provider
 
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()
@@ -201,7 +220,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        entity_id,
+        headers["X-DataRobot-Entity-Id"],
     )
     return True
 

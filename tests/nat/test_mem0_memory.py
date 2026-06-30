@@ -27,7 +27,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind
 from opentelemetry.util._once import Once
 
-from datarobot_genai.core import telemetry_memory
+from datarobot_genai.core.telemetry import memory
 from datarobot_genai.nat import datarobot_mem0_memory
 from datarobot_genai.nat.datarobot_mem0_memory import Config
 from datarobot_genai.nat.datarobot_mem0_memory import DRMem0Editor
@@ -50,7 +50,7 @@ def memory_span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporte
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     trace.set_tracer_provider(provider)
     monkeypatch.setattr(
-        telemetry_memory,
+        memory,
         "_tracer",
         trace.get_tracer("test.nat_mem0_memory"),
     )

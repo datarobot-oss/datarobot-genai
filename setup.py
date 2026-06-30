@@ -81,7 +81,6 @@ llamaindex = core + [
 ]
 
 nat = core + [
-    "litellm>=1.83.0,<2.0.0",
     "nvidia-nat==1.7.0",
     "nvidia-nat-a2a==1.7.0",
     "nvidia-nat-opentelemetry==1.7.0",
@@ -91,9 +90,8 @@ nat = core + [
 ]
 
 dragent = nat + [
-    # 'FastAPI' object has no attribute 'add_event_handler'
-    # in fastapi_front_end_plugin_worker.py", line 328, in configure
     "starlette>=1.0.1",
+    "opentelemetry-instrumentation-fastapi>=0.43b0,<1.0.0",
 ]
 
 # Eventually NAT will be merged into dragent

@@ -50,6 +50,8 @@ middleware:
           stage: response
           type: ootb
       timeout_sec: 60
+  datarobot_otel_conventions:
+    _type: datarobot_otel_conventions
 
 
 workflow:
@@ -58,7 +60,8 @@ workflow:
   description: CrewAI planner/writer agent
   middleware:
     - datarobot_guardrails
-  max_iter: 20
+    - datarobot_otel_conventions
+  max_iter: 5  # cap the ReAct act-loop so a runaway can't stall the stream past the 60s httpx read timeout
   max_rpm: 30
   max_execution_time: 600
   allow_delegation: false

@@ -61,7 +61,7 @@ Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are 
 The NAT exporter only carries NAT's own spans. To also route framework auto-instrumentor spans (CrewAI / LangChain / LlamaIndex / OpenAI) to DataRobot, call `instrument(framework=...)` at module-import time in your agent's `register.py`, before the framework constructs any agents:
 
 ```python
-from datarobot_genai.core.telemetry_agent import instrument
+from datarobot_genai.core.telemetry.agent import instrument
 
 instrument(framework="langgraph")  # "crewai" | "langgraph" | "llamaindex" | "nat" | None
 ```
@@ -72,23 +72,29 @@ Accepted `framework` values are `"crewai"`, `"langgraph"`, `"llamaindex"`, `"nat
 
 ## Required environment
 
-The runtime reads the same environment variables from both sides (the NAT exporter and the SDK bootstrap). Inside a DataRobot deployment they are populated for you; locally you set them yourself.
+The export endpoint and auth headers are configured through the standard OpenTelemetry env vars — this is the **primary** mechanism, and in practice every environment (deployments, notebooks, local, CI) relies on it. Both span paths (the NAT `datarobot_otelcollector` exporter and the `instrument()` SDK bootstrap) read them first.
 
-| Variable | Description | Missing → |
+| Variable | Description |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP base URL; `/v1/traces` is appended. Point it at `<host>/otel` (not `<host>/otel/v1/traces`) to hit the DataRobot ingest path. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Used verbatim; |
+
+When the OTLP vars are not set, the runtime **falls back** to deriving the endpoint and headers from the DataRobot deployment env (populated for you inside a deployment):
+
+| Fallback variable | Used for | Missing → |
 |---|---|---|
-| `DATAROBOT_API_TOKEN` | API token used as `X-DataRobot-Api-Key`. | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID` | Deployment ID; auto-prefixed to form `X-DataRobot-Entity-Id`. | Silent no-op; no spans reach DataRobot. |
-| `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | Base URL; `/otel/v1/traces` is appended. | Silent no-op; no spans reach DataRobot. |
+| `DATAROBOT_API_TOKEN` | `X-DataRobot-Api-Key` header | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID` | `X-DataRobot-Entity-Id` (auto-prefixed `deployment-<id>`) | Silent no-op; no spans reach DataRobot. |
+| `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
-Optional override: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
+Two caveats regardless of which path supplies the endpoint/headers:
 
-## Verifying locally
-
-The repo ships a minimal reproducer at [`e2e-tests/dragent/base/workflow-tracing.yaml`](../../e2e-tests/dragent/base/workflow-tracing.yaml). The companion test [`e2e-tests/dragent_tests/test_otel_tracing.py`](../../e2e-tests/dragent_tests/test_otel_tracing.py) spawns a real dragent subprocess against an in-process mock OTLP collector and asserts that POSTs reach `/otel/v1/traces` carrying the `X-DataRobot-Api-Key` and `X-DataRobot-Entity-Id` headers. Use it as a template for your own integration checks.
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` being set, so set it (any value) even when you configure the export via `OTEL_EXPORTER_OTLP_*`.
+- Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
 
 ## Troubleshooting
 
-- **Data Exploration tab is empty**: Confirm the three environment variables in the table above are set in the deployment. Both sides silently skip when any is missing.
+- **Data Exploration tab is empty**: Confirm the export is configured — `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` (primary) or the `DATAROBOT_*` fallback. Both span paths silently skip when neither supplies an endpoint and headers.
 - **NAT lifecycle spans appear but framework spans don't**: `instrument(framework=...)` was not called, or was called after the framework imported. Move the call to the top of `register.py`.
 - **Framework or memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py` before the framework imports. The exporter bridges NAT context into the SDK and the bootstrap wraps the global `TracerProvider` so LangChain/LangGraph, HTTP `POST`, and memory spans share the active workflow trace.
 - **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.

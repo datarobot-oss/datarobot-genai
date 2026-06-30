@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from datarobot.fs import DataRobotFileSystem
 
 from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_client_config
@@ -95,3 +96,61 @@ def classification_dataset_id(classification_project: dict[str, Any]) -> str:
 @pytest.fixture(scope="session")
 def nonexistent_dataset_name() -> str:
     return "nonexistent_dataset_name"
+
+
+@pytest.fixture(scope="session")
+def workload_id(dr_client: Any) -> str:
+    """Workload ID for acceptance tests (``TEST_WORKLOAD_ID`` env or first from API)."""
+    override = os.environ.get("TEST_WORKLOAD_ID")
+    if override:
+        return override
+    try:
+        result = dr_client.client.get_client().get("workloads/", params={"limit": 1}).json()
+        workloads = result.get("data") or []
+        if not workloads:
+            pytest.skip("No workloads available for acceptance tests")
+        return str(workloads[0]["id"])
+    except Exception as exc:
+        pytest.skip(f"Could not list workloads for acceptance tests: {exc}")
+
+
+@pytest.fixture(scope="session")
+def nonexistent_workload_id() -> str:
+    # Workload API validates MongoDB ObjectId shape (24 hex chars); bad format → 422.
+    return "000000000000000000000001"
+
+
+_FILES_API_TEST_FILENAME = "acceptance-test.txt"
+_FILES_API_TEST_CONTENT = b"mcp files api acceptance test\n"
+
+
+@pytest.fixture(scope="session")
+def files_api_test_file(dr_client: Any) -> dict[str, str]:
+    """Create a small catalog file for Files API acceptance tests."""
+    del dr_client  # ensure DataRobot client is configured for the session
+    fs = DataRobotFileSystem()
+    try:
+        catalog_id = fs.create_catalog_item_dir()
+        file_path = f"dr://{catalog_id}/{_FILES_API_TEST_FILENAME}"
+        fs.pipe_file(file_path, value=_FILES_API_TEST_CONTENT, mode="create")
+    except Exception as exc:
+        pytest.skip(f"Could not provision Files API test file: {exc}")
+    return {"catalog_id": catalog_id, "file_path": file_path}
+
+
+@pytest.fixture(scope="session")
+def files_catalog_id(files_api_test_file: dict[str, str]) -> str:
+    """Catalog id for Files API acceptance tests."""
+    return files_api_test_file["catalog_id"]
+
+
+@pytest.fixture(scope="session")
+def files_file_path(files_api_test_file: dict[str, str]) -> str:
+    """``dr://`` path to a file for Files API acceptance tests."""
+    return files_api_test_file["file_path"]
+
+
+@pytest.fixture(scope="session")
+def nonexistent_files_path() -> str:
+    """Filesystem path that should not exist (valid catalog id shape, missing file)."""
+    return "dr://000000000000000000000001/nonexistent.txt"

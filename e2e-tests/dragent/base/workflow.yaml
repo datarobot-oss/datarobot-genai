@@ -50,6 +50,8 @@ middleware:
           stage: response
           type: ootb
       timeout_sec: 60
+  datarobot_otel_conventions:
+    _type: datarobot_otel_conventions
 
 
 workflow:
@@ -58,3 +60,4 @@ workflow:
   description: Base agent example
   middleware:
     - datarobot_guardrails
+    - datarobot_otel_conventions

@@ -16,10 +16,12 @@
 
 `drtools`-only (fastmcp-free) so both DRMCP and global-mcp can consume it. The
 CRUD tools in :mod:`datarobot_genai.drtools.panels.tools` are registered by each
-MCP server's registry; the drmcp/global-mcp wiring lands with the panel
-resources work (MODEL-23663).
+MCP server's registry. The read-only panel *resources* live alongside the other
+MCP resources in :mod:`datarobot_genai.drmcpbase.panels.resources`.
 
 Import directly from the submodules (e.g. :mod:`~datarobot_genai.drmcputils.panels.models`,
 :mod:`~datarobot_genai.drmcputils.panels.store`); this package intentionally re-exports
 nothing to avoid a public-API compatibility surface.
 """
+
+GLOBAL_MCP_ENABLED: bool = False

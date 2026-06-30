@@ -18,6 +18,12 @@ from unittest.mock import MagicMock
 
 import polars as pl
 
+from datarobot_genai.drmcp.test_utils.stubs.stub_rest_response import StubRestResponse
+from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_delete
+from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_get
+from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_patch
+from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_post
+
 # Project id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_PROJECT_ID = "test_project_123"
 
@@ -334,16 +340,6 @@ class StubDataStore:
         self.params = {"type": "jdbc", "driver": "postgresql"}
 
 
-class StubRestResponse:
-    """Stub HTTP response for client.get()/client.post() REST calls."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def json(self) -> dict[str, Any]:
-        return self._data
-
-
 class StubDRClient:
     """Stub DataRobot client for tests (canned responses; use with dr_client_stubs)."""
 
@@ -358,6 +354,8 @@ class StubDRClient:
         self.BatchPredictionJob = StubBatchPredictionJobAPI()
         self.stub_rest_get: Any = None
         self.stub_rest_post: Any = None
+        self.stub_rest_patch: Any = None
+        self.stub_rest_delete: Any = None
 
 
 def test_create_dr_client() -> StubDRClient:
@@ -461,8 +459,8 @@ def test_create_dr_client() -> StubDRClient:
         return StubUseCase(use_case_id, name=name)
 
     # --- REST method stubs for dr_module.client.get_client() ---
-    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
-        """Stub for rest_client.get() REST calls."""
+    def _stub_get_non_workload(url: str, params: dict | None) -> StubRestResponse:
+        response = StubRestResponse({"data": [], "next": None})
         if "predictionResults" in url:
             limit = (params or {}).get("limit", 100)
             rows = [
@@ -473,9 +471,9 @@ def test_create_dr_client() -> StubDRClient:
                 }
                 for i in range(min(limit, 5))
             ]
-            return StubRestResponse({"data": rows, "next": None})
-        if "externalDataStores" in url:
-            return StubRestResponse(
+            response = StubRestResponse({"data": rows, "next": None})
+        elif "externalDataStores" in url:
+            response = StubRestResponse(
                 {
                     "data": [
                         {
@@ -488,9 +486,11 @@ def test_create_dr_client() -> StubDRClient:
                     "next": None,
                 }
             )
-        if "externalDataDrivers" in url and "tables" in url:
-            return StubRestResponse({"data": [{"name": "public.users"}, {"name": "public.orders"}]})
-        if url.rstrip("/") == "deployments":
+        elif "externalDataDrivers" in url and "tables" in url:
+            response = StubRestResponse(
+                {"data": [{"name": "public.users"}, {"name": "public.orders"}]}
+            )
+        elif url.rstrip("/") == "deployments":
             all_deployments: list[dict[str, Any]] = [
                 {
                     "id": STUB_VDB_DEPLOYMENT_ID,
@@ -515,8 +515,8 @@ def test_create_dr_client() -> StubDRClient:
                     if isinstance(d.get("model"), dict)
                     and d["model"].get("targetType") == model_target_type
                 ]
-            return StubRestResponse({"data": all_deployments, "next": None})
-        if "useCases" in url:
+            response = StubRestResponse({"data": all_deployments, "next": None})
+        elif "useCases" in url:
             data: list[dict] = [
                 {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},
                 {"id": "stub_use_case_id_2", "name": "Another Use Case"},
@@ -524,11 +524,22 @@ def test_create_dr_client() -> StubDRClient:
             search = (params or {}).get("search")
             if search:
                 data = [uc for uc in data if search.lower() in uc["name"].lower()]
-            return StubRestResponse({"data": data, "next": None})
-        return StubRestResponse({"data": [], "next": None})
+            response = StubRestResponse({"data": data, "next": None})
+        return response
+
+    def stub_get(url: str, params: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for rest_client.get() REST calls."""
+        workload_response = workload_stub_get(url, params, **kwargs)
+        if workload_response is not None:
+            return workload_response
+        return _stub_get_non_workload(url, params)
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.post() REST calls."""
+        workload_response = workload_stub_post(url, json, **kwargs)
+        if workload_response is not None:
+            return workload_response
+
         if "deployments" in url and "predictions" in url:
             # vdb_query calls POST deployments/{id}/predictions/
             return StubRestResponse(
@@ -556,6 +567,20 @@ def test_create_dr_client() -> StubDRClient:
             )
         return StubRestResponse({"data": []})
 
+    def stub_patch(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
+        """Stub for rest_client.patch() REST calls."""
+        workload_response = workload_stub_patch(url, json, **kwargs)
+        if workload_response is not None:
+            return workload_response
+        return StubRestResponse({})
+
+    def stub_delete(url: str, **kwargs: Any) -> StubRestResponse:
+        """Stub for rest_client.delete() REST calls."""
+        workload_response = workload_stub_delete(url, **kwargs)
+        if workload_response is not None:
+            return workload_response
+        return StubRestResponse({})
+
     # Configure the stub methods
     client.Project.get = get_project
     client.Model.get = get_model
@@ -569,6 +594,8 @@ def test_create_dr_client() -> StubDRClient:
     # onto mock_rest after replacing client.client.
     client.stub_rest_get = stub_get
     client.stub_rest_post = stub_post
+    client.stub_rest_patch = stub_patch
+    client.stub_rest_delete = stub_delete
     return client
 
 

@@ -25,3 +25,5 @@ This package contains pre-built tools for DataRobot operations:
 - predict_realtime: Make real-time predictions
 - deployment_info: Get deployment information
 """
+
+GLOBAL_MCP_ENABLED: bool = True

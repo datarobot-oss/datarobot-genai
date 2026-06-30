@@ -31,9 +31,9 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from datarobot_genai.drtools.sandbox.base import SandboxInfraError
-from datarobot_genai.drtools.sandbox.base import SandboxResult
-from datarobot_genai.drtools.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.base import SandboxInfraError
+from datarobot_genai.drtools.core.sandbox.base import SandboxResult
+from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def classify_outcome(error: BaseException | None) -> tuple[str, str | None]:
     ----------
     error
         The exception raised by the sandbox, or ``None`` if the execution
-        returned a :class:`~datarobot_genai.drtools.sandbox.base.SandboxResult`.
+        returned a :class:`~datarobot_genai.drtools.core.sandbox.base.SandboxResult`.
 
     Returns
     -------
@@ -206,7 +206,7 @@ def _mark_span_error(span: Any, reason: str | None) -> None:
 
 
 class InstrumentedSandbox:
-    """Wraps any :class:`~datarobot_genai.drtools.sandbox.base.Sandbox` backend
+    """Wraps any :class:`~datarobot_genai.drtools.core.sandbox.base.Sandbox` backend
     and records SLI metrics + a span around each execution.
 
     Because it composes the ``Sandbox`` Protocol rather than subclassing a

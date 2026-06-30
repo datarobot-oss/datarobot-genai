@@ -23,13 +23,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from datarobot_genai.drtools.sandbox import observability as obs
-from datarobot_genai.drtools.sandbox.base import SandboxError
-from datarobot_genai.drtools.sandbox.base import SandboxInfraError
-from datarobot_genai.drtools.sandbox.base import SandboxResult
-from datarobot_genai.drtools.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.sandbox.observability import InstrumentedSandbox
-from datarobot_genai.drtools.sandbox.observability import classify_outcome
+from datarobot_genai.drtools.core.sandbox import observability as obs
+from datarobot_genai.drtools.core.sandbox.base import SandboxError
+from datarobot_genai.drtools.core.sandbox.base import SandboxInfraError
+from datarobot_genai.drtools.core.sandbox.base import SandboxResult
+from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.observability import InstrumentedSandbox
+from datarobot_genai.drtools.core.sandbox.observability import classify_outcome
 
 
 def test_success_when_no_error() -> None:

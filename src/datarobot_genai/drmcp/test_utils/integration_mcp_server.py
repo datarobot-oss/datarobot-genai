@@ -42,6 +42,7 @@ from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import test_create_dr_client
+from datarobot_genai.drmcp.test_utils.stubs.files_api_stubs import apply_files_api_stubs
 from datarobot_genai.drmcp.test_utils.stubs.prediction_result_stub import (
     test_create_prediction_result,
 )
@@ -146,6 +147,21 @@ def _stub_request_user_dr_sdk(*, headers_auth_only: bool = True) -> Generator[An
     yield dr
 
 
+def _make_stub_request_user_dr_client(
+    mock_rest: MagicMock,
+) -> Any:
+    """Return a stub for request_user_dr_client that skips client_configuration."""
+
+    @contextmanager
+    def _stub_request_user_dr_client(
+        *, headers_auth_only: bool = True
+    ) -> Generator[MagicMock, None, None]:
+        del headers_auth_only
+        yield mock_rest
+
+    return _stub_request_user_dr_client
+
+
 def _patch_datarobot_token_for_stdio() -> None:
     """Patch get_datarobot_access_token for stdio (no headers)."""
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
@@ -196,17 +212,23 @@ def _apply_dr_client_stubs() -> None:
         mock_rest.get = stub_dr.stub_rest_get
     if stub_dr.stub_rest_post:
         mock_rest.post = stub_dr.stub_rest_post
+    if stub_dr.stub_rest_patch:
+        mock_rest.patch = stub_dr.stub_rest_patch
+    if stub_dr.stub_rest_delete:
+        mock_rest.delete = stub_dr.stub_rest_delete
     stub_dr.client = MagicMock()
     stub_dr.client.get_client = lambda: mock_rest
 
     _apply_dr_sdk_stubs(stub_dr, mock_rest)
 
     tools_datarobot_client.request_user_dr_sdk = _stub_request_user_dr_sdk
+    tools_datarobot_client.request_user_dr_client = _make_stub_request_user_dr_client(mock_rest)
     thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
     thread_safe_client.request_user_client = _stub_thread_safe_request_user_client  # type: ignore[method-assign]
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()
     _apply_prompt_stubs()
+    apply_files_api_stubs()
 
 
 def main() -> None:

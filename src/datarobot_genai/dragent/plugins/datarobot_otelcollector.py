@@ -23,13 +23,8 @@ This exporter mirrors the conventions documented in DataRobot's
 ``datarobot-external-agent-monitoring`` skill (see
 ``datarobot-oss/datarobot-agent-skills``), adapted to NAT's plugin model:
 
-* Headers are passed directly to the exporter — never via
-  ``OTEL_EXPORTER_OTLP_*`` env vars, which some frameworks misinterpret.
-* ``datarobot_entity_id`` uses the ``deployment-<id>`` shape. When omitted it
-  is auto-derived from ``MLOPS_DEPLOYMENT_ID`` (the bare deployment ID
-  exposed inside a DataRobot deployment) with the ``deployment-`` prefix
-  auto-prepended.
-* ``datarobot_api_key`` defaults to ``DATAROBOT_API_TOKEN``.
+* Headers are passed directly to the exporter, not relying on ``OTEL_EXPORTER_OTLP_*`` env vars,
+  which some frameworks misinterpret.
 * ``endpoint`` defaults to ``<DR base host>/otel/v1/traces`` derived from
   ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT`` (the OTel
   collector ingress lives at the same host as the DR API, off
@@ -50,13 +45,10 @@ pin them in ``workflow.yaml`` to point at a non-default collector.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import AsyncGenerator
 
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_telemetry_exporter
-from nat.data_models.common import SerializableSecretStr
-from nat.data_models.common import get_secret_value
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.telemetry_exporter import TelemetryExporterBaseConfig
 from nat.observability.mixin.batch_config_mixin import BatchConfigMixin
@@ -64,15 +56,12 @@ from nat.observability.mixin.collector_config_mixin import CollectorConfigMixin
 from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
 from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_version
 from pydantic import Field
-from pydantic import field_validator
 
-from datarobot_genai.core.datarobot_otel import ENTITY_ID_PREFIX
-from datarobot_genai.core.datarobot_otel import resolve_api_key_from_env
-from datarobot_genai.core.datarobot_otel import resolve_entity_id_from_env
-from datarobot_genai.core.datarobot_otel import resolve_otel_endpoint_from_env
-from datarobot_genai.core.telemetry_nat_context import pop_nat_span_context
-from datarobot_genai.core.telemetry_nat_context import push_nat_span_context
-from datarobot_genai.core.telemetry_nat_context import reset_nat_span_context
+from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
+from datarobot_genai.core.telemetry.datarobot_otel import resolve_otel_traces_endpoint_from_env
+from datarobot_genai.core.telemetry.nat_context import pop_nat_span_context
+from datarobot_genai.core.telemetry.nat_context import push_nat_span_context
+from datarobot_genai.core.telemetry.nat_context import reset_nat_span_context
 
 logger = logging.getLogger(__name__)
 
@@ -139,30 +128,12 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
     """
 
     endpoint: str = Field(
-        default_factory=resolve_otel_endpoint_from_env,
+        default_factory=resolve_otel_traces_endpoint_from_env,
         description=(
             "OTLP/HTTP endpoint for the DataRobot OTel collector. If "
             "omitted, derived from DATAROBOT_PUBLIC_API_ENDPOINT / "
             "DATAROBOT_ENDPOINT by stripping any path (e.g. /api/v2) and "
             "appending /otel/v1/traces."
-        ),
-    )
-    datarobot_api_key: SerializableSecretStr = Field(
-        default_factory=lambda: SerializableSecretStr(resolve_api_key_from_env()),
-        description=(
-            "DataRobot API key sent as the X-DataRobot-Api-Key header. If "
-            "omitted, derived from the DATAROBOT_API_TOKEN env var."
-        ),
-    )
-    datarobot_entity_id: str = Field(
-        default_factory=resolve_entity_id_from_env,
-        description=(
-            "DataRobot entity identifier sent as the X-DataRobot-Entity-Id "
-            "header. Must use the prefixed form 'deployment-<id>' (e.g. "
-            "'deployment-abc123') for shell deployments created by the "
-            "datarobot-external-agent-monitoring skill. If omitted, derived "
-            "from MLOPS_DEPLOYMENT_ID with the 'deployment-' prefix "
-            "auto-prepended."
         ),
     )
     extra_headers: dict[str, str] = Field(
@@ -177,24 +148,6 @@ class DataRobotOtelCollectorTelemetryExporter(  # type: ignore[call-arg]
         description="The resource attributes to add to the span.",
     )
 
-    @field_validator("datarobot_entity_id")
-    @classmethod
-    def _validate_entity_id_prefix(cls, value: str) -> str:
-        # Empty is permitted because the auto-derive path may legitimately
-        # return an empty string when MLOPS_DEPLOYMENT_ID is not set (e.g.
-        # local dev). Any non-empty value must still match the
-        # 'deployment-<id>' shape documented in the DR
-        # external-agent-monitoring skill.
-        if value and not value.startswith(ENTITY_ID_PREFIX):
-            raise ValueError(
-                "datarobot_entity_id must be of the form 'deployment-<id>' "
-                f"(got {value!r}). Inside a DataRobot deployment, omit the "
-                "field — it is auto-derived from MLOPS_DEPLOYMENT_ID. For "
-                "local dev, run create_shell_deployment.py from the "
-                "datarobot-external-agent-monitoring skill."
-            )
-        return value
-
 
 @register_telemetry_exporter(config_type=DataRobotOtelCollectorTelemetryExporter)
 async def datarobot_otelcollector_telemetry_exporter(
@@ -202,18 +155,7 @@ async def datarobot_otelcollector_telemetry_exporter(
     builder: Builder,
 ) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
-    # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
-    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-        headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
-        headers: dict[str, str] = {}
-        for header in headers_list:
-            key, value = header.split("=", 1)
-            headers[key.strip()] = value.strip()
-    else:
-        headers = {
-            "X-DataRobot-Api-Key": get_secret_value(config.datarobot_api_key),
-            "X-DataRobot-Entity-Id": config.datarobot_entity_id,
-        }
+    headers = resolve_datarobot_headers_from_env() or {}
     # Caller-supplied headers win on collision; lets you e.g. add request-
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)
@@ -233,10 +175,10 @@ async def datarobot_otelcollector_telemetry_exporter(
     }
 
     # Never log the secret. Sorted keys only.
-    logger.debug(
+    logger.info(
         "Configuring datarobot_otelcollector exporter endpoint=%s entity_id=%s header_keys=%s",
         config.endpoint,
-        config.datarobot_entity_id,
+        headers.get("X-DataRobot-Entity-Id", ""),
         sorted(headers.keys()),
     )
 

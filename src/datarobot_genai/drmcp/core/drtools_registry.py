@@ -22,6 +22,7 @@ from typing import Any
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcputils.feature_flags import FeatureFlag
 from datarobot_genai.drmcputils.feature_flags import is_tool_feature_enabled
+from datarobot_genai.drmcputils.tool_gallery import DRTOOLS_PRIVATE_METADATA_KEYS
 from datarobot_genai.drtools.core import get_registered_tools
 
 from .clients import setup_and_return_dr_api_client_with_static_config_in_container
@@ -42,7 +43,7 @@ def _static_account_flag_enabled(feature_flag_name: str) -> bool:
 
 
 def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
-    """Register a drtools function with the MCP server.
+    """Register a drtools tool function with the MCP server.
 
     If ``metadata`` contains a ``feature_flag`` key, the named DR entitlement
     is evaluated for the static container account at registration time via the
@@ -66,17 +67,22 @@ def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
         )
         return
 
+    # Strip private @tool_metadata keys that must not reach the MCP client
+    # (UI/gallery metadata and server-side registration hints).
+    for key in DRTOOLS_PRIVATE_METADATA_KEYS:
+        metadata.pop(key, None)
+
     # Apply the dr_mcp_tool decorator with the metadata
     dr_mcp_tool(tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL, **metadata)(func)
 
-    logger.debug(f"Registered drtools function: {func.__name__}")
+    logger.debug(f"Registered drtools tool: {func.__name__}")
 
 
 def load_drtools_registry(module_name: str) -> None:
     """Load and register all tools from a drtools module.
 
     Args:
-        module_name: Full module name (e.g., 'datarobot_genai.drtools.predictive.deployment_info')
+        module_name: Full module name (e.g., 'datarobot_genai.drtools.panels.tools')
     """
     try:
         # Import the module first to trigger the @tool_metadata decorators
@@ -87,18 +93,14 @@ def load_drtools_registry(module_name: str) -> None:
         logger.debug(f"Importing module: {module_name}")
         importlib.import_module(module_name)
 
-        registered_tools = get_registered_tools()
-        logger.debug(f"Total registered tools in registry: {len(registered_tools)}")
-
-        # Register each tool from this module
-        registered_count = 0
-        for func, metadata in registered_tools:
-            # Check if the function belongs to this module
+        # Register each tool defined in this module
+        tool_count = 0
+        for func, metadata in get_registered_tools():
             if func.__module__ == module_name:
                 register_drtools_function(func, metadata)
-                registered_count += 1
+                tool_count += 1
 
-        logger.debug(f"Registered {registered_count} tools from {module_name}")
+        logger.debug(f"Registered {tool_count} tools from {module_name}")
 
     except ImportError as e:
         logger.debug(f"Could not import module {module_name}: {e}")

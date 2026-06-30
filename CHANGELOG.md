@@ -4,11 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.1
+- `drtools/core/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `core.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+
+## 0.20.0
+- Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- Instrumented `fastapi` in `dragent`
+- *Breaking change*: consolidated telemetry modules in one parent module:
+  - `core.telemetry_agent`=>`core.telemetry.agent`
+  - `core.telemetry_memory` => `core.telemetry.memory`
+  - `core.telemetry_nat_context` => `core.telemetry.nat_context`
+  - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
+  - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
+
+## 0.19.10
+- `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info`.
+- `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas and tracking usage.
+- `crewai`: the router LLM returns tool calls as a bare list (not a json string) and reads `supports_function_calling` from its whole failover chain.
+- `crewai`: reset each agent's executor per request — a reused crew leaked `messages`/`iterations` across requests (bedrock "tool calling without tools=" errors; text-leaked tool calls).
+
+## 0.19.9
+- `drmcp`/`drtools/files_api`: acceptance E2E tests for read-only Files API tools (`file_list`, `file_info`, `file_read`, `file_sign`) against a live MCP server with `ENABLE_FILES_API_TOOLS=true`.
+
+## 0.19.8
+- `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
+
+## 0.19.7
+- MCP - Added pre-defined MCP tool category filters and improved tool registration.
+
+## 0.19.6
+- `drmcp`/`drtools/workload`: acceptance E2E tests for read-only workload tools (`workload_list`, `bundle_list`, `artifact_get`, `workload_get`, `workload_stats`) against a live MCP server with `ENABLE_WORKLOAD_TOOLS=true`.
+
+## 0.19.5
+- `drmcp`/`drtools/workload`: integration tests for all 21 workload API MCP tools
+
+## 0.19.4
+- Added x-datarobot-external-access-token header support for okta integration
+
+## 0.19.3
+- Fixed OTEL traces endpoint resolution.
+
+## 0.19.2
+- Updated dependency constraints to fix CVEs.
+
+## 0.19.1
+- `crewai`: an empty `agent_role` streaming chunk (CrewAI's `[] Working on task:` task boundary) no longer opens an AG-UI step that is never closed → fixes the `RUN_FINISHED while steps are still active` verifier error.
+- `e2e-tests` (crewai): lower `max_iter` to 5 in the dragent crewai workflow config (was 20) so a runaway ReAct loop is forced to a final answer instead of stalling the stream past the 60s httpx read timeout (the pytest global timeout is 300s).
+- `crewai`: added a logging event listener that logs the agent/task/tool lifecycle in real time (tool calls with args, results, and attempt count at INFO; failures at WARNING; reasoning at DEBUG), so a dragent run shows what the agent is doing instead of only a stream of LiteLLM calls.
+
+## 0.19.0
+- LLM clients and LLM providers moved out from subpackage `nat` to `dragent` and respective framework folders.
+
 ## 0.18.14
-- `drtools/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `core.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+- `drmcputils/panels`: **fix** panel Files-API tags used `-` (e.g. `dr-panel-source:…`), which the DataRobot Files API rejects with a 422 (`Tag cannot contain '-'`), so every panel create/list failed against the real backend (only ever exercised against an in-memory store in tests). Tags now use `_` (`dr_panel`, `dr_panel_payload`, `dr_panel_source:…`, `dr_panel_type:…`). Verified end to end against staging.
+- `drmcpbase/panels` + `drmcp`: panels are now served by DRMCP — exposed as read-only MCP resources (`panels://{source}`, `panels://{source}/{id}`, `panels://{source}/{id}/content`) with the panel tool domain enabled via `enable_panels_tools`; adds `inspect_panel` and `view_json_panel` review tools.
+- `drmcpbase/panels`: the panel resource handlers live in `drmcpbase` (the shared resources layer) and are registered onto a server's FastMCP instance via `register_panel_resources(mcp)`, so both DRMCP and global-mcp can reuse them without reaching either server's mcp singleton.
+- `drtools/panels` + `drtools/sandbox`: **fix** the entitlement the panel/sandbox gate evaluates — it was `MCP_SANDBOX`, which the platform rejects as an invalid entitlement name (422), so the fail-closed gate denied every user. Corrected to the registered `ENABLE_MCP_SANDBOX`.
+- `drtools/sandbox`: **fix** the workload-api request to match the current API — submit to `workloads/` (not `console/workloads/`), declare the service artifact `type`/named container groups + a primary-container `port`, and carry resources as `runtime.containerGroups[].containers[].resourceAllocation` instead of the now-rejected per-container `resourceRequest` / `runtime.replicaCount`. Verified end to end against staging (workload now schedules).
 
 ## 0.18.13
-- drmcp - removed the api key enforcment on startup, we get it through the headers and if not provided we will skip the startup functionality, still required for deploy through pulumi. 
+- drmcp - removed the api key enforcment on startup, we get it through the headers and if not provided we will skip the startup functionality, still required for deploy through pulumi.
 - drtools - Removed the local_path from file_write.
 
 ## 0.18.12

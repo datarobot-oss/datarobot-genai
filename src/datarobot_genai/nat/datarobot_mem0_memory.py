@@ -55,8 +55,8 @@ from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
-from datarobot_genai.core.telemetry_memory import trace_memory_operation
-from datarobot_genai.core.telemetry_memory import truncate_memory_text
+from datarobot_genai.core.telemetry.memory import trace_memory_operation
+from datarobot_genai.core.telemetry.memory import truncate_memory_text
 
 logger = logging.getLogger(__name__)
 
