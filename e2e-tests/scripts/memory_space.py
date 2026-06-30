@@ -26,6 +26,9 @@ import os
 import sys
 import uuid
 
+import datarobot as dr
+from datarobot.models.memory import MemorySpace
+
 
 def _require_env(name: str) -> str:
     value = os.environ.get(name)
@@ -36,8 +39,6 @@ def _require_env(name: str) -> str:
 
 
 def _configure_client() -> None:
-    import datarobot as dr  # type: ignore[import-not-found]
-
     dr.Client(
         endpoint=_require_env("DATAROBOT_ENDPOINT"),
         token=_require_env("DATAROBOT_API_TOKEN"),
@@ -46,8 +47,6 @@ def _configure_client() -> None:
 
 def create_space() -> str:
     """Create a MemorySpace and print its id to stdout."""
-    from datarobot.models.memory import MemorySpace  # type: ignore[import-not-found]
-
     _configure_client()
     test_id = uuid.uuid4().hex
     space = MemorySpace.create(description=f"datarobot-genai e2e memory {test_id}")
@@ -57,8 +56,6 @@ def create_space() -> str:
 
 def delete_space(space_id: str) -> None:
     """Delete a MemorySpace by id."""
-    from datarobot.models.memory import MemorySpace  # type: ignore[import-not-found]
-
     _configure_client()
     MemorySpace(id=space_id).delete()
 
@@ -76,13 +73,6 @@ def main(argv: list[str] | None = None) -> int:
             create_space()
         else:
             delete_space(args.space_id)
-    except ImportError:
-        print(
-            "error: datarobot.models.memory is unavailable — install a DataRobot SDK "
-            "that ships MemorySpace (v3.15+).",
-            file=sys.stderr,
-        )
-        return 2
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 1
