@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.20.0
+- Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- Instrumented `fastapi` in `dragent`
+- *Breaking change*: consolidated telemetry modules in one parent module:
+  - `core.telemetry_agent`=>`core.telemetry.agent`
+  - `core.telemetry_memory` => `core.telemetry.memory`
+  - `core.telemetry_nat_context` => `core.telemetry.nat_context`
+  - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
+  - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
+
 ## 0.19.10
 - `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info`.
 - `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas and tracking usage.

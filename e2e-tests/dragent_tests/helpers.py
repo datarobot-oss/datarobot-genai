@@ -24,10 +24,38 @@ from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
+from dragent_tests.mock_otel_collector import OTLP_TRACES_PATH
+from dragent_tests.mock_otel_collector import MockOtelCollector
+
 BASE_URL = "http://localhost:8080"
 
 GENERATE_STREAM_PATH = "/generate/stream"
 GENERATE_PATH = "/generate"
+
+# --- OpenTelemetry tracing -------------------------------------------------
+# The dragent server (started before pytest) is configured to export spans to
+# the in-process mock collector via OTEL_EXPORTER_OTLP_ENDPOINT /
+# OTEL_EXPORTER_OTLP_HEADERS. These constants MUST match the values the server
+# is launched with in ``e2e-tests/dragent/Taskfile.yaml``.
+MOCK_OTEL_COLLECTOR_PORT = int(os.environ.get("MOCK_OTEL_COLLECTOR_PORT", "4318"))
+# OTLP base endpoint the server exports to; ``/v1/traces`` is appended by the
+# DataRobot exporter (see resolve_otel_traces_endpoint_from_env).
+OTEL_EXPORTER_OTLP_ENDPOINT = f"http://localhost:{MOCK_OTEL_COLLECTOR_PORT}/otel"
+# Sentinel DataRobot auth headers; the mock collector does not validate them,
+# the tests only assert they reached the ingest unmodified.
+OTEL_API_KEY = "e2e-otel-token"
+OTEL_ENTITY_ID = "deployment-e2e-test"
+OTEL_EXPORTER_OTLP_HEADERS = (
+    f"X-DataRobot-Api-Key={OTEL_API_KEY},X-DataRobot-Entity-Id={OTEL_ENTITY_ID}"
+)
+
+# Span attributes that map to the deployment Tracing table columns, per
+# https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-tracing-code.html#map-spans-and-attributes-to-the-tracing-table
+# Mirrors the constants in
+# ``datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware``.
+GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
+GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
+TOOL_NAME = "tool_name"  # Tools column
 
 AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
@@ -65,11 +93,14 @@ def workflow_file() -> Path:
     return agent_dir() / WORKFLOW_FILE
 
 
-def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]
+def build_chat_completion(
+    content: str = "Say 'hello world' and nothing else.", stream: bool = False
+) -> dict:  # type: ignore[type-arg]
     """Build the one-shot chat completion payload used by the inline runner tests."""
     return {
         "model": "unknown",
         "messages": [{"role": "user", "content": content}],
+        "stream": stream,
     }
 
 
@@ -167,3 +198,78 @@ def collect_text(ag_ui_events: list[Event]) -> str:  # type: ignore[type-arg]
         if event.type in (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK):
             parts.append(event.delta)
     return "".join(parts)
+
+
+def _assert_datarobot_auth_headers(collector: MockOtelCollector) -> None:
+    """At least one trace export must carry the DataRobot ingest auth headers.
+
+    HTTP header names are case-insensitive, so compare on lowercased keys
+    rather than relying on the exporter's exact casing.
+    """
+
+    def lower(headers: dict[str, str]) -> dict[str, str]:
+        return {k.lower(): v for k, v in headers.items()}
+
+    authed = [
+        request
+        for request in collector.requests
+        if request.path == OTLP_TRACES_PATH
+        and lower(request.headers).get("x-datarobot-api-key") == OTEL_API_KEY
+        and lower(request.headers).get("x-datarobot-entity-id") == OTEL_ENTITY_ID
+    ]
+    assert authed, (
+        f"Expected ≥ 1 POST to {OTLP_TRACES_PATH} with DR auth headers "
+        f"(X-DataRobot-Api-Key={OTEL_API_KEY}, X-DataRobot-Entity-Id={OTEL_ENTITY_ID}); "
+        f"captured {len(collector.requests)} request(s) at paths "
+        f"{sorted({r.path for r in collector.requests})} with header keys "
+        f"{[sorted(r.headers.keys()) for r in collector.requests if r.path == OTLP_TRACES_PATH]}."
+    )
+
+
+def assert_tracing_conventions(
+    collector: MockOtelCollector,
+    prompt: str,
+    *,
+    expect_tool_name: bool = False,
+    timeout: float = 30.0,
+) -> None:
+    """Assert the agent exported DataRobot Tracing-table spans for *prompt*.
+
+    Finds this request's spans by ``gen_ai.prompt`` (the verbatim user message
+    recorded by the ``datarobot_otel_conventions`` middleware), then asserts the
+    convention attributes are present:
+
+    * ``gen_ai.prompt`` and ``gen_ai.completion`` on the per-invocation
+      ``datarobot_agent`` span, and
+    * the export carried the DataRobot ingest auth headers.
+
+    When *expect_tool_name* is set, also requires a ``tool_name`` span in the
+    same trace (frameworks that surface tool calls as AG-UI events).
+    """
+    agent_spans = collector.wait_for_spans(
+        lambda span: span.attributes.get(GEN_AI_PROMPT) == prompt
+        and GEN_AI_COMPLETION in span.attributes,
+        timeout=timeout,
+    )
+    if not agent_spans:
+        observed = sorted(
+            str(s.attributes[GEN_AI_PROMPT])
+            for s in collector.spans()
+            if GEN_AI_PROMPT in s.attributes
+        )
+        raise AssertionError(
+            f"No exported span carried {GEN_AI_PROMPT}=={prompt!r} together with "
+            f"{GEN_AI_COMPLETION}. Observed prompts: {observed}"
+        )
+
+    _assert_datarobot_auth_headers(collector)
+
+    if expect_tool_name:
+        trace_ids = {span.trace_id for span in agent_spans}
+        spans_in_trace = [s for s in collector.spans() if s.trace_id in trace_ids]
+        tool_spans = [s for s in spans_in_trace if s.attributes.get(TOOL_NAME)]
+        assert tool_spans, (
+            f"Expected a span carrying {TOOL_NAME!r} in the same trace as the "
+            f"agent span for the tool-calling request; "
+            f"got span names {sorted({s.name for s in spans_in_trace})}."
+        )

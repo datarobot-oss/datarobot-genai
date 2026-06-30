@@ -4,6 +4,15 @@ version: '3'
 
 env:
   WORKFLOW_FILE: '{{.WORKFLOW_FILE | default "workflow.yaml"}}'
+  # Route OTel spans to the in-process mock collector the e2e tests bind (see
+  # dragent_tests/conftest.py::otel_collector and helpers.py OTEL_* constants).
+  # MLOPS_DEPLOYMENT_ID unlocks the SDK TracerProvider bootstrap in
+  # datarobot_genai.core.telemetry.agent.instrument(), without which the
+  # datarobot_otel_conventions spans (gen_ai.prompt / gen_ai.completion) are
+  # no-ops. The endpoint/headers must match helpers.OTEL_* exactly.
+  MLOPS_DEPLOYMENT_ID: '{{.MLOPS_DEPLOYMENT_ID | default "e2e-test"}}'
+  OTEL_EXPORTER_OTLP_ENDPOINT: '{{.OTEL_EXPORTER_OTLP_ENDPOINT | default "http://localhost:4318/otel"}}'
+  OTEL_EXPORTER_OTLP_HEADERS: '{{.OTEL_EXPORTER_OTLP_HEADERS | default "X-DataRobot-Api-Key=e2e-otel-token,X-DataRobot-Entity-Id=deployment-e2e-test"}}'
 
 vars:
   AGENT_PORT: 8080
