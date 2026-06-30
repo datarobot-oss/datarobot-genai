@@ -19,8 +19,10 @@ This module provides MCP server connection management for CrewAI agents.
 """
 
 import logging
+import socket
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from crewai.tools import BaseTool
 from crewai_tools import MCPServerAdapter
@@ -29,6 +31,23 @@ from pydantic import BaseModel
 from datarobot_genai.core.mcp import MCPConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
+    """TCP-probe a local MCP server's host:port.
+
+    CrewAI connects via crewai_tools/mcpadapt on a background thread, so an
+    unstarted local server otherwise blocks ~30s and leaks a thread traceback.
+    A quick probe lets us skip the adapter and degrade cleanly instead.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class _EmptyArgsSchema(BaseModel):
@@ -55,6 +74,17 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
         return
 
     url = mcp_config.server_config["url"]
+
+    # A local MCP server that isn't running would otherwise block ~30s and dump
+    # a background-thread traceback; skip the adapter and degrade cleanly.
+    if mcp_config.is_local_server and not _local_server_reachable(url):
+        logger.warning(
+            "Local MCP server at %s is not reachable. Continuing without MCP tools.",
+            url,
+        )
+        yield []
+        return
+
     logger.info("Connecting to MCP server: %s", url)
 
     try:

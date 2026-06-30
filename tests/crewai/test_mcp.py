@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import socket
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.crewai.mcp import _EmptyArgsSchema
+from datarobot_genai.crewai.mcp import _local_server_reachable
 from datarobot_genai.crewai.mcp import _sanitize_tool_schemas
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
@@ -208,3 +210,48 @@ class TestMCPToolsContext:
         ):
             async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
+
+    async def test_unreachable_local_server_skips_adapter(self):
+        """A local MCP server that isn't running short-circuits before the adapter
+        is built, avoiding the ~30s blocking connect and background-thread traceback.
+        """
+        # Hold a bound-but-not-listening socket: connections are refused, and
+        # keeping it open reserves the port so the OS can't reuse it mid-test.
+        bound = socket.socket()
+        bound.bind(("127.0.0.1", 0))
+        closed_port = bound.getsockname()[1]
+        try:
+            mcp_config = MCPConfig(mcp_server_port=closed_port)
+            with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock_adapter:
+                instance = MagicMock()
+                instance.__enter__.return_value = []
+                instance.__exit__.return_value = None
+                mock_adapter.return_value = instance
+                async with mcp_tools_context(mcp_config) as tools:
+                    assert tools == []
+                mock_adapter.assert_not_called()
+        finally:
+            bound.close()
+
+
+class TestLocalServerReachable:
+    def test_reachable_when_listening(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(128)
+        port = listener.getsockname()[1]
+        try:
+            assert _local_server_reachable(f"http://localhost:{port}/mcp") is True
+        finally:
+            listener.close()
+
+    def test_unreachable_when_closed(self):
+        # Hold a bound-but-not-listening socket: connections are refused, and
+        # keeping it open reserves the port so the OS can't reuse it mid-test.
+        bound = socket.socket()
+        bound.bind(("127.0.0.1", 0))
+        port = bound.getsockname()[1]
+        try:
+            assert _local_server_reachable(f"http://localhost:{port}/mcp") is False
+        finally:
+            bound.close()
