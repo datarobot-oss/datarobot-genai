@@ -345,10 +345,14 @@ def _format_table(combos: list[Combination]) -> str:
 
 
 def _add_common_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("case_file",
-                   help="Case YAML to read. A bare file name (e.g. "
-                        "'pr-tests.yaml') is resolved against e2e-tests/cases/; "
-                        "anything containing a slash is used as-is.")
+    p.add_argument(
+        "case_files",
+        nargs="+",
+        metavar="case_file",
+        help="One or more case YAML files to read. A bare file name (e.g. "
+             "'pr-tests.yaml') is resolved against e2e-tests/cases/; anything "
+             "containing a slash is used as-is.",
+    )
     p.add_argument("--case", default=None,
                    help="Limit to a single case by name.")
     p.add_argument(
@@ -373,8 +377,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        case_path = resolve_case_file(args.case_file)
-        cases = load_cases(case_path)
+        cases: list[Case] = []
+        for case_file in args.case_files:
+            cases.extend(load_cases(resolve_case_file(case_file)))
         agents = _parse_csv(args.agents)
         combos = expand(cases, case_name=args.case, agents=agents)
     except (ValueError, FileNotFoundError) as exc:

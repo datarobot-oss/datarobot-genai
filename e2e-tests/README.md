@@ -90,9 +90,11 @@ Tests vary by agent and LLM context; some cases are skipped or interpreted diffe
 # Full lifecycle (provision MemorySpace → start dragent → pytest → cleanup):
 task cases-run -- memory.yaml
 
-# Or trigger the same matrix in CI:
+# Or trigger only the memory matrix in CI:
 task cases-ci -- memory.yaml
 ```
+
+On pull requests (and pushes to `main`), the `E2E Tests` workflow includes `memory.yaml` alongside `pr-tests.yaml`, filtered to agents whose code changed.
 
 When iterating with `--no-server`, export `AGENT_MEMORY_SPACE_ID` yourself before starting dragent (the runner skips provisioning in that mode unless the variable is already set).
 
