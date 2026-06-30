@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       agents: ${{ steps.matrix.outputs.agents }}
+      memory_changed: ${{ steps.filter.outputs.memory }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +45,10 @@ jobs:
               - 'src/datarobot_genai/nat/**'
             base:
               - 'e2e-tests/dragent/base/**'
+            memory:
+              - 'src/datarobot_genai/dragent/plugins/datarobot_mem0_memory.py'
+              - 'src/datarobot_genai/dragent/plugins/streaming_memory_agent.py'
+              - 'src/datarobot_genai/core/memory/**'
             core:
               - 'src/datarobot_genai/dragent/**'
               - 'src/datarobot_genai/core/**'
@@ -75,7 +80,8 @@ jobs:
       always() && (
         github.event_name == 'workflow_dispatch' ||
         (needs.detect-changes.result == 'success' &&
-         needs.detect-changes.outputs.agents != '[]')
+         (needs.detect-changes.outputs.agents != '[]' ||
+          needs.detect-changes.outputs.memory_changed == 'true'))
       )
     runs-on: ubuntu-latest
     outputs:
@@ -96,9 +102,14 @@ jobs:
           else
             # PR / push: filter the matrix to agents whose code changed.
             agents_csv=$(echo '${{ needs.detect-changes.outputs.agents }}' | jq -r 'join(",")')
+            extra_args=()
+            if [[ "${{ needs.detect-changes.outputs.memory_changed }}" == "true" ]]; then
+              extra_args+=(--all-agents-cases dr-memory-service)
+            fi
             matrix=$(uv run --script scripts/cases.py generate-matrix \
               pr-tests.yaml \
-              --agents "$agents_csv")
+              --agents "$agents_csv" \
+              "${extra_args[@]}")
           fi
           # Empty `include:` would make the downstream job blow up
           # ("Matrix vector 'include' does not contain any values"); emit a
