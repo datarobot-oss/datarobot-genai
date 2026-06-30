@@ -26,9 +26,25 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from dotenv import load_dotenv
 
 from .helpers import BASE_URL
+from .helpers import MOCK_OTEL_COLLECTOR_PORT
+from .mock_otel_collector import MockOtelCollector
 
 # Load .env from e2e-tests root
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def otel_collector() -> Generator[MockOtelCollector]:  # type: ignore[type-arg]
+    """In-process OTLP collector the dragent server exports spans to.
+
+    Bound to a fixed port (matching the server's ``OTEL_EXPORTER_OTLP_ENDPOINT``
+    in ``dragent/Taskfile.yaml``) and kept up for the whole session so any test
+    can verify exported spans via ``helpers.assert_tracing_conventions``.
+    Autouse so it is always listening, even for tests that don't assert on
+    traces — otherwise the server's exports would just be dropped.
+    """
+    with MockOtelCollector(port=MOCK_OTEL_COLLECTOR_PORT) as collector:
+        yield collector
 
 
 @pytest.fixture(scope="session")

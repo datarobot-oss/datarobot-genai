@@ -17,7 +17,7 @@
 Two responsibilities, intentionally co-located so a single import covers
 both the NAT telemetry exporter
 (``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
-the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry_agent``):
+the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 
 * ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``DATAROBOT_API_TOKEN`` /
   ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into the values the OTel ingest
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
 # dict so the inner ``["installed"]`` write doesn't need a ``global``
-# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry_agent.py``).
+# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry/agent.py``).
 # Repeated calls — which happen via plugin discovery + custom.py in the same
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
@@ -189,7 +189,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         )
         processor = BatchSpanProcessor(exporter)
 
-        from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+        from .nat_tracer import wrap_sdk_tracer_provider
 
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()

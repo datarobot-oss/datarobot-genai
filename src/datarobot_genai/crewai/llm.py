@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
+import uuid
 from typing import Any
 
 from crewai import LLM
+from crewai.events import crewai_event_bus
+from crewai.events.types.llm_events import LLMCallFailedEvent
+from crewai.events.types.llm_events import LLMStreamChunkEvent
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
@@ -25,6 +28,34 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.model_info import get_model_info
+
+
+def _model_supports_tool_calling(model: str) -> bool | None:
+    """Tool-calling support for *model* via litellm, or ``None`` if unresolved."""
+    try:
+        info = get_model_info(model)
+    except Exception:
+        return None
+    return bool(info.get("supports_function_calling")) or bool(info.get("supports_tool_choice"))
+
+
+# Keywords that are invalid when null/empty under JSON Schema draft 2020-12.
+_EMPTY_INVALID_KEYS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems", "enum"})
+
+
+def _sanitize_tool_schema(node: Any) -> Any:
+    """Recursively drop null values + empty array-keywords (``anyOf: []``) that bedrock rejects."""
+    if isinstance(node, dict):
+        cleaned = {}
+        for key, value in node.items():
+            if value is None or (key in _EMPTY_INVALID_KEYS and value == []):
+                continue
+            cleaned[key] = _sanitize_tool_schema(value)
+        return cleaned
+    if isinstance(node, list):
+        return [_sanitize_tool_schema(item) for item in node]
+    return node
 
 
 class LitellmStopWordLLM(LLM):
@@ -42,6 +73,42 @@ class LitellmStopWordLLM(LLM):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.is_litellm = True
+
+    def _collect_chunk(
+        self,
+        chunk: Any,
+        text: list[str],
+        tool_calls: list[Any],
+        call_id: str,
+        callbacks: list | None,
+    ) -> Any:
+        """Gather a chunk's content + tool-call parts; return its usage (skips empty choices)."""
+        if chunk.choices:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                text.append(delta.content)
+                event = LLMStreamChunkEvent(chunk=delta.content, call_id=call_id)
+                crewai_event_bus.emit(self, event=event)
+                for cb in callbacks or []:
+                    if hasattr(cb, "on_llm_new_token"):
+                        cb.on_llm_new_token(delta.content)
+            if getattr(delta, "tool_calls", None):
+                tool_calls.extend(delta.tool_calls)
+        usage = getattr(chunk, "usage", None)
+        return usage if not isinstance(usage, type) else None
+
+    def _track_native_usage(self, usage: Any) -> None:
+        """Track streamed usage in CrewAI's metrics (the native loop bypasses the base path)."""
+        if usage:
+            self._track_token_usage_internal(self._usage_to_dict(usage) or {})
+
+    def _finalize_native(self, text: list[str], tool_calls: list[Any]) -> list[dict] | str:
+        """Return streamed tool calls as the bare list CrewAI runs, else truncated text."""
+        if tool_calls:
+            from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
+
+            return merge_streaming_tool_calls(tool_calls)
+        return self._apply_stop_words("".join(text))
 
     def _apply_stop_words(self, content: str) -> str:
         """Apply configured stop words, then truncate inline ReAct hallucinations."""
@@ -83,12 +150,43 @@ class LitellmStopWordLLM(LLM):
             return content
         return content[:cut_end].rstrip()
 
+    @staticmethod
+    def _wants_native_tool_calls(kwargs: dict) -> bool:
+        """CrewAI's native loop calls us with ``tools`` set and ``available_functions=None``."""
+        return bool(kwargs.get("tools")) and kwargs.get("available_functions") is None
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
-        """Enforce client-side stop-word truncation when API ignores stop parameter."""
+        """Stream and return native tool calls ourselves — CrewAI's handler drops them.
+
+        Non-native calls delegate to the base, stop-word-truncating any text result.
+        """
+        if self._wants_native_tool_calls(kwargs):
+            import litellm  # noqa: PLC0415
+
+            tools = _sanitize_tool_schema(kwargs["tools"])
+            params = self._prepare_completion_params(args[0], tools)
+            params["stream"] = True
+            call_id = str(uuid.uuid4())
+            text: list[str] = []
+            tool_calls: list[Any] = []
+            usage: Any = None
+            try:
+                for chunk in litellm.completion(**params):
+                    usage = (
+                        self._collect_chunk(
+                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                        )
+                        or usage
+                    )
+            except Exception as exc:
+                crewai_event_bus.emit(
+                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
+                )
+                raise
+            self._track_native_usage(usage)
+            return self._finalize_native(text, tool_calls)
         result = super().call(*args, **kwargs)
-        if isinstance(result, str):
-            return self._apply_stop_words(result)
-        return result
+        return self._apply_stop_words(result) if isinstance(result, str) else result
 
     def _format_messages_for_provider(self, messages: list) -> list:
         """Ensure conversation does not end with an assistant message.
@@ -105,10 +203,37 @@ class LitellmStopWordLLM(LLM):
 
     async def acall(self, *args: Any, **kwargs: Any) -> Any:
         """Async variant of :meth:`call` used by ``Crew.akickoff``."""
+        if self._wants_native_tool_calls(kwargs):
+            import litellm  # noqa: PLC0415
+
+            tools = _sanitize_tool_schema(kwargs["tools"])
+            params = self._prepare_completion_params(args[0], tools)
+            params["stream"] = True
+            call_id = str(uuid.uuid4())
+            text: list[str] = []
+            tool_calls: list[Any] = []
+            usage: Any = None
+            try:
+                async for chunk in await litellm.acompletion(**params):
+                    usage = (
+                        self._collect_chunk(
+                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                        )
+                        or usage
+                    )
+            except Exception as exc:
+                crewai_event_bus.emit(
+                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
+                )
+                raise
+            self._track_native_usage(usage)
+            return self._finalize_native(text, tool_calls)
         result = await super().acall(*args, **kwargs)
-        if isinstance(result, str):
-            return self._apply_stop_words(result)
-        return result
+        return self._apply_stop_words(result) if isinstance(result, str) else result
+
+    def supports_function_calling(self) -> bool:
+        supported = _model_supports_tool_calling(self.model)
+        return supported if supported is not None else super().supports_function_calling()
 
 
 def _crewai_model_factory(config: dict) -> LLM:
@@ -203,22 +328,15 @@ def get_router_llm(
     fallbacks: list[LLMConfig],
     router_settings: dict | None = None,
 ) -> LLM:
-    """Return a CrewAI ``LLM`` whose calls are routed through a ``litellm.Router``.
-
-    Args:
-        primary: ``LLMConfig`` for the primary model.
-        fallbacks: Ordered list of ``LLMConfig`` fallback configs.
-        router_settings: Extra kwargs forwarded to ``litellm.Router``.
-    """
-    import uuid  # noqa: PLC0415
-
-    from crewai.events import crewai_event_bus  # noqa: PLC0415
-    from crewai.events.types.llm_events import LLMStreamChunkEvent  # noqa: PLC0415
-
+    """Return a CrewAI ``LLM`` routing calls through a ``litellm.Router`` (primary → fallbacks)."""
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
     from datarobot_genai.core.router import merge_streaming_tool_calls  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
+    # The router fails over primary → fallbacks at runtime, so capability detection considers the
+    # whole chain: a placeholder/retired primary shouldn't force the router onto the ReAct path
+    # (where models can hallucinate the tool result) when a reachable fallback supports tools.
+    chain_models = [cfg.to_litellm_params().get("model", "") for cfg in (primary, *fallbacks)]
 
     class RouterLitellmOnlyLLM(LLM):
         def __new__(cls, *args: Any, **kwargs: Any) -> "RouterLitellmOnlyLLM":
@@ -229,6 +347,15 @@ def get_router_llm(
             self.is_litellm = True
             self._llm_router = router
 
+        def supports_function_calling(self) -> bool:
+            # self.model is a sentinel; report the first model in the failover chain that
+            # litellm can resolve (the primary may be a placeholder the router never uses).
+            for model in chain_models:
+                supported = _model_supports_tool_calling(model)
+                if supported is not None:
+                    return supported
+            return super().supports_function_calling()
+
         def call(
             self,
             messages: list[dict],
@@ -236,7 +363,7 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
             **kwargs: Any,
-        ) -> str:
+        ) -> list[dict] | str:
             call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
@@ -259,8 +386,10 @@ def get_router_llm(
                                 cb.on_llm_new_token(delta.content)
                 if getattr(delta, "tool_calls", None):
                     tool_calls_seen.extend(delta.tool_calls)
+            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+            # dicts; a string falls through to a final answer so the calls would never run.
             if tool_calls_seen:
-                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+                return merge_streaming_tool_calls(tool_calls_seen)
             return "".join(accumulated)
 
         async def acall(
@@ -270,7 +399,7 @@ def get_router_llm(
             callbacks: list | None = None,
             available_tools: list[dict] | None = None,
             **kwargs: Any,
-        ) -> str:
+        ) -> list[dict] | str:
             call_id = str(uuid.uuid4())
             accumulated = []
             tool_calls_seen: list[Any] = []
@@ -294,8 +423,10 @@ def get_router_llm(
                                 cb.on_llm_new_token(delta.content)
                 if getattr(delta, "tool_calls", None):
                     tool_calls_seen.extend(delta.tool_calls)
+            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+            # dicts; a string falls through to a final answer so the calls would never run.
             if tool_calls_seen:
-                return json.dumps({"tool_calls": merge_streaming_tool_calls(tool_calls_seen)})
+                return merge_streaming_tool_calls(tool_calls_seen)
             return "".join(accumulated)
 
     return RouterLitellmOnlyLLM(model="datarobot-router")

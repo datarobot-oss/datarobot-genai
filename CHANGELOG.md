@@ -4,8 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.19.8
+## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
+
+## 0.21.0
+- **Breaking** Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
+- **Breaking** Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
+
+## 0.20.1
+- `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.
+
+## 0.20.0
+- Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- Instrumented `fastapi` in `dragent`
+- *Breaking change*: consolidated telemetry modules in one parent module:
+  - `core.telemetry_agent`=>`core.telemetry.agent`
+  - `core.telemetry_memory` => `core.telemetry.memory`
+  - `core.telemetry_nat_context` => `core.telemetry.nat_context`
+  - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
+  - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
+
+## 0.19.10
+- `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info`.
+- `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas and tracking usage.
+- `crewai`: the router LLM returns tool calls as a bare list (not a json string) and reads `supports_function_calling` from its whole failover chain.
+- `crewai`: reset each agent's executor per request — a reused crew leaked `messages`/`iterations` across requests (bedrock "tool calling without tools=" errors; text-leaked tool calls).
+
+## 0.19.9
+- `drmcp`/`drtools/files_api`: acceptance E2E tests for read-only Files API tools (`file_list`, `file_info`, `file_read`, `file_sign`) against a live MCP server with `ENABLE_FILES_API_TOOLS=true`.
+
+## 0.19.8
+- `drmcp`/`drtools/files_api`: integration tests for all 9 Files API MCP tools
 
 ## 0.19.7
 - MCP - Added pre-defined MCP tool category filters and improved tool registration.
