@@ -15,8 +15,9 @@
 """Create or delete an ephemeral DataRobot MemorySpace for e2e tests.
 
 Used by ``run_local.py`` and the GitHub Actions e2e workflow when a case sets
-``E2E_PROVISION_MEMORY_SPACE=true``. Requires ``DATAROBOT_ENDPOINT`` and
-``DATAROBOT_API_TOKEN`` in the environment.
+``E2E_PROVISION_MEMORY_SPACE=true``. Requires ``DATAROBOT_ENDPOINT``,
+``DATAROBOT_API_TOKEN``, and ``LLM_DEFAULT_MODEL`` (LLM gateway model for the
+MemorySpace fact-extraction LLM) in the environment.
 """
 
 from __future__ import annotations
@@ -48,8 +49,19 @@ def _configure_client() -> None:
 def create_space() -> str:
     """Create a MemorySpace and print its id to stdout."""
     _configure_client()
+    llm_model_name = os.environ.get("LLM_DEFAULT_MODEL")
+    if not llm_model_name:
+        print(
+            "error: LLM_DEFAULT_MODEL is required so the MemorySpace can use an "
+            "LLM gateway model for fact extraction",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     test_id = uuid.uuid4().hex
-    space = MemorySpace.create(description=f"datarobot-genai e2e memory {test_id}")
+    space = MemorySpace.create(
+        description=f"datarobot-genai e2e memory {test_id}",
+        llm_model_name=llm_model_name,
+    )
     print(space.id)
     return space.id
 
