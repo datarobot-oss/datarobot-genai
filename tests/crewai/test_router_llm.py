@@ -47,6 +47,13 @@ def _make_chunk(content: str) -> Any:
     return SimpleNamespace(choices=[choice])
 
 
+def _make_tool_chunk() -> Any:
+    function = SimpleNamespace(name="generate_objectid", arguments='{"type": "deployment"}')
+    tool_call = SimpleNamespace(index=0, id="call_1", type="function", function=function)
+    delta = SimpleNamespace(content=None, tool_calls=[tool_call])
+    return SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+
 def test_get_router_llm_returns_llm_instance() -> None:
     from datarobot_genai.crewai.llm import get_router_llm
 
@@ -79,6 +86,64 @@ def test_router_llm_call_streams_and_accumulates() -> None:
     # Verify streaming mode was used
     mock_router.completion.assert_called_once()
     assert mock_router.completion.call_args.kwargs.get("stream") is True
+
+
+def test_router_llm_call_returns_tool_call_list_not_json_string() -> None:
+    """When the model emits tool calls, ``call`` returns the bare list CrewAI's native loop
+    executes — not a json string, which CrewAI would treat as a final answer (tool never runs).
+    """
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    mock_router = MagicMock()
+    mock_router.completion.return_value = iter([_make_tool_chunk()])
+    with patch("litellm.Router", return_value=mock_router):
+        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [_fb])
+
+    result = llm.call(messages=[{"role": "user", "content": "hi"}], tools=[{"type": "function"}])
+    assert isinstance(result, list)
+    assert result[0]["function"]["name"] == "generate_objectid"
+
+
+async def test_router_llm_acall_returns_tool_call_list_not_json_string() -> None:
+    """Async variant: ``acall`` returns the tool-call list, not a json string."""
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    async def fake_acompletion(*args: Any, **kwargs: Any) -> Any:
+        async def gen() -> Any:
+            yield _make_tool_chunk()
+
+        return gen()
+
+    mock_router = MagicMock()
+    mock_router.acompletion = fake_acompletion
+    with patch("litellm.Router", return_value=mock_router):
+        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        llm = get_router_llm(primary, [_fb])
+
+    result = await llm.acall(
+        messages=[{"role": "user", "content": "hi"}], tools=[{"type": "function"}]
+    )
+    assert isinstance(result, list)
+    assert result[0]["function"]["name"] == "generate_objectid"
+
+
+def test_router_llm_supports_function_calling_scans_failover_chain() -> None:
+    """Capability detection considers the whole failover chain: an unresolvable primary must not
+    force the router onto the ReAct path when a reachable fallback supports tool calling.
+    """
+    from datarobot_genai.crewai.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        primary = LLMConfig(
+            use_datarobot_llm_gateway=True, llm_default_model="invalid-model-that-does-not-exist"
+        )
+        fb = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="azure/gpt-4o-2024-11-20")
+        llm = get_router_llm(primary, [fb])
+
+    assert llm.supports_function_calling() is True
 
 
 def test_router_llm_call_invokes_callbacks_per_chunk() -> None:
