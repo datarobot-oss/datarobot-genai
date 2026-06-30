@@ -97,7 +97,7 @@ jobs:
             # PR / push: filter the matrix to agents whose code changed.
             agents_csv=$(echo '${{ needs.detect-changes.outputs.agents }}' | jq -r 'join(",")')
             matrix=$(uv run --script scripts/cases.py generate-matrix \
-              pr-tests.yaml \
+              pr-tests.yaml memory.yaml \
               --agents "$agents_csv")
           fi
           # Empty `include:` would make the downstream job blow up
