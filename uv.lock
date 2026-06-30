@@ -1130,7 +1130,7 @@ fs = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.20.1"
+version = "0.21.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1194,6 +1194,7 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1343,9 +1344,6 @@ llamaindex = [
     { name = "ragas" },
     { name = "requests" },
 ]
-memory = [
-    { name = "mem0ai" },
-]
 nat = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
@@ -1354,6 +1352,7 @@ nat = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain" },
@@ -1480,7 +1479,8 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
-    { name = "mem0ai", marker = "extra == 'memory'", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'nat'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.7.0" },
     { name = "nvidia-nat", marker = "extra == 'nat'", specifier = "==1.7.0" },
@@ -1606,7 +1606,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent", "memory"]
+provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent"]
 
 [package.metadata.requires-dev]
 dev = [

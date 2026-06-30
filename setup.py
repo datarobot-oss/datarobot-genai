@@ -43,10 +43,6 @@ core = [
     "colorama>=0.4.6,<1.0.0",
 ]
 
-memory = [
-    "mem0ai>=1.0.4,<2.0.0",
-]
-
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
@@ -87,6 +83,7 @@ nat = core + [
     "nvidia-nat-langchain==1.7.0",  # NAT built-in agents require this
     "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
+    "mem0ai>=1.0.4,<2.0.0",
 ]
 
 dragent = nat + [
@@ -176,7 +173,6 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
-    "memory": memory,
 }
 
 setup(extras_require=extras_require)
