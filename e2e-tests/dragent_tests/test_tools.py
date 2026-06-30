@@ -45,8 +45,8 @@ if AGENT == "crewai" and LLM == "deployment":
 # This adds some randomness to the test to avoid cached results
 GENERATE_OBJECTID_PROMPT = (
     "You MUST use the generate_objectid tool to generate an object ID for a deployment. "
-    "Do NOT generate it yourself. Call the generate_objectid tool with this exact input: "
-    "deployment. "
+    "Do NOT generate it yourself. Call the generate_objectid tool with its type argument "
+    "set to 'deployment'. "
     "You MUST return the exact object ID from the tool, no explanation, "
     "no formatting, no other text. Do not write anything else. Always return the "
     f"final answer to the user. Here is an ID you SHOULD NOT USE: {uuid.uuid4().hex}."

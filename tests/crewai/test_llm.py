@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -318,6 +319,151 @@ def test_litellm_stop_word_llm_call_non_string_result_passes_through(
     assert result == tool_call_result
 
 
+def _delta(content: str | None = None, tool_calls: list | None = None) -> SimpleNamespace:
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    return SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+
+def test_litellm_stop_word_llm_call_streams_and_returns_native_tool_calls(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """A native call (tools + available_functions=None) assembles streamed tool-call
+    deltas into the OpenAI-format list CrewAI's native loop executes.
+    """
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="generate_objectid", arguments='{"type":"deployment"}'),
+    )
+    chunks = [_delta(content=None, tool_calls=[tc])]
+    with patch("litellm.completion", return_value=iter(chunks)):
+        result = stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+    assert result == [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "generate_objectid", "arguments": '{"type":"deployment"}'},
+        }
+    ]
+
+
+def test_litellm_stop_word_llm_call_native_without_tool_calls_returns_truncated_text(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """A native call that streams only content returns stop-word-truncated text."""
+    chunks = [_delta(content="Final Answer: hi\nObservation: leaked")]
+    with patch("litellm.completion", return_value=iter(chunks)):
+        result = stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+    assert result == "Final Answer: hi"
+
+
+async def test_litellm_stop_word_llm_acall_streams_and_returns_native_tool_calls(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """The async native path assembles streamed tool-call deltas like the sync path."""
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="generate_objectid", arguments='{"type":"deployment"}'),
+    )
+
+    async def fake_acompletion(**kwargs: object) -> object:
+        async def gen() -> object:
+            yield _delta(content=None, tool_calls=[tc])
+
+        return gen()
+
+    with patch("litellm.acompletion", fake_acompletion):
+        result = await stop_word_llm.acall(
+            "m", tools=[{"type": "function"}], available_functions=None
+        )
+    assert result == [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "generate_objectid", "arguments": '{"type":"deployment"}'},
+        }
+    ]
+
+
+def test_litellm_stop_word_llm_call_tracks_token_usage_and_skips_empty_choices(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """Native path tracks the trailing usage chunk; the empty-choices chunk doesn't IndexError."""
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="generate_objectid", arguments="{}"),
+    )
+    tool_chunk = _delta(content=None, tool_calls=[tc])
+    usage_chunk = SimpleNamespace(choices=[], usage={"prompt_tokens": 12, "completion_tokens": 3})
+    with patch("litellm.completion", return_value=iter([tool_chunk, usage_chunk])):
+        stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+    assert stop_word_llm._token_usage["prompt_tokens"] == 12
+    assert stop_word_llm._token_usage["completion_tokens"] == 3
+    assert stop_word_llm._token_usage["total_tokens"] == 15
+
+
+def test_litellm_stop_word_llm_call_native_emits_failure_event_and_reraises(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """A mid-stream error on the native path emits LLMCallFailedEvent and re-raises."""
+    from crewai.events import crewai_event_bus
+    from crewai.events.types.llm_events import LLMCallFailedEvent
+
+    def boom(**kwargs: object) -> object:
+        raise RuntimeError("stream blew up")
+
+    emitted: list[LLMCallFailedEvent] = []
+
+    with crewai_event_bus.scoped_handlers():
+        crewai_event_bus.register_handler(LLMCallFailedEvent, lambda _s, e: emitted.append(e))
+        with patch("litellm.completion", boom), pytest.raises(RuntimeError, match="stream blew up"):
+            stop_word_llm.call("m", tools=[{"type": "function"}], available_functions=None)
+
+    assert len(emitted) == 1
+    assert "stream blew up" in emitted[0].error
+
+
+def test_sanitize_tool_schema_strips_invalid_placeholders() -> None:
+    """Strip the `anyOf: []` / `enum: null` / `items: null` placeholders mcpadapt emits.
+
+    Bedrock rejects them as not draft-2020-12 compliant, so they must go before sending.
+    """
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "jira_get_issue",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "issue_key": {
+                        "type": "string",
+                        "description": "The key.",
+                        "anyOf": [],
+                        "enum": None,
+                        "items": None,
+                    },
+                },
+                "required": ["issue_key"],
+            },
+        },
+    }
+    cleaned = crewai_llm._sanitize_tool_schema([tool])
+    params = cleaned[0]["function"]["parameters"]
+    assert params["properties"]["issue_key"] == {"type": "string", "description": "The key."}
+    assert params["required"] == ["issue_key"]
+
+
+def test_sanitize_tool_schema_keeps_valid_schema() -> None:
+    """A populated `anyOf` (and other valid keywords) must be preserved untouched."""
+    schema = {
+        "type": "object",
+        "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+    }
+    assert crewai_llm._sanitize_tool_schema(schema) == schema
+
+
 def test_litellm_stop_word_llm_call_stop_word_absent_returns_unchanged(
     stop_word_llm: LitellmStopWordLLM,
 ) -> None:
@@ -385,3 +531,20 @@ class TestFormatMessagesForProvider:
         result = llm._format_messages_for_provider(messages)
         assert result[-1] == {"role": "user", "content": "Please continue."}
         assert result[-2] == {"role": "assistant", "content": "I'll use the tool now."}
+
+
+def test_gateway_llm_derives_function_calling_from_tool_choice() -> None:
+    """Gateway models report tool-calling support even when litellm omits
+    ``supports_function_calling`` but sets ``supports_tool_choice`` (e.g. the
+    vertex llama-3.1 maas entry), since tool_choice implies function calling.
+    """
+    llm = crewai_llm.get_datarobot_gateway_llm("vertex_ai/meta/llama-3.1-70b-instruct-maas")
+    assert llm.model == "datarobot/vertex_ai/meta/llama-3.1-70b-instruct-maas"
+    assert llm.supports_function_calling() is True
+
+
+def test_external_llm_defers_function_calling_to_litellm() -> None:
+    """Non-DataRobot (external) models defer to litellm's verdict."""
+    llm = crewai_llm.get_external_llm("gpt-4o")
+    assert llm.model == "gpt-4o"
+    assert llm.supports_function_calling() is True
