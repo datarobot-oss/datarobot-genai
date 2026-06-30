@@ -32,16 +32,21 @@ memory:
     _type: dr_mem0_memory
 
 functions:
+  generate_objectid:
+    _type: generate_objectid
+    description: A tool that generates an object ID for a deployment.
   chat_agent:
     _type: per_user_tool_calling_agent
     llm_name: datarobot_llm
     middleware:
       - datarobot_guardrails
-    tool_names: []
+    tool_names:
+      - generate_objectid
     system_prompt: |
       You are a helpful assistant with long-term memory across conversations.
       When the user shares a fact to remember, acknowledge briefly.
       When asked to recall stored information, answer with ONLY the requested fact.
+      Do not use tools unless explicitly asked to generate an object ID.
 
 llms:
   datarobot_llm:
