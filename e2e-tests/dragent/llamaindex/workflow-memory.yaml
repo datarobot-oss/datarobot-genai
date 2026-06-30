@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # E2E overlay: LlamaIndex agent wrapped with streaming_memory_agent and dr_mem0_memory.
-# AGENT_MEMORY_SPACE_ID must be set in the environment (see cases/memory.yaml).
+# AGENT_MEMORY_SPACE_ID must be set in the environment (see pr-tests.yaml dr-memory-service).
 base: workflow.yaml
 
 memory:
