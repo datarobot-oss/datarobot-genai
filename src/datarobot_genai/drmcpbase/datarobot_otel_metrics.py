@@ -45,7 +45,7 @@ def resolve_metrics_endpoint_from_env() -> str:
 
     Deliberately honors only ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` — *not* the
     shared ``OTEL_EXPORTER_OTLP_ENDPOINT``. In this repo the shared var can hold a
-    traces-specific URL (e.g. ``…/otel/v1/traces``, see ``core/datarobot_otel.py``),
+    traces-specific URL (e.g. ``…/otel/v1/traces``, see ``core/telemetry/datarobot_otel.py``),
     and passing that to ``OTLPMetricExporter`` would send metrics to the wrong
     signal path. Callers that want the shared base endpoint should pass
     ``endpoint=`` explicitly (and include the ``/v1/metrics`` path themselves).
