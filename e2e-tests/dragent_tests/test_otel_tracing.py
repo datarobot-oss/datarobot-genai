@@ -133,7 +133,8 @@ def test_otel_spans_export_with_datarobot_headers(tmp_path: Path, stream: bool) 
         f"got {sorted(attribute_keys)}."
     )
 
-    if AGENT_SUPPORTS_TOOL_CALLS_STREAMING and not (not stream and AGENT == "nat"):
+    # Here we call non streaming mode all the time
+    if AGENT_SUPPORTS_TOOL_CALLS_STREAMING and not (AGENT == "nat"):
         assert TOOL_NAME in attribute_keys, (
             f"Exported spans missing expected attribute {TOOL_NAME}; "
             f"got {sorted(attribute_keys)}."

@@ -67,6 +67,8 @@ def _nat_last_user_message_content(request: ChatRequestOrMessage) -> str | None:
     for message in reversed(request.messages or []):
         if message.role == UserMessageContentRoleType.USER:
             return None if message.content is None else str(message.content)
+    if request.input_message is not None:
+        return request.input_message
     return None
 
 

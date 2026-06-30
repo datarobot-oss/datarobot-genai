@@ -82,6 +82,10 @@ def _nat_input(content: str) -> ChatRequestOrMessage:
     return ChatRequestOrMessage(messages=[Message(role="user", content=content)])
 
 
+def _nat_input_message(content: str) -> ChatRequestOrMessage:
+    return ChatRequestOrMessage(input_message=content)
+
+
 def _ag_ui_input(*messages: Any) -> RunAgentInput:
     return RunAgentInput(
         thread_id="thread-1",
@@ -148,6 +152,21 @@ def test_last_user_message_content_nat_skips_trailing_assistant() -> None:
 def test_last_user_message_content_nat_returns_none_without_user() -> None:
     request = ChatRequestOrMessage(messages=[Message(role="assistant", content="only assistant")])
     assert mod._last_user_message_content(request) is None
+
+
+def test_last_user_message_content_nat_falls_back_to_input_message() -> None:
+    # ChatRequestOrMessage may carry a bare string via input_message (no
+    # messages list); the prompt should fall back to it.
+    request = ChatRequestOrMessage(input_message="just a string prompt")
+    assert mod._last_user_message_content(request) == "just a string prompt"
+
+
+def test_last_user_message_content_nat_prefers_user_message_over_input_message() -> None:
+    # input_message and messages are mutually exclusive on the model, but the
+    # helper should still read user messages first when both are somehow present.
+    request = ChatRequestOrMessage(messages=[Message(role="user", content="from messages")])
+    request.input_message = "from input_message"
+    assert mod._last_user_message_content(request) == "from messages"
 
 
 def test_last_user_message_content_ag_ui_returns_last_user_message() -> None:
@@ -222,6 +241,21 @@ async def test_invoke_sets_prompt_and_completion_for_str_output(
     span = _span_named(span_exporter, AGENT_SPAN_NAME)
     assert span.attributes[GEN_AI_PROMPT] == "What is 2+2?"
     assert span.attributes[GEN_AI_COMPLETION] == "4"
+
+
+async def test_invoke_sets_prompt_from_input_message(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    output = await middleware.function_middleware_invoke(
+        _nat_input_message("bare string prompt"),
+        call_next=_call_next("ok"),
+        context=MagicMock(),
+    )
+
+    assert output == "ok"
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.attributes[GEN_AI_PROMPT] == "bare string prompt"
 
 
 async def test_invoke_event_response_sets_completion_and_tool_spans(
