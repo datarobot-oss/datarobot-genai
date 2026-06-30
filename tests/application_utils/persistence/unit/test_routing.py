@@ -20,14 +20,15 @@ from typing import Annotated
 
 import pytest
 
-from datarobot_genai.application_utils.memory import DRConcurrencyField
-from datarobot_genai.application_utils.memory import DRDeduplicationKey
-from datarobot_genai.application_utils.memory import DREvent
-from datarobot_genai.application_utils.memory import DRSession
-from tests.application_utils.memory.unit.conftest import ChatMessage
-from tests.application_utils.memory.unit.conftest import ChatSession
-from tests.application_utils.memory.unit.conftest import DedupeOnlySession
-from tests.application_utils.memory.unit.conftest import MinimalSession
+from datarobot_genai.application_utils.persistence import DRConcurrencyField
+from datarobot_genai.application_utils.persistence import DRDeduplicationKey
+from datarobot_genai.application_utils.persistence import DREvent
+from datarobot_genai.application_utils.persistence import DRRangeKey
+from datarobot_genai.application_utils.persistence import DRSession
+from tests.application_utils.persistence.unit.conftest import ChatMessage
+from tests.application_utils.persistence.unit.conftest import ChatSession
+from tests.application_utils.persistence.unit.conftest import DedupeOnlySession
+from tests.application_utils.persistence.unit.conftest import MinimalSession
 
 # ── Session routing: field classification ────────────────────────────────────
 
@@ -175,3 +176,44 @@ def test_routing_tables_are_independent() -> None:
     r2 = MinimalSession._get_routing()
     assert r1 is not r2
     assert r1.dedup_field != r2.dedup_field
+
+
+def test_subclass_of_concrete_session_builds_own_routing() -> None:
+    """GIVEN a subclass of an already-used DRSession subclass THEN it builds its OWN routing.
+
+    Regression: the parent's routing must not be inherited via the MRO (which would silently
+    drop the child's own declared fields from wire serialisation).
+    """
+
+    class _Base(DRSession):
+        __description_prefix__ = "b"
+
+        tenant: Annotated[str, DRRangeKey]
+        chat_id: Annotated[str, DRDeduplicationKey]
+        title: str = ""
+
+    class _Child(_Base):
+        extra: Annotated[str, DRRangeKey]
+        note: str = ""
+
+    # Build and cache the parent's routing FIRST — this is the bug trigger.
+    base_routing = _Base._get_routing()
+    child_routing = _Child._get_routing()
+
+    assert child_routing is not base_routing
+    assert base_routing.range_fields == ["tenant"]
+    assert child_routing.range_fields == ["tenant", "extra"]
+    assert "note" in child_routing.metadata_fields
+
+
+def test_marker_instance_is_treated_like_marker_class() -> None:
+    """GIVEN a field annotated with a marker INSTANCE THEN it routes like the bare class."""
+
+    class _InstanceMarkerSession(DRSession):
+        __description_prefix__ = "im"
+
+        region: Annotated[str, DRRangeKey()]  # instance, not the bare class
+
+    routing = _InstanceMarkerSession._get_routing()
+    assert routing.range_fields == ["region"]
+    assert "region" not in routing.metadata_fields

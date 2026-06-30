@@ -27,7 +27,7 @@ Examples
 .. code-block:: python
 
     from typing import Annotated
-    from datarobot_genai.application_utils.memory import (
+    from datarobot_genai.application_utils.persistence import (
         DRSession,
         DRDeduplicationKey,
         DRRangeKey,
@@ -77,18 +77,18 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import PrivateAttr
 
-from datarobot_genai.application_utils.memory._encoding import build_description
-from datarobot_genai.application_utils.memory._encoding import build_query_description
-from datarobot_genai.application_utils.memory._encoding import parse_description
-from datarobot_genai.application_utils.memory._encoding import validate_range_key
-from datarobot_genai.application_utils.memory._routing import SessionRoutingTable
-from datarobot_genai.application_utils.memory._routing import build_session_routing
-from datarobot_genai.application_utils.memory.exceptions import MemoryConflictError
-from datarobot_genai.application_utils.memory.exceptions import MemoryNotFoundError
-from datarobot_genai.application_utils.memory.markers import SYSTEM_PARTICIPANT
+from datarobot_genai.application_utils.persistence._encoding import build_description
+from datarobot_genai.application_utils.persistence._encoding import build_query_description
+from datarobot_genai.application_utils.persistence._encoding import parse_description
+from datarobot_genai.application_utils.persistence._encoding import validate_range_key
+from datarobot_genai.application_utils.persistence._routing import SessionRoutingTable
+from datarobot_genai.application_utils.persistence._routing import build_session_routing
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
 
 if TYPE_CHECKING:
-    from datarobot_genai.application_utils.memory.space import DRMemorySpace
+    from datarobot_genai.application_utils.persistence.space import DRMemorySpace
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,18 @@ class DRSession(BaseModel):
     _created_at: str = PrivateAttr(default="")
     _version: int = PrivateAttr(default=0)
     _space: Any = PrivateAttr(default=None)  # DRMemorySpace — avoids circular import
+
+    # ── __init_subclass__ ─────────────────────────────────────────────────
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Reset the routing cache so each subclass builds (and caches) its own table.
+
+        Without this, a subclass of an already-used concrete ``DRSession`` subclass would
+        inherit the parent's cached ``_dr_routing`` via the MRO and silently drop its own
+        declared fields from wire serialisation.
+        """
+        super().__init_subclass__(**kwargs)
+        cls._dr_routing = None
 
     # ── Properties ────────────────────────────────────────────────────────
 
@@ -228,6 +240,31 @@ class DRSession(BaseModel):
         return payload
 
     @classmethod
+    def _decode_range_fields(
+        cls, routing: SessionRoutingTable, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Decode ``DRRangeKey`` field values from a wire ``description`` string.
+
+        Returns a mapping of range-field name → value, or an empty mapping when there are
+        no range fields, no description, or the description cannot be parsed for this prefix.
+        """
+        description = data.get("description") or ""
+        if not (routing.range_fields and description):
+            return {}
+        try:
+            values = parse_description(cls._prefix(), description, len(routing.range_fields))
+        except ValueError:
+            logger.debug(
+                "Session %s description %r could not be parsed for prefix %r; "
+                "range fields will be absent.",
+                data.get("id"),
+                description,
+                cls._prefix(),
+            )
+            return {}
+        return dict(zip(routing.range_fields, values))
+
+    @classmethod
     def _from_wire(cls, space: DRMemorySpace, data: dict[str, Any]) -> DRSession:
         """Construct an instance from a ``SessionResponse`` wire dict."""
         routing = cls._get_routing()
@@ -242,23 +279,7 @@ class DRSession(BaseModel):
                 init_kwargs[routing.dedup_field] = raw_dedup
 
         # Range fields ← description
-        if routing.range_fields:
-            description = data.get("description") or ""
-            if description:
-                try:
-                    values = parse_description(
-                        cls._prefix(), description, len(routing.range_fields)
-                    )
-                    for fname, val in zip(routing.range_fields, values):
-                        init_kwargs[fname] = val
-                except ValueError:
-                    logger.debug(
-                        "Session %s description %r could not be parsed for prefix %r; "
-                        "range fields will be absent.",
-                        data.get("id"),
-                        description,
-                        cls._prefix(),
-                    )
+        init_kwargs.update(cls._decode_range_fields(routing, data))
 
         # Metadata fields ← metadata
         metadata = data.get("metadata") or {}
@@ -298,17 +319,8 @@ class DRSession(BaseModel):
                 setattr(self, fname, metadata[fname])
 
         # Sync range fields from description
-        if routing.range_fields:
-            description = data.get("description") or ""
-            if description:
-                try:
-                    values = parse_description(
-                        type(self)._prefix(), description, len(routing.range_fields)
-                    )
-                    for fname, val in zip(routing.range_fields, values):
-                        setattr(self, fname, val)
-                except ValueError:
-                    pass
+        for fname, val in type(self)._decode_range_fields(routing, data).items():
+            setattr(self, fname, val)
 
         # Sync dedup field
         if routing.dedup_field is not None:
@@ -357,7 +369,7 @@ class DRSession(BaseModel):
         try:
             resp = await space._client.request("POST", f"{space.id}/sessions/", json=payload)
             return cls._from_wire(space, resp.json())
-        except MemoryConflictError as exc:
+        except DRMemoryConflictError as exc:
             # Adopt the existing session
             if exc.existing_id:
                 resp = await space._client.request("GET", f"{space.id}/sessions/{exc.existing_id}/")
@@ -392,7 +404,7 @@ class DRSession(BaseModel):
 
         Raises
         ------
-        MemoryNotFoundError
+        DRMemoryNotFoundError
             If no matching session is found.
         ValueError
             If neither ``id`` nor a dedup key is supplied, or the subclass has
@@ -425,7 +437,7 @@ class DRSession(BaseModel):
             )
             items = resp.json().get("items", [])
             if not items:
-                raise MemoryNotFoundError(
+                raise DRMemoryNotFoundError(
                     f"No session with {routing.dedup_field}={dedup_value!r} in space {space.id}",
                     status_code=404,
                 )
@@ -493,9 +505,12 @@ class DRSession(BaseModel):
 
         # Build description filter from range key kwargs
         if kwargs and routing.range_fields:
-            range_values: list[str] = [
-                str(kwargs[fname]) for fname in routing.range_fields if fname in kwargs
-            ]
+            range_values: list[str] = []
+            for fname in routing.range_fields:
+                if fname in kwargs:
+                    value = str(kwargs[fname])
+                    validate_range_key(fname, value)
+                    range_values.append(value)
             if range_values:
                 query_params["description"] = build_query_description(cls._prefix(), range_values)
 
@@ -549,9 +564,14 @@ class DRSession(BaseModel):
             items = data.get("items", [])
             for item in items:
                 results.append(cls._from_wire(space, item))
-            total = data.get("total", 0)
             offset += len(items)
-            if offset >= total or not items:
+            total = data.get("total")
+            # Stop on an empty or short page (the last page), or once a known total is
+            # reached. Relying on a short page keeps pagination correct even when the
+            # server omits "total" (which previously truncated results after page one).
+            if not items or len(items) < limit:
+                break
+            if total is not None and offset >= total:
                 break
         return results
 
@@ -570,7 +590,7 @@ class DRSession(BaseModel):
 
         Raises
         ------
-        MemoryVersionConflictError
+        DRMemoryVersionConflictError
             If the session was updated concurrently (stale ``If-Match``).
 
         Examples

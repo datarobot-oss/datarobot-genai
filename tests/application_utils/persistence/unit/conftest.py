@@ -18,15 +18,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import httpx
 import pytest
 
-from datarobot_genai.application_utils.memory import DRConcurrencyField
-from datarobot_genai.application_utils.memory import DRDeduplicationKey
-from datarobot_genai.application_utils.memory import DREvent
-from datarobot_genai.application_utils.memory import DRRangeKey
-from datarobot_genai.application_utils.memory import DRSession
-from datarobot_genai.application_utils.memory import MemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRConcurrencyField
+from datarobot_genai.application_utils.persistence import DRDeduplicationKey
+from datarobot_genai.application_utils.persistence import DREvent
+from datarobot_genai.application_utils.persistence import DRRangeKey
+from datarobot_genai.application_utils.persistence import DRSession
 
 # ── Constants used across tests ───────────────────────────────────────────────
 
@@ -76,18 +74,6 @@ class ChatMessage(DREvent, session=ChatSession):
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def memory_client() -> MemoryServiceClient:
-    """Return a ``MemoryServiceClient`` with an injected httpx client (no real network)."""
-    # The injected client is replaced per-test by respx; we create a shared instance
-    # here so fixtures can reference the same base URL.
-    return MemoryServiceClient(
-        endpoint="https://app.datarobot.com/api/v2",
-        api_token="test-token",
-        http_client=httpx.AsyncClient(),
-    )
 
 
 @pytest.fixture

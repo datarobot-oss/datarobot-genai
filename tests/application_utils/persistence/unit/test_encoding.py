@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import pytest
 
-from datarobot_genai.application_utils.memory._encoding import build_description
-from datarobot_genai.application_utils.memory._encoding import build_query_description
-from datarobot_genai.application_utils.memory._encoding import parse_description
-from datarobot_genai.application_utils.memory._encoding import validate_range_key
+from datarobot_genai.application_utils.persistence._encoding import build_description
+from datarobot_genai.application_utils.persistence._encoding import build_query_description
+from datarobot_genai.application_utils.persistence._encoding import parse_description
+from datarobot_genai.application_utils.persistence._encoding import validate_range_key
 
 # ── validate_range_key ────────────────────────────────────────────────────────
 

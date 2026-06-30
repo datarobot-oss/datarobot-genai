@@ -83,13 +83,13 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import PrivateAttr
 
-from datarobot_genai.application_utils.memory._routing import EventRoutingTable
-from datarobot_genai.application_utils.memory._routing import _EVENT_RESERVED
-from datarobot_genai.application_utils.memory._routing import build_event_routing
-from datarobot_genai.application_utils.memory.exceptions import MemoryBadRequestError
+from datarobot_genai.application_utils.persistence._routing import _EVENT_RESERVED
+from datarobot_genai.application_utils.persistence._routing import EventRoutingTable
+from datarobot_genai.application_utils.persistence._routing import build_event_routing
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
 
 if TYPE_CHECKING:
-    from datarobot_genai.application_utils.memory.session import DRSession
+    from datarobot_genai.application_utils.persistence.session import DRSession
 
 logger = logging.getLogger(__name__)
 
@@ -191,17 +191,21 @@ class DREvent(BaseModel):
                 body[fname] = kwargs[fname]
         return body
 
+    @staticmethod
+    def _build_emitter(emitter_type: str, emitter_id: str | None) -> dict[str, Any]:
+        """Build the wire ``emitter`` object, omitting ``id`` when it is ``None``."""
+        emitter: dict[str, Any] = {"type": emitter_type}
+        if emitter_id is not None:
+            emitter["id"] = emitter_id
+        return emitter
+
     @classmethod
     def _to_wire_create(cls, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Build the ``CreateEventRequest`` payload."""
-        emitter: dict[str, Any] = {"type": kwargs["emitter_type"]}
-        emitter_id = kwargs.get("emitter_id")
-        if emitter_id is not None:
-            emitter["id"] = emitter_id
         return {
             "type": cls.__event_type__,
             "body": cls._to_wire_body(kwargs),
-            "emitter": emitter,
+            "emitter": cls._build_emitter(kwargs["emitter_type"], kwargs.get("emitter_id")),
         }
 
     @classmethod
@@ -276,11 +280,11 @@ class DREvent(BaseModel):
 
     @classmethod
     def _check_emitter(cls, session: DRSession, kwargs: dict[str, Any]) -> None:
-        """Raise ``MemoryBadRequestError`` early if the emitter is not a participant."""
+        """Raise ``DRMemoryBadRequestError`` early if the emitter is not a participant."""
         if kwargs.get("emitter_type") == "user":
             eid = kwargs.get("emitter_id")
             if eid is not None and eid not in session.participants:
-                raise MemoryBadRequestError(
+                raise DRMemoryBadRequestError(
                     f"Event emitter {eid!r} is not in session participants "
                     f"{session.participants!r}."
                 )
@@ -493,7 +497,7 @@ class DREvent(BaseModel):
 
         Raises
         ------
-        MemoryVersionConflictError
+        DRMemoryVersionConflictError
             If the event was updated concurrently (stale ``createdAt`` token).
         """
         routing = type(self)._get_routing()
@@ -513,13 +517,10 @@ class DREvent(BaseModel):
         if body is not None:
             payload["body"] = body
         if emitter_type is not None or emitter_id is not None:
-            emitter: dict[str, Any] = {
-                "type": emitter_type if emitter_type is not None else self.emitter_type
-            }
-            eid = emitter_id if emitter_id is not None else self.emitter_id
-            if eid is not None:
-                emitter["id"] = eid
-            payload["emitter"] = emitter
+            payload["emitter"] = self._build_emitter(
+                emitter_type if emitter_type is not None else self.emitter_type,
+                emitter_id if emitter_id is not None else self.emitter_id,
+            )
 
         if not payload:
             raise ValueError("patch() requires at least one field to update.")
@@ -577,7 +578,7 @@ class DREvent(BaseModel):
         ------
         ValueError
             If the batch exceeds 200 updates or no fields are provided for an item.
-        MemoryVersionConflictError
+        DRMemoryVersionConflictError
             If any event was updated concurrently.
 
         Examples
@@ -619,13 +620,10 @@ class DREvent(BaseModel):
                 item["body"] = body
 
             if emitter_type is not None or emitter_id is not None:
-                emitter: dict[str, Any] = {
-                    "type": emitter_type if emitter_type is not None else event.emitter_type
-                }
-                eid = emitter_id if emitter_id is not None else event.emitter_id
-                if eid is not None:
-                    emitter["id"] = eid
-                item["emitter"] = emitter
+                item["emitter"] = cls._build_emitter(
+                    emitter_type if emitter_type is not None else event.emitter_type,
+                    emitter_id if emitter_id is not None else event.emitter_id,
+                )
 
             if not any(k in item for k in ("body", "emitter")):
                 raise ValueError(
@@ -641,16 +639,19 @@ class DREvent(BaseModel):
             f"{space.id}/sessions/{session.id}/events/batch/",
             json={"events": wire_items},
         )
+        # Index the server results by sequenceId so each original event is updated in place
+        # and the returned list follows the caller's input order, regardless of the order
+        # (or count) in which the service responds.
         result_items = resp.json().get("items", [])
-        result_events = [cls._from_wire(session, item) for item in result_items]
+        items_by_seq: dict[int, dict[str, Any]] = {
+            item["sequenceId"]: item for item in result_items if "sequenceId" in item
+        }
 
-        # Update originals in-place
-        for (event, _), updated in zip(updates, result_events):
-            event._update_from_wire(
-                next(
-                    (i for i in result_items if i.get("sequenceId") == event.sequence_id),
-                    {},
-                )
-            )
+        updated_events: builtins.list[DREvent] = []
+        for event, _ in updates:
+            result_item = items_by_seq.get(event.sequence_id)
+            if result_item is not None:
+                event._update_from_wire(result_item)
+            updated_events.append(event)
 
-        return result_events
+        return updated_events

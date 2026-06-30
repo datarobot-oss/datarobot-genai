@@ -21,16 +21,16 @@ import json
 import httpx
 import respx
 
-from datarobot_genai.application_utils.memory import DRMemorySpace
-from datarobot_genai.application_utils.memory import MemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRMemorySpace
 
 BASE = "https://app.datarobot.com/api/v2"
 MEMORY_BASE = f"{BASE}/memory"
 SPACE_ID = "aaaaaaaa-0000-0000-0000-000000000001"
 
 
-def _client() -> MemoryServiceClient:
-    return MemoryServiceClient(
+def _client() -> DRMemoryServiceClient:
+    return DRMemoryServiceClient(
         endpoint=BASE,
         api_token="test-token",
         http_client=httpx.AsyncClient(),
@@ -222,7 +222,7 @@ async def test_delete_sends_delete_request() -> None:
 
 def test_from_wire_maps_memory_space_id_to_id() -> None:
     """GIVEN wire dict with memorySpaceId WHEN _from_wire THEN space.id is set."""
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
     space = DRMemorySpace._from_wire(client, _space_wire())
     assert space.id == SPACE_ID
     assert space.user_id == "u1"

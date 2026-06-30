@@ -22,17 +22,17 @@ import httpx
 import pytest
 import respx
 
-from datarobot_genai.application_utils.memory import DRMemorySpace
-from datarobot_genai.application_utils.memory import MemoryNotFoundError
-from datarobot_genai.application_utils.memory import MemoryServiceClient
-from datarobot_genai.application_utils.memory import MemoryVersionConflictError
-from datarobot_genai.application_utils.memory._encoding import build_description
-from datarobot_genai.application_utils.memory.markers import SYSTEM_PARTICIPANT
-from tests.application_utils.memory.unit.conftest import PARTICIPANT
-from tests.application_utils.memory.unit.conftest import SESSION_ID
-from tests.application_utils.memory.unit.conftest import SPACE_ID
-from tests.application_utils.memory.unit.conftest import SYSTEM_OID
-from tests.application_utils.memory.unit.conftest import ChatSession
+from datarobot_genai.application_utils.persistence import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRMemorySpace
+from datarobot_genai.application_utils.persistence import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence._encoding import build_description
+from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
+from tests.application_utils.persistence.unit.conftest import PARTICIPANT
+from tests.application_utils.persistence.unit.conftest import SESSION_ID
+from tests.application_utils.persistence.unit.conftest import SPACE_ID
+from tests.application_utils.persistence.unit.conftest import SYSTEM_OID
+from tests.application_utils.persistence.unit.conftest import ChatSession
 
 BASE = "https://app.datarobot.com/api/v2"
 MEMORY_BASE = f"{BASE}/memory"
@@ -43,8 +43,8 @@ SESSION_URL = f"{SESSIONS_URL}{SESSION_ID}/"
 # ── Test helpers ──────────────────────────────────────────────────────────────
 
 
-def _client() -> MemoryServiceClient:
-    return MemoryServiceClient(
+def _client() -> DRMemoryServiceClient:
+    return DRMemoryServiceClient(
         endpoint=BASE,
         api_token="test-token",
         http_client=httpx.AsyncClient(),
@@ -84,7 +84,7 @@ def _session_wire(
     }
 
 
-def _make_space(client: MemoryServiceClient | None = None) -> DRMemorySpace:
+def _make_space(client: DRMemoryServiceClient | None = None) -> DRMemorySpace:
     return DRMemorySpace._from_wire(client or _client(), _space_wire())
 
 
@@ -130,7 +130,7 @@ async def test_post_uses_explicit_participant() -> None:
 
     respx.post(SESSIONS_URL).mock(side_effect=_capture)
     space = _make_space()
-    session = await ChatSession.post(
+    await ChatSession.post(
         space,
         participants=[PARTICIPANT],
         tenant="acme",
@@ -139,7 +139,8 @@ async def test_post_uses_explicit_participant() -> None:
         title="Test",
         rev=1,
     )
-    assert session.participants == [PARTICIPANT]
+    # The request payload must carry the explicit participant. The response echo is not
+    # evidence of what was sent, so assert on the captured request body.
     assert captured["body"]["participants"] == [PARTICIPANT]
 
 
@@ -272,10 +273,10 @@ async def test_get_by_dedup_key_uses_list_endpoint() -> None:
 
 @respx.mock
 async def test_get_by_dedup_key_raises_not_found_when_empty() -> None:
-    """GIVEN dedup key with no match WHEN get(chat_id=...) THEN MemoryNotFoundError."""
+    """GIVEN dedup key with no match WHEN get(chat_id=...) THEN DRMemoryNotFoundError."""
     respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json={"items": [], "total": 0}))
     space = _make_space()
-    with pytest.raises(MemoryNotFoundError):
+    with pytest.raises(DRMemoryNotFoundError):
         await ChatSession.get(space, chat_id="nonexistent")
 
 
@@ -383,6 +384,37 @@ def test_list_non_leading_range_key_raises_value_error() -> None:
         asyncio.get_event_loop().run_until_complete(_run())
 
 
+async def test_list_empty_range_key_value_raises_value_error() -> None:
+    """GIVEN list(tenant='') WHEN list THEN ValueError (empty range key, like post/patch)."""
+    space = _make_space()
+    with pytest.raises(ValueError, match="must not be empty"):
+        await ChatSession.list(space, tenant="")
+
+
+@respx.mock
+async def test_list_paginates_when_total_field_absent() -> None:
+    """GIVEN paginated responses that omit 'total' WHEN list THEN all pages are still fetched."""
+    call_count = 0
+
+    def _paginate(req: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        offset = int(dict(req.url.params).get("offset", 0))
+        if offset == 0:
+            # Full page (== limit) with NO 'total' key — must not short-circuit.
+            items = [_session_wire(session_id=f"s-{i}") for i in range(100)]
+            return httpx.Response(200, json={"items": items})
+        # Short page (< limit) signals the last page.
+        items = [_session_wire(session_id=f"s-{i}") for i in range(100, 130)]
+        return httpx.Response(200, json={"items": items})
+
+    respx.get(SESSIONS_URL).mock(side_effect=_paginate)
+    space = _make_space()
+    sessions = await ChatSession.list(space)
+    assert len(sessions) == 130
+    assert call_count == 2
+
+
 @respx.mock
 async def test_list_auto_paginates_when_total_exceeds_limit() -> None:
     """GIVEN total=150 with limit=100 WHEN list THEN two requests made."""
@@ -458,14 +490,14 @@ async def test_patch_updates_range_key_in_description() -> None:
 
 @respx.mock
 async def test_patch_stale_version_raises_version_conflict_error() -> None:
-    """GIVEN stale If-Match WHEN PATCH returns 409 THEN MemoryVersionConflictError."""
+    """GIVEN stale If-Match WHEN PATCH returns 409 THEN DRMemoryVersionConflictError."""
     respx.patch(SESSION_URL).mock(
         return_value=httpx.Response(
             409, json={"detail": "Session version mismatch: expected 1, current 3"}
         )
     )
     session = _make_session()
-    with pytest.raises(MemoryVersionConflictError):
+    with pytest.raises(DRMemoryVersionConflictError):
         await session.patch(title="Too late")
 
 
@@ -556,7 +588,7 @@ def test_metadata_title_round_trips() -> None:
 
 def test_range_key_encoding_round_trips() -> None:
     """GIVEN tenant/topic WHEN build_description THEN parse_description recovers values."""
-    from datarobot_genai.application_utils.memory._encoding import parse_description
+    from datarobot_genai.application_utils.persistence._encoding import parse_description
 
     desc = build_description("chat", ["acme", "billing"])
     values = parse_description("chat", desc, 2)

@@ -52,7 +52,7 @@ def resolve_endpoint(endpoint: str | None = None) -> str:
     if not value:
         raise ValueError(
             "Missing DataRobot endpoint. Set the DATAROBOT_ENDPOINT environment "
-            "variable or pass endpoint= explicitly to MemoryServiceClient."
+            "variable or pass endpoint= explicitly to DRMemoryServiceClient."
         )
     return value.rstrip("/")
 
@@ -82,7 +82,7 @@ def resolve_api_token(api_token: str | None = None) -> str:
     if not value:
         raise ValueError(
             "Missing DataRobot API token. Set the DATAROBOT_API_TOKEN environment "
-            "variable or pass api_token= explicitly to MemoryServiceClient."
+            "variable or pass api_token= explicitly to DRMemoryServiceClient."
         )
     return value
 

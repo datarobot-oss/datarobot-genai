@@ -23,7 +23,7 @@ These tests run against a live DataRobot Memory Service endpoint.  They are
     export DATAROBOT_API_TOKEN="<your-token>"
     export DR_MEMORY_LIVE_INTEGRATION="1"
 
-    uv run pytest tests/application_utils/memory/integration -vv
+    uv run pytest tests/application_utils/persistence/integration -vv
 
 The tests clean up after themselves (deleting created spaces) and are designed
 to be idempotent so they can be re-run.
@@ -33,26 +33,36 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Mapping
 from typing import Annotated
 
 import pytest
 
-from datarobot_genai.application_utils.memory import DRConcurrencyField
-from datarobot_genai.application_utils.memory import DRDeduplicationKey
-from datarobot_genai.application_utils.memory import DREvent
-from datarobot_genai.application_utils.memory import DRMemorySpace
-from datarobot_genai.application_utils.memory import DRRangeKey
-from datarobot_genai.application_utils.memory import DRSession
-from datarobot_genai.application_utils.memory import MemoryServiceClient
-from datarobot_genai.application_utils.memory import MemoryVersionConflictError
+from datarobot_genai.application_utils.persistence import DRConcurrencyField
+from datarobot_genai.application_utils.persistence import DRDeduplicationKey
+from datarobot_genai.application_utils.persistence import DREvent
+from datarobot_genai.application_utils.persistence import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRMemorySpace
+from datarobot_genai.application_utils.persistence import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence import DRRangeKey
+from datarobot_genai.application_utils.persistence import DRSession
 
 # ── Integration opt-in guard ──────────────────────────────────────────────────
 
-_LIVE = (
-    os.environ.get("DATAROBOT_ENDPOINT")
-    and os.environ.get("DATAROBOT_API_TOKEN")
-    and os.environ.get("DR_MEMORY_LIVE_INTEGRATION", "").lower() in {"1", "true", "yes"}
-)
+def _live_enabled(environ: Mapping[str, str]) -> bool:
+    """Return ``True`` when all env vars required for live integration tests are set.
+
+    Extracted as a pure function so the gate's env-var wiring is unit-testable: a typo in
+    one of the variable names would otherwise silently disable the entire suite undetected.
+    """
+    return bool(
+        environ.get("DATAROBOT_ENDPOINT")
+        and environ.get("DATAROBOT_API_TOKEN")
+        and environ.get("DR_MEMORY_LIVE_INTEGRATION", "").lower() in {"1", "true", "yes"}
+    )
+
+
+_LIVE = _live_enabled(os.environ)
 
 pytestmark = pytest.mark.integration
 
@@ -100,14 +110,14 @@ def _unique(prefix: str = "") -> str:
 
 
 @pytest.fixture
-async def client() -> MemoryServiceClient:  # type: ignore[return]
-    """Return a ``MemoryServiceClient`` configured from environment variables."""
-    async with MemoryServiceClient() as c:
+async def client() -> DRMemoryServiceClient:  # type: ignore[return]
+    """Return a ``DRMemoryServiceClient`` configured from environment variables."""
+    async with DRMemoryServiceClient() as c:
         yield c
 
 
 @pytest.fixture
-async def space(client: MemoryServiceClient) -> DRMemorySpace:  # type: ignore[return]
+async def space(client: DRMemoryServiceClient) -> DRMemorySpace:  # type: ignore[return]
     """Create a unique test memory space; delete after the test."""
     key = _unique("it-space-")
     sp = await DRMemorySpace.post(
@@ -126,7 +136,7 @@ async def space(client: MemoryServiceClient) -> DRMemorySpace:  # type: ignore[r
 
 
 @skip_unless_live
-async def test_space_lifecycle(client: MemoryServiceClient) -> None:
+async def test_space_lifecycle(client: DRMemoryServiceClient) -> None:
     """Create, get, list, patch, and delete a memory space."""
     key = _unique("lifecycle-")
     # Create
@@ -320,7 +330,7 @@ async def test_optimistic_concurrency_session(space: DRMemorySpace) -> None:
     # Stale copy at old version — should raise
     stale = await ChatSession.get(space, id=session.id)
     stale._version = 0  # force stale version
-    with pytest.raises(MemoryVersionConflictError):
+    with pytest.raises(DRMemoryVersionConflictError):
         await stale.patch(title="Stale update")
 
     await session.delete()
@@ -380,7 +390,7 @@ async def test_event_log(space: DRMemorySpace) -> None:
     msg_stale_copy = await ChatMessage.list(session)
     # Corrupt the token to simulate a stale update
     msg_stale_copy[0]._created_at = "1970-01-01T00:00:00Z"
-    with pytest.raises(MemoryVersionConflictError):
+    with pytest.raises(DRMemoryVersionConflictError):
         await msg_stale_copy[0].patch(content="Stale edit")
 
     # Delete
@@ -397,7 +407,7 @@ async def test_event_log(space: DRMemorySpace) -> None:
 @skip_unless_live
 async def test_emitter_validation(space: DRMemorySpace) -> None:
     """An emitter not in participants returns a 400 bad-request error from the service."""
-    from datarobot_genai.application_utils.memory import MemoryBadRequestError
+    from datarobot_genai.application_utils.persistence import DRMemoryBadRequestError
 
     session = await ChatSession.post(
         space,
@@ -408,7 +418,7 @@ async def test_emitter_validation(space: DRMemorySpace) -> None:
         rev=1,
     )
     stranger_oid = "111111111111111111111111"  # valid format, not a participant
-    with pytest.raises(MemoryBadRequestError):
+    with pytest.raises(DRMemoryBadRequestError):
         await ChatMessage.post(
             session,
             content="Unauthorised!",

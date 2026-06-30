@@ -18,14 +18,14 @@ pip install "datarobot-genai[application-utils]"
 import asyncio
 from typing import Annotated
 
-from datarobot_genai.application_utils.memory import (
+from datarobot_genai.application_utils.persistence import (
     DRConcurrencyField,
     DRDeduplicationKey,
     DREvent,
     DRMemorySpace,
     DRRangeKey,
     DRSession,
-    MemoryServiceClient,
+    DRMemoryServiceClient,
     SYSTEM_PARTICIPANT,
 )
 
@@ -55,7 +55,7 @@ class ChatMessage(DREvent, session=ChatSession):
 # ── 2. Use the ORM ────────────────────────────────────────────────────────────
 
 async def demo() -> None:
-    async with MemoryServiceClient() as client:
+    async with DRMemoryServiceClient() as client:
         # Create or adopt an existing space (idempotent via deduplication_key)
         space = await DRMemorySpace.post(
             client,
@@ -184,13 +184,13 @@ Query `list(tenant="acme")` sends `description=//chat/acme/` which matches
 
 Session PATCH sends an `If-Match: <version>` header.  If the server's version
 has advanced since you last fetched the session, the service returns HTTP 409
-and the ORM raises `MemoryVersionConflictError`.  Resolve by re-fetching
+and the ORM raises `DRMemoryVersionConflictError`.  Resolve by re-fetching
 (`DRSession.get`) and retrying.
 
 ```python
 try:
     await session.patch(title="New title")
-except MemoryVersionConflictError:
+except DRMemoryVersionConflictError:
     session = await ChatSession.get(space, id=session.id)
     await session.patch(title="New title")
 ```
@@ -198,12 +198,12 @@ except MemoryVersionConflictError:
 ### Events
 
 Event PATCH uses `createdAt` as a query-string concurrency token instead of
-a header.  A stale token yields HTTP 422 and `MemoryVersionConflictError`.
+a header.  A stale token yields HTTP 422 and `DRMemoryVersionConflictError`.
 
 ```python
 try:
     await msg.patch(content="Corrected text")
-except MemoryVersionConflictError:
+except DRMemoryVersionConflictError:
     # Re-list to obtain fresh tokens
     events = await ChatMessage.list(session)
     msg = next(e for e in events if e.sequence_id == msg.sequence_id)
@@ -235,7 +235,7 @@ await ChatMessage.patch_batch(
 ## Emitter participant check
 
 When `emitter_type="user"`, the emitter's ObjectId must be in the session's
-`participants` list.  The ORM raises `MemoryBadRequestError` early (before the
+`participants` list.  The ORM raises `DRMemoryBadRequestError` early (before the
 HTTP call) if the emitter is not a participant.
 
 The system sentinel `SYSTEM_PARTICIPANT = "000000000000000000000000"` is a
@@ -246,31 +246,31 @@ accepted by the service.
 
 | Exception | HTTP status | Cause |
 |---|---|---|
-| `MemoryBadRequestError` | 400 | Invalid request (emitter not a participant, etc.) |
-| `MemoryNotFoundError` | 404 | Resource does not exist |
-| `MemoryConflictError` | 409 | Deduplication conflict on create (ORM auto-adopts) |
-| `MemoryVersionConflictError` | 409 / 422 | Stale If-Match or createdAt token |
-| `MemoryValidationError` | 422 | Schema validation error |
-| `MemoryServiceError` | other 4xx/5xx | Unexpected error |
+| `DRMemoryBadRequestError` | 400 | Invalid request (emitter not a participant, etc.) |
+| `DRMemoryNotFoundError` | 404 | Resource does not exist |
+| `DRMemoryConflictError` | 409 | Deduplication conflict on create (ORM auto-adopts) |
+| `DRMemoryVersionConflictError` | 409 / 422 | Stale If-Match or createdAt token |
+| `DRMemoryValidationError` | 422 | Schema validation error |
+| `DRMemoryServiceError` | other 4xx/5xx | Unexpected error |
 
 ## Public API
 
 ```python
-from datarobot_genai.application_utils.memory import (
+from datarobot_genai.application_utils.persistence import (
     DRMemorySpace,
     DRSession,
     DREvent,
     DRDeduplicationKey,
     DRRangeKey,
     DRConcurrencyField,
-    MemoryServiceClient,
+    DRMemoryServiceClient,
     SYSTEM_PARTICIPANT,
-    MemoryServiceError,
-    MemoryNotFoundError,
-    MemoryBadRequestError,
-    MemoryValidationError,
-    MemoryConflictError,
-    MemoryVersionConflictError,
+    DRMemoryServiceError,
+    DRMemoryNotFoundError,
+    DRMemoryBadRequestError,
+    DRMemoryValidationError,
+    DRMemoryConflictError,
+    DRMemoryVersionConflictError,
 )
 ```
 
@@ -283,5 +283,5 @@ export DATAROBOT_ENDPOINT="https://app.datarobot.com/api/v2"
 export DATAROBOT_API_TOKEN="<your-token>"
 export DR_MEMORY_LIVE_INTEGRATION="1"
 
-uv run pytest tests/application_utils/memory/integration -vv
+uv run pytest tests/application_utils/persistence/integration -vv
 ```

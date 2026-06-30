@@ -14,7 +14,7 @@
 
 """Async HTTP transport for the Memory Service.
 
-``MemoryServiceClient`` is the single entry point for all HTTP requests.
+``DRMemoryServiceClient`` is the single entry point for all HTTP requests.
 It resolves configuration, sets bearer auth headers, builds absolute URLs,
 and maps HTTP status codes to typed exceptions.
 
@@ -28,21 +28,21 @@ from typing import Any
 
 import httpx
 
-from datarobot_genai.application_utils.memory._config import build_base_url
-from datarobot_genai.application_utils.memory._config import resolve_api_token
-from datarobot_genai.application_utils.memory._config import resolve_endpoint
-from datarobot_genai.application_utils.memory.exceptions import MemoryBadRequestError
-from datarobot_genai.application_utils.memory.exceptions import MemoryConflictError
-from datarobot_genai.application_utils.memory.exceptions import MemoryNotFoundError
-from datarobot_genai.application_utils.memory.exceptions import MemoryServiceError
-from datarobot_genai.application_utils.memory.exceptions import MemoryValidationError
-from datarobot_genai.application_utils.memory.exceptions import MemoryVersionConflictError
+from datarobot_genai.application_utils.persistence._config import build_base_url
+from datarobot_genai.application_utils.persistence._config import resolve_api_token
+from datarobot_genai.application_utils.persistence._config import resolve_endpoint
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryServiceError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryValidationError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryVersionConflictError
 
 # The detail string the service returns for stale-event PATCH (HTTP 422).
 _EVENT_VERSION_DETAIL: str = "Patch of incorrect version of event"
 
 
-class MemoryServiceClient:
+class DRMemoryServiceClient:
     """Async HTTP client for the DataRobot Agentic Memory Service.
 
     Resolves ``DATAROBOT_ENDPOINT`` and ``DATAROBOT_API_TOKEN`` from the
@@ -62,7 +62,7 @@ class MemoryServiceClient:
         Tyk gateway mount path for the Memory Service (``/api/v2/memory``).
     http_client : httpx.AsyncClient | None
         Injected async client (for testing with ``respx``).  When supplied,
-        the ``MemoryServiceClient`` will **not** close it on ``aclose()``.
+        the ``DRMemoryServiceClient`` will **not** close it on ``aclose()``.
     timeout : float
         Default per-request timeout in seconds.
 
@@ -71,13 +71,13 @@ class MemoryServiceClient:
     .. code-block:: python
 
         import asyncio
-        from datarobot_genai.application_utils.memory import (
+        from datarobot_genai.application_utils.persistence import (
             DRMemorySpace,
-            MemoryServiceClient,
+            DRMemoryServiceClient,
         )
 
         async def main() -> None:
-            async with MemoryServiceClient() as client:
+            async with DRMemoryServiceClient() as client:
                 space = await DRMemorySpace.post(client, description="my-space")
                 print(space.id)
 
@@ -144,18 +144,18 @@ class MemoryServiceClient:
 
         Raises
         ------
-        MemoryBadRequestError
+        DRMemoryBadRequestError
             HTTP 400 — bad request (e.g. emitter not a participant).
-        MemoryNotFoundError
+        DRMemoryNotFoundError
             HTTP 404 — resource not found.
-        MemoryConflictError
+        DRMemoryConflictError
             HTTP 409 — deduplication conflict on create.
-        MemoryVersionConflictError
+        DRMemoryVersionConflictError
             HTTP 409 — stale ``If-Match`` on session ``patch()``, or HTTP 422
             with the event-version detail.
-        MemoryValidationError
+        DRMemoryValidationError
             HTTP 422 — schema validation error.
-        MemoryServiceError
+        DRMemoryServiceError
             Any other 4xx/5xx error.
         """
         headers = {**self._auth_headers, **(extra_headers or {})}
@@ -174,24 +174,28 @@ class MemoryServiceClient:
 
         # ── Parse the error body ──────────────────────────────────────────
         try:
-            body: dict[str, Any] = resp.json()
+            parsed = resp.json()
         except Exception:
-            body = {}
+            parsed = None
+        # The service should return a JSON object, but gateways/proxies may emit a JSON
+        # array, scalar, or non-JSON body. Coerce anything that is not a dict to ``{}`` so
+        # the ``.get(...)`` lookups below cannot raise AttributeError and mask the real error.
+        body: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
 
         detail = _extract_detail(body, resp.text)
 
         if resp.status_code == 400:
-            raise MemoryBadRequestError(detail, status_code=400, payload=body)
+            raise DRMemoryBadRequestError(detail, status_code=400, payload=body)
 
         if resp.status_code == 404:
-            raise MemoryNotFoundError(detail, status_code=404, payload=body)
+            raise DRMemoryNotFoundError(detail, status_code=404, payload=body)
 
         if resp.status_code == 409:
             error_name = body.get("errorName", "")
             if "DeduplicationConflict" in str(error_name):
                 existing_id = body.get("existingSessionId") or body.get("existingMemorySpaceId")
                 location = body.get("existingSessionUrl") or body.get("existingMemorySpaceUrl")
-                raise MemoryConflictError(
+                raise DRMemoryConflictError(
                     detail,
                     status_code=409,
                     payload=body,
@@ -199,21 +203,21 @@ class MemoryServiceClient:
                     location=str(location) if location else None,
                 )
             # 409 without dedup conflict = session version mismatch
-            raise MemoryVersionConflictError(detail, status_code=409, payload=body)
+            raise DRMemoryVersionConflictError(detail, status_code=409, payload=body)
 
         if resp.status_code == 422:
             if _EVENT_VERSION_DETAIL.lower() in detail.lower():
-                raise MemoryVersionConflictError(detail, status_code=422, payload=body)
-            raise MemoryValidationError(detail, status_code=422, payload=body)
+                raise DRMemoryVersionConflictError(detail, status_code=422, payload=body)
+            raise DRMemoryValidationError(detail, status_code=422, payload=body)
 
-        raise MemoryServiceError(detail, status_code=resp.status_code, payload=body)
+        raise DRMemoryServiceError(detail, status_code=resp.status_code, payload=body)
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client (only if owned by this instance)."""
         if self._owns_client:
             await self._http_client.aclose()
 
-    async def __aenter__(self) -> MemoryServiceClient:
+    async def __aenter__(self) -> DRMemoryServiceClient:
         """Return self for use as an async context manager."""
         return self
 

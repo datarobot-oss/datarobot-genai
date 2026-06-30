@@ -23,7 +23,7 @@ Examples
 .. code-block:: python
 
     from typing import Annotated
-    from datarobot_genai.application_utils.memory import (
+    from datarobot_genai.application_utils.persistence import (
         DRSession,
         DRDeduplicationKey,
         DRRangeKey,

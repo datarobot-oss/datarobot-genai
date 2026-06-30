@@ -14,19 +14,19 @@
 
 """Typed exceptions raised by the Memory Service ORM.
 
-All exceptions derive from ``MemoryServiceError``.  The naming deliberately
+All exceptions derive from ``DRMemoryServiceError``.  The naming deliberately
 avoids ``MemoryError`` to prevent shadowing the Python built-in.
 
 Exception hierarchy
 -------------------
 ::
 
-    MemoryServiceError
-    ├── MemoryNotFoundError        (HTTP 404)
-    ├── MemoryBadRequestError      (HTTP 400)
-    ├── MemoryValidationError      (HTTP 422, schema validation)
-    ├── MemoryConflictError        (HTTP 409, deduplication conflict)
-    └── MemoryVersionConflictError (HTTP 409 session stale / 422 event stale)
+    DRMemoryServiceError
+    ├── DRMemoryNotFoundError        (HTTP 404)
+    ├── DRMemoryBadRequestError      (HTTP 400)
+    ├── DRMemoryValidationError      (HTTP 422, schema validation)
+    ├── DRMemoryConflictError        (HTTP 409, deduplication conflict)
+    └── DRMemoryVersionConflictError (HTTP 409 session stale / 422 event stale)
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 
-class MemoryServiceError(Exception):
+class DRMemoryServiceError(Exception):
     """Base exception for all Memory Service ORM errors.
 
     Parameters
@@ -64,11 +64,11 @@ class MemoryServiceError(Exception):
         return f"{type(self).__name__}({self.detail!r}, status_code={self.status_code})"
 
 
-class MemoryNotFoundError(MemoryServiceError):
+class DRMemoryNotFoundError(DRMemoryServiceError):
     """Raised when the requested resource does not exist (HTTP 404)."""
 
 
-class MemoryBadRequestError(MemoryServiceError):
+class DRMemoryBadRequestError(DRMemoryServiceError):
     """Raised on client-side validation errors from the service (HTTP 400).
 
     Common causes: an event emitter is not a session participant, an invalid
@@ -76,7 +76,7 @@ class MemoryBadRequestError(MemoryServiceError):
     """
 
 
-class MemoryValidationError(MemoryServiceError):
+class DRMemoryValidationError(DRMemoryServiceError):
     """Raised on schema validation errors from the service (HTTP 422).
 
     This typically means the request body or query parameters failed the
@@ -85,8 +85,8 @@ class MemoryValidationError(MemoryServiceError):
     """
 
 
-class MemoryConflictError(MemoryServiceError):
-    """Raised on a deduplication conflict when creating a session or memory space (HTTP 409).
+class DRMemoryConflictError(DRMemoryServiceError):
+    """Raised on a deduplication conflict when creating a session or ``DRMemorySpace`` (HTTP 409).
 
     The ORM automatically adopts the existing resource (by fetching it via
     ``existing_id``) rather than propagating this exception to callers in
@@ -114,7 +114,7 @@ class MemoryConflictError(MemoryServiceError):
         self.location = location
 
 
-class MemoryVersionConflictError(MemoryServiceError):
+class DRMemoryVersionConflictError(DRMemoryServiceError):
     """Raised on an optimistic-concurrency failure.
 
     Surfaces as HTTP 409 for session ``patch()`` (stale ``If-Match`` header)

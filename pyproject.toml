@@ -207,6 +207,9 @@ max-args = 8
 [tool.pytest.ini_options]
 filterwarnings = []
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that run against a live external service (deselected by default)",
+]
 
 [tool.coverage.run]
 source = ["datarobot_genai"]

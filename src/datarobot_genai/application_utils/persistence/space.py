@@ -22,13 +22,13 @@ Examples
 .. code-block:: python
 
     import asyncio
-    from datarobot_genai.application_utils.memory import (
+    from datarobot_genai.application_utils.persistence import (
         DRMemorySpace,
-        MemoryServiceClient,
+        DRMemoryServiceClient,
     )
 
     async def main() -> None:
-        async with MemoryServiceClient() as client:
+        async with DRMemoryServiceClient() as client:
             # Create a new space (or adopt the existing one with the same key)
             space = await DRMemorySpace.post(
                 client,
@@ -49,10 +49,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 
-from datarobot_genai.application_utils.memory.exceptions import MemoryConflictError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 
 if TYPE_CHECKING:
-    from datarobot_genai.application_utils.memory._client import MemoryServiceClient
+    from datarobot_genai.application_utils.persistence._client import DRMemoryServiceClient
 
 
 class DRMemorySpace:
@@ -80,7 +80,7 @@ class DRMemorySpace:
 
     def __init__(
         self,
-        client: MemoryServiceClient,
+        client: DRMemoryServiceClient,
         *,
         id: str,
         user_id: str,
@@ -130,7 +130,7 @@ class DRMemorySpace:
     # ── Internal helpers ──────────────────────────────────────────────────
 
     @classmethod
-    def _from_wire(cls, client: MemoryServiceClient, data: dict[str, Any]) -> DRMemorySpace:
+    def _from_wire(cls, client: DRMemoryServiceClient, data: dict[str, Any]) -> DRMemorySpace:
         """Construct a ``DRMemorySpace`` from a wire response dict."""
         return cls(
             client,
@@ -159,7 +159,7 @@ class DRMemorySpace:
     @classmethod
     async def post(
         cls,
-        client: MemoryServiceClient,
+        client: DRMemoryServiceClient,
         *,
         description: str | None = None,
         deduplication_key: str | None = None,
@@ -174,7 +174,7 @@ class DRMemorySpace:
 
         Parameters
         ----------
-        client : MemoryServiceClient
+        client : DRMemoryServiceClient
             Transport client.
         description : str | None
             Human-readable description (max 1000 chars).
@@ -207,19 +207,19 @@ class DRMemorySpace:
         try:
             resp = await client.request("POST", "new/", json=payload)
             return cls._from_wire(client, resp.json())
-        except MemoryConflictError as exc:
+        except DRMemoryConflictError as exc:
             if exc.existing_id:
                 resp = await client.request("GET", f"{exc.existing_id}/")
                 return cls._from_wire(client, resp.json())
             raise
 
     @classmethod
-    async def get(cls, client: MemoryServiceClient, space_id: str) -> DRMemorySpace:
+    async def get(cls, client: DRMemoryServiceClient, space_id: str) -> DRMemorySpace:
         """Fetch a memory space by its server-assigned ID.
 
         Parameters
         ----------
-        client : MemoryServiceClient
+        client : DRMemoryServiceClient
             Transport client.
         space_id : str
             UUID of the memory space.
@@ -230,7 +230,7 @@ class DRMemorySpace:
 
         Raises
         ------
-        MemoryNotFoundError
+        DRMemoryNotFoundError
             If no space with the given ID exists (or it belongs to another user).
         """
         resp = await client.request("GET", f"{space_id}/")
@@ -239,7 +239,7 @@ class DRMemorySpace:
     @classmethod
     async def list(
         cls,
-        client: MemoryServiceClient,
+        client: DRMemoryServiceClient,
         *,
         deduplication_key: str | None = None,
         offset: int = 0,
@@ -249,7 +249,7 @@ class DRMemorySpace:
 
         Parameters
         ----------
-        client : MemoryServiceClient
+        client : DRMemoryServiceClient
             Transport client.
         deduplication_key : str | None
             Exact-match filter on ``deduplicationKey``.

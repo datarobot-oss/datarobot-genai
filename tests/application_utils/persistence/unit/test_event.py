@@ -22,17 +22,17 @@ import httpx
 import pytest
 import respx
 
-from datarobot_genai.application_utils.memory import DRMemorySpace
-from datarobot_genai.application_utils.memory import MemoryBadRequestError
-from datarobot_genai.application_utils.memory import MemoryServiceClient
-from datarobot_genai.application_utils.memory import MemoryVersionConflictError
-from datarobot_genai.application_utils.memory._encoding import build_description
-from tests.application_utils.memory.unit.conftest import PARTICIPANT
-from tests.application_utils.memory.unit.conftest import SESSION_ID
-from tests.application_utils.memory.unit.conftest import SPACE_ID
-from tests.application_utils.memory.unit.conftest import SYSTEM_OID
-from tests.application_utils.memory.unit.conftest import ChatMessage
-from tests.application_utils.memory.unit.conftest import ChatSession
+from datarobot_genai.application_utils.persistence import DRMemoryBadRequestError
+from datarobot_genai.application_utils.persistence import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence import DRMemorySpace
+from datarobot_genai.application_utils.persistence import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence._encoding import build_description
+from tests.application_utils.persistence.unit.conftest import PARTICIPANT
+from tests.application_utils.persistence.unit.conftest import SESSION_ID
+from tests.application_utils.persistence.unit.conftest import SPACE_ID
+from tests.application_utils.persistence.unit.conftest import SYSTEM_OID
+from tests.application_utils.persistence.unit.conftest import ChatMessage
+from tests.application_utils.persistence.unit.conftest import ChatSession
 
 BASE = "https://app.datarobot.com/api/v2"
 MEMORY_BASE = f"{BASE}/memory"
@@ -45,8 +45,8 @@ EVENTS_BATCH_URL = f"{EVENTS_URL}batch/"
 # ── Test helpers ──────────────────────────────────────────────────────────────
 
 
-def _client() -> MemoryServiceClient:
-    return MemoryServiceClient(
+def _client() -> DRMemoryServiceClient:
+    return DRMemoryServiceClient(
         endpoint=BASE,
         api_token="test-token",
         http_client=httpx.AsyncClient(),
@@ -100,7 +100,7 @@ def _event_wire(
     }
 
 
-def _make_space(client: MemoryServiceClient | None = None) -> DRMemorySpace:
+def _make_space(client: DRMemoryServiceClient | None = None) -> DRMemorySpace:
     return DRMemorySpace._from_wire(client or _client(), _space_wire())
 
 
@@ -205,7 +205,7 @@ async def test_post_sends_emitter_in_payload() -> None:
 
 
 def test_post_emitter_not_in_participants_raises_bad_request() -> None:
-    """GIVEN user emitter not in session.participants WHEN post THEN MemoryBadRequestError."""
+    """GIVEN user emitter not in session.participants WHEN post THEN DRMemoryBadRequestError."""
     import asyncio
 
     session = _make_session(participant=SYSTEM_OID)
@@ -218,7 +218,7 @@ def test_post_emitter_not_in_participants_raises_bad_request() -> None:
             emitter_id=PARTICIPANT,  # PARTICIPANT is not in session.participants
         )
 
-    with pytest.raises(MemoryBadRequestError):
+    with pytest.raises(DRMemoryBadRequestError):
         asyncio.get_event_loop().run_until_complete(_run())
 
 
@@ -454,7 +454,7 @@ async def test_patch_stale_created_at_raises_version_conflict_error() -> None:
         )
     )
     event = _make_event()
-    with pytest.raises(MemoryVersionConflictError):
+    with pytest.raises(DRMemoryVersionConflictError):
         await event.patch(content="Stale update")
 
 
@@ -535,6 +535,52 @@ async def test_patch_batch_sends_created_at_token_per_event() -> None:
     assert event_payload.get("createdAt") == created_at_a
 
 
+@respx.mock
+async def test_patch_batch_returns_events_in_input_order() -> None:
+    """GIVEN server returns items out of order WHEN patch_batch THEN input order is kept."""
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        # Respond with items in REVERSE order relative to the input updates.
+        return httpx.Response(
+            200, json={"items": [_event_wire(seq_id=1), _event_wire(seq_id=0)]}
+        )
+
+    respx.patch(EVENTS_BATCH_URL).mock(side_effect=_capture)
+    session = _make_session()
+    event_a = _make_event(session=session, seq_id=0)
+    event_b = _make_event(session=session, seq_id=1)
+    result = await ChatMessage.patch_batch(
+        session,
+        updates=[(event_a, {"score": 0.9}), (event_b, {"content": "Updated"})],
+    )
+    # Result follows input order [0, 1], not the server's [1, 0], and returns the originals.
+    assert [e.sequence_id for e in result] == [0, 1]
+    assert result[0] is event_a
+    assert result[1] is event_b
+
+
+@respx.mock
+async def test_patch_batch_returns_all_inputs_when_server_omits_some() -> None:
+    """GIVEN the server returns fewer items than inputs WHEN patch_batch THEN none are dropped."""
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        # Only the result for sequenceId 0 comes back.
+        return httpx.Response(200, json={"items": [_event_wire(seq_id=0)]})
+
+    respx.patch(EVENTS_BATCH_URL).mock(side_effect=_capture)
+    session = _make_session()
+    event_a = _make_event(session=session, seq_id=0, created_at="2026-01-01T00:00:00Z")
+    event_b = _make_event(session=session, seq_id=1, created_at="2026-01-01T00:00:01Z")
+    result = await ChatMessage.patch_batch(
+        session,
+        updates=[(event_a, {"score": 0.9}), (event_b, {"score": 0.8})],
+    )
+    # Every input event is returned in order; the un-matched one keeps its original token.
+    assert [e.sequence_id for e in result] == [0, 1]
+    assert result[1] is event_b
+    assert event_b.created_at == "2026-01-01T00:00:01Z"
+
+
 def test_patch_batch_over_200_raises_value_error() -> None:
     """GIVEN 201 updates WHEN patch_batch THEN ValueError raised before HTTP call."""
     import asyncio
@@ -610,7 +656,7 @@ def test_patch_unknown_field_raises_value_error() -> None:
 
 
 def test_patch_batch_unknown_field_raises_value_error() -> None:
-    """GIVEN patch_batch updates with a typo'd field WHEN ChatMessage.patch_batch THEN ValueError."""
+    """GIVEN a typo'd field in patch_batch updates WHEN patch_batch THEN ValueError."""
     import asyncio
 
     session = _make_session()
@@ -633,7 +679,7 @@ def test_event_session_type_is_bound_to_chat_session() -> None:
 
 def test_event_without_session_binding_has_no_session_type() -> None:
     """GIVEN a DREvent subclass with no session= arg THEN __dr_session_type__ is not set."""
-    from datarobot_genai.application_utils.memory import DREvent
+    from datarobot_genai.application_utils.persistence import DREvent
 
     class UnboundEvent(DREvent):
         pass

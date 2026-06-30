@@ -22,14 +22,14 @@ Quick start
 
     import asyncio
     from typing import Annotated
-    from datarobot_genai.application_utils.memory import (
+    from datarobot_genai.application_utils.persistence import (
         DRMemorySpace,
         DRSession,
         DREvent,
         DRDeduplicationKey,
         DRRangeKey,
         DRConcurrencyField,
-        MemoryServiceClient,
+        DRMemoryServiceClient,
         SYSTEM_PARTICIPANT,
     )
 
@@ -45,7 +45,7 @@ Quick start
         score: float
 
     async def main() -> None:
-        async with MemoryServiceClient() as client:
+        async with DRMemoryServiceClient() as client:
             space = await DRMemorySpace.post(client, description="my-space")
             session = await ChatSession.post(space, tenant="acme", chat_id="c1", title="Hello")
             msg = await ChatMessage.post(
@@ -56,20 +56,20 @@ Quick start
     asyncio.run(main())
 """
 
-from datarobot_genai.application_utils.memory._client import MemoryServiceClient
-from datarobot_genai.application_utils.memory.event import DREvent
-from datarobot_genai.application_utils.memory.exceptions import MemoryBadRequestError
-from datarobot_genai.application_utils.memory.exceptions import MemoryConflictError
-from datarobot_genai.application_utils.memory.exceptions import MemoryNotFoundError
-from datarobot_genai.application_utils.memory.exceptions import MemoryServiceError
-from datarobot_genai.application_utils.memory.exceptions import MemoryValidationError
-from datarobot_genai.application_utils.memory.exceptions import MemoryVersionConflictError
-from datarobot_genai.application_utils.memory.markers import SYSTEM_PARTICIPANT
-from datarobot_genai.application_utils.memory.markers import DRConcurrencyField
-from datarobot_genai.application_utils.memory.markers import DRDeduplicationKey
-from datarobot_genai.application_utils.memory.markers import DRRangeKey
-from datarobot_genai.application_utils.memory.session import DRSession
-from datarobot_genai.application_utils.memory.space import DRMemorySpace
+from datarobot_genai.application_utils.persistence._client import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence.event import DREvent
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryServiceError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryValidationError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
+from datarobot_genai.application_utils.persistence.markers import DRConcurrencyField
+from datarobot_genai.application_utils.persistence.markers import DRDeduplicationKey
+from datarobot_genai.application_utils.persistence.markers import DRRangeKey
+from datarobot_genai.application_utils.persistence.session import DRSession
+from datarobot_genai.application_utils.persistence.space import DRMemorySpace
 
 __all__ = [
     "DRMemorySpace",
@@ -78,12 +78,12 @@ __all__ = [
     "DRDeduplicationKey",
     "DRRangeKey",
     "DRConcurrencyField",
-    "MemoryServiceClient",
+    "DRMemoryServiceClient",
     "SYSTEM_PARTICIPANT",
-    "MemoryServiceError",
-    "MemoryNotFoundError",
-    "MemoryBadRequestError",
-    "MemoryValidationError",
-    "MemoryConflictError",
-    "MemoryVersionConflictError",
+    "DRMemoryServiceError",
+    "DRMemoryNotFoundError",
+    "DRMemoryBadRequestError",
+    "DRMemoryValidationError",
+    "DRMemoryConflictError",
+    "DRMemoryVersionConflictError",
 ]

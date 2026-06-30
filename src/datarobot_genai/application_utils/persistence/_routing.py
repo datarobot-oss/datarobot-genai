@@ -34,9 +34,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 
-from datarobot_genai.application_utils.memory.markers import DRConcurrencyField
-from datarobot_genai.application_utils.memory.markers import DRDeduplicationKey
-from datarobot_genai.application_utils.memory.markers import DRRangeKey
+from datarobot_genai.application_utils.persistence.markers import DRConcurrencyField
+from datarobot_genai.application_utils.persistence.markers import DRDeduplicationKey
+from datarobot_genai.application_utils.persistence.markers import DRRangeKey
 
 if TYPE_CHECKING:
     from pydantic.fields import FieldInfo
@@ -81,8 +81,13 @@ class EventRoutingTable(NamedTuple):
 
 
 def _has_marker(field_info: FieldInfo, marker: type) -> bool:
-    """Return ``True`` if any metadata element on a field *is* the given marker class."""
-    return any(m is marker for m in field_info.metadata)
+    """Return ``True`` if any metadata element is the given marker class or an instance of it.
+
+    Accepts both the bare marker class (``Annotated[str, DRRangeKey]`` — the documented form)
+    and a marker instance (``Annotated[str, DRRangeKey()]``); the latter would otherwise be
+    silently misrouted to ``metadata``.
+    """
+    return any(m is marker or isinstance(m, marker) for m in field_info.metadata)
 
 
 # ── Builders ──────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for MemoryServiceClient (_client.py)."""
+"""Unit tests for DRMemoryServiceClient (_client.py)."""
 
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ import httpx
 import pytest
 import respx
 
-from datarobot_genai.application_utils.memory import MemoryBadRequestError
-from datarobot_genai.application_utils.memory import MemoryConflictError
-from datarobot_genai.application_utils.memory import MemoryNotFoundError
-from datarobot_genai.application_utils.memory import MemoryServiceError
-from datarobot_genai.application_utils.memory import MemoryValidationError
-from datarobot_genai.application_utils.memory import MemoryVersionConflictError
-from datarobot_genai.application_utils.memory._client import MemoryServiceClient
-from datarobot_genai.application_utils.memory._config import build_base_url
+from datarobot_genai.application_utils.persistence import DRMemoryBadRequestError
+from datarobot_genai.application_utils.persistence import DRMemoryConflictError
+from datarobot_genai.application_utils.persistence import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence import DRMemoryServiceError
+from datarobot_genai.application_utils.persistence import DRMemoryValidationError
+from datarobot_genai.application_utils.persistence import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence._client import DRMemoryServiceClient
+from datarobot_genai.application_utils.persistence._config import build_base_url
 
 BASE = "https://app.datarobot.com/api/v2"
 MEMORY_BASE = f"{BASE}/memory"
@@ -42,7 +42,7 @@ def test_base_url_is_endpoint_plus_memory(monkeypatch: pytest.MonkeyPatch) -> No
     """GIVEN DATAROBOT_ENDPOINT env var WHEN client is created THEN base_url is correct."""
     monkeypatch.setenv("DATAROBOT_ENDPOINT", BASE)
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
-    client = MemoryServiceClient()
+    client = DRMemoryServiceClient()
     assert client.base_url == MEMORY_BASE
     del client
 
@@ -51,7 +51,7 @@ def test_base_url_strips_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None
     """GIVEN endpoint with trailing slash WHEN client THEN base_url has no double slash."""
     monkeypatch.setenv("DATAROBOT_ENDPOINT", f"{BASE}/")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
-    client = MemoryServiceClient()
+    client = DRMemoryServiceClient()
     assert not client.base_url.endswith("//")
     assert client.base_url == MEMORY_BASE
     del client
@@ -62,7 +62,7 @@ def test_missing_endpoint_raises_value_error(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
     with pytest.raises(ValueError, match="DATAROBOT_ENDPOINT"):
-        MemoryServiceClient()
+        DRMemoryServiceClient()
 
 
 def test_missing_api_token_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +70,7 @@ def test_missing_api_token_raises_value_error(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("DATAROBOT_ENDPOINT", BASE)
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     with pytest.raises(ValueError, match="DATAROBOT_API_TOKEN"):
-        MemoryServiceClient()
+        DRMemoryServiceClient()
 
 
 def test_build_base_url_helper() -> None:
@@ -85,7 +85,7 @@ def test_build_base_url_helper() -> None:
 
 @respx.mock
 async def test_bearer_auth_header_is_sent() -> None:
-    """GIVEN a MemoryServiceClient WHEN a request is made THEN Authorization: Bearer header sent."""
+    """GIVEN a DRMemoryServiceClient WHEN a request THEN Authorization: Bearer header is sent."""
     captured: dict = {}
 
     def _capture(request: httpx.Request) -> httpx.Response:
@@ -94,7 +94,7 @@ async def test_bearer_auth_header_is_sent() -> None:
 
     respx.get(f"{MEMORY_BASE}/new-route/").mock(side_effect=_capture)
 
-    client = MemoryServiceClient(
+    client = DRMemoryServiceClient(
         endpoint=BASE,
         api_token="my-secret-token",
         http_client=httpx.AsyncClient(),
@@ -109,7 +109,7 @@ async def test_bearer_auth_header_is_sent() -> None:
 async def test_injected_client_is_not_closed_on_aclose() -> None:
     """GIVEN an injected httpx client WHEN aclose() THEN the injected client is NOT closed."""
     inner = httpx.AsyncClient()
-    client = MemoryServiceClient(
+    client = DRMemoryServiceClient(
         endpoint=BASE,
         api_token="tok",
         http_client=inner,
@@ -122,7 +122,7 @@ async def test_owned_client_is_closed_on_aclose(monkeypatch: pytest.MonkeyPatch)
     """GIVEN no injected client WHEN aclose() THEN the owned client IS closed."""
     monkeypatch.setenv("DATAROBOT_ENDPOINT", BASE)
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
-    async with MemoryServiceClient() as client:
+    async with DRMemoryServiceClient() as client:
         inner = client._http_client
     # After __aexit__ the owned client should be closed
     assert inner.is_closed
@@ -133,12 +133,12 @@ async def test_owned_client_is_closed_on_aclose(monkeypatch: pytest.MonkeyPatch)
 
 @respx.mock
 async def test_400_raises_memory_bad_request_error() -> None:
-    """GIVEN service returns 400 WHEN request THEN MemoryBadRequestError."""
+    """GIVEN service returns 400 WHEN request THEN DRMemoryBadRequestError."""
     respx.post(f"{MEMORY_BASE}/resource/").mock(
         return_value=httpx.Response(400, json={"detail": "Bad input"})
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryBadRequestError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryBadRequestError) as exc_info:
         await client.request("POST", "resource/")
     assert exc_info.value.status_code == 400
     assert "Bad input" in exc_info.value.detail
@@ -146,19 +146,19 @@ async def test_400_raises_memory_bad_request_error() -> None:
 
 @respx.mock
 async def test_404_raises_memory_not_found_error() -> None:
-    """GIVEN service returns 404 WHEN request THEN MemoryNotFoundError."""
+    """GIVEN service returns 404 WHEN request THEN DRMemoryNotFoundError."""
     respx.get(f"{MEMORY_BASE}/missing/").mock(
         return_value=httpx.Response(404, json={"detail": "Not found"})
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryNotFoundError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryNotFoundError) as exc_info:
         await client.request("GET", "missing/")
     assert exc_info.value.status_code == 404
 
 
 @respx.mock
 async def test_409_dedup_raises_memory_conflict_error() -> None:
-    """GIVEN service returns 409 with DeduplicationConflict THEN MemoryConflictError."""
+    """GIVEN service returns 409 with DeduplicationConflict THEN DRMemoryConflictError."""
     respx.post(f"{MEMORY_BASE}/new/").mock(
         return_value=httpx.Response(
             409,
@@ -171,8 +171,8 @@ async def test_409_dedup_raises_memory_conflict_error() -> None:
             },
         )
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryConflictError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryConflictError) as exc_info:
         await client.request("POST", "new/")
     err = exc_info.value
     assert err.existing_id == "sess-123"
@@ -181,56 +181,56 @@ async def test_409_dedup_raises_memory_conflict_error() -> None:
 
 @respx.mock
 async def test_409_version_mismatch_raises_version_conflict_error() -> None:
-    """GIVEN service returns 409 without DeduplicationConflict THEN MemoryVersionConflictError."""
+    """GIVEN service returns 409 without DeduplicationConflict THEN DRMemoryVersionConflictError."""
     respx.patch(f"{MEMORY_BASE}/space/sessions/sess/").mock(
         return_value=httpx.Response(
             409,
             json={"detail": "Session version mismatch: expected 1, current 3"},
         )
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryVersionConflictError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryVersionConflictError) as exc_info:
         await client.request("PATCH", "space/sessions/sess/")
     assert exc_info.value.status_code == 409
 
 
 @respx.mock
 async def test_422_event_version_raises_version_conflict_error() -> None:
-    """GIVEN service returns 422 with event-version detail THEN MemoryVersionConflictError."""
+    """GIVEN service returns 422 with event-version detail THEN DRMemoryVersionConflictError."""
     respx.patch(f"{MEMORY_BASE}/space/sessions/sess/events/0/").mock(
         return_value=httpx.Response(
             422,
             json={"detail": "Patch of incorrect version of event"},
         )
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryVersionConflictError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryVersionConflictError) as exc_info:
         await client.request("PATCH", "space/sessions/sess/events/0/")
     assert exc_info.value.status_code == 422
 
 
 @respx.mock
 async def test_422_schema_validation_raises_validation_error() -> None:
-    """GIVEN service returns 422 with schema error THEN MemoryValidationError."""
+    """GIVEN service returns 422 with schema error THEN DRMemoryValidationError."""
     respx.post(f"{MEMORY_BASE}/space/sessions/").mock(
         return_value=httpx.Response(
             422,
             json={"detail": [{"msg": "field required", "loc": ["body", "participants"]}]},
         )
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryValidationError):
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryValidationError):
         await client.request("POST", "space/sessions/")
 
 
 @respx.mock
 async def test_500_raises_base_memory_service_error() -> None:
-    """GIVEN service returns 500 WHEN request THEN MemoryServiceError."""
+    """GIVEN service returns 500 WHEN request THEN DRMemoryServiceError."""
     respx.get(f"{MEMORY_BASE}/anything/").mock(
         return_value=httpx.Response(500, json={"detail": "Internal error"})
     )
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
-    with pytest.raises(MemoryServiceError) as exc_info:
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryServiceError) as exc_info:
         await client.request("GET", "anything/")
     assert exc_info.value.status_code == 500
 
@@ -239,7 +239,7 @@ async def test_500_raises_base_memory_service_error() -> None:
 async def test_200_returns_response_object() -> None:
     """GIVEN service returns 200 WHEN request THEN returns httpx.Response."""
     respx.get(f"{MEMORY_BASE}/ok/").mock(return_value=httpx.Response(200, json={"result": "ok"}))
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
     resp = await client.request("GET", "ok/")
     assert resp.status_code == 200
     assert resp.json() == {"result": "ok"}
@@ -258,7 +258,7 @@ async def test_json_body_is_forwarded_correctly() -> None:
         return httpx.Response(201, json={"id": "1"})
 
     respx.post(f"{MEMORY_BASE}/items/").mock(side_effect=_capture)
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
     await client.request("POST", "items/", json={"key": "value"})
     assert captured["body"] == {"key": "value"}
 
@@ -274,7 +274,7 @@ async def test_extra_headers_are_merged() -> None:
         return httpx.Response(200, json={})
 
     respx.patch(f"{MEMORY_BASE}/sessions/x/").mock(side_effect=_capture)
-    client = MemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
     await client.request("PATCH", "sessions/x/", extra_headers={"If-Match": "5"})
     assert captured["if_match"] == "5"
     assert captured["auth"] == "Bearer tok"
