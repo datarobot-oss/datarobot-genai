@@ -17,16 +17,21 @@ from __future__ import annotations
 import httpx
 from datarobot_genai.core.agents.verify import validate_sequence
 
+from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
+from dragent_tests.mock_otel_collector import MockOtelCollector
 
 
-def test_generate_streaming(http_client: httpx.Client) -> None:
+def test_generate_streaming(
+    http_client: httpx.Client, otel_collector: MockOtelCollector
+) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
-    payload = make_generate_payload("Say 'hello world' and nothing else.")
+    prompt = "Say 'hello world' and nothing else."
+    payload = make_generate_payload(prompt)
 
     # WHEN: the payload is streamed to the generate endpoint
     sse_responses = stream_sse_responses(http_client, payload)
@@ -45,3 +50,7 @@ def test_generate_streaming(http_client: httpx.Client) -> None:
     assert any(
         chunk.datarobot_moderations for chunk in sse_responses
     ), "Expected streamed chunks to include datarobot_moderations when guards are configured"
+
+    # THEN: the streaming run exported DataRobot Tracing-table spans
+    # (gen_ai.prompt / gen_ai.completion) to the OTel ingest with DR auth headers.
+    assert_tracing_conventions(otel_collector, prompt)

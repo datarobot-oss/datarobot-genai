@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
 # dict so the inner ``["installed"]`` write doesn't need a ``global``
-# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry_agent.py``).
+# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry/agent.py``).
 # Repeated calls — which happen via plugin discovery + custom.py in the same
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
