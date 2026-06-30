@@ -159,13 +159,23 @@ def _should_provision_memory_space(env: dict[str, str]) -> bool:
     return env.get("E2E_PROVISION_MEMORY_SPACE", "").lower() == "true"
 
 
-def _provision_memory_space(env: dict[str, str]) -> tuple[dict[str, str], str | None]:
+def _provision_memory_space(
+    env: dict[str, str],
+    *,
+    no_server: bool,
+) -> tuple[dict[str, str], str | None]:
     """Create an ephemeral MemorySpace when the case requests it.
 
     Returns the updated env (with ``AGENT_MEMORY_SPACE_ID``) and the space id
     for cleanup, or ``(env, None)`` when provisioning is disabled.
+
+    With ``no_server``, provisioning is skipped — the dragent process is
+    started in another shell and must already have ``AGENT_MEMORY_SPACE_ID``
+    in its environment.
     """
     if not _should_provision_memory_space(env):
+        return env, None
+    if no_server:
         return env, None
     if env.get("AGENT_MEMORY_SPACE_ID"):
         # Caller supplied a space — do not create or delete it.
@@ -250,7 +260,7 @@ def _run_one(
     server: subprocess.Popen[bytes] | None = None
     try:
         try:
-            env, memory_space_id = _provision_memory_space(env)
+            env, memory_space_id = _provision_memory_space(env, no_server=no_server)
         except RuntimeError as exc:
             return ComboResult(combo.name, "FAIL", str(exc))
 
