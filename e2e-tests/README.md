@@ -84,17 +84,15 @@ Tests vary by agent and LLM context; some cases are skipped or interpreted diffe
 
 ## DataRobot Memory Service
 
-[cases/memory.yaml](cases/memory.yaml) runs [dragent_tests/test_memory.py](dragent_tests/test_memory.py) against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory` (per-agent [workflow-memory.yaml](dragent/nat/workflow-memory.yaml) overlays). The case sets `E2E_PROVISION_MEMORY_SPACE=true`, which creates an ephemeral `MemorySpace` via the DataRobot SDK before the dragent server starts and deletes it afterward.
+The `dr-memory-service` case in [cases/pr-tests.yaml](cases/pr-tests.yaml) runs [dragent_tests/test_memory.py](dragent_tests/test_memory.py) against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory` (per-agent [workflow-memory.yaml](dragent/nat/workflow-memory.yaml) overlays). It sets `E2E_PROVISION_MEMORY_SPACE=true`, which creates an ephemeral `MemorySpace` via the DataRobot SDK before the dragent server starts and deletes it afterward. The case runs on pull requests (filtered to changed agents) with the rest of the PR matrix.
 
 ```shell
 # Full lifecycle (provision MemorySpace → start dragent → pytest → cleanup):
-task cases-run -- memory.yaml
+task cases-run -- pr-tests.yaml --case dr-memory-service
 
-# Or trigger only the memory matrix in CI:
-task cases-ci -- memory.yaml
+# Trigger the PR matrix in CI (includes dr-memory-service):
+task cases-ci -- pr-tests.yaml
 ```
-
-On pull requests (and pushes to `main`), the `E2E Tests` workflow includes `memory.yaml` alongside `pr-tests.yaml`, filtered to agents whose code changed.
 
 When iterating with `--no-server`, export `AGENT_MEMORY_SPACE_ID` yourself before starting dragent (the runner skips provisioning in that mode unless the variable is already set).
 
