@@ -15,11 +15,9 @@
 import json
 import logging
 import re
-import socket
 from typing import Any
 from typing import Literal
 from typing import cast
-from urllib.parse import urlparse
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
@@ -81,20 +79,14 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
 
         return candidate
 
-    @field_validator("mcp_server_port", mode="before")
+    @field_validator("mcp_server_port", mode="after")
     @classmethod
-    def validate_mcp_server_port(cls, value: Any) -> int | None:
-        if value is None or value == "":
-            return None
-        try:
-            port = int(value)
-        except (TypeError, ValueError):
-            logger.warning("mcp_server_port must be an integer; ignoring")
-            return None
-        if not 1 <= port <= 65535:
+    def validate_mcp_server_port(cls, value: int | None) -> int | None:
+        # Pydantic already coerces/rejects the type; only the range is ours.
+        if value is not None and not 1 <= value <= 65535:
             logger.warning("mcp_server_port must be between 1 and 65535; ignoring")
             return None
-        return port
+        return value
 
     def _authorization_bearer_header(self) -> dict[str, str]:
         """Return Authorization header with Bearer token or empty dict."""
@@ -138,25 +130,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         mcp_server_port), as opposed to a DataRobot deployment or external URL.
         """
         return self._config_kind() == "local"
-
-    def server_reachable(self, timeout: float = 1.0) -> bool:
-        """TCP-probe the resolved MCP server's host:port.
-
-        A reliable up/down signal for a local server (process listening or not).
-        For remote hosts a load balancer may answer even when the MCP endpoint is
-        down, so callers should gate this with `is_local_server`.
-        """
-        config = self.server_config
-        if not config:
-            return False
-        parsed = urlparse(config["url"])
-        host = parsed.hostname or "localhost"
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        try:
-            with socket.create_connection((host, port), timeout=timeout):
-                return True
-        except OSError:
-            return False
 
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""

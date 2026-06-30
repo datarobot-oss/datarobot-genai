@@ -14,7 +14,6 @@
 
 import json
 import os
-import socket
 from http import HTTPStatus
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -77,35 +76,12 @@ class TestMCPConfig:
         assert config.server_config["url"] == "https://mcp.example.com/mcp"
 
     def test_invalid_mcp_server_port_ignored(self):
-        # Out-of-range port is dropped (warn + None), never crashing server_reachable.
+        # Out-of-range port is dropped (warn + None) rather than producing a config.
         with patch.dict(os.environ, {}, clear=True):
             config = MCPConfig(mcp_server_port=99999)
         assert config.mcp_server_port is None
         assert config.is_local_server is False
-        assert config.server_reachable() is False
-
-    def test_server_reachable_true_when_listening(self):
-        listener = socket.socket()
-        listener.bind(("127.0.0.1", 0))
-        listener.listen(128)
-        port = listener.getsockname()[1]
-        try:
-            with patch.dict(os.environ, {}, clear=True):
-                assert MCPConfig(mcp_server_port=port).server_reachable() is True
-        finally:
-            listener.close()
-
-    def test_server_reachable_false_when_closed(self):
-        # Hold a bound-but-not-listening socket: connections are refused, and
-        # keeping it open reserves the port so the OS can't reuse it mid-test.
-        bound = socket.socket()
-        bound.bind(("127.0.0.1", 0))
-        port = bound.getsockname()[1]
-        try:
-            with patch.dict(os.environ, {}, clear=True):
-                assert MCPConfig(mcp_server_port=port).server_reachable() is False
-        finally:
-            bound.close()
+        assert config.server_config is None
 
     def test_mcp_config_with_external_url(self):
         """Test MCP config with external URL."""
