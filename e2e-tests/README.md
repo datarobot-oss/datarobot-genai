@@ -84,7 +84,7 @@ Tests vary by agent and LLM context; some cases are skipped or interpreted diffe
 
 ## DataRobot Memory Service
 
-The `dr-memory-service` case in [cases/pr-tests.yaml](cases/pr-tests.yaml) runs [dragent_tests/test_memory.py](dragent_tests/test_memory.py) against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory` (per-agent [workflow-memory.yaml](dragent/nat/workflow-memory.yaml) overlays). It sets `E2E_PROVISION_MEMORY_SPACE=true`, which creates an ephemeral `MemorySpace` via the DataRobot SDK before the dragent server starts and deletes it afterward. The case runs on pull requests (filtered to changed agents) with the rest of the PR matrix.
+The `dr-memory-service` case in [cases/pr-tests.yaml](cases/pr-tests.yaml) runs [dragent_tests/test_memory.py](dragent_tests/test_memory.py) against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory`.
 
 ```shell
 # Full lifecycle (provision MemorySpace → start dragent → pytest → cleanup):

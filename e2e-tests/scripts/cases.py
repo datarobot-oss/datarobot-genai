@@ -219,10 +219,12 @@ def _expand_case(
     case: Case,
     *,
     agents: Iterable[str] | None,
+    all_agents_cases: set[str],
     overrides: dict[str, str] | None,
 ) -> list[Combination]:
     _validate_case(case)
-    agent_set = set(agents) if agents is not None else None
+    case_agents = None if case.name in all_agents_cases else agents
+    agent_set = set(case_agents) if case_agents is not None else None
     overrides = overrides or {}
 
     dims = list(case.matrix.keys())
@@ -275,6 +277,7 @@ def expand(
     *,
     case_name: str | None = None,
     agents: Iterable[str] | None = None,
+    all_agents_cases: Iterable[str] | None = None,
     overrides: dict[str, str] | None = None,
 ) -> list[Combination]:
     """Expand cases into combinations, applying optional filters.
@@ -289,6 +292,9 @@ def expand(
     agents:
         If set, drop combinations whose ``AGENT`` value is not in the
         allowlist. ``None`` disables agent filtering (all agents pass).
+    all_agents_cases:
+        Case names that ignore ``agents`` and always expand every matrix
+        ``AGENT`` value (for example when memory-service paths changed).
     overrides:
         ``KEY=VAL`` filter from the local CLI; combos that don't match every
         pinned dim are dropped. Keys must be matrix dims; unknown keys raise.
@@ -299,10 +305,16 @@ def expand(
         if not selected:
             raise ValueError(f"no case named {case_name!r}")
 
+    all_agents = set(all_agents_cases or ())
     out: list[Combination] = []
     for case in selected:
         out.extend(
-            _expand_case(case, agents=agents, overrides=overrides)
+            _expand_case(
+                case,
+                agents=agents,
+                all_agents_cases=all_agents,
+                overrides=overrides,
+            )
         )
     return out
 
@@ -360,6 +372,12 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         help="Comma-separated allowlist of agents (e.g. 'nat,langgraph'). "
              "Pass an empty string to drop everything; omit for no filter.",
     )
+    p.add_argument(
+        "--all-agents-cases",
+        default=None,
+        help="Comma-separated case names that ignore --agents and expand every "
+             "matrix AGENT (e.g. 'dr-memory-service').",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -379,7 +397,13 @@ def main(argv: list[str] | None = None) -> int:
         case_path = resolve_case_file(args.case_file)
         cases = load_cases(case_path)
         agents = _parse_csv(args.agents)
-        combos = expand(cases, case_name=args.case, agents=agents)
+        all_agents_cases = _parse_csv(args.all_agents_cases) or None
+        combos = expand(
+            cases,
+            case_name=args.case,
+            agents=agents,
+            all_agents_cases=all_agents_cases,
+        )
     except (ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
