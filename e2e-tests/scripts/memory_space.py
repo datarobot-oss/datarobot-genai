@@ -46,9 +46,13 @@ def _configure_client() -> None:
     )
 
 
-def create_space() -> str:
-    """Create a MemorySpace and print its id to stdout."""
-    _configure_client()
+def _memory_space_llm_model_name() -> str:
+    """Return the LLM gateway slug for MemorySpace.create().
+
+    E2e cases set ``LLM_DEFAULT_MODEL`` with a ``datarobot/`` prefix for the
+    agent runtime; the Memory Service API expects the bare gateway model id
+    (for example ``bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0``).
+    """
     llm_model_name = os.environ.get("LLM_DEFAULT_MODEL")
     if not llm_model_name:
         print(
@@ -57,10 +61,16 @@ def create_space() -> str:
             file=sys.stderr,
         )
         raise SystemExit(2)
+    return llm_model_name.removeprefix("datarobot/")
+
+
+def create_space() -> str:
+    """Create a MemorySpace and print its id to stdout."""
+    _configure_client()
     test_id = uuid.uuid4().hex
     space = MemorySpace.create(
         description=f"datarobot-genai e2e memory {test_id}",
-        llm_model_name=llm_model_name,
+        llm_model_name=_memory_space_llm_model_name(),
     )
     print(space.id)
     return space.id
