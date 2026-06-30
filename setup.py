@@ -25,7 +25,7 @@ from setuptools import setup
 core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
-    "datarobot-early-access==3.14.0.2026.3.18.162920",
+    "datarobot-early-access==3.16.0.2026.5.25.174233",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "ragas>=0.4.3,<0.5.0",
@@ -105,7 +105,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot-early-access[fs]==3.14.0.2026.3.18.162920",
+    "datarobot-early-access[fs]==3.16.0.2026.5.25.174233",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
