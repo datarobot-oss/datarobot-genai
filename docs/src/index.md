@@ -67,6 +67,11 @@ The examples and `workflow.yaml` expect the variables below; see [LLM configurat
 
 Agentic tools and credential/auth resolution for MCP servers and in-process agents. See [drtools/](drtools/).
 
+## application-utils — Memory Service Light ORM
+
+Async ORM (`datarobot-genai[application-utils]`) over the DataRobot Agentic Memory Service.
+Uses `DATAROBOT_ENDPOINT` / `DATAROBOT_API_TOKEN`.  See [application_utils/](application_utils/).
+
 ## License
 
 Apache-2.0 — see [LICENSE](../LICENSE).
