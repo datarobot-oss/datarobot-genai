@@ -195,6 +195,10 @@ jobs:
         run: |
           echo '${{ toJson(matrix.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
 
+      - name: Install dependencies
+        working-directory: e2e-tests
+        run: uv sync --group dragent-${{ matrix.agent }}
+
       - name: Provision DataRobot MemorySpace
         if: env.E2E_PROVISION_MEMORY_SPACE == 'true'
         working-directory: e2e-tests
@@ -202,10 +206,6 @@ jobs:
           SPACE_ID=$(uv run python scripts/memory_space.py create)
           echo "AGENT_MEMORY_SPACE_ID=$SPACE_ID" >> "$GITHUB_ENV"
           echo "E2E_MEMORY_SPACE_ID=$SPACE_ID" >> "$GITHUB_ENV"
-
-      - name: Install dependencies
-        working-directory: e2e-tests
-        run: uv sync --group dragent-${{ matrix.agent }}
 
       - name: Materialize workflow override
         working-directory: e2e-tests
