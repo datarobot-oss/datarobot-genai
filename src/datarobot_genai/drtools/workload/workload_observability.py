@@ -44,6 +44,11 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "Example: workload_stats(workload_id='wkld-abc')\n"
         "Example: workload_stats(workload_id='wkld-abc', response_time_quantile=0.95)"
     ),
+    display_name="Workload — Stats",
+    description_ui=(
+        "Get aggregated performance stats for a workload: request count, error "
+        "rate, response time, and slow requests."
+    ),
 )
 async def workload_stats(
     *,
@@ -101,6 +106,11 @@ async def workload_stats(
         "Example: workload_logs(workload_id='wkld-abc')\n"
         "Example: workload_logs(workload_id='wkld-abc', level='error', "
         "start_time='2026-01-01T00:00:00Z')"
+    ),
+    display_name="Workload — Logs",
+    description_ui=(
+        "Retrieve OTel log lines for a workload, filtered by level, time window, "
+        "body text, and span or trace id."
     ),
 )
 async def workload_logs(
@@ -189,6 +199,11 @@ _ACTIVITY_RESULT_KEY: dict[str, str] = {
         "history and events are paginated (limit/offset); related ignores pagination.\n\n"
         "Example: workload_activity(workload_id='wkld-abc', kind='events')"
     ),
+    display_name="Workload — Activity",
+    description_ui=(
+        "Inspect a workload's deployment history, status-change and error "
+        "events, or related entities."
+    ),
 )
 async def workload_activity(
     *,
@@ -253,6 +268,11 @@ async def workload_activity(
         "Example (list):    proton_get(workload_id='wkld-abc')\n"
         "Example (details): proton_get(workload_id='wkld-abc', proton_id='ptn-xyz', "
         "include_status_details=True)"
+    ),
+    display_name="Workload — Get Proton",
+    description_ui=(
+        "Inspect proton pod instances for a workload, optionally with "
+        "per-replica pod status details."
     ),
 )
 async def proton_get(

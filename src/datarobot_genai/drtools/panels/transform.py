@@ -120,6 +120,11 @@ async def _run_transform(
         "DataFrame `df`; assign the resulting rows to `_return` (a list of dicts), e.g. "
         "`_return = df.group_by('region').agg(pl.col('rev').sum()).to_dicts()`."
     ),
+    display_name="Panels — Transform",
+    description_ui=(
+        "Runs Python over a Dataset panel in the sandbox and saves the result "
+        "as a derived child panel."
+    ),
 )
 async def transform_panel(
     *,
@@ -140,6 +145,11 @@ async def transform_panel(
         "[Panels—filter] Filter a Dataset panel by a polars boolean expression in the sandbox, "
         "saving the filtered rows as a derived child panel. `where` is a polars expression over "
         "`df`, e.g. \"pl.col('rev') > 1000\"."
+    ),
+    display_name="Panels — Filter",
+    description_ui=(
+        "Filters a Dataset panel by a polars boolean expression in the sandbox, "
+        "saving the result as a derived child panel."
     ),
 )
 async def filter_panel(

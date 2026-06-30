@@ -44,6 +44,9 @@ _JIRA_ISSUES_REST = "https://developer.atlassian.com/cloud/jira/platform/rest/v3
         "JQL references: "
         f"{_JQL_FUNCTIONS} {_JQL_FIELDS} {_JQL_KEYWORDS} {_JQL_OPERATORS}"
     ),
+    display_name="Jira — Search Issues",
+    description_ui="Find Jira issues matching a JQL query.",
+    auth_provider="jira",
 )
 async def jira_search_issues(
     *,
@@ -79,6 +82,9 @@ async def jira_search_issues(
         "fields and current values. Read-only. Not JQL multi-issue search (jira_search_issues).\n\n"
         f'Example: issue_key="PROJ-123".\n\nReference: {_JIRA_ISSUES_REST}'
     ),
+    display_name="Jira — Get Issue",
+    description_ui="Get full details for a single Jira issue (requires issue key, e.g., PROJ-123).",
+    auth_provider="jira",
 )
 async def jira_get_issue(
     *,
@@ -110,6 +116,9 @@ async def jira_get_issue(
         'description="Steps...".\n\n'
         f"Reference: {_JIRA_ISSUES_REST}"
     ),
+    display_name="Jira — Create Issue",
+    description_ui="Create a new Jira issue in a project.",
+    auth_provider="jira",
 )
 async def jira_create_issue(
     *,
@@ -164,6 +173,9 @@ async def jira_create_issue(
         '"content": [{"type": "text", "text": "<your text>"}]}]}}\n\n'
         f"Reference: {_JIRA_ISSUES_REST}"
     ),
+    display_name="Jira — Update Issue",
+    description_ui="Update fields on an existing Jira issue.",
+    auth_provider="jira",
 )
 async def jira_update_issue(
     *,
@@ -206,6 +218,9 @@ async def jira_update_issue(
         "the workflow; use the exact label returned for the issue).\n\n"
         f"Reference: {_JIRA_ISSUES_REST}"
     ),
+    display_name="Jira — Transition Issue",
+    description_ui="Move a Jira issue to a new workflow status.",
+    auth_provider="jira",
 )
 async def jira_transition_issue(
     *,

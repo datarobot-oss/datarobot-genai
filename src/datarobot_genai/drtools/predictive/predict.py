@@ -96,6 +96,8 @@ def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) 
         "rows (predict_score_inline_realtime). For synchronous small catalog scoring use "
         "predict_score_catalog_realtime."
     ),
+    display_name="Predictions — Batch from Dataset",
+    description_ui="Generate batch predictions from a deployment using a supplied dataset.",
 )
 async def predict_batch_predictions_from_dataset(
     *,
@@ -140,6 +142,8 @@ async def predict_batch_predictions_from_dataset(
         "then predict_get_batch_results or download url. Not catalog-only scoring without "
         "project context, not inline CSV in chat."
     ),
+    display_name="Predictions — Batch from Holdout",
+    description_ui="Generate batch predictions from a deployment using the holdout partition data.",
 )
 async def predict_batch_predictions_from_partition(
     *,
@@ -208,6 +212,8 @@ async def predict_batch_predictions_from_partition(
         "predict_get_batch_results or download url. Lightweight (no CSV body). Raises on "
         "terminal failure. Not for modeling_score_dataset jobs."
     ),
+    display_name="Predictions — Get Batch Job Status",
+    description_ui="Check status of a batch prediction job.",
 )
 async def predict_get_batch_job_status(
     *,
@@ -262,6 +268,8 @@ async def predict_get_batch_job_status(
         "large, the error includes the download url—fetch with API authentication. Does not start "
         "scoring; not for modeling_score_dataset jobs."
     ),
+    display_name="Predictions — Get Batch Results",
+    description_ui="Download scored results from a completed batch prediction job.",
 )
 async def predict_get_batch_results(
     *,

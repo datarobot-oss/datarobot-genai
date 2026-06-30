@@ -12,14 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Core utilities and shared components for DataRobot tools."""
+"""Custom (non-MCP) HTTP routes shared by the DataRobot MCP servers."""
 
-from .tool_metadata import get_registered_tools
-from .tool_metadata import get_tool_ui_metadata
-from .tool_metadata import tool_metadata
+from datarobot_genai.drmcputils.routes.tool_gallery import register_tool_gallery_routes
 
-__all__ = [
-    "tool_metadata",
-    "get_registered_tools",
-    "get_tool_ui_metadata",
-]
+__all__ = ["register_tool_gallery_routes"]

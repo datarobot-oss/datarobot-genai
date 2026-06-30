@@ -182,6 +182,8 @@ class ModelEncoder(json.JSONEncoder):
         "(deployment_get_info), "
         "not full diagnostics (modeling_get_modeldetails)."
     ),
+    display_name="Modeling — Get Best Model",
+    description_ui="Get the top-performing model on a model leaderboard.",
 )
 async def models_get_bestmodel(
     *,
@@ -255,6 +257,10 @@ async def models_get_bestmodel(
         "Starts an async project scoring job; "
         "returns scoring_job_id and related dataset ids, not prediction rows."
     ),
+    display_name="Modeling — Score Dataset",
+    description_ui=(
+        "Score a catalog dataset with a trained model from a project leaderboard (async job)."
+    ),
 )
 async def modeling_score_dataset(
     *,
@@ -300,6 +306,8 @@ async def modeling_score_dataset(
         "modeling_get_modeldetails, "
         "deployment_create_deployment, or modeling_score_dataset using a chosen model_id."
     ),
+    display_name="Modeling — List Models",
+    description_ui="List all leaderboard models.",
 )
 async def modeling_list_models(
     *,
@@ -358,6 +366,8 @@ async def modeling_list_models(
         "deployment_get_info instead. For ROC-only or lift-only charts with explicit source "
         "fold, see modeling_get_model_roc / modeling_get_model_lift_chart."
     ),
+    display_name="Modeling — Get Model Details",
+    description_ui="Get training metrics and diagnostics for a leaderboard model.",
 )
 async def modeling_get_modeldetails(
     *,
@@ -416,6 +426,8 @@ async def modeling_get_modeldetails(
         "not train. Not general EDA (catalog_get_eda_insights / catalog_analyze_dataset) and not "
         "tabular-only Autopilot start (modeling_start_autopilot without TS-specific checks)."
     ),
+    display_name="Catalog — Check Time Series Eligibility",
+    description_ui="Check whether a dataset is ready for time series modeling.",
 )
 async def catalog_check_timeseries_eligibility(
     *,

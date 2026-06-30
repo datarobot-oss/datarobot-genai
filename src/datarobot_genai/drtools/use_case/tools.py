@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
         "not deployments alone "
         "(deployment_get_list)."
     ),
+    display_name="Use Cases — List",
+    description_ui="List DataRobot Use Cases with optional name filter.",
 )
 async def datarobot_usecases_list(
     *,
@@ -75,6 +77,8 @@ async def datarobot_usecases_list(
         "linked: datasets, deployments, and experiments as id+name per case. Read-only. Not "
         "discovering use case ids (datarobot_usecases_list), not Jira/Confluence content."
     ),
+    display_name="Use Cases — List Assets",
+    description_ui="List datasets, deployments, and experiments linked to use cases.",
 )
 async def usecases_list_assets(
     *,

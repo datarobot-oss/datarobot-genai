@@ -64,6 +64,8 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
         "Autopilot, scoring, or inspection. Not for listing existing items "
         "(catalog_list_datasets), not external DB browsing (catalog_list_datastores)."
     ),
+    display_name="Catalog — Upload Dataset",
+    description_ui="Upload or register a dataset from a local file or URL.",
 )
 async def catalog_upload_dataset(
     *,
@@ -149,6 +151,8 @@ async def catalog_upload_dataset(
         "Follow with "
         "catalog_get_preview or scoring tools that take dataset_id."
     ),
+    display_name="Catalog — List Datasets",
+    description_ui="List datasets registered in DataRobot.",
 )
 async def catalog_list_datasets(
     offset: Annotated[
@@ -212,6 +216,8 @@ async def catalog_list_datasets(
         "Lighter than full EDA (catalog_analyze_dataset / catalog_get_eda_insights); not datastore "
         "SQL (catalog_query_datastore)."
     ),
+    display_name="Catalog — Get Preview",
+    description_ui="Get metadata and optional sample rows for a dataset.",
 )
 async def catalog_get_preview(
     *,
@@ -257,6 +263,8 @@ async def catalog_get_preview(
         "Next step: catalog_browse_datastore "
         "or catalog_query_datastore."
     ),
+    display_name="Catalog — List Datastores",
+    description_ui="List external database and storage connections configured in DataRobot.",
 )
 async def catalog_list_datastores(
     offset: Annotated[
@@ -319,6 +327,8 @@ async def catalog_list_datastores(
         "tables, or folders inside one connection. Read-only; optional path, search filter, "
         "pagination. Not SQL execution (catalog_query_datastore), not catalog dataset listing."
     ),
+    display_name="Catalog — Browse Datastore",
+    description_ui="Browse schemas, tables, or folders inside an external datastore.",
 )
 async def catalog_browse_datastore(
     *,
@@ -384,6 +394,8 @@ async def catalog_browse_datastore(
         "rows, columns, and row count up to limit. Not DataRobot catalog inspection "
         "(catalog_get_preview), not browsing without SQL (catalog_browse_datastore)."
     ),
+    display_name="Catalog — Query Datastore",
+    description_ui="Run SQL against an external datastore.",
 )
 async def catalog_query_datastore(
     *,

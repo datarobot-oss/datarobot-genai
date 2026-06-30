@@ -49,6 +49,11 @@ _DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage
         "page_size=12, limit=36.\n\n"
         f"Reference: {_DRIVE_SEARCH_DOCS}"
     ),
+    display_name="Google Drive — Find Contents",
+    description_ui=(
+        "Search Google Drive for files and folders, using optional query and pagination parameters."
+    ),
+    auth_provider="gdrive",
 )
 async def gdrive_find_contents(
     *,
@@ -116,6 +121,9 @@ async def gdrive_find_contents(
         "may fail.\n\n"
         f"Reference (export MIME types): {_DRIVE_EXPORT_DOCS}"
     ),
+    display_name="Google Drive — Read & Export Content",
+    description_ui="Read and export the text content of a Google Drive file.",
+    auth_provider="gdrive",
 )
 async def gdrive_read_and_export_content(
     *,
@@ -154,6 +162,9 @@ async def gdrive_read_and_export_content(
         "application/vnd.google-apps.folder; file in folder via parent_id.\n\n"
         f"Reference: {_DRIVE_CREATE_DOCS}"
     ),
+    display_name="Google Drive — Create File",
+    description_ui="Create a new file or folder in Google Drive.",
+    auth_provider="gdrive",
 )
 async def gdrive_create_file(
     *,
@@ -206,6 +217,9 @@ async def gdrive_create_file(
         "At least one of new_name, starred, or trash is required.\n\n"
         f"Reference: {_DRIVE_FILES_UPDATE_DOCS}"
     ),
+    display_name="Google Drive — Update Metadata",
+    description_ui="Rename, star, or delete a Google Drive file.",
+    auth_provider="gdrive",
 )
 async def gdrive_update_metadata(
     *,
@@ -257,6 +271,9 @@ async def gdrive_update_metadata(
         'action="update" with permission_id; action="remove" with permission_id.\n\n'
         f"Reference: {_DRIVE_PERMISSIONS_DOCS}"
     ),
+    display_name="Google Drive — Manage Access",
+    description_ui="Add, update, or remove sharing permissions on a Google Drive file.",
+    auth_provider="gdrive",
 )
 async def gdrive_manage_access(
     *,

@@ -48,6 +48,11 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "Example (list): artifact_get(search='my-service', status='draft')\n"
         "Example (get):  artifact_get(artifact_id='art-abc123')"
     ),
+    display_name="Artifact — Get",
+    description_ui=(
+        "Read artifacts: list them with status, type, and filters, or get a "
+        "single artifact's full spec."
+    ),
 )
 async def artifact_get(
     *,
@@ -124,6 +129,11 @@ async def artifact_get(
         "'containerGroups': [{'containers': [{'name': 'main', 'imageUri': 'nginx:latest', "
         "'primary': true, 'port': 8080}]}]}})"
     ),
+    display_name="Artifact — Create",
+    description_ui=(
+        "Create a new draft artifact from a payload containing a name and a spec "
+        "with type and container groups."
+    ),
 )
 async def artifact_create(
     *,
@@ -167,6 +177,8 @@ async def artifact_create(
         "artifact_action(action='lock').\n\n"
         "Example: artifact_update(artifact_id='art-abc', name='new-name')"
     ),
+    display_name="Artifact — Update",
+    description_ui="Partially update a draft artifact's name, description, or spec.",
 )
 async def artifact_update(
     *,
@@ -223,6 +235,10 @@ async def artifact_update(
         "Example (lock):   artifact_action(artifact_id='art-abc', action='lock')\n"
         "Example (clone):  artifact_action(artifact_id='art-abc', action='clone', name='svc-v2')\n"
         "Example (delete): artifact_action(artifact_id='art-abc', action='delete')"
+    ),
+    display_name="Artifact — Action",
+    description_ui=(
+        "Run an action on an artifact: lock a draft, clone it under a new name, or delete it."
     ),
 )
 async def artifact_action(

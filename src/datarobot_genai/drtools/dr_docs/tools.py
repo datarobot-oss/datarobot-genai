@@ -58,6 +58,8 @@ logger = logging.getLogger(__name__)
         "and URLs (then datarobot_docs_fetch_page for full text). Not Confluence, not general web "
         "(tavily_search_web / perplexity_search)."
     ),
+    display_name="DataRobot Docs — Search",
+    description_ui="Search DataRobot documentation for relevant pages.",
 )
 async def search_datarobot_agentic_docs(
     *,
@@ -108,6 +110,8 @@ async def search_datarobot_agentic_docs(
         "(e.g. from search results) and need the page body as text. Not keyword search across the "
         "agentic docs index (search_datarobot_agentic_docs)."
     ),
+    display_name="DataRobot Docs — Fetch Page",
+    description_ui="Retrieve the full text of a DataRobot documentation page by URL.",
 )
 async def datarobot_docs_fetch_page(
     *,

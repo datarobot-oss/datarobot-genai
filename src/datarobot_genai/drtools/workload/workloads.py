@@ -50,6 +50,8 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "single known workload id, not this.\n\n"
         "Example: workload_list(limit=50) or workload_list(search='my-app', limit=20)."
     ),
+    display_name="Workload — List",
+    description_ui="List workloads with their id, name, status, artifact, importance, and runtime.",
 )
 async def workload_list(
     *,
@@ -101,6 +103,10 @@ async def workload_list(
         "true. Raises if the workload enters 'errored'.\n\n"
         "Example: workload_get(workload_id='wkld-abc')\n"
         "Example (status check): workload_get(workload_id='wkld-abc', target_status='running')"
+    ),
+    display_name="Workload — Get",
+    description_ui=(
+        "Fetch a single workload's status, runtime, artifact, endpoint, creator, and timestamps."
     ),
 )
 async def workload_get(
@@ -164,6 +170,11 @@ async def workload_get(
         "Example (existing): workload_create_payload(name='my-wl', artifact_id='art-xyz')\n"
         "Example (inline):   workload_create_payload(name='echo', artifact_name='echo', "
         "image_uri='hashicorp/http-echo:0.2.3', port=8080, cpu=1, memory_bytes=134217728)"
+    ),
+    display_name="Workload — Build Create Payload",
+    description_ui=(
+        "Build a valid workload create payload from an existing or inline "
+        "artifact without calling the API."
     ),
 )
 async def workload_create_payload(
@@ -309,6 +320,11 @@ async def workload_create_payload(
         "The payload must contain 'name' and exactly one of 'artifactId' or 'artifact'.\n\n"
         "Example: workload_create(payload=workload_create_payload(...)['payload'])"
     ),
+    display_name="Workload — Create",
+    description_ui=(
+        "Create a new workload from a payload containing a name and an artifact "
+        "reference or inline artifact."
+    ),
 )
 async def workload_create(
     *,
@@ -353,6 +369,8 @@ async def workload_create(
         "importance. Only supplied fields are changed. At least one field is required.\n\n"
         "Example: workload_update(workload_id='wkld-abc', name='new-name', importance='high')"
     ),
+    display_name="Workload — Update",
+    description_ui="Partially update a workload's name, description, or importance.",
 )
 async def workload_update(
     *,
@@ -409,6 +427,8 @@ _ACTION_TARGET_STATUS: dict[str, str] = {"start": "running", "stop": "stopped"}
         "workload_get(workload_id, target_status=...) yourself until target_reached.\n\n"
         "Example: workload_action(workload_id='wkld-abc', action='start')"
     ),
+    display_name="Workload — Action",
+    description_ui="Run a lifecycle action on a workload: start, stop, delete, or promote.",
 )
 async def workload_action(
     *,
@@ -465,6 +485,10 @@ async def workload_action(
         "determined by the bundle — there is no separate gpuType parameter. Use "
         "the bundle id when creating or updating a workload.\n\n"
         "Example: bundle_list()."
+    ),
+    display_name="Workload — List Bundles",
+    description_ui=(
+        "List available compute resource bundles with CPU, memory, and GPU type and VRAM."
     ),
 )
 async def bundle_list() -> dict[str, Any]:

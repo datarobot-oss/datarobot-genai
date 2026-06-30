@@ -51,10 +51,11 @@ class TestBuildToolGalleryItems:
         item = result[0]
         assert item["name"] == "my_tool"
         assert item["display_name"] == "my_tool"
-        assert item["description_ui"] == ""
+        assert item["description"] == ""
         assert item["tags"] == []
         assert item["categories"] == []
-        assert item["auth_provider"] is None
+        assert item["provider"] == "datarobot"
+        assert item["oauth_provider_type"] is None
         assert item["hosted"] is False
 
     def test_fully_populated_tool_round_trips(self) -> None:
@@ -71,8 +72,9 @@ class TestBuildToolGalleryItems:
         item = result[0]
         assert item["name"] == "jira_search_issues"
         assert item["display_name"] == "Jira — Search Issues"
-        assert item["description_ui"] == "Find Jira issues matching a JQL query."
-        assert item["auth_provider"] == "jira"
+        assert item["description"] == "Find Jira issues matching a JQL query."
+        assert item["provider"] == "third_party"
+        assert item["oauth_provider_type"] == "jira"
         assert item["hosted"] is False
 
     def test_multiple_tools_preserved_in_order(self) -> None:
@@ -100,15 +102,19 @@ class TestBuildToolGalleryItems:
         )
         assert result[0]["display_name"] == "Human Friendly Name"
 
-    # ── description_ui fallback ──────────────────────────────────────────────
+    # ── description (sourced from description_ui) ────────────────────────────
 
-    def test_description_ui_absent_becomes_empty_string(self) -> None:
+    def test_description_absent_becomes_empty_string(self) -> None:
         result = build_tool_gallery_items([{"name": "t"}])
-        assert result[0]["description_ui"] == ""
+        assert result[0]["description"] == ""
 
-    def test_description_ui_none_becomes_empty_string(self) -> None:
+    def test_description_none_becomes_empty_string(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "description_ui": None}])
-        assert result[0]["description_ui"] == ""
+        assert result[0]["description"] == ""
+
+    def test_description_sourced_from_description_ui(self) -> None:
+        result = build_tool_gallery_items([{"name": "t", "description_ui": "Search the web."}])
+        assert result[0]["description"] == "Search the web."
 
     # ── tags sorting ─────────────────────────────────────────────────────────
 
@@ -150,19 +156,47 @@ class TestBuildToolGalleryItems:
         result = build_tool_gallery_items([{"name": "t", "categories": None}])
         assert result[0]["categories"] == []
 
-    # ── auth_provider fallback ───────────────────────────────────────────────
+    # ── provider / oauth_provider_type ───────────────────────────────────────
 
-    def test_auth_provider_none_stays_none(self) -> None:
+    def test_provider_is_datarobot_without_auth_provider(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "auth_provider": None}])
-        assert result[0]["auth_provider"] is None
+        assert result[0]["provider"] == "datarobot"
+        assert result[0]["oauth_provider_type"] is None
 
-    def test_auth_provider_empty_string_becomes_none(self) -> None:
+    def test_provider_is_datarobot_for_empty_auth_provider(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "auth_provider": ""}])
-        assert result[0]["auth_provider"] is None
+        assert result[0]["provider"] == "datarobot"
 
-    def test_auth_provider_present_is_preserved(self) -> None:
+    def test_provider_is_third_party_when_auth_provider_set(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "auth_provider": "jira"}])
-        assert result[0]["auth_provider"] == "jira"
+        assert result[0]["provider"] == "third_party"
+
+    def test_oauth_provider_type_for_oauth_first_connectors(self) -> None:
+        # OAuth-first connectors carry their OAuth provider_type, matching the drtools
+        # token lookup: jira/confluence as-is, gdrive→google, microsoft_graph→microsoft.
+        expected = {
+            "jira": "jira",
+            "confluence": "confluence",
+            "gdrive": "google",
+            "microsoft_graph": "microsoft",
+        }
+        for auth_provider, oauth_type in expected.items():
+            result = build_tool_gallery_items([{"name": "t", "auth_provider": auth_provider}])
+            assert result[0]["provider"] == "third_party"
+            assert result[0]["oauth_provider_type"] == oauth_type
+
+    def test_oauth_provider_type_is_api_key_for_api_key_third_party(self) -> None:
+        # perplexity and tavily authenticate with an API key, not OAuth.
+        for auth_provider in ("perplexity", "tavily"):
+            result = build_tool_gallery_items([{"name": "t", "auth_provider": auth_provider}])
+            assert result[0]["provider"] == "third_party"
+            assert result[0]["oauth_provider_type"] == "api_key"
+
+    def test_oauth_provider_type_null_for_datarobot_native(self) -> None:
+        # Native tools have no auth_provider → no separate credential.
+        result = build_tool_gallery_items([{"name": "t"}])
+        assert result[0]["provider"] == "datarobot"
+        assert result[0]["oauth_provider_type"] is None
 
     # ── hosted coercion ──────────────────────────────────────────────────────
 
@@ -181,3 +215,73 @@ class TestBuildToolGalleryItems:
     def test_hosted_false_preserved_as_bool(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "hosted": False}])
         assert result[0]["hosted"] is False
+
+
+class TestHostedToolClassification:
+    """Dynamic/proxied tools are classified from their ``tool_category`` meta marker."""
+
+    def test_user_tool_deployment_is_datarobot_dynamic(self) -> None:
+        # DataRobot deployment tool (CustomModelToolProvider).
+        result = build_tool_gallery_items(
+            [{"name": "weather_api_a1b2", "tool_category": "USER_TOOL_DEPLOYMENT"}]
+        )
+        item = result[0]
+        assert item["provider"] == "datarobot"
+        assert item["oauth_provider_type"] is None
+        assert item["categories"] == ["dr_dynamic_tools"]
+        assert item["hosted"] is True
+
+    def test_proxied_user_mcp_is_third_party(self) -> None:
+        # Tool proxied from a user's own MCP server (UserMCPProvider).
+        result = build_tool_gallery_items(
+            [{"name": "user-mcp-ab12_search", "tool_category": "PROXIED_USER_MCP"}]
+        )
+        item = result[0]
+        assert item["provider"] == "third_party"
+        assert item["oauth_provider_type"] is None
+        assert item["categories"] == ["dr_proxied_user_mcp"]
+        assert item["hosted"] is True
+
+    def test_hosted_kind_ignores_static_categories_and_auth_provider(self) -> None:
+        # A hosted marker wins over any stray static categories / auth_provider on the dict.
+        result = build_tool_gallery_items(
+            [
+                {
+                    "name": "x",
+                    "tool_category": "USER_TOOL_DEPLOYMENT",
+                    "categories": ["dr_connectors"],
+                    "auth_provider": "jira",
+                }
+            ]
+        )
+        assert result[0]["categories"] == ["dr_dynamic_tools"]
+        assert result[0]["provider"] == "datarobot"
+        assert result[0]["oauth_provider_type"] is None
+
+    def test_unknown_tool_category_treated_as_non_hosted(self) -> None:
+        result = build_tool_gallery_items(
+            [{"name": "x", "tool_category": "SOMETHING_ELSE", "auth_provider": "jira"}]
+        )
+        # Falls through to the static path: provider derived from auth_provider, not hosted.
+        assert result[0]["provider"] == "third_party"
+        assert result[0]["oauth_provider_type"] == "jira"
+        assert result[0]["hosted"] is False
+
+    def test_description_falls_back_to_mcp_description_for_hosted(self) -> None:
+        # Dynamic/proxied tools have no curated description_ui → use the MCP description.
+        result = build_tool_gallery_items(
+            [
+                {
+                    "name": "weather_api_a1b2",
+                    "tool_category": "USER_TOOL_DEPLOYMENT",
+                    "description": "Predict the weather.",
+                }
+            ]
+        )
+        assert result[0]["description"] == "Predict the weather."
+
+    def test_description_ui_takes_precedence_over_mcp_description(self) -> None:
+        result = build_tool_gallery_items(
+            [{"name": "t", "description_ui": "Curated copy.", "description": "Raw MCP copy."}]
+        )
+        assert result[0]["description"] == "Curated copy."

@@ -23,7 +23,7 @@ from typing import Any
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import resolve_to_tool_names
+from datarobot_genai.drmcputils.categories import resolve_to_tool_names
 
 MCP_MODE_HEADER = "x-datarobot-mcp-mode"
 MCP_TOOLS_HEADER = "x-datarobot-mcp-tools"

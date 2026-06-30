@@ -203,6 +203,8 @@ def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
         "(catalog_suggest_ml_problems calls this "
         "internally)."
     ),
+    display_name="Catalog — Analyze Dataset",
+    description_ui="Return profile of an AI Catalog dataset (columns, types, and missing values).",
 )
 async def catalog_analyze_dataset(
     *,
@@ -225,6 +227,8 @@ async def catalog_analyze_dataset(
         "or deep EDA "
         "(catalog_get_eda_insights)."
     ),
+    display_name="Catalog — Suggest ML Problems",
+    description_ui="Recommend a target, which defines a problem type, from a dataset.",
 )
 async def catalog_suggest_ml_problems(
     *,
@@ -258,6 +262,10 @@ async def catalog_suggest_ml_problems(
         "per platform), optionally with include_feature_histogram. Read-only; does not train or "
         "upload data. Heavier than catalog_analyze_dataset; not time-series eligibility "
         "(catalog_check_timeseries_eligibility)."
+    ),
+    display_name="Catalog — Get EDA Insights",
+    description_ui=(
+        "Run exploratory data analysis (EDA) on a dataset and return summary statistics."
     ),
 )
 async def catalog_get_eda_insights(
@@ -611,6 +619,8 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
         "(deployment_create_deployment), not batch scoring (predict_*), not dataset upload "
         "(catalog_upload_dataset) unless they already registered data."
     ),
+    display_name="Modeling — Start Autopilot",
+    description_ui="Start or resume Autopilot training for a modeling project.",
 )
 async def modeling_start_autopilot(
     *,
@@ -704,6 +714,11 @@ async def modeling_start_autopilot(
         "not deployment "
         "monitoring (deployment_get_prediction_history)."
     ),
+    display_name="Modeling — Get ROC Curve",
+    description_ui=(
+        "Get ROC curve data—classification, performance, and statistics—for a "
+        "binary classification model."
+    ),
 )
 async def modeling_get_model_roc(
     *,
@@ -769,6 +784,11 @@ async def modeling_get_model_roc(
         "(those come from predict_score_inline_realtime explanation flags), not "
         "lift chart bins (modeling_get_model_lift_chart)."
     ),
+    display_name="Modeling — Get Feature Impact",
+    description_ui=(
+        "Get model feature impact, which identifies the features most strongly "
+        "driving model decisions."
+    ),
 )
 async def modeling_get_model_feature_impact(
     *,
@@ -802,6 +822,8 @@ async def modeling_get_model_feature_impact(
         "metrics dump "
         "(modeling_get_modeldetails)."
     ),
+    display_name="Modeling — Get Lift Chart",
+    description_ui="Get lift chart data for a binary or multiclass classification model.",
 )
 async def modeling_get_model_lift_chart(
     *,

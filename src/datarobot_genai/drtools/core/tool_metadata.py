@@ -66,3 +66,24 @@ def get_registered_tools() -> list[tuple[Callable, dict[str, Any]]]:
         List of (function, metadata) tuples.
     """
     return _TOOL_REGISTRY.copy()
+
+
+def get_tool_ui_metadata() -> dict[str, dict[str, Any]]:
+    """Build ``tool_name -> {display_name, description_ui, auth_provider}`` from the registry.
+
+    These UI-only keys are stripped before FastMCP registration (see
+    ``DRTOOLS_PRIVATE_METADATA_KEYS``), so agents/LLMs never see them. The tools-gallery
+    route re-attaches them by calling this — it is injected into
+    ``register_tool_gallery_routes`` as the ``ui_metadata_provider`` because ``drmcputils``
+    (where the route lives) may not import ``drtools``. Owning this here keeps the metadata
+    keys with the registry that defines them.
+    """
+    lookup: dict[str, dict[str, Any]] = {}
+    for func, metadata in get_registered_tools():
+        name = metadata.get("name") or func.__name__
+        lookup[name] = {
+            "display_name": metadata.get("display_name"),
+            "description_ui": metadata.get("description_ui"),
+            "auth_provider": metadata.get("auth_provider"),
+        }
+    return lookup

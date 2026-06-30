@@ -18,7 +18,8 @@ from enum import auto
 class DataRobotMCPToolCategory(Enum):
     USER_TOOL = auto()  # tools created by users
     BUILT_IN_TOOL = auto()  # tools as a wrapper of external service
-    USER_TOOL_DEPLOYMENT = auto()  # tools dynamically loaded after MCP server is up
+    USER_TOOL_DEPLOYMENT = auto()  # DataRobot deployment tools loaded dynamically per user
+    PROXIED_USER_MCP = auto()  # tools proxied from a user's own deployed MCP server
 
     @staticmethod
     def from_string(enum_str: str) -> "DataRobotMCPToolCategory":
@@ -26,6 +27,7 @@ class DataRobotMCPToolCategory(Enum):
             "USER_TOOL": DataRobotMCPToolCategory.USER_TOOL,
             "BUILT_IN_TOOL": DataRobotMCPToolCategory.BUILT_IN_TOOL,
             "USER_TOOL_DEPLOYMENT": DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT,
+            "PROXIED_USER_MCP": DataRobotMCPToolCategory.PROXIED_USER_MCP,
         }
         if enum_str not in enum_str_map:
             error_msg = f"Enum string should be one of {', '.join(enum_str_map.keys())}"

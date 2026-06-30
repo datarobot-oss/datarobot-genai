@@ -57,6 +57,10 @@ def _feature_importance_value(feature: Any) -> float:
         "view is deployment_get_features; model training diagnostics stay on the project "
         "(modeling_get_modeldetails)."
     ),
+    display_name="Deployment — Get Info",
+    description_ui=(
+        "Get deployment scoring information: feature details, model settings, and deployment ID."
+    ),
 )
 async def deployment_get_info(
     *,
@@ -132,6 +136,10 @@ async def deployment_get_info(
         "Pair with deployment_get_info for semantics; output is meant as a skeleton for "
         "predict_score_inline_realtime CSV/JSON, not for batch catalog jobs "
         "or project model scoring."
+    ),
+    display_name="Deployment — Generate Prediction Sample",
+    description_ui=(
+        "Generate sample prediction rows with required columns for valid prediction output."
     ),
 )
 async def deployment_generate_prediction_sample(
@@ -234,6 +242,8 @@ async def deployment_generate_prediction_sample(
         "dataset when CSV; not for "
         "catalog dataset_id flows or JSON-only payloads."
     ),
+    display_name="Deployment — Validate Prediction Data",
+    description_ui="Validate inline CSV prediction data against a deployment schema.",
 )
 async def deployment_validate_prediction_data(
     *,
@@ -378,6 +388,8 @@ async def deployment_validate_prediction_data(
         "narrative. Read-only; subset of deployment_get_info (which remains the default first "
         "call for predict_score_inline_realtime prep)."
     ),
+    display_name="Deployment — Get Features",
+    description_ui="Get input features, including target summary, for a deployment.",
 )
 async def deployment_get_features(
     *,

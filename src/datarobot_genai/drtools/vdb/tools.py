@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
         "modelTargetType=VectorDatabase. Not predictive deployments (deployment_get_list), not "
         "AI Catalog datasets (catalog_list_datasets). Next step: vdb_query."
     ),
+    display_name="Vector Database — List",
+    description_ui="List deployed vector database (VDB) deployments.",
 )
 async def vdb_list(
     *,
@@ -101,6 +103,8 @@ async def vdb_list(
         "Returns matched documents with metadata. Read-only. Not deployment metadata "
         "(deployment_get_info), not predictive scoring (predict_*)."
     ),
+    display_name="Vector Database — Query",
+    description_ui="Run semantic search against a vector database deployment.",
 )
 async def vdb_query(
     *,

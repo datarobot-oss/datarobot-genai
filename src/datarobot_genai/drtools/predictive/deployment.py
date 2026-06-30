@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
         "prediction rows (deployment_get_prediction_history), not scoring payloads "
         "(predict_* / deployment_get_info)."
     ),
+    display_name="Deployment — List",
+    description_ui="List MLOps deployments in DataRobot.",
 )
 async def deployment_get_list() -> dict[str, Any]:
     with ThreadSafeDataRobotClient().request_user_client():
@@ -59,6 +61,8 @@ async def deployment_get_list() -> dict[str, Any]:
         "prediction contract, use deployment_get_info instead; for training leaderboard details, "
         "use modeling_get_modeldetails with project_id + model_id."
     ),
+    display_name="Deployment — Get Model Info",
+    description_ui="Get the model record linked to a deployment (requires deployment ID).",
 )
 async def deployment_get_model_info(
     *,
@@ -84,6 +88,8 @@ async def deployment_get_model_info(
         "folder deploy (deploy_custom_model when enabled), not listing deployments "
         "(deployment_get_list)."
     ),
+    display_name="Deployment — Create",
+    description_ui="Create a new deployment from a trained leaderboard model.",
 )
 async def deployment_create_deployment(
     *,
@@ -205,6 +211,8 @@ async def deploy_custom_model(
         "new scores. For fresh scoring use predict_score_inline_realtime, "
         "predict_batch_predictions_from_dataset, predict_batch_predictions_from_partition, etc."
     ),
+    display_name="Deployment — Get Prediction History",
+    description_ui="Retrieve logged prediction history for a deployment.",
 )
 async def deployment_get_prediction_history(
     *,
