@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from datarobot_genai.core import datarobot_otel_metrics as m
+from datarobot_genai.core.telemetry import datarobot_otel_metrics as m
 
 
 @pytest.fixture(autouse=True)
