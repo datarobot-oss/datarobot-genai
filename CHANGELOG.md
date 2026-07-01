@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.2
+- `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events (from CrewAI's tool-usage and agent-execution bus) so crews render like the other frameworks; tool errors surface as the result.
+- `crewai`: propagate injected tools (e.g. MCP) to each task — CrewAI runs off the `task.tools` snapshot taken at crew build, so injected tools reached `agent.tools` but never the model.
+- `crewai`: open the owning agent's `Step` before emitting a tool call — native tool calls emit no content chunk, so the call otherwise nested under the previous agent's step.
+- `crewai`: dedupe injected tools by name so they aren't passed to CrewAI as duplicates (which it mangles into `name_2`/`name_3`, and bedrock rejects).
+- `crewai`: capture each agent's original tools once at class creation, not per request — on a reused crew the per-request snapshot re-captured the prior request's MCP tools (bound to a closed event loop), failing later requests with "Event loop is closed".
+- `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
+- `crewai`: extract the AG-UI event sequencing out of the streaming loop into a dedicated `AGUIStreamEmitter` (internal refactor; no behavior change).
+
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
 
