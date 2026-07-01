@@ -41,8 +41,7 @@ async def mcp_tools_context(
     Asynchronously load MCP tools for LlamaIndex.
 
     Args:
-        authorization_context: Optional authorization context for MCP connections
-        forwarded_headers: Optional forwarded headers, e.g. x-datarobot-api-key for MCP auth
+        mcp_config: MCP configuration including server connection parameters
 
     Returns
     -------

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.3
+- Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
+- Limited the CI version bump check to changes that touch the library package.
+- Updated a few generated API docstrings to match the current parameter names.
+
 ## 0.21.2
 - Removed `fastapi` OpenTelemetry instrumentation from `dragent`
 - Attach `datarobot_agent` spans to NAT workflow trace context
