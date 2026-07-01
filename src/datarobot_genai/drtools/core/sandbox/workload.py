@@ -318,11 +318,15 @@ class DataRobotWorkloadSandbox:
             stacktrace = entry.get("stacktrace")
             if stacktrace:
                 stderr_parts.append(str(stacktrace))
-        # Join with newlines: each OTEL entry is one emitted line, and the
-        # result marker must survive as its own line for parse_result_marker
-        # (splitlines) to find it — concatenating with "" mashes the marker
-        # into adjacent lines and breaks JSON decoding.
-        return "\n".join(stdout_parts), "\n".join(stderr_parts)
+        # Join entries with newlines so the result marker survives as its own
+        # line for parse_result_marker (splitlines) — concatenating with "" mashes
+        # it into adjacent lines and breaks JSON decoding. Strip each entry's own
+        # trailing newline first so entries that already end in "\n" don't produce
+        # blank lines.
+        return (
+            "\n".join(p.rstrip("\n") for p in stdout_parts),
+            "\n".join(p.rstrip("\n") for p in stderr_parts),
+        )
 
     @staticmethod
     def _extract_log_tail(terminal: dict[str, Any]) -> str:
