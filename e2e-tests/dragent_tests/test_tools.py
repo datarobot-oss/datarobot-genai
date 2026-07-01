@@ -29,6 +29,8 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping tool call tests", allow_module_level=True)
@@ -43,8 +45,8 @@ if AGENT == "crewai" and LLM == "deployment":
 # This adds some randomness to the test to avoid cached results
 GENERATE_OBJECTID_PROMPT = (
     "You MUST use the generate_objectid tool to generate an object ID for a deployment. "
-    "Do NOT generate it yourself. Call the generate_objectid tool with this exact input: "
-    "deployment. "
+    "Do NOT generate it yourself. Call the generate_objectid tool with its type argument "
+    "set to 'deployment'. "
     "You MUST return the exact object ID from the tool, no explanation, "
     "no formatting, no other text. Do not write anything else. Always return the "
     f"final answer to the user. Here is an ID you SHOULD NOT USE: {uuid.uuid4().hex}."
@@ -52,7 +54,9 @@ GENERATE_OBJECTID_PROMPT = (
 
 EXPECTED_GENERATE_OBJECTID_RESULT = "69cbb73789723b6936c6c9e1"
 
-def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
+def test_generate_objectid_tool_is_called(
+    http_client: httpx.Client, otel_collector: MockOtelCollector
+) -> None:  # type: ignore[type-arg]
     """Agent uses calculator tool when asked to compute."""
     # GIVEN: a payload that requests the generate_objectid tool to generate an object ID for a
     # deployment
@@ -93,6 +97,16 @@ def test_generate_objectid_tool_is_called(http_client: httpx.Client) -> None:  #
     full_text = collect_text(ag_ui_events)
     assert EXPECTED_GENERATE_OBJECTID_RESULT in full_text, (
         f"Expected '{EXPECTED_GENERATE_OBJECTID_RESULT}' in response. Got: {full_text[:500]}"
+    )
+
+    # THEN: the run exported DataRobot Tracing-table spans to the OTel ingest.
+    # The tool_name column is only populated for frameworks that surface tool
+    # calls as AG-UI events (the streaming tool-call set); others still export
+    # gen_ai.prompt / gen_ai.completion.
+    assert_tracing_conventions(
+        otel_collector,
+        GENERATE_OBJECTID_PROMPT,
+        expect_tool_name=AGENT_SUPPORTS_TOOL_CALLS_STREAMING,
     )
 
 

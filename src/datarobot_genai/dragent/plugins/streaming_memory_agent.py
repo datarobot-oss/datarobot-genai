@@ -72,7 +72,7 @@ from datarobot_genai.core.agents.base import STREAMING_MEMORY_CONTEXT_PREFIX
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat.datarobot_mem0_memory import is_memory_editor_configured
+from datarobot_genai.dragent.plugins.datarobot_mem0_memory import is_memory_editor_configured
 
 logger = logging.getLogger(__name__)
 

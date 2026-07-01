@@ -132,7 +132,7 @@ def instrument(
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
     if os.getenv("MLOPS_DEPLOYMENT_ID"):
-        from datarobot_genai.core.datarobot_otel import bootstrap_otel_provider_for_datarobot
+        from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()
 

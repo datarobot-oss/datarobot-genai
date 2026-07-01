@@ -124,7 +124,7 @@ def _flush_otel_tracer_provider() -> None:
 
     NAT's own exporter pipeline flushes via its async lifecycle; the
     bootstrap-installed ``BatchSpanProcessor`` (from
-    ``datarobot_genai.core.datarobot_otel``) does not get torn down here, so we
+    ``datarobot_genai.core.telemetry.datarobot_otel``) does not get torn down here, so we
     call ``shutdown()`` explicitly. Wrapped in a broad except because telemetry
     setup must never break the subprocess exit path.
     """

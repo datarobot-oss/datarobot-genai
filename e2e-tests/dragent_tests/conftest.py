@@ -26,9 +26,39 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from dotenv import load_dotenv
 
 from .helpers import BASE_URL
+from .otel_helpers import MOCK_OTEL_COLLECTOR_PORT
+from .otel_helpers import MockOtelCollector
 
 # Load .env from e2e-tests root
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def otel_collector() -> Generator[MockOtelCollector]:  # type: ignore[type-arg]
+    """In-process OTLP collector the dragent server exports spans to.
+
+    Bound to a fixed port (matching the server's ``OTEL_EXPORTER_OTLP_ENDPOINT``
+    in ``dragent/Taskfile.yaml``) and kept up for the whole session so any test
+    can verify exported spans via ``helpers.assert_tracing_conventions``.
+    Autouse so it is always listening, even for tests that don't assert on
+    traces — otherwise the server's exports would just be dropped.
+    """
+    with MockOtelCollector(port=MOCK_OTEL_COLLECTOR_PORT) as collector:
+        yield collector
+
+
+@pytest.fixture(autouse=True)
+def _reset_otel_collector(otel_collector: MockOtelCollector) -> Generator[None]:  # type: ignore[type-arg]
+    """Clear the session-scoped collector before each test.
+
+    The collector accumulates spans for the whole session, but the tracing
+    assertions verify that *this run's* spans form a single trace. Resetting
+    up front scopes the captured spans to the test under test. Safe because the
+    per-invocation ``datarobot_agent`` span is the trace root and ends last, so
+    by the time the previous test observed it, that run's spans had all flushed.
+    """
+    otel_collector.reset()
+    yield
 
 
 @pytest.fixture(scope="session")

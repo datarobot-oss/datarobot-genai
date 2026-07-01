@@ -27,7 +27,7 @@ from opentelemetry.trace import SpanKind
 from opentelemetry.trace import Status
 from opentelemetry.trace import StatusCode
 
-from datarobot_genai.core.telemetry_nat_context import use_nat_workflow_trace_context
+from .nat_context import use_nat_workflow_trace_context
 
 _tracer = trace.get_tracer(__name__)
 

@@ -23,6 +23,7 @@ final aggregated OpenAI ``ChatCompletion`` to disk for the test to read back.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from openai.types.chat import ChatCompletion
@@ -32,15 +33,54 @@ from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.helpers import workflow_file
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_ENDPOINT
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_HEADERS
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 
+# HTTP client spans that fire during import / workflow-load -- before any
+# workflow trace exists -- so they legitimately root their own trace. Unlike the
+# server-based tests (where these fire during startup, before the collector is
+# reset), the inline runner bootstraps the whole runtime inside the test window
+# and captures them. Matched by URL fragment and excluded from the single-trace
+# assertion.
+#   * LiteLLM fetches its model-cost map from GitHub on import.
+#   * The DataRobot python client (used by moderation) checks the API version.
+#   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
+#
+# TODO (BUZZOK-31396): remove this special case once the OTel TracerProvider is
+# bootstrapped from the deployment/notebook entrypoint before these setup calls
+# run, so they are captured under the workflow trace instead of rooting their own.
+SETUP_HTTP_SPAN_URLS = (
+    "model_prices_and_context_window",
+    "/api/v2/version",
+    "/directAccess/mcp",
+)
 
-def test_run_agent_inline(tmp_path: Path) -> None:
-    """Inline run produces a valid ``ChatCompletion`` JSON file."""
-    # GIVEN: a chat completion request and an output path
+
+def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> None:
+    """Inline run produces a valid ``ChatCompletion`` and exports Tracing spans.
+
+    The inline path (``execute_dragent_inline``) is the production custom-model
+    entrypoint. The runner subprocess is pointed at the shared mock collector
+    and given the ``MLOPS_DEPLOYMENT_ID`` that unlocks the OTel SDK bootstrap,
+    so the ``datarobot_otel_conventions`` spans (gen_ai.prompt /
+    gen_ai.completion) flush before the subprocess exits — verified inline here
+    rather than in a separate (and expensive) extra run.
+    """
+    # GIVEN: a prompt, an output path, and a runner pointed at the collector
     output_path = tmp_path / "output.json"
-    chat_completion = build_chat_completion()
+    prompt = "Say 'hello world' and nothing else."
+    chat_completion = build_chat_completion(prompt)
+    env = {
+        **os.environ,
+        "OTEL_EXPORTER_OTLP_ENDPOINT": OTEL_EXPORTER_OTLP_ENDPOINT,
+        "OTEL_EXPORTER_OTLP_HEADERS": OTEL_EXPORTER_OTLP_HEADERS,
+        # Unlocks the SDK TracerProvider bootstrap (see instrument()).
+        "MLOPS_DEPLOYMENT_ID": "e2e-test",
+    }
 
     # WHEN: the inline runner is executed as a subprocess
     result = spawn_runner(
@@ -48,6 +88,7 @@ def test_run_agent_inline(tmp_path: Path) -> None:
         output_path=output_path,
         custom_model_dir=agent_dir(),
         config_file=workflow_file(),
+        env=env,
     )
 
     # THEN: the runner exits cleanly and the file parses as a ChatCompletion
@@ -60,6 +101,13 @@ def test_run_agent_inline(tmp_path: Path) -> None:
     assert completion.choices, f"Expected at least one choice.\n{result.stderr}\n{result_text}"
     assert completion.choices[0].message.content, (
         f"Expected non-empty assistant message content.\n{result.stderr}\n{result_text}"
+    )
+
+    # THEN: the inline run exported convention spans with the DR auth headers.
+    # Setup-time HTTP client spans (LiteLLM cost map, DR version check, MCP
+    # discovery) root their own trace and are ignored for the single-trace check.
+    assert_tracing_conventions(
+        otel_collector, prompt, ignore_span_urls=SETUP_HTTP_SPAN_URLS
     )
 
 

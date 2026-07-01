@@ -292,7 +292,7 @@ class TestSessionPerUserWorkflowFallback:
         # Importing installs the property(_UserManagerShim) on Context.
         from starlette.requests import Request as StarletteRequest
 
-        from datarobot_genai.nat import datarobot_mem0_memory  # noqa: F401
+        from datarobot_genai.dragent.plugins import datarobot_mem0_memory  # noqa: F401
 
         session_manager._is_workflow_per_user = False
         session_manager._shared_workflow = MagicMock()

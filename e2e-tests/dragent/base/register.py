@@ -15,11 +15,15 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
+from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_function
 from nat.data_models.agent import AgentBaseConfig
 from nat.data_models.streaming import Streaming
+
+# INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
+instrument()
 
 
 class BaseAgentConfig(AgentBaseConfig, name="base_agent"):

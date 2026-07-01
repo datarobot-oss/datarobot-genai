@@ -22,7 +22,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind
 from opentelemetry.util._once import Once
 
-from datarobot_genai.core import telemetry_memory
+from datarobot_genai.core.telemetry import memory
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def memory_span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporte
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     trace.set_tracer_provider(provider)
     monkeypatch.setattr(
-        telemetry_memory,
+        memory,
         "_tracer",
         trace.get_tracer("test.telemetry_memory"),
     )
@@ -45,7 +45,7 @@ def memory_span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporte
 def test_trace_memory_operation_emits_gen_ai_attributes(
     memory_span_exporter: InMemorySpanExporter,
 ) -> None:
-    with telemetry_memory.trace_memory_operation(
+    with memory.trace_memory_operation(
         "search_memory",
         store_name="mem0",
         store_id="project-123",
@@ -72,7 +72,7 @@ def test_trace_memory_operation_records_exception(
     memory_span_exporter: InMemorySpanExporter,
 ) -> None:
     with pytest.raises(RuntimeError, match="boom"):
-        with telemetry_memory.trace_memory_operation(
+        with memory.trace_memory_operation(
             "update_memory",
             store_name="datarobot-memory",
         ):
@@ -84,8 +84,8 @@ def test_trace_memory_operation_records_exception(
 
 
 def test_truncate_memory_text() -> None:
-    assert telemetry_memory.truncate_memory_text("short") == "short"
+    assert memory.truncate_memory_text("short") == "short"
     long_text = "x" * 600
-    truncated = telemetry_memory.truncate_memory_text(long_text)
+    truncated = memory.truncate_memory_text(long_text)
     assert len(truncated) == 512
     assert truncated.endswith("...")
