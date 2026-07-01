@@ -41,9 +41,9 @@ _EMPTY_OBJECT_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
 def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
     """TCP-probe a local MCP server's host:port.
 
-    CrewAI connects via mcpadapt on a background thread, so an unstarted local server
-    otherwise blocks ~30s and leaks a thread traceback. A quick probe lets us skip the
-    adapter and degrade cleanly instead.
+    CrewAI connects via mcpadapt on a background thread, so an
+    unstarted local server otherwise blocks ~30s and leaks a thread traceback.
+    A quick probe lets us skip the adapter and degrade cleanly instead.
     """
     parsed = urlparse(url)
     host = parsed.hostname or "localhost"
@@ -83,9 +83,11 @@ class _RawSchemaCrewAIAdapter(CrewAIAdapter):
         return self._keep_raw_schema(super().adapt(func, mcp_tool), mcp_tool)
 
 
+# here it is async to conform with other MCP adapters
 @asynccontextmanager
 async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTool], None]:
     """Context manager for MCP tools that handles connection lifecycle."""
+    # If no MCP server configured, return empty tools list
     if not mcp_config.server_config:
         logger.info("No MCP server configured, using empty tools list")
         yield []
@@ -93,8 +95,8 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
 
     url = mcp_config.server_config["url"]
 
-    # A local MCP server that isn't running would otherwise block ~30s and dump a
-    # background-thread traceback; skip the adapter and degrade cleanly.
+    # A local MCP server that isn't running would otherwise block ~30s and dump
+    # a background-thread traceback; skip the adapter and degrade cleanly.
     if mcp_config.is_local_server and not _local_server_reachable(url):
         logger.warning(
             "Local MCP server at %s is not reachable. Continuing without MCP tools.",

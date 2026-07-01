@@ -440,9 +440,11 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
 
                 if history_summary and not existing_history_text.strip():
                     kickoff_inputs["chat_history"] = f"\n\nPrior conversation:\n{history_summary}"
-            # Reused crew: CrewAI caches each agent's executor and never resets its accumulated
-            # messages/iterations, leaking prior-request state (bedrock "tool calling without
-            # tools=" errors; tool calls leaked as text). Force a fresh executor per run.
+            # The crew/agents are reused across requests, and CrewAI caches each agent's executor
+            # and never resets its accumulated `messages`/`iterations` on reuse — so prior-request
+            # state leaks in (stale tool_use history → bedrock "tool calling without tools=" errors;
+            # bloated context → the model leaking tool calls as text). Force a fresh executor per
+            # run; intended conversation history is injected via `chat_history` above.
             for agent in self.agents:
                 agent.agent_executor = None
             crew_output = await crew.akickoff(inputs=kickoff_inputs)
