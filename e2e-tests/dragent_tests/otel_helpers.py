@@ -33,6 +33,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 from http.server import BaseHTTPRequestHandler
@@ -269,25 +270,114 @@ def _assert_datarobot_auth_headers(collector: MockOtelCollector) -> None:
     )
 
 
-def _assert_single_trace_id(collector: MockOtelCollector) -> None:
+def _describe_span(span: ExportedSpan) -> str:
+    """One-line, debuggable description of a span (name, ids, attributes).
+
+    Attributes are the key signal for tracking down an orphaned span (e.g. the
+    ``http.*`` / ``url.*`` attributes pin down which outbound call escaped the
+    agent trace), so they are always included.
+    """
+    if span.attributes:
+        attrs = ", ".join(f"{k}={v!r}" for k, v in sorted(span.attributes.items()))
+    else:
+        attrs = "<none>"
+    return (
+        f"name={span.name!r} span_id={span.span_id.hex()} "
+        f"trace_id={span.trace_id.hex()} attrs={{{attrs}}}"
+    )
+
+
+# OTel semantic-convention attribute keys that carry a span's request URL. The
+# requests/httpx instrumentors use ``http.url`` (legacy) or ``url.full`` (stable
+# semconv); check both so the URL-ignore filter is convention-agnostic.
+_SPAN_URL_ATTRIBUTE_KEYS = ("http.url", "url.full")
+
+
+def _span_url(span: ExportedSpan) -> str | None:
+    for key in _SPAN_URL_ATTRIBUTE_KEYS:
+        value = span.attributes.get(key)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def _span_url_is_ignored(span: ExportedSpan, ignore_span_urls: Sequence[str]) -> bool:
+    if not ignore_span_urls:
+        return False
+    url = _span_url(span)
+    if url is None:
+        return False
+    return any(fragment in url for fragment in ignore_span_urls)
+
+
+def _assert_single_trace_id(
+    collector: MockOtelCollector,
+    *,
+    agent_trace_ids: set[bytes],
+    ignore_span_urls: Sequence[str] = (),
+) -> None:
     """Every span exported for the current run must share one ``trace_id``.
 
     A single agent invocation must produce a single, connected trace: the
-    per-invocation ``datarobot_agent`` root span and all of its children (LLM
-    calls, tool calls, framework spans) must share one ``trace_id``. A break in
-    OTel context propagation would surface here as spans split across multiple
-    traces.
+    per-invocation ``datarobot_agent`` root span, its framework children
+    (workflow, guards, tool-call spans), *and* every outbound HTTP call made
+    while serving the request must share one ``trace_id``. A break in OTel
+    context propagation surfaces here as spans split across multiple traces —
+    commonly bootstrap/setup HTTP client spans (token validation, guard/MCP
+    setup) that were started without the agent span as their parent.
 
-    This relies on the ``_reset_otel_collector`` autouse fixture clearing the
+    *agent_trace_ids* is the trace_id set of the matched ``datarobot_agent``
+    span(s); it identifies the expected trace so orphans can be contrasted
+    against it in the failure output.
+
+    *ignore_span_urls* holds URL fragments (substring match against a span's
+    ``http.url`` / ``url.full``) for HTTP spans that legitimately root their own
+    trace because they fire at *import* time — before any workflow trace exists
+    (e.g. LiteLLM's model-cost-map fetch, the DataRobot client version check).
+    Such spans are dropped before the single-trace check.
+
+    Relies on the ``_reset_otel_collector`` autouse fixture clearing the
     session-scoped collector before each test, so the captured spans belong to
     the run under test only.
     """
-    all_spans = collector.spans()
+    all_spans = [
+        span
+        for span in collector.spans()
+        if not _span_url_is_ignored(span, ignore_span_urls)
+    ]
     trace_ids = {span.trace_id for span in all_spans}
-    assert len(trace_ids) == 1, (
+    if len(trace_ids) == 1:
+        return
+
+    # The agent invocation's trace is the reference; anything outside it is an
+    # orphan. Fall back to the most populated trace if the agent span's trace is
+    # ambiguous (0 or >1 distinct ids).
+    if len(agent_trace_ids) == 1:
+        main_trace = next(iter(agent_trace_ids))
+    else:
+        main_trace = max(trace_ids, key=lambda tid: sum(s.trace_id == tid for s in all_spans))
+
+    spans_by_trace: dict[bytes, list[ExportedSpan]] = {}
+    for span in all_spans:
+        spans_by_trace.setdefault(span.trace_id, []).append(span)
+
+    orphans = [span for span in all_spans if span.trace_id != main_trace]
+
+    main_names = sorted(span.name for span in spans_by_trace.get(main_trace, []))
+    orphan_traces = sorted(
+        (tid.hex(), sorted(s.name for s in spans))
+        for tid, spans in spans_by_trace.items()
+        if tid != main_trace
+    )
+    orphan_details = "\n".join(f"    - {_describe_span(span)}" for span in orphans)
+
+    raise AssertionError(
         f"Expected all {len(all_spans)} exported span(s) to share one trace_id, "
-        f"but found {len(trace_ids)} distinct trace_id(s). Span name -> trace_id: "
-        f"{sorted((s.name, s.trace_id.hex()) for s in all_spans)}"
+        f"but found {len(trace_ids)} distinct trace_id(s).\n"
+        f"  Agent trace {main_trace.hex()} ({len(main_names)} span(s)): {main_names}\n"
+        f"  Orphan trace(s) ({len(orphans)} span(s) across {len(orphan_traces)} trace(s)): "
+        f"{orphan_traces}\n"
+        f"  Orphaned span details:\n{orphan_details}"
     )
 
 
@@ -296,6 +386,7 @@ def assert_tracing_conventions(
     prompt: str,
     *,
     expect_tool_name: bool = False,
+    ignore_span_urls: Sequence[str] = (),
     timeout: float = 30.0,
 ) -> None:
     """Assert the agent exported DataRobot Tracing-table spans for *prompt*.
@@ -306,11 +397,15 @@ def assert_tracing_conventions(
 
     * ``gen_ai.prompt`` and ``gen_ai.completion`` on the per-invocation
       ``datarobot_agent`` span,
-    * every exported span for the run shares a single ``trace_id``, and
+    * every exported span for the run (including outbound HTTP calls) shares a
+      single ``trace_id``, and
     * the export carried the DataRobot ingest auth headers.
 
     When *expect_tool_name* is set, also requires a ``tool_name`` span in the
     same trace (frameworks that surface tool calls as AG-UI events).
+
+    *ignore_span_urls* excludes import-time HTTP client spans (matched by URL
+    fragment) from the single-trace check — see ``_assert_single_trace_id``.
     """
     agent_spans = collector.wait_for_spans(
         lambda span: span.attributes.get(GEN_AI_PROMPT) == prompt
@@ -328,7 +423,11 @@ def assert_tracing_conventions(
             f"{GEN_AI_COMPLETION}. Observed prompts: {observed}"
         )
 
-    _assert_single_trace_id(collector)
+    _assert_single_trace_id(
+        collector,
+        agent_trace_ids={span.trace_id for span in agent_spans},
+        ignore_span_urls=ignore_span_urls,
+    )
 
     _assert_datarobot_auth_headers(collector)
 

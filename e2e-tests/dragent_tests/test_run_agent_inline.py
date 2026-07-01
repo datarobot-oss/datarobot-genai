@@ -40,6 +40,18 @@ from dragent_tests.otel_helpers import assert_tracing_conventions
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 
+# HTTP client spans that fire at *import* time -- before any workflow trace
+# exists -- so they legitimately root their own trace. Unlike the server-based
+# tests (where these fire during startup, before the collector is reset), the
+# inline runner bootstraps the whole runtime inside the test window and captures
+# them. Matched by URL fragment and excluded from the single-trace assertion.
+#   * LiteLLM fetches its model-cost map from GitHub on import.
+#   * The DataRobot python client (used by moderation) checks the API version.
+IMPORT_TIME_HTTP_SPAN_URLS = (
+    "model_prices_and_context_window",
+    "/api/v2/version",
+)
+
 
 def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> None:
     """Inline run produces a valid ``ChatCompletion`` and exports Tracing spans.
@@ -84,8 +96,12 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
         f"Expected non-empty assistant message content.\n{result.stderr}\n{result_text}"
     )
 
-    # THEN: the inline run exported convention spans with the DR auth headers
-    assert_tracing_conventions(otel_collector, prompt)
+    # THEN: the inline run exported convention spans with the DR auth headers.
+    # Import-time HTTP client spans (LiteLLM cost map, DR version check) root
+    # their own trace and are ignored for the single-trace assertion.
+    assert_tracing_conventions(
+        otel_collector, prompt, ignore_span_urls=IMPORT_TIME_HTTP_SPAN_URLS
+    )
 
 
 def test_inline_runner_script_is_packaged_with_tests() -> None:
