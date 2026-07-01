@@ -353,7 +353,7 @@ async def test_stderr_captured_from_error_level_entries() -> None:
             {"level": "ERROR", "message": "RuntimeError: boom\n"},
         ]
     )
-    assert stdout == "starting\n"
+    assert stdout == "starting"
     assert "RuntimeError: boom" in stderr
     assert "failed" in str(excinfo.value)
 
