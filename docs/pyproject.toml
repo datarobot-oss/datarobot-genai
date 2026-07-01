@@ -10,4 +10,8 @@ dependencies = [
     "mkdocs-gen-files>=0.5.0",
     "mkdocs-literate-nav>=0.6.0",
     "mkdocs-section-index>=0.3.0",
+    "datarobot-genai",
 ]
+
+[tool.uv.sources]
+datarobot-genai = { path = "../", editable = true }
