@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.2
+- `drtools/core/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `drmcpbase.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
 
