@@ -53,6 +53,7 @@ from datarobot_genai.drtools.sandbox.base import SandboxError
 from datarobot_genai.drtools.sandbox.base import SandboxResult
 from datarobot_genai.drtools.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.sandbox.protocol import RESULT_MARKER
 from datarobot_genai.drtools.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
 from datarobot_genai.drtools.sandbox.protocol import parse_result_marker
 
@@ -429,6 +430,15 @@ class DataRobotWorkloadSandbox:
         duration = time.monotonic() - start
         status = str(terminal.get("status", "")).lower()
         exit_code = int(terminal.get("exitCode", 0) or 0)
+        # The runner is a one-shot job, but the workload-api only supports
+        # long-running "service" (or "nim") artifacts — so when the runner
+        # finishes and its process exits, the workload-api marks the workload
+        # ``errored``/``stopped`` even though the run succeeded. The runner emits
+        # its result marker from a ``finally`` (see protocol.py / the sandbox
+        # image runner), so a marker in the logs is the source of truth that the
+        # snippet ran to completion. Treat failure statuses as real failures only
+        # when no marker was produced (genuine startup/crash before any output).
+        marker_found = RESULT_MARKER in stdout_raw
 
         if status in _TERMINAL_TIMEOUT:
             raise SandboxTimeout(f"workload-api workload {workload_id} timed out: {terminal!r}")
@@ -443,8 +453,11 @@ class DataRobotWorkloadSandbox:
                 f"in-process timeout (exit {SANDBOX_TIMEOUT_EXIT_CODE}); "
                 f"caller timeout_s={timeout_s}"
             )
-        if status in _TERMINAL_FAILURE:
-            raise SandboxError(f"workload-api workload {workload_id} failed: status={status}")
+        if status in _TERMINAL_FAILURE and not marker_found:
+            raise SandboxError(
+                f"workload-api workload {workload_id} failed: status={status} "
+                "(no result marker in logs — container did not run to completion)"
+            )
 
         return SandboxResult(
             stdout=stdout,
