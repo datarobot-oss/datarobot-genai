@@ -77,6 +77,12 @@ _STDERR_LEVELS = {"ERROR", "CRITICAL", "FATAL"}
 # paths. We don't want a hung teardown to block caller cancellation.
 _TEARDOWN_TIMEOUT_S = 5.0
 
+# The workload can hit a terminal status (a one-shot runner exits, so the
+# workload-api flags the "service" errored) before the OTEL collector flushes
+# the container's stdout — including the result marker. Poll the logs endpoint
+# up to this budget for the marker rather than reading once and racing the flush.
+_LOG_FLUSH_TIMEOUT_S = 30.0
+
 # Port the sandbox runner image serves on. The workload-api requires a port on
 # primary (service) containers and enforces >= 1024.
 _SANDBOX_RUNNER_PORT = 8080
@@ -312,7 +318,11 @@ class DataRobotWorkloadSandbox:
             stacktrace = entry.get("stacktrace")
             if stacktrace:
                 stderr_parts.append(str(stacktrace))
-        return "".join(stdout_parts), "".join(stderr_parts)
+        # Join with newlines: each OTEL entry is one emitted line, and the
+        # result marker must survive as its own line for parse_result_marker
+        # (splitlines) to find it — concatenating with "" mashes the marker
+        # into adjacent lines and breaks JSON decoding.
+        return "\n".join(stdout_parts), "\n".join(stderr_parts)
 
     async def _fetch_logs(
         self,
@@ -332,23 +342,35 @@ class DataRobotWorkloadSandbox:
         """
         stdout = ""
         stderr = ""
-        try:
-            resp = await client.get(
-                self._logs_url(workload_id),
-                headers=self._headers(),
-            )
-            if resp.status_code < 400:
-                body = resp.json()
-                data = body.get("data") or []
-                stdout, stderr = self._partition_log_entries(data)
-            else:
-                logger.warning(
-                    "workload-api logs fetch failed: %s %s",
-                    resp.status_code,
-                    resp.text,
+        # Poll until the result marker flushes (or the budget elapses): the
+        # terminal status can precede the OTEL flush of the container's stdout.
+        deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
+        delay = 0.5
+        while True:
+            try:
+                resp = await client.get(
+                    self._logs_url(workload_id),
+                    headers=self._headers(),
                 )
-        except Exception:  # pragma: no cover — defensive
-            logger.exception("workload-api logs fetch raised; falling back to logTail")
+                if resp.status_code < 400:
+                    body = resp.json()
+                    data = body.get("data") or []
+                    stdout, stderr = self._partition_log_entries(data)
+                else:
+                    logger.warning(
+                        "workload-api logs fetch failed: %s %s",
+                        resp.status_code,
+                        resp.text,
+                    )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception(
+                    "workload-api logs fetch raised; will retry / fall back to logTail"
+                )
+
+            if RESULT_MARKER in stdout or time.monotonic() > deadline:
+                break
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 3.0)
 
         if stdout.strip() or stderr.strip():
             return stdout, stderr
