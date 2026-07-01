@@ -40,16 +40,19 @@ from dragent_tests.otel_helpers import assert_tracing_conventions
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 
-# HTTP client spans that fire at *import* time -- before any workflow trace
-# exists -- so they legitimately root their own trace. Unlike the server-based
-# tests (where these fire during startup, before the collector is reset), the
-# inline runner bootstraps the whole runtime inside the test window and captures
-# them. Matched by URL fragment and excluded from the single-trace assertion.
+# HTTP client spans that fire during import / workflow-load -- before any
+# workflow trace exists -- so they legitimately root their own trace. Unlike the
+# server-based tests (where these fire during startup, before the collector is
+# reset), the inline runner bootstraps the whole runtime inside the test window
+# and captures them. Matched by URL fragment and excluded from the single-trace
+# assertion.
 #   * LiteLLM fetches its model-cost map from GitHub on import.
 #   * The DataRobot python client (used by moderation) checks the API version.
-IMPORT_TIME_HTTP_SPAN_URLS = (
+#   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
+SETUP_HTTP_SPAN_URLS = (
     "model_prices_and_context_window",
     "/api/v2/version",
+    "/directAccess/mcp",
 )
 
 
@@ -97,10 +100,10 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
     )
 
     # THEN: the inline run exported convention spans with the DR auth headers.
-    # Import-time HTTP client spans (LiteLLM cost map, DR version check) root
-    # their own trace and are ignored for the single-trace assertion.
+    # Setup-time HTTP client spans (LiteLLM cost map, DR version check, MCP
+    # discovery) root their own trace and are ignored for the single-trace check.
     assert_tracing_conventions(
-        otel_collector, prompt, ignore_span_urls=IMPORT_TIME_HTTP_SPAN_URLS
+        otel_collector, prompt, ignore_span_urls=SETUP_HTTP_SPAN_URLS
     )
 
 
