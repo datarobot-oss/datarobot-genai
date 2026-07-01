@@ -42,24 +42,39 @@ RESULT_MARKER = "__DR_SANDBOX_RESULT__:"
 SANDBOX_TIMEOUT_EXIT_CODE = 124
 
 
-def parse_result_marker(stdout: str) -> tuple[str, Any]:
-    """Split the trailing result marker off ``stdout``.
+def _marker_line_index(lines: list[str]) -> int:
+    """Index of the last line that *is* a result marker, or ``-1`` if none.
 
-    Returns ``(clean_stdout, return_value)``: if the final line starts with
-    :data:`RESULT_MARKER`, that line is removed from the returned stdout and
-    its JSON payload is decoded as the return value (``None`` on decode
-    failure). When no marker is present, stdout is returned unchanged with a
-    ``None`` return value.
+    Scans from the end so trailing diagnostic lines don't hide the marker, and
+    matches a line that *starts with* :data:`RESULT_MARKER` (not the marker as a
+    substring anywhere) so incidental text can't be mistaken for a real marker.
+    """
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].startswith(RESULT_MARKER):
+            return i
+    return -1
+
+
+def has_result_marker(stdout: str) -> bool:
+    """Whether ``stdout`` contains a result-marker line (see :func:`parse_result_marker`)."""
+    return _marker_line_index(stdout.splitlines()) != -1
+
+
+def parse_result_marker(stdout: str) -> tuple[str, Any]:
+    """Split the result marker off ``stdout``.
+
+    Returns ``(clean_stdout, return_value)``: the last line that starts with
+    :data:`RESULT_MARKER` is removed from the returned stdout and its JSON
+    payload is decoded as the return value (``None`` on decode failure). When no
+    marker line is present, stdout is returned unchanged with a ``None`` value.
     """
     lines = stdout.splitlines()
-    if not lines:
+    idx = _marker_line_index(lines)
+    if idx == -1:
         return stdout, None
-    last = lines[-1]
-    if last.startswith(RESULT_MARKER):
-        encoded = last[len(RESULT_MARKER) :]
-        try:
-            value = json.loads(encoded)
-        except json.JSONDecodeError:
-            value = None
-        return "\n".join(lines[:-1]), value
-    return stdout, None
+    encoded = lines[idx][len(RESULT_MARKER) :]
+    try:
+        value = json.loads(encoded)
+    except json.JSONDecodeError:
+        value = None
+    return "\n".join(lines[:idx] + lines[idx + 1 :]), value

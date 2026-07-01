@@ -53,8 +53,8 @@ from datarobot_genai.drtools.core.sandbox.base import SandboxError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
 from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
-from datarobot_genai.drtools.core.sandbox.protocol import RESULT_MARKER
 from datarobot_genai.drtools.core.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
+from datarobot_genai.drtools.core.sandbox.protocol import has_result_marker
 from datarobot_genai.drtools.core.sandbox.protocol import parse_result_marker
 
 logger = logging.getLogger(__name__)
@@ -324,6 +324,18 @@ class DataRobotWorkloadSandbox:
         # into adjacent lines and breaks JSON decoding.
         return "\n".join(stdout_parts), "\n".join(stderr_parts)
 
+    @staticmethod
+    def _extract_log_tail(terminal: dict[str, Any]) -> str:
+        """Flatten ``statusDetails.logTail`` (str or ``{message}`` entries) to text."""
+        log_tail = (terminal.get("statusDetails") or {}).get("logTail") or []
+        parts: list[str] = []
+        for entry in log_tail:
+            if isinstance(entry, str):
+                parts.append(entry)
+            elif isinstance(entry, dict):
+                parts.append(str(entry.get("message", "")))
+        return "\n".join(p for p in parts if p)
+
     async def _fetch_logs(
         self,
         client: httpx.AsyncClient,
@@ -340,10 +352,15 @@ class DataRobotWorkloadSandbox:
         from the terminal workload response (treated as stdout, since logTail
         carries no per-line severity).
         """
+        # logTail (from the terminal workload response) is available immediately
+        # and can carry the marker before — or instead of — the OTEL flush.
+        tail = self._extract_log_tail(terminal)
         stdout = ""
         stderr = ""
-        # Poll until the result marker flushes (or the budget elapses): the
-        # terminal status can precede the OTEL flush of the container's stdout.
+        prev_stdout: str | None = None
+        # Poll until the marker appears (in OTEL or logTail) or the budget
+        # elapses: a one-shot runner exits, so the workload can reach a terminal
+        # status before the OTEL collector flushes the container's stdout.
         deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
         delay = 0.5
         while True:
@@ -353,8 +370,7 @@ class DataRobotWorkloadSandbox:
                     headers=self._headers(),
                 )
                 if resp.status_code < 400:
-                    body = resp.json()
-                    data = body.get("data") or []
+                    data = resp.json().get("data") or []
                     stdout, stderr = self._partition_log_entries(data)
                 else:
                     logger.warning(
@@ -367,28 +383,31 @@ class DataRobotWorkloadSandbox:
                     "workload-api logs fetch raised; will retry / fall back to logTail"
                 )
 
-            if RESULT_MARKER in stdout or time.monotonic() > deadline:
+            if has_result_marker(stdout) or has_result_marker(tail):
                 break
+            if time.monotonic() > deadline:
+                break
+            # No marker yet. If OTEL output has arrived and stopped changing, the
+            # run produced no marker (a genuine failure/crash) — stop instead of
+            # waiting out the full flush budget. A successful one-shot's output
+            # *includes* the marker, so stable output without a marker is never a
+            # success we'd be cutting short.
+            if stdout and stdout == prev_stdout:
+                break
+            prev_stdout = stdout
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)
 
+        # Return whichever source carries the marker so the caller's
+        # parse_result_marker finds it; otherwise prefer non-empty OTEL, then
+        # fall back to logTail.
+        if has_result_marker(stdout):
+            return stdout, stderr
+        if has_result_marker(tail):
+            return (f"{stdout}\n{tail}" if stdout.strip() else tail), stderr
         if stdout.strip() or stderr.strip():
             return stdout, stderr
-
-        # Fallback: the workload response may carry a small tail of
-        # container output in statusDetails.logTail for cases where the
-        # OTEL pipeline hasn't flushed yet. logTail has no per-line
-        # severity, so it all surfaces as stdout.
-        log_tail = (terminal.get("statusDetails") or {}).get("logTail") or []
-        if log_tail:
-            tail_parts: list[str] = []
-            for entry in log_tail:
-                if isinstance(entry, str):
-                    tail_parts.append(entry)
-                elif isinstance(entry, dict):
-                    tail_parts.append(str(entry.get("message", "")))
-            stdout = "\n".join(p for p in tail_parts if p)
-        return stdout, stderr
+        return tail, stderr
 
     async def _delete(self, workload_id: str) -> None:
         """Best-effort DELETE; swallow all errors and never raise."""
@@ -460,7 +479,7 @@ class DataRobotWorkloadSandbox:
         # image runner), so a marker in the logs is the source of truth that the
         # snippet ran to completion. Treat failure statuses as real failures only
         # when no marker was produced (genuine startup/crash before any output).
-        marker_found = RESULT_MARKER in stdout_raw
+        marker_found = has_result_marker(stdout_raw)
 
         if status in _TERMINAL_TIMEOUT:
             raise SandboxTimeout(f"workload-api workload {workload_id} timed out: {terminal!r}")
