@@ -49,6 +49,10 @@ RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 #   * LiteLLM fetches its model-cost map from GitHub on import.
 #   * The DataRobot python client (used by moderation) checks the API version.
 #   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
+#
+# TODO (BUZZOK-31396): remove this special case once the OTel TracerProvider is
+# bootstrapped from the deployment/notebook entrypoint before these setup calls
+# run, so they are captured under the workflow trace instead of rooting their own.
 SETUP_HTTP_SPAN_URLS = (
     "model_prices_and_context_window",
     "/api/v2/version",
