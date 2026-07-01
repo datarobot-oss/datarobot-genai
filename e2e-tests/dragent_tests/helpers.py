@@ -59,7 +59,7 @@ TOOL_NAME = "tool_name"  # Tools column
 
 AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
-AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]
+AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 
 LLM = os.environ.get("LLM", "llmgw")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
