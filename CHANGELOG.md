@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.2
+- `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
+
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
 
