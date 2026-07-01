@@ -95,6 +95,9 @@ def _instrument_framework(framework: str) -> None:
             langchain_instrumentor = getattr(langchain_module, "LangchainInstrumentor")
             langchain_instrumentor().instrument()
         elif framework == "llamaindex":
+            from .llamaindex_otel_compat import patch_llamaindex_otel_context_detach
+
+            patch_llamaindex_otel_context_detach()
             llamaindex_module = importlib.import_module("opentelemetry.instrumentation.llamaindex")
             llamaindex_instrumentor = getattr(llamaindex_module, "LlamaIndexInstrumentor")
             # LlamaIndex instrumentor lacks precise typing; cast to Any to avoid mypy complaints
