@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.20.1"
+version = "0.21.2"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -25,9 +25,9 @@ streaming_memory_agent = "datarobot_genai.dragent.plugins.streaming_memory_agent
 datarobot_otel_conventions_middleware = "datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
-datarobot_mem0_memory = "datarobot_genai.nat.datarobot_mem0_memory"
 datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
 datarobot_otelcollector = "datarobot_genai.dragent.plugins.datarobot_otelcollector"
+datarobot_mem0_memory = "datarobot_genai.dragent.plugins.datarobot_mem0_memory"
 llm_providers = "datarobot_genai.dragent.plugins.llm_providers"
 llm_clients = "datarobot_genai.dragent.plugins.llm_clients"
 crewai_llm_clients = "datarobot_genai.crewai.llm_clients"
@@ -62,6 +62,10 @@ constraint-dependencies = [
 ]
 override-dependencies = [
   "crewai[litellm]>=1.11.0",
+  # nvidia-nat-core hard-pins cryptography<47 and PyJWT<2.13 across all stable releases.
+  # Overrides are required to force CVE-safe versions until NAT relaxes their upper bounds.
+  "cryptography>=48.0.1",
+  "PyJWT>=2.13.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.4.3,<0.5.0",
   # crewai pins OpenTelemetry <1.35; datarobot-moderations (core) pulls

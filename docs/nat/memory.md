@@ -18,10 +18,10 @@
 
 `datarobot-genai` includes a NAT `MemoryEditor` provider that adapts the DataRobot Mem0 client for NAT's `auto_memory_agent`. This avoids the upstream `nvidia-nat-mem0ai` plugin while still using NAT's standard `memory:` configuration.
 
-Install both the NAT and memory extras:
+Install the NAT extra (includes `mem0ai`):
 
 ```bash
-pip install "datarobot-genai[nat,memory]"
+pip install "datarobot-genai[nat]"
 ```
 
 Set the Mem0 API key at runtime:

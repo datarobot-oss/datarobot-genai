@@ -4,8 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.20.1
+## 0.21.2
 - `drtools/core/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `drmcpbase.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+
+## 0.21.1
+- Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
+
+## 0.21.0
+- **Breaking** Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
+- **Breaking** Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
+
+## 0.20.1
+- `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.
 
 ## 0.20.0
 - Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
