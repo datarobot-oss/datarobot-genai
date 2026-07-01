@@ -15,8 +15,8 @@
 """
 MCP integration for CrewAI.
 
-Loads MCP tools via mcpadapt, preserving each tool's raw ``inputSchema`` so the schema
-offered to the LLM stays provider-portable (see ``_RawSchemaCrewAIAdapter``).
+Loads MCP tools via mcpadapt, keeping each tool's server ``inputSchema`` as the LLM-facing
+function-call parameters so the schema stays provider-portable (see ``_RawSchemaCrewAIAdapter``).
 """
 
 import logging
@@ -56,11 +56,14 @@ def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
 
 
 class _RawSchemaCrewAIAdapter(CrewAIAdapter):
-    """Adapt MCP tools but keep the server's raw ``inputSchema`` as the LLM-facing schema.
+    """Adapt MCP tools but hand the LLM the server's ``inputSchema`` as the tool parameters.
 
-    The stock adapter rebuilds it through a pydantic model -- a lossy round-trip that drops
-    property ``type``s and adds null/empty keys that azure rejects (bedrock tolerates them).
-    Keep the model for arg validation; return the raw schema.
+    The stock adapter derives the function-call ``parameters`` from a pydantic model -- a
+    lossy round-trip that drops property ``type``s and adds null/empty keys that azure rejects
+    (bedrock tolerates them). Keep the model for arg validation, but return the server's schema
+    (as ``super().adapt`` leaves it -- ``$ref``s resolved) for the ``parameters``. Note the
+    text-prompt ``description`` still carries the lossy schema; the native tool-call path uses
+    ``parameters``.
     """
 
     @staticmethod
