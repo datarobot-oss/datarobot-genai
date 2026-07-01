@@ -53,6 +53,7 @@ from datarobot_genai.drtools.core.sandbox.base import SandboxError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
 from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.protocol import RESULT_MARKER
 from datarobot_genai.drtools.core.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
 from datarobot_genai.drtools.core.sandbox.protocol import parse_result_marker
 
@@ -75,6 +76,12 @@ _STDERR_LEVELS = {"ERROR", "CRITICAL", "FATAL"}
 # Short, bounded timeout for best-effort DELETE in finally / cancellation
 # paths. We don't want a hung teardown to block caller cancellation.
 _TEARDOWN_TIMEOUT_S = 5.0
+
+# The workload can hit a terminal status (a one-shot runner exits, so the
+# workload-api flags the "service" errored) before the OTEL collector flushes
+# the container's stdout — including the result marker. Poll the logs endpoint
+# up to this budget for the marker rather than reading once and racing the flush.
+_LOG_FLUSH_TIMEOUT_S = 30.0
 
 # Port the sandbox runner image serves on. The workload-api requires a port on
 # primary (service) containers and enforces >= 1024.
@@ -311,7 +318,11 @@ class DataRobotWorkloadSandbox:
             stacktrace = entry.get("stacktrace")
             if stacktrace:
                 stderr_parts.append(str(stacktrace))
-        return "".join(stdout_parts), "".join(stderr_parts)
+        # Join with newlines: each OTEL entry is one emitted line, and the
+        # result marker must survive as its own line for parse_result_marker
+        # (splitlines) to find it — concatenating with "" mashes the marker
+        # into adjacent lines and breaks JSON decoding.
+        return "\n".join(stdout_parts), "\n".join(stderr_parts)
 
     async def _fetch_logs(
         self,
@@ -331,23 +342,35 @@ class DataRobotWorkloadSandbox:
         """
         stdout = ""
         stderr = ""
-        try:
-            resp = await client.get(
-                self._logs_url(workload_id),
-                headers=self._headers(),
-            )
-            if resp.status_code < 400:
-                body = resp.json()
-                data = body.get("data") or []
-                stdout, stderr = self._partition_log_entries(data)
-            else:
-                logger.warning(
-                    "workload-api logs fetch failed: %s %s",
-                    resp.status_code,
-                    resp.text,
+        # Poll until the result marker flushes (or the budget elapses): the
+        # terminal status can precede the OTEL flush of the container's stdout.
+        deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
+        delay = 0.5
+        while True:
+            try:
+                resp = await client.get(
+                    self._logs_url(workload_id),
+                    headers=self._headers(),
                 )
-        except Exception:  # pragma: no cover — defensive
-            logger.exception("workload-api logs fetch raised; falling back to logTail")
+                if resp.status_code < 400:
+                    body = resp.json()
+                    data = body.get("data") or []
+                    stdout, stderr = self._partition_log_entries(data)
+                else:
+                    logger.warning(
+                        "workload-api logs fetch failed: %s %s",
+                        resp.status_code,
+                        resp.text,
+                    )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception(
+                    "workload-api logs fetch raised; will retry / fall back to logTail"
+                )
+
+            if RESULT_MARKER in stdout or time.monotonic() > deadline:
+                break
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 3.0)
 
         if stdout.strip() or stderr.strip():
             return stdout, stderr
@@ -429,6 +452,15 @@ class DataRobotWorkloadSandbox:
         duration = time.monotonic() - start
         status = str(terminal.get("status", "")).lower()
         exit_code = int(terminal.get("exitCode", 0) or 0)
+        # The runner is a one-shot job, but the workload-api only supports
+        # long-running "service" (or "nim") artifacts — so when the runner
+        # finishes and its process exits, the workload-api marks the workload
+        # ``errored``/``stopped`` even though the run succeeded. The runner emits
+        # its result marker from a ``finally`` (see protocol.py / the sandbox
+        # image runner), so a marker in the logs is the source of truth that the
+        # snippet ran to completion. Treat failure statuses as real failures only
+        # when no marker was produced (genuine startup/crash before any output).
+        marker_found = RESULT_MARKER in stdout_raw
 
         if status in _TERMINAL_TIMEOUT:
             raise SandboxTimeout(f"workload-api workload {workload_id} timed out: {terminal!r}")
@@ -443,8 +475,11 @@ class DataRobotWorkloadSandbox:
                 f"in-process timeout (exit {SANDBOX_TIMEOUT_EXIT_CODE}); "
                 f"caller timeout_s={timeout_s}"
             )
-        if status in _TERMINAL_FAILURE:
-            raise SandboxError(f"workload-api workload {workload_id} failed: status={status}")
+        if status in _TERMINAL_FAILURE and not marker_found:
+            raise SandboxError(
+                f"workload-api workload {workload_id} failed: status={status} "
+                "(no result marker in logs — container did not run to completion)"
+            )
 
         return SandboxResult(
             stdout=stdout,
