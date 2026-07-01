@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.21.2
+- Bumped `datarobot-moderations` floor to `>=11.2.35` (lock resolves 11.2.40) so the NeMo `llmGateway` "stay on topic" guard no longer silently fails open — it had been no-opping on an asyncio event-loop error, leaving guardrails unenforced.
+
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
 
