@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compatibility shims for third-party OpenTelemetry instrumentation."""
+"""Compatibility shims for third-party OpenTelemetry instrumentation.
+
+The upstream fix for cross-context OTel detach errors landed in
+``llama-index-observability-otel`` (https://github.com/run-llama/llama_index/pull/21587,
+released in >= 0.6.2). We still need a local shim because ``instrument(framework="llamaindex")``
+uses OpenLLMetry's ``opentelemetry-instrumentation-llamaindex`` instead — a separate span
+handler on the same LlamaIndex dispatcher that has not picked up that fix. Drop this module
+when we migrate to ``llama-index-observability-otel`` or OpenLLMetry ships an equivalent
+``SpanHolder.end`` change.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +51,9 @@ def patch_llamaindex_otel_context_detach() -> None:
     to reset the token directly and, on cross-context failure, re-attach the
     saved previous OTel context when the ended span is still current.
 
-    Mirrors https://github.com/run-llama/llama_index/pull/21587.
+    The same logic was merged upstream for LlamaIndex's native OTel integration
+    in https://github.com/run-llama/llama_index/pull/21587 (``llama-index-observability-otel``
+    >= 0.6.2), but that package is not what ``instrument(framework="llamaindex")`` activates.
     """
     if _STATE["patched"]:
         return
