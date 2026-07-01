@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.21.5
+## 0.21.4
 - `llamaindex`: patch OpenLLMetry `SpanHolder` span exit before `LlamaIndexInstrumentor` activates, silencing cross-`contextvars` `Failed to detach context` ERROR logs from AgentWorkflow steps.
 
 ## 0.21.3
