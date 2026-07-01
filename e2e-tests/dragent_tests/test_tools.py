@@ -25,12 +25,12 @@ from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
 from dragent_tests.helpers import LLM
-from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
-from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping tool call tests", allow_module_level=True)
