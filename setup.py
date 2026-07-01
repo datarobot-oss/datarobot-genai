@@ -88,7 +88,6 @@ nat = core + [
 
 dragent = nat + [
     "starlette>=1.0.1",
-    "opentelemetry-instrumentation-fastapi>=0.43b0,<1.0.0",
 ]
 
 # Eventually NAT will be merged into dragent
