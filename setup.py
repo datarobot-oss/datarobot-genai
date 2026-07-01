@@ -48,9 +48,7 @@ crewai = core + [
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
-    "crewai-tools>=0.69.0,<0.77.0",
-    # imported directly by crewai/mcp.py; capped because we subclass its internal CrewAIAdapter
-    "mcpadapt>=0.1.19,<0.2.0",
+    "crewai-tools[mcp]>=0.69.0,<0.77.0",
     "nvidia-nat-crewai==1.7.0",
     "opentelemetry-instrumentation-crewai>=0.40.5,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
