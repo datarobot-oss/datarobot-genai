@@ -21,6 +21,7 @@ from collections import defaultdict
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
+from typing import Literal
 
 from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.event_types import AgentExecutionStartedEvent
@@ -36,12 +37,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ToolCallRecord:
-    """Neutral CrewAI tool event; the dragent converts it to AG-UI ``ToolCall*``.
+    """Neutral CrewAI tool event; ``AGUIStreamEmitter`` converts it to AG-UI ``ToolCall*`` events.
 
     ``kind="call"`` = invocation (name + args); ``kind="result"`` = its output or error.
     """
 
-    kind: str
+    kind: Literal["call", "result"]
     tool_call_id: str
     name: str = ""
     args: str = ""

@@ -743,6 +743,15 @@ async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
     assert [s.step_name for s in finishes] == ["Planner"]  # step closed on abort
     assert len(text_starts) == len(text_ends) == 1  # message closed on abort
 
+    # AND the partial stream is well-formed AND still accepts a terminal event -- nothing is left
+    # open. validate_sequence rejects RUN_FINISHED while a step/message is active, so appending it
+    # is what proves finish() closed the step on abort (balanced counts would pass even with
+    # STEP_FINISHED emitted before TEXT_MESSAGE_END).
+    validate_sequence(events)
+    terminal = RunFinishedEvent(thread_id=run_agent_input.thread_id, run_id=run_agent_input.run_id)
+    validate_sequence([*events, terminal])
+    assert events.index(text_ends[0]) < events.index(finishes[0])  # message closed before its step
+
 
 async def test_invoke_streaming_skips_empty_text_chunks(
     mock_ragas_event_listener, run_agent_input

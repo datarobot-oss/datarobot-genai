@@ -19,6 +19,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from crewai.utilities.agent_utils import convert_tools_to_openai_schema
+from mcp.types import Tool
 from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
@@ -80,6 +82,40 @@ class TestRawSchemaAdapter:
         tool.args_schema = None
         out = _RawSchemaCrewAIAdapter._keep_raw_schema(tool, SimpleNamespace(inputSchema=None))
         assert out.args_schema.model_json_schema() == _EMPTY_OBJECT_SCHEMA
+
+    def test_native_tool_call_schema_keeps_types_and_drops_null_keys(self):
+        # End-to-end through CrewAI's native converter (not just model_json_schema()): the
+        # LLM-facing function parameters must keep every property's ``type`` and carry no
+        # null-valued keys (``enum``/``items``/``default``: null) that azure rejects. Without the
+        # raw-schema override the stock pydantic round-trip drops ``type`` and injects those null
+        # keys -- so this pins the regression the adapter fixes, below model_json_schema()'s reach.
+        raw = {
+            "type": "object",
+            "properties": {
+                "max_results": {"type": "integer", "default": 3},
+                "filters": {"type": "object", "properties": {"lang": {"type": "string"}}},
+            },
+            "required": [],
+        }
+        tool = _RawSchemaCrewAIAdapter().adapt(
+            lambda _args=None: "ok",
+            Tool(name="searcher", description="s", inputSchema=raw),
+        )
+        fn_schemas, _fns, _lookup = convert_tools_to_openai_schema([tool])
+        params = fn_schemas[0]["function"]["parameters"]
+
+        assert params["properties"]["max_results"]["type"] == "integer"
+        assert params["properties"]["filters"]["properties"]["lang"]["type"] == "string"
+
+        def null_valued_keys(node):
+            if isinstance(node, dict):
+                here = [k for k, v in node.items() if v is None]
+                return here + [p for v in node.values() for p in null_valued_keys(v)]
+            if isinstance(node, list):
+                return [p for v in node for p in null_valued_keys(v)]
+            return []
+
+        assert null_valued_keys(params) == []
 
 
 class TestMCPToolsContext:
