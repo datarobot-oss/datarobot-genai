@@ -170,6 +170,53 @@ def test_agent_execution_started_tracks_active_role() -> None:
         assert listener.active_agent_role == "Writer"
 
 
+def test_paired_buffers_do_not_retain_empty_entries() -> None:
+    # After a call+result reconcile, the per-key deque is emptied; leaving the key behind grows the
+    # buffers by one dead entry per distinct tool for the run. Reconciled keys must be dropped.
+    listener = CrewAIStreamingEventListener()
+    with crewai_event_bus.scoped_handlers():
+        listener.setup_listeners(crewai_event_bus)
+        _emit(ToolUsageStartedEvent(tool_name="wc", tool_args={"text": "a"}))
+        _emit(_finished("wc", "1", {"text": "a"}))
+
+    assert not listener._calls_awaiting_result
+    assert not listener._results_awaiting_call
+
+
+def test_tool_call_role_comes_from_event_not_shared_active_role() -> None:
+    # The tool's own agent rides on the event; the shared active_agent_role can already point at the
+    # NEXT agent (its AgentExecutionStarted handler ran first), so attributing by the field would
+    # open the wrong agent's step. Prefer the event's role.
+    listener = CrewAIStreamingEventListener()
+    with crewai_event_bus.scoped_handlers():
+        listener.setup_listeners(crewai_event_bus)
+        _emit(_agent_started("Writer"))  # active role has advanced to the next agent
+        _emit(
+            ToolUsageStartedEvent(
+                tool_name="wc",
+                tool_args={"text": "a"},
+                from_agent=SimpleNamespace(id="p1", role="Planner"),
+            )
+        )
+
+    records = _drain(listener)
+    assert records[0].kind == "call"
+    assert records[0].agent_role == "Planner"  # from the event, not the "Writer" active role
+
+
+def test_tool_call_role_falls_back_to_active_when_event_lacks_role() -> None:
+    # Paths that don't set from_agent leave the event's agent_role empty; fall back to the
+    # bus-tracked active role so single-agent streams still get their step.
+    listener = CrewAIStreamingEventListener()
+    with crewai_event_bus.scoped_handlers():
+        listener.setup_listeners(crewai_event_bus)
+        _emit(_agent_started("Planner"))
+        _emit(ToolUsageStartedEvent(tool_name="wc", tool_args={}))
+
+    records = _drain(listener)
+    assert records[0].agent_role == "Planner"
+
+
 def test_two_sequential_calls_keep_distinct_paired_ids() -> None:
     listener = CrewAIStreamingEventListener()
     with crewai_event_bus.scoped_handlers():

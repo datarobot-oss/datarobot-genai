@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from ag_ui.core import EventType
@@ -82,6 +83,19 @@ def test_reasoning_opens_content_and_closes() -> None:
         EventType.REASONING_MESSAGE_END,
         EventType.REASONING_END,
     ]
+
+
+def test_reasoning_message_id_is_distinct_from_text_id() -> None:
+    # A UI grouping by message_id must not fold the reasoning block into the assistant bubble, so
+    # reasoning events carry their own derived id -- matching the langgraph/llamaindex adapters.
+    em = AGUIStreamEmitter()
+    reasoning = _collect(em.reasoning(True), em.text("thinking"), em.reasoning(False))
+    text = list(em.text("answer"))
+
+    reasoning_ids = {e.message_id for e in reasoning}
+    text_id = text[0].message_id
+    assert len(reasoning_ids) == 1  # every reasoning event shares one id
+    assert reasoning_ids == {str(uuid.uuid5(uuid.NAMESPACE_OID, f"{text_id}-reasoning"))}
 
 
 def test_tool_call_same_role_closes_open_text_and_attaches() -> None:

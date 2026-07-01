@@ -102,12 +102,23 @@ class AGUIStreamEmitter:
             yield StepStartedEvent(type=EventType.STEP_STARTED, step_name=role)
         self._role = role
 
+    def _reasoning_id(self) -> str:
+        """Reasoning message id, derived from the text id but distinct from it: a UI grouping by id
+        renders reasoning as its own block instead of folding it into the assistant bubble. Matches
+        the langgraph/llamaindex adapters (``uuid5(NAMESPACE_OID, f"{text_id}-reasoning")``).
+        """
+        return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{self._mid}-reasoning"))
+
     def reasoning(self, on: bool) -> Iterator[Any]:
         """Open or close the reasoning message at a reasoning-mode boundary."""
         if on and not self._reasoning:
-            yield ReasoningStartEvent(type=EventType.REASONING_START, message_id=self._mid)
+            yield ReasoningStartEvent(
+                type=EventType.REASONING_START, message_id=self._reasoning_id()
+            )
             yield ReasoningMessageStartEvent(
-                type=EventType.REASONING_MESSAGE_START, message_id=self._mid, role="reasoning"
+                type=EventType.REASONING_MESSAGE_START,
+                message_id=self._reasoning_id(),
+                role="reasoning",
             )
             self._reasoning = True
         elif not on and self._reasoning:
@@ -117,7 +128,9 @@ class AGUIStreamEmitter:
         """Emit a content delta as reasoning content (in reasoning mode) or assistant text."""
         if self._reasoning:
             yield ReasoningMessageContentEvent(
-                type=EventType.REASONING_MESSAGE_CONTENT, message_id=self._mid, delta=delta
+                type=EventType.REASONING_MESSAGE_CONTENT,
+                message_id=self._reasoning_id(),
+                delta=delta,
             )
             return
         if not self._text:
@@ -154,6 +167,8 @@ class AGUIStreamEmitter:
             yield from self._close_reasoning()
 
     def _close_reasoning(self) -> Iterator[Any]:
-        yield ReasoningMessageEndEvent(type=EventType.REASONING_MESSAGE_END, message_id=self._mid)
-        yield ReasoningEndEvent(type=EventType.REASONING_END, message_id=self._mid)
+        yield ReasoningMessageEndEvent(
+            type=EventType.REASONING_MESSAGE_END, message_id=self._reasoning_id()
+        )
+        yield ReasoningEndEvent(type=EventType.REASONING_END, message_id=self._reasoning_id())
         self._reasoning = False

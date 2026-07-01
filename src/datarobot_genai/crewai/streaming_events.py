@@ -66,6 +66,8 @@ class CrewAIStreamingEventListener:
         # thread-pool handlers arrive out of order and carry no per-call id. Buffer whichever
         # side comes first until its partner arrives. Relies on CrewAI echoing tool_args on the
         # Finished/Error event (it does today); if that stops, a result would buffer unpaired.
+        # Two calls with identical (name, args) pair FIFO -- indistinguishable without a per-call
+        # id, so a non-deterministic tool's two results may swap.
         self._calls_awaiting_result: dict[tuple[str, str], deque[str]] = defaultdict(deque)
         self._results_awaiting_call: dict[tuple[str, str], deque[str]] = defaultdict(deque)
 
@@ -104,9 +106,11 @@ class CrewAIStreamingEventListener:
 
         def put_result(event: Any, content: str) -> None:
             key = self._pair_key(event)
-            calls = self._calls_awaiting_result[key]
+            calls = self._calls_awaiting_result.get(key)
             if calls:  # its Started already arrived -> pair to that call
                 tool_call_id = calls.popleft()
+                if not calls:
+                    del self._calls_awaiting_result[key]
                 self.tool_call_events.put(
                     ToolCallRecord(kind="result", tool_call_id=tool_call_id, content=content)
                 )
@@ -117,22 +121,27 @@ class CrewAIStreamingEventListener:
         def on_tool_usage_started(_: Any, event: Any) -> None:
             key = self._pair_key(event)
             tool_call_id = str(uuid.uuid4())
+            # Attribute by the event's own agent; active_agent_role may already point at the next
+            # agent (handler raced ahead), so fall back to it only when the event carries no role.
+            agent_role = (getattr(event, "agent_role", None) or "") or self.active_agent_role
             self.tool_call_events.put(
                 ToolCallRecord(
                     kind="call",
                     tool_call_id=tool_call_id,
                     name=key[0],
                     args=key[1],
-                    agent_role=self.active_agent_role,
+                    agent_role=agent_role,
                 )
             )
-            buffered = self._results_awaiting_call[key]
+            buffered = self._results_awaiting_call.get(key)
             if buffered:  # its result already arrived (handler reorder) -> emit it now, in order
                 self.tool_call_events.put(
                     ToolCallRecord(
                         kind="result", tool_call_id=tool_call_id, content=buffered.popleft()
                     )
                 )
+                if not buffered:
+                    del self._results_awaiting_call[key]
             else:
                 self._calls_awaiting_result[key].append(tool_call_id)
 

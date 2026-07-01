@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `crewai`: capture each agent's original tools once at class creation, not per request — on a reused crew the per-request snapshot re-captured the prior request's MCP tools (bound to a closed event loop), failing later requests with "Event loop is closed".
 - `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
 - `crewai`: extract the AG-UI event sequencing out of the streaming loop into a dedicated `AGUIStreamEmitter` (internal refactor; no behavior change).
+- `crewai`: attribute a tool call to the agent on its own bus event, falling back to the active role only when absent — a raced `AgentExecutionStarted` could otherwise open the next agent's step for the call.
+- `crewai`: close the open step/message if the stream aborts mid-run so the partial AG-UI stream stays well-formed (an orphaned `STEP_STARTED` rejects any terminal event the caller appends).
+- `crewai`: give reasoning its own message id (distinct from the assistant text bubble) so a UI grouping by id renders it as its own block instead of folding it into the text, matching langgraph/llamaindex.
 
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs

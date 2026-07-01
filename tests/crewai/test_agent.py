@@ -706,6 +706,44 @@ async def test_invoke_streaming_emits_separate_messages_per_agent_role(
     assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
 
 
+async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a stream that opens a step + text message, then fails mid-run (dropped gateway
+    # connection, bad chunk). The partial AG-UI stream must still close what it opened -- otherwise
+    # a caller that appends a terminal event is rejected for a still-active step.
+    class _AbortingStream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            yield _text_chunk("half a thought", "Planner")
+            raise RuntimeError("boom")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_AbortingStream())
+
+    # WHEN the stream aborts mid-run
+    events = []
+    with pytest.raises(RuntimeError, match="boom"):
+        async for e, _, _ in agent.invoke(run_agent_input):
+            events.append(e)
+
+    # THEN every opened step and message was closed before the error propagated
+    starts = [e for e in events if isinstance(e, StepStartedEvent)]
+    finishes = [e for e in events if isinstance(e, StepFinishedEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    assert [s.step_name for s in starts] == ["Planner"]
+    assert [s.step_name for s in finishes] == ["Planner"]  # step closed on abort
+    assert len(text_starts) == len(text_ends) == 1  # message closed on abort
+
+
 async def test_invoke_streaming_skips_empty_text_chunks(
     mock_ragas_event_listener, run_agent_input
 ) -> None:

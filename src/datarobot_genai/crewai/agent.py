@@ -471,23 +471,31 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     if chunk.chunk_type == StreamChunkType.TEXT and chunk.content:
                         yield from out(emitter.text(chunk.content))
 
-                async for chunk in crew_output:
-                    logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
-                    for item in events_for(chunk):
-                        yield item
+                try:
+                    async for chunk in crew_output:
+                        logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
+                        for item in events_for(chunk):
+                            yield item
 
-                pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                    ragas_event_listener.messages
-                )
-                usage_metrics = self._extract_usage_metrics(crew_output.result)
-                # Stream done: close the open message, flush tool calls that fired after the last
-                # chunk (now detached, parent=""), then close the open step.
-                for item in out(emitter.close_messages(), usage_metrics):
-                    yield item
-                for item in drain(usage_metrics):
-                    yield item
-                for item in out(emitter.finish(), usage_metrics):
-                    yield item
+                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                        ragas_event_listener.messages
+                    )
+                    usage_metrics = self._extract_usage_metrics(crew_output.result)
+                    # Stream done: close the open message, flush tool calls that fired after the
+                    # last chunk (now detached, parent=""), then close the open step.
+                    for item in out(emitter.close_messages(), usage_metrics):
+                        yield item
+                    for item in drain(usage_metrics):
+                        yield item
+                    for item in out(emitter.finish(), usage_metrics):
+                        yield item
+                except Exception:
+                    # Aborted mid-stream (dropped connection, bad chunk): close the open message and
+                    # step so the partial AG-UI stream stays well-formed -- an orphaned STEP_STARTED
+                    # rejects any terminal event the caller appends -- then let the error propagate.
+                    for item in out(emitter.finish(), usage_metrics):
+                        yield item
+                    raise
             else:
                 message_id = str(uuid.uuid4())
                 response_text = str(crew_output.raw)
