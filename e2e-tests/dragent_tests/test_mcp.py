@@ -22,11 +22,11 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS
 from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
-from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
-from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if not os.environ.get("MCP_DEPLOYMENT_ID"):
     pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""In-process mock OTLP/HTTP collector for e2e tests.
+"""In-process mock OTLP/HTTP collector and tracing assertions for e2e tests.
 
 The OTel SDK HTTP exporter and NAT's ``OTLPSpanAdapterExporter`` both POST
 spans via ``requests.Session()``; an in-process ``responses``/``respx`` patch
@@ -29,6 +29,7 @@ the collector's startup.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -43,6 +44,31 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 # OTLP/HTTP traces ingest path. The DataRobot collector ingress lives off
 # ``/otel/v1/traces`` (see ``resolve_otel_traces_endpoint_from_env``).
 OTLP_TRACES_PATH = "/otel/v1/traces"
+
+# --- OpenTelemetry tracing config ------------------------------------------
+# The dragent server (started before pytest) is configured to export spans to
+# the in-process mock collector via OTEL_EXPORTER_OTLP_ENDPOINT /
+# OTEL_EXPORTER_OTLP_HEADERS. These constants MUST match the values the server
+# is launched with in ``e2e-tests/dragent/Taskfile.yaml``.
+MOCK_OTEL_COLLECTOR_PORT = int(os.environ.get("MOCK_OTEL_COLLECTOR_PORT", "4318"))
+# OTLP base endpoint the server exports to; ``/v1/traces`` is appended by the
+# DataRobot exporter (see resolve_otel_traces_endpoint_from_env).
+OTEL_EXPORTER_OTLP_ENDPOINT = f"http://localhost:{MOCK_OTEL_COLLECTOR_PORT}/otel"
+# Sentinel DataRobot auth headers; the mock collector does not validate them,
+# the tests only assert they reached the ingest unmodified.
+OTEL_API_KEY = "e2e-otel-token"
+OTEL_ENTITY_ID = "deployment-e2e-test"
+OTEL_EXPORTER_OTLP_HEADERS = (
+    f"X-DataRobot-Api-Key={OTEL_API_KEY},X-DataRobot-Entity-Id={OTEL_ENTITY_ID}"
+)
+
+# Span attributes that map to the deployment Tracing table columns, per
+# https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-tracing-code.html#map-spans-and-attributes-to-the-tracing-table
+# Mirrors the constants in
+# ``datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware``.
+GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
+GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
+TOOL_NAME = "tool_name"  # Tools column
 
 
 @dataclass(frozen=True)
@@ -215,3 +241,103 @@ class MockOtelCollector:
                 return
 
         return _Handler
+
+
+def _assert_datarobot_auth_headers(collector: MockOtelCollector) -> None:
+    """At least one trace export must carry the DataRobot ingest auth headers.
+
+    HTTP header names are case-insensitive, so compare on lowercased keys
+    rather than relying on the exporter's exact casing.
+    """
+
+    def lower(headers: dict[str, str]) -> dict[str, str]:
+        return {k.lower(): v for k, v in headers.items()}
+
+    authed = [
+        request
+        for request in collector.requests
+        if request.path == OTLP_TRACES_PATH
+        and lower(request.headers).get("x-datarobot-api-key") == OTEL_API_KEY
+        and lower(request.headers).get("x-datarobot-entity-id") == OTEL_ENTITY_ID
+    ]
+    assert authed, (
+        f"Expected ≥ 1 POST to {OTLP_TRACES_PATH} with DR auth headers "
+        f"(X-DataRobot-Api-Key={OTEL_API_KEY}, X-DataRobot-Entity-Id={OTEL_ENTITY_ID}); "
+        f"captured {len(collector.requests)} request(s) at paths "
+        f"{sorted({r.path for r in collector.requests})} with header keys "
+        f"{[sorted(r.headers.keys()) for r in collector.requests if r.path == OTLP_TRACES_PATH]}."
+    )
+
+
+def _assert_single_trace_id(collector: MockOtelCollector) -> None:
+    """Every span exported for the current run must share one ``trace_id``.
+
+    A single agent invocation must produce a single, connected trace: the
+    per-invocation ``datarobot_agent`` root span and all of its children (LLM
+    calls, tool calls, framework spans) must share one ``trace_id``. A break in
+    OTel context propagation would surface here as spans split across multiple
+    traces.
+
+    This relies on the ``_reset_otel_collector`` autouse fixture clearing the
+    session-scoped collector before each test, so the captured spans belong to
+    the run under test only.
+    """
+    all_spans = collector.spans()
+    trace_ids = {span.trace_id for span in all_spans}
+    assert len(trace_ids) == 1, (
+        f"Expected all {len(all_spans)} exported span(s) to share one trace_id, "
+        f"but found {len(trace_ids)} distinct trace_id(s). Span name -> trace_id: "
+        f"{sorted((s.name, s.trace_id.hex()) for s in all_spans)}"
+    )
+
+
+def assert_tracing_conventions(
+    collector: MockOtelCollector,
+    prompt: str,
+    *,
+    expect_tool_name: bool = False,
+    timeout: float = 30.0,
+) -> None:
+    """Assert the agent exported DataRobot Tracing-table spans for *prompt*.
+
+    Finds this request's spans by ``gen_ai.prompt`` (the verbatim user message
+    recorded by the ``datarobot_otel_conventions`` middleware), then asserts the
+    convention attributes are present:
+
+    * ``gen_ai.prompt`` and ``gen_ai.completion`` on the per-invocation
+      ``datarobot_agent`` span,
+    * every exported span for the run shares a single ``trace_id``, and
+    * the export carried the DataRobot ingest auth headers.
+
+    When *expect_tool_name* is set, also requires a ``tool_name`` span in the
+    same trace (frameworks that surface tool calls as AG-UI events).
+    """
+    agent_spans = collector.wait_for_spans(
+        lambda span: span.attributes.get(GEN_AI_PROMPT) == prompt
+        and GEN_AI_COMPLETION in span.attributes,
+        timeout=timeout,
+    )
+    if not agent_spans:
+        observed = sorted(
+            str(s.attributes[GEN_AI_PROMPT])
+            for s in collector.spans()
+            if GEN_AI_PROMPT in s.attributes
+        )
+        raise AssertionError(
+            f"No exported span carried {GEN_AI_PROMPT}=={prompt!r} together with "
+            f"{GEN_AI_COMPLETION}. Observed prompts: {observed}"
+        )
+
+    _assert_single_trace_id(collector)
+
+    _assert_datarobot_auth_headers(collector)
+
+    if expect_tool_name:
+        trace_ids = {span.trace_id for span in agent_spans}
+        spans_in_trace = [s for s in collector.spans() if s.trace_id in trace_ids]
+        tool_spans = [s for s in spans_in_trace if s.attributes.get(TOOL_NAME)]
+        assert tool_spans, (
+            f"Expected a span carrying {TOOL_NAME!r} in the same trace as the "
+            f"agent span for the tool-calling request; "
+            f"got span names {sorted({s.name for s in spans_in_trace})}."
+        )

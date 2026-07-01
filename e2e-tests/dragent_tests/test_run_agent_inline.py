@@ -29,14 +29,14 @@ from pathlib import Path
 from openai.types.chat import ChatCompletion
 
 from dragent_tests.helpers import E2E_ROOT
-from dragent_tests.helpers import OTEL_EXPORTER_OTLP_ENDPOINT
-from dragent_tests.helpers import OTEL_EXPORTER_OTLP_HEADERS
 from dragent_tests.helpers import agent_dir
-from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.helpers import workflow_file
-from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_ENDPOINT
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_HEADERS
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 
