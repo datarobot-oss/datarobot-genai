@@ -66,8 +66,6 @@ class CrewAIStreamingEventListener:
         # thread-pool handlers arrive out of order and carry no per-call id. Buffer whichever
         # side comes first until its partner arrives. Relies on CrewAI echoing tool_args on the
         # Finished/Error event (it does today); if that stops, a result would buffer unpaired.
-        # Two calls with identical (name, args) pair FIFO -- indistinguishable without a per-call
-        # id, so a non-deterministic tool's two results may swap.
         self._calls_awaiting_result: dict[tuple[str, str], deque[str]] = defaultdict(deque)
         self._results_awaiting_call: dict[tuple[str, str], deque[str]] = defaultdict(deque)
 
