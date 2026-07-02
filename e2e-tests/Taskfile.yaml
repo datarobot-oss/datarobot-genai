@@ -62,17 +62,17 @@ tasks:
           - base
     cmds:
       - echo "🧪 Running tests for dragent"
-      - uv run pytest dragent_tests -vv -s
+      - uv run pytest dragent_tests -vv -s --rerun-show-tracebacks
   test-drmcp:
     desc: "🧪 Run tests for drmcp"
     cmds:
       - echo "🧪 Running tests for drmcp"
-      - uv run pytest drmcp_tests -vv -s
+      - uv run pytest drmcp_tests -vv -s --rerun-show-tracebacks
   test-target:
     desc: "🧪 Run tests for a specific target"
     cmds:
       - echo "🧪 Running tests for {{.TARGET}}"
-      - uv run pytest {{.CLI_ARGS}} -vv -s
+      - uv run pytest {{.CLI_ARGS}} -vv -s --rerun-show-tracebacks
   test-examples:
     desc: "🧪 Run examples"
     cmds:

@@ -61,6 +61,9 @@ DEFAULT_PYTEST_ARGS: tuple[str, ...] = (
     "--tb=short",
     "--reruns=1",
     "--reruns-delay=5",
+    # Include reruns alongside the usual outcomes in the end-of-run short
+    # summary so retried tests are visible in the logs.
+    "--rerun-show-tracebacks",
 )
 
 # AGENT is the only matrix dim the rest of the pipeline (CI filtering,
