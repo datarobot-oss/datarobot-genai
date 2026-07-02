@@ -541,9 +541,7 @@ async def test_patch_batch_returns_events_in_input_order() -> None:
 
     def _capture(req: httpx.Request) -> httpx.Response:
         # Respond with items in REVERSE order relative to the input updates.
-        return httpx.Response(
-            200, json={"items": [_event_wire(seq_id=1), _event_wire(seq_id=0)]}
-        )
+        return httpx.Response(200, json={"items": [_event_wire(seq_id=1), _event_wire(seq_id=0)]})
 
     respx.patch(EVENTS_BATCH_URL).mock(side_effect=_capture)
     session = _make_session()

@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Integration tests for the Memory Service Light ORM.
+"""Acceptance tests for the Memory Service Light ORM.
 
 These tests run against a live DataRobot Memory Service endpoint.  They are
-**skipped by default** and require three environment variables to be set:
+**skipped by default** (``pytest.mark.integration``) and require credentials:
 
 .. code-block:: bash
 
     export DATAROBOT_ENDPOINT="https://app.datarobot.com/api/v2"
     export DATAROBOT_API_TOKEN="<your-token>"
-    export DR_MEMORY_LIVE_INTEGRATION="1"
 
-    uv run pytest tests/application_utils/persistence/integration -vv
+    uv run pytest tests/application_utils/persistence/acceptance -m integration -vv
 
 The tests clean up after themselves (deleting created spaces) and are designed
 to be idempotent so they can be re-run.
@@ -33,7 +32,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Mapping
 from typing import Annotated
 
 import pytest
@@ -47,31 +45,14 @@ from datarobot_genai.application_utils.persistence import DRMemoryVersionConflic
 from datarobot_genai.application_utils.persistence import DRRangeKey
 from datarobot_genai.application_utils.persistence import DRSession
 
-# ── Integration opt-in guard ──────────────────────────────────────────────────
-
-def _live_enabled(environ: Mapping[str, str]) -> bool:
-    """Return ``True`` when all env vars required for live integration tests are set.
-
-    Extracted as a pure function so the gate's env-var wiring is unit-testable: a typo in
-    one of the variable names would otherwise silently disable the entire suite undetected.
-    """
-    return bool(
-        environ.get("DATAROBOT_ENDPOINT")
-        and environ.get("DATAROBOT_API_TOKEN")
-        and environ.get("DR_MEMORY_LIVE_INTEGRATION", "").lower() in {"1", "true", "yes"}
-    )
-
-
-_LIVE = _live_enabled(os.environ)
-
 pytestmark = pytest.mark.integration
 
-_SKIP_REASON = (
-    "Live integration tests require DATAROBOT_ENDPOINT, DATAROBOT_API_TOKEN, and "
-    "DR_MEMORY_LIVE_INTEGRATION=1 to be set."
-)
+_HAS_CREDS = bool(os.getenv("DATAROBOT_API_TOKEN")) and bool(os.getenv("DATAROBOT_ENDPOINT"))
 
-skip_unless_live = pytest.mark.skipif(not _LIVE, reason=_SKIP_REASON)
+skip_unless_live = pytest.mark.skipif(
+    not _HAS_CREDS,
+    reason="Requires DATAROBOT_ENDPOINT and DATAROBOT_API_TOKEN to be set.",
+)
 
 # ── Domain models used across all scenarios ───────────────────────────────────
 
@@ -137,7 +118,10 @@ async def space(client: DRMemoryServiceClient) -> DRMemorySpace:  # type: ignore
 
 @skip_unless_live
 async def test_space_lifecycle(client: DRMemoryServiceClient) -> None:
-    """Create, get, list, patch, and delete a memory space."""
+    """GIVEN a memory space
+    WHEN it is created, fetched, listed, patched, and deleted
+    THEN each operation round-trips against the live service.
+    """
     key = _unique("lifecycle-")
     # Create
     sp = await DRMemorySpace.post(client, description="Initial desc", deduplication_key=key)
@@ -156,6 +140,12 @@ async def test_space_lifecycle(client: DRMemoryServiceClient) -> None:
     await sp.patch(description="Updated description")
     assert sp.description == "Updated description"
 
+    # Re-read: a partial patch must not wipe sibling fields (confirms the service
+    # PATCH merges rather than full-replaces).
+    refetched = await DRMemorySpace.get(client, sp.id)
+    assert refetched.description == "Updated description"
+    assert refetched.deduplication_key == key
+
     # Delete
     await sp.delete()
 
@@ -169,7 +159,10 @@ async def test_space_lifecycle(client: DRMemoryServiceClient) -> None:
 
 @skip_unless_live
 async def test_session_round_trip(space: DRMemorySpace) -> None:
-    """Post a session; fields survive the wire round-trip."""
+    """GIVEN a session with range/dedup/metadata fields
+    WHEN posted and re-read
+    THEN all fields survive the wire round-trip.
+    """
     chat_id = _unique("sess-")
     session = await ChatSession.post(
         space,
@@ -201,7 +194,10 @@ async def test_session_round_trip(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_session_with_explicit_participant(space: DRMemorySpace) -> None:
-    """Post a session scoped to a specific participant; participant survives the wire."""
+    """GIVEN a session scoped to a specific participant
+    WHEN posted and re-read
+    THEN the participant survives the wire round-trip.
+    """
     session = await ChatSession.post(
         space,
         participants=[PARTICIPANT_OID],
@@ -220,7 +216,10 @@ async def test_session_with_explicit_participant(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_idempotent_create(space: DRMemorySpace) -> None:
-    """Creating a session with the same dedup key twice returns the same session."""
+    """GIVEN a session created with a dedup key
+    WHEN a second create uses the same key
+    THEN the existing session is returned.
+    """
     key = _unique("dedup-")
     first = await ChatSession.post(
         space,
@@ -248,7 +247,10 @@ async def test_idempotent_create(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_range_key_prefix_queries(space: DRMemorySpace) -> None:
-    """Sessions under different topics; list by leading range-key prefix."""
+    """GIVEN sessions stored under different topics
+    WHEN listing by a leading range-key prefix
+    THEN only matching sessions are returned.
+    """
     tenant = _unique("t-")
     s1 = await ChatSession.post(
         space, tenant=tenant, topic="billing", chat_id=_unique("s1-"), title="Billing", rev=1
@@ -280,7 +282,10 @@ async def test_range_key_prefix_queries(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_participant_scoping(space: DRMemorySpace) -> None:
-    """Sessions for different participants; list filters correctly."""
+    """GIVEN sessions for different participants
+    WHEN listing with a participant filter
+    THEN only that participant's sessions are returned.
+    """
     tenant = _unique("p-")
     sa = await ChatSession.post(
         space,
@@ -313,7 +318,10 @@ async def test_participant_scoping(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_optimistic_concurrency_session(space: DRMemorySpace) -> None:
-    """Patching a session bumps version; a second patch from a stale copy raises."""
+    """GIVEN a session patched once to bump its version
+    WHEN a stale copy is patched
+    THEN a version-conflict error is raised.
+    """
     session = await ChatSession.post(
         space,
         tenant="acme",
@@ -327,8 +335,14 @@ async def test_optimistic_concurrency_session(space: DRMemorySpace) -> None:
     v1 = session.version
     assert v1 > 1
 
-    # Stale copy at old version — should raise
+    # Re-read: a metadata-only patch must not wipe the range keys encoded in the
+    # description (confirms the service PATCH merges rather than full-replaces).
     stale = await ChatSession.get(space, id=session.id)
+    assert stale.title == "Updated"
+    assert stale.tenant == "acme"
+    assert stale.topic == "billing"
+
+    # Stale copy at old version — should raise
     stale._version = 0  # force stale version
     with pytest.raises(DRMemoryVersionConflictError):
         await stale.patch(title="Stale update")
@@ -341,7 +355,10 @@ async def test_optimistic_concurrency_session(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_event_log(space: DRMemorySpace) -> None:
-    """Post events, list, last(n), patch, stale-patch, delete."""
+    """GIVEN events posted to a session
+    WHEN listing, tailing last(n), patching, stale-patching, and deleting
+    THEN each event operation behaves as expected.
+    """
     session = await ChatSession.post(
         space,
         participants=[PARTICIPANT_OID],
@@ -386,6 +403,13 @@ async def test_event_log(space: DRMemorySpace) -> None:
     await msg.patch(content="Updated Hello!")
     assert msg.content == "Updated Hello!"
 
+    # Re-read: a content-only patch must not drop other body fields (confirms the
+    # service merges the body rather than full-replacing it).
+    refetched = await ChatMessage.list(session, type="message")
+    updated = next(e for e in refetched if e.sequence_id == msg.sequence_id)
+    assert updated.content == "Updated Hello!"
+    assert updated.score == 0.9  # type: ignore[attr-defined]
+
     # Stale patch — force an old token
     msg_stale_copy = await ChatMessage.list(session)
     # Corrupt the token to simulate a stale update
@@ -406,7 +430,10 @@ async def test_event_log(space: DRMemorySpace) -> None:
 
 @skip_unless_live
 async def test_emitter_validation(space: DRMemorySpace) -> None:
-    """An emitter not in participants returns a 400 bad-request error from the service."""
+    """GIVEN an emitter not in the session participants
+    WHEN posting an event
+    THEN the service returns a 400 bad-request error.
+    """
     from datarobot_genai.application_utils.persistence import DRMemoryBadRequestError
 
     session = await ChatSession.post(

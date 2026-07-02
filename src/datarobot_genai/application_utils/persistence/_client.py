@@ -191,10 +191,18 @@ class DRMemoryServiceClient:
             raise DRMemoryNotFoundError(detail, status_code=404, payload=body)
 
         if resp.status_code == 409:
-            error_name = body.get("errorName", "")
-            if "DeduplicationConflict" in str(error_name):
-                existing_id = body.get("existingSessionId") or body.get("existingMemorySpaceId")
-                location = body.get("existingSessionUrl") or body.get("existingMemorySpaceUrl")
+            error_name = str(body.get("errorName", ""))
+            existing_id = body.get("existingSessionId") or body.get("existingMemorySpaceId")
+            location = (
+                body.get("existingSessionUrl")
+                or body.get("existingMemorySpaceUrl")
+                or resp.headers.get("Location")
+            )
+            # Treat it as a deduplication conflict when the service says so *or*
+            # when it returns the id of the existing resource — do not rely on the
+            # errorName string alone, which can drift and would otherwise misroute
+            # a real dedup conflict (dropping existing_id and breaking 409-adopt).
+            if "DeduplicationConflict" in error_name or existing_id is not None:
                 raise DRMemoryConflictError(
                     detail,
                     status_code=409,
@@ -202,7 +210,7 @@ class DRMemoryServiceClient:
                     existing_id=str(existing_id) if existing_id else None,
                     location=str(location) if location else None,
                 )
-            # 409 without dedup conflict = session version mismatch
+            # 409 without dedup markers = session version mismatch
             raise DRMemoryVersionConflictError(detail, status_code=409, payload=body)
 
         if resp.status_code == 422:

@@ -218,12 +218,18 @@ class DREvent(BaseModel):
             "emitter_type": data.get("emitterType", "agent"),
             "emitter_id": data.get("emitterId"),
         }
+        # A required body field absent from the wire is set to None so attribute
+        # access does not raise AttributeError after model_construct; fields with a
+        # default are left for model_construct to fill.
         for fname in routing.body_fields:
             if fname in body:
                 init_kwargs[fname] = body[fname]
+            elif cls.model_fields[fname].is_required():
+                init_kwargs[fname] = None
 
+        raw_seq = data.get("sequenceId")
         obj: DREvent = cls.model_construct(**init_kwargs)
-        obj._sequence_id = int(data.get("sequenceId", -1))
+        obj._sequence_id = int(raw_seq) if raw_seq is not None else -1
         obj._created_at = str(data.get("createdAt", ""))
         obj._session = session
         return obj
@@ -385,6 +391,11 @@ class DREvent(BaseModel):
             )
         for item in events:
             cls._validate_body_kwargs(item, allow_reserved=True)
+            missing = [key for key in ("content", "emitter_type") if key not in item]
+            if missing:
+                raise ValueError(
+                    f"post_batch() event is missing required field(s) {missing!r}: {item!r}"
+                )
             cls._check_emitter(session, item)
         wire_events = [cls._to_wire_create(e) for e in events]
         space = session._space
@@ -504,14 +515,14 @@ class DREvent(BaseModel):
         type(self)._validate_body_kwargs(kwargs, allow_reserved=False)
         body: dict[str, Any] | None = None
         if content is not None or kwargs:
-            body = {}
-            if content is not None:
-                body["content"] = content
-            else:
-                body["content"] = self.content  # keep existing content when only body fields change
+            # The service replaces the whole body object, so resend every declared
+            # body field (with kwargs applied on top) — otherwise a partial patch
+            # silently drops the body fields the caller did not mention.
+            body = {"content": content if content is not None else self.content}
             for fname in routing.body_fields:
-                if fname in kwargs:
-                    body[fname] = kwargs[fname]
+                new_val = kwargs.get(fname, getattr(self, fname, None))
+                if new_val is not None:
+                    body[fname] = new_val
 
         payload: dict[str, Any] = {}
         if body is not None:
@@ -652,6 +663,12 @@ class DREvent(BaseModel):
             result_item = items_by_seq.get(event.sequence_id)
             if result_item is not None:
                 event._update_from_wire(result_item)
+            else:
+                logger.warning(
+                    "patch_batch: no server result for event sequence_id=%s; returning "
+                    "the stale local copy (its createdAt concurrency token may be invalid).",
+                    event.sequence_id,
+                )
             updated_events.append(event)
 
         return updated_events

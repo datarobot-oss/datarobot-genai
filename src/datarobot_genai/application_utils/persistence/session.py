@@ -208,7 +208,10 @@ class DRSession(BaseModel):
         # Dedup key
         dedup_key: str | None = None
         if routing.dedup_field and routing.dedup_field in kwargs:
-            dedup_key = str(kwargs[routing.dedup_field])
+            dedup_value = kwargs[routing.dedup_field]
+            if dedup_value is None:
+                raise ValueError(f"Deduplication key {routing.dedup_field!r} must not be None.")
+            dedup_key = str(dedup_value)
 
         # Description from range keys
         description: str | None = None
@@ -216,7 +219,7 @@ class DRSession(BaseModel):
             range_values: list[str] = []
             for fname in routing.range_fields:
                 val = kwargs.get(fname, "")
-                validate_range_key(fname, str(val))
+                validate_range_key(fname, val)
                 range_values.append(str(val))
             description = build_description(cls._prefix(), range_values)
 
@@ -233,9 +236,7 @@ class DRSession(BaseModel):
             payload["description"] = description
         if metadata:
             payload["metadata"] = metadata
-        strategies = cls.__lifecycle_strategies__
-        if strategies:
-            payload["lifecycleStrategies"] = strategies
+        payload["lifecycleStrategies"] = cls.__lifecycle_strategies__
 
         return payload
 
@@ -281,15 +282,23 @@ class DRSession(BaseModel):
         # Range fields ← description
         init_kwargs.update(cls._decode_range_fields(routing, data))
 
-        # Metadata fields ← metadata
+        # Metadata fields ← metadata.  A required field absent from the wire is
+        # set to None so attribute access does not raise AttributeError after
+        # model_construct; fields with a default are left for model_construct to fill.
         metadata = data.get("metadata") or {}
         for fname in routing.metadata_fields:
             if fname in metadata:
                 init_kwargs[fname] = metadata[fname]
+            elif cls.model_fields[fname].is_required():
+                init_kwargs[fname] = None
+
+        # Server version (tolerate a missing or explicitly-null "version")
+        raw_version = data.get("version")
+        version = int(raw_version) if raw_version is not None else 1
 
         # Concurrency field ← version
         if routing.concurrency_field is not None:
-            init_kwargs[routing.concurrency_field] = data.get("version", 1)
+            init_kwargs[routing.concurrency_field] = version
 
         # Bypass Pydantic validation (server is the source of truth)
         obj: DRSession = cls.model_construct(**init_kwargs)
@@ -297,7 +306,7 @@ class DRSession(BaseModel):
         # Set server-assigned private attrs
         obj._id = str(data.get("id", ""))
         obj._created_at = str(data.get("createdAt", ""))
-        obj._version = int(data.get("version", 1))
+        obj._version = version
         obj._space = space
 
         return obj
@@ -306,7 +315,8 @@ class DRSession(BaseModel):
         """Update in-place from a ``SessionResponse`` wire dict after a patch."""
         routing = type(self)._get_routing()
 
-        self._version = int(data.get("version", self._version))
+        raw_version = data.get("version")
+        self._version = int(raw_version) if raw_version is not None else self._version
 
         # Sync concurrency field if declared
         if routing.concurrency_field is not None:
@@ -436,12 +446,15 @@ class DRSession(BaseModel):
                 params={"deduplicationKey": dedup_value},
             )
             items = resp.json().get("items", [])
-            if not items:
-                raise DRMemoryNotFoundError(
-                    f"No session with {routing.dedup_field}={dedup_value!r} in space {space.id}",
-                    status_code=404,
-                )
-            return cls._from_wire(space, items[0])
+            # The service deduplicationKey filter is not guaranteed to be an exact
+            # match, so confirm the key client-side instead of trusting items[0].
+            for item in items:
+                if item.get("deduplicationKey") == dedup_value:
+                    return cls._from_wire(space, item)
+            raise DRMemoryNotFoundError(
+                f"No session with {routing.dedup_field}={dedup_value!r} in space {space.id}",
+                status_code=404,
+            )
 
         raise ValueError(
             "get() requires either id=<uuid> or the subclass DRDeduplicationKey "
@@ -508,9 +521,9 @@ class DRSession(BaseModel):
             range_values: list[str] = []
             for fname in routing.range_fields:
                 if fname in kwargs:
-                    value = str(kwargs[fname])
+                    value = kwargs[fname]
                     validate_range_key(fname, value)
-                    range_values.append(value)
+                    range_values.append(str(value))
             if range_values:
                 query_params["description"] = build_query_description(cls._prefix(), range_values)
 
@@ -605,22 +618,30 @@ class DRSession(BaseModel):
 
         payload: dict[str, Any] = {}
 
-        # Rebuild metadata from current + updates
-        new_metadata: dict[str, Any] = {}
-        for fname in routing.metadata_fields:
-            current_val = getattr(self, fname, None)
-            new_val = kwargs.get(fname, current_val)
-            if new_val is not None:
-                new_metadata[fname] = new_val
-        if new_metadata:
+        # Metadata is stored as a single wire object, so when a metadata field is
+        # being changed we resend the full declared set (an explicit None clears a
+        # field).  A patch that touches no metadata field leaves metadata untouched
+        # rather than clobbering it with a rebuilt-from-current copy.
+        if any(fname in kwargs for fname in routing.metadata_fields):
+            new_metadata: dict[str, Any] = {}
+            for fname in routing.metadata_fields:
+                if fname in kwargs:
+                    new_metadata[fname] = kwargs[fname]
+                else:
+                    current_val = getattr(self, fname, None)
+                    if current_val is not None:
+                        new_metadata[fname] = current_val
             payload["metadata"] = new_metadata
 
-        # Rebuild description from current + updates
-        if routing.range_fields:
+        # The description encodes the range keys; only rebuild and send it when a
+        # range key is actually changing.  Rebuilding it on a metadata-only patch
+        # would raise when a range field is unset (e.g. the stored description did
+        # not decode) or silently re-key the session to a field default.
+        if routing.range_fields and any(fname in kwargs for fname in routing.range_fields):
             range_values: list[str] = []
             for fname in routing.range_fields:
                 val = kwargs.get(fname, getattr(self, fname, ""))
-                validate_range_key(fname, str(val))
+                validate_range_key(fname, val)
                 range_values.append(str(val))
             payload["description"] = build_description(type(self)._prefix(), range_values)
 
@@ -639,9 +660,7 @@ class DRSession(BaseModel):
     ) -> None:
         """Raise ``ValueError`` on undeclared or unknown session-create kwargs."""
         valid: set[str] = (
-            set(routing.metadata_fields)
-            | set(routing.range_fields)
-            | {"participants"}
+            set(routing.metadata_fields) | set(routing.range_fields) | {"participants"}
         )
         if routing.dedup_field:
             valid.add(routing.dedup_field)

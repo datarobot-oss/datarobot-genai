@@ -129,11 +129,21 @@ def build_session_routing(
                 f"{cls_name}: field name {name!r} is reserved by the ORM base. "
                 "Choose a different name."
             )
-        if _has_marker(field_info, DRDeduplicationKey):
+        markers = [
+            marker
+            for marker in (DRDeduplicationKey, DRRangeKey, DRConcurrencyField)
+            if _has_marker(field_info, marker)
+        ]
+        if len(markers) > 1:
+            raise TypeError(
+                f"{cls_name}: field {name!r} carries multiple ORM markers "
+                f"{[m.__name__ for m in markers]!r}; a field may carry at most one."
+            )
+        if DRDeduplicationKey in markers:
             dedup_fields.append(name)
-        elif _has_marker(field_info, DRRangeKey):
+        elif DRRangeKey in markers:
             range_fields.append(name)
-        elif _has_marker(field_info, DRConcurrencyField):
+        elif DRConcurrencyField in markers:
             concurrency_fields.append(name)
         else:
             metadata_fields.append(name)

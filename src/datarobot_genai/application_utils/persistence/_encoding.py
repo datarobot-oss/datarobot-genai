@@ -65,22 +65,25 @@ def _unesc(value: str) -> str:
     return value.replace("%2F", "/").replace("%25", "%")
 
 
-def validate_range_key(key_name: str, value: str) -> None:
+def validate_range_key(key_name: str, value: object) -> None:
     """Raise ``ValueError`` when a range-key value would break the encoding.
 
     Parameters
     ----------
     key_name : str
         Field name, used in the error message.
-    value : str
-        The range-key value to validate.
+    value : object
+        The range-key value to validate.  Checked before ``str()`` coercion so
+        that ``None`` is rejected rather than silently encoded as ``"None"``.
 
     Raises
     ------
     ValueError
-        If ``value`` is empty.
+        If ``value`` is ``None`` or an empty string.
     """
-    if not value:
+    if value is None:
+        raise ValueError(f"Range key {key_name!r} must not be None.")
+    if not str(value):
         raise ValueError(
             f"Range key {key_name!r} must not be empty — an empty segment would "
             "produce a mid-string '//' and break the description start anchor."
