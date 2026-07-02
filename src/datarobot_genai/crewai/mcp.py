@@ -13,30 +13,35 @@
 # limitations under the License.
 
 """
-MCP integration for CrewAI using MCPServerAdapter.
+MCP integration for CrewAI.
 
-This module provides MCP server connection management for CrewAI agents.
+Loads MCP tools via mcpadapt, keeping each tool's server ``inputSchema`` as the LLM-facing
+function-call parameters so the schema stays provider-portable (see ``_RawSchemaCrewAIAdapter``).
 """
 
 import logging
 import socket
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 from urllib.parse import urlparse
 
 from crewai.tools import BaseTool
-from crewai_tools import MCPServerAdapter
+from mcpadapt.core import MCPAdapt
+from mcpadapt.crewai_adapter import CrewAIAdapter
 from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
 
 logger = logging.getLogger(__name__)
 
+_EMPTY_OBJECT_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
+
 
 def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
     """TCP-probe a local MCP server's host:port.
 
-    CrewAI connects via crewai_tools/mcpadapt on a background thread, so an
+    CrewAI connects via mcpadapt on a background thread, so an
     unstarted local server otherwise blocks ~30s and leaks a thread traceback.
     A quick probe lets us skip the adapter and degrade cleanly instead.
     """
@@ -50,17 +55,32 @@ def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
-class _EmptyArgsSchema(BaseModel):
-    """Fallback schema for MCP tools that declare no input parameters."""
+class _RawSchemaCrewAIAdapter(CrewAIAdapter):
+    """Adapt MCP tools but hand the LLM the server's ``inputSchema`` as the tool parameters.
 
+    The stock adapter derives the function-call ``parameters`` from a pydantic model -- a
+    lossy round-trip that drops property ``type``s and adds null/empty keys that azure rejects
+    (bedrock tolerates them). Keep the model for arg validation, but return the server's schema
+    (as ``super().adapt`` leaves it -- ``$ref``s resolved) for the ``parameters``. Note the
+    text-prompt ``description`` still carries the lossy schema; the native tool-call path uses
+    ``parameters``.
+    """
 
-def _sanitize_tool_schemas(tools: list[BaseTool]) -> list[BaseTool]:
-    # Azure OpenAI rejects tools whose parameters field is None; replace with
-    # an empty-object schema for any MCP tool that has no input schema.
-    for tool in tools:
-        if tool.args_schema is None:
-            tool.args_schema = _EmptyArgsSchema
-    return tools
+    @staticmethod
+    def _keep_raw_schema(tool: BaseTool, mcp_tool: Any) -> BaseTool:
+        raw = getattr(mcp_tool, "inputSchema", None) or _EMPTY_OBJECT_SCHEMA
+        base: type[BaseModel] = tool.args_schema or BaseModel
+
+        class _RawArgsSchema(base):  # type: ignore[valid-type,misc]
+            @classmethod
+            def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                return raw
+
+        tool.args_schema = _RawArgsSchema
+        return tool
+
+    def adapt(self, func: Any, mcp_tool: Any) -> BaseTool:
+        return self._keep_raw_schema(super().adapt(func, mcp_tool), mcp_tool)
 
 
 # here it is async to conform with other MCP adapters
@@ -88,8 +108,8 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
     logger.info("Connecting to MCP server: %s", url)
 
     try:
-        adapter = MCPServerAdapter(mcp_config.server_config)
-        tools = _sanitize_tool_schemas(adapter.__enter__())
+        adapter = MCPAdapt(mcp_config.server_config, _RawSchemaCrewAIAdapter())
+        tools = adapter.__enter__()
     except Exception as exc:
         logger.warning(
             "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
