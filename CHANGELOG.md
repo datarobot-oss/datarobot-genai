@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.0
+- `application-utils`: **Memory Service Light ORM** — new standalone extra `datarobot-genai[application-utils]` that wraps the DataRobot Agentic Memory Service with a Pydantic v2 / SQLModel-style async ORM.  Declare typed session and event models with annotation-driven routing markers (`DRDeduplicationKey`, `DRRangeKey`, `DRConcurrencyField`); the ORM handles wire serialization, camelCase mapping, description-path encoding for range-key prefix queries, optimistic concurrency (`If-Match` for sessions; `createdAt` token for events), and idempotent create via 409-adopt.  Public import: `from datarobot_genai.application_utils.persistence import DRMemorySpace, DRSession, DREvent`.  Dependencies: `httpx>=0.28.1,<1.0.0` + `pydantic>=2.6.1,<3.0.0` only (no core / OTel weight).  Unit tests cover encoding, routing, transport, space CRUD, session CRUD, and event CRUD; integration tests are env-gated and skipped by default.
+
 ## 0.22.0
 - *Breaking change*: `core.telemetry.agent.instrument` no longer provide instrumentation for specific agent frameworks. Instrumentation for specific frameworks moved to subpackages, and should be called explicitly: `from datarobot_genai.llama_index.telemetry import instrument`.
 - Implemented instrumentation to CrewAI new async API `akickoff`.
