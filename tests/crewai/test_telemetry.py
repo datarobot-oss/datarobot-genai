@@ -72,6 +72,9 @@ def test_subclass_wraps_async_methods() -> None:
         ("crewai.agent", "Agent.aexecute_task"),
         ("crewai.task", "Task.aexecute_sync"),
         ("crewai.llm", "LLM.acall"),
+        # DataRobot-specific LLM choke-point wrappers (not upstream).
+        ("crewai.utilities.agent_utils", "aget_llm_response"),
+        ("crewai.utilities.agent_utils", "get_llm_response"),
     }
 
 
@@ -101,4 +104,7 @@ def test_subclass_unwraps_async_methods() -> None:
         ("crewai.agent.Agent", "aexecute_task"),
         ("crewai.task.Task", "aexecute_sync"),
         ("crewai.llm.LLM", "acall"),
+        # DataRobot-specific LLM choke-point wrappers (not upstream).
+        ("crewai.utilities.agent_utils", "aget_llm_response"),
+        ("crewai.utilities.agent_utils", "get_llm_response"),
     }
