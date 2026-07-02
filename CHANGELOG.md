@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.22.0
 - *Breaking change*: `core.telemetry.agent.instrument` no longer provide instrumentation for specific agent frameworks. Instrumentation for specific frameworks moved to subpackages, and should be called explicitly: `from datarobot_genai.llama_index.telemetry import instrument`.
--
-
+- Implemented instrumentation to CrewAI new async API `akickoff`.
 
 ## 0.21.3
 - Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
