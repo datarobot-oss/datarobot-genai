@@ -26,6 +26,9 @@ general:
       otelcollector:
         _type: datarobot_otelcollector
         project: "llamaindex"
+        # Export every NAT span immediately (default is 100) so a request's
+        # spans drain before the next e2e test resets the shared mock collector.
+        batch_size: 1
 
 llms:
   datarobot_llm:

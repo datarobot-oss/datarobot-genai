@@ -13,12 +13,23 @@
 # limitations under the License.
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from crewai import LLM
 from crewai.events import crewai_event_bus
 from crewai.events.types.llm_events import LLMCallFailedEvent
 from crewai.events.types.llm_events import LLMStreamChunkEvent
+from opentelemetry import trace
+from opentelemetry.instrumentation.crewai.instrumentation import _infer_llm_provider_from_model
+from opentelemetry.semconv._incubating.attributes import (
+    gen_ai_attributes as GenAIAttributes,  # noqa: N812
+)
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GenAiOperationNameValues
+from opentelemetry.trace import SpanKind
+from opentelemetry.trace.status import Status
+from opentelemetry.trace.status import StatusCode
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
@@ -56,6 +67,41 @@ def _sanitize_tool_schema(node: Any) -> Any:
     if isinstance(node, list):
         return [_sanitize_tool_schema(item) for item in node]
     return node
+
+
+# Instrumentation scope name; matches the CrewAI instrumentor so these spans
+# share the same scope as the sync/async spans emitted from telemetry.py.
+_INSTRUMENTATION_NAME = "opentelemetry.instrumentation.crewai"
+
+
+@contextmanager
+def _llm_span(model: str) -> Iterator[None]:
+    """Emit a ``{model}.llm`` CLIENT span around a native tool-calling LLM call.
+
+    The native tool-calling branches below stream via LiteLLM directly and never
+    delegate to ``super().call()/acall()``. The CrewAI LLM instrumentation only
+    wraps ``crewai.llm.LLM.call``/``acall`` (reached via ``super()`` on the
+    non-native path), so without this the native path would emit no LLM span.
+    Scoping the span to just these branches avoids double-emitting on the
+    non-native path, which already gets a span from the wrapped ``super()`` call.
+    """
+    tracer = trace.get_tracer(_INSTRUMENTATION_NAME)
+    attributes: dict[str, Any] = {
+        GenAIAttributes.GEN_AI_OPERATION_NAME: GenAiOperationNameValues.CHAT.value,
+        GenAIAttributes.GEN_AI_REQUEST_MODEL: model,
+    }
+    provider = _infer_llm_provider_from_model(model)
+    if provider:
+        attributes[GenAIAttributes.GEN_AI_PROVIDER_NAME] = provider
+    with tracer.start_as_current_span(
+        f"{model}.llm", kind=SpanKind.CLIENT, attributes=attributes
+    ) as span:
+        try:
+            yield
+            span.set_status(Status(StatusCode.OK))
+        except Exception as ex:
+            span.set_status(Status(StatusCode.ERROR, str(ex)))
+            raise
 
 
 class LitellmStopWordLLM(LLM):
@@ -163,28 +209,29 @@ class LitellmStopWordLLM(LLM):
         if self._wants_native_tool_calls(kwargs):
             import litellm  # noqa: PLC0415
 
-            tools = _sanitize_tool_schema(kwargs["tools"])
-            params = self._prepare_completion_params(args[0], tools)
-            params["stream"] = True
-            call_id = str(uuid.uuid4())
-            text: list[str] = []
-            tool_calls: list[Any] = []
-            usage: Any = None
-            try:
-                for chunk in litellm.completion(**params):
-                    usage = (
-                        self._collect_chunk(
-                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+            with _llm_span(self.model):
+                tools = _sanitize_tool_schema(kwargs["tools"])
+                params = self._prepare_completion_params(args[0], tools)
+                params["stream"] = True
+                call_id = str(uuid.uuid4())
+                text: list[str] = []
+                tool_calls: list[Any] = []
+                usage: Any = None
+                try:
+                    for chunk in litellm.completion(**params):
+                        usage = (
+                            self._collect_chunk(
+                                chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                            )
+                            or usage
                         )
-                        or usage
+                except Exception as exc:
+                    crewai_event_bus.emit(
+                        self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
                     )
-            except Exception as exc:
-                crewai_event_bus.emit(
-                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
-                )
-                raise
-            self._track_native_usage(usage)
-            return self._finalize_native(text, tool_calls)
+                    raise
+                self._track_native_usage(usage)
+                return self._finalize_native(text, tool_calls)
         result = super().call(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
 
@@ -206,28 +253,29 @@ class LitellmStopWordLLM(LLM):
         if self._wants_native_tool_calls(kwargs):
             import litellm  # noqa: PLC0415
 
-            tools = _sanitize_tool_schema(kwargs["tools"])
-            params = self._prepare_completion_params(args[0], tools)
-            params["stream"] = True
-            call_id = str(uuid.uuid4())
-            text: list[str] = []
-            tool_calls: list[Any] = []
-            usage: Any = None
-            try:
-                async for chunk in await litellm.acompletion(**params):
-                    usage = (
-                        self._collect_chunk(
-                            chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+            with _llm_span(self.model):
+                tools = _sanitize_tool_schema(kwargs["tools"])
+                params = self._prepare_completion_params(args[0], tools)
+                params["stream"] = True
+                call_id = str(uuid.uuid4())
+                text: list[str] = []
+                tool_calls: list[Any] = []
+                usage: Any = None
+                try:
+                    async for chunk in await litellm.acompletion(**params):
+                        usage = (
+                            self._collect_chunk(
+                                chunk, text, tool_calls, call_id, kwargs.get("callbacks")
+                            )
+                            or usage
                         )
-                        or usage
+                except Exception as exc:
+                    crewai_event_bus.emit(
+                        self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
                     )
-            except Exception as exc:
-                crewai_event_bus.emit(
-                    self, event=LLMCallFailedEvent(call_id=call_id, error=str(exc))
-                )
-                raise
-            self._track_native_usage(usage)
-            return self._finalize_native(text, tool_calls)
+                    raise
+                self._track_native_usage(usage)
+                return self._finalize_native(text, tool_calls)
         result = await super().acall(*args, **kwargs)
         return self._apply_stop_words(result) if isinstance(result, str) else result
 
@@ -364,33 +412,36 @@ def get_router_llm(
             available_tools: list[dict] | None = None,
             **kwargs: Any,
         ) -> list[dict] | str:
-            call_id = str(uuid.uuid4())
-            accumulated = []
-            tool_calls_seen: list[Any] = []
-            for chunk in self._llm_router.completion(
-                "primary",
-                messages=messages,
-                stream=True,
-                **({"tools": tools} if tools else {}),
-            ):
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    accumulated.append(delta.content)
-                    crewai_event_bus.emit(
-                        self,
-                        event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
-                    )
-                    if callbacks:
-                        for cb in callbacks:
-                            if hasattr(cb, "on_llm_new_token"):
-                                cb.on_llm_new_token(delta.content)
-                if getattr(delta, "tool_calls", None):
-                    tool_calls_seen.extend(delta.tool_calls)
-            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
-            # dicts; a string falls through to a final answer so the calls would never run.
-            if tool_calls_seen:
-                return merge_streaming_tool_calls(tool_calls_seen)
-            return "".join(accumulated)
+            # RouterLitellmOnlyLLM never delegates to super().call(), so the CrewAI
+            # LLM instrumentation never sees it; emit the {model}.llm span here.
+            with _llm_span(self.model):
+                call_id = str(uuid.uuid4())
+                accumulated = []
+                tool_calls_seen: list[Any] = []
+                for chunk in self._llm_router.completion(
+                    "primary",
+                    messages=messages,
+                    stream=True,
+                    **({"tools": tools} if tools else {}),
+                ):
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        accumulated.append(delta.content)
+                        crewai_event_bus.emit(
+                            self,
+                            event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
+                        )
+                        if callbacks:
+                            for cb in callbacks:
+                                if hasattr(cb, "on_llm_new_token"):
+                                    cb.on_llm_new_token(delta.content)
+                    if getattr(delta, "tool_calls", None):
+                        tool_calls_seen.extend(delta.tool_calls)
+                # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+                # dicts; a string falls through to a final answer so the calls would never run.
+                if tool_calls_seen:
+                    return merge_streaming_tool_calls(tool_calls_seen)
+                return "".join(accumulated)
 
         async def acall(
             self,
@@ -400,34 +451,37 @@ def get_router_llm(
             available_tools: list[dict] | None = None,
             **kwargs: Any,
         ) -> list[dict] | str:
-            call_id = str(uuid.uuid4())
-            accumulated = []
-            tool_calls_seen: list[Any] = []
-            response = await self._llm_router.acompletion(
-                "primary",
-                messages=messages,
-                stream=True,
-                **({"tools": tools} if tools else {}),
-            )
-            async for chunk in response:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    accumulated.append(delta.content)
-                    crewai_event_bus.emit(
-                        self,
-                        event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
-                    )
-                    if callbacks:
-                        for cb in callbacks:
-                            if hasattr(cb, "on_llm_new_token"):
-                                cb.on_llm_new_token(delta.content)
-                if getattr(delta, "tool_calls", None):
-                    tool_calls_seen.extend(delta.tool_calls)
-            # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
-            # dicts; a string falls through to a final answer so the calls would never run.
-            if tool_calls_seen:
-                return merge_streaming_tool_calls(tool_calls_seen)
-            return "".join(accumulated)
+            # RouterLitellmOnlyLLM never delegates to super().acall(), so the CrewAI
+            # LLM instrumentation never sees it; emit the {model}.llm span here.
+            with _llm_span(self.model):
+                call_id = str(uuid.uuid4())
+                accumulated = []
+                tool_calls_seen: list[Any] = []
+                response = await self._llm_router.acompletion(
+                    "primary",
+                    messages=messages,
+                    stream=True,
+                    **({"tools": tools} if tools else {}),
+                )
+                async for chunk in response:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        accumulated.append(delta.content)
+                        crewai_event_bus.emit(
+                            self,
+                            event=LLMStreamChunkEvent(chunk=delta.content, call_id=call_id),
+                        )
+                        if callbacks:
+                            for cb in callbacks:
+                                if hasattr(cb, "on_llm_new_token"):
+                                    cb.on_llm_new_token(delta.content)
+                    if getattr(delta, "tool_calls", None):
+                        tool_calls_seen.extend(delta.tool_calls)
+                # Bare list, not a json string: CrewAI's native loop executes a list of tool-call
+                # dicts; a string falls through to a final answer so the calls would never run.
+                if tool_calls_seen:
+                    return merge_streaming_tool_calls(tool_calls_seen)
+                return "".join(accumulated)
 
     return RouterLitellmOnlyLLM(model="datarobot-router")
 

@@ -41,11 +41,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
+from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
 from datarobot_genai.dragent import execute_dragent_inline
+from opentelemetry import trace
 
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
+
+# Span opened around the inline call to mimic how ``datarobot-user-models``'s
+# ``run_agent.py`` roots a trace before invoking the agent. The inline path
+# seeds NAT's ``workflow_trace_id`` from this active span so agent spans join
+# this trace.
+RUN_AGENT_SPAN_NAME = "run_agent"
 
 
 def _run_sync_under_ipykernel_like_loop(fn: Callable[[], _T]) -> _T:
@@ -107,11 +115,16 @@ def main() -> int:
 
     config_file = Path(args.config_file) if args.config_file else None
     logger.info("Executing dragent inline from %s (config_file=%s)", custom_model_dir, config_file)
-    result = execute_dragent_inline(
-        chat_completion=chat_completion,
-        custom_model_dir=custom_model_dir,
-        config_file=config_file,
-    )
+
+    bootstrap_otel_provider_for_datarobot()
+
+    tracer = trace.get_tracer("run_agent")
+    with tracer.start_as_current_span(RUN_AGENT_SPAN_NAME):
+        result = execute_dragent_inline(
+            chat_completion=chat_completion,
+            custom_model_dir=custom_model_dir,
+            config_file=config_file,
+        )
 
     output_path.write_text(json.dumps(result.model_dump(mode="json"), indent=2))
     logger.info("Wrote result to %s", output_path)
