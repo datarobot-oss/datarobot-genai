@@ -427,6 +427,30 @@ def _is_nat_internal_span(span: ExportedSpan) -> bool:
     return any(key.startswith("nat.") for key in span.attributes)
 
 
+# Traceloop ``span.kind`` values for the grouping "entity" spans that wrap a
+# whole workflow or a single traced method, rather than one leaf operation.
+_TRACELOOP_ENTITY_SPAN_KINDS = frozenset({"workflow", "task"})
+
+
+def _is_traceloop_entity_span(span: ExportedSpan) -> bool:
+    """Whether *span* is a Traceloop workflow/task grouping span.
+
+    Traceloop-based instrumentors (e.g. llamaindex) tag each traced entity span
+    with ``traceloop.span.kind`` and name it after the *class/method*, not the
+    operation. When an agent recursively invokes the same entity (e.g.
+    llamaindex's ``DataRobotLiteLLM.task`` calling itself for a follow-up chat
+    completion), that legitimately nests a ``<Entity>.task`` span directly under
+    another ``<Entity>.task`` span of the same name. That is expected recursion,
+    not double-counted instrumentation, so these spans are excluded from the
+    duplicate-span check below.
+
+    The leaf operations this repo actually guards against double-wrapping — the
+    custom ``{model}.llm`` CLIENT spans and the CrewAI auto-instrumentor spans —
+    never carry ``traceloop.span.kind``, so the check still covers them.
+    """
+    return span.attributes.get("traceloop.span.kind") in _TRACELOOP_ENTITY_SPAN_KINDS
+
+
 def _assert_no_duplicate_spans(
     collector: MockOtelCollector, agent_trace_ids: set[bytes]
 ) -> None:
@@ -446,14 +470,18 @@ def _assert_no_duplicate_spans(
     deliberately name-agnostic and framework-agnostic so it guards every agent's
     spans against any future double-wrapping.
 
-    NAT-internal spans (see :func:`_is_nat_internal_span`) are excluded: NAT's own
-    workflow function layer self-nests ``<workflow>`` independent of the
-    instrumentation this repo owns.
+    Spans that some frameworks legitimately self-nest are excluded: NAT-internal
+    spans (see :func:`_is_nat_internal_span`) and Traceloop workflow/task entity
+    spans (see :func:`_is_traceloop_entity_span`). Both are grouping spans named
+    after a function/entity that can recurse, not double-counted instrumentation
+    of a single operation.
     """
     spans = [
         span
         for span in collector.spans()
-        if span.trace_id in agent_trace_ids and not _is_nat_internal_span(span)
+        if span.trace_id in agent_trace_ids
+        and not _is_nat_internal_span(span)
+        and not _is_traceloop_entity_span(span)
     ]
     # Parents may be any captured span in the trace (a duplicated child's parent
     # is itself, by name), so index every span, then flag non-NAT children whose
