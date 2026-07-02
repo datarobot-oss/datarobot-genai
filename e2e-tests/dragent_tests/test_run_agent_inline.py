@@ -50,9 +50,9 @@ RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 #   * The DataRobot python client (used by moderation) checks the API version.
 #   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
 #
-# TODO (BUZZOK-31396): remove this special case once the OTel TracerProvider is
-# bootstrapped from the deployment/notebook entrypoint before these setup calls
-# run, so they are captured under the workflow trace instead of rooting their own.
+
+# In this particular test we intentionally ignore these spans because they are emmited before
+# the workflow trace exists.
 SETUP_HTTP_SPAN_URLS = (
     "model_prices_and_context_window",
     "/api/v2/version",

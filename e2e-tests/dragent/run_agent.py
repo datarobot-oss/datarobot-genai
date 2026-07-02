@@ -41,6 +41,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
+from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
 from datarobot_genai.dragent import execute_dragent_inline
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,9 @@ def main() -> int:
 
     config_file = Path(args.config_file) if args.config_file else None
     logger.info("Executing dragent inline from %s (config_file=%s)", custom_model_dir, config_file)
+
+    bootstrap_otel_provider_for_datarobot()
+
     result = execute_dragent_inline(
         chat_completion=chat_completion,
         custom_model_dir=custom_model_dir,
