@@ -45,6 +45,11 @@ from datarobot_genai.drtools.core.utils import require_id
         "Example (update): workload_settings(workload_id='wkld-abc', "
         'runtime={"containerGroups": [{"name": "default", "replicaCount": 2}]})'
     ),
+    display_name="Workload — Settings",
+    description_ui=(
+        "Read or update a workload's runtime settings such as container groups, "
+        "replica count, and resource bundles."
+    ),
 )
 async def workload_settings(
     *,
@@ -102,6 +107,11 @@ async def workload_settings(
         "Example (read):   workload_replacement(workload_id='wkld-abc')\n"
         "Example (create): workload_replacement(workload_id='wkld-abc', artifact_id='art-xyz')\n"
         "Example (cancel): workload_replacement(workload_id='wkld-abc', cancel=True)"
+    ),
+    display_name="Workload — Replacement",
+    description_ui=(
+        "Read, create, or cancel a zero-downtime rolling replacement that swaps "
+        "a workload's artifact."
     ),
 )
 async def workload_replacement(

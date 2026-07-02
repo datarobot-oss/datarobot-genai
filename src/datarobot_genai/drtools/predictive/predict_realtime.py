@@ -54,6 +54,8 @@ def _parse_datetime(value: str) -> datetime:
         "(predict_batch_predictions_from_dataset plus predict_get_batch_job_status), "
         "not project-partition batch (predict_batch_predictions_from_partition)."
     ),
+    display_name="Predictions — Score Catalog (Realtime)",
+    description_ui="Score a catalog dataset through a deployment and return rows immediately.",
 )
 async def predict_score_catalog_realtime(
     *,
@@ -133,6 +135,8 @@ async def predict_score_catalog_realtime(
         "forecast_point or forecast_range_start+end, plus series_id_column if multiseries. "
         "deployment_validate_prediction_data can sanity-check CSV shape first."
     ),
+    display_name="Predictions — Score Inline (Realtime)",
+    description_ui="Score inline CSV or JSON rows through a deployment immediately.",
 )
 async def predict_score_inline_realtime(
     *,

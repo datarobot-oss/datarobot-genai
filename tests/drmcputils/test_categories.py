@@ -17,11 +17,12 @@ import importlib
 import importlib.util
 import pkgutil
 
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import LEAF_CATEGORY_TOOLS
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import PARENT_TO_CHILDREN
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import MCPToolCategory
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import resolve_to_tool_names
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_tool_allowlist_header
+from datarobot_genai.drmcputils.categories import LEAF_CATEGORY_TOOLS
+from datarobot_genai.drmcputils.categories import PARENT_TO_CHILDREN
+from datarobot_genai.drmcputils.categories import MCPToolCategory
+from datarobot_genai.drmcputils.categories import categories_for_tool
+from datarobot_genai.drmcputils.categories import resolve_to_tool_names
 from datarobot_genai.drtools.core import get_registered_tools
 
 
@@ -216,6 +217,42 @@ class TestParseToolAllowlistHeader:
         result = parse_tool_allowlist_header("dr_typo_xyz")
         assert result is not None
         assert "dr_typo_xyz" in result
+
+
+class TestCategoriesForTool:
+    """Reverse index: tool name → its leaf category plus parent (if any)."""
+
+    def test_tool_under_parented_leaf_returns_leaf_and_parent(self) -> None:
+        # jira_search_issues → leaf dr_connector_jira → parent dr_connectors
+        assert categories_for_tool("jira_search_issues") == [
+            "dr_connector_jira",
+            "dr_connectors",
+        ]
+
+    def test_tool_under_standalone_leaf_returns_only_leaf(self) -> None:
+        # dr_documentation is a leaf with no parent.
+        assert categories_for_tool("search_datarobot_agentic_docs") == ["dr_documentation"]
+
+    def test_predictive_tool_returns_leaf_and_predictive_parent(self) -> None:
+        assert categories_for_tool("modeling_list_models") == ["dr_modeling", "dr_predictive"]
+
+    def test_result_is_sorted(self) -> None:
+        result = categories_for_tool("jira_search_issues")
+        assert result == sorted(result)
+
+    def test_unknown_tool_returns_empty_list(self) -> None:
+        assert categories_for_tool("not_a_real_tool") == []
+
+    def test_hosted_category_tool_names_are_not_indexed(self) -> None:
+        # dr_proxied_user_mcp / dr_dynamic_tools map to empty tool sets, so no
+        # tool names are indexed under them.
+        assert categories_for_tool("dr_proxied_user_mcp") == []
+
+    def test_every_categorized_tool_round_trips(self) -> None:
+        # Each tool in every leaf category must report that leaf among its categories.
+        for leaf, tools in LEAF_CATEGORY_TOOLS.items():
+            for tool_name in tools:
+                assert leaf in categories_for_tool(tool_name)
 
 
 class TestTaxonomyCompleteness:

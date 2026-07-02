@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
         "(modeling_get_project_dataset), not catalog datasets (catalog_list_datasets), not "
         "deployments (deployment_get_list)."
     ),
+    display_name="Modeling — List Projects",
+    description_ui="List all modeling projects associated with the user's organization.",
 )
 async def modeling_list_projects() -> dict[str, Any]:
     with ThreadSafeDataRobotClient().request_user_client():
@@ -55,6 +57,8 @@ async def modeling_list_projects() -> dict[str, Any]:
         "the project source or a prediction upload. Not for listing all projects "
         "(modeling_list_projects) or arbitrary catalog lookup."
     ),
+    display_name="Modeling — Get Project Dataset",
+    description_ui="Find a project dataset (requires project name).",
 )
 async def modeling_get_project_dataset(
     *,

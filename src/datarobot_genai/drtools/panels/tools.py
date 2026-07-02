@@ -50,6 +50,11 @@ logger = logging.getLogger(__name__)
         "'staging' session-scoped). Read-only. Next step: get_panel for a single panel's "
         "full metadata, or its content via the panels:// resource."
     ),
+    display_name="Panels — List",
+    description_ui=(
+        "Lists panel metadata in a source, either the committed main store "
+        "or the session-scoped staging store."
+    ),
 )
 async def list_panels(
     *,
@@ -77,6 +82,11 @@ async def list_panels(
         "[Panels—get] Fetch a single panel's metadata by id. Read-only. Bulky payloads "
         "(Dataset/Chart) are referenced by payload_files_id, not inlined here."
     ),
+    display_name="Panels — Get",
+    description_ui=(
+        "Fetches a single panel's metadata by id, referencing bulky payloads "
+        "rather than inlining them."
+    ),
 )
 async def get_panel(
     panel_id: Annotated[str, "The panel id (returned by list_panels / create_*_panel)."],
@@ -94,6 +104,8 @@ async def get_panel(
         "[Panels—create text] Create a Text panel (markdown narrative/report) in a source. "
         "Returns the created panel including its assigned id."
     ),
+    display_name="Panels — Create Text",
+    description_ui="Creates a Text panel containing a markdown narrative or report in a source.",
 )
 async def create_text_panel(
     *,
@@ -117,6 +129,8 @@ async def create_text_panel(
         "[Panels—create json] Create a Json panel (structured dict payload) in a source. "
         "Returns the created panel including its assigned id."
     ),
+    display_name="Panels — Create Json",
+    description_ui="Creates a Json panel storing a structured dictionary payload in a source.",
 )
 async def create_json_panel(
     *,
@@ -140,6 +154,11 @@ async def create_json_panel(
         "[Panels—schemas] List registered Pydantic schemas available for Json panel "
         "validation, optionally filtered by namespace. Read-only. Next step: "
         "describe_panel_schema for field details, validate_panel_data to check data."
+    ),
+    display_name="Panels — List Schemas",
+    description_ui=(
+        "Lists registered schemas available for Json panel validation, "
+        "optionally filtered by namespace."
     ),
 )
 async def list_panel_schemas(
@@ -170,6 +189,11 @@ async def list_panel_schemas(
         "[Panels—schemas] Describe a registered schema in detail: fields with types and "
         "required status, the full JSON Schema, and an example value. Read-only."
     ),
+    display_name="Panels — Describe Schema",
+    description_ui=(
+        "Describes a registered schema in detail, including fields, types, "
+        "required status, and an example value."
+    ),
 )
 async def describe_panel_schema(
     schema_name: Annotated[str, "Full schema name (e.g. 'cuopt.VRPData')."],
@@ -194,6 +218,8 @@ async def describe_panel_schema(
         "panel. Returns {valid: true, normalized_data} on success or {valid: false, "
         "errors} on failure. Read-only."
     ),
+    display_name="Panels — Validate Data",
+    description_ui="Validates data against a registered schema without creating a panel.",
 )
 async def validate_panel_data(
     *,
@@ -226,6 +252,8 @@ async def validate_panel_data(
     description=(
         "[Panels—delete] Delete a panel (manifest + payload) by id. Returns the deleted id."
     ),
+    display_name="Panels — Delete",
+    description_ui="Deletes a panel and its payload by id.",
 )
 async def delete_panel(
     panel_id: Annotated[str, "The id of the panel to delete."],

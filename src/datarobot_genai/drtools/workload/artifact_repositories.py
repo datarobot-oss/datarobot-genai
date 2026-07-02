@@ -45,6 +45,11 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "Example (list): artifact_repository_get(search='my-registry', artifact_type='service')\n"
         "Example (get):  artifact_repository_get(repository_id='repo-abc123')"
     ),
+    display_name="Artifact Repository — Get",
+    description_ui=(
+        "Read artifact repositories: list them with type and filters, or get a "
+        "single repository's full metadata."
+    ),
 )
 async def artifact_repository_get(
     *,
@@ -108,6 +113,11 @@ async def artifact_repository_get(
         "Artifacts within the repository are cascade-deleted unless they are locked "
         "or currently in use by a workload — those will cause a 409 conflict.\n\n"
         "Example: artifact_repository_delete(repository_id='repo-abc123')"
+    ),
+    display_name="Artifact Repository — Delete",
+    description_ui=(
+        "Permanently delete an artifact repository and cascade-delete its "
+        "unlocked, unused artifacts."
     ),
 )
 async def artifact_repository_delete(

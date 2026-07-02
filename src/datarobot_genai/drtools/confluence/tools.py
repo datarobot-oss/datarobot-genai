@@ -48,6 +48,9 @@ _FOOTER_COMMENTS_DOCS = (
         "using a title).\n\n"
         f"Reference: {_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Get Page",
+    description_ui="Retrieve Confluence page contents by ID or by exact title within a space.",
+    auth_provider="confluence",
 )
 async def confluence_get_page(
     *,
@@ -92,6 +95,9 @@ async def confluence_get_page(
         'body_content="<p>Content</p>". Child page: same fields plus parent_id=123456.\n\n'
         f"References (body representation / storage): {_PAGE_BODY_DOCS} {_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Create Page",
+    description_ui="Create a new Confluence page in a space, optionally under a parent page.",
+    auth_provider="confluence",
 )
 async def confluence_create_page(
     *,
@@ -136,6 +142,9 @@ async def confluence_create_page(
         'Example: page_id="856391684", comment_body="Great work on this documentation!"\n\n'
         f"Reference: {_FOOTER_COMMENTS_DOCS}"
     ),
+    display_name="Confluence — Add Comment",
+    description_ui="Add a comment to an existing Confluence page.",
+    auth_provider="confluence",
 )
 async def confluence_add_comment(
     *,
@@ -180,6 +189,9 @@ async def confluence_add_comment(
         'Example: cql_query="type=page and space=DOC", max_results=10, include_body=false.\n\n'
         f"Reference (CQL): {_CQL_DOCS}"
     ),
+    display_name="Confluence — Search",
+    description_ui="Search Confluence content using Confluence Query Language (CQL).",
+    auth_provider="confluence",
 )
 async def confluence_search_space(
     *,
@@ -245,6 +257,11 @@ async def confluence_search_space(
         f"version_number.\n\nReferences (body representation / storage): {_PAGE_BODY_DOCS} "
         f"{_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Update Page",
+    description_ui=(
+        "Update the body of an existing Confluence page (requires current page version number)."
+    ),
+    auth_provider="confluence",
 )
 async def confluence_update_page(
     *,

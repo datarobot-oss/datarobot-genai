@@ -46,6 +46,11 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "Example (logs): artifact_build_get(artifact_id='art-abc', build_id='bld-xyz', "
         "include_logs=True)"
     ),
+    display_name="Artifact Build — Get",
+    description_ui=(
+        "Read image builds for an artifact: list them, or get a single build's "
+        "status with optional log output."
+    ),
 )
 async def artifact_build_get(
     *,
@@ -112,6 +117,11 @@ async def artifact_build_get(
         "Example (trigger): artifact_build_action(artifact_id='art-abc', action='trigger')\n"
         "Example (delete):  artifact_build_action(artifact_id='art-abc', action='delete', "
         "build_id='bld-xyz')"
+    ),
+    display_name="Artifact Build — Action",
+    description_ui=(
+        "Run an action on artifact image builds: trigger a build for a draft "
+        "service artifact, or delete a build."
     ),
 )
 async def artifact_build_action(

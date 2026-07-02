@@ -62,6 +62,11 @@ _IMPORT_STATUS_NOTE = (
         "Example: file_import(path='dr://abc123/in/', source='data_source', "
         "data_source_id='ds-123')"
     ),
+    display_name="Files — Import",
+    description_ui=(
+        "Starts a background import of a large or remote file from a URL or data "
+        "source into a catalog directory."
+    ),
 )
 async def file_import(
     *,
@@ -137,6 +142,10 @@ async def file_import(
         "Raises if the import enters a terminal failure state.\n\n"
         "Example: file_get_status(status_id='abc123')\n"
         "Example: file_get_status(status_id='abc123', target_status='completed')"
+    ),
+    display_name="Files — Import Status",
+    description_ui=(
+        "Fetches the current status of a background import in a single non-blocking check."
     ),
 )
 async def file_get_status(

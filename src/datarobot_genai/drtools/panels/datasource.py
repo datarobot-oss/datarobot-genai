@@ -74,6 +74,10 @@ def _rows_to_parquet(rows: list[dict[str, Any]], columns: list[str] | None = Non
         "Push WHERE/LIMIT into the SQL to filter at the source. Records datastore_id + sql for "
         "lineage/refresh. datastore_id comes from list_datastores."
     ),
+    display_name="Panels — Create Dataset From Connector",
+    description_ui=(
+        "Runs SQL against a DataRobot connector and materializes the result as a Dataset panel."
+    ),
 )
 async def create_dataset_panel_from_connector(
     *,
@@ -122,6 +126,11 @@ async def create_dataset_panel_from_connector(
         "[Panels—preview dataset] Preview a Dataset panel's tabular payload: columns, "
         "dtypes, row count, and the first sample_size rows. Read-only; tabular panels "
         "only (for Json panels use get_panel). Ported from wren-mcp's preview_data_source."
+    ),
+    display_name="Panels — Preview Dataset",
+    description_ui=(
+        "Previews a Dataset panel's tabular payload, showing columns, dtypes, "
+        "row count, and sample rows."
     ),
 )
 async def preview_dataset_panel(

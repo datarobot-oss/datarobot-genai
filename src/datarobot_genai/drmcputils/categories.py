@@ -356,3 +356,39 @@ def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
             # Plain tool name or unknown category — pass through
             resolved.add(entry)
     return frozenset(resolved)
+
+
+# ── reverse index: tool name → its categories ────────────────────────────────
+
+# Leaf category → its parent (if any).  Each leaf has at most one parent in this
+# taxonomy; standalone leaves (e.g. dr_documentation) have none.
+_LEAF_TO_PARENT: dict[str, str] = {
+    leaf: parent for parent, leaves in PARENT_TO_CHILDREN.items() for leaf in leaves
+}
+
+
+def _build_tool_to_categories() -> dict[str, frozenset[str]]:
+    """Map each tool name to its leaf category plus that leaf's parent (if any).
+
+    This is the single-source-of-truth inverse of ``LEAF_CATEGORY_TOOLS`` — the
+    tools-gallery and ARD catalog derive a tool's categories from here rather
+    than duplicating them on each ``@tool_metadata`` decorator.
+    """
+    mapping: dict[str, set[str]] = {}
+    for leaf, tools in LEAF_CATEGORY_TOOLS.items():
+        parent = _LEAF_TO_PARENT.get(leaf)
+        labels = {leaf, parent} if parent else {leaf}
+        for tool_name in tools:
+            mapping.setdefault(tool_name, set()).update(labels)
+    return {name: frozenset(labels) for name, labels in mapping.items()}
+
+
+TOOL_TO_CATEGORIES: dict[str, frozenset[str]] = _build_tool_to_categories()
+
+
+def categories_for_tool(tool_name: str) -> list[str]:
+    """Return the sorted category labels (leaf + parent) for *tool_name*.
+
+    Empty list for hosted/dynamic tools and any name not in the static taxonomy.
+    """
+    return sorted(TOOL_TO_CATEGORIES.get(tool_name, frozenset()))

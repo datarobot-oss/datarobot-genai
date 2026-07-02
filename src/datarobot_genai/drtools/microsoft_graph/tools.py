@@ -59,6 +59,9 @@ _MS_DRIVEITEM_PATCH = "https://learn.microsoft.com/en-us/graph/api/driveitem-upd
         "Pagination: size max 250; page 1 from_offset=0, page 2 from_offset=250, etc.\n\n"
         f"References: {_MS_SEARCH_QUERY} {_MS_SEARCH_FILES} {_MS_KQL}"
     ),
+    display_name="Microsoft 365 — Search Content",
+    description_ui="Search SharePoint and OneDrive for files and list items.",
+    auth_provider="microsoft_graph",
 )
 async def microsoft_graph_search_content(
     *,
@@ -174,6 +177,9 @@ async def microsoft_graph_search_content(
         "Graph treats OneDrive and SharePoint items as driveItem.\n\n"
         f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_INVITE}"
     ),
+    display_name="Microsoft 365 — Share Item",
+    description_ui="Share a SharePoint or OneDrive file or folder.",
+    auth_provider="microsoft_graph",
 )
 async def microsoft_graph_share_item(
     *,
@@ -239,6 +245,9 @@ async def microsoft_graph_share_item(
         "Duplicate names are auto-renamed (e.g. report (1).txt).\n\n"
         f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
+    display_name="Microsoft 365 — Create File",
+    description_ui="Create a new plain-text file in OneDrive or SharePoint.",
+    auth_provider="microsoft_graph",
 )
 async def microsoft_graph_create_file(
     *,
@@ -303,6 +312,9 @@ async def microsoft_graph_create_file(
         "Do not mix list and drive contexts.\n\n"
         f"References: {_MS_DRIVEITEM} {_MS_DRIVEITEM_PATCH}"
     ),
+    display_name="Microsoft 365 — Update Metadata",
+    description_ui="Update name or metadata on a SharePoint list item or drive item.",
+    auth_provider="microsoft_graph",
 )
 async def microsoft_graph_update_metadata(
     *,
