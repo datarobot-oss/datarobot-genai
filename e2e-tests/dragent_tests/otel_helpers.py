@@ -387,11 +387,11 @@ def _assert_crewai_spans(collector: MockOtelCollector, agent_trace_ids: set[byte
     The CrewAI instrumentor (both the synchronous ``kickoff`` path and the async
     ``akickoff`` path wired up by
     ``datarobot_genai.crewai.telemetry.DataRobotCrewAIInstrumentor``) emits a
-    ``crewai.workflow`` root span, one ``<agent role>.agent`` span per agent, and
-    one ``<task description>.task`` span per task. This guards against the
-    framework instrumentation silently going away — those spans would vanish even
-    though ``gen_ai.prompt`` / ``gen_ai.completion`` (set by the middleware, not
-    the framework) still appear.
+    ``crewai.workflow`` root span, one ``<agent role>.agent`` span per agent,
+    one ``<task description>.task`` span per task, and one ``<model>.llm`` span
+    per LLM call. This guards against the framework instrumentation silently
+    going away — those spans would vanish even though ``gen_ai.prompt`` /
+    ``gen_ai.completion`` (set by the middleware, not the framework) still appear.
     """
     names = [span.name for span in collector.spans() if span.trace_id in agent_trace_ids]
     missing = [
@@ -400,6 +400,7 @@ def _assert_crewai_spans(collector: MockOtelCollector, agent_trace_ids: set[byte
             ("crewai.workflow", any(n == "crewai.workflow" for n in names)),
             ("<agent>.agent", any(n.endswith(".agent") for n in names)),
             ("<task>.task", any(n.endswith(".task") for n in names)),
+            ("<model>.llm", any(n.endswith(".llm") for n in names)),
         )
         if not present
     ]

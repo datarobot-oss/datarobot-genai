@@ -62,6 +62,10 @@ def test_subclass_wraps_async_methods() -> None:
     with (
         patch.object(telemetry.CrewAIInstrumentor, "_instrument") as super_instrument,
         patch.object(telemetry, "wrap_function_wrapper") as wrap,
+        # Isolate the "which targets get wrapped" logic from the double-wrap
+        # guard, whose result depends on whether real instrumentation already
+        # wrapped these modules earlier in the test session.
+        patch.object(telemetry, "_is_already_wrapped", return_value=False),
     ):
         instrumentor._instrument()
 
@@ -72,10 +76,38 @@ def test_subclass_wraps_async_methods() -> None:
         ("crewai.agent", "Agent.aexecute_task"),
         ("crewai.task", "Task.aexecute_sync"),
         ("crewai.llm", "LLM.acall"),
-        # DataRobot-specific LLM choke-point wrappers (not upstream).
+        # DataRobot-specific LLM choke-point wrappers (not upstream). Wrapped at
+        # the source module and in every executor module that imports them by
+        # name (see _DATAROBOT_WRAP_TARGETS).
         ("crewai.utilities.agent_utils", "aget_llm_response"),
         ("crewai.utilities.agent_utils", "get_llm_response"),
+        ("crewai.agents.crew_agent_executor", "aget_llm_response"),
+        ("crewai.agents.crew_agent_executor", "get_llm_response"),
+        ("crewai.lite_agent", "get_llm_response"),
+        ("crewai.experimental.agent_executor", "get_llm_response"),
     }
+
+
+def test_instrument_wraps_executor_llm_choke_points() -> None:
+    """The LLM choke points are wrapped where the executors call them.
+
+    CrewAI's executors import ``get_llm_response`` / ``aget_llm_response`` by
+    name, so wrapping only ``crewai.utilities.agent_utils`` leaves the
+    executor's own reference unwrapped and no ``{model}.llm`` span is emitted on
+    the agent paths. This guards that the executor namespaces are wrapped.
+    """
+    import crewai.agents.crew_agent_executor as executor
+
+    telemetry.instrument()
+
+    assert hasattr(executor.aget_llm_response, "__wrapped__"), (
+        "async LLM choke point in crew_agent_executor must be wrapped so the "
+        "async agent path emits an LLM span"
+    )
+    assert hasattr(executor.get_llm_response, "__wrapped__"), (
+        "sync LLM choke point in crew_agent_executor must be wrapped so the "
+        "sync agent path emits an LLM span"
+    )
 
 
 def test_subclass_skips_missing_async_methods() -> None:
@@ -107,4 +139,8 @@ def test_subclass_unwraps_async_methods() -> None:
         # DataRobot-specific LLM choke-point wrappers (not upstream).
         ("crewai.utilities.agent_utils", "aget_llm_response"),
         ("crewai.utilities.agent_utils", "get_llm_response"),
+        ("crewai.agents.crew_agent_executor", "aget_llm_response"),
+        ("crewai.agents.crew_agent_executor", "get_llm_response"),
+        ("crewai.lite_agent", "get_llm_response"),
+        ("crewai.experimental.agent_executor", "get_llm_response"),
     }

@@ -34,6 +34,7 @@ https://github.com/traceloop/openllmetry/pull/4342
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import time
@@ -498,15 +499,52 @@ _ASYNC_UNWRAP_TARGETS = (
 # DataRobot-specific (NOT upstream) LLM choke-point wrappers. See the note above
 # the wrap_*get_llm_response definitions: these capture an LLM span for
 # datarobot-genai's custom crewai.llm.LLM subclasses that bypass LLM.call/acall.
+#
+# CrewAI's agent executors import these choke points *by name* at module load
+# (``from crewai.utilities.agent_utils import get_llm_response``), so each
+# executor holds its own reference. Patching only the source module
+# (``crewai.utilities.agent_utils``) therefore never intercepts the executor's
+# calls -- the bare ``get_llm_response(...)`` / ``await aget_llm_response(...)``
+# resolves to the executor's own (unwrapped) global. We additionally wrap the
+# names in every executor module that imports them so the ``{model}.llm`` span
+# is emitted on both the sync and async agent paths. ``_instrument`` skips any
+# target that is already wrapped to avoid double-wrapping (wrapt may import an
+# executor module while wrapping, at which point its by-name import copies an
+# already-wrapped reference from the source module).
 _DATAROBOT_WRAP_TARGETS = (
     ("crewai.utilities.agent_utils", "aget_llm_response", wrap_aget_llm_response),
     ("crewai.utilities.agent_utils", "get_llm_response", wrap_get_llm_response),
+    ("crewai.agents.crew_agent_executor", "aget_llm_response", wrap_aget_llm_response),
+    ("crewai.agents.crew_agent_executor", "get_llm_response", wrap_get_llm_response),
+    ("crewai.lite_agent", "get_llm_response", wrap_get_llm_response),
+    ("crewai.experimental.agent_executor", "get_llm_response", wrap_get_llm_response),
 )
 
 _DATAROBOT_UNWRAP_TARGETS = (
     ("crewai.utilities.agent_utils", "aget_llm_response"),
     ("crewai.utilities.agent_utils", "get_llm_response"),
+    ("crewai.agents.crew_agent_executor", "aget_llm_response"),
+    ("crewai.agents.crew_agent_executor", "get_llm_response"),
+    ("crewai.lite_agent", "get_llm_response"),
+    ("crewai.experimental.agent_executor", "get_llm_response"),
 )
+
+
+def _is_already_wrapped(module_name: str, dotted_name: str) -> bool:
+    """Return whether ``module_name.dotted_name`` is already a wrapt wrapper.
+
+    Used to keep :meth:`DataRobotCrewAIInstrumentor._instrument` idempotent when
+    a choke point is wrapped both at its source module and in the executor
+    modules that import it by name: wrapt imports an executor module while
+    wrapping it, and its ``from ... import`` may copy an already-wrapped
+    reference from the source module. Raises ``ModuleNotFoundError`` /
+    ``AttributeError`` (propagated to the caller's ``except``) when the target
+    does not exist on the installed CrewAI version.
+    """
+    obj: Any = importlib.import_module(module_name)
+    for part in dotted_name.split("."):
+        obj = getattr(obj, part)
+    return hasattr(obj, "__wrapped__")
 
 
 class DataRobotCrewAIInstrumentor(CrewAIInstrumentor):
@@ -536,6 +574,9 @@ class DataRobotCrewAIInstrumentor(CrewAIInstrumentor):
         )
         for module, method, factory in wrap_targets:
             try:
+                if _is_already_wrapped(module, method):
+                    logger.debug("CrewAI method %s.%s already wrapped; skipping", module, method)
+                    continue
                 wrap_function_wrapper(
                     module, method, factory(tracer, duration_histogram, token_histogram)
                 )
