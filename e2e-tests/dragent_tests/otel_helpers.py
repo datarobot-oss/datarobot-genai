@@ -86,6 +86,7 @@ class ExportedSpan:
     name: str
     trace_id: bytes
     span_id: bytes
+    parent_span_id: bytes
     attributes: dict[str, Any]
 
 
@@ -158,6 +159,7 @@ class MockOtelCollector:
                                 name=span.name,
                                 trace_id=span.trace_id,
                                 span_id=span.span_id,
+                                parent_span_id=span.parent_span_id,
                                 attributes={
                                     attribute.key: _anyvalue_to_python(attribute.value)
                                     for attribute in span.attributes
@@ -410,6 +412,66 @@ def _assert_crewai_spans(collector: MockOtelCollector, agent_trace_ids: set[byte
     )
 
 
+def _is_nat_internal_span(span: ExportedSpan) -> bool:
+    """Whether *span* was emitted by NAT's own function-tracing pipeline.
+
+    NAT tags the spans it creates with ``nat.*`` attributes (e.g.
+    ``nat.span.kind``, ``nat.function.name``). Those are excluded from the
+    duplicate-span check below because NAT's workflow function layer legitimately
+    self-nests a ``<workflow>`` FUNCTION span under another ``<workflow>`` span —
+    an artifact of NAT's tracing, not of the instrumentation this repo owns.
+    Framework auto-instrumentor spans (``crewai.*``) and the custom
+    ``{model}.llm`` spans never carry ``nat.*`` attributes, so the check still
+    covers everything we actually control.
+    """
+    return any(key.startswith("nat.") for key in span.attributes)
+
+
+def _assert_no_duplicate_spans(
+    collector: MockOtelCollector, agent_trace_ids: set[bytes]
+) -> None:
+    """No span may be a direct child of another span with the same name.
+
+    Duplicate instrumentation double-counts a single logical operation as two
+    identically-named spans nested one inside the other — e.g. ``crewai.workflow``
+    under ``crewai.workflow``, ``<agent>.agent`` under ``<agent>.agent``,
+    ``<task>.task`` under ``<task>.task``, or ``{model}.llm`` under ``{model}.llm``.
+
+    The ``{model}.llm`` case is the concrete risk: datarobot-genai's custom
+    ``crewai.llm.LLM`` subclasses (``LitellmStopWordLLM``, ``RouterLitellmOnlyLLM``)
+    emit an LLM span for the native tool-calling branch (which never delegates to
+    ``super().call()/acall()``), while the CrewAI LLM instrumentation emits one
+    for the non-native branch (reached via that ``super()`` call). The branches
+    are mutually exclusive, so each call must yield exactly one span. The check is
+    deliberately name-agnostic and framework-agnostic so it guards every agent's
+    spans against any future double-wrapping.
+
+    NAT-internal spans (see :func:`_is_nat_internal_span`) are excluded: NAT's own
+    workflow function layer self-nests ``<workflow>`` independent of the
+    instrumentation this repo owns.
+    """
+    spans = [
+        span
+        for span in collector.spans()
+        if span.trace_id in agent_trace_ids and not _is_nat_internal_span(span)
+    ]
+    # Parents may be any captured span in the trace (a duplicated child's parent
+    # is itself, by name), so index every span, then flag non-NAT children whose
+    # parent shares their name.
+    by_span_id = {span.span_id: span for span in collector.spans()}
+    duplicates = [
+        span
+        for span in spans
+        if span.parent_span_id in by_span_id
+        and by_span_id[span.parent_span_id].name == span.name
+    ]
+    assert not duplicates, (
+        "Found span(s) nested directly under a same-named parent span, i.e. "
+        "duplicate/double-counted instrumentation for a single operation:\n"
+        + "\n".join(f"    - {_describe_span(span)}" for span in duplicates)
+    )
+
+
 # Per-framework span assertions, keyed by framework/AGENT name (see
 # ``helpers.AGENT``). Add a ``_assert_<framework>_spans`` function and register
 # it here to cover another framework. A framework absent from this map
@@ -473,6 +535,10 @@ def assert_tracing_conventions(
         agent_trace_ids=agent_trace_ids,
         ignore_span_urls=ignore_span_urls,
     )
+
+    # Runs for every agent/framework: no operation may be double-counted as two
+    # same-named nested spans (see _assert_no_duplicate_spans).
+    _assert_no_duplicate_spans(collector, agent_trace_ids)
 
     _assert_datarobot_auth_headers(collector)
 

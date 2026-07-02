@@ -34,7 +34,6 @@ https://github.com/traceloop/openllmetry/pull/4342
 
 from __future__ import annotations
 
-import importlib
 import logging
 import os
 import time
@@ -104,22 +103,6 @@ _AsyncWrapImpl = Callable[
 # The factory that binds tracer/histograms and yields a wrapt wrapper.
 _WrapperFactory = Callable[[Tracer, "Histogram | None", "Histogram | None"], _AsyncWrapper]
 
-# Synchronous counterparts of the async wrapper types above.
-_SyncWrapper = Callable[[_Wrapped, Any, "tuple[Any, ...]", "dict[str, Any]"], Any]
-_SyncWrapImpl = Callable[
-    [
-        Tracer,
-        "Histogram | None",
-        "Histogram | None",
-        _Wrapped,
-        Any,
-        "tuple[Any, ...]",
-        "dict[str, Any]",
-    ],
-    Any,
-]
-_SyncWrapperFactory = Callable[[Tracer, "Histogram | None", "Histogram | None"], _SyncWrapper]
-
 
 def _with_tracer_async(func: _AsyncWrapImpl) -> _WrapperFactory:
     """Bind tracer/histograms to an async wrapper, mirroring the sync helper upstream."""
@@ -136,29 +119,6 @@ def _with_tracer_async(func: _AsyncWrapImpl) -> _WrapperFactory:
             kwargs: dict[str, Any],
         ) -> Any:
             return await func(
-                tracer, duration_histogram, token_histogram, wrapped, instance, args, kwargs
-            )
-
-        return wrapper
-
-    return _factory
-
-
-def _with_tracer_sync(func: _SyncWrapImpl) -> _SyncWrapperFactory:
-    """Bind tracer/histograms to a sync wrapper, mirroring :func:`_with_tracer_async`."""
-
-    def _factory(
-        tracer: Tracer,
-        duration_histogram: Histogram | None,
-        token_histogram: Histogram | None,
-    ) -> _SyncWrapper:
-        def wrapper(
-            wrapped: _Wrapped,
-            instance: Any,
-            args: tuple[Any, ...],
-            kwargs: dict[str, Any],
-        ) -> Any:
-            return func(
                 tracer, duration_histogram, token_histogram, wrapped, instance, args, kwargs
             )
 
@@ -378,107 +338,6 @@ async def wrap_acall(
 
 
 # ---------------------------------------------------------------------------
-# DataRobot-specific LLM span (aget_llm_response / get_llm_response)
-#
-# NOTE: This is NOT part of upstream opentelemetry-instrumentation-crewai and is
-# specific to datarobot-genai. The upstream instrumentor wraps
-# crewai.llm.LLM.call / LLM.acall, but datarobot-genai ships custom
-# crewai.llm.LLM subclasses (LitellmStopWordLLM, RouterLitellmOnlyLLM) that
-# override call()/acall() and, on the native tool-calling path, drive litellm
-# directly without delegating to super().call()/acall(). The upstream wrap on
-# LLM.call/acall therefore never fires for those subclasses. To emit an LLM span
-# regardless of the concrete LLM subclass, we instrument CrewAI's LLM-invocation
-# choke points crewai.utilities.agent_utils.{aget_llm_response, get_llm_response},
-# through which every agent LLM call flows.
-# ---------------------------------------------------------------------------
-
-
-def _extract_llm_and_messages(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, Any]:
-    """Pull the ``llm`` and ``messages`` positional/keyword args out of a call.
-
-    Matches ``(a)get_llm_response(llm, messages, ...)``.
-    """
-    llm = args[0] if args else kwargs.get("llm")
-    messages = args[1] if len(args) > 1 else kwargs.get("messages")
-    return llm, messages
-
-
-def _llm_span_attributes(llm: Any) -> tuple[str, str | None, dict[str, Any]]:
-    """Build the ``{model}.llm`` span name inputs + attributes, mirroring ``wrap_acall``."""
-    model = str(llm.model) if hasattr(llm, "model") else "llm"
-    provider = _infer_llm_provider_from_model(getattr(llm, "model", None))
-    span_attrs: dict[str, Any] = {
-        GenAIAttributes.GEN_AI_OPERATION_NAME: GenAiOperationNameValues.CHAT.value,
-        GenAIAttributes.GEN_AI_REQUEST_MODEL: model,
-    }
-    if provider:
-        span_attrs[GenAIAttributes.GEN_AI_PROVIDER_NAME] = provider
-    return model, provider, span_attrs
-
-
-@_with_tracer_async
-async def wrap_aget_llm_response(
-    tracer: Tracer,
-    duration_histogram: Histogram | None,
-    token_histogram: Histogram | None,
-    wrapped: _Wrapped,
-    instance: Any,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> Any:
-    llm, messages_arg = _extract_llm_and_messages(args, kwargs)
-    model, provider, span_attrs = _llm_span_attributes(llm)
-    with tracer.start_as_current_span(
-        f"{model}.llm", kind=SpanKind.CLIENT, attributes=span_attrs
-    ) as span:
-        start_time = time.time()
-        try:
-            if llm is not None:
-                CrewAISpanAttributes(span=span, instance=llm)
-            result = await wrapped(*args, **kwargs)
-            _set_messages_attributes(span, messages_arg, result)
-            if llm is not None:
-                _set_response_attributes(span, llm)
-            _record_duration(duration_histogram, start_time, model, provider)
-            span.set_status(Status(StatusCode.OK))
-            return result
-        except Exception as ex:
-            span.set_status(Status(StatusCode.ERROR, str(ex)))
-            raise
-
-
-@_with_tracer_sync
-def wrap_get_llm_response(
-    tracer: Tracer,
-    duration_histogram: Histogram | None,
-    token_histogram: Histogram | None,
-    wrapped: _Wrapped,
-    instance: Any,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> Any:
-    llm, messages_arg = _extract_llm_and_messages(args, kwargs)
-    model, provider, span_attrs = _llm_span_attributes(llm)
-    with tracer.start_as_current_span(
-        f"{model}.llm", kind=SpanKind.CLIENT, attributes=span_attrs
-    ) as span:
-        start_time = time.time()
-        try:
-            if llm is not None:
-                CrewAISpanAttributes(span=span, instance=llm)
-            result = wrapped(*args, **kwargs)
-            _set_messages_attributes(span, messages_arg, result)
-            if llm is not None:
-                _set_response_attributes(span, llm)
-            _record_duration(duration_histogram, start_time, model, provider)
-            span.set_status(Status(StatusCode.OK))
-            return result
-        except Exception as ex:
-            span.set_status(Status(StatusCode.ERROR, str(ex)))
-            raise
-
-
-# ---------------------------------------------------------------------------
 # Instrumentor
 # ---------------------------------------------------------------------------
 
@@ -495,56 +354,6 @@ _ASYNC_UNWRAP_TARGETS = (
     ("crewai.task.Task", "aexecute_sync"),
     ("crewai.llm.LLM", "acall"),
 )
-
-# DataRobot-specific (NOT upstream) LLM choke-point wrappers. See the note above
-# the wrap_*get_llm_response definitions: these capture an LLM span for
-# datarobot-genai's custom crewai.llm.LLM subclasses that bypass LLM.call/acall.
-#
-# CrewAI's agent executors import these choke points *by name* at module load
-# (``from crewai.utilities.agent_utils import get_llm_response``), so each
-# executor holds its own reference. Patching only the source module
-# (``crewai.utilities.agent_utils``) therefore never intercepts the executor's
-# calls -- the bare ``get_llm_response(...)`` / ``await aget_llm_response(...)``
-# resolves to the executor's own (unwrapped) global. We additionally wrap the
-# names in every executor module that imports them so the ``{model}.llm`` span
-# is emitted on both the sync and async agent paths. ``_instrument`` skips any
-# target that is already wrapped to avoid double-wrapping (wrapt may import an
-# executor module while wrapping, at which point its by-name import copies an
-# already-wrapped reference from the source module).
-_DATAROBOT_WRAP_TARGETS = (
-    ("crewai.utilities.agent_utils", "aget_llm_response", wrap_aget_llm_response),
-    ("crewai.utilities.agent_utils", "get_llm_response", wrap_get_llm_response),
-    ("crewai.agents.crew_agent_executor", "aget_llm_response", wrap_aget_llm_response),
-    ("crewai.agents.crew_agent_executor", "get_llm_response", wrap_get_llm_response),
-    ("crewai.lite_agent", "get_llm_response", wrap_get_llm_response),
-    ("crewai.experimental.agent_executor", "get_llm_response", wrap_get_llm_response),
-)
-
-_DATAROBOT_UNWRAP_TARGETS = (
-    ("crewai.utilities.agent_utils", "aget_llm_response"),
-    ("crewai.utilities.agent_utils", "get_llm_response"),
-    ("crewai.agents.crew_agent_executor", "aget_llm_response"),
-    ("crewai.agents.crew_agent_executor", "get_llm_response"),
-    ("crewai.lite_agent", "get_llm_response"),
-    ("crewai.experimental.agent_executor", "get_llm_response"),
-)
-
-
-def _is_already_wrapped(module_name: str, dotted_name: str) -> bool:
-    """Return whether ``module_name.dotted_name`` is already a wrapt wrapper.
-
-    Used to keep :meth:`DataRobotCrewAIInstrumentor._instrument` idempotent when
-    a choke point is wrapped both at its source module and in the executor
-    modules that import it by name: wrapt imports an executor module while
-    wrapping it, and its ``from ... import`` may copy an already-wrapped
-    reference from the source module. Raises ``ModuleNotFoundError`` /
-    ``AttributeError`` (propagated to the caller's ``except``) when the target
-    does not exist on the installed CrewAI version.
-    """
-    obj: Any = importlib.import_module(module_name)
-    for part in dotted_name.split("."):
-        obj = getattr(obj, part)
-    return hasattr(obj, "__wrapped__")
 
 
 class DataRobotCrewAIInstrumentor(CrewAIInstrumentor):
@@ -566,26 +375,17 @@ class DataRobotCrewAIInstrumentor(CrewAIInstrumentor):
         if is_metrics_enabled():
             token_histogram, duration_histogram = _create_metrics(meter)
 
-        # Upstream async wrappers plus the DataRobot-specific LLM choke-point
-        # wrappers (see _DATAROBOT_WRAP_TARGETS note above).
-        wrap_targets: tuple[tuple[str, str, Any], ...] = (
-            *_ASYNC_WRAP_TARGETS,
-            *_DATAROBOT_WRAP_TARGETS,
-        )
-        for module, method, factory in wrap_targets:
+        for module, method, factory in _ASYNC_WRAP_TARGETS:
             try:
-                if _is_already_wrapped(module, method):
-                    logger.debug("CrewAI method %s.%s already wrapped; skipping", module, method)
-                    continue
                 wrap_function_wrapper(
                     module, method, factory(tracer, duration_histogram, token_histogram)
                 )
             except (AttributeError, ModuleNotFoundError):
-                logger.debug("CrewAI method %s.%s not found; skipping", module, method)
+                logger.debug("CrewAI async method %s.%s not found; skipping", module, method)
 
     def _uninstrument(self, **kwargs: Any) -> None:
         super()._uninstrument(**kwargs)
-        for module, method in (*_ASYNC_UNWRAP_TARGETS, *_DATAROBOT_UNWRAP_TARGETS):
+        for module, method in _ASYNC_UNWRAP_TARGETS:
             try:
                 unwrap(module, method)
             except (AttributeError, ModuleNotFoundError):
