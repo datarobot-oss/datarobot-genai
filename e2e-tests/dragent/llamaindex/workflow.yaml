@@ -30,11 +30,7 @@ general:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
-    temperature: ~
-    extra_body:
-      thinking:
-        type: enabled
-        budget_tokens: 1024
+    temperature: 0
 
 middleware:
   datarobot_guardrails:
