@@ -248,18 +248,26 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - name: Check for src changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/datarobot_genai/**'
+
       - name: Checkout PR branch
+        if: steps.filter.outputs.src == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Fetch main branch
+      - name: Check version bump
+        if: steps.filter.outputs.src == 'true'
         run: |
           git fetch origin main:main
 
-      - name: Check version bump
-        run: |
           # Debug: Check if pyproject.toml exists
           if [ ! -f "pyproject.toml" ]; then
             echo "❌ ERROR: pyproject.toml not found in current directory"

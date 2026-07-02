@@ -4,9 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.21.2
+## 0.21.4
 - `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
 - `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
+
+## 0.21.3
+- Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
+- Limited the CI version bump check to changes that touch the library package.
+- Updated a few generated API docstrings to match the current parameter names.
+
+## 0.21.2
+- Removed `fastapi` OpenTelemetry instrumentation from `dragent`
+- Attach `datarobot_agent` spans to NAT workflow trace context
 
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
