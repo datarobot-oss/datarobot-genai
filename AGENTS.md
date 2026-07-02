@@ -16,3 +16,4 @@
 
 1. Read README.md
 2. Then read .cursor/rules
+3. Make sure you bump the version in each branch. Update pyproject.toml and run `task install` to do so

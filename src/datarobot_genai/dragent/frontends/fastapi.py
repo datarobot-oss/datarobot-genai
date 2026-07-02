@@ -54,28 +54,6 @@ _INVALID_AUTH_CONTEXT_MSG = (
 )
 
 
-def _instrument_fastapi_app(app: FastAPI) -> None:
-    """Attach OTel ASGI instrumentation so incoming requests open a server span.
-
-    NAT does not open an OpenTelemetry parent span for the request, so without
-    this there is no trace context for downstream spans (e.g. the middleware's
-    ``datarobot_agent`` span) to nest under. Instrumentation uses the globally
-    installed SDK ``TracerProvider``; when none is bootstrapped (e.g. running
-    outside a DataRobot deployment) the spans are no-ops. The import is guarded
-    so a missing instrumentation package never breaks app startup.
-    """
-    try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    except ImportError:
-        logger.debug("opentelemetry-instrumentation-fastapi not installed; skipping")
-        return
-
-    try:
-        FastAPIInstrumentor.instrument_app(app)
-    except Exception:
-        logger.exception("Failed to instrument FastAPI app for OpenTelemetry")
-
-
 def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
     """Extract gateway-validated user identity from A2A-forwarded headers.
 
@@ -277,8 +255,6 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 logger.info("A2A worker resources cleaned up")
 
         app.router.lifespan_context = lifespan
-
-        _instrument_fastapi_app(app)
 
         setup_logging()
         return app

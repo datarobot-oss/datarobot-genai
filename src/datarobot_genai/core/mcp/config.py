@@ -17,6 +17,7 @@ import logging
 import re
 from typing import Any
 from typing import Literal
+from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
@@ -78,6 +79,15 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
 
         return candidate
 
+    @field_validator("mcp_server_port", mode="after")
+    @classmethod
+    def validate_mcp_server_port(cls, value: int | None) -> int | None:
+        # Pydantic already coerces/rejects the type; only the range is ours.
+        if value is not None and not 1 <= value <= 65535:
+            logger.warning("mcp_server_port must be between 1 and 65535; ignoring")
+            return None
+        return value
+
     def _authorization_bearer_header(self) -> dict[str, str]:
         """Return Authorization header with Bearer token or empty dict."""
         if not self.datarobot_api_token:
@@ -100,6 +110,26 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         if self._server_config is None:
             self._server_config = self._build_server_config()
         return self._server_config
+
+    def _config_kind(self) -> Literal["deployment", "external", "local"] | None:
+        """Single source of truth for which MCP server config is active.
+
+        Precedence: deployment > external > local.
+        """
+        if self.mcp_deployment_id:
+            return "deployment"
+        if self.external_mcp_url:
+            return "external"
+        if self.mcp_server_port:
+            return "local"
+        return None
+
+    @property
+    def is_local_server(self) -> bool:
+        """True when the MCP server is a local process we start (resolved via
+        mcp_server_port), as opposed to a DataRobot deployment or external URL.
+        """
+        return self._config_kind() == "local"
 
     def _authorization_context_header(self) -> dict[str, str]:
         """Return X-DataRobot-Authorization-Context header or empty dict."""
@@ -132,7 +162,9 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             Server configuration dict with url, transport, and optional headers,
             or None if not configured.
         """
-        if self.mcp_deployment_id:
+        kind = self._config_kind()
+
+        if kind == "deployment":
             # DataRobot deployment ID - requires authentication
             if self.datarobot_endpoint is None:
                 raise ValueError(
@@ -158,7 +190,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 "headers": headers,
             }
 
-        if self.external_mcp_url:
+        if kind == "external":
             # External MCP URL - no authentication needed
             headers = {}
 
@@ -170,13 +202,13 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             logger.info(f"Using external MCP URL: {self.external_mcp_url}")
 
             return {
-                "url": self.external_mcp_url.rstrip("/"),
+                # cast: kind == "external" guarantees external_mcp_url is set
+                "url": cast(str, self.external_mcp_url).rstrip("/"),
                 "transport": self.external_mcp_transport,
                 "headers": headers,
             }
 
-        # No MCP configuration found, setup localhost if running locally
-        if self.mcp_server_port:
+        if kind == "local":
             url = f"http://localhost:{self.mcp_server_port}"
             headers = self._build_authenticated_headers()
             logger.info(f"Using localhost MCP server: {url}")

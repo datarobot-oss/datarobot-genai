@@ -21,10 +21,10 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import GENERATE_PATH
-from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if AGENT == "nat":
     pytest.skip(
