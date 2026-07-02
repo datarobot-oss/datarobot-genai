@@ -17,6 +17,7 @@ from __future__ import annotations
 import httpx
 from datarobot_genai.core.agents.verify import validate_sequence
 
+from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
@@ -53,4 +54,4 @@ def test_generate_streaming(
 
     # THEN: the streaming run exported DataRobot Tracing-table spans
     # (gen_ai.prompt / gen_ai.completion) to the OTel ingest with DR auth headers.
-    assert_tracing_conventions(otel_collector, prompt)
+    assert_tracing_conventions(otel_collector, prompt, framework=AGENT)

@@ -381,11 +381,49 @@ def _assert_single_trace_id(
     )
 
 
+def _assert_crewai_spans(collector: MockOtelCollector, agent_trace_ids: set[bytes]) -> None:
+    """Assert CrewAI auto-instrumentor spans are present in the agent's trace.
+
+    The CrewAI instrumentor (both the synchronous ``kickoff`` path and the async
+    ``akickoff`` path wired up by
+    ``datarobot_genai.crewai.telemetry.DataRobotCrewAIInstrumentor``) emits a
+    ``crewai.workflow`` root span, one ``<agent role>.agent`` span per agent, and
+    one ``<task description>.task`` span per task. This guards against the
+    framework instrumentation silently going away — those spans would vanish even
+    though ``gen_ai.prompt`` / ``gen_ai.completion`` (set by the middleware, not
+    the framework) still appear.
+    """
+    names = [span.name for span in collector.spans() if span.trace_id in agent_trace_ids]
+    missing = [
+        label
+        for label, present in (
+            ("crewai.workflow", any(n == "crewai.workflow" for n in names)),
+            ("<agent>.agent", any(n.endswith(".agent") for n in names)),
+            ("<task>.task", any(n.endswith(".task") for n in names)),
+        )
+        if not present
+    ]
+    assert not missing, (
+        f"Expected CrewAI span(s) {missing} in the agent trace, "
+        f"but observed span names {sorted(set(names))}."
+    )
+
+
+# Per-framework span assertions, keyed by framework/AGENT name (see
+# ``helpers.AGENT``). Add a ``_assert_<framework>_spans`` function and register
+# it here to cover another framework. A framework absent from this map
+# contributes no extra assertions.
+_FRAMEWORK_SPAN_ASSERTERS: dict[str, Callable[[MockOtelCollector, set[bytes]], None]] = {
+    "crewai": _assert_crewai_spans,
+}
+
+
 def assert_tracing_conventions(
     collector: MockOtelCollector,
     prompt: str,
     *,
     expect_tool_name: bool = False,
+    framework: str | None = None,
     ignore_span_urls: Sequence[str] = (),
     timeout: float = 30.0,
 ) -> None:
@@ -403,6 +441,10 @@ def assert_tracing_conventions(
 
     When *expect_tool_name* is set, also requires a ``tool_name`` span in the
     same trace (frameworks that surface tool calls as AG-UI events).
+
+    When *framework* is set (e.g. ``"crewai"``), also requires that framework's
+    characteristic auto-instrumentor spans in the same trace — see
+    ``_FRAMEWORK_SPAN_ASSERTERS``. Unknown frameworks add no assertions.
 
     *ignore_span_urls* excludes import-time HTTP client spans (matched by URL
     fragment) from the single-trace check — see ``_assert_single_trace_id``.
@@ -423,17 +465,21 @@ def assert_tracing_conventions(
             f"{GEN_AI_COMPLETION}. Observed prompts: {observed}"
         )
 
+    agent_trace_ids = {span.trace_id for span in agent_spans}
+
     _assert_single_trace_id(
         collector,
-        agent_trace_ids={span.trace_id for span in agent_spans},
+        agent_trace_ids=agent_trace_ids,
         ignore_span_urls=ignore_span_urls,
     )
 
     _assert_datarobot_auth_headers(collector)
 
+    if framework and (assert_framework_spans := _FRAMEWORK_SPAN_ASSERTERS.get(framework)):
+        assert_framework_spans(collector, agent_trace_ids)
+
     if expect_tool_name:
-        trace_ids = {span.trace_id for span in agent_spans}
-        spans_in_trace = [s for s in collector.spans() if s.trace_id in trace_ids]
+        spans_in_trace = [s for s in collector.spans() if s.trace_id in agent_trace_ids]
         tool_spans = [s for s in spans_in_trace if s.attributes.get(TOOL_NAME)]
         assert tool_spans, (
             f"Expected a span carrying {TOOL_NAME!r} in the same trace as the "

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from openai.types.chat import ChatCompletion
 
+from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import E2E_ROOT
 from dragent_tests.helpers import agent_dir
 from dragent_tests.helpers import build_chat_completion
@@ -107,7 +108,7 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
     # Setup-time HTTP client spans (LiteLLM cost map, DR version check, MCP
     # discovery) root their own trace and are ignored for the single-trace check.
     assert_tracing_conventions(
-        otel_collector, prompt, ignore_span_urls=SETUP_HTTP_SPAN_URLS
+        otel_collector, prompt, framework=AGENT, ignore_span_urls=SETUP_HTTP_SPAN_URLS
     )
 
 

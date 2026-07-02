@@ -6,14 +6,6 @@ vars:
   PROJECT_SRC: "./dragent ./drmcp"
   TESTS_SRC: ""
 
-includes:
-  dragent:
-    taskfile: dragent/Taskfile.yaml
-    dir: ./dragent
-  lint:
-    taskfile: ../.taskfiles/lint.yml
-    flatten: true
-
 env:
   LLM: '{{.LLM | default "llmgw"}}'
   ENV: '{{.ENV | default "testing"}}'
@@ -25,6 +17,14 @@ dotenv:
   - '.env.{{.ENV}}'
   - '.env.{{.LLM}}'
   - '.env'
+
+includes:
+  dragent:
+    taskfile: dragent/Taskfile.yaml
+    dir: ./dragent
+  lint:
+    taskfile: ../.taskfiles/lint.yml
+    flatten: true
 
 tasks:
   default:
