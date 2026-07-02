@@ -66,4 +66,4 @@ def test_generate_single(
 
     # THEN: the run exported DataRobot Tracing-table spans (gen_ai.prompt /
     # gen_ai.completion) to the OTel ingest with the DR auth headers.
-    assert_tracing_conventions(otel_collector, prompt)
+    assert_tracing_conventions(otel_collector, prompt, framework=AGENT)

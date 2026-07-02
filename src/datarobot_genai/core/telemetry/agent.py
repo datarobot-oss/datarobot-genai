@@ -19,9 +19,6 @@ from __future__ import annotations
 import importlib
 import logging
 import os
-from typing import Any
-from typing import Literal
-from typing import cast
 
 # Suppress the "Attempting to instrument while already instrumented" warning
 logging.getLogger("opentelemetry.instrumentation.instrumentor").setLevel(logging.ERROR)
@@ -29,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 # Internal instrumentation state to avoid 'global' mutation warnings
 _INSTRUMENTATION_STATE = {"http": False, "openai": False, "threading": False}
-_INSTRUMENTED_FRAMEWORKS: set[str] = set()
 
 
 def _instrument_threading() -> None:
@@ -80,38 +76,8 @@ def _instrument_openai() -> None:
         logger.debug(f"openai instrumentation skipped: {e}")
 
 
-def _instrument_framework(framework: str) -> None:
-    if framework in _INSTRUMENTED_FRAMEWORKS:
-        return
-    try:
-        if framework == "crewai":
-            crewai_module = importlib.import_module("opentelemetry.instrumentation.crewai")
-            crewai_instrumentor = getattr(crewai_module, "CrewAIInstrumentor")
-            crewai_instrumentor().instrument()
-            os.environ.setdefault("CREWAI_TESTING", "true")
-        elif framework == "langgraph":
-            # Provided by opentelemetry-instrumentation-langchain
-            langchain_module = importlib.import_module("opentelemetry.instrumentation.langchain")
-            langchain_instrumentor = getattr(langchain_module, "LangchainInstrumentor")
-            langchain_instrumentor().instrument()
-        elif framework == "llamaindex":
-            llamaindex_module = importlib.import_module("opentelemetry.instrumentation.llamaindex")
-            llamaindex_instrumentor = getattr(llamaindex_module, "LlamaIndexInstrumentor")
-            # LlamaIndex instrumentor lacks precise typing; cast to Any to avoid mypy complaints
-            cast(Any, llamaindex_instrumentor()).instrument()
-        elif framework == "nat":
-            _instrument_framework("crewai")
-            _instrument_framework("langgraph")
-            _instrument_framework("llamaindex")
-        _INSTRUMENTED_FRAMEWORKS.add(framework)
-    except Exception as e:
-        logger.debug(f"{framework} instrumentation skipped: {e}")
-
-
-def instrument(
-    framework: Literal["crewai", "langgraph", "llamaindex", "nat"] | None = None,
-) -> None:
-    """Idempotently instrument supported HTTP clients, OpenAI SDK, and optionally a framework.
+def instrument() -> None:
+    """Idempotently instrument supported HTTP clients and OpenAI SDK.
 
     Also disables telemetry for some third-party libraries to avoid duplicate/undesired tracking.
     """
@@ -139,5 +105,3 @@ def instrument(
     _instrument_threading()
     _instrument_http_clients()
     _instrument_openai()
-    if framework:
-        _instrument_framework(framework)

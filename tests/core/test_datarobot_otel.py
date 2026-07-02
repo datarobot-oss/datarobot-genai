@@ -193,6 +193,33 @@ class TestBootstrapOtelProvider:
         assert attrs["service.name"] == "deployment-abc123"
         assert attrs["telemetry.sdk.language"] == "python"
 
+    def test_defaults_to_batch_span_processor(self, clean_env):
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
+
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        provider = trace.get_tracer_provider()
+        active = provider._active_span_processor
+        registered = getattr(active, "_span_processors", (active,))
+        assert any(isinstance(p, BatchSpanProcessor) for p in registered)
+
+    def test_simple_span_processor_env_switch(self, clean_env):
+        # e2e sets DATAROBOT_OTEL_SPAN_PROCESSOR=simple so spans export
+        # synchronously and don't bleed across the shared mock collector.
+        self._set_full_env(clean_env)
+        clean_env.setenv("DATAROBOT_OTEL_SPAN_PROCESSOR", "simple")
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
+
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+        provider = trace.get_tracer_provider()
+        active = provider._active_span_processor
+        registered = getattr(active, "_span_processors", (active,))
+        assert any(isinstance(p, SimpleSpanProcessor) for p in registered)
+        assert not any(isinstance(p, BatchSpanProcessor) for p in registered)
+
     def test_explicit_otel_service_name_wins(self, clean_env):
         self._set_full_env(clean_env)
         clean_env.setenv("OTEL_SERVICE_NAME", "my-pinned-service")
