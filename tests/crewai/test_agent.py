@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # ruff: noqa: I001
+import queue
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock
@@ -397,6 +398,84 @@ def test_datarobot_agent_class_from_crew_set_tools_merges_with_original() -> Non
     assert instance.tools == [mcp_tool]
 
 
+def test_set_tools_does_not_accumulate_across_requests() -> None:
+    # The crew/agents are reused across requests; a new agent instance per request re-captures
+    # the (already-injected) tools as "original". Without dedupe, injected tools accumulate
+    # (-> CrewAI mangles duplicates into name_2/name_3 and bedrock rejects the calls).
+    crew = MagicMock()
+    crew.verbose = True
+    orig = MagicMock()
+    orig.name = "base_tool"
+    mcp = MagicMock()
+    mcp.name = "mcp_tool"
+
+    ca = _mock_crewai_agent()
+    ca.tools = [orig]
+    task = MagicMock()
+    task.agent = ca
+    task.tools = [orig]
+
+    agent_cls = datarobot_agent_class_from_crew(crew, [ca], [task], lambda u: {})
+    for _ in range(3):  # three sequential requests reusing the same shared agent
+        agent_cls().set_tools([mcp])
+
+    assert [t.name for t in ca.tools] == ["base_tool", "mcp_tool"]  # not 3x mcp_tool
+    assert [t.name for t in task.tools] == ["base_tool", "mcp_tool"]
+
+
+def test_set_tools_uses_fresh_tool_when_name_reused_across_requests() -> None:
+    # A later request's fresh same-named tool MUST replace the earlier one: each request's tool is
+    # bound to a per-request event loop that closes when the request ends.
+    crew = MagicMock()
+    crew.verbose = True
+    orig = MagicMock()
+    orig.name = "base_tool"
+
+    ca = _mock_crewai_agent()
+    ca.tools = [orig]
+    task = MagicMock()
+    task.agent = ca
+    task.tools = [orig]
+
+    agent_cls = datarobot_agent_class_from_crew(crew, [ca], [task], lambda u: {})
+
+    mcp_req1 = MagicMock()
+    mcp_req1.name = "search"
+    agent_cls().set_tools([mcp_req1])  # request 1 (its loop closes afterward)
+
+    mcp_req2 = MagicMock()
+    mcp_req2.name = "search"
+    agent_cls().set_tools([mcp_req2])  # request 2: same name, fresh object/loop
+
+    assert [t for t in ca.tools if t.name == "search"] == [mcp_req2]  # req2 survives, not req1
+    assert [t for t in task.tools if t.name == "search"] == [mcp_req2]
+    assert [t.name for t in ca.tools] == ["base_tool", "search"]  # still deduped, no accumulation
+
+
+def test_set_tools_propagates_injected_tools_to_tasks() -> None:
+    """Injected tools must reach each task, not just the agent.
+
+    CrewAI snapshots ``agent.tools`` into ``task.tools`` at Crew build and runs off the
+    snapshot; without re-syncing, injected MCP tools never reach the model.
+    """
+    crew = MagicMock()
+    crew.verbose = True
+    orig = MagicMock()
+    mcp_tool = MagicMock()
+
+    ca = _mock_crewai_agent()
+    ca.tools = [orig]
+    task = MagicMock()
+    task.agent = ca
+    task.tools = [orig]  # crewai's stale construction-time snapshot
+
+    agent_cls = datarobot_agent_class_from_crew(crew, [ca], [task], lambda u: {"topic": u})
+    agent_cls().set_tools([mcp_tool])
+
+    assert ca.tools == [orig, mcp_tool]
+    assert task.tools == [orig, mcp_tool]  # task re-synced to the agent's full toolset
+
+
 def test_crewai_agent_set_llm_skips_propagation_when_none() -> None:
     """Pre-built CrewAI agents keep their LLM when BaseAgent is constructed without llm."""
 
@@ -627,6 +706,53 @@ async def test_invoke_streaming_emits_separate_messages_per_agent_role(
     assert planner_end_idx < planner_step_finish_idx < writer_step_start_idx
 
 
+async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a stream that opens a step + text message, then fails mid-run (dropped gateway
+    # connection, bad chunk). The partial AG-UI stream must still close what it opened -- otherwise
+    # a caller that appends a terminal event is rejected for a still-active step.
+    class _AbortingStream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            yield _text_chunk("half a thought", "Planner")
+            raise RuntimeError("boom")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_AbortingStream())
+
+    # WHEN the stream aborts mid-run
+    events = []
+    with pytest.raises(RuntimeError, match="boom"):
+        async for e, _, _ in agent.invoke(run_agent_input):
+            events.append(e)
+
+    # THEN every opened step and message was closed before the error propagated
+    starts = [e for e in events if isinstance(e, StepStartedEvent)]
+    finishes = [e for e in events if isinstance(e, StepFinishedEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+    assert [s.step_name for s in starts] == ["Planner"]
+    assert [s.step_name for s in finishes] == ["Planner"]  # step closed on abort
+    assert len(text_starts) == len(text_ends) == 1  # message closed on abort
+
+    # AND the partial stream is well-formed AND still accepts a terminal event -- nothing is left
+    # open. validate_sequence rejects RUN_FINISHED while a step/message is active, so appending it
+    # is what proves finish() closed the step on abort (balanced counts would pass even with
+    # STEP_FINISHED emitted before TEXT_MESSAGE_END).
+    validate_sequence(events)
+    terminal = RunFinishedEvent(thread_id=run_agent_input.thread_id, run_id=run_agent_input.run_id)
+    validate_sequence([*events, terminal])
+    assert events.index(text_ends[0]) < events.index(finishes[0])  # message closed before its step
+
+
 async def test_invoke_streaming_skips_empty_text_chunks(
     mock_ragas_event_listener, run_agent_input
 ) -> None:
@@ -697,7 +823,8 @@ async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
     class _CapturingStreamingListener:
         def __init__(self) -> None:
             self.reasoning_event = False
-            self.step_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
             captured.append(self)
 
         def setup_listeners(self, _bus: Any) -> None:
@@ -810,3 +937,587 @@ async def test_invoke_streaming_empty_agent_role_does_not_orphan_a_step(
     step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
     assert [s.step_name for s in step_started] == ["Planner", "Writer"]
     assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+
+async def test_invoke_streaming_sources_step_role_from_bus_when_chunks_lack_role(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a real multi-agent crew: CrewAI hardcodes chunk.agent_role="" for Crew streams,
+    # so the active agent is known only from the bus (listener.active_agent_role).
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _BusRoleStream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            captured[0].active_agent_role = "Planner"
+            yield _text_chunk("plan-a", "")
+            yield _text_chunk("plan-b", "")
+            captured[0].active_agent_role = "Writer"
+            yield _text_chunk("write-a", "")
+            yield _text_chunk("write-b", "")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_BusRoleStream())
+
+    # WHEN we collect the AG-UI event stream
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence is valid and steps come from the bus role despite empty chunk roles
+    validate_sequence(events)
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+
+    # THEN each agent's text is partitioned into its own message (no cross-agent leakage)
+    starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(starts) == 2
+    assert starts[0].message_id != starts[1].message_id
+    by_id: dict[str, list[str]] = {}
+    for c in contents:
+        by_id.setdefault(c.message_id, []).append(c.delta)
+    assert by_id[starts[0].message_id] == ["plan-a", "plan-b"]
+    assert by_id[starts[1].message_id] == ["write-a", "write-b"]
+
+
+async def test_invoke_streaming_emits_tool_call_events(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a streaming crew where a tool fires between two text chunks: the streaming
+    # listener queues the AG-UI ToolCall* sequence (as it does for CrewAI's bus events).
+    from ag_ui.core import ToolCallArgsEvent
+    from ag_ui.core import ToolCallEndEvent
+    from ag_ui.core import ToolCallResultEvent
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    chunk1 = _text_chunk("counting", "Writer")
+    chunk2 = _text_chunk("done", "Writer")
+    result = CrewOutput(raw="ignored")
+    tcid = "tc-abc"
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _StreamWithToolCall(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            yield chunk1
+            q = captured[0].tool_call_events
+            q.put(
+                ToolCallRecord(
+                    kind="call", tool_call_id=tcid, name="word_counter", args='{"text": "a b c"}'
+                )
+            )
+            q.put(ToolCallRecord(kind="result", tool_call_id=tcid, content="Word count: 3"))
+            yield chunk2
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return result
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_StreamWithToolCall())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the sequence (with the tool call interleaved) is valid per the AG-UI verifier
+    validate_sequence(events)
+
+    # THEN the full ToolCall* set is emitted, all sharing the one tool_call_id
+    starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+    args = [e for e in events if isinstance(e, ToolCallArgsEvent)]
+    ends = [e for e in events if isinstance(e, ToolCallEndEvent)]
+    results = [e for e in events if isinstance(e, ToolCallResultEvent)]
+    assert len(starts) == len(args) == len(ends) == len(results) == 1
+    assert starts[0].tool_call_name == "word_counter"
+    assert (
+        starts[0].tool_call_id
+        == args[0].tool_call_id
+        == ends[0].tool_call_id
+        == results[0].tool_call_id
+        == tcid
+    )
+
+    # THEN the args, result content/role, and reused id are correct. validate_sequence does NOT
+    # check TOOL_CALL_RESULT, so these must be asserted explicitly.
+    assert args[0].delta == '{"text": "a b c"}'
+    assert results[0].content == "Word count: 3"
+    assert results[0].role == "tool"
+    assert results[0].message_id == tcid  # result reuses the tool_call_id
+
+    # THEN the call attaches to the just-closed text bubble; a fresh bubble opens after it,
+    # and content does not leak across the two messages.
+    type_names = [type(e).__name__ for e in events]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    text_contents = [e for e in events if isinstance(e, TextMessageContentEvent)]
+    assert len(text_starts) == 2
+    assert starts[0].parent_message_id == text_starts[0].message_id
+    assert text_starts[0].message_id != text_starts[1].message_id
+    by_id: dict[str, list[str]] = {}
+    for c in text_contents:
+        by_id.setdefault(c.message_id, []).append(c.delta)
+    assert by_id[text_starts[0].message_id] == ["counting"]
+    assert by_id[text_starts[1].message_id] == ["done"]
+
+    # THEN ordering: text closes, then END before RESULT, then the next text message opens
+    text_start_idxs = [i for i, e in enumerate(events) if isinstance(e, TextMessageStartEvent)]
+    second_text_start_idx = text_start_idxs[1]
+    assert type_names.index("TextMessageEndEvent") < type_names.index("ToolCallStartEvent")
+    assert (
+        type_names.index("ToolCallEndEvent")
+        < type_names.index("ToolCallResultEvent")
+        < second_text_start_idx
+    )
+
+
+async def test_invoke_streaming_emits_tool_error_as_result(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a tool that errors: the listener queues a result record carrying the error text
+    from ag_ui.core import ToolCallResultEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _StreamWithToolError(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            yield _text_chunk("trying", "Writer")
+            q = captured[0].tool_call_events
+            q.put(ToolCallRecord(kind="call", tool_call_id="tc-err", name="flaky", args="{}"))
+            q.put(ToolCallRecord(kind="result", tool_call_id="tc-err", content="Error: boom"))
+            yield _text_chunk("recovered", "Writer")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_StreamWithToolError())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN the error surfaces as a TOOL_CALL_RESULT and the stream still ends cleanly
+    validate_sequence(events)
+    results = [e for e in events if isinstance(e, ToolCallResultEvent)]
+    assert len(results) == 1
+    assert results[0].content == "Error: boom"
+    assert results[0].role == "tool"
+    assert "RunFinishedEvent" in [type(e).__name__ for e in events]
+
+
+async def test_invoke_streaming_tool_call_across_agent_step_boundary(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a tool call queued during the Planner's turn, with a Writer chunk following: the
+    # top-of-loop tool drain and the role-change step close must not double-close or orphan a
+    # step. (Regression guard for the two close paths interacting.)
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            yield _text_chunk("plan", "Planner")
+            q = captured[0].tool_call_events
+            q.put(ToolCallRecord(kind="call", tool_call_id="tc1", name="word_counter", args="{}"))
+            q.put(ToolCallRecord(kind="result", tool_call_id="tc1", content="1"))
+            yield _text_chunk("write", "Writer")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN nesting is valid, both steps open/close exactly once, and the tool call is emitted
+    # (as the Planner's, before the Planner step closes) without orphaning a step.
+    validate_sequence(events)
+    step_started = [e for e in events if isinstance(e, StepStartedEvent)]
+    step_finished = [e for e in events if isinstance(e, StepFinishedEvent)]
+    assert [s.step_name for s in step_started] == ["Planner", "Writer"]
+    assert [s.step_name for s in step_finished] == ["Planner", "Writer"]
+    assert len([e for e in events if isinstance(e, ToolCallStartEvent)]) == 1
+    type_names = [type(e).__name__ for e in events]
+    # the tool call (and its result) belong to the Planner: it lands inside the Planner step,
+    # and its parent is the Planner's text bubble.
+    starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+    text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+    planner_finish_idx = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StepFinishedEvent) and e.step_name == "Planner"
+    )
+    assert type_names.index("ToolCallStartEvent") < planner_finish_idx
+    assert type_names.index("ToolCallResultEvent") < planner_finish_idx
+    assert starts[0].parent_message_id == text_starts[0].message_id
+
+
+async def test_invoke_streaming_tool_call_before_any_text_has_empty_parent(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a tool that fires before any text/reasoning bubble is open: parent_message_id must be
+    # "" (not a message_id that never got a TextMessageStart).
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            q = captured[0].tool_call_events
+            q.put(ToolCallRecord(kind="call", tool_call_id="tc1", name="word_counter", args="{}"))
+            q.put(ToolCallRecord(kind="result", tool_call_id="tc1", content="1"))
+            yield _text_chunk("after", "Writer")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+    assert len(starts) == 1
+    assert starts[0].parent_message_id == ""  # no bubble was open to attach to
+
+
+async def test_invoke_streaming_tool_call_nests_under_its_own_agent_step(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN the native flow: each agent's tool is queued BEFORE that agent emits any text
+    # chunk (native tool calls produce no content chunk). The record carries its owning agent's
+    # role, so the drain must open that agent's step before emitting the call.
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            q = captured[0].tool_call_events
+            # Planner's tool fires before Planner's text chunk.
+            q.put(
+                ToolCallRecord(
+                    kind="call", tool_call_id="p", name="search", args="{}", agent_role="Planner"
+                )
+            )
+            q.put(ToolCallRecord(kind="result", tool_call_id="p", content="ok"))
+            yield _text_chunk("plan answer", "Planner")
+            # Writer's tool fires before Writer's text chunk (while Planner's step is open).
+            q.put(
+                ToolCallRecord(
+                    kind="call", tool_call_id="w", name="search", args="{}", agent_role="Writer"
+                )
+            )
+            q.put(ToolCallRecord(kind="result", tool_call_id="w", content="ok"))
+            yield _text_chunk("write answer", "Writer")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    # THEN each tool call nests under its OWN agent's step (not the previous agent's).
+    validate_sequence(events)
+
+    def _between(tc_idx: int, role: str) -> bool:
+        start = next(
+            i
+            for i, e in enumerate(events)
+            if isinstance(e, StepStartedEvent) and e.step_name == role
+        )
+        finish = next(
+            i
+            for i, e in enumerate(events)
+            if isinstance(e, StepFinishedEvent) and e.step_name == role
+        )
+        return start < tc_idx < finish
+
+    tool_idxs = [i for i, e in enumerate(events) if isinstance(e, ToolCallStartEvent)]
+    assert len(tool_idxs) == 2
+    assert _between(tool_idxs[0], "Planner")  # Planner's tool inside the Planner step
+    assert _between(tool_idxs[1], "Writer")  # Writer's tool inside the Writer step, not Planner's
+    assert [e.step_name for e in events if isinstance(e, StepStartedEvent)] == ["Planner", "Writer"]
+
+
+async def test_invoke_streaming_closes_reasoning_before_tool_call(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN reasoning is open when a tool fires: REASONING_END must precede TOOL_CALL_START.
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            captured[0].reasoning_event = True
+            yield _text_chunk("thinking", "Writer")  # opens a reasoning message
+            q = captured[0].tool_call_events
+            q.put(ToolCallRecord(kind="call", tool_call_id="tc1", name="word_counter", args="{}"))
+            q.put(ToolCallRecord(kind="result", tool_call_id="tc1", content="1"))
+            captured[0].reasoning_event = False
+            yield _text_chunk("answer", "Writer")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    validate_sequence(events)
+    type_names = [type(e).__name__ for e in events]
+    assert "ReasoningEndEvent" in type_names
+    assert type_names.index("ReasoningEndEvent") < type_names.index("ToolCallStartEvent")
+
+
+async def test_invoke_drains_the_real_listeners_queue(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN the REAL CrewAIStreamingEventListener instance (not the hand-mirrored stub): invoke
+    # must drain ITS `tool_call_events` queue into AG-UI ToolCall* events. This closes the seam
+    # the stub tests leave open -- a rename of the listener's attributes (tool_call_events /
+    # active_agent_role / reasoning_event) would break invoke and fail here. Records are fed into
+    # the real queue directly (the bus->queue path is covered in test_streaming_events.py); we do
+    # NOT emit on the global bus, which would pollute its scope-stack contextvar across tests.
+    from ag_ui.core import ToolCallResultEvent
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    real_listener = CrewAIStreamingEventListener()
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            # Empty chunk role -> the step role is read from the real listener's active_agent_role,
+            # so a rename of that attribute would break invoke and fail this test.
+            real_listener.active_agent_role = "Writer"
+            yield _text_chunk("working", "")
+            real_listener.tool_call_events.put(
+                ToolCallRecord(
+                    kind="call", tool_call_id="tc1", name="word_counter", args='{"text": "a b"}'
+                )
+            )
+            real_listener.tool_call_events.put(
+                ToolCallRecord(kind="result", tool_call_id="tc1", content="2")
+            )
+            yield _text_chunk("done", "")
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener",
+        lambda *a, **k: real_listener,
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+    results = [e for e in events if isinstance(e, ToolCallResultEvent)]
+    assert len(starts) == 1
+    assert len(results) == 1
+    assert starts[0].tool_call_name == "word_counter"
+    assert results[0].content == "2"
+    assert starts[0].tool_call_id == results[0].tool_call_id
+
+
+async def test_invoke_streaming_post_loop_tool_drain_has_empty_parent(
+    mock_ragas_event_listener, run_agent_input
+) -> None:
+    # GIVEN a tool whose events arrive after the final chunk with no bubble open: the after-loop
+    # drain (site 3) must emit it with parent_message_id="" -- guards the post-loop occurrence of
+    # the parent fix, which the other tests (queueing before a trailing chunk) don't reach.
+    from ag_ui.core import ToolCallStartEvent
+
+    from datarobot_genai.crewai.streaming_events import ToolCallRecord
+
+    captured: list[Any] = []
+
+    class _CapturingStreamingListener:
+        def __init__(self) -> None:
+            self.reasoning_event = False
+            self.active_agent_role = ""
+            self.tool_call_events: queue.Queue[Any] = queue.Queue()
+            captured.append(self)
+
+        def setup_listeners(self, _bus: Any) -> None:
+            pass
+
+    class _Stream(CrewStreamingOutput):
+        def __init__(self) -> None:
+            super().__init__(async_iterator=self._iter())
+
+        @staticmethod
+        async def _iter():  # type: ignore[no-untyped-def]
+            q = captured[0].tool_call_events
+            q.put(ToolCallRecord(kind="call", tool_call_id="tc1", name="word_counter", args="{}"))
+            q.put(ToolCallRecord(kind="result", tool_call_id="tc1", content="1"))
+            for _ in ():  # async generator that yields no chunks -> drain happens post-loop
+                yield
+
+        @property
+        def result(self) -> CrewOutput:  # type: ignore[override]
+            return CrewOutput(raw="ignored")
+
+    agent = AgentForTest(api_base="https://x/", api_key="k", verbose=False)
+    agent._crew_for_test = CrewForTest(_Stream())
+
+    with patch(
+        "datarobot_genai.crewai.agent.CrewAIStreamingEventListener", _CapturingStreamingListener
+    ):
+        events = [e async for (e, _, _) in agent.invoke(run_agent_input)]
+
+    validate_sequence(events)
+    starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+    assert len(starts) == 1
+    assert starts[0].parent_message_id == ""  # drained post-loop, no bubble was open

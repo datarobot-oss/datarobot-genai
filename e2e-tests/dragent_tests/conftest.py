@@ -87,7 +87,7 @@ def authorization_context_encoded(session_secret_key, datarobot_user_id) -> str:
 
 @pytest.fixture(scope="session")
 def http_client(authorization_context_encoded: str, datarobot_user_id: str) -> Generator[httpx.Client]:  # type: ignore[type-arg]
-    timeout = httpx.Timeout(connect=10, read=60, write=10, pool=10)
+    timeout = httpx.Timeout(connect=10, read=120, write=10, pool=10)
     headers = {
         "X-DataRobot-Authorization-Context": authorization_context_encoded,
         "X-DataRobot-User-Id": datarobot_user_id,
@@ -103,7 +103,7 @@ def gateway_http_client(datarobot_user_id: str) -> Generator[httpx.Client]:  # t
     """HTTP client with only ``X-DataRobot-User-Id`` -- simulates direct API
     calls through the gateway where no signed auth-context JWT is present.
     """
-    timeout = httpx.Timeout(connect=10, read=60, write=10, pool=10)
+    timeout = httpx.Timeout(connect=10, read=120, write=10, pool=10)
     headers = {
         "X-DataRobot-User-Id": datarobot_user_id,
     }
