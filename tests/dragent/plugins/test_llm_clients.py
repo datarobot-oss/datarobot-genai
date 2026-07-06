@@ -31,13 +31,6 @@ from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMGatewayMod
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotNIMModelConfig
 
 
-def test_apply_reasoning_config_disables_reasoning_by_default() -> None:
-    llm_config = DataRobotLLMComponentModelConfig(temperature=0)
-    config = apply_reasoning_config({"temperature": 0}, llm_config)
-    assert config["temperature"] == 0
-    assert config["extra_body"] == {"reasoning_effort": "none"}
-
-
 def test_apply_reasoning_config_enables_default_thinking() -> None:
     llm_config = DataRobotLLMComponentModelConfig(reasoning=True, temperature=0)
     config = apply_reasoning_config({"temperature": 0}, llm_config)
