@@ -41,6 +41,7 @@ core = [
     "ag-ui-protocol==0.1.15",
     "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
     "colorama>=0.4.6,<1.0.0",
+    "httpx-retries>=0.4.0",
 ]
 
 crewai = core + [
@@ -89,7 +90,6 @@ nat = core + [
 
 dragent = nat + [
     "starlette>=1.0.1",
-    "httpx-retries>=0.4.0",
 ]
 
 # Eventually NAT will be merged into dragent
