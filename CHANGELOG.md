@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.0
+- *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
+
 ## 0.22.1
 - `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
 - `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
