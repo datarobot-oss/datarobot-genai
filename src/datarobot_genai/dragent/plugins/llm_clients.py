@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import TypeVar
 
 from nat.builder.builder import Builder
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 EXCLUDE_FIELDS = {
     "type",
     "thinking",
+    "reasoning",
     "headers",
     "api_type",
     "llm_deployment_id",
@@ -54,6 +56,26 @@ EXCLUDE_FIELDS = {
     "datarobot_endpoint",
     "llm_default_model",
 }
+
+_DEFAULT_REASONING_EXTRA_BODY = {
+    "thinking": {"type": "enabled", "budget_tokens": 1024},
+}
+
+
+def apply_reasoning_config(
+    config: dict[str, Any],
+    llm_config: DataRobotLLMComponentModelConfig,
+) -> dict[str, Any]:
+    """Map workflow ``reasoning`` to provider ``extra_body`` and temperature."""
+    if "extra_body" in llm_config.model_fields_set:
+        if llm_config.reasoning:
+            config.pop("temperature", None)
+        return config
+
+    if llm_config.reasoning:
+        config.pop("temperature", None)
+        config["extra_body"] = dict(_DEFAULT_REASONING_EXTRA_BODY)
+    return config
 
 
 def patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> ModelType:
@@ -162,10 +184,13 @@ async def datarobot_llm_component_langchain(
     from datarobot_genai.langgraph.llm import get_external_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
+    config = apply_reasoning_config(
+        llm_config.model_dump(
+            exclude=EXCLUDE_FIELDS,
+            by_alias=True,
+            exclude_none=True,
+        ),
+        llm_config,
     )
     llm_type = llm_config.get_llm_type()
     if llm_type == LLMType.GATEWAY:

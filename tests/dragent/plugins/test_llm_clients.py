@@ -23,11 +23,39 @@ from nat.builder.workflow_builder import WorkflowBuilder
 
 import datarobot_genai.dragent.plugins.llm_clients  # noqa: F401
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.dragent.plugins.llm_clients import apply_reasoning_config
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLitellmConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMDeploymentModelConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMGatewayModelConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotNIMModelConfig
+
+
+def test_apply_reasoning_config_disables_reasoning_by_default() -> None:
+    llm_config = DataRobotLLMComponentModelConfig(temperature=0)
+    config = apply_reasoning_config({"temperature": 0}, llm_config)
+    assert config["temperature"] == 0
+    assert config["extra_body"] == {"reasoning_effort": "none"}
+
+
+def test_apply_reasoning_config_enables_default_thinking() -> None:
+    llm_config = DataRobotLLMComponentModelConfig(reasoning=True, temperature=0)
+    config = apply_reasoning_config({"temperature": 0}, llm_config)
+    assert "temperature" not in config
+    assert config["extra_body"] == {
+        "thinking": {"type": "enabled", "budget_tokens": 1024},
+    }
+
+
+def test_apply_reasoning_config_preserves_explicit_extra_body() -> None:
+    llm_config = DataRobotLLMComponentModelConfig(
+        reasoning=True,
+        temperature=0,
+        extra_body={"reasoning_effort": "low"},
+    )
+    config = apply_reasoning_config({"temperature": 0}, llm_config)
+    assert "temperature" not in config
+    assert "extra_body" not in config
 
 
 async def test_datarobot_llm_gateway_langchain():

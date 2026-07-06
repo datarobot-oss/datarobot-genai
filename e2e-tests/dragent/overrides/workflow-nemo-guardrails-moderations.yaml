@@ -15,15 +15,6 @@
 # E2E overlay: gateway extended thinking via workflow ``extra_body`` (see docs/nat/llm.md).
 base: workflow.yaml
 
-llms:
-  datarobot_llm:
-    _type: datarobot-llm-component
-    temperature: ~
-    extra_body:
-      thinking:
-        type: enabled
-        budget_tokens: 1024
-
 middleware:
   datarobot_guardrails:
     _type: datarobot_moderation

@@ -59,6 +59,14 @@ class DataRobotLLMComponentModelConfig(
         description="Additional headers send to LLM deployment.",
         default=None,
     )
+    reasoning: bool = Field(
+        default=False,
+        description=(
+            "Whether to enable LLM extended reasoning/thinking. When false (default), "
+            "reasoning is explicitly disabled via ``extra_body``. When true and no "
+            "``extra_body`` is set, a default extended-thinking configuration is applied."
+        ),
+    )
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)

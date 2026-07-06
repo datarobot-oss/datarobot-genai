@@ -25,6 +25,7 @@ from nat.utils.responses_api import validate_no_responses_api
 
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.dragent.plugins.llm_clients import EXCLUDE_FIELDS
+from datarobot_genai.dragent.plugins.llm_clients import apply_reasoning_config
 from datarobot_genai.dragent.plugins.llm_clients import patch_llm_based_on_config
 from datarobot_genai.dragent.plugins.llm_clients import router_settings_from_config
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLitellmConfig
@@ -118,10 +119,13 @@ async def datarobot_llm_component_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
+    config = apply_reasoning_config(
+        llm_config.model_dump(
+            exclude=EXCLUDE_FIELDS,
+            by_alias=True,
+            exclude_none=True,
+        ),
+        llm_config,
     )
 
     llm_type = llm_config.get_llm_type()

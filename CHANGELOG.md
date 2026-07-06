@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
 ## 0.22.2
-- Updated `‎workflow-nemo-guardrails-moderations.yaml‎` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
-- Updated test to assert when model supports reasoning events
+- Updated `workflow-nemo-guardrails-moderations.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`; langgraph and llamaindex e2e workflows set `reasoning: true`.
 
 ## 0.22.1
 - `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
