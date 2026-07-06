@@ -89,6 +89,7 @@ nat = core + [
 
 dragent = nat + [
     "starlette>=1.0.1",
+    "httpx-retries>=0.4.0",
 ]
 
 # Eventually NAT will be merged into dragent
