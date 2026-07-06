@@ -31,7 +31,7 @@ GENERATE_PATH = "/generate"
 
 AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
-AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]
+AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 
 LLM = os.environ.get("LLM", "llmgw")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
@@ -65,11 +65,14 @@ def workflow_file() -> Path:
     return agent_dir() / WORKFLOW_FILE
 
 
-def build_chat_completion(content: str = "Say 'hello world' and nothing else.") -> dict:  # type: ignore[type-arg]
+def build_chat_completion(
+    content: str = "Say 'hello world' and nothing else.", stream: bool = False
+) -> dict:  # type: ignore[type-arg]
     """Build the one-shot chat completion payload used by the inline runner tests."""
     return {
         "model": "unknown",
         "messages": [{"role": "user", "content": content}],
+        "stream": stream,
     }
 
 

@@ -49,7 +49,6 @@ You can also install:
 * `datarobot-genai[drmcpbase]`&mdash;Base class to derive FastMCP servers.
 * `datarobot-genai[drmcputils]`&mdash;shared MCP utilities consumed by `drmcpbase` and `drtools`.
 * `datarobot-genai[drmcp]`&mdash;host a custom MCP server in DataRobot (includes `drmcpbase`, `drtools`, and template-server dependencies).
-* `datarobot-genai[memory]`&mdash;use the Mem0-backed memory client and NAT memory provider.
 * `datarobot-genai[eval]`&mdash;agent evaluation utilities built on the NeMo Evaluator launcher.
 
 ## Credentials

@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.core.datarobot_otel import resolve_datarobot_headers_from_env
+from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     DataRobotOtelCollectorTelemetryExporter,
 )

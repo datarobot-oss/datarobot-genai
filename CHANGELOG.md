@@ -4,9 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.22.1
+- `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
+- `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
+
+## 0.22.0
+- *Breaking change*: `core.telemetry.agent.instrument` no longer provide instrumentation for specific agent frameworks. Instrumentation for specific frameworks moved to subpackages, and should be called explicitly: `from datarobot_genai.llama_index.telemetry import instrument`.
+- Implemented instrumentation to CrewAI new async API `akickoff`.
+- Fixed issue with trace id not passed to NAT during inline execution.
+
+## 0.21.3
+- Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
+- Limited the CI version bump check to changes that touch the library package.
+- Updated a few generated API docstrings to match the current parameter names.
+
+## 0.21.2
+- Removed `fastapi` OpenTelemetry instrumentation from `dragent`
+- Attach `datarobot_agent` spans to NAT workflow trace context
+
+## 0.21.1
+- Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
+
+## 0.21.0
+- *Breaking change*: Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
+- *Breaking change*: Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
+
+## 0.20.1
+- `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.
+
+## 0.20.0
+- Added `dragent` middleware `datarobot_otel_conventions` which sets up attributes in agent spans according to DataRobot Open Telemetry conventions
+- Instrumented `fastapi` in `dragent`
+- *Breaking change*: consolidated telemetry modules in one parent module:
+  - `core.telemetry_agent`=>`core.telemetry.agent`
+  - `core.telemetry_memory` => `core.telemetry.memory`
+  - `core.telemetry_nat_context` => `core.telemetry.nat_context`
+  - `core/telemetry_nat_tracer` => `core/telemetry.nat_tracer`
+  - `core.datarobot_otel`=>`core.telemetry.datarobot_otel`
 
 ## 0.19.10
-
+- `core`: add `get_model_info(model)` — resolves `datarobot/`-prefixed gateway models for `litellm.get_model_info`.
+- `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas and tracking usage.
+- `crewai`: the router LLM returns tool calls as a bare list (not a json string) and reads `supports_function_calling` from its whole failover chain.
+- `crewai`: reset each agent's executor per request — a reused crew leaked `messages`/`iterations` across requests (bedrock "tool calling without tools=" errors; text-leaked tool calls).
 - `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
 
 ## 0.19.9

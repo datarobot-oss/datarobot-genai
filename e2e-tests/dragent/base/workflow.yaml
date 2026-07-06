@@ -26,6 +26,9 @@ general:
       otelcollector:
         _type: datarobot_otelcollector
         project: "base"
+        # Export every NAT span immediately (default is 100) so a request's
+        # spans drain before the next e2e test resets the shared mock collector.
+        batch_size: 1
 
 llms:
   datarobot_llm:
@@ -50,6 +53,8 @@ middleware:
           stage: response
           type: ootb
       timeout_sec: 60
+  datarobot_otel_conventions:
+    _type: datarobot_otel_conventions
 
 
 workflow:
@@ -58,3 +63,4 @@ workflow:
   description: Base agent example
   middleware:
     - datarobot_guardrails
+    - datarobot_otel_conventions

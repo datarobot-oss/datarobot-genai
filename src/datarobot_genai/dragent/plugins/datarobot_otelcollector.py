@@ -57,11 +57,11 @@ from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
 from nat.plugins.opentelemetry.otel_span_exporter import get_opentelemetry_sdk_version
 from pydantic import Field
 
-from datarobot_genai.core.datarobot_otel import resolve_datarobot_headers_from_env
-from datarobot_genai.core.datarobot_otel import resolve_otel_traces_endpoint_from_env
-from datarobot_genai.core.telemetry_nat_context import pop_nat_span_context
-from datarobot_genai.core.telemetry_nat_context import push_nat_span_context
-from datarobot_genai.core.telemetry_nat_context import reset_nat_span_context
+from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
+from datarobot_genai.core.telemetry.datarobot_otel import resolve_otel_traces_endpoint_from_env
+from datarobot_genai.core.telemetry.nat_context import pop_nat_span_context
+from datarobot_genai.core.telemetry.nat_context import push_nat_span_context
+from datarobot_genai.core.telemetry.nat_context import reset_nat_span_context
 
 logger = logging.getLogger(__name__)
 

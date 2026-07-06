@@ -23,6 +23,8 @@ from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import GENERATE_PATH
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if AGENT == "nat":
     pytest.skip(
@@ -32,10 +34,13 @@ if AGENT == "nat":
     )
 
 
-def test_generate_single(http_client: httpx.Client) -> None:
+def test_generate_single(
+    http_client: httpx.Client, otel_collector: MockOtelCollector
+) -> None:
     """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
-    payload = make_generate_payload("Say 'hello world' and nothing else.")
+    prompt = "Say 'hello world' and nothing else."
+    payload = make_generate_payload(prompt)
 
     # WHEN: called a generate endpoint for a single response (non-streaming)
     response = http_client.post(GENERATE_PATH, json=payload)
@@ -58,3 +63,7 @@ def test_generate_single(http_client: httpx.Client) -> None:
     assert response_data.datarobot_moderations, (
         "Expected datarobot_moderations on non-streaming generate when guards are configured"
     )
+
+    # THEN: the run exported DataRobot Tracing-table spans (gen_ai.prompt /
+    # gen_ai.completion) to the OTel ingest with the DR auth headers.
+    assert_tracing_conventions(otel_collector, prompt, framework=AGENT)

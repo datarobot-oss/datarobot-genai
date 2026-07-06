@@ -17,7 +17,7 @@
 Two responsibilities, intentionally co-located so a single import covers
 both the NAT telemetry exporter
 (``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
-the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry_agent``):
+the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 
 * ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``DATAROBOT_API_TOKEN`` /
   ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into the values the OTel ingest
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Idempotency state for ``bootstrap_otel_provider_for_datarobot``. Mutable
 # dict so the inner ``["installed"]`` write doesn't need a ``global``
-# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry_agent.py``).
+# statement (mirrors ``_INSTRUMENTATION_STATE`` in ``telemetry/agent.py``).
 # Repeated calls — which happen via plugin discovery + custom.py in the same
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
@@ -120,6 +120,20 @@ def resolve_otel_traces_endpoint_from_env() -> str:
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
 
 
+def _use_simple_span_processor() -> bool:
+    """Whether to export spans synchronously via ``SimpleSpanProcessor``.
+
+    Defaults to ``False`` — production uses ``BatchSpanProcessor`` (async,
+    batched export). Set ``DATAROBOT_OTEL_SPAN_PROCESSOR=simple`` to export each
+    span the moment it ends. e2e tests use this: a session-scoped mock collector
+    is reset between cases, and any span still buffered in a batch worker would
+    flush into the next test and land under the previous request's ``trace_id``
+    (tripping the single-trace-id assertion). Synchronous export guarantees a
+    request's spans are drained before the next test runs.
+    """
+    return os.getenv("DATAROBOT_OTEL_SPAN_PROCESSOR", "batch").strip().lower() == "simple"
+
+
 def _resolve_service_name() -> str:
     # Prefer the standard OTel env override, then a deployment-derived name,
     # then a generic fallback so spans always have *some* service identity.
@@ -146,8 +160,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
       it globally.
     * **attach** — slot already holds an SDK ``TracerProvider`` (e.g. the
       ``dragent_fastapi`` server's startup telemetry layer installs one before
-      NAT plugin discovery happens): we add our own ``BatchSpanProcessor`` to
-      it instead of replacing it. The pre-existing provider's resource
+      NAT plugin discovery happens): we add our own span processor to it instead
+      of replacing it. The pre-existing provider's resource
       (including its ``service.name``) is kept — DataRobot's OTel ingest
       routes off the ``X-DataRobot-*`` headers we set on the exporter, not off
       resource attributes, so the merge is safe.
@@ -182,6 +196,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.trace import ProxyTracerProvider
 
     try:
@@ -201,9 +216,13 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
             endpoint=endpoint,
             headers=headers,
         )
-        processor = BatchSpanProcessor(exporter)
+        processor = (
+            SimpleSpanProcessor(exporter)
+            if _use_simple_span_processor()
+            else BatchSpanProcessor(exporter)
+        )
 
-        from datarobot_genai.core.telemetry_nat_tracer import wrap_sdk_tracer_provider
+        from .nat_tracer import wrap_sdk_tracer_provider
 
         if isinstance(current, ProxyTracerProvider):
             sdk_version = _get_opentelemetry_sdk_version()
