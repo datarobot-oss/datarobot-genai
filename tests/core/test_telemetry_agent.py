@@ -17,25 +17,9 @@ from unittest.mock import patch
 from datarobot_genai.core.telemetry.agent import instrument
 
 
-def test_instrument_idempotent_no_framework() -> None:
+def test_instrument_idempotent() -> None:
     instrument()
     instrument()  # idempotent
-
-
-def test_instrument_with_frameworks() -> None:
-    # Calls should not raise even if instrumentation packages are present or missing
-    instrument("crewai")
-    instrument("langgraph")
-    instrument("llamaindex")
-    # Repeat to ensure idempotency
-    instrument("crewai")
-    instrument("langgraph")
-    instrument("llamaindex")
-
-
-def test_instrument_nat() -> None:
-    instrument("nat")
-    instrument("nat")
 
 
 def test_instrument_skips_bootstrap_without_deployment_id(monkeypatch) -> None:

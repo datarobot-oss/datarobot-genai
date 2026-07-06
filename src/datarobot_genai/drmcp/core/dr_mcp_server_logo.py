@@ -62,8 +62,8 @@ def log_server_custom_banner(
     Create and log a formatted banner with server information and logo.
 
     Args:
+        server: The FastMCP server instance
         transport: The transport protocol being used
-        server_name: Optional server name to display
         host: Host address (for HTTP transports)
         port: Port number (for HTTP transports)
         path: Server path (for HTTP transports)

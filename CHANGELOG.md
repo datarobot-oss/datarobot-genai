@@ -4,9 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.22.1
+- `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
+- `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
+
+## 0.22.0
+- *Breaking change*: `core.telemetry.agent.instrument` no longer provide instrumentation for specific agent frameworks. Instrumentation for specific frameworks moved to subpackages, and should be called explicitly: `from datarobot_genai.llama_index.telemetry import instrument`.
+- Implemented instrumentation to CrewAI new async API `akickoff`.
+- Fixed issue with trace id not passed to NAT during inline execution.
+
+## 0.21.3
+- Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
+- Limited the CI version bump check to changes that touch the library package.
+- Updated a few generated API docstrings to match the current parameter names.
+
+## 0.21.2
+- Removed `fastapi` OpenTelemetry instrumentation from `dragent`
+- Attach `datarobot_agent` spans to NAT workflow trace context
+
+## 0.21.1
+- Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
+
 ## 0.21.0
-- **Breaking** Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
-- **Breaking** Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
+- *Breaking change*: Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
+- *Breaking change*: Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
 
 ## 0.20.1
 - `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.

@@ -147,6 +147,20 @@ jobs:
       AZURE_API_KEY: ${{ secrets.E2E_AZURE_API_KEY }}
       AZURE_API_BASE: ${{ secrets.E2E_AZURE_API_BASE }}
       AZURE_API_VERSION: "2025-03-01-preview"
+      # OTel defaults for the in-process mock collector the e2e tests bind (see
+      # dragent_tests/conftest.py::otel_collector and helpers.py OTEL_* constants).
+      # No .env file exists in CI, so these are provided here (previously carried
+      # by the taskfile env: blocks). MLOPS_DEPLOYMENT_ID unlocks the SDK
+      # TracerProvider bootstrap; values must match helpers.OTEL_* exactly.
+      MLOPS_DEPLOYMENT_ID: e2e-test
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318/otel
+      OTEL_EXPORTER_OTLP_HEADERS: X-DataRobot-Api-Key=e2e-otel-token,X-DataRobot-Entity-Id=deployment-e2e-test
+      # Export each span synchronously as it ends (SimpleSpanProcessor) instead
+      # of the default async batch cadence, so one test's spans drain before the
+      # next test resets the shared mock collector — otherwise a prior request's
+      # late-flushed batch bleeds into the next trace and trips the
+      # single-trace-id assertion.
+      DATAROBOT_OTEL_SPAN_PROCESSOR: simple
     steps:
       - name: Checkout
         uses: actions/checkout@v4

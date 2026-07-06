@@ -31,6 +31,7 @@ from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
 from opentelemetry import trace
 
+from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,10 @@ class DataRobotOtelConventionsMiddleware(
         context: FunctionMiddlewareContext,  # noqa: ARG002
         **kwargs: Any,
     ) -> Any:
-        with tracer.start_as_current_span(AGENT_SPAN_NAME) as span:
+        with (
+            use_nat_workflow_trace_context(),
+            tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
+        ):
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
@@ -165,7 +169,10 @@ class DataRobotOtelConventionsMiddleware(
         context: FunctionMiddlewareContext,  # noqa: ARG002
         **kwargs: Any,
     ) -> AsyncIterator[Any]:
-        with tracer.start_as_current_span(AGENT_SPAN_NAME) as span:
+        with (
+            use_nat_workflow_trace_context(),
+            tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
+        ):
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
