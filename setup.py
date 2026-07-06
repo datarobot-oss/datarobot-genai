@@ -49,6 +49,7 @@ crewai = core + [
     "crewai[litellm]>=1.11.0",
     "litellm>=1.83.0,<2.0.0",
     "crewai-tools[mcp]>=0.69.0,<0.77.0",
+    "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
     "nvidia-nat-crewai==1.7.0",
     "opentelemetry-instrumentation-crewai>=0.62.1,<1.0.0",
     "pybase64>=1.4.2,<2.0.0",
