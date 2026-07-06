@@ -142,3 +142,16 @@ The numbered sections above (A*, B*) come from the shared “review before commi
 Any **exception** in end-to-end testing—`pytest.skip`, `pytest.mark.skipif`, `allow_module_level=True` skips, conditional test branches that document a **known limitation** or **unsupported combination**—must have a matching **user-facing** note in the appropriate **`docs/<integration>/caveats.md`** (LangGraph, LlamaIndex, CrewAI, NAT). Caveats should describe **interface behavior** (APIs, responses, env combinations), not CI harness details.
 
 When reviewing: if a PR changes e2e skips, narrowings, or skip reasons, flag missing or stale caveats updates.
+
+## Breaking changes
+
+Breaking changes constitute changes in the existing interfaces, locations of modules, etc: anything that will require an update in the client after library upgrade.
+
+Each breacking change requires:
+1. Bumping the minor version of the library (following SemVer)
+2. A record in CHANGELOG:
+
+```
+## 0.22.0
+- *Breaking change*:
+```

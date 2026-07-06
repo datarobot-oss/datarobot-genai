@@ -86,6 +86,7 @@ class ExportedSpan:
     name: str
     trace_id: bytes
     span_id: bytes
+    parent_span_id: bytes
     attributes: dict[str, Any]
 
 
@@ -158,6 +159,7 @@ class MockOtelCollector:
                                 name=span.name,
                                 trace_id=span.trace_id,
                                 span_id=span.span_id,
+                                parent_span_id=span.parent_span_id,
                                 attributes={
                                     attribute.key: _anyvalue_to_python(attribute.value)
                                     for attribute in span.attributes
@@ -381,11 +383,138 @@ def _assert_single_trace_id(
     )
 
 
+def _assert_crewai_spans(collector: MockOtelCollector, agent_trace_ids: set[bytes]) -> None:
+    """Assert CrewAI auto-instrumentor spans are present in the agent's trace.
+
+    The CrewAI instrumentor (both the synchronous ``kickoff`` path and the async
+    ``akickoff`` path wired up by
+    ``datarobot_genai.crewai.telemetry.DataRobotCrewAIInstrumentor``) emits a
+    ``crewai.workflow`` root span, one ``<agent role>.agent`` span per agent,
+    one ``<task description>.task`` span per task, and one ``<model>.llm`` span
+    per LLM call. This guards against the framework instrumentation silently
+    going away — those spans would vanish even though ``gen_ai.prompt`` /
+    ``gen_ai.completion`` (set by the middleware, not the framework) still appear.
+    """
+    names = [span.name for span in collector.spans() if span.trace_id in agent_trace_ids]
+    missing = [
+        label
+        for label, present in (
+            ("crewai.workflow", any(n == "crewai.workflow" for n in names)),
+            ("<agent>.agent", any(n.endswith(".agent") for n in names)),
+            ("<task>.task", any(n.endswith(".task") for n in names)),
+            ("<model>.llm", any(n.endswith(".llm") for n in names)),
+        )
+        if not present
+    ]
+    assert not missing, (
+        f"Expected CrewAI span(s) {missing} in the agent trace, "
+        f"but observed span names {sorted(set(names))}."
+    )
+
+
+def _is_nat_internal_span(span: ExportedSpan) -> bool:
+    """Whether *span* was emitted by NAT's own function-tracing pipeline.
+
+    NAT tags the spans it creates with ``nat.*`` attributes (e.g.
+    ``nat.span.kind``, ``nat.function.name``). Those are excluded from the
+    duplicate-span check below because NAT's workflow function layer legitimately
+    self-nests a ``<workflow>`` FUNCTION span under another ``<workflow>`` span —
+    an artifact of NAT's tracing, not of the instrumentation this repo owns.
+    Framework auto-instrumentor spans (``crewai.*``) and the custom
+    ``{model}.llm`` spans never carry ``nat.*`` attributes, so the check still
+    covers everything we actually control.
+    """
+    return any(key.startswith("nat.") for key in span.attributes)
+
+
+# Traceloop ``span.kind`` values for the grouping "entity" spans that wrap a
+# whole workflow or a single traced method, rather than one leaf operation.
+_TRACELOOP_ENTITY_SPAN_KINDS = frozenset({"workflow", "task"})
+
+
+def _is_traceloop_entity_span(span: ExportedSpan) -> bool:
+    """Whether *span* is a Traceloop workflow/task grouping span.
+
+    Traceloop-based instrumentors (e.g. llamaindex) tag each traced entity span
+    with ``traceloop.span.kind`` and name it after the *class/method*, not the
+    operation. When an agent recursively invokes the same entity (e.g.
+    llamaindex's ``DataRobotLiteLLM.task`` calling itself for a follow-up chat
+    completion), that legitimately nests a ``<Entity>.task`` span directly under
+    another ``<Entity>.task`` span of the same name. That is expected recursion,
+    not double-counted instrumentation, so these spans are excluded from the
+    duplicate-span check below.
+
+    The leaf operations this repo actually guards against double-wrapping — the
+    custom ``{model}.llm`` CLIENT spans and the CrewAI auto-instrumentor spans —
+    never carry ``traceloop.span.kind``, so the check still covers them.
+    """
+    return span.attributes.get("traceloop.span.kind") in _TRACELOOP_ENTITY_SPAN_KINDS
+
+
+def _assert_no_duplicate_spans(
+    collector: MockOtelCollector, agent_trace_ids: set[bytes]
+) -> None:
+    """No span may be a direct child of another span with the same name.
+
+    Duplicate instrumentation double-counts a single logical operation as two
+    identically-named spans nested one inside the other — e.g. ``crewai.workflow``
+    under ``crewai.workflow``, ``<agent>.agent`` under ``<agent>.agent``,
+    ``<task>.task`` under ``<task>.task``, or ``{model}.llm`` under ``{model}.llm``.
+
+    The ``{model}.llm`` case is the concrete risk: datarobot-genai's custom
+    ``crewai.llm.LLM`` subclasses (``LitellmStopWordLLM``, ``RouterLitellmOnlyLLM``)
+    emit an LLM span for the native tool-calling branch (which never delegates to
+    ``super().call()/acall()``), while the CrewAI LLM instrumentation emits one
+    for the non-native branch (reached via that ``super()`` call). The branches
+    are mutually exclusive, so each call must yield exactly one span. The check is
+    deliberately name-agnostic and framework-agnostic so it guards every agent's
+    spans against any future double-wrapping.
+
+    Spans that some frameworks legitimately self-nest are excluded: NAT-internal
+    spans (see :func:`_is_nat_internal_span`) and Traceloop workflow/task entity
+    spans (see :func:`_is_traceloop_entity_span`). Both are grouping spans named
+    after a function/entity that can recurse, not double-counted instrumentation
+    of a single operation.
+    """
+    spans = [
+        span
+        for span in collector.spans()
+        if span.trace_id in agent_trace_ids
+        and not _is_nat_internal_span(span)
+        and not _is_traceloop_entity_span(span)
+    ]
+    # Parents may be any captured span in the trace (a duplicated child's parent
+    # is itself, by name), so index every span, then flag non-NAT children whose
+    # parent shares their name.
+    by_span_id = {span.span_id: span for span in collector.spans()}
+    duplicates = [
+        span
+        for span in spans
+        if span.parent_span_id in by_span_id
+        and by_span_id[span.parent_span_id].name == span.name
+    ]
+    assert not duplicates, (
+        "Found span(s) nested directly under a same-named parent span, i.e. "
+        "duplicate/double-counted instrumentation for a single operation:\n"
+        + "\n".join(f"    - {_describe_span(span)}" for span in duplicates)
+    )
+
+
+# Per-framework span assertions, keyed by framework/AGENT name (see
+# ``helpers.AGENT``). Add a ``_assert_<framework>_spans`` function and register
+# it here to cover another framework. A framework absent from this map
+# contributes no extra assertions.
+_FRAMEWORK_SPAN_ASSERTERS: dict[str, Callable[[MockOtelCollector, set[bytes]], None]] = {
+    "crewai": _assert_crewai_spans,
+}
+
+
 def assert_tracing_conventions(
     collector: MockOtelCollector,
     prompt: str,
     *,
     expect_tool_name: bool = False,
+    framework: str | None = None,
     ignore_span_urls: Sequence[str] = (),
     timeout: float = 30.0,
 ) -> None:
@@ -403,6 +532,10 @@ def assert_tracing_conventions(
 
     When *expect_tool_name* is set, also requires a ``tool_name`` span in the
     same trace (frameworks that surface tool calls as AG-UI events).
+
+    When *framework* is set (e.g. ``"crewai"``), also requires that framework's
+    characteristic auto-instrumentor spans in the same trace — see
+    ``_FRAMEWORK_SPAN_ASSERTERS``. Unknown frameworks add no assertions.
 
     *ignore_span_urls* excludes import-time HTTP client spans (matched by URL
     fragment) from the single-trace check — see ``_assert_single_trace_id``.
@@ -423,17 +556,25 @@ def assert_tracing_conventions(
             f"{GEN_AI_COMPLETION}. Observed prompts: {observed}"
         )
 
+    agent_trace_ids = {span.trace_id for span in agent_spans}
+
     _assert_single_trace_id(
         collector,
-        agent_trace_ids={span.trace_id for span in agent_spans},
+        agent_trace_ids=agent_trace_ids,
         ignore_span_urls=ignore_span_urls,
     )
 
+    # Runs for every agent/framework: no operation may be double-counted as two
+    # same-named nested spans (see _assert_no_duplicate_spans).
+    _assert_no_duplicate_spans(collector, agent_trace_ids)
+
     _assert_datarobot_auth_headers(collector)
 
+    if framework and (assert_framework_spans := _FRAMEWORK_SPAN_ASSERTERS.get(framework)):
+        assert_framework_spans(collector, agent_trace_ids)
+
     if expect_tool_name:
-        trace_ids = {span.trace_id for span in agent_spans}
-        spans_in_trace = [s for s in collector.spans() if s.trace_id in trace_ids]
+        spans_in_trace = [s for s in collector.spans() if s.trace_id in agent_trace_ids]
         tool_spans = [s for s in spans_in_trace if s.attributes.get(TOOL_NAME)]
         assert tool_spans, (
             f"Expected a span carrying {TOOL_NAME!r} in the same trace as the "

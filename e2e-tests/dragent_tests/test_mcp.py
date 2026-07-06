@@ -90,4 +90,5 @@ def test_mcp_tool_is_called(
         otel_collector,
         MCP_TOOL_PROMPT,
         expect_tool_name=AGENT_SUPPORTS_TOOL_CALLS_STREAMING,
+        framework=AGENT,
     )
