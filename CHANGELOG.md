@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.22.1
-- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning
+- Updated `‎workflow-nemo-guardrails-moderations.yaml‎` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
 - Updated test to assert when model supports reasoning events
 
 ## 0.22.0
