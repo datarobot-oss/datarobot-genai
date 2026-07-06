@@ -200,7 +200,7 @@ async def file_upload(
         "  'copy'       — copy path to target_path. Set recursive=True for directories.\n"
         "  'move'       — move/rename path to target_path. Set recursive=True for directories.\n"
         "  'clone'      — clone a whole catalog item directory (path) to a new catalog "
-        "item; returns its id. Use files_to_omit to skip entries.\n\n"
+        "item; returns its ID. Use files_to_omit to skip entries.\n\n"
         "Example: file_manage(action='create_dir')\n"
         "Example: file_manage(action='delete', path='dr://abc123/old/', recursive=True)\n"
         "Example: file_manage(action='copy', path='dr://abc123/a.txt', target_path='dr://abc123/b.txt')"

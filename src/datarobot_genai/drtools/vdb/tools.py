@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
     tags={"vdb", "read", "list", "daria"},
     description=(
         "[VDB—discover deployments] Use when the user needs deployed Vector Databases (VDBs) as "
-        "id/label/status records. Read-only. Filters DataRobot deployments to "
+        "ID/label/status records. Read-only. Filters DataRobot deployments to "
         "modelTargetType=VectorDatabase. Not predictive deployments (deployment_get_list), not "
         "AI Catalog datasets (catalog_list_datasets). Next step: vdb_query."
     ),

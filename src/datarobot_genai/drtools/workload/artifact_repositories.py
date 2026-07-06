@@ -38,14 +38,14 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
     tags={"artifact", "repository", "workload", "datarobot", "get", "list"},
     description=(
         "[Artifact repository—get] Read artifact repositories.\n"
-        "  - Omit repository_id to LIST repositories (id, name, type, timestamps); "
+        "  - Omit repository_id to LIST repositories (ID, name, type, timestamps); "
         "paginated with optional search / type filters.\n"
         "  - Set repository_id to GET a single repository (full metadata: name, type, "
         "spec, timestamps).\n\n"
         "Example (list): artifact_repository_get(search='my-registry', artifact_type='service')\n"
         "Example (get):  artifact_repository_get(repository_id='repo-abc123')"
     ),
-    display_name="Artifact Repository — Get",
+    display_name="Artifact — Get repository",
     description_ui=(
         "Read artifact repositories: list them with type and filters, or get a "
         "single repository's full metadata."
@@ -57,7 +57,7 @@ async def artifact_repository_get(
         str | None, "Id of the repository. Omit to list repositories with filters."
     ] = None,
     search: Annotated[
-        str | None, "List filter: case-insensitive match on name, description, and partial id."
+        str | None, "List filter: case-insensitive match on name, description, and partial ID."
     ] = None,
     artifact_type: Annotated[str | None, "List filter by type: 'service' or 'nim'."] = None,
     limit: Annotated[int, "Max repositories to return when listing (1–100). Default 100."] = 100,
@@ -114,7 +114,7 @@ async def artifact_repository_get(
         "or currently in use by a workload — those will cause a 409 conflict.\n\n"
         "Example: artifact_repository_delete(repository_id='repo-abc123')"
     ),
-    display_name="Artifact Repository — Delete",
+    display_name="Artifact — Delete repository",
     description_ui=(
         "Permanently delete an artifact repository and cascade-delete its "
         "unlocked, unused artifacts."

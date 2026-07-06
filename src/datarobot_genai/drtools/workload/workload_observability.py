@@ -31,7 +31,7 @@ from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 # ------------------------------------------------------------------ #
-# workload_stats                                                       #
+# workload_stats_get                                                       #
 # ------------------------------------------------------------------ #
 
 
@@ -41,20 +41,20 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "[Workload—stats] Get aggregated performance statistics for a workload: "
         "request count, error rate, response time quantile, slow requests. "
         "Optionally scope to a proton or time window.\n\n"
-        "Example: workload_stats(workload_id='wkld-abc')\n"
-        "Example: workload_stats(workload_id='wkld-abc', response_time_quantile=0.95)"
+        "Example: workload_stats_get(workload_id='wkld-abc')\n"
+        "Example: workload_stats_get(workload_id='wkld-abc', response_time_quantile=0.95)"
     ),
-    display_name="Workload — Stats",
+    display_name="Workload — Get stats",
     description_ui=(
         "Get aggregated performance stats for a workload: request count, error "
         "rate, response time, and slow requests."
     ),
 )
-async def workload_stats(
+async def workload_stats_get(
     *,
     workload_id: Annotated[str, "Id of the workload."],
     proton_id: Annotated[
-        str | None, "Scope stats to a specific proton id. Defaults to current proton."
+        str | None, "Scope stats to a specific proton ID. Defaults to current proton."
     ] = None,
     start_time: Annotated[
         str | None, "ISO-8601 start of the stats window (e.g. '2026-01-01T00:00:00Z')."
@@ -92,7 +92,7 @@ async def workload_stats(
 
 
 # ------------------------------------------------------------------ #
-# workload_logs                                                        #
+# workload_logs_get                                                        #
 # ------------------------------------------------------------------ #
 
 
@@ -101,19 +101,19 @@ async def workload_stats(
     description=(
         "[Workload—logs] Retrieve OTel log lines for a workload. Supports "
         "filtering by log level, time window, body text (includes/excludes), "
-        "and OTel span/trace ids. Use this to debug application errors or "
+        "and OTel span/trace IDs. Use this to debug application errors or "
         "trace request flows.\n\n"
-        "Example: workload_logs(workload_id='wkld-abc')\n"
-        "Example: workload_logs(workload_id='wkld-abc', level='error', "
+        "Example: workload_logs_get(workload_id='wkld-abc')\n"
+        "Example: workload_logs_get(workload_id='wkld-abc', level='error', "
         "start_time='2026-01-01T00:00:00Z')"
     ),
     display_name="Workload — Logs",
     description_ui=(
         "Retrieve OTel log lines for a workload, filtered by level, time window, "
-        "body text, and span or trace id."
+        "body text, and span or trace ID."
     ),
 )
-async def workload_logs(
+async def workload_logs_get(
     *,
     workload_id: Annotated[str, "Id of the workload."],
     limit: Annotated[int, "Max log lines to return (1–100). Default 100."] = 100,
@@ -134,8 +134,8 @@ async def workload_logs(
         list[str] | None,
         "Body text substrings that must be absent.",
     ] = None,
-    span_id: Annotated[str | None, "Filter to a specific OTel span id."] = None,
-    trace_id: Annotated[str | None, "Filter to a specific OTel trace id."] = None,
+    span_id: Annotated[str | None, "Filter to a specific OTel span ID."] = None,
+    trace_id: Annotated[str | None, "Filter to a specific OTel trace ID."] = None,
 ) -> dict[str, Any]:
     wid = require_id(workload_id, "workload_id")
     if offset < 0:
@@ -176,7 +176,7 @@ async def workload_logs(
 
 
 # ------------------------------------------------------------------ #
-# workload_activity  (history / events / related)                     #
+# workload_activity_get  (history / events / related)                     #
 # ------------------------------------------------------------------ #
 
 _ACTIVITY_RESULT_KEY: dict[str, str] = {
@@ -197,7 +197,7 @@ _ACTIVITY_RESULT_KEY: dict[str, str] = {
         "  'related' — entities related to the workload (linked artifacts, "
         "repositories, and other connected resources).\n\n"
         "history and events are paginated (limit/offset); related ignores pagination.\n\n"
-        "Example: workload_activity(workload_id='wkld-abc', kind='events')"
+        "Example: workload_activity_get(workload_id='wkld-abc', kind='events')"
     ),
     display_name="Workload — Activity",
     description_ui=(
@@ -205,7 +205,7 @@ _ACTIVITY_RESULT_KEY: dict[str, str] = {
         "events, or related entities."
     ),
 )
-async def workload_activity(
+async def workload_activity_get(
     *,
     workload_id: Annotated[str, "Id of the workload."],
     kind: Annotated[
@@ -249,7 +249,7 @@ async def workload_activity(
 
 
 # ------------------------------------------------------------------ #
-# proton_get  (list / single / status details)                       #
+# workload_proton_get  (list / single / status details)                       #
 # ------------------------------------------------------------------ #
 
 
@@ -265,17 +265,17 @@ async def workload_activity(
         "pod status (container readiness, restart count, pod phase, conditions) under "
         "'status_details' — use this to diagnose CrashLoopBackOff, OOMKilled, or "
         "image-pull errors. status_details is null when no status has arrived yet.\n\n"
-        "Example (list):    proton_get(workload_id='wkld-abc')\n"
-        "Example (details): proton_get(workload_id='wkld-abc', proton_id='ptn-xyz', "
+        "Example (list):    workload_proton_get(workload_id='wkld-abc')\n"
+        "Example (details): workload_proton_get(workload_id='wkld-abc', proton_id='ptn-xyz', "
         "include_status_details=True)"
     ),
-    display_name="Workload — Get Proton",
+    display_name="Workload — Get proton",
     description_ui=(
-        "Inspect proton pod instances for a workload, optionally with "
+        "Inspect Proton Pod instances for a workload, optionally with "
         "per-replica pod status details."
     ),
 )
-async def proton_get(
+async def workload_proton_get(
     *,
     workload_id: Annotated[str, "Id of the workload."],
     proton_id: Annotated[

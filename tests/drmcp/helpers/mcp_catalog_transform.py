@@ -22,7 +22,7 @@ CODE_EXECUTE_TOOL_NAMES = frozenset({"search", "get_schema", "execute"})
 # Tools verified to succeed when invoked with an empty argument dict (see integration tests).
 EMPTY_ARGS_CALLABLE_TOOL_NAMES = frozenset(
     {
-        "bundle_list",
+        "workload_bundle_list",
         "catalog_list_datasets",
         "catalog_list_datastores",
         "datarobot_usecases_list",

@@ -50,7 +50,10 @@ _PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
         f"Reference: {_PPLX_SEARCH_GUIDE}"
     ),
     display_name="Perplexity — Search",
-    description_ui="Search the public web and return ranked sources and snippets for a question.",
+    description_ui=(
+        "Search the public web and return ranked source URLs and snippets "
+        "(not synthesized answers)."
+    ),
     auth_provider="perplexity",
 )
 async def perplexity_search(
@@ -175,7 +178,7 @@ async def perplexity_search(
         "Pass json_schema for structured extraction.\n\n"
         f"Reference: {_PPLX_STRUCTURED}"
     ),
-    display_name="Perplexity — Sonar Answer",
+    display_name="Perplexity — Sonar answer",
     description_ui=(
         "Get a cited AI-generated answer or research report from Perplexity "
         "(sonar, sonar-reasoning-pro, sonar-deep-research)."

@@ -30,7 +30,7 @@ from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 # ------------------------------------------------------------------ #
-# artifact_build_get  (list / single / logs)                          #
+# artifact_get_build  (list / single / logs)                          #
 # ------------------------------------------------------------------ #
 
 
@@ -38,21 +38,21 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
     tags={"artifact", "build", "workload", "datarobot", "get", "list", "logs"},
     description=(
         "[Artifact build—get] Read image builds for an artifact.\n"
-        "  - Omit build_id to LIST builds (status, timestamps, build id); paginated.\n"
+        "  - Omit build_id to LIST builds (status, timestamps, build ID); paginated.\n"
         "  - Set build_id to GET a single build's status and metadata.\n"
         "  - Set build_id and include_logs=True to also attach the raw build log "
         "output under 'logs' — useful for debugging build failures.\n\n"
-        "Example (list): artifact_build_get(artifact_id='art-abc')\n"
-        "Example (logs): artifact_build_get(artifact_id='art-abc', build_id='bld-xyz', "
+        "Example (list): artifact_get_build(artifact_id='art-abc')\n"
+        "Example (logs): artifact_get_build(artifact_id='art-abc', build_id='bld-xyz', "
         "include_logs=True)"
     ),
-    display_name="Artifact Build — Get",
+    display_name="Artifact — Get build",
     description_ui=(
         "Read image builds for an artifact: list them, or get a single build's "
         "status with optional log output."
     ),
 )
-async def artifact_build_get(
+async def artifact_get_build(
     *,
     artifact_id: Annotated[str, "Id of the artifact."],
     build_id: Annotated[
@@ -101,7 +101,7 @@ async def artifact_build_get(
 
 
 # ------------------------------------------------------------------ #
-# artifact_build_action  (trigger / delete)                           #
+# artifact_build_run_action  (trigger / delete)                           #
 # ------------------------------------------------------------------ #
 
 
@@ -114,17 +114,17 @@ async def artifact_build_get(
         "Locked artifacts are rejected. Returns the triggered build record.\n"
         "  'delete'  — cancel or delete a build (requires build_id). Locked artifacts "
         "cannot have their builds deleted.\n\n"
-        "Example (trigger): artifact_build_action(artifact_id='art-abc', action='trigger')\n"
-        "Example (delete):  artifact_build_action(artifact_id='art-abc', action='delete', "
+        "Example (trigger): artifact_build_run_action(artifact_id='art-abc', action='trigger')\n"
+        "Example (delete):  artifact_build_run_action(artifact_id='art-abc', action='delete', "
         "build_id='bld-xyz')"
     ),
-    display_name="Artifact Build — Action",
+    display_name="Artifact Build — Run action",
     description_ui=(
         "Run an action on artifact image builds: trigger a build for a draft "
         "service artifact, or delete a build."
     ),
 )
-async def artifact_build_action(
+async def artifact_build_run_action(
     *,
     artifact_id: Annotated[str, "Id of the artifact."],
     action: Annotated[Literal["trigger", "delete"], "Action: 'trigger' | 'delete'."],

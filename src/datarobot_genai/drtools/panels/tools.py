@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
     ),
     display_name="Panels — List",
     description_ui=(
-        "Lists panel metadata in a source, either the committed main store "
-        "or the session-scoped staging store."
+        "Returns a paginated list of panel metadata from a source, either the "
+        "committed main store or the session-scoped staging store."
     ),
 )
 async def list_panels(
@@ -79,17 +79,17 @@ async def list_panels(
 @tool_metadata(
     tags={"panels", "read", "daria"},
     description=(
-        "[Panels—get] Fetch a single panel's metadata by id. Read-only. Bulky payloads "
+        "[Panels—get] Fetch a single panel's metadata by ID. Read-only. Bulky payloads "
         "(Dataset/Chart) are referenced by payload_files_id, not inlined here."
     ),
     display_name="Panels — Get",
     description_ui=(
-        "Fetches a single panel's metadata by id, referencing bulky payloads "
-        "rather than inlining them."
+        "Fetches a single panel's metadata by ID, referencing bulky payloads "
+        "rather than outputting them inline."
     ),
 )
 async def get_panel(
-    panel_id: Annotated[str, "The panel id (returned by list_panels / create_*_panel)."],
+    panel_id: Annotated[str, "The panel ID (returned by list_panels / create_*_panel)."],
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
     if not panel_id:
@@ -102,10 +102,10 @@ async def get_panel(
     tags={"panels", "write", "create", "daria"},
     description=(
         "[Panels—create text] Create a Text panel (markdown narrative/report) in a source. "
-        "Returns the created panel including its assigned id."
+        "Returns the created panel including its assigned ID."
     ),
-    display_name="Panels — Create Text",
-    description_ui="Creates a Text panel containing a markdown narrative or report in a source.",
+    display_name="Panels — Create text panel",
+    description_ui="Creates a text panel containing a Markdown narrative or report in a source.",
 )
 async def create_text_panel(
     *,
@@ -113,7 +113,7 @@ async def create_text_panel(
     text: Annotated[str, "Markdown body of the panel."],
     description: Annotated[str | None, "Optional short description."] = None,
     source: Annotated[str, "Target source ('main' or 'staging')."] = DEFAULT_SOURCE,
-    parents: Annotated[list[str] | None, "Parent panel ids for lineage."] = None,
+    parents: Annotated[list[str] | None, "Parent panel IDs for lineage."] = None,
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
     if not title:
@@ -127,10 +127,10 @@ async def create_text_panel(
     tags={"panels", "write", "create", "daria"},
     description=(
         "[Panels—create json] Create a Json panel (structured dict payload) in a source. "
-        "Returns the created panel including its assigned id."
+        "Returns the created panel including its assigned ID."
     ),
-    display_name="Panels — Create Json",
-    description_ui="Creates a Json panel storing a structured dictionary payload in a source.",
+    display_name="Panels — Create JSON panel",
+    description_ui="Creates a JSON panel storing a structured dictionary payload in a source.",
 )
 async def create_json_panel(
     *,
@@ -138,7 +138,7 @@ async def create_json_panel(
     data: Annotated[dict[str, Any], "JSON-serializable object stored on the panel."],
     description: Annotated[str | None, "Optional short description."] = None,
     source: Annotated[str, "Target source ('main' or 'staging')."] = DEFAULT_SOURCE,
-    parents: Annotated[list[str] | None, "Parent panel ids for lineage."] = None,
+    parents: Annotated[list[str] | None, "Parent panel IDs for lineage."] = None,
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
     if not title:
@@ -155,9 +155,9 @@ async def create_json_panel(
         "validation, optionally filtered by namespace. Read-only. Next step: "
         "describe_panel_schema for field details, validate_panel_data to check data."
     ),
-    display_name="Panels — List Schemas",
+    display_name="Panels — List schemas",
     description_ui=(
-        "Lists registered schemas available for Json panel validation, "
+        "Lists registered schemas available for JSON panel validation, "
         "optionally filtered by namespace."
     ),
 )
@@ -189,7 +189,7 @@ async def list_panel_schemas(
         "[Panels—schemas] Describe a registered schema in detail: fields with types and "
         "required status, the full JSON Schema, and an example value. Read-only."
     ),
-    display_name="Panels — Describe Schema",
+    display_name="Panels — Describe schema",
     description_ui=(
         "Describes a registered schema in detail, including fields, types, "
         "required status, and an example value."
@@ -218,7 +218,7 @@ async def describe_panel_schema(
         "panel. Returns {valid: true, normalized_data} on success or {valid: false, "
         "errors} on failure. Read-only."
     ),
-    display_name="Panels — Validate Data",
+    display_name="Panels — Validate data",
     description_ui="Validates data against a registered schema without creating a panel.",
 )
 async def validate_panel_data(
@@ -250,13 +250,13 @@ async def validate_panel_data(
 @tool_metadata(
     tags={"panels", "write", "delete", "daria"},
     description=(
-        "[Panels—delete] Delete a panel (manifest + payload) by id. Returns the deleted id."
+        "[Panels—delete] Delete a panel (manifest + payload) by ID. Returns the deleted ID."
     ),
     display_name="Panels — Delete",
-    description_ui="Deletes a panel and its payload by id.",
+    description_ui="Deletes a panel and its payload by ID.",
 )
 async def delete_panel(
-    panel_id: Annotated[str, "The id of the panel to delete."],
+    panel_id: Annotated[str, "The ID of the panel to delete."],
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
     if not panel_id:

@@ -110,7 +110,7 @@ async def search_datarobot_agentic_docs(
         "(e.g. from search results) and need the page body as text. Not keyword search across the "
         "agentic docs index (search_datarobot_agentic_docs)."
     ),
-    display_name="DataRobot Docs — Fetch Page",
+    display_name="DataRobot Docs — Fetch page",
     description_ui="Retrieve the full text of a DataRobot documentation page by URL.",
 )
 async def datarobot_docs_fetch_page(

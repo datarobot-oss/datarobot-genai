@@ -17,11 +17,11 @@ import importlib
 import importlib.util
 import pkgutil
 
-from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import LEAF_CATEGORY_TOOLS
 from datarobot_genai.drmcputils.categories import PARENT_TO_CHILDREN
 from datarobot_genai.drmcputils.categories import MCPToolCategory
 from datarobot_genai.drmcputils.categories import categories_for_tool
+from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import resolve_to_tool_names
 from datarobot_genai.drtools.core import get_registered_tools
 
@@ -90,11 +90,11 @@ class TestResolveToToolNames:
     def test_parent_dr_predictive_contains_all_children(self):
         result = resolve_to_tool_names(frozenset({"dr_predictive"}))
         # Spot-check tools from each child category
-        assert "datarobot_usecases_list" in result  # dr_use_cases
         assert "catalog_list_datasets" in result  # dr_catalog
         assert "modeling_list_projects" in result  # dr_modeling
-        assert "deployment_get_list" in result  # dr_deployments
         assert "predict_get_batch_results" in result  # dr_predictions
+        assert "datarobot_usecases_list" not in result
+        assert "deployment_get_list" not in result
 
     def test_parent_children_are_leaf_categories(self):
         for parent, children in PARENT_TO_CHILDREN.items():
@@ -232,6 +232,12 @@ class TestCategoriesForTool:
     def test_tool_under_standalone_leaf_returns_only_leaf(self) -> None:
         # dr_documentation is a leaf with no parent.
         assert categories_for_tool("search_datarobot_agentic_docs") == ["dr_documentation"]
+
+    def test_use_case_tool_returns_leaf_only(self) -> None:
+        assert categories_for_tool("datarobot_usecases_list") == ["dr_use_cases"]
+
+    def test_deployment_tool_returns_leaf_only(self) -> None:
+        assert categories_for_tool("deployment_get_list") == ["dr_deployments"]
 
     def test_predictive_tool_returns_leaf_and_predictive_parent(self) -> None:
         assert categories_for_tool("modeling_list_models") == ["dr_modeling", "dr_predictive"]

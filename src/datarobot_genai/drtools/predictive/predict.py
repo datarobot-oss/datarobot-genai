@@ -47,7 +47,7 @@ def _tool_error_with_batch_url(message: str, url: str | None) -> ToolError:
 
 
 def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) -> dict[str, Any]:
-    """Return right after score(): job id, current status, download URL if already present."""
+    """Return right after score(): job ID, current status, download URL if already present."""
     status = job.get_status()
     st = status.get("status")
     if st in _TERMINAL_FAILURE_STATUSES:
@@ -96,13 +96,13 @@ def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) 
         "rows (predict_score_inline_realtime). For synchronous small catalog scoring use "
         "predict_score_catalog_realtime."
     ),
-    display_name="Predictions — Batch from Dataset",
+    display_name="Predictions — Batch from dataset",
     description_ui="Generate batch predictions from a deployment using a supplied dataset.",
 )
 async def predict_batch_predictions_from_dataset(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
-    dataset_id: Annotated[str, "AI Catalog dataset id to score."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID to score."],
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
         raise ToolError(
@@ -142,16 +142,16 @@ async def predict_batch_predictions_from_dataset(
         "then predict_get_batch_results or download url. Not catalog-only scoring without "
         "project context, not inline CSV in chat."
     ),
-    display_name="Predictions — Batch from Holdout",
+    display_name="Predictions — Batch from holdout",
     description_ui="Generate batch predictions from a deployment using the holdout partition data.",
 )
 async def predict_batch_predictions_from_partition(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
-    project_id: Annotated[str, "DataRobot project id that supplies training/holdout data."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
+    project_id: Annotated[str, "DataRobot project ID that supplies training/holdout data."],
     dataset_id: Annotated[
         str,
-        "Optional catalog dataset id for project-linked scoring (alternative to partition-only).",
+        "Optional catalog dataset ID for project-linked scoring (alternative to partition-only).",
     ]
     | None = None,
     partition: Annotated[
@@ -212,14 +212,14 @@ async def predict_batch_predictions_from_partition(
         "predict_get_batch_results or download url. Lightweight (no CSV body). Raises on "
         "terminal failure. Not for modeling_score_dataset jobs."
     ),
-    display_name="Predictions — Get Batch Job Status",
+    display_name="Predictions — Get batch job status",
     description_ui="Check status of a batch prediction job.",
 )
 async def predict_get_batch_job_status(
     *,
     job_id: Annotated[
         str,
-        "Batch prediction job id from predict_batch_predictions_from_dataset "
+        "Batch prediction job ID from predict_batch_predictions_from_dataset "
         "or predict_batch_predictions_from_partition.",
     ],
 ) -> dict[str, Any]:
@@ -268,7 +268,7 @@ async def predict_get_batch_job_status(
         "large, the error includes the download url—fetch with API authentication. Does not start "
         "scoring; not for modeling_score_dataset jobs."
     ),
-    display_name="Predictions — Get Batch Results",
+    display_name="Predictions — Get batch results",
     description_ui="Download scored results from a completed batch prediction job.",
 )
 async def predict_get_batch_results(

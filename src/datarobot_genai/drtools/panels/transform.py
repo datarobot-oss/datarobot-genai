@@ -122,13 +122,13 @@ async def _run_transform(
     ),
     display_name="Panels — Transform",
     description_ui=(
-        "Runs Python over a Dataset panel in the sandbox and saves the result "
+        "Runs user-supplied Python code over a dataset panel in the sandbox and saves the result "
         "as a derived child panel."
     ),
 )
 async def transform_panel(
     *,
-    panel_id: Annotated[str, "Source Dataset panel id."],
+    panel_id: Annotated[str, "Source Dataset panel ID."],
     code: Annotated[str, "Python operating on `df`; assign result rows to `_return`."],
     title: Annotated[str, "Title for the derived panel."],
     description: Annotated[str | None, "Optional description."] = None,
@@ -148,13 +148,13 @@ async def transform_panel(
     ),
     display_name="Panels — Filter",
     description_ui=(
-        "Filters a Dataset panel by a polars boolean expression in the sandbox, "
+        "Filters a dataset panel by a polars boolean expression in the sandbox, "
         "saving the result as a derived child panel."
     ),
 )
 async def filter_panel(
     *,
-    panel_id: Annotated[str, "Source Dataset panel id."],
+    panel_id: Annotated[str, "Source Dataset panel ID."],
     where: Annotated[str, "polars boolean expression, e.g. \"pl.col('rev') > 1000\"."],
     title: Annotated[str, "Title for the filtered panel."],
     description: Annotated[str | None, "Optional description."] = None,

@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
     tags={"use_case", "read", "list", "daria"},
     description=(
         "[Use case—list] Use when the user needs DataRobot use cases (workspace bundles) as "
-        "id+name, optionally filtered by name search. Read-only. Not assets inside a known case "
-        "(usecases_list_assets), not modeling project ids (modeling_list_projects), "
+        "ID+name, optionally filtered by name search. Read-only. Not assets inside a known case "
+        "(usecases_list_assets), not modeling project IDs (modeling_list_projects), "
         "not deployments alone "
         "(deployment_get_list)."
     ),
@@ -74,11 +74,11 @@ async def datarobot_usecases_list(
     tags={"use_case", "read", "assets", "daria"},
     description=(
         "[Use case—assets] Use when you have one or more use_case_id values and need what is "
-        "linked: datasets, deployments, and experiments as id+name per case. Read-only. Not "
-        "discovering use case ids (datarobot_usecases_list), not Jira/Confluence content."
+        "linked: datasets, deployments, and experiments as ID+name per case. Read-only. Not "
+        "discovering use case IDs (datarobot_usecases_list), not Jira/Confluence content."
     ),
-    display_name="Use Cases — List Assets",
-    description_ui="List datasets, deployments, and experiments linked to use cases.",
+    display_name="Use Cases — List assets",
+    description_ui="List datasets, deployments, and experiments linked to DataRobot Use Cases.",
 )
 async def usecases_list_assets(
     *,

@@ -45,19 +45,19 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 @tool_metadata(
     tags={"workload", "datarobot", "list", "search"},
     description=(
-        "[Workload—list] Discover workloads: returns id, name, status, "
+        "[Workload—list] Discover workloads: returns ID, name, status, "
         "artifactId, importance, and runtime for each. Use workload_get for a "
-        "single known workload id, not this.\n\n"
+        "single known workload ID, not this.\n\n"
         "Example: workload_list(limit=50) or workload_list(search='my-app', limit=20)."
     ),
     display_name="Workload — List",
-    description_ui="List workloads with their id, name, status, artifact, importance, and runtime.",
+    description_ui="List workloads with their ID, name, status, artifact, importance, and runtime.",
 )
 async def workload_list(
     *,
     search: Annotated[
         str | None,
-        "Optional server-side filter; matches workload name or id.",
+        "Optional server-side filter; matches workload name or ID.",
     ] = None,
     limit: Annotated[int, "Maximum workloads to return (1–100). Default 100."] = 100,
     offset: Annotated[int, "Number of workloads to skip for pagination. Default 0."] = 0,
@@ -95,9 +95,9 @@ async def workload_list(
 @tool_metadata(
     tags={"workload", "datarobot", "get", "status"},
     description=(
-        "[Workload—get] Fetch a single workload by id: status, runtime, artifact "
+        "[Workload—get] Fetch a single workload by ID: status, runtime, artifact "
         "reference, endpoint URL, creator, and timestamps. This is also the status "
-        "check used after workload_action(start/stop): pass target_status to get a "
+        "check used after workload_action_run(start/stop): pass target_status to get a "
         "target_reached flag. It performs ONE non-blocking fetch — it does not wait "
         "or poll. Call it again yourself every few seconds until target_reached is "
         "true. Raises if the workload enters 'errored'.\n\n"
@@ -113,7 +113,7 @@ async def workload_get(
     *,
     workload_id: Annotated[
         str,
-        "The unique id of the workload (from workload_list or workload_create).",
+        "The unique ID of the workload (from workload_list or workload_create).",
     ],
     target_status: Annotated[
         str | None,
@@ -155,7 +155,7 @@ async def workload_get(
 
 
 # ------------------------------------------------------------------ #
-# workload_create_payload                                              #
+# workload_create_payload_build                                              #
 # ------------------------------------------------------------------ #
 
 
@@ -167,17 +167,17 @@ async def workload_get(
         "workload_create. Two modes — pick exactly one:\n"
         "  (1) existing artifact: set artifact_id.\n"
         "  (2) inline artifact: set artifact_name, image_uri, port, cpu, memory_bytes.\n\n"
-        "Example (existing): workload_create_payload(name='my-wl', artifact_id='art-xyz')\n"
-        "Example (inline):   workload_create_payload(name='echo', artifact_name='echo', "
+        "Example (existing): workload_create_payload_build(name='my-wl', artifact_id='art-xyz')\n"
+        "Example (inline):   workload_create_payload_build(name='echo', artifact_name='echo', "
         "image_uri='hashicorp/http-echo:0.2.3', port=8080, cpu=1, memory_bytes=134217728)"
     ),
-    display_name="Workload — Build Create Payload",
+    display_name="Workload — Build create payload",
     description_ui=(
-        "Build a valid workload create payload from an existing or inline "
+        "Build a valid `workload create` payload from an existing or inline "
         "artifact without calling the API."
     ),
 )
-async def workload_create_payload(
+async def workload_create_payload_build(
     *,
     name: Annotated[str, "Workload display name. Required."],
     artifact_id: Annotated[
@@ -191,7 +191,7 @@ async def workload_create_payload(
     ] = "low",
     resource_bundle_id: Annotated[
         str | None,
-        "Bundle id from bundle_list. Sets runtime.containerGroups[0].resourceBundles.",
+        "Bundle ID from workload_bundle_list. Sets runtime.containerGroups[0].resourceBundles.",
     ] = None,
     replica_count: Annotated[int | None, "Fixed replica count (>= 1). Default 1."] = 1,
     artifact_name: Annotated[
@@ -316,9 +316,9 @@ async def workload_create_payload(
     tags={"workload", "datarobot", "create"},
     description=(
         "[Workload—create] Create a new workload from a payload dict. "
-        "Use workload_create_payload to build the payload first. "
+        "Use workload_create_payload_build to build the payload first. "
         "The payload must contain 'name' and exactly one of 'artifactId' or 'artifact'.\n\n"
-        "Example: workload_create(payload=workload_create_payload(...)['payload'])"
+        "Example: workload_create(payload=workload_create_payload_build(...)['payload'])"
     ),
     display_name="Workload — Create",
     description_ui=(
@@ -331,7 +331,7 @@ async def workload_create(
     payload: Annotated[
         dict[str, Any],
         "Create payload with 'name' and one of 'artifactId' or 'artifact'. "
-        "Build with workload_create_payload.",
+        "Build with workload_create_payload_build.",
     ],
 ) -> dict[str, Any]:
     if not payload or not isinstance(payload, dict):
@@ -408,7 +408,7 @@ async def workload_update(
 
 
 # ------------------------------------------------------------------ #
-# workload_action  (start / stop / delete / promote)                  #
+# workload_action_run  (start / stop / delete / promote)                  #
 # ------------------------------------------------------------------ #
 
 _ACTION_TARGET_STATUS: dict[str, str] = {"start": "running", "stop": "stopped"}
@@ -425,12 +425,12 @@ _ACTION_TARGET_STATUS: dict[str, str] = {"start": "running", "stop": "stopped"}
         "(stats reset; recorded in history).\n\n"
         "start and stop are asynchronous and do NOT wait for completion: poll "
         "workload_get(workload_id, target_status=...) yourself until target_reached.\n\n"
-        "Example: workload_action(workload_id='wkld-abc', action='start')"
+        "Example: workload_action_run(workload_id='wkld-abc', action='start')"
     ),
-    display_name="Workload — Action",
-    description_ui="Run a lifecycle action on a workload: start, stop, delete, or promote.",
+    display_name="Workload — Run action",
+    description_ui="Run a lifecycle action on a workload (start, stop, delete, or promote).",
 )
-async def workload_action(
+async def workload_action_run(
     *,
     workload_id: Annotated[str, "Id of the workload to act on."],
     action: Annotated[
@@ -473,7 +473,7 @@ async def workload_action(
 
 
 # ------------------------------------------------------------------ #
-# bundle_list                                                          #
+# workload_bundle_list                                                          #
 # ------------------------------------------------------------------ #
 
 
@@ -483,15 +483,15 @@ async def workload_action(
         "[Workload—bundle list] Discover available compute resource bundles "
         "(CPU count, memory, GPU type and VRAM). GPU type and VRAM are always "
         "determined by the bundle — there is no separate gpuType parameter. Use "
-        "the bundle id when creating or updating a workload.\n\n"
-        "Example: bundle_list()."
+        "the bundle ID when creating or updating a workload.\n\n"
+        "Example: workload_bundle_list()."
     ),
-    display_name="Workload — List Bundles",
+    display_name="Workload — List bundles",
     description_ui=(
-        "List available compute resource bundles with CPU, memory, and GPU type and VRAM."
+        "List available compute resource bundles with their CPU, memory, GPU type and VRAM details."
     ),
 )
-async def bundle_list() -> dict[str, Any]:
+async def workload_bundle_list() -> dict[str, Any]:
     try:
         return WorkloadApiClient().list_bundles()
     except ClientError as exc:

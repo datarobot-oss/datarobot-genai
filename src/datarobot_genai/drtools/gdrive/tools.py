@@ -41,7 +41,7 @@ _DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage
 @tool_metadata(
     tags={"gdrive", "google", "list", "search", "files", "find", "contents"},
     description=(
-        "[GDrive—find files] Use when the user needs Google Drive file names and ids with "
+        "[GDrive—find files] Use when the user needs Google Drive file names and IDs with "
         "optional folder scope, Drive query string, and pagination. Not file body text "
         "(gdrive_read_and_export_content), not SharePoint (microsoft_graph_search_content).\n\n"
         f"limit must be >= page_size and a multiple of page_size (page_size max {MAX_PAGE_SIZE}, "
@@ -49,7 +49,7 @@ _DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage
         "page_size=12, limit=36.\n\n"
         f"Reference: {_DRIVE_SEARCH_DOCS}"
     ),
-    display_name="Google Drive — Find Contents",
+    display_name="Google Drive — Find contents",
     description_ui=(
         "Search Google Drive for files and folders, using optional query and pagination parameters."
     ),
@@ -79,7 +79,7 @@ async def gdrive_find_contents(
     ] = False,
     fields: Annotated[
         list[str] | None,
-        "Optional list of metadata fields to include. Ex. id, name, mimeType. "
+        "Optional list of metadata fields to include. Ex. ID, name, mimeType. "
         f"Default = {SUPPORTED_FIELDS_STR}",
     ] = None,
 ) -> dict[str, Any]:
@@ -121,7 +121,7 @@ async def gdrive_find_contents(
         "may fail.\n\n"
         f"Reference (export MIME types): {_DRIVE_EXPORT_DOCS}"
     ),
-    display_name="Google Drive — Read & Export Content",
+    display_name="Google Drive — Read and export content",
     description_ui="Read and export the text content of a Google Drive file.",
     auth_provider="gdrive",
 )
@@ -162,7 +162,7 @@ async def gdrive_read_and_export_content(
         "application/vnd.google-apps.folder; file in folder via parent_id.\n\n"
         f"Reference: {_DRIVE_CREATE_DOCS}"
     ),
-    display_name="Google Drive — Create File",
+    display_name="Google Drive — Create file or folder",
     description_ui="Create a new file or folder in Google Drive.",
     auth_provider="gdrive",
 )
@@ -210,23 +210,28 @@ async def gdrive_create_file(
     tags={"gdrive", "google", "update", "metadata", "rename", "star", "trash"},
     enabled=False,
     description=(
-        "[GDrive—metadata] Use when renaming, starring, or trashing an existing file by id. "
+        "[GDrive—metadata] Use when renaming, starring, or trashing an existing "
+        "file or folder by ID. "
         "Not reading content (gdrive_read_and_export_content), "
         "not ACL changes (gdrive_manage_access).\n\n"
         "Examples: new_name only; starred=True/False; trash=True/restore False; combine fields. "
         "At least one of new_name, starred, or trash is required.\n\n"
         f"Reference: {_DRIVE_FILES_UPDATE_DOCS}"
     ),
-    display_name="Google Drive — Update Metadata",
-    description_ui="Rename, star, or delete a Google Drive file.",
+    display_name="Google Drive — Update metadata",
+    description_ui="Rename, star, or delete a Google Drive file or folder.",
     auth_provider="gdrive",
 )
 async def gdrive_update_metadata(
     *,
     file_id: Annotated[str, "The ID of the file or folder to update."],
-    new_name: Annotated[str | None, "A new name to rename the file."] = None,
-    starred: Annotated[bool | None, "Set to True to star the file or False to unstar it."] = None,
-    trash: Annotated[bool | None, "Set to True to trash the file or False to restore it."] = None,
+    new_name: Annotated[str | None, "A new name to rename the file or folder."] = None,
+    starred: Annotated[
+        bool | None, "Set to True to star the file or folder, or False to unstar it."
+    ] = None,
+    trash: Annotated[
+        bool | None, "Set to True to trash the file or folder, or False to restore it."
+    ] = None,
 ) -> dict[str, Any]:
     if not file_id or not file_id.strip():
         raise ToolError(
@@ -265,14 +270,15 @@ async def gdrive_update_metadata(
     tags={"gdrive", "google", "manage", "access", "acl"},
     enabled=False,
     description=(
-        "[GDrive—permissions] Use when adding, changing, or removing sharing on a file by id "
-        "(email or permission id). Not rename/trash (gdrive_update_metadata), not read content.\n\n"
+        "[GDrive—permissions] Use when adding, changing, or removing sharing on "
+        "a file or folder by ID "
+        "(email or permission ID). Not rename/trash (gdrive_update_metadata), not read content.\n\n"
         'Examples: action="add", role="reader", email_address="user@example.com"; '
         'action="update" with permission_id; action="remove" with permission_id.\n\n'
         f"Reference: {_DRIVE_PERMISSIONS_DOCS}"
     ),
-    display_name="Google Drive — Manage Access",
-    description_ui="Add, update, or remove sharing permissions on a Google Drive file.",
+    display_name="Google Drive — Manage access",
+    description_ui="Add, update, or remove sharing permissions on a Google Drive file or folder.",
     auth_provider="gdrive",
 )
 async def gdrive_manage_access(

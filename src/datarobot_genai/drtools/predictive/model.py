@@ -177,17 +177,17 @@ class ModelEncoder(json.JSONEncoder):
     description=(
         "[Project—pick best model] Use when the user wants the top leaderboard model for one "
         "modeling project, optionally ranked by a validation metric (e.g. AUC, LogLoss). "
-        "Read-only; returns project_id plus best model id, type, and metrics. Not for listing "
+        "Read-only; returns project_id plus best model ID, type, and metrics. Not for listing "
         "every model (modeling_list_models), not deployment scoring metadata "
         "(deployment_get_info), "
         "not full diagnostics (modeling_get_modeldetails)."
     ),
-    display_name="Modeling — Get Best Model",
-    description_ui="Get the top-performing model on a model leaderboard.",
+    display_name="Modeling — Get best model",
+    description_ui="Get the top-performing model on the model leaderboard.",
 )
 async def models_get_bestmodel(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
     metric: Annotated[
         str, "Optional leaderboard sort key (e.g. AUC, LogLoss); omit for default order."
     ]
@@ -255,9 +255,9 @@ async def models_get_bestmodel(
         "(see predict_batch_predictions_from_dataset) and "
         "not inline CSV in chat (see predict_score_inline_realtime). "
         "Starts an async project scoring job; "
-        "returns scoring_job_id and related dataset ids, not prediction rows."
+        "returns scoring_job_id and related dataset IDs, not prediction rows."
     ),
-    display_name="Modeling — Score Dataset",
+    display_name="Modeling — Score dataset",
     description_ui=(
         "Score a catalog dataset with a trained model from a project leaderboard (async job)."
     ),
@@ -265,8 +265,8 @@ async def models_get_bestmodel(
 async def modeling_score_dataset(
     *,
     project_id: Annotated[str, "Modeling project that owns the model."],
-    model_id: Annotated[str, "Leaderboard model id from modeling_list_models."],
-    dataset_id: Annotated[str, "AI Catalog dataset id to score (tabular)."],
+    model_id: Annotated[str, "Leaderboard model ID from modeling_list_models."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID to score (tabular)."],
 ) -> dict[str, Any]:
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -299,19 +299,19 @@ async def modeling_score_dataset(
     tags={"predictive", "model", "read", "management", "list", "daria"},
     description=(
         "[Project—list models] Use when the user needs trained leaderboard models for a "
-        "project (ids, types, metrics), with optional offset/limit pagination. Read-only. Not "
+        "project (IDs, types, metrics), with optional offset/limit pagination. Read-only. Not "
         "the same as picking only the best model (models_get_bestmodel). "
         "When may_have_more is true, "
         "call again with offset increased by the prior limit. Follow with "
         "modeling_get_modeldetails, "
         "deployment_create_deployment, or modeling_score_dataset using a chosen model_id."
     ),
-    display_name="Modeling — List Models",
-    description_ui="List all leaderboard models.",
+    display_name="Modeling — List models",
+    description_ui="List all models on the leaderboard.",
 )
 async def modeling_list_models(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
     offset: Annotated[
         int | None,
         (
@@ -366,13 +366,13 @@ async def modeling_list_models(
         "deployment_get_info instead. For ROC-only or lift-only charts with explicit source "
         "fold, see modeling_get_model_roc / modeling_get_model_lift_chart."
     ),
-    display_name="Modeling — Get Model Details",
-    description_ui="Get training metrics and diagnostics for a leaderboard model.",
+    display_name="Modeling — Get model details",
+    description_ui="Get training metrics and diagnostics for a model on the leaderboard.",
 )
 async def modeling_get_modeldetails(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
-    model_id: Annotated[str, "Leaderboard model id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
+    model_id: Annotated[str, "Leaderboard model ID."],
     include_feature_impact: Annotated[
         bool, "If true, request or return per-feature impact."
     ] = True,
@@ -422,16 +422,16 @@ async def modeling_get_modeldetails(
     description=(
         "[Catalog—time series readiness] Use before starting time-series Autopilot: checks an "
         "AI Catalog dataset for row count, parsable datetime column, target null rate, optional "
-        "multiseries id column. Read-only; returns ELIGIBLE or NOT_ELIGIBLE with reasons; does "
+        "multiseries ID column. Read-only; returns ELIGIBLE or NOT_ELIGIBLE with reasons; does "
         "not train. Not general EDA (catalog_get_eda_insights / catalog_analyze_dataset) and not "
         "tabular-only Autopilot start (modeling_start_autopilot without TS-specific checks)."
     ),
-    display_name="Catalog — Check Time Series Eligibility",
+    display_name="Catalog — Check time series eligibility",
     description_ui="Check whether a dataset is ready for time series modeling.",
 )
 async def catalog_check_timeseries_eligibility(
     *,
-    dataset_id: Annotated[str, "AI Catalog dataset id."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID."],
     datetime_column: Annotated[str, "Column name with timestamps."],
     target_column: Annotated[str, "Column name to forecast."],
     series_id_column: Annotated[
@@ -457,7 +457,7 @@ async def catalog_check_timeseries_eligibility(
         except Exception as exc:
             raise ToolError(
                 f"Could not load AI Catalog dataset '{dataset_id}': {exc}. "
-                "Confirm the dataset id is correct, the dataset has finished "
+                "Confirm the dataset ID is correct, the dataset has finished "
                 "ingesting (status=COMPLETED), and your token has read access.",
                 kind=ToolErrorKind.UPSTREAM,
             )

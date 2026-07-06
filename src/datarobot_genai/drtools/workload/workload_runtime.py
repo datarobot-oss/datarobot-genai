@@ -87,7 +87,7 @@ async def workload_settings(
 
 
 # ------------------------------------------------------------------ #
-# workload_replacement  (get / create / cancel)                       #
+# workload_artifact_replace  (get / create / cancel)                       #
 # ------------------------------------------------------------------ #
 
 
@@ -97,24 +97,25 @@ async def workload_settings(
         "[Workload—replacement] Manage a rolling replacement (zero-downtime artifact "
         "swap) for a workload. Modes:\n"
         "  - read:   omit artifact_id and leave cancel=False — returns the current "
-        "replacement status (candidate artifact, candidate proton ids, strategy, "
+        "replacement status (candidate artifact, candidate proton IDs, strategy, "
         "config, timestamps).\n"
         "  - create: set artifact_id — deploys the new artifact alongside the running "
         "version; traffic switches once the candidate is ready. Supports optional "
         "warmup/retention config and runtime override.\n"
         "  - cancel: set cancel=True — stops the candidate deployment and reverts "
         "traffic to the original version.\n\n"
-        "Example (read):   workload_replacement(workload_id='wkld-abc')\n"
-        "Example (create): workload_replacement(workload_id='wkld-abc', artifact_id='art-xyz')\n"
-        "Example (cancel): workload_replacement(workload_id='wkld-abc', cancel=True)"
+        "Example (read):   workload_artifact_replace(workload_id='wkld-abc')\n"
+        "Example (create): workload_artifact_replace("
+        "workload_id='wkld-abc', artifact_id='art-xyz')\n"
+        "Example (cancel): workload_artifact_replace(workload_id='wkld-abc', cancel=True)"
     ),
-    display_name="Workload — Replacement",
+    display_name="Workload — Replace artifact",
     description_ui=(
         "Read, create, or cancel a zero-downtime rolling replacement that swaps "
         "a workload's artifact."
     ),
 )
-async def workload_replacement(
+async def workload_artifact_replace(
     *,
     workload_id: Annotated[str, "Id of the workload."],
     artifact_id: Annotated[

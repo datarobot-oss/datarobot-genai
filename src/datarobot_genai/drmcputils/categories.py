@@ -30,12 +30,12 @@ Hierarchy:
     dr_web_search_perplexity
     dr_web_search_tavily
   dr_documentation                       (leaf — no sub-categories)
+  dr_use_cases                           (leaf — no sub-categories)
   dr_predictive
-    dr_use_cases
     dr_catalog
     dr_modeling
-    dr_deployments
     dr_predictions
+  dr_deployments                         (leaf — no sub-categories)
   dr_development
     dr_workload
     dr_file
@@ -67,13 +67,17 @@ class MCPToolCategory(StrEnum):
     # ── documentation (leaf) ────────────────────────────────────────────────
     DR_DOCUMENTATION = "dr_documentation"
 
+    # ── use cases (leaf) ────────────────────────────────────────────────────
+    DR_USE_CASES = "dr_use_cases"
+
     # ── predictive categories ────────────────────────────────────────────────
     DR_PREDICTIVE = "dr_predictive"
-    DR_USE_CASES = "dr_use_cases"
     DR_CATALOG = "dr_catalog"
     DR_MODELING = "dr_modeling"
-    DR_DEPLOYMENTS = "dr_deployments"
     DR_PREDICTIONS = "dr_predictions"
+
+    # ── deployments (leaf) ─────────────────────────────────────────────────
+    DR_DEPLOYMENTS = "dr_deployments"
 
     # ── development categories ───────────────────────────────────────────────
     DR_DEVELOPMENT = "dr_development"
@@ -212,25 +216,25 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
         {
             "workload_list",
             "workload_get",
-            "workload_create_payload",
+            "workload_create_payload_build",
             "workload_create",
             "workload_update",
-            "workload_action",
+            "workload_action_run",
             "workload_settings",
-            "workload_replacement",
-            "bundle_list",
-            "workload_stats",
-            "workload_logs",
-            "workload_activity",
-            "proton_get",
+            "workload_artifact_replace",
+            "workload_bundle_list",
+            "workload_stats_get",
+            "workload_logs_get",
+            "workload_activity_get",
+            "workload_proton_get",
             "artifact_get",
             "artifact_create",
             "artifact_update",
-            "artifact_action",
+            "artifact_action_run",
             "artifact_repository_get",
             "artifact_repository_delete",
-            "artifact_build_get",
-            "artifact_build_action",
+            "artifact_get_build",
+            "artifact_build_run_action",
         }
     ),
     MCPToolCategory.DR_FILE: frozenset(
@@ -297,10 +301,8 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
     ),
     MCPToolCategory.DR_PREDICTIVE: frozenset(
         {
-            MCPToolCategory.DR_USE_CASES,
             MCPToolCategory.DR_CATALOG,
             MCPToolCategory.DR_MODELING,
-            MCPToolCategory.DR_DEPLOYMENTS,
             MCPToolCategory.DR_PREDICTIONS,
         }
     ),
@@ -356,6 +358,34 @@ def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
             # Plain tool name or unknown category — pass through
             resolved.add(entry)
     return frozenset(resolved)
+
+
+def _parse_header_entries(raw: str | None) -> frozenset[str] | None:
+    """Split a comma-separated header value into a frozenset of stripped tokens.
+
+    Returns None when the header is absent or blank (means "no filter").
+    """
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    entries = frozenset(part.strip() for part in stripped.split(",") if part.strip())
+    return entries if entries else None
+
+
+def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:
+    """Parse the x-datarobot-mcp-tools header and resolve any category names.
+
+    Category names (e.g. ``dr_connectors``, ``dr_connector_jira``) are expanded
+    to the set of tool function names they contain.  Plain tool names and unknown
+    entries are kept as-is.  Returns None when the header is absent or blank,
+    meaning no tool filtering should be applied.
+    """
+    entries = _parse_header_entries(raw)
+    if entries is None:
+        return None
+    return resolve_to_tool_names(entries)
 
 
 # ── reverse index: tool name → its categories ────────────────────────────────
