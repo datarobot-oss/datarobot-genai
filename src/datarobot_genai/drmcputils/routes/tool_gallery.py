@@ -36,9 +36,8 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
-from datarobot_genai.drmcputils.tool_gallery import hosted_kind
+from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
 
 logger = logging.getLogger(__name__)
 
@@ -56,38 +55,6 @@ ToolGalleryGate = Callable[[Request], Awaitable[bool]]
 # caller (drtools' ``get_tool_ui_metadata``) so this module need not import drtools. When
 # unset, the gallery serves names/tags/categories only (UI fields fall back to defaults).
 UiMetadataProvider = Callable[[], dict[str, dict[str, Any]]]
-
-
-def _tool_category(tool: Any) -> str | None:
-    """Read the provider's ``meta.tool_category`` marker (None for static drtools tools)."""
-    meta = getattr(tool, "meta", None) or {}
-    return meta.get("tool_category")
-
-
-def _is_hosted(tool: Any) -> bool:
-    """Return True for dynamic/proxied tools — those carrying a hosted ``tool_category``."""
-    return hosted_kind(_tool_category(tool)) is not None
-
-
-def _merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """Combine a FastMCP ``Tool`` with drtools UI metadata + derived categories.
-
-    Carries the raw ``tool_category`` marker and the tool's own ``description`` so the
-    builder can classify hosted tools (provider/categories) and fall back to the MCP
-    description when there is no curated UI copy.
-    """
-    ui = ui_metadata.get(tool.name, {})
-    return {
-        "name": tool.name,
-        "display_name": ui.get("display_name"),
-        "description_ui": ui.get("description_ui"),
-        "description": getattr(tool, "description", None),
-        "auth_provider": ui.get("auth_provider"),
-        "tags": sorted(tool.tags or []),
-        "categories": categories_for_tool(tool.name),
-        "tool_category": _tool_category(tool),
-        "hosted": _is_hosted(tool),
-    }
 
 
 def _parse_pagination(request: Request) -> tuple[int, int]:
@@ -179,7 +146,7 @@ def _make_tools_handler(
         # allowlist-filtered / CodeMode-collapsed view. The gallery shows everything.
         tools = await mcp.list_tools(run_middleware=False)
         ui_metadata = ui_metadata_provider() if ui_metadata_provider is not None else {}
-        merged = [_merge_tool_info(tool, ui_metadata) for tool in tools]
+        merged = [merge_tool_info(tool, ui_metadata) for tool in tools]
         items = build_tool_gallery_items(merged)
 
         total_count = len(items)

@@ -18,6 +18,10 @@ This module has no fastmcp dependency and no MCP-protocol imports so it can be
 imported by drtools, drmcputils, and drmcpbase alike.
 """
 
+from typing import Any
+
+from datarobot_genai.drmcputils.categories import categories_for_tool
+
 # Keys present in @tool_metadata(...) that carry UI/gallery metadata or
 # server-side registration hints.  These must be stripped before the metadata
 # dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
@@ -64,6 +68,38 @@ def hosted_kind(tool_category: str | None) -> dict[str, str] | None:
     if not tool_category:
         return None
     return _HOSTED_TOOL_KINDS.get(tool_category)
+
+
+def _tool_category(tool: Any) -> str | None:
+    """Read the provider's ``meta.tool_category`` marker (None for static drtools tools)."""
+    meta = getattr(tool, "meta", None) or {}
+    return meta.get("tool_category")
+
+
+def is_hosted(tool: Any) -> bool:
+    """Return True for dynamic/proxied tools — those carrying a hosted ``tool_category``."""
+    return hosted_kind(_tool_category(tool)) is not None
+
+
+def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Combine a FastMCP ``Tool`` with drtools UI metadata + derived categories.
+
+    Carries the raw ``tool_category`` marker and the tool's own ``description`` so the
+    builder can classify hosted tools (provider/categories) and fall back to the MCP
+    description when there is no curated UI copy.
+    """
+    ui = ui_metadata.get(tool.name, {})
+    return {
+        "name": tool.name,
+        "display_name": ui.get("display_name"),
+        "description_ui": ui.get("description_ui"),
+        "description": getattr(tool, "description", None),
+        "auth_provider": ui.get("auth_provider"),
+        "tags": sorted(tool.tags or []),
+        "categories": categories_for_tool(tool.name),
+        "tool_category": _tool_category(tool),
+        "hosted": is_hosted(tool),
+    }
 
 
 def _provider_for(auth_provider: str | None) -> str:

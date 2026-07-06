@@ -18,9 +18,9 @@ import importlib
 import importlib.util
 import pkgutil
 
-from datarobot_genai.drmcputils.routes.tool_gallery import _is_hosted
-from datarobot_genai.drmcputils.routes.tool_gallery import _merge_tool_info
 from datarobot_genai.drmcputils.tool_gallery import DRTOOLS_PRIVATE_METADATA_KEYS
+from datarobot_genai.drmcputils.tool_gallery import is_hosted
+from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
 from datarobot_genai.drtools.core import get_registered_tools
 
 
@@ -55,16 +55,16 @@ class _FakeTool:
 
 class TestIsHosted:
     def test_user_tool_deployment_is_hosted(self) -> None:
-        assert _is_hosted(_FakeTool("t", meta={"tool_category": "USER_TOOL_DEPLOYMENT"}))
+        assert is_hosted(_FakeTool("t", meta={"tool_category": "USER_TOOL_DEPLOYMENT"}))
 
     def test_built_in_tool_is_not_hosted(self) -> None:
-        assert not _is_hosted(_FakeTool("t", meta={"tool_category": "BUILT_IN_TOOL"}))
+        assert not is_hosted(_FakeTool("t", meta={"tool_category": "BUILT_IN_TOOL"}))
 
     def test_no_meta_is_not_hosted(self) -> None:
-        assert not _is_hosted(_FakeTool("t", meta=None))
+        assert not is_hosted(_FakeTool("t", meta=None))
 
     def test_empty_meta_is_not_hosted(self) -> None:
-        assert not _is_hosted(_FakeTool("t", meta={}))
+        assert not is_hosted(_FakeTool("t", meta={}))
 
 
 class TestMergeToolInfo:
@@ -77,7 +77,7 @@ class TestMergeToolInfo:
                 "auth_provider": "jira",
             }
         }
-        merged = _merge_tool_info(tool, ui)
+        merged = merge_tool_info(tool, ui)
         assert merged["name"] == "jira_search_issues"
         assert merged["display_name"] == "Jira — Search Issues"
         assert merged["description_ui"] == "Find Jira issues matching a JQL query."
@@ -87,7 +87,7 @@ class TestMergeToolInfo:
         assert merged["hosted"] is False
 
     def test_tool_without_ui_metadata_gets_none_fields(self) -> None:
-        merged = _merge_tool_info(_FakeTool("jira_search_issues"), {})
+        merged = merge_tool_info(_FakeTool("jira_search_issues"), {})
         assert merged["display_name"] is None
         assert merged["description_ui"] is None
         assert merged["auth_provider"] is None
@@ -96,7 +96,7 @@ class TestMergeToolInfo:
 
     def test_hosted_tool_has_no_categories(self) -> None:
         tool = _FakeTool("user_xyz", meta={"tool_category": "USER_TOOL_DEPLOYMENT"})
-        merged = _merge_tool_info(tool, {})
+        merged = merge_tool_info(tool, {})
         assert merged["hosted"] is True
         assert merged["categories"] == []
 
