@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
@@ -28,6 +29,7 @@ from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from nat.utils.responses_api import validate_no_responses_api
 
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.core.config import default_model_name
 from datarobot_genai.dragent.context import extract_headers_from_context
 
 from .llm_providers import DataRobotLitellmConfig
@@ -57,9 +59,56 @@ EXCLUDE_FIELDS = {
     "llm_default_model",
 }
 
-_DEFAULT_REASONING_EXTRA_BODY = {
+# Matches OpenAI/Azure reasoning models (gpt-5, o-series). Avoids gpt-4o and similar.
+_OPENAI_REASONING_MODEL_RE = re.compile(
+    r"(?:^|/)(?:o[1-9](?:-mini|-preview)?|gpt-5)",
+    re.IGNORECASE,
+)
+
+_ANTHROPIC_SONNET_EXTRA_BODY = {
     "thinking": {"type": "enabled", "budget_tokens": 1024},
 }
+_ANTHROPIC_OPUS_EXTRA_BODY = {
+    "thinking": {"type": "adaptive"},
+}
+_GEMINI_EXTRA_BODY = {
+    "thinking_config": {"thinking_budget": 1024},
+}
+_OPENAI_EXTRA_BODY = {
+    "reasoning_effort": "low",
+}
+
+
+def _normalize_model_name(model_name: str | None) -> str:
+    return (model_name or "").removeprefix("datarobot/").lower()
+
+
+def _resolve_model_name(
+    llm_config: DataRobotLLMComponentModelConfig,
+    config: dict[str, Any],
+) -> str | None:
+    return (
+        llm_config.model_name
+        or config.get("model")
+        or llm_config.llm_default_model
+        or default_model_name()
+    )
+
+
+def default_reasoning_extra_body(model_name: str | None) -> dict[str, Any]:
+    """Return provider-specific ``extra_body`` for ``reasoning: true``."""
+    normalized = _normalize_model_name(model_name)
+
+    if "gemini" in normalized:
+        return dict(_GEMINI_EXTRA_BODY)
+
+    if "opus" in normalized:
+        return dict(_ANTHROPIC_OPUS_EXTRA_BODY)
+
+    if _OPENAI_REASONING_MODEL_RE.search(normalized):
+        return dict(_OPENAI_EXTRA_BODY)
+
+    return dict(_ANTHROPIC_SONNET_EXTRA_BODY)
 
 
 def apply_reasoning_config(
@@ -74,7 +123,7 @@ def apply_reasoning_config(
 
     if llm_config.reasoning:
         config.pop("temperature", None)
-        config["extra_body"] = dict(_DEFAULT_REASONING_EXTRA_BODY)
+        config["extra_body"] = default_reasoning_extra_body(_resolve_model_name(llm_config, config))
     return config
 
 

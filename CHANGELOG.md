@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ## 0.22.2
-- Updated `workflow-nemo-guardrails-moderations.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
 - `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`; langgraph and llamaindex e2e workflows set `reasoning: true`.
 
 ## 0.22.1
