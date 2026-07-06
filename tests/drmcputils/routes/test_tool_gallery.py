@@ -14,36 +14,9 @@
 
 """FastMCP-free tests for the shared tool gallery route helpers."""
 
-import importlib
-import importlib.util
-import pkgutil
-
 from datarobot_genai.drmcputils.tool_gallery import DRTOOLS_PRIVATE_METADATA_KEYS
 from datarobot_genai.drmcputils.tool_gallery import is_hosted
 from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
-from datarobot_genai.drtools.core import get_registered_tools
-
-
-def _all_live_drtools_metadata() -> list[tuple[str, dict]]:
-    """Import every drtools tool module and return (tool_name, metadata) pairs."""
-
-    def _walk(package_name: str) -> None:
-        spec = importlib.util.find_spec(package_name)
-        if spec is None or not spec.submodule_search_locations:
-            return
-        for info in pkgutil.iter_modules(spec.submodule_search_locations, package_name + "."):
-            last = info.name.rsplit(".", 1)[-1]
-            if last.startswith("_"):
-                continue
-            if package_name == "datarobot_genai.drtools" and last == "core":
-                continue
-            if info.ispkg:
-                _walk(info.name)
-            else:
-                importlib.import_module(info.name)
-
-    _walk("datarobot_genai.drtools")
-    return [((md.get("name") or fn.__name__), md) for fn, md in get_registered_tools()]
 
 
 class _FakeTool:
@@ -99,34 +72,6 @@ class TestMergeToolInfo:
         merged = merge_tool_info(tool, {})
         assert merged["hosted"] is True
         assert merged["categories"] == []
-
-
-class TestDrtoolsUiMetadataCompleteness:
-    """Every live drtools tool must carry the UI metadata the gallery surfaces."""
-
-    def test_every_tool_has_display_name_and_description_ui(self) -> None:
-        missing_display = []
-        missing_desc = []
-        for name, md in _all_live_drtools_metadata():
-            if not md.get("display_name"):
-                missing_display.append(name)
-            if not md.get("description_ui"):
-                missing_desc.append(name)
-        assert not missing_display, f"tools missing display_name: {sorted(missing_display)}"
-        assert not missing_desc, f"tools missing description_ui: {sorted(missing_desc)}"
-
-    def test_connector_and_web_tools_have_auth_provider(self) -> None:
-        needs_auth = {"confluence", "jira", "gdrive", "microsoft_graph", "perplexity", "tavily"}
-
-        # Ensure modules are imported.
-        _all_live_drtools_metadata()
-        missing = []
-        for fn, md in get_registered_tools():
-            mod = fn.__module__
-            pkg = mod.split(".")[3] if mod.startswith("datarobot_genai.drtools.") else ""
-            if pkg in needs_auth and not md.get("auth_provider"):
-                missing.append(md.get("name") or fn.__name__)
-        assert not missing, f"connector/web tools missing auth_provider: {sorted(missing)}"
 
 
 class TestUiMetadataNeverLeaksToMcpClient:

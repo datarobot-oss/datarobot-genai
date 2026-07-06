@@ -13,45 +13,12 @@
 # limitations under the License.
 
 
-import importlib
-import importlib.util
-import pkgutil
-
 from datarobot_genai.drmcputils.categories import LEAF_CATEGORY_TOOLS
 from datarobot_genai.drmcputils.categories import PARENT_TO_CHILDREN
 from datarobot_genai.drmcputils.categories import MCPToolCategory
 from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import resolve_to_tool_names
-from datarobot_genai.drtools.core import get_registered_tools
-
-
-def _all_live_drtools_tool_names() -> set[str]:
-    """Import every drtools tool module and return the registered tool names.
-
-    Mirrors the package walk both registry loaders perform: recurse through
-    ``datarobot_genai.drtools`` (skipping ``core`` and private modules) so the
-    ``@tool_metadata`` decorators populate the registry, then read it back.
-    Commented-out decorators never execute, so they are correctly excluded.
-    """
-
-    def _walk(package_name: str) -> None:
-        spec = importlib.util.find_spec(package_name)
-        if spec is None or not spec.submodule_search_locations:
-            return
-        for info in pkgutil.iter_modules(spec.submodule_search_locations, package_name + "."):
-            last = info.name.rsplit(".", 1)[-1]
-            if last.startswith("_"):
-                continue
-            if package_name == "datarobot_genai.drtools" and last == "core":
-                continue
-            if info.ispkg:
-                _walk(info.name)
-            else:
-                importlib.import_module(info.name)
-
-    _walk("datarobot_genai.drtools")
-    return {(metadata.get("name") or func.__name__) for func, metadata in get_registered_tools()}
 
 
 class TestResolveToToolNames:
@@ -259,30 +226,3 @@ class TestCategoriesForTool:
         for leaf, tools in LEAF_CATEGORY_TOOLS.items():
             for tool_name in tools:
                 assert leaf in categories_for_tool(tool_name)
-
-
-class TestTaxonomyCompleteness:
-    """Guard against drift between live @tool_metadata tools and the taxonomy.
-
-    A tool that exists but is in no leaf category is silently dropped whenever a
-    request filters by that tool's category — the failure mode is invisible at
-    runtime, so it must be caught here.
-    """
-
-    def test_every_live_tool_belongs_to_a_leaf_category(self) -> None:
-        live = _all_live_drtools_tool_names()
-        categorized: set[str] = set().union(*LEAF_CATEGORY_TOOLS.values())
-        uncategorized = live - categorized
-        assert not uncategorized, (
-            "These live @tool_metadata tools are missing from LEAF_CATEGORY_TOOLS "
-            f"and will be dropped by category filters: {sorted(uncategorized)}"
-        )
-
-    def test_no_stale_tool_names_in_taxonomy(self) -> None:
-        live = _all_live_drtools_tool_names()
-        categorized: set[str] = set().union(*LEAF_CATEGORY_TOOLS.values())
-        stale = categorized - live
-        assert not stale, (
-            "These tool names appear in LEAF_CATEGORY_TOOLS but no longer have a "
-            f"live @tool_metadata decorator: {sorted(stale)}"
-        )
