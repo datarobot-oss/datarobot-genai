@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.23.4
-- `drmcputils`: request-scoped DataRobot clients now save and restore the SDK's global default Use Case instead of permanently nulling the process-global `datarobot.context.Context` singleton, which clobbered a default set concurrently by the embedding application.
+- `drmcputils`: request-scoped DataRobot clients now save and restore the SDK's global default Use Case instead of permanently nulling the process-global `datarobot.context.Context` singleton, which clobbered a default set concurrently by the embedding application. The suspension is reference-counted, so overlapping request-scoped blocks restore the default exactly once (last one out) instead of racing each other.
 - `drmcputils` no longer accepts the raw `Authorization` header as a DataRobot API token. On OAuth-protected MCP servers that header carries the MCP access token (e.g. an Okta JWT), not a DataRobot key — forwarding it to the DataRobot API was token confusion across audiences. It was originally a local-dev convenience; use `x-datarobot-api-token` (or `x-datarobot-authorization: Bearer <token>`) instead.
 
 ## 0.23.3

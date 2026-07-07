@@ -22,6 +22,7 @@ get their own client, so we never mutate the process-global ``dr.Client()``.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -66,23 +67,43 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
     return get_credentials().datarobot.datarobot_api_token
 
 
-@contextmanager
-def _suspend_default_use_case() -> Iterator[None]:
-    """Temporarily clear the SDK's default Use Case for the block's duration.
+class _UseCaseSuspension:
+    """Reference-counted suspension of the SDK's global default Use Case.
 
-    ``DRContext`` is a process-global singleton (not request state), so the
-    previous behavior — permanently nulling ``use_case`` — clobbered a default
-    Use Case set concurrently by the embedding application. Read the stored
-    value directly: both the ``use_case`` property and ``get_use_case()`` are
-    ``@_init_context``-decorated and would trigger client init / a UseCase
-    lookup over the network.
+    ``DRContext`` is a process-global singleton (not request state), so
+    permanently nulling ``use_case`` would clobber a default Use Case set
+    concurrently by the embedding application. The first entrant saves the
+    default and clears it; the last one out restores it — so overlapping
+    request-scoped blocks don't restore ``None`` over each other.
+
+    Reads the stored ``_use_case`` directly: both the ``use_case`` property
+    and ``get_use_case()`` are ``@_init_context``-decorated and would trigger
+    client init / a UseCase lookup over the network.
     """
-    previous_use_case = DRContext._use_case
-    DRContext.use_case = None
-    try:
-        yield
-    finally:
-        DRContext.use_case = previous_use_case
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._depth = 0
+        self._saved: Any = None
+
+    @contextmanager
+    def suspend(self) -> Iterator[None]:
+        with self._lock:
+            if self._depth == 0:
+                self._saved = DRContext._use_case
+                DRContext.use_case = None
+            self._depth += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._depth -= 1
+                if self._depth == 0:
+                    DRContext.use_case = self._saved
+                    self._saved = None
+
+
+_suspend_default_use_case = _UseCaseSuspension().suspend
 
 
 @contextmanager

@@ -23,6 +23,7 @@ from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 
 from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.clients.datarobot import _suspend_default_use_case
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drmcputils.exceptions import ToolError
 
@@ -119,6 +120,30 @@ class TestRequestUserDrSdk:
                     raise RuntimeError("boom")
 
             assert mock_dr_context.use_case == "some-use-case"
+
+    @patch(f"{_MODULE}.DRContext")
+    def test_overlapping_suspends_restore_once(self, mock_dr_context) -> None:
+        """GIVEN two request-scoped blocks that overlap (interleaved, not nested)
+        WHEN the first block exits while the second is still active
+        THEN the default stays cleared until the last block exits, and only the
+        original default is restored
+        (regression: the later entrant saved ``None`` and restored ``None`` over
+        the earlier block's restore).
+        """
+        mock_dr_context.use_case = "some-use-case"
+        mock_dr_context._use_case = "some-use-case"
+
+        block_a = _suspend_default_use_case()
+        block_a.__enter__()
+        mock_dr_context._use_case = None  # mirror what the property setter stored
+        block_b = _suspend_default_use_case()
+        block_b.__enter__()
+
+        block_a.__exit__(None, None, None)
+        assert mock_dr_context.use_case is None  # block B is still active
+
+        block_b.__exit__(None, None, None)
+        assert mock_dr_context.use_case == "some-use-case"
 
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
