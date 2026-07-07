@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.5
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
 ## 0.23.4
 - Upgrade github-actions to the latest releases with bug fixes, label validation and backport/cherry-picking capabilities
 
