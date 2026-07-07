@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.4
+- `drmcpbase`: external dynamic tools no longer replay non-idempotent requests on ambiguous failures. One retry policy (5 attempts) used to apply to every HTTP method — and retried *every* 5xx (`retry_all_server_errors` default), so a POST/PATCH whose first attempt reached the application could execute up to 5 times (duplicate side effects). POST/PATCH now retry only on provably-unprocessed failures: HTTP 429 or a connection that was never established. Idempotent methods (GET/PUT/DELETE) keep the full retry behavior.
+
 ## 0.23.3
 - `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
 

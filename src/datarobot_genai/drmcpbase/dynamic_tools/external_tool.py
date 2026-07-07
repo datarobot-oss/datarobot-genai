@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 REQUEST_RETRY_SLEEP = 0.1
 REQUEST_MAX_RETRY = 5
 REQUEST_RETRYABLE_STATUS_CODES = {429, 570, 502, 503, 504}
+# Idempotent methods (RFC 9110, of the ones the config allows) are safe to
+# retry on any transient failure.  POST and PATCH are not: an ambiguous
+# failure (502/504 from a gateway, a mid-flight timeout) cannot prove the
+# first attempt didn't reach the application, so a retry can duplicate the
+# side effect.  They are retried only when the request provably never got
+# processed: a 429 rejection, or a connection that was never established.
+IDEMPOTENT_METHODS = frozenset({"GET", "PUT", "DELETE"})
+NON_IDEMPOTENT_RETRYABLE_STATUS_CODES = {429}
 
 # HTTP connection timeouts in seconds
 REQUEST_CONNECT_TIMEOUT = 30
@@ -84,6 +92,34 @@ class ExternalToolRegistrationConfig(BaseModel):
     )
 
 
+def _retry_options_for_method(method: str) -> ExponentialRetry:
+    """Retry policy scoped to what the HTTP method makes safe to replay."""
+    if method.upper() in IDEMPOTENT_METHODS:
+        return ExponentialRetry(
+            attempts=REQUEST_MAX_RETRY,
+            start_timeout=REQUEST_RETRY_SLEEP,
+            statuses=REQUEST_RETRYABLE_STATUS_CODES,
+            exceptions={
+                aiohttp.ClientError,
+                aiohttp.ServerTimeoutError,
+                asyncio.TimeoutError,
+            },
+        )
+    # POST/PATCH: only provably-unprocessed failures (see constants above).
+    # ClientConnectorError means the connection was never established, so the
+    # request was never sent; broader ClientError/timeout classes stay out
+    # because they include mid-flight failures after the server saw the request.
+    # retry_all_server_errors must be off — it retries every 5xx regardless of
+    # the `statuses` set.
+    return ExponentialRetry(
+        attempts=REQUEST_MAX_RETRY,
+        start_timeout=REQUEST_RETRY_SLEEP,
+        statuses=NON_IDEMPOTENT_RETRYABLE_STATUS_CODES,
+        exceptions={aiohttp.ClientConnectorError},
+        retry_all_server_errors=False,
+    )
+
+
 def _external_tool_callable_factory(
     spec: ExternalToolRegistrationConfig,
     allow_empty: bool = False,
@@ -125,16 +161,7 @@ def _external_tool_callable_factory(
         )
 
         # Configure retry strategy with exponential backoff
-        retry_options = ExponentialRetry(
-            attempts=REQUEST_MAX_RETRY,
-            start_timeout=REQUEST_RETRY_SLEEP,
-            statuses=REQUEST_RETRYABLE_STATUS_CODES,
-            exceptions={
-                aiohttp.ClientError,
-                aiohttp.ServerTimeoutError,
-                asyncio.TimeoutError,
-            },
-        )
+        retry_options = _retry_options_for_method(spec.method)
 
         # Execute request with retry logic
         async with aiohttp.ClientSession(timeout=client_timeout) as session:
