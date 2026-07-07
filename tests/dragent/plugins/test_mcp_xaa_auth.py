@@ -20,6 +20,8 @@ import pytest
 from nat.builder.context import Context
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
+from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.mcp_xaa_auth import MCPXAAAuthProvider
 from datarobot_genai.dragent.plugins.mcp_xaa_auth import MCPXAAAuthProviderConfig
@@ -192,11 +194,30 @@ class TestMCPXAAAuthProvider:
             yield mock_func
 
     @pytest.fixture
-    def mock_get_oauth2_cross_app_access_auth_provider_coinfig(self) -> Iterator[Mock]:
+    def mock_get_oauth2_cross_app_access_auth_provider_config(self) -> Iterator[Mock]:
         with patch.object(
             MCPXAAAuthProvider,
-            "get_oauth2_cross_app_access_auth_provider_coinfig",
+            "get_oauth2_cross_app_access_auth_provider_config",
         ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_forwardable_headers_from_inbound_request(self) -> Iterator[Mock]:
+        with patch.object(
+            MCPXAAAuthProvider,
+            "get_forwardable_headers_from_inbound_request",
+        ) as mock_func:
+            mock_func.return_value = [HeaderCred(name="afda", value="sdafas")]
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_exchanged_token_from_inbound_request(self) -> Iterator[AsyncMock]:
+        with patch.object(
+            MCPXAAAuthProvider,
+            "get_exchanged_token_from_inbound_request",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            mock_func.return_value = BearerTokenCred(token="adfa")
             yield mock_func
 
     def test_set_xaa_params(self) -> None:
@@ -209,19 +230,17 @@ class TestMCPXAAAuthProvider:
     def test_extract_subject_token_from_okta_token_header(
         self,
         mock_extract_token_value_from_bearer_or_non_bearer_header: Mock,
-        mock_nat_context_get: Mock,
     ) -> None:
         auth_provider_config = Mock()
         mock_header_name = "dsfdsaas"
         auth_provider_config.okta_token_header = mock_header_name
         auth_provider_config.fallback_token_headers = [Mock()]
         mock_token_header_value = Mock()
-        mock_nat_context_get.return_value.metadata.headers = {
-            mock_header_name: mock_token_header_value
-        }
 
         auth_provider = MCPXAAAuthProvider(auth_provider_config)
-        output = auth_provider.extract_subject_token_from_inbound_request()
+        output = auth_provider.extract_subject_token_from_inbound_request(
+            {mock_header_name: mock_token_header_value},
+        )
 
         mock_extract_token_value_from_bearer_or_non_bearer_header.assert_called_once_with(
             mock_token_header_value,
@@ -231,18 +250,16 @@ class TestMCPXAAAuthProvider:
     def test_extract_subject_token_from_fallback_token_header(
         self,
         mock_extract_token_value_from_bearer_or_non_bearer_header: Mock,
-        mock_nat_context_get: Mock,
     ) -> None:
         auth_provider_config = Mock()
         mock_header_name = "dsfdsaas"
         auth_provider_config.fallback_token_headers = [mock_header_name]
         mock_token_header_value = Mock()
-        mock_nat_context_get.return_value.metadata.headers = {
-            mock_header_name: mock_token_header_value
-        }
 
         auth_provider = MCPXAAAuthProvider(auth_provider_config)
-        output = auth_provider.extract_subject_token_from_inbound_request()
+        output = auth_provider.extract_subject_token_from_inbound_request(
+            {mock_header_name: mock_token_header_value},
+        )
 
         mock_extract_token_value_from_bearer_or_non_bearer_header.assert_called_once_with(
             mock_token_header_value,
@@ -251,15 +268,13 @@ class TestMCPXAAAuthProvider:
 
     def test_extract_subject_token_raise_error_if_no_qualified_token_header(
         self,
-        mock_nat_context_get: Mock,
     ) -> None:
         auth_provider_config = Mock()
         auth_provider_config.fallback_token_headers = []
-        mock_nat_context_get.return_value.metadata.headers = {}
 
         with pytest.raises(RuntimeError):
             auth_provider = MCPXAAAuthProvider(auth_provider_config)
-            auth_provider.extract_subject_token_from_inbound_request()
+            auth_provider.extract_subject_token_from_inbound_request({})
 
     def test_get_cross_app_flow_params(self) -> None:
         auth_provider = MCPXAAAuthProvider(Mock())
@@ -276,7 +291,7 @@ class TestMCPXAAAuthProvider:
             xaa_params.step_two_token_request_params.id_jag_scopes,
         )
 
-    def test_get_oauth2_cross_app_access_auth_provider_coinfig(self) -> None:
+    def test_get_oauth2_cross_app_access_auth_provider_config(self) -> None:
         auth_provider_config = MCPXAAAuthProviderConfig(
             okta_token_header="adfaadf",
             fallback_token_headers=["dafdaas"],
@@ -284,7 +299,7 @@ class TestMCPXAAAuthProvider:
             private_jwk="dasdfae",
         )
         auth_provider = MCPXAAAuthProvider(auth_provider_config)
-        output = auth_provider.get_oauth2_cross_app_access_auth_provider_coinfig()
+        output = auth_provider.get_oauth2_cross_app_access_auth_provider_config()
 
         assert output == OAuth2CrossApplicationAccessAuthProviderConfig(
             okta_token_header=auth_provider_config.okta_token_header,
@@ -293,38 +308,45 @@ class TestMCPXAAAuthProvider:
             private_jwk=auth_provider_config.private_jwk,
         )
 
+    def test_get_non_forwardable_header_keys(self) -> None:
+        auth_provider_config = MCPXAAAuthProviderConfig()
+        auth_provider = MCPXAAAuthProvider(auth_provider_config)
+
+        output = auth_provider.get_non_forwardable_header_keys()
+        assert output == {"x-datarobot-external-access-token", "authorization"}
+
+    def test_get_forwardable_headers_from_inbound_request(self) -> None:
+        auth_provider_config = MCPXAAAuthProviderConfig()
+        auth_provider = MCPXAAAuthProvider(auth_provider_config)
+        headers = {"afda": "sdafas"}
+        output = auth_provider.get_forwardable_headers_from_inbound_request(headers)
+
+        assert output == [HeaderCred(name="afda", value=SecretStr(headers["afda"]))]
+
     @pytest.mark.asyncio
     async def test_authenticate(
         self,
-        mock_extract_subject_token_from_inbound_request: Mock,
-        mock_get_cross_app_flow_params: Mock,
-        mock_get_oauth2_cross_app_access_auth_provider_coinfig: Mock,
-        mock_get_token_exchange: Mock,
+        mock_get_forwardable_headers_from_inbound_request: Mock,
+        mock_get_exchanged_token_from_inbound_request: AsyncMock,
+        mock_nat_context_get: Mock,
     ) -> None:
-        auth_provider_config = Mock()
-        auth_provider = MCPXAAAuthProvider(auth_provider_config)
+        inbound_headers = Mock()
+        mock_nat_context_get.return_value.metadata.headers = inbound_headers
+        auth_provider = MCPXAAAuthProvider(MCPXAAAuthProviderConfig())
         auth_provider.set_xaa_params(Mock())
         output = await auth_provider.authenticate()
 
-        mock_get_oauth2_cross_app_access_auth_provider_coinfig.assert_called_once_with()
-        mock_get_token_exchange.assert_called_once_with(
-            mock_get_oauth2_cross_app_access_auth_provider_coinfig.return_value
-        )
-        mock_get_cross_app_flow_params.assert_called_once_with()
-        mock_extract_subject_token_from_inbound_request.assert_called_once_with()
-        mock_token_exchange_impl = mock_get_token_exchange.return_value
-        mock_token_exchange_impl.exchange_token.assert_called_once_with(
-            mock_get_cross_app_flow_params.return_value,
-            mock_extract_subject_token_from_inbound_request.return_value,
-        )
+        mock_get_forwardable_headers_from_inbound_request.assert_called_once_with(inbound_headers)
+        mock_get_exchanged_token_from_inbound_request.assert_called_once_with(inbound_headers)
         assert output == AuthResult(
             credentials=[
-                BearerTokenCred(token=mock_token_exchange_impl.exchange_token.return_value)
+                *mock_get_forwardable_headers_from_inbound_request.return_value,
+                mock_get_exchanged_token_from_inbound_request.return_value,
             ]
         )
 
     @pytest.mark.asyncio
-    async def test_authenticate_raise_error_when_xaa_params_not_set(
+    async def test_authenticate_raises_error_when_xaa_params_not_set(
         self,
         mock_get_cross_app_flow_params: Mock,
     ) -> None:

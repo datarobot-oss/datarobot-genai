@@ -23,8 +23,10 @@ from nat.cli.register_workflow import register_auth_provider
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
 from nat.data_models.common import OptionalSecretStr
 from pydantic import Field
+from pydantic import SecretStr
 
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
@@ -177,7 +179,7 @@ class MCPXAAAuthProvider(AuthProviderBase[MCPXAAAuthProviderConfig]):
             id_jag_scopes=self._xaa_params.step_two_token_request_params.id_jag_scopes,
         )
 
-    def get_oauth2_cross_app_access_auth_provider_coinfig(
+    def get_oauth2_cross_app_access_auth_provider_config(
         self,
     ) -> OAuth2CrossApplicationAccessAuthProviderConfig:
         return OAuth2CrossApplicationAccessAuthProviderConfig(
@@ -187,9 +189,7 @@ class MCPXAAAuthProvider(AuthProviderBase[MCPXAAAuthProviderConfig]):
             private_jwk=self.config.private_jwk,
         )
 
-    def extract_subject_token_from_inbound_request(self) -> str:
-        headers: dict[str, str] = Context.get().metadata.headers or {}
-
+    def extract_subject_token_from_inbound_request(self, headers: dict[str, str]) -> str:
         header_keys_sorted_by_descending_priority = [self.config.okta_token_header.lower()]
         header_keys_sorted_by_descending_priority.extend(
             [header.lower() for header in self.config.fallback_token_headers]
@@ -207,17 +207,41 @@ class MCPXAAAuthProvider(AuthProviderBase[MCPXAAAuthProviderConfig]):
             "The access token must be forwarded with every agent call."
         )
 
+    def get_non_forwardable_header_keys(self) -> set[str]:
+        excluded_header_keys = {self.config.okta_token_header.lower()}
+        excluded_header_keys.update(header.lower() for header in self.config.fallback_token_headers)
+        return excluded_header_keys
+
+    def get_forwardable_headers_from_inbound_request(
+        self,
+        headers: dict[str, str],
+    ) -> list[HeaderCred]:
+        return [
+            HeaderCred(name=header_key, value=SecretStr(header_value))
+            for header_key, header_value in headers.items()
+            if header_key not in self.get_non_forwardable_header_keys() and header_value is not None
+        ]
+
+    async def get_exchanged_token_from_inbound_request(
+        self,
+        headers: dict[str, str],
+    ) -> BearerTokenCred:
+        token_exchange_impl = get_token_exchange(
+            self.get_oauth2_cross_app_access_auth_provider_config()
+        )
+        flow_params = self.get_cross_app_flow_params()
+        subject_token = self.extract_subject_token_from_inbound_request(headers)
+        exchanged_token = await token_exchange_impl.exchange_token(flow_params, subject_token)
+        return BearerTokenCred(token=exchanged_token)
+
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
         if self._xaa_params is None:
             raise RuntimeError("authenticate() shall be called after set_xaa_params() is called.")
 
-        token_exchange_impl = get_token_exchange(
-            self.get_oauth2_cross_app_access_auth_provider_coinfig()
-        )
-        flow_params = self.get_cross_app_flow_params()
-        subject_token = self.extract_subject_token_from_inbound_request()
-        exchanged_token = await token_exchange_impl.exchange_token(flow_params, subject_token)
-        return AuthResult(credentials=[BearerTokenCred(token=exchanged_token)])
+        headers: dict[str, str] = Context.get().metadata.headers or {}
+        forwardable_header_creds = self.get_forwardable_headers_from_inbound_request(headers)
+        bearer_token_cred = await self.get_exchanged_token_from_inbound_request(headers)
+        return AuthResult(credentials=[*forwardable_header_creds, bearer_token_cred])
 
 
 @register_auth_provider(config_type=MCPXAAAuthProviderConfig)
