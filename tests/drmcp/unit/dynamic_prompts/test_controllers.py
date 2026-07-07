@@ -391,6 +391,54 @@ class TestPromptTemplatesRefresh:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
+        "mock_lineage_manager_init",
+        "mock_sync_mcp_prompts",
+    )
+    async def test_refresh_skips_prompt_template_with_unchanged_version(
+        self, mcp_server: DataRobotMCP, mock_module_under_test: str
+    ) -> None:
+        """
+        GIVEN a registered prompt template whose stored version is already the latest
+        WHEN the refresh runs
+        THEN the prompt is not re-registered and the mapping is unchanged
+        (regression: the stored version-id string was compared against the whole
+        version object, so every refresh re-registered the prompt under a new
+        deduplicated name).
+        """
+        prompt_template = dr.genai.PromptTemplate(
+            id="pt1", name="pt1 name", description="pt1 description"
+        )
+        latest_version = dr.genai.PromptTemplateVersion(
+            id="ptv1.2",
+            prompt_template_id=prompt_template.id,
+            version=2,
+            prompt_text="Text 1",
+            variables=[],
+        )
+        await mcp_server.set_prompt_mapping("pt1", "ptv1.2", "pt1 name")
+
+        with (
+            patch(
+                f"{mock_module_under_test}.get_datarobot_prompt_templates",
+                Mock(return_value=[prompt_template]),
+            ),
+            patch(
+                f"{mock_module_under_test}.get_datarobot_prompt_template_versions",
+                Mock(return_value={prompt_template.id: [latest_version]}),
+            ),
+            patch(
+                f"{mock_module_under_test}.register_prompt_from_datarobot_prompt_management",
+                new_callable=AsyncMock,
+            ) as mock_register,
+        ):
+            await refresh_registered_prompt_template()
+
+        mock_register.assert_not_called()
+        internal_mappings = await mcp_server.get_prompt_mapping()
+        assert internal_mappings == {"pt1": ("ptv1.2", "pt1 name")}
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures(
         "mock_get_datarobot_prompt_templates",
         "mock_get_datarobot_prompt_template_versions",
     )

@@ -20,6 +20,8 @@ import pytest
 from fastmcp.prompts import Prompt
 
 from datarobot_genai.drmcp.core.enums import DataRobotMCPPromptCategory
+from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
+from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import (
     check_prompt_registration_status_after_it_finishes,
 )
@@ -135,9 +137,7 @@ class TestRegisterPrompt:
             title=None,
             description=None,
             tags=None,
-            meta={
-                "resource_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name
-            },
+            meta={"prompt_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name},
         )
         mock_datarobot_mcp_server.add_prompt.assert_called_once_with(
             mock_prompt_from_function.return_value
@@ -180,9 +180,7 @@ class TestRegisterPrompt:
             title=None,
             description=None,
             tags=None,
-            meta={
-                "resource_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name
-            },
+            meta={"prompt_category": DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name},
         )
 
     @pytest.mark.asyncio
@@ -211,3 +209,28 @@ class TestRegisterPrompt:
         mock_get_prompt_name_no_duplicate.assert_called_once_with(
             mock_datarobot_mcp_server, "my_prompt"
         )
+
+    @pytest.mark.asyncio
+    async def test_register_prompt_meta_is_readable_by_lineage(self) -> None:
+        """
+        GIVEN a prompt registered via register_prompt on a live server
+        WHEN lineage builds MCPPromptMetadata from the registered FastMCP prompt
+        THEN the category is read from meta without error
+        (regression: register_prompt stamped the category under 'resource_category'
+        while lineage reads 'prompt_category', so every lineage sync over a
+        dynamically registered prompt crashed with KeyError).
+        """
+        test_mcp = DataRobotMCP()
+
+        async def greet() -> str:
+            return "hi"
+
+        with patch("datarobot_genai.drmcp.core.mcp_instance.mcp", test_mcp):
+            await register_prompt(fn=greet, name="greet")
+            prompts = await test_mcp.get_prompts()
+
+        registered = next(p for p in prompts.values() if p.name == "greet")
+        metadata = MCPPromptMetadata.from_fastmcp_item(registered)
+
+        assert metadata.name == "greet"
+        assert metadata.type == DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION.name

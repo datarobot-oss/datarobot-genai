@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.3
+- `drmcp`: fixed dynamic-prompt registration stamping the category under `resource_category` instead of `prompt_category`, which crashed every lineage sync over a dynamically registered prompt with a `KeyError`.
+- `drmcp`: fixed the prompt-template refresh comparing the stored version-id string against the whole version object — the comparison was always unequal, so every refresh re-registered unchanged prompts under new deduplicated names.
+
 ## 0.23.2
 - `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.
 
