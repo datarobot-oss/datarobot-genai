@@ -378,6 +378,141 @@ class TestUserMCPProvider:
             f"{mock_datarobot_endpoint}/deployments/{user_mcp_deployment_id}/directAccess/mcp"
         )
 
+    @pytest.fixture
+    def real_namespace_prefix(self, mock_user_mcp_proxy_provider_cache_cls: Mock) -> None:
+        """Restore the real prefix derivation on the autouse-patched cache class."""
+        mock_user_mcp_proxy_provider_cache_cls.get_namespace_prefix.side_effect = (
+            UserMCPProxyProviderCache.get_namespace_prefix
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_tool_skips_all_remote_work_for_non_proxied_names(
+        self,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+        mock_get_or_create_mcp_proxy_provider: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        # GIVEN a tools/call for a tool that is not a proxied user-MCP tool
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        # WHEN the provider chain asks this provider to resolve it
+        output = await mcp_provider._get_tool("datarobot_docs_search")
+
+        # THEN no remote work happens at all — no entitlement check, no
+        # deployment listing, no proxy handshake (regression: the default
+        # _get_tool fanned out to every user MCP deployment for ANY tool name)
+        assert output is None
+        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
+        mock_get_user_mcp_deployment_ids.assert_not_called()
+        mock_get_or_create_mcp_proxy_provider.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_tool_short_circuits_when_proxy_gate_disabled(
+        self,
+        module_under_test: str,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        # GIVEN a request with x-datarobot-mcp-enable-proxy: false
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        with patch(
+            f"{module_under_test}.is_category_disabled_for_request", return_value=True
+        ) as mock_gate:
+            # WHEN a proxied tool is resolved
+            output = await mcp_provider._get_tool("user-mcp-ab12_search")
+
+        # THEN the lookup is skipped before any remote work
+        mock_gate.assert_called_once_with(DataRobotMCPToolCategory.PROXIED_USER_MCP.name)
+        assert output is None
+        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
+        mock_get_user_mcp_deployment_ids.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_tool_returns_none_when_gallery_support_disabled(
+        self,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        # GIVEN the tools-gallery entitlement is off for this user
+        mock_is_mcp_tools_gallery_support_enabled.return_value = False
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        # WHEN a proxied tool is resolved / THEN no deployment listing happens
+        assert await mcp_provider._get_tool("user-mcp-ab12_search") is None
+        mock_get_user_mcp_deployment_ids.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("real_namespace_prefix")
+    async def test_get_tool_resolves_only_the_owning_deployment(
+        self,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+        mock_get_or_create_mcp_proxy_provider: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        # GIVEN two user MCP deployments and a call for a tool namespaced to the second
+        mock_is_mcp_tools_gallery_support_enabled.return_value = True
+        mock_get_user_mcp_deployment_ids.return_value = ["deployment-ab12", "deployment-cd34"]
+
+        def remote_search(q: str) -> str:
+            """Search."""
+            return q
+
+        proxied_tool = Tool.from_function(fn=remote_search, name="user-mcp-cd34_search")
+        owning_proxy = Mock()
+        owning_proxy.get_tool = AsyncMock(return_value=proxied_tool)
+        mock_get_or_create_mcp_proxy_provider.return_value = owning_proxy
+
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        # WHEN the tool is resolved
+        output = await mcp_provider._get_tool("user-mcp-cd34_search")
+
+        # THEN only the owning deployment's proxy is queried (no full fan-out)
+        mock_get_or_create_mcp_proxy_provider.assert_called_once_with("deployment-cd34")
+        owning_proxy.get_tool.assert_awaited_once_with("user-mcp-cd34_search", None)
+        # AND the tool is stamped like the listing path stamps it
+        assert output is not None
+        assert output.meta is not None
+        assert output.meta["tool_category"] == DataRobotMCPToolCategory.PROXIED_USER_MCP.name
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("real_namespace_prefix")
+    async def test_get_tool_scans_next_candidate_on_last4_collision(
+        self,
+        mock_get_user_mcp_deployment_ids: AsyncMock,
+        mock_get_or_create_mcp_proxy_provider: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: AsyncMock,
+    ) -> None:
+        # GIVEN two deployments sharing the same last-4 suffix; the first does
+        # not own the tool (and its proxy even errors)
+        mock_is_mcp_tools_gallery_support_enabled.return_value = True
+        mock_get_user_mcp_deployment_ids.return_value = ["one-ab12", "two-ab12"]
+
+        def remote_search(q: str) -> str:
+            """Search."""
+            return q
+
+        proxied_tool = Tool.from_function(fn=remote_search, name="user-mcp-ab12_search")
+        broken_proxy = Mock()
+        broken_proxy.get_tool = AsyncMock(side_effect=RuntimeError("handshake failed"))
+        owning_proxy = Mock()
+        owning_proxy.get_tool = AsyncMock(return_value=proxied_tool)
+        mock_get_or_create_mcp_proxy_provider.side_effect = [broken_proxy, owning_proxy]
+
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        # WHEN the tool is resolved / THEN the collision candidate is skipped
+        # and the owning deployment still resolves the tool
+        output = await mcp_provider._get_tool("user-mcp-ab12_search")
+        assert output is not None
+        assert output.name == "user-mcp-ab12_search"
+
 
 class TestUserMCPProxyProviderCache:
     @pytest.fixture
@@ -444,6 +579,24 @@ class TestUserMCPProxyProviderCache:
     ) -> None:
         output = UserMCPProxyProviderCache.get_namespace_transform(user_mcp_deployment_id)
         assert output._prefix == f"user-mcp-{namespace_transform_value}"
+
+    @pytest.mark.parametrize(
+        "user_mcp_deployment_id, expected_suffix",
+        [
+            ("dsafdafd", "dafd"),
+            ("fd", "fd"),
+        ],
+    )
+    def test_get_namespace_prefix_matches_transform(
+        self,
+        user_mcp_deployment_id: str,
+        expected_suffix: str,
+    ) -> None:
+        """_get_tool's prefix matching must stay in lockstep with the transform."""
+        prefix = UserMCPProxyProviderCache.get_namespace_prefix(user_mcp_deployment_id)
+        assert prefix == f"user-mcp-{expected_suffix}"
+        transform = UserMCPProxyProviderCache.get_namespace_transform(user_mcp_deployment_id)
+        assert transform._prefix == prefix
 
 
 class TestMCPProxyClientSetup:
