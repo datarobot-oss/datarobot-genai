@@ -30,6 +30,7 @@ from fastmcp.server.providers.proxy import ProxyClient
 from fastmcp.server.providers.proxy import ProxyProvider
 from fastmcp.server.transforms import Namespace
 from fastmcp.tools.base import Tool
+from fastmcp.utilities.versions import VersionSpec
 from httpx import AsyncClient
 from mcp.shared._httpx_utils import create_mcp_http_client
 
@@ -62,6 +63,8 @@ def _mark_as_proxied_user_mcp(tool: Tool) -> Tool:
 
 
 CACHE_TTL_IN_SECOND = 10 * TimeMeasurement.MINUTE.to_numeric_value_in_second()
+# Root of every proxied tool's namespace prefix ("user-mcp-<last4>_<tool>").
+USER_MCP_NAMESPACE_ROOT = "user-mcp-"
 MCP_K8S_POD_TCP_CONNECT_TIMEOUT_IN_SECOND = 60 * TimeMeasurement.SECOND.to_numeric_value_in_second()
 MCP_READ_TIMEOUT_IN_SECOND = 30 * TimeMeasurement.SECOND.to_numeric_value_in_second()
 MCP_WRITE_TIMEOUT_IN_SECOND = 30 * TimeMeasurement.SECOND.to_numeric_value_in_second()
@@ -142,9 +145,13 @@ class UserMCPProxyProviderCache:
         self._cache: LRUCache = LRUCache(maxsize=max_cache_size)
 
     @staticmethod
-    def get_namespace_transform(user_mcp_deployment_id: str) -> Namespace:
+    def get_namespace_prefix(user_mcp_deployment_id: str) -> str:
         last_four_digit = user_mcp_deployment_id[-4:] or user_mcp_deployment_id
-        return Namespace(f"user-mcp-{last_four_digit}")
+        return f"{USER_MCP_NAMESPACE_ROOT}{last_four_digit}"
+
+    @staticmethod
+    def get_namespace_transform(user_mcp_deployment_id: str) -> Namespace:
+        return Namespace(UserMCPProxyProviderCache.get_namespace_prefix(user_mcp_deployment_id))
 
     @cachedmethod(lambda self: self._cache)
     def get(self, user_mcp_deployment_id: str) -> ProxyProvider:
@@ -228,3 +235,43 @@ class UserMCPProvider(Provider):
                 else:
                     tools.extend(_mark_as_proxied_user_mcp(tool) for tool in r)
         return tools
+
+    async def _get_tool(self, name: str, version: VersionSpec | None = None) -> Tool | None:
+        """Resolve a single proxied tool without fanning out to every deployment.
+
+        The base ``Provider`` implementation resolves ``get_tool`` through
+        ``_list_tools()``, which for this provider means an entitlement check, a
+        deployment listing and an MCP handshake with *every* user MCP deployment
+        on *every* ``tools/call`` — including calls for tools this provider does
+        not even own. Proxied tool names always carry their deployment namespace
+        (``user-mcp-<last4>_<tool>``), so resolve the owning deployment from the
+        name and query only its proxy.
+        """
+        if not name.startswith(USER_MCP_NAMESPACE_ROOT):
+            # Not a proxied user-MCP tool: skip all remote work.
+            return None
+
+        if is_category_disabled_for_request(DataRobotMCPToolCategory.PROXIED_USER_MCP.name):
+            logger.debug("Proxied user-MCP tools are disabled for this request; skipping lookup.")
+            return None
+
+        if not await check_mcp_tools_gallery_support(self.datarobot_api_client):
+            return None
+
+        for user_mcp_deployment_id in await self.get_user_mcp_deployment_ids():
+            namespace_prefix = UserMCPProxyProviderCache.get_namespace_prefix(
+                user_mcp_deployment_id
+            )
+            if not name.startswith(f"{namespace_prefix}_"):
+                continue
+            # More than one deployment can share the same last-4 suffix, so keep
+            # scanning candidates until one of them owns the tool.
+            proxy_provider = self.get_or_create_mcp_proxy_provider(user_mcp_deployment_id)
+            try:
+                tool = await proxy_provider.get_tool(name, version)
+            except Exception as ex:
+                logger.warning("Failed to get tool %r from user MCP proxy: %s", name, ex)
+                continue
+            if tool is not None:
+                return _mark_as_proxied_user_mcp(tool)
+        return None
