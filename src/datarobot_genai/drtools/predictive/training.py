@@ -221,7 +221,7 @@ async def catalog_analyze_dataset(
 @tool_metadata(
     tags={"predictive", "training", "read", "analysis", "usecase"},
     description=(
-        "[Catalog—use-case IDeas] Use when the user wants ranked ML problem suggestions from one "
+        "[Catalog—use-case ideas] Use when the user wants ranked ML problem suggestions from one "
         "catalog dataset (name, suggested target, problem type, confidence). Read-only. Builds on "
         "dataset profiling; not the same as starting Autopilot (modeling_start_autopilot) "
         "or deep EDA "
