@@ -150,6 +150,20 @@ async def test_file_list_recursive_at_root_rejected(monkeypatch: pytest.MonkeyPa
         await tools_mod.file_list(path="dr://", recursive=True)
 
 
+async def test_file_list_root_as_tree_ignores_recursive(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _use_store(monkeypatch, FakeStore(tree="abc/\n  a.txt"))
+    result = await tools_mod.file_list(path="dr://", as_tree=True, recursive=True)
+    assert result["tree"] == "abc/\n  a.txt"
+    assert store.calls[0][0] == "tree"
+
+
+async def test_file_list_root_pattern_ignores_recursive(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _use_store(monkeypatch, FakeStore(glob=[_entry("abc/a.csv")]))
+    result = await tools_mod.file_list(path="dr://", pattern="dr://abc/**/*.csv", recursive=True)
+    assert result["path"] == "dr://abc/**/*.csv"
+    assert store.calls[0][0] == "glob"
+
+
 async def test_file_list_includes_browse_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     entries = [_entry(f"abc/{i}.txt") for i in range(3)]
     _use_store(monkeypatch, FakeStore(ls=entries))

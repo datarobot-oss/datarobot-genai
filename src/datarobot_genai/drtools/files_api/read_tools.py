@@ -140,14 +140,6 @@ async def file_list(
 
     cleaned_path = _require_path(path)
 
-    if recursive and _is_root(cleaned_path):
-        raise ToolError(
-            "Argument validation error: recursive listing at 'dr://' is not supported. "
-            "List a specific catalog item (e.g. 'dr://<catalog_id>/') or use "
-            "pattern='dr://<catalog_id>/**/*'.",
-            kind=ToolErrorKind.VALIDATION,
-        )
-
     if as_tree:
         tree = await store.tree(cleaned_path, recursion_limit=maxdepth or 2)
         return {"path": cleaned_path, "tree": tree}
@@ -156,6 +148,13 @@ async def file_list(
         entries = await store.glob(pattern.strip(), maxdepth=maxdepth)
         listed = pattern.strip()
     elif recursive:
+        if _is_root(cleaned_path):
+            raise ToolError(
+                "Argument validation error: recursive listing at 'dr://' is not supported. "
+                "List a specific catalog item (e.g. 'dr://<catalog_id>/') or use "
+                "pattern='dr://<catalog_id>/**/*'.",
+                kind=ToolErrorKind.VALIDATION,
+            )
         entries = await store.find(cleaned_path, maxdepth=maxdepth)
         listed = cleaned_path
     else:
