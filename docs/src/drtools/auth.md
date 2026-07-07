@@ -25,7 +25,7 @@ Credentials are defined in `datarobot_genai.drtools.core.credentials.ToolsAuthCr
 
 | Secret | Header examples |
 |---|---|
-| DataRobot API token | `Authorization: Bearer <token>`, `x-datarobot-api-token` |
+| DataRobot API token | `x-datarobot-api-token: <token>`, `x-datarobot-authorization: Bearer <token>` |
 | Tavily | `x-tavily-api-key` |
 | Perplexity | `x-perplexity-api-key` |
 | OAuth fallback | `x-datarobot-<provider>-access-token` |
@@ -66,7 +66,7 @@ from langchain_mcp_adapters.sessions import StreamableHttpConnection
 connection = StreamableHttpConnection(
     url="https://my-mcp.example.com/mcp",
     headers={
-        "Authorization": "Bearer <datarobot-api-token>",
+        "x-datarobot-api-token": "<datarobot-api-token>",
         "x-datarobot-authorization-context": "<jwt-auth-context>",
     },
 )

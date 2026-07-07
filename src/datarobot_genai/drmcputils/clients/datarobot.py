@@ -22,6 +22,7 @@ get their own client, so we never mutate the process-global ``dr.Client()``.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -66,6 +67,45 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
     return get_credentials().datarobot.datarobot_api_token
 
 
+class _UseCaseSuspension:
+    """Reference-counted suspension of the SDK's global default Use Case.
+
+    ``DRContext`` is a process-global singleton (not request state), so
+    permanently nulling ``use_case`` would clobber a default Use Case set
+    concurrently by the embedding application. The first entrant saves the
+    default and clears it; the last one out restores it — so overlapping
+    request-scoped blocks don't restore ``None`` over each other.
+
+    Reads the stored ``_use_case`` directly: both the ``use_case`` property
+    and ``get_use_case()`` are ``@_init_context``-decorated and would trigger
+    client init / a UseCase lookup over the network.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._depth = 0
+        self._saved: Any = None
+
+    @contextmanager
+    def suspend(self) -> Iterator[None]:
+        with self._lock:
+            if self._depth == 0:
+                self._saved = DRContext._use_case
+                DRContext.use_case = None
+            self._depth += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._depth -= 1
+                if self._depth == 0:
+                    DRContext.use_case = self._saved
+                    self._saved = None
+
+
+_suspend_default_use_case = _UseCaseSuspension().suspend
+
+
 @contextmanager
 def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTClientObject]:
     """Yield a request-user-scoped ``RESTClientObject`` for the block's duration.
@@ -83,8 +123,8 @@ def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTCl
     endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
         # Avoid use-case context from trafaret affecting tool calls.
-        DRContext.use_case = None
-        yield cast(RESTClientObject, dr.client.get_client())
+        with _suspend_default_use_case():
+            yield cast(RESTClientObject, dr.client.get_client())
 
 
 @contextmanager
@@ -102,8 +142,8 @@ def request_user_dr_sdk(*, headers_auth_only: bool = True) -> Iterator[Any]:
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
-        DRContext.use_case = None
-        yield dr
+        with _suspend_default_use_case():
+            yield dr
 
 
 class ThreadSafeDataRobotClient:
@@ -118,5 +158,5 @@ class ThreadSafeDataRobotClient:
         token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
         with client_configuration(token=token, endpoint=self.endpoint):
             # Avoid use-case context from trafaret affecting tool calls.
-            DRContext.use_case = None
-            yield cast(RESTClientObject, dr.client.get_client())
+            with _suspend_default_use_case():
+                yield cast(RESTClientObject, dr.client.get_client())

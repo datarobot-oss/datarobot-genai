@@ -23,6 +23,7 @@ from datarobot.auth.session import AuthCtx
 from datarobot.auth.users import User
 
 from datarobot_genai.drmcputils.auth import set_request_headers
+from datarobot_genai.drmcputils.clients.datarobot import _suspend_default_use_case
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drmcputils.exceptions import ToolError
 
@@ -32,10 +33,10 @@ _MODULE = "datarobot_genai.drmcputils.clients.datarobot"
 class TestRequestUserDrSdk:
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
-    def test_uses_token_from_authorization_header(
+    def test_uses_token_from_x_datarobot_authorization_header(
         self, mock_get_creds, mock_client_configuration
     ) -> None:
-        set_request_headers({"authorization": "Bearer header-token"})
+        set_request_headers({"x-datarobot-authorization": "Bearer header-token"})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
@@ -79,19 +80,70 @@ class TestRequestUserDrSdk:
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
     @patch(f"{_MODULE}.DRContext")
-    def test_resets_dr_context_use_case(
+    def test_suspends_and_restores_dr_context_use_case(
         self, mock_dr_context, mock_get_creds, mock_client_configuration
     ) -> None:
+        """GIVEN the application set a default Use Case on the global SDK context
+        WHEN a request-scoped SDK client is used
+        THEN the default is cleared only inside the block and restored on exit
+        (regression: it was nulled permanently — DRContext is a process-global
+        singleton, so concurrent users had their default clobbered).
+        """
         with patch(f"{_MODULE}.resolve_datarobot_token", return_value="tok"):
             mock_creds = MagicMock()
             mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
             mock_get_creds.return_value = mock_creds
             mock_dr_context.use_case = "some-use-case"
+            mock_dr_context._use_case = "some-use-case"
 
             with request_user_dr_sdk():
-                pass
+                assert mock_dr_context.use_case is None
 
-            assert mock_dr_context.use_case is None
+            assert mock_dr_context.use_case == "some-use-case"
+
+    @patch(f"{_MODULE}.client_configuration")
+    @patch(f"{_MODULE}.get_credentials")
+    @patch(f"{_MODULE}.DRContext")
+    def test_restores_dr_context_use_case_on_error(
+        self, mock_dr_context, mock_get_creds, mock_client_configuration
+    ) -> None:
+        """The saved default Use Case is restored even when the block raises."""
+        with patch(f"{_MODULE}.resolve_datarobot_token", return_value="tok"):
+            mock_creds = MagicMock()
+            mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
+            mock_get_creds.return_value = mock_creds
+            mock_dr_context.use_case = "some-use-case"
+            mock_dr_context._use_case = "some-use-case"
+
+            with pytest.raises(RuntimeError, match="boom"):
+                with request_user_dr_sdk():
+                    raise RuntimeError("boom")
+
+            assert mock_dr_context.use_case == "some-use-case"
+
+    @patch(f"{_MODULE}.DRContext")
+    def test_overlapping_suspends_restore_once(self, mock_dr_context) -> None:
+        """GIVEN two request-scoped blocks that overlap (interleaved, not nested)
+        WHEN the first block exits while the second is still active
+        THEN the default stays cleared until the last block exits, and only the
+        original default is restored
+        (regression: the later entrant saved ``None`` and restored ``None`` over
+        the earlier block's restore).
+        """
+        mock_dr_context.use_case = "some-use-case"
+        mock_dr_context._use_case = "some-use-case"
+
+        block_a = _suspend_default_use_case()
+        block_a.__enter__()
+        mock_dr_context._use_case = None  # mirror what the property setter stored
+        block_b = _suspend_default_use_case()
+        block_b.__enter__()
+
+        block_a.__exit__(None, None, None)
+        assert mock_dr_context.use_case is None  # block B is still active
+
+        block_b.__exit__(None, None, None)
+        assert mock_dr_context.use_case == "some-use-case"
 
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")

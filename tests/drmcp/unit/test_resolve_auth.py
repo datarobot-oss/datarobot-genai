@@ -67,7 +67,7 @@ class TestResolveDatarobotToken:
             token="config-token",
             strategy=AuthResolutionStrategy.HTTP,
         )
-        set_request_headers({"authorization": "Bearer header-token"})
+        set_request_headers({"x-datarobot-api-token": "header-token"})
 
         assert resolve_datarobot_token() == "header-token"
 
@@ -86,7 +86,7 @@ class TestResolveDatarobotToken:
             token="config-token",
             strategy=AuthResolutionStrategy.CONFIG,
         )
-        set_request_headers({"authorization": "Bearer header-token"})
+        set_request_headers({"x-datarobot-api-token": "header-token"})
 
         assert resolve_datarobot_token() == "config-token"
 
@@ -103,6 +103,40 @@ class TestResolveDatarobotToken:
         mock_get_headers.side_effect = RuntimeError("no context")
 
         assert resolve_datarobot_token() is None
+
+    def test_raw_authorization_header_never_used(
+        self, credentials_holder: dict[str, MagicMock]
+    ) -> None:
+        """GIVEN only a raw Authorization header (on OAuth-protected servers it
+        carries the MCP access token, e.g. an Okta JWT — not a DataRobot key)
+        WHEN the DataRobot token is resolved
+        THEN it is never forwarded as a DR API key
+        (regression: 'authorization' used to be the last token candidate).
+        """
+        credentials_holder["creds"] = _mock_tools_credentials(
+            strategy=AuthResolutionStrategy.HTTP,
+        )
+        set_request_headers({"authorization": "Bearer okta-mcp-access-token"})
+
+        assert resolve_datarobot_token() is None
+
+    def test_datarobot_headers_used_alongside_raw_authorization(
+        self, credentials_holder: dict[str, MagicMock]
+    ) -> None:
+        """The DataRobot-specific headers keep working when a raw Authorization
+        header is also present.
+        """
+        credentials_holder["creds"] = _mock_tools_credentials(
+            strategy=AuthResolutionStrategy.HTTP,
+        )
+        set_request_headers(
+            {
+                "authorization": "Bearer okta-mcp-access-token",
+                "x-datarobot-api-token": "dr-api-token",
+            }
+        )
+
+        assert resolve_datarobot_token() == "dr-api-token"
 
 
 class TestResolveSecret:
