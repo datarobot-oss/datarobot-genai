@@ -18,20 +18,18 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.dragent.plugins.user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
     get_xaa_param_from_mcp_auth_server_metadata,
 )
-from datarobot_genai.dragent.plugins.user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
     parse_xaa_params_from_mcp_auth_server_metadata,
 )
-from datarobot_genai.dragent.plugins.xaa_auth import XAAParams
-from datarobot_genai.dragent.plugins.xaa_auth import XAAStepOneTokenExchangeParams
-from datarobot_genai.dragent.plugins.xaa_auth import XAAStepTwoTokenRequestParams
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 
 @pytest.fixture
 def module_under_test() -> str:
-    return "datarobot_genai.dragent.plugins.user_mcp_xxa_client"
+    return "datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client"
 
 
 class TestMCPAuthServerMetadataDiscovery:
@@ -82,13 +80,13 @@ class TestMCPAuthServerMetadataDiscovery:
             }
         }
         output = parse_xaa_params_from_mcp_auth_server_metadata(mcp_auth_server_metadata)
-        assert output == XAAParams(
-            XAAStepOneTokenExchangeParams(mock_trust_issuer, mock_exchange_audience),
-            XAAStepTwoTokenRequestParams(
-                mock_token_url,
-                mock_target_audience,
-                mock_scopes,
-            ),
+        assert output == _CrossAppFlowParams(
+            trusted_issuer=mock_trust_issuer,
+            exchange_audience=mock_exchange_audience,
+            token_url=mock_token_url,
+            target_audience=mock_target_audience,
+            id_jag_scopes=mock_scopes,
+            token_endpoint_auth_method="private_key_jwt",
         )
 
     @pytest.mark.asyncio

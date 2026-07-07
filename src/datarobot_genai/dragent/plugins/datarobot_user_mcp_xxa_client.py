@@ -16,34 +16,29 @@ from typing import Any
 import httpx
 
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
-from datarobot_genai.dragent.plugins.xaa_auth import XAAParams
-from datarobot_genai.dragent.plugins.xaa_auth import XAAStepOneTokenExchangeParams
-from datarobot_genai.dragent.plugins.xaa_auth import XAAStepTwoTokenRequestParams
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 
 def parse_xaa_params_from_mcp_auth_server_metadata(
     mcp_auth_server_metadata: dict[str, Any],
-) -> XAAParams:
+) -> _CrossAppFlowParams:
     xaa_metadata = mcp_auth_server_metadata["urn:datarobot:nat_mcp_xaa_client"]
     token_exchange_metata = xaa_metadata["tokenExchange"]
     token_request_metata = xaa_metadata["tokenRequest"]
 
-    return XAAParams(
-        XAAStepOneTokenExchangeParams(
-            token_exchange_metata["trustedIssuer"],
-            token_exchange_metata["audience"],
-        ),
-        XAAStepTwoTokenRequestParams(
-            token_request_metata["tokenUrl"],
-            token_request_metata["audience"],
-            token_request_metata["scopes"],
-        ),
+    return _CrossAppFlowParams(
+        trusted_issuer=token_exchange_metata["trustedIssuer"],
+        exchange_audience=token_exchange_metata["audience"],
+        token_url=token_request_metata["tokenUrl"],
+        target_audience=token_request_metata["audience"],
+        id_jag_scopes=token_request_metata["scopes"],
+        token_endpoint_auth_method="private_key_jwt",
     )
 
 
 async def get_xaa_param_from_mcp_auth_server_metadata(
     mcp_auth_server_metadata_url: str,
-) -> XAAParams:
+) -> _CrossAppFlowParams:
     async with get_retriable_async_http_client() as http_client:
         try:
             resp = await http_client.get(mcp_auth_server_metadata_url)
