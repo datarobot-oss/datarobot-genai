@@ -36,14 +36,36 @@ from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.file_system_store import DEFAULT_SIGN_EXPIRATION_SECONDS
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.files_api.common_utils import LIST_BROWSE_HINT
 from datarobot_genai.drtools.files_api.common_utils import ROOT_PATH
 from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
+from datarobot_genai.drtools.files_api.common_utils import is_root as _is_root
 from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
 from datarobot_genai.drtools.files_api.common_utils import require_path as _require_path
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
+
+
+def _list_browse_hint(
+    *,
+    recursive: bool,
+    pattern: str | None,
+    total_count: int,
+    offset: int,
+    limit: int,
+) -> str | None:
+    """Return guidance to help agents avoid repetitive directory-by-directory listing."""
+    hints: list[str] = []
+    if not recursive and pattern is None:
+        hints.append(LIST_BROWSE_HINT)
+    if total_count > offset + limit:
+        hints.append(
+            f"Paginated: showing {offset + 1}–{offset + limit} of {total_count}; "
+            "advance offset for the next page instead of re-listing the same path."
+        )
+    return " ".join(hints) if hints else None
 
 
 # ------------------------------------------------------------------ #
@@ -58,8 +80,9 @@ logger = logging.getLogger(__name__)
         "dr://<catalog_id>/path. Call with path='dr://' to list catalog items "
         "(top-level directories); call with a catalog path to list its contents.\n"
         "  - pattern: glob match (e.g. dr://<catalog_id>/**/*.csv). Overrides recursive.\n"
-        "  - recursive: list everything beneath path (no globbing).\n"
+        "  - recursive: list everything beneath path (no globbing). Not supported at dr://.\n"
         "  - as_tree: return a compact indented tree string instead of entries.\n"
+        f"  - {LIST_BROWSE_HINT}\n"
         "Returns entries with name, type ('file'|'directory'), size, format, created_at.\n\n"
         "Example: file_list(path='dr://')\n"
         "Example: file_list(path='dr://abc123/', recursive=True)\n"
@@ -78,7 +101,8 @@ async def file_list(
     ] = None,
     recursive: Annotated[
         bool,
-        "List everything beneath path (posix find semantics, no globbing). Default False.",
+        "List everything beneath path (posix find semantics, no globbing). "
+        "Not supported at dr:// — list a specific catalog path instead. Default False.",
     ] = False,
     as_tree: Annotated[
         bool,
@@ -111,6 +135,14 @@ async def file_list(
 
     cleaned_path = _require_path(path)
 
+    if recursive and _is_root(cleaned_path):
+        raise ToolError(
+            "Argument validation error: recursive listing at 'dr://' is not supported. "
+            "List a specific catalog item (e.g. 'dr://<catalog_id>/') or use "
+            "pattern='dr://<catalog_id>/**/*'.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+
     if as_tree:
         tree = await store.tree(cleaned_path, recursion_limit=maxdepth or 2)
         return {"path": cleaned_path, "tree": tree}
@@ -133,6 +165,15 @@ async def file_list(
         "count": len(page),
         "total_count": len(entries),
     }
+    hint = _list_browse_hint(
+        recursive=recursive,
+        pattern=pattern,
+        total_count=len(entries),
+        offset=offset,
+        limit=clamped_limit,
+    )
+    if hint:
+        results["hint"] = hint
     return merge_pagination_metadata(results, {}, note, offset=offset, limit=clamped_limit)
 
 

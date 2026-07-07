@@ -62,14 +62,30 @@ class FakeStore:
         self._record("delete", path, recursive=recursive, maxdepth=maxdepth)
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: Any = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        overwrite: str = "rename",
     ) -> None:
-        self._record("copy", source, dest, recursive=recursive, maxdepth=maxdepth)
+        self._record(
+            "copy", source, dest, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite
+        )
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: Any = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        overwrite: str = "rename",
     ) -> None:
-        self._record("move", source, dest, recursive=recursive, maxdepth=maxdepth)
+        self._record(
+            "move", source, dest, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite
+        )
 
     async def clone(self, path_or_id: str, *, files_to_omit: Any = None) -> str:
         self._record("clone", path_or_id, files_to_omit=files_to_omit)
@@ -270,17 +286,41 @@ async def test_file_manage_copy(monkeypatch: pytest.MonkeyPatch) -> None:
     result = await mut_mod.file_manage(
         action="copy", path="dr://abc/a.txt", target_path="dr://abc/b.txt"
     )
-    assert result == {"copied": True, "source": "dr://abc/a.txt", "target": "dr://abc/b.txt"}
+    assert result == {
+        "copied": True,
+        "source": "dr://abc/a.txt",
+        "target": "dr://abc/b.txt",
+        "overwrite": "rename",
+    }
     assert store.calls[0][0] == "copy"
+    assert store.calls[0][2]["overwrite"] == "rename"
+
+
+async def test_file_manage_copy_with_replace(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    result = await mut_mod.file_manage(
+        action="copy",
+        path="dr://abc/a.txt",
+        target_path="dr://abc/b.txt",
+        overwrite="replace",
+    )
+    assert result["overwrite"] == "replace"
+    assert store.calls[0][2]["overwrite"] == "replace"
 
 
 async def test_file_manage_move(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _use_store(monkeypatch, FakeStore())
     result = await mut_mod.file_manage(
-        action="move", path="dr://abc/a.txt", target_path="dr://abc/b.txt"
+        action="move", path="dr://abc/a.txt", target_path="dr://abc/b.txt", overwrite="replace"
     )
-    assert result == {"moved": True, "source": "dr://abc/a.txt", "target": "dr://abc/b.txt"}
+    assert result == {
+        "moved": True,
+        "source": "dr://abc/a.txt",
+        "target": "dr://abc/b.txt",
+        "overwrite": "replace",
+    }
     assert store.calls[0][0] == "move"
+    assert store.calls[0][2]["overwrite"] == "replace"
 
 
 async def test_file_manage_clone(monkeypatch: pytest.MonkeyPatch) -> None:

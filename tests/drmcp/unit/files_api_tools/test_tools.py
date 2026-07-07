@@ -144,6 +144,20 @@ async def test_file_list_validation_errors(
         await tools_mod.file_list(path="dr://abc/", **kwargs)
 
 
+async def test_file_list_recursive_at_root_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_store(monkeypatch, FakeStore(ls=[]))
+    with pytest.raises(ToolError, match="recursive listing at 'dr://'"):
+        await tools_mod.file_list(path="dr://", recursive=True)
+
+
+async def test_file_list_includes_browse_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    entries = [_entry(f"abc/{i}.txt") for i in range(3)]
+    _use_store(monkeypatch, FakeStore(ls=entries))
+    result = await tools_mod.file_list(path="dr://abc/", limit=2)
+    assert "hint" in result
+    assert "pattern=" in result["hint"]
+
+
 # ------------------------------------------------------------------ #
 # file_info                                                            #
 # ------------------------------------------------------------------ #

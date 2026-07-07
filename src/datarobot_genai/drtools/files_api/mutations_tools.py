@@ -33,6 +33,8 @@ from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.files_api.common_utils import FILE_WRITE_MODE_DOC
+from datarobot_genai.drtools.files_api.common_utils import OVERWRITE_STRATEGY_DOC
 from datarobot_genai.drtools.files_api.common_utils import decode_content
 from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
 from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
@@ -56,8 +58,8 @@ logger = logging.getLogger(__name__)
         "parent folders implicitly (DataRobot has no empty directories). The path "
         "must be under a catalog item; create one first with "
         "file_manage(action='create_dir') if needed.\n"
-        "  - encoding: 'utf-8' for text (default) or 'base64' for binary content.\n"
-        "  - mode: 'overwrite' (default) or 'create' (fails if the file exists).\n"
+        f"  - {FILE_WRITE_MODE_DOC}\n"
+        f"  - encoding: 'utf-8' for text (default) or 'base64' for binary content.\n"
         f"Content is capped at {MAX_INLINE_SIZE} bytes; use file_import for larger "
         "or remote files.\n\n"
         "Example: file_write(path='dr://abc123/notes.txt', content='hello')\n"
@@ -75,7 +77,7 @@ async def file_write(
     ] = "utf-8",
     mode: Annotated[
         Literal["overwrite", "create"],
-        "'overwrite' replaces existing content; 'create' fails if the file exists. Default 'overwrite'.",  # noqa: E501
+        f"{FILE_WRITE_MODE_DOC} Default 'overwrite'.",
     ] = "overwrite",
 ) -> dict[str, Any]:
     cleaned = _require_file_path(path)
@@ -110,7 +112,7 @@ async def file_write(
         "'/data/**/*.csv' (set recursive=True).\n"
         "  - path: destination. End with '/' to upload into a directory; give a full "
         "file path to upload a single file under that name.\n"
-        "  - overwrite: 'rename' (default), 'replace', 'skip', or 'error' on conflicts.\n\n"
+        f"  - {OVERWRITE_STRATEGY_DOC}\n\n"
         "Example: file_upload(local_path='/tmp/report.pdf', path='dr://abc123/docs/')\n"
         "Example (tree): file_upload(local_path='/tmp/data', path='dr://abc123/data/', "
         "recursive=True)\n"
@@ -139,7 +141,7 @@ async def file_upload(
     ] = None,
     overwrite: Annotated[
         Literal["rename", "replace", "skip", "error"],
-        "Conflict strategy when a destination file already exists. Default 'rename'.",
+        f"{OVERWRITE_STRATEGY_DOC} Default 'rename'.",
     ] = "rename",
 ) -> dict[str, Any]:
     cleaned_local = _require_path(local_path, "local_path")
@@ -190,10 +192,12 @@ async def file_upload(
         "  'copy'       — copy path to target_path. Set recursive=True for directories.\n"
         "  'move'       — move/rename path to target_path. Set recursive=True for directories.\n"
         "  'clone'      — clone a whole catalog item directory (path) to a new catalog "
-        "item; returns its id. Use files_to_omit to skip entries.\n\n"
+        "item; returns its id. Use files_to_omit to skip entries.\n"
+        f"  - copy/move: {OVERWRITE_STRATEGY_DOC}\n\n"
         "Example: file_manage(action='create_dir')\n"
         "Example: file_manage(action='delete', path='dr://abc123/old/', recursive=True)\n"
-        "Example: file_manage(action='copy', path='dr://abc123/a.txt', target_path='dr://abc123/b.txt')"
+        "Example: file_manage(action='copy', path='dr://abc123/a.txt', "
+        "target_path='dr://abc123/b.txt', overwrite='replace')"
     ),
 )
 async def file_manage(
@@ -222,6 +226,10 @@ async def file_manage(
         list[str] | None,
         "For 'clone', catalog-relative paths to exclude from the clone.",
     ] = None,
+    overwrite: Annotated[
+        Literal["rename", "replace", "skip", "error"],
+        f"For 'copy' and 'move' only. {OVERWRITE_STRATEGY_DOC} Default 'rename'.",
+    ] = "rename",
 ) -> dict[str, Any]:
     if maxdepth is not None and maxdepth < 1:
         raise ToolError(
@@ -258,8 +266,15 @@ async def file_manage(
     source = _require_file_path(path)
     target = _require_file_path(target_path, "target_path")
     if action == "copy":
-        await store.copy(source, target, recursive=recursive, maxdepth=maxdepth)
-        return {"copied": True, "source": source, "target": target}
+        await store.copy(
+            source, target, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite
+        )
+        return {
+            "copied": True,
+            "source": source,
+            "target": target,
+            "overwrite": overwrite,
+        }
 
-    await store.move(source, target, recursive=recursive, maxdepth=maxdepth)
-    return {"moved": True, "source": source, "target": target}
+    await store.move(source, target, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite)
+    return {"moved": True, "source": source, "target": target, "overwrite": overwrite}

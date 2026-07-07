@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.1
+- `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.
+
 ## 0.23.0
 - *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
 
