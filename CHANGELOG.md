@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.2
+- `test_utils.test_interactive`: connect to ANY MCP server — `--url` / `--model` / repeatable `--header KEY=VALUE` flags, automatic `x-datarobot-api-token` header so DataRobot directAccess deployments authenticate, and per-prompt round-trip timing.
+- `test_utils.otel_traces` (new): fetch + pretty-print a deployed MCP server's OTEL traces (`/api/v2/otel/deployment/{id}/traces/`); `traces [n]` / `trace <traceId>` commands in the interactive client show recent traces and per-span trees with durations.
+
 ## 0.23.1
 - `drtools`: polished MCP tool metadata across connectors, predictive, panels, files API, workloads, and web search — sentence-case display names, capitalized JSON/ID in user-facing text, clearer agent descriptions and parameter help, and ampersands spelled out as "and".
 - `drtools/workload`: renamed workload MCP tools for clearer naming — `workload_create_payload`→`workload_create_payload_build`, `workload_action`→`workload_action_run`, `bundle_list`→`workload_bundle_list`, `workload_replacement`→`workload_artifact_replace`, `workload_stats`→`workload_stats_get`, `workload_logs`→`workload_logs_get`, `workload_activity`→`workload_activity_get`, `proton_get`→`workload_proton_get`, `artifact_build_get`→`artifact_get_build`, `artifact_build_action`→`artifact_build_run_action`, `artifact_action`→`artifact_action_run`. Update allowlists and agent configs that reference the old names.
