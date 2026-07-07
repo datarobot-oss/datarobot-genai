@@ -65,6 +65,11 @@ logger = logging.getLogger(__name__)
         "Example: file_list(path='dr://abc123/', recursive=True)\n"
         "Example: file_list(pattern='dr://abc123/**/*.pdf')"
     ),
+    display_name="Files — List",
+    description_ui=(
+        "Browses the DataRobot filesystem, listing catalog items or directory "
+        "contents with optional glob or recursive matching."
+    ),
 )
 async def file_list(
     *,
@@ -149,6 +154,11 @@ async def file_list(
         "trailing '/' to disambiguate a directory from a same-named file.\n\n"
         "Example: file_info(path='dr://abc123/data/employees.csv')"
     ),
+    display_name="Files — Info",
+    description_ui=(
+        "Fetches metadata for a single file or directory, including type, size, "
+        "format, and creation time."
+    ),
 )
 async def file_info(
     *,
@@ -173,6 +183,10 @@ async def file_info(
         "byte range with offset/length, or use file_sign to get a download URL.\n\n"
         "Example: file_read(path='dr://abc123/notes.txt')\n"
         "Example (range): file_read(path='dr://abc123/big.bin', offset=0, length=65536)"
+    ),
+    display_name="Files — Read",
+    description_ui=(
+        "Reads a file's content as UTF-8 text or base64, optionally limited to a byte range."
     ),
 )
 async def file_read(
@@ -254,6 +268,8 @@ async def file_read(
         "seconds.\n\n"
         "Example: file_sign(path='dr://abc123/report.pdf', expiration=300)"
     ),
+    display_name="Files — Sign",
+    description_ui="Creates a temporary signed URL granting direct download access to a file.",
 )
 async def file_sign(
     *,
