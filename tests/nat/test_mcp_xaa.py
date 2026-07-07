@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from nat.runtime.loader import load_config
 
-import datarobot_genai.dragent.plugins.mcp_xaa_auth  # noqa: F401 — registers mcp_xaa_auth_provider
-from datarobot_genai.dragent.plugins.mcp_xaa_auth import MCPXAAAuthProviderConfig
+import datarobot_genai.dragent.plugins.xaa_auth  # noqa: F401 — registers mcp_xaa_auth_provider
+from datarobot_genai.dragent.plugins.xaa_auth import XAAAuthProviderConfig
 
 
 @pytest.fixture(autouse=True)
@@ -49,5 +49,5 @@ class TestConfigParsedFromYaml:
     def test_mcp_xaa_auth_provider(self, nat_config):
         assert isinstance(
             nat_config.authentication["okta_auth"],
-            MCPXAAAuthProviderConfig,
+            XAAAuthProviderConfig,
         )

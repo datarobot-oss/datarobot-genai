@@ -14,4 +14,4 @@
 
 authentication:
   okta_auth:
-    _type: mcp_xaa_auth_provider_config
+    _type: xaa_auth_provider_config
