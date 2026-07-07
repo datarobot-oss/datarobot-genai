@@ -211,10 +211,10 @@ class TestMCPXAAAuthProvider:
             yield mock_func
 
     @pytest.fixture
-    def mock_get_exchanged_token_from_inbound_request(self) -> Iterator[AsyncMock]:
+    def mock_get_exchanged_token(self) -> Iterator[AsyncMock]:
         with patch.object(
             MCPXAAAuthProvider,
-            "get_exchanged_token_from_inbound_request",
+            "get_exchanged_token",
             new_callable=AsyncMock,
         ) as mock_func:
             mock_func.return_value = BearerTokenCred(token="adfa")
@@ -327,7 +327,7 @@ class TestMCPXAAAuthProvider:
     async def test_authenticate(
         self,
         mock_get_forwardable_headers_from_inbound_request: Mock,
-        mock_get_exchanged_token_from_inbound_request: AsyncMock,
+        mock_get_exchanged_token: AsyncMock,
         mock_nat_context_get: Mock,
     ) -> None:
         inbound_headers = Mock()
@@ -337,11 +337,11 @@ class TestMCPXAAAuthProvider:
         output = await auth_provider.authenticate()
 
         mock_get_forwardable_headers_from_inbound_request.assert_called_once_with(inbound_headers)
-        mock_get_exchanged_token_from_inbound_request.assert_called_once_with(inbound_headers)
+        mock_get_exchanged_token.assert_called_once_with(inbound_headers)
         assert output == AuthResult(
             credentials=[
                 *mock_get_forwardable_headers_from_inbound_request.return_value,
-                mock_get_exchanged_token_from_inbound_request.return_value,
+                mock_get_exchanged_token.return_value,
             ]
         )
 

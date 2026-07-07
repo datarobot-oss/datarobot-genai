@@ -222,7 +222,7 @@ class MCPXAAAuthProvider(AuthProviderBase[MCPXAAAuthProviderConfig]):
             if header_key not in self.get_non_forwardable_header_keys() and header_value is not None
         ]
 
-    async def get_exchanged_token_from_inbound_request(
+    async def get_exchanged_token(
         self,
         headers: dict[str, str],
     ) -> BearerTokenCred:
@@ -240,7 +240,7 @@ class MCPXAAAuthProvider(AuthProviderBase[MCPXAAAuthProviderConfig]):
 
         headers: dict[str, str] = Context.get().metadata.headers or {}
         forwardable_header_creds = self.get_forwardable_headers_from_inbound_request(headers)
-        bearer_token_cred = await self.get_exchanged_token_from_inbound_request(headers)
+        bearer_token_cred = await self.get_exchanged_token(headers)
         return AuthResult(credentials=[*forwardable_header_creds, bearer_token_cred])
 
 
