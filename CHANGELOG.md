@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.3
+## 0.23.4
 - `drtools/core/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `drmcpbase.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics).
 - `drmcp`: wired the metrics leg into the config-driven telemetry startup — `initialize_telemetry` (gated by the existing `OTEL_ENABLED`) now installs the OTLP `MeterProvider` alongside the trace/log providers, and `execute_code` runs its sandbox through `InstrumentedSandbox`, so sandbox SLIs export with no extra configuration.
 - The `drtools` and `drmcpbase` extras now declare `opentelemetry-api`/`-sdk`/`-exporter-otlp-proto-http` as regular dependencies (~6 MB incl. protobuf), so the sandbox observability and metrics-bootstrap modules import OTel at module level instead of the previous lazy-import/no-op-when-absent handling.
+
+## 0.23.3
+- `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
 
 ## 0.23.2
 - `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.
