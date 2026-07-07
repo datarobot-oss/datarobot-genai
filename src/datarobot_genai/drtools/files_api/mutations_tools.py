@@ -66,6 +66,11 @@ logger = logging.getLogger(__name__)
         "Example (binary): file_write(path='dr://abc123/logo.png', content='<b64>', "
         "encoding='base64')"
     ),
+    display_name="Files — Write",
+    description_ui=(
+        "Writes inline text or binary content to a file under a catalog item, "
+        "creating parent folders as needed."
+    ),
 )
 async def file_write(
     *,
@@ -120,6 +125,11 @@ async def file_write(
         "recursive=True)"
     ),
     excluded_from_global_mcp=True,
+    display_name="Files — Upload",
+    description_ui=(
+        "Streams files, directories, or glob matches from the server's local disk "
+        "into a catalog directory."
+    ),
 )
 async def file_upload(
     *,
@@ -198,6 +208,10 @@ async def file_upload(
         "Example: file_manage(action='delete', path='dr://abc123/old/', recursive=True)\n"
         "Example: file_manage(action='copy', path='dr://abc123/a.txt', "
         "target_path='dr://abc123/b.txt', overwrite='replace')"
+    ),
+    display_name="Files — Manage",
+    description_ui=(
+        "Runs structural filesystem actions: create directory, delete, copy, move, or clone."
     ),
 )
 async def file_manage(

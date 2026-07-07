@@ -50,3 +50,24 @@ class FeatureFlagEvaluation:
                 "No bearer token or valid header is found. Feature flag is evaluated to False."
             )
             return False
+
+
+async def check_mcp_tools_gallery_support(
+    datarobot_api_client: DataRobotClientWithAsyncAPI | None,
+) -> bool:
+    """Return True when the MCP tools-gallery feature is enabled for the request's user.
+
+    Shared entry point for everything gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``: the
+    tool providers (which pass their lifespan client) and the global-mcp ``/toolGallery/tools/``
+    route gate (which passes a short-lived client). None-safe — returns False when the
+    client is not yet available (e.g. a request that races a provider's lifespan), so
+    callers no longer need a separate ``is_datarobot_api_client_initialized`` guard.
+    Otherwise it delegates to
+    :meth:`FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request`,
+    which reads the user's bearer token from the request context and fails closed to False.
+    """
+    if datarobot_api_client is None:
+        return False
+    return await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(
+        datarobot_api_client
+    )

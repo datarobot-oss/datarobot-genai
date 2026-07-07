@@ -63,6 +63,11 @@ _IMPORT_STATUS_NOTE = (
         "Example: file_import(path='dr://abc123/in/', source='data_source', "
         "data_source_id='ds-123')"
     ),
+    display_name="Files — Import",
+    description_ui=(
+        "Starts a background import of a large or remote file from a URL or data "
+        "source into a catalog directory."
+    ),
 )
 async def file_import(
     *,
@@ -80,11 +85,11 @@ async def file_import(
     ] = None,
     data_source_id: Annotated[
         str | None,
-        "DataRobot data source id. Required when source='data_source'.",
+        "DataRobot data source ID. Required when source='data_source'.",
     ] = None,
     credential_id: Annotated[
         str | None,
-        "Optional credential id for data_source imports.",
+        "Optional credential ID for data_source imports.",
     ] = None,
     unpack_archive: Annotated[
         bool,
@@ -139,10 +144,12 @@ async def file_import(
         "Example: file_get_status(status_id='abc123')\n"
         "Example: file_get_status(status_id='abc123', target_status='completed')"
     ),
+    display_name="Files — Import status",
+    description_ui="Fetches the current status of a background import.",
 )
 async def file_get_status(
     *,
-    status_id: Annotated[str, "Status id returned by file_import."],
+    status_id: Annotated[str, "Status ID returned by file_import."],
     target_status: Annotated[
         str | None,
         "Optional status to compare against, e.g. 'completed'. Does not block.",
