@@ -163,12 +163,13 @@ def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
     categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
     datetime_cols = df.select_dtypes(include=["datetime64"]).columns.tolist()
 
-    # Identify potential text columns (categorical with high cardinality)
-    text_cols = []
-    for col in categorical_cols:
-        if df[col].str.len().mean() > 20:  # Text detection
-            text_cols.append(col)
-            categorical_cols.remove(col)  # Remove from categorical columns
+    # Identify potential text columns (categorical with high cardinality).
+    # astype(str) tolerates mixed-dtype object columns (.str.len() raises on
+    # non-strings); an empty column means mean() is NaN, which compares False.
+    text_cols = [
+        col for col in categorical_cols if df[col].dropna().astype(str).str.len().mean() > 20
+    ]
+    categorical_cols = [col for col in categorical_cols if col not in text_cols]
 
     # Calculate missing data
     missing_data = {}

@@ -323,7 +323,7 @@ class JiraClient:
         ------
             httpx.HTTPStatusError: If the API request fails
         """
-        url = await self._get_full_url(f"issue/{issue_key}")
+        url = await self._get_full_url(f"issue/{issue_key}/transitions")
         payload = {"transition": {"id": transition_id}}
 
         response = await self._client.post(url, json=payload)

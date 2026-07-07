@@ -560,17 +560,21 @@ async def register_prompt(
 
 def dr_mcp_prompt(
     prompt_category: DataRobotMCPPromptCategory = DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE,
-    prompt_init_args: PromptInitArguments = PromptInitArguments(),
+    prompt_init_args: PromptInitArguments | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def prompt_decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         def _inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
             return func(*args, **kwargs)
 
-        prompt_init_args.set_prompt_category(prompt_category)
-        registered = mcp.prompt(**prompt_init_args.to_dict())(_inner_decorator)
-        if prompt_init_args.enabled is False:
-            mcp.disable(names={prompt_init_args.name or func.__name__}, components={"prompt"})
+        # A fresh instance per decoration when not supplied: a shared default
+        # instance would be mutated by every decoration (set_prompt_category),
+        # leaking one prompt's category/meta into another's registration.
+        init_args = prompt_init_args if prompt_init_args is not None else PromptInitArguments()
+        init_args.set_prompt_category(prompt_category)
+        registered = mcp.prompt(**init_args.to_dict())(_inner_decorator)
+        if init_args.enabled is False:
+            mcp.disable(names={init_args.name or func.__name__}, components={"prompt"})
         return registered
 
     return prompt_decorator

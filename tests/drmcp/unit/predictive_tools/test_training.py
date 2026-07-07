@@ -344,3 +344,34 @@ async def test_catalog_suggest_ml_problems_dataset_not_found() -> None:
             match=r"Dataset 'nonexistent_dataset_id' not found",
         ):
             await training.catalog_suggest_ml_problems(dataset_id="nonexistent_dataset_id")
+
+
+class TestBuildDatasetInsights:
+    def test_consecutive_text_columns_both_detected(self) -> None:
+        """GIVEN two adjacent text-like columns
+        WHEN insights are built
+        THEN both are classified as text and removed from categorical
+        (regression: the categorical list was mutated while iterating, so the
+        column right after each detected text column was skipped).
+        """
+        long_text = "this is a reasonably long sentence used for text detection"
+        df = pd.DataFrame(
+            {
+                "text_a": [long_text] * 3,
+                "text_b": [long_text] * 3,
+                "category": ["a", "b", "c"],
+            }
+        )
+
+        insights = training._build_dataset_insights(df)
+
+        assert insights["text_columns"] == ["text_a", "text_b"]
+        assert insights["categorical_columns"] == ["category"]
+
+    def test_mixed_dtype_object_column_does_not_raise(self) -> None:
+        """An object column holding non-strings used to raise from .str.len()."""
+        df = pd.DataFrame({"mixed": [1, "two", None], "num": [1.0, 2.0, 3.0]})
+
+        insights = training._build_dataset_insights(df)
+
+        assert "mixed" in insights["categorical_columns"]

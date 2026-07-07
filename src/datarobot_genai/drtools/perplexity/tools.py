@@ -59,8 +59,7 @@ _PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
 async def perplexity_search(
     *,
     query: Annotated[
-        str,
-        list[str],
+        str | list[str],
         f"The search query string OR "
         f"a list of up to {MAX_QUERIES} sub-queries for multi-query research.",
     ],
