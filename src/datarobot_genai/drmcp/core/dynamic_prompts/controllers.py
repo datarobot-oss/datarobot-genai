@@ -135,7 +135,7 @@ async def refresh_registered_prompt_template(headers_auth_only: bool = False) ->
 
         mcp_prompt_template_version, mcp_prompt = mcp_prompt_templates_mappings[prompt_template.id]
 
-        if mcp_prompt_template_version != latest_version:
+        if mcp_prompt_template_version != latest_version.id:
             # Current version saved in MCP is not the latest one => update it
             await register_prompt_from_datarobot_prompt_management(
                 prompt_template=prompt_template, prompt_template_version=latest_version
