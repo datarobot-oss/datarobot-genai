@@ -31,11 +31,14 @@ WORKLOAD_TERMINAL_FAILURE_STATUS = "errored"
 
 REPLACEMENT_STRATEGIES: tuple[str, ...] = ("rolling",)
 
-# Header names to check for authorization tokens (in order of preference)
+# Header names to check for DataRobot API tokens (in order of preference).
+# Deliberately excludes the raw ``authorization`` header: on OAuth-protected
+# MCP servers it carries the MCP access token (e.g. an Okta JWT), not a
+# DataRobot API key — forwarding it to the DataRobot API would be token
+# confusion across audiences. Use ``x-datarobot-api-token`` in local dev.
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",
     "x-datarobot-api-key",
     "x-datarobot-external-access-token",
     "x-datarobot-api-token",
-    "authorization",
 ]

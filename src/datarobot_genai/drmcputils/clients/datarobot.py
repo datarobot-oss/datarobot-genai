@@ -67,6 +67,25 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
 
 
 @contextmanager
+def _suspend_default_use_case() -> Iterator[None]:
+    """Temporarily clear the SDK's default Use Case for the block's duration.
+
+    ``DRContext`` is a process-global singleton (not request state), so the
+    previous behavior — permanently nulling ``use_case`` — clobbered a default
+    Use Case set concurrently by the embedding application. Read the stored
+    value directly: both the ``use_case`` property and ``get_use_case()`` are
+    ``@_init_context``-decorated and would trigger client init / a UseCase
+    lookup over the network.
+    """
+    previous_use_case = DRContext._use_case
+    DRContext.use_case = None
+    try:
+        yield
+    finally:
+        DRContext.use_case = previous_use_case
+
+
+@contextmanager
 def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTClientObject]:
     """Yield a request-user-scoped ``RESTClientObject`` for the block's duration.
 
@@ -83,8 +102,8 @@ def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTCl
     endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
         # Avoid use-case context from trafaret affecting tool calls.
-        DRContext.use_case = None
-        yield cast(RESTClientObject, dr.client.get_client())
+        with _suspend_default_use_case():
+            yield cast(RESTClientObject, dr.client.get_client())
 
 
 @contextmanager
@@ -102,8 +121,8 @@ def request_user_dr_sdk(*, headers_auth_only: bool = True) -> Iterator[Any]:
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
     with client_configuration(token=token, endpoint=endpoint):
-        DRContext.use_case = None
-        yield dr
+        with _suspend_default_use_case():
+            yield dr
 
 
 class ThreadSafeDataRobotClient:
@@ -118,5 +137,5 @@ class ThreadSafeDataRobotClient:
         token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
         with client_configuration(token=token, endpoint=self.endpoint):
             # Avoid use-case context from trafaret affecting tool calls.
-            DRContext.use_case = None
-            yield cast(RESTClientObject, dr.client.get_client())
+            with _suspend_default_use_case():
+                yield cast(RESTClientObject, dr.client.get_client())

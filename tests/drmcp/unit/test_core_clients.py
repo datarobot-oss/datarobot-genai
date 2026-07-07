@@ -139,21 +139,27 @@ class TestPrefixMountPath:
 class TestExtractTokenFromHeaders:
     """Test cases for _extract_token_from_headers function."""
 
-    def test_extract_bearer_token_from_authorization_header(self):
-        """Test extracting Bearer token from authorization header."""
-        headers = {"authorization": "Bearer test-token-123"}
+    def test_raw_authorization_header_is_ignored(self):
+        """The raw authorization header is never used as a DataRobot API token.
+
+        On OAuth-protected MCP servers it carries the MCP access token (e.g. an
+        Okta JWT), not a DataRobot API key — forwarding it would be token
+        confusion across audiences. It was originally a local-dev convenience;
+        local dev should use x-datarobot-api-token instead.
+        """
+        headers = {"authorization": "Bearer okta-mcp-access-token"}
         result = _extract_token_from_headers(headers)
-        assert result == "test-token-123"
+        assert result is None
 
     def test_extract_bearer_token_case_insensitive(self):
         """Test that Bearer prefix is case-insensitive."""
-        headers = {"authorization": "BEARER test-token-123"}
+        headers = {"x-datarobot-authorization": "BEARER test-token-123"}
         result = _extract_token_from_headers(headers)
         assert result == "test-token-123"
 
-    def test_extract_plain_token_from_authorization_header(self):
-        """Test extracting plain token (without Bearer prefix) from authorization header."""
-        headers = {"authorization": "plain-token-123"}
+    def test_extract_plain_token_without_bearer_prefix(self):
+        """Test extracting plain token (without Bearer prefix)."""
+        headers = {"x-datarobot-authorization": "plain-token-123"}
         result = _extract_token_from_headers(headers)
         assert result == "plain-token-123"
 
@@ -169,10 +175,10 @@ class TestExtractTokenFromHeaders:
         result = _extract_token_from_headers(headers)
         assert result == "api-key-789"
 
-    def test_prefers_api_key_over_authorization(self):
-        """Test current candidate order where API key headers are checked before authorization."""
+    def test_prefers_api_key_over_api_token(self):
+        """Test current candidate order where x-datarobot-api-key is checked first."""
         headers = {
-            "authorization": "Bearer auth-token",
+            "authorization": "Bearer auth-token",  # never a candidate
             "x-datarobot-api-token": "Bearer api-token",
             "x-datarobot-api-key": "Bearer api-key",
         }
@@ -199,31 +205,31 @@ class TestExtractTokenFromHeaders:
 
     def test_handles_empty_token_after_stripping(self):
         """Test that function returns None when token is empty after stripping."""
-        headers = {"authorization": "Bearer   "}
+        headers = {"x-datarobot-authorization": "Bearer   "}
         result = _extract_token_from_headers(headers)
         assert result is None
 
     def test_handles_non_string_header_value(self):
         """Test that function skips non-string header values."""
-        headers = {"authorization": 12345}
+        headers = {"x-datarobot-authorization": 12345}
         result = _extract_token_from_headers(headers)
         assert result is None
 
     def test_handles_none_header_value(self):
         """Test that function handles None header values."""
-        headers = {"authorization": None}
+        headers = {"x-datarobot-authorization": None}
         result = _extract_token_from_headers(headers)
         assert result is None
 
     def test_strips_whitespace_from_token(self):
         """Test that function strips whitespace from extracted token."""
-        headers = {"authorization": "Bearer   token-with-spaces   "}
+        headers = {"x-datarobot-authorization": "Bearer   token-with-spaces   "}
         result = _extract_token_from_headers(headers)
         assert result == "token-with-spaces"
 
     def test_handles_bearer_with_multiple_spaces(self):
         """Test that function handles Bearer prefix with multiple spaces."""
-        headers = {"authorization": "Bearer  token-123"}
+        headers = {"x-datarobot-authorization": "Bearer  token-123"}
         result = _extract_token_from_headers(headers)
         assert result == "token-123"
 
@@ -233,8 +239,10 @@ class TestExtractTokenFromHeaders:
         result = _extract_token_from_headers(headers)
         assert result == "user-api-key"
 
-    def test_prefers_x_datarobot_authorization_over_authorization(self):
-        """Test gateway scenario: x-datarobot-authorization is preferred."""
+    def test_gateway_scenario_uses_x_datarobot_authorization(self):
+        """Gateway scenario: x-datarobot-authorization is used, the raw
+        authorization header (the service JWT) never is.
+        """
         headers = {
             "x-datarobot-authorization": "Bearer user-api-key",
             "authorization": "Bearer s2s-jwt-token",
@@ -317,7 +325,7 @@ class TestExtractTokenFromHeadersWithFallback:
 
     def test_prefers_standard_header_over_auth_context(self):
         """Test that standard headers are preferred over auth context metadata."""
-        headers = {"authorization": "Bearer standard-token"}
+        headers = {"x-datarobot-authorization": "Bearer standard-token"}
 
         with patch(
             "datarobot_genai.drmcputils.auth._extract_token_from_auth_context"
