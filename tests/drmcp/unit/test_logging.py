@@ -136,6 +136,8 @@ _MESSAGES_CONTAINING_SECRET = [
     "password=Sup3rS3cret!",  # key=value assignment
     "api_key: 12345secretvalue",  # key: value assignment
     "DATAROBOT_API_TOKEN=NjM4someToken-value_here",  # env-style token assignment
+    "password=hunter2",  # short but digit-bearing credential
+    "client_secret=correcthorsebatterystaple",  # long all-lowercase credential
 ]
 
 # Regression guard for the removed catch-all ``([a-zA-Z0-9]{20,})``: operational
@@ -147,6 +149,12 @@ _MESSAGES_WITHOUT_SECRETS = [
     "trace_id=4bf92f3577b34da6a3ce929d0e0e4736",  # trace id
     "tokens=1500 completion_tokens=300",  # LLM usage counters (plural 'tokens')
     "Registered tool datarobot_docs_search_documentation",  # long tool name
+    "completion_token=300 prompt_token=12",  # singular *_token usage counters
+    "Basic authentication disabled",  # prose after 'Basic', not a credential
+    "Bearer integration tests passed",  # prose after 'Bearer'
+    "basic connectivity check passed",  # lowercase prose
+    "api_key: missing",  # diagnostic word, not a credential value
+    "authorization: denied",  # diagnostic word
 ]
 
 

@@ -37,13 +37,21 @@ SECRET_PATTERNS = [
     r"AKIA[0-9A-Z]{16}",  # AWS Access Key pattern
     # JWTs — three base64url segments (DataRobot/Okta access tokens)
     r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
-    # Authorization header values: "Bearer <token>" / "Basic <base64>"
-    r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}",
+    # Authorization header values: "Bearer <token>" / "Basic <base64>".  The value
+    # must be credential-shaped — contain a digit/base64 symbol, or 10+ chars of
+    # mixed case — so prose like "Basic authentication disabled" survives.  The
+    # (?i:) scope keeps the shape checks case-sensitive.
+    r"(?i:\b(?:bearer|basic))\s+"
+    r"(?:(?=\S*[0-9+/=])[A-Za-z0-9._~+/=-]{6,}"
+    r"|(?=\S*[a-z])(?=\S*[A-Z])[A-Za-z0-9._~+/=-]{10,})",
     # Assignments of secret-shaped keys, incl. prefixed forms: token=…, api_key: …,
     # DATAROBOT_API_TOKEN=…, client_secret=…, X-DataRobot-Authorization: …
-    # (requires the stem to END the key — LLM-usage logs like ``tokens=1500`` survive)
-    r"(?i)\b[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|"
-    r"access[_-]?key|authorization|credentials?)\b\s*[=:]\s*\S+",
+    # The stem must END the key (``tokens=1500`` survives) and the value must be
+    # credential-shaped: not a bare number (``completion_token=300`` survives) and
+    # not a short lowercase diagnostic word (``api_key: missing`` survives).
+    r"(?i:\b[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|"
+    r"access[_-]?key|authorization|credentials?))\b\s*[=:]\s*"
+    r"(?!\d+\b)(?:(?=\S*[0-9+/=])\S{6,}|(?=\S*[a-z])(?=\S*[A-Z])\S{10,}|\S{16,})",
 ]
 
 
