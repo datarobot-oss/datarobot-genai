@@ -18,18 +18,21 @@ Defines the SLI building blocks: a pure :func:`classify_outcome` that turns an
 execution result/error into an ``(outcome, reason)`` pair, plus (later in this
 module) the OTel instruments and the :class:`InstrumentedSandbox` wrapper.
 
-:func:`classify_outcome` is intentionally free of any OpenTelemetry import so it
-remains usable — and unit-testable — in environments where the optional OTel
-stack (the ``dragent`` extra) is not installed.
+:func:`classify_outcome` stays a pure function of the execution error so the
+failure taxonomy is unit-testable without touching any OTel state.
 """
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from dataclasses import dataclass
 from typing import Any
+
+from opentelemetry import metrics
+from opentelemetry import trace
+from opentelemetry.trace import Status
+from opentelemetry.trace import StatusCode
 
 from datarobot_genai.drtools.core.sandbox.base import SandboxInfraError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
@@ -140,21 +143,16 @@ def build_instruments(meter: Any) -> SandboxInstruments:
 _STATE: dict[str, Any] = {"instruments": None, "provider": None, "tracer": None}
 
 
-def get_instruments() -> SandboxInstruments | None:
-    """Lazily build instruments from the global meter; ``None`` if OTel absent.
+def get_instruments() -> SandboxInstruments:
+    """Build (and cache) instruments from the global meter.
 
     Instruments are cached, but keyed on the active global ``MeterProvider``: if
     the provider changes (e.g. a no-op/proxy provider was current on first use
     and ``bootstrap_metrics_provider`` later installs the real SDK provider), the
     instruments are rebuilt against the new provider rather than staying pinned
-    to the old one. Returns ``None`` (callers no-op) when the optional
-    OpenTelemetry stack is not installed, keeping ``drtools`` usable without the
-    ``dragent`` extra.
+    to the old one. Without a bootstrapped provider the instruments record into
+    OTel's no-op provider, so callers never need to guard.
     """
-    try:
-        from opentelemetry import metrics
-    except ImportError:
-        return None
     provider = metrics.get_meter_provider()
     if _STATE["instruments"] is None or _STATE["provider"] is not provider:
         _STATE["instruments"] = build_instruments(metrics.get_meter(METER_NAME))
@@ -169,10 +167,8 @@ def record_execution(
     *,
     instruments: SandboxInstruments | None = None,
 ) -> None:
-    """Emit the SLI metrics for one execution. No-op if OTel is unavailable."""
+    """Emit the SLI metrics for one execution."""
     instruments = instruments or get_instruments()
-    if instruments is None:
-        return
     outcome_attrs = {"outcome": outcome}
     instruments.execution_total.add(1, outcome_attrs)
     instruments.execution_duration.record(duration_s, outcome_attrs)
@@ -180,29 +176,19 @@ def record_execution(
         instruments.execution_failures.add(1, {"reason": reason})
 
 
-def get_tracer() -> Any | None:
-    """Lazily fetch the global tracer; ``None`` if OpenTelemetry is absent."""
+def get_tracer() -> Any:
+    """Fetch (and cache) the global tracer."""
     if _STATE["tracer"] is None:
-        try:
-            from opentelemetry import trace
-        except ImportError:
-            return None
         _STATE["tracer"] = trace.get_tracer(METER_NAME)
     return _STATE["tracer"]
 
 
 def _mark_span_error(span: Any, reason: str | None) -> None:
-    """Set the failure attributes + ERROR status on ``span`` (best effort)."""
+    """Set the failure attributes + ERROR status on ``span``."""
     span.set_attribute("sandbox.outcome", OUTCOME_FAILURE)
     if reason:
         span.set_attribute("sandbox.failure_reason", reason)
-    try:
-        from opentelemetry.trace import Status
-        from opentelemetry.trace import StatusCode
-
-        span.set_status(Status(StatusCode.ERROR))
-    except ImportError:  # pragma: no cover - OTel always present once span exists
-        pass
+    span.set_status(Status(StatusCode.ERROR))
 
 
 class InstrumentedSandbox:
@@ -234,13 +220,8 @@ class InstrumentedSandbox:
         timeout_s: float = 30.0,
     ) -> SandboxResult:
         tracer = self._tracer or get_tracer()
-        span_cm = (
-            tracer.start_as_current_span("sandbox.execute")
-            if tracer is not None
-            else contextlib.nullcontext()
-        )
         start = time.monotonic()
-        with span_cm as span:
+        with tracer.start_as_current_span("sandbox.execute") as span:
             try:
                 result = await self._inner.run(
                     code, inputs=inputs, externals=externals, timeout_s=timeout_s
@@ -252,12 +233,10 @@ class InstrumentedSandbox:
                 record_execution(
                     outcome, reason, time.monotonic() - start, instruments=self._instruments
                 )
-                if span is not None:
-                    _mark_span_error(span, reason)
+                _mark_span_error(span, reason)
                 raise
             record_execution(
                 OUTCOME_SUCCESS, None, time.monotonic() - start, instruments=self._instruments
             )
-            if span is not None:
-                span.set_attribute("sandbox.outcome", OUTCOME_SUCCESS)
+            span.set_attribute("sandbox.outcome", OUTCOME_SUCCESS)
             return result

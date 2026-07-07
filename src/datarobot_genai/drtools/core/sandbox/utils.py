@@ -96,8 +96,8 @@ async def execute_code(
     token = get_datarobot_access_token()
     endpoint = get_credentials().datarobot.datarobot_endpoint
 
-    # InstrumentedSandbox no-ops when OTel is absent or no MeterProvider was
-    # bootstrapped, so the wrap is unconditional.
+    # The wrap is unconditional: without a bootstrapped MeterProvider the
+    # instruments record into OTel's no-op provider.
     sandbox = InstrumentedSandbox(
         DataRobotWorkloadSandbox(
             image=image,

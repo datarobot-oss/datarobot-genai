@@ -20,8 +20,8 @@ via ``opentelemetry.metrics.get_meter(...)`` go to the default no-op provider
 and never leave the process. Call :func:`bootstrap_metrics_provider` once at
 startup to point the global ``MeterProvider`` at an OTLP/HTTP collector.
 
-Follows the same safety contract as the trace bootstrap: lazy SDK imports, a
-no-op when no endpoint is configured, idempotent, and never raises.
+Follows the same safety contract as the trace bootstrap: a no-op when no
+endpoint is configured, idempotent, and never raises.
 """
 
 from __future__ import annotations
@@ -29,6 +29,12 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
+
+from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +92,6 @@ def bootstrap_metrics_provider(
         return False
 
     try:
-        from opentelemetry import metrics
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        from opentelemetry.sdk.resources import Resource
-
         exporter = (
             OTLPMetricExporter(endpoint=endpoint, headers=headers)
             if headers

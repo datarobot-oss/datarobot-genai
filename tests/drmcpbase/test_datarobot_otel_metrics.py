@@ -14,7 +14,8 @@
 
 """Tests for the OTLP metrics provider bootstrap (guard + idempotency).
 
-The OpenTelemetry SDK is mocked so these never mutate the process-global
+The SDK constructors are patched on the module under test (it binds them via
+``from ... import`` at import time) so these never mutate the process-global
 MeterProvider (which can only be set once per process).
 """
 
@@ -32,69 +33,53 @@ def _reset() -> None:
     m._reset_for_testing()
 
 
+@pytest.fixture
+def sdk_stubs(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Stub the SDK pieces bootstrap uses; capture what it passes to them."""
+    seen: dict = {"set_provider_calls": 0, "exporter_kwargs": None, "resource_attrs": None}
+
+    def _set_provider(_p: object) -> None:
+        seen["set_provider_calls"] += 1
+
+    def _exporter(**kwargs: object) -> MagicMock:
+        seen["exporter_kwargs"] = kwargs
+        return MagicMock()
+
+    monkeypatch.setattr(m.metrics, "set_meter_provider", _set_provider)
+    monkeypatch.setattr(m, "OTLPMetricExporter", _exporter)
+    monkeypatch.setattr(m, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
+    monkeypatch.setattr(m, "MeterProvider", lambda **_kw: MagicMock())
+    monkeypatch.setattr(
+        m.Resource,
+        "create",
+        classmethod(lambda _cls, attrs: seen.__setitem__("resource_attrs", dict(attrs))),
+    )
+    return seen
+
+
 def test_no_op_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
     assert m.bootstrap_metrics_provider() is False
 
 
-def test_installs_once_then_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
-    import opentelemetry.exporter.otlp.proto.http.metric_exporter as http_exp
-    import opentelemetry.metrics as otel_metrics
-    import opentelemetry.sdk.metrics as sdk_metrics
-    import opentelemetry.sdk.metrics.export as sdk_export
-
-    calls = {"set": 0}
-    monkeypatch.setattr(
-        otel_metrics, "set_meter_provider", lambda _p: calls.__setitem__("set", calls["set"] + 1)
-    )
-    monkeypatch.setattr(http_exp, "OTLPMetricExporter", lambda **_kw: MagicMock())
-    monkeypatch.setattr(sdk_export, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
-    monkeypatch.setattr(sdk_metrics, "MeterProvider", lambda **_kw: MagicMock())
-
+def test_installs_once_then_idempotent(sdk_stubs: dict) -> None:
     first = m.bootstrap_metrics_provider(endpoint="http://localhost:4318/v1/metrics")
     second = m.bootstrap_metrics_provider(endpoint="http://localhost:4318/v1/metrics")
 
     assert first is True
     assert second is False
-    assert calls["set"] == 1
+    assert sdk_stubs["set_provider_calls"] == 1
 
 
-def test_endpoint_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    import opentelemetry.exporter.otlp.proto.http.metric_exporter as http_exp
-    import opentelemetry.metrics as otel_metrics
-    import opentelemetry.sdk.metrics as sdk_metrics
-    import opentelemetry.sdk.metrics.export as sdk_export
-
+def test_endpoint_from_env(monkeypatch: pytest.MonkeyPatch, sdk_stubs: dict) -> None:
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://collector:4318/v1/metrics")
-    seen = {}
-    monkeypatch.setattr(otel_metrics, "set_meter_provider", lambda _p: None)
-    monkeypatch.setattr(http_exp, "OTLPMetricExporter", lambda **kw: seen.update(kw) or MagicMock())
-    monkeypatch.setattr(sdk_export, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
-    monkeypatch.setattr(sdk_metrics, "MeterProvider", lambda **_kw: MagicMock())
 
     assert m.bootstrap_metrics_provider() is True
-    assert seen["endpoint"] == "http://collector:4318/v1/metrics"
+    assert sdk_stubs["exporter_kwargs"] == {"endpoint": "http://collector:4318/v1/metrics"}
 
 
-def test_resource_attributes_merged_over_service_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import opentelemetry.exporter.otlp.proto.http.metric_exporter as http_exp
-    import opentelemetry.metrics as otel_metrics
-    import opentelemetry.sdk.metrics as sdk_metrics
-    import opentelemetry.sdk.metrics.export as sdk_export
-    import opentelemetry.sdk.resources as sdk_resources
-
-    seen = {}
-    monkeypatch.setattr(otel_metrics, "set_meter_provider", lambda _p: None)
-    monkeypatch.setattr(http_exp, "OTLPMetricExporter", lambda **_kw: MagicMock())
-    monkeypatch.setattr(sdk_export, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
-    monkeypatch.setattr(sdk_metrics, "MeterProvider", lambda **_kw: MagicMock())
-    monkeypatch.setattr(
-        sdk_resources.Resource, "create", classmethod(lambda _cls, attrs: seen.update(attrs))
-    )
-
+def test_resource_attributes_merged_over_service_name(sdk_stubs: dict) -> None:
     assert (
         m.bootstrap_metrics_provider(
             endpoint="http://collector:4318/v1/metrics",
@@ -102,5 +87,5 @@ def test_resource_attributes_merged_over_service_name(
         )
         is True
     )
-    assert seen["datarobot.service.name"] == "test-mcp"
-    assert "service.name" in seen
+    assert sdk_stubs["resource_attrs"]["datarobot.service.name"] == "test-mcp"
+    assert "service.name" in sdk_stubs["resource_attrs"]

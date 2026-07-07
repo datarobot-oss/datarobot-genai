@@ -21,7 +21,13 @@ wrapper.
 from typing import Any
 from unittest.mock import MagicMock
 
+import opentelemetry.metrics as om
 import pytest
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from datarobot_genai.drtools.core.sandbox import observability as obs
 from datarobot_genai.drtools.core.sandbox.base import SandboxError
@@ -72,9 +78,6 @@ def _reader_and_instruments() -> tuple[Any, Any]:
     Dependency-injected so tests never touch the global MeterProvider (which
     OpenTelemetry only allows setting once per process).
     """
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-
     reader = InMemoryMetricReader()
     meter = MeterProvider(metric_readers=[reader]).get_meter("test")
     return reader, obs.build_instruments(meter)
@@ -178,10 +181,6 @@ async def test_wrapper_records_timeout_reason() -> None:
 
 
 def _tracer_and_exporter() -> tuple[Any, Any]:
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -224,8 +223,6 @@ def test_get_instruments_rebuilds_when_meter_provider_changes(monkeypatch) -> No
     # Guards against pinning a no-op/proxy provider: if get_instruments() runs
     # before bootstrap installs the SDK provider, a later provider swap must
     # rebuild the instruments rather than keep emitting to the old provider.
-    import opentelemetry.metrics as om
-
     saved = dict(obs._STATE)
     try:
         obs._STATE["instruments"] = None
