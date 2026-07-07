@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.1
+- `test_utils.test_interactive`: connect to ANY MCP server — `--url` / `--model` / repeatable `--header KEY=VALUE` flags, automatic `x-datarobot-api-token` header so DataRobot directAccess deployments authenticate, and per-prompt round-trip timing.
+- `test_utils.otel_traces` (new): fetch + pretty-print a deployed MCP server's OTEL traces (`/api/v2/otel/deployment/{id}/traces/`); `traces [n]` / `trace <traceId>` commands in the interactive client show recent traces and per-span trees with durations.
+
 ## 0.23.0
 - *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
 
