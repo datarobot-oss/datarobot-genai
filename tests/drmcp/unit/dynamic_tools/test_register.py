@@ -457,3 +457,100 @@ class TestExternalToolCallableErrorHandling:
             with pytest.raises(ToolError, match="stop sequence") as exc_info:
                 await callable_fn(input_model())
             assert "400" in str(exc_info.value)
+
+
+class TestExternalToolRetryPolicy:
+    """Retries are scoped to what the HTTP method makes safe to replay.
+
+    Regression: one retry policy (5 attempts on 429/502/503/504) applied to
+    every method, so a POST/PATCH whose first attempt did reach the
+    application was replayed up to 4 more times — duplicate side effects.
+    """
+
+    TOOL_URL = "https://api.example.com/test"
+
+    @staticmethod
+    def _tool_config(method: str) -> ExternalToolRegistrationConfig:
+        return ExternalToolRegistrationConfig(
+            name="test_tool",
+            method=method,  # type: ignore[arg-type]
+            base_url="https://api.example.com/",
+            endpoint="test",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query_params": {
+                        "type": "object",
+                        "properties": {"q": {"type": "string"}},
+                    }
+                },
+            },
+        )
+
+    @staticmethod
+    def _callable_and_input(config: ExternalToolRegistrationConfig):
+        callable_fn = _external_tool_callable_factory(config, allow_empty=True)
+        input_model = inspect.signature(callable_fn).parameters["inputs"].annotation
+        return callable_fn, input_model
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["POST", "PATCH"])
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_non_idempotent_methods_not_retried_on_ambiguous_failures(
+        self, mock_headers, method: str, status: int
+    ):
+        """GIVEN a POST/PATCH whose first attempt fails ambiguously (the request
+        may have been processed) WHEN the gateway-style status comes back THEN
+        the request is NOT replayed — the queued 200 would have made a retried
+        call succeed.
+        """
+        callable_fn, input_model = self._callable_and_input(self._tool_config(method))
+
+        with aioresponses() as mocked:
+            register = getattr(mocked, method.lower())
+            register(self.TOOL_URL, status=status, body="upstream error")
+            register(self.TOOL_URL, status=200, body="{}", content_type="application/json")
+
+            with pytest.raises(ToolError, match=f"HTTP {status}"):
+                await callable_fn(input_model())
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["POST", "PATCH"])
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_non_idempotent_methods_retried_on_429(self, mock_headers, method: str):
+        """A 429 rejection provably never processed the request, so replaying
+        a POST/PATCH is safe — the retried call reaches the queued 200.
+        """
+        callable_fn, input_model = self._callable_and_input(self._tool_config(method))
+
+        with aioresponses() as mocked:
+            register = getattr(mocked, method.lower())
+            register(self.TOOL_URL, status=429, body="rate limited")
+            register(self.TOOL_URL, status=200, body="{}", content_type="application/json")
+
+            result = await callable_fn(input_model())
+            assert isinstance(result, ToolResult)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+    @patch(
+        "datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={}
+    )
+    async def test_idempotent_methods_still_retried_on_transient_failures(
+        self, mock_headers, method: str
+    ):
+        """Idempotent methods keep the full retry behavior on 5xx."""
+        callable_fn, input_model = self._callable_and_input(self._tool_config(method))
+
+        with aioresponses() as mocked:
+            register = getattr(mocked, method.lower())
+            register(self.TOOL_URL, status=502, body="bad gateway")
+            register(self.TOOL_URL, status=200, body="{}", content_type="application/json")
+
+            result = await callable_fn(input_model())
+            assert isinstance(result, ToolResult)
