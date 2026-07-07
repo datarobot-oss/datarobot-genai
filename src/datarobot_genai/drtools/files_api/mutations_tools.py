@@ -64,6 +64,11 @@ logger = logging.getLogger(__name__)
         "Example (binary): file_write(path='dr://abc123/logo.png', content='<b64>', "
         "encoding='base64')"
     ),
+    display_name="Files — Write",
+    description_ui=(
+        "Writes inline text or binary content to a file under a catalog item, "
+        "creating parent folders as needed."
+    ),
 )
 async def file_write(
     *,
@@ -118,6 +123,11 @@ async def file_write(
         "recursive=True)"
     ),
     excluded_from_global_mcp=True,
+    display_name="Files — Upload",
+    description_ui=(
+        "Streams files, directories, or glob matches from the server's local disk "
+        "into a catalog directory."
+    ),
 )
 async def file_upload(
     *,
@@ -190,10 +200,14 @@ async def file_upload(
         "  'copy'       — copy path to target_path. Set recursive=True for directories.\n"
         "  'move'       — move/rename path to target_path. Set recursive=True for directories.\n"
         "  'clone'      — clone a whole catalog item directory (path) to a new catalog "
-        "item; returns its id. Use files_to_omit to skip entries.\n\n"
+        "item; returns its ID. Use files_to_omit to skip entries.\n\n"
         "Example: file_manage(action='create_dir')\n"
         "Example: file_manage(action='delete', path='dr://abc123/old/', recursive=True)\n"
         "Example: file_manage(action='copy', path='dr://abc123/a.txt', target_path='dr://abc123/b.txt')"
+    ),
+    display_name="Files — Manage",
+    description_ui=(
+        "Runs structural filesystem actions: create directory, delete, copy, move, or clone."
     ),
 )
 async def file_manage(

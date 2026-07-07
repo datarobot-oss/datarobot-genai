@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.1
+- `drtools`: polished MCP tool metadata across connectors, predictive, panels, files API, workloads, and web search — sentence-case display names, capitalized JSON/ID in user-facing text, clearer agent descriptions and parameter help, and ampersands spelled out as "and".
+- `drtools/workload`: renamed workload MCP tools for clearer naming — `workload_create_payload`→`workload_create_payload_build`, `workload_action`→`workload_action_run`, `bundle_list`→`workload_bundle_list`, `workload_replacement`→`workload_artifact_replace`, `workload_stats`→`workload_stats_get`, `workload_logs`→`workload_logs_get`, `workload_activity`→`workload_activity_get`, `proton_get`→`workload_proton_get`, `artifact_build_get`→`artifact_get_build`, `artifact_build_action`→`artifact_build_run_action`, `artifact_action`→`artifact_action_run`. Update allowlists and agent configs that reference the old names.
+- `drmcputils`: made `dr_use_cases` and `dr_deployments` standalone leaf categories (they are no longer expanded by `dr_predictive`).
+
 ## 0.23.0
 - *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
 

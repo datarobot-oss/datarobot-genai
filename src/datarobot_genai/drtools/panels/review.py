@@ -64,9 +64,14 @@ def _node_summary(panel: Any) -> dict[str, Any]:
         "and parent graph for the panel and its ancestors, without reading payload data. "
         "Read-only. Use this to understand where a derived panel came from."
     ),
+    display_name="Panels — Inspect",
+    description_ui=(
+        "Walks a panel's parent lineage recursively, returning execution context "
+        "and the ancestor graph without reading payloads."
+    ),
 )
 async def inspect_panel(
-    panel_id: Annotated[str, "The panel id whose lineage to inspect."],
+    panel_id: Annotated[str, "The panel ID whose lineage to inspect."],
 ) -> dict[str, Any]:
     _require_mcp_sandbox()
     if not panel_id:
@@ -110,6 +115,10 @@ async def inspect_panel(
         "[Panels—view json] View a Json panel's structured data (large structures are "
         "truncated to preserve shape: first 5 array items, 200-char strings, 6 levels). "
         "Read-only; for tabular panels use preview_dataset_panel."
+    ),
+    display_name="Panels — View JSON panel",
+    description_ui=(
+        "Views a JSON panel's structured data, truncating large structures to preserve their shape."
     ),
 )
 async def view_json_panel(

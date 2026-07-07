@@ -25,6 +25,7 @@ from datarobot_genai.drmcpbase.auth.exceptions import (
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
 from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
+from datarobot_genai.drmcpbase.feature_flags import check_mcp_tools_gallery_support
 
 
 @pytest.fixture
@@ -104,3 +105,36 @@ class TestFeatureFlagEvaluation:
         mock_get_datarobot_bearer_token_from_x_datarobot_authorization.assert_called_once_with()
         mock_get_feature_flag_enablement_with_existing_datarobot_client.assert_not_called()
         assert output is False
+
+
+class TestCheckMcpToolsGallerySupport:
+    """The shared None-safe entry point used by both providers and the gallery gate."""
+
+    @pytest.fixture
+    def mock_evaluator(self, module_under_test: str) -> Iterator[AsyncMock]:
+        with patch(
+            f"{module_under_test}.FeatureFlagEvaluation."
+            "is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.mark.asyncio
+    async def test_none_client_returns_false_without_evaluating(
+        self, mock_evaluator: AsyncMock
+    ) -> None:
+        # A request racing a provider's lifespan has no client yet → fail closed,
+        # and the evaluator (which reads request headers) must not be called.
+        assert await check_mcp_tools_gallery_support(None) is False
+        mock_evaluator.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("enabled", [True, False])
+    async def test_delegates_to_evaluator_with_client(
+        self, mock_evaluator: AsyncMock, enabled: bool
+    ) -> None:
+        mock_evaluator.return_value = enabled
+        client = Mock()
+
+        assert await check_mcp_tools_gallery_support(client) is enabled
+        mock_evaluator.assert_awaited_once_with(client)
