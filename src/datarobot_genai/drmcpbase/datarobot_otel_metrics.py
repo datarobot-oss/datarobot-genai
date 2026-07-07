@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,16 @@ def bootstrap_metrics_provider(
     *,
     headers: dict[str, str] | None = None,
     export_interval_ms: int | None = None,
+    resource_attributes: dict[str, Any] | None = None,
 ) -> bool:
     """Install a global OTLP/HTTP ``MeterProvider``; return whether it installed.
 
     Returns ``False`` (silently) when no endpoint is configured (the local-dev /
     CI shape), when already installed in this process, or when setup raises.
+
+    ``resource_attributes`` are merged over the default ``service.name`` so a
+    host process (e.g. the MCP server) can stamp metrics with the same resource
+    identity it uses for traces and logs.
     """
     if _STATE["installed"]:
         return False
@@ -95,7 +101,9 @@ def bootstrap_metrics_provider(
             exporter,
             export_interval_millis=export_interval_ms or _DEFAULT_EXPORT_INTERVAL_MS,
         )
-        resource = Resource.create({"service.name": _resolve_service_name()})
+        resource = Resource.create(
+            {"service.name": _resolve_service_name(), **(resource_attributes or {})}
+        )
         metrics.set_meter_provider(MeterProvider(metric_readers=[reader], resource=resource))
     except Exception:
         # Never let telemetry setup take down the caller.

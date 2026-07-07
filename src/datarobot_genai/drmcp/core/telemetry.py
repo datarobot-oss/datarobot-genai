@@ -56,6 +56,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
+from datarobot_genai.drmcpbase.datarobot_otel_metrics import bootstrap_metrics_provider
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .config import get_config
@@ -194,6 +195,24 @@ def _setup_otel_exporter() -> None:
         provider.add_span_processor(span_processor)
 
 
+def _setup_otel_metrics(resource_attrs: dict[str, Any]) -> None:
+    """Install the OTLP ``MeterProvider`` alongside the trace/log providers.
+
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` holds the collector *base* URL (set by
+    ``_setup_otel_env_variables``), so the metrics signal path is appended here.
+    Headers come from ``OTEL_EXPORTER_OTLP_HEADERS``, which the OTLP exporter
+    reads itself when no explicit ``headers`` are passed.
+    """
+    base = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    if not base:
+        root_logger.info("OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping metrics provider")
+        return
+    bootstrap_metrics_provider(
+        endpoint=base.rstrip("/") + "/v1/metrics",
+        resource_attributes=resource_attrs,
+    )
+
+
 class _ExcludeOtelLogsFilter(logging.Filter):
     """A logging filter to exclude logs from the opentelemetry library."""
 
@@ -305,6 +324,7 @@ def initialize_telemetry(mcp: FastMCP) -> None:
 
     # Setup OTEL exporter
     _setup_otel_exporter()
+    _setup_otel_metrics(resource_attrs)
     _setup_otel_logging(resource)
 
     # Setup HTTP client instrumentation

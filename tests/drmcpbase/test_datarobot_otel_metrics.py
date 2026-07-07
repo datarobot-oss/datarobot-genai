@@ -75,3 +75,32 @@ def test_endpoint_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert m.bootstrap_metrics_provider() is True
     assert seen["endpoint"] == "http://collector:4318/v1/metrics"
+
+
+def test_resource_attributes_merged_over_service_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import opentelemetry.exporter.otlp.proto.http.metric_exporter as http_exp
+    import opentelemetry.metrics as otel_metrics
+    import opentelemetry.sdk.metrics as sdk_metrics
+    import opentelemetry.sdk.metrics.export as sdk_export
+    import opentelemetry.sdk.resources as sdk_resources
+
+    seen = {}
+    monkeypatch.setattr(otel_metrics, "set_meter_provider", lambda _p: None)
+    monkeypatch.setattr(http_exp, "OTLPMetricExporter", lambda **_kw: MagicMock())
+    monkeypatch.setattr(sdk_export, "PeriodicExportingMetricReader", lambda *_a, **_kw: MagicMock())
+    monkeypatch.setattr(sdk_metrics, "MeterProvider", lambda **_kw: MagicMock())
+    monkeypatch.setattr(
+        sdk_resources.Resource, "create", classmethod(lambda _cls, attrs: seen.update(attrs))
+    )
+
+    assert (
+        m.bootstrap_metrics_provider(
+            endpoint="http://collector:4318/v1/metrics",
+            resource_attributes={"datarobot.service.name": "test-mcp"},
+        )
+        is True
+    )
+    assert seen["datarobot.service.name"] == "test-mcp"
+    assert "service.name" in seen

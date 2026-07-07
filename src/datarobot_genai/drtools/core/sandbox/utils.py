@@ -35,6 +35,7 @@ from datarobot_genai.drmcputils.feature_flags import FeatureFlag
 from datarobot_genai.drtools.core.sandbox.base import SandboxError
 from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.observability import InstrumentedSandbox
 from datarobot_genai.drtools.core.sandbox.workload import DataRobotWorkloadSandbox
 
 logger = logging.getLogger(__name__)
@@ -95,11 +96,15 @@ async def execute_code(
     token = get_datarobot_access_token()
     endpoint = get_credentials().datarobot.datarobot_endpoint
 
-    sandbox = DataRobotWorkloadSandbox(
-        image=image,
-        datarobot_endpoint=endpoint,
-        datarobot_api_token=token,
-        security_context=_resolve_security_context(),
+    # InstrumentedSandbox no-ops when OTel is absent or no MeterProvider was
+    # bootstrapped, so the wrap is unconditional.
+    sandbox = InstrumentedSandbox(
+        DataRobotWorkloadSandbox(
+            image=image,
+            datarobot_endpoint=endpoint,
+            datarobot_api_token=token,
+            security_context=_resolve_security_context(),
+        )
     )
     try:
         result = await sandbox.run(code, inputs=inputs, timeout_s=timeout_s)
