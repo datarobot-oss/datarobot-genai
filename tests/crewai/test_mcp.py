@@ -14,16 +14,19 @@
 
 import os
 import socket
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from crewai.utilities.agent_utils import convert_tools_to_openai_schema
+from mcp.types import Tool
 from pydantic import BaseModel
 
 from datarobot_genai.core.mcp import MCPConfig
-from datarobot_genai.crewai.mcp import _EmptyArgsSchema
+from datarobot_genai.crewai.mcp import _EMPTY_OBJECT_SCHEMA
 from datarobot_genai.crewai.mcp import _local_server_reachable
-from datarobot_genai.crewai.mcp import _sanitize_tool_schemas
+from datarobot_genai.crewai.mcp import _RawSchemaCrewAIAdapter
 from datarobot_genai.crewai.mcp import mcp_tools_context
 
 
@@ -34,8 +37,8 @@ def mock_tools():
 
 @pytest.fixture
 def mock_adapter(mock_tools):
-    """Fixture for mocking MCPServerAdapter."""
-    with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
+    """Fixture for mocking mcpadapt's MCPAdapt."""
+    with patch("datarobot_genai.crewai.mcp.MCPAdapt") as mock:
         mock_adapter_instance = MagicMock()
         mock_adapter_instance.__enter__.return_value = mock_tools
         mock_adapter_instance.__exit__.return_value = None
@@ -49,39 +52,70 @@ def clear_environment_variables():
         yield
 
 
-class TestSanitizeToolSchemas:
-    def test_none_args_schema_replaced_with_empty_schema(self):
+class TestRawSchemaAdapter:
+    """The adapter keeps the MCP server's raw inputSchema as the tool schema, instead of
+    mcpadapt's lossy pydantic round-trip (which drops property types -> azure rejects).
+    """
+
+    def test_preserves_raw_input_schema(self):
+        raw = {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "default": 3},
+            },
+            "required": ["query"],
+        }
+
+        class _Base(BaseModel):
+            query: str
+            max_results: int = 3
+
+        tool = MagicMock()
+        tool.args_schema = _Base
+        out = _RawSchemaCrewAIAdapter._keep_raw_schema(tool, SimpleNamespace(inputSchema=raw))
+        # the LLM-facing schema is the raw one (every property typed), not the lossy model's
+        assert out.args_schema.model_json_schema() == raw
+
+    def test_missing_input_schema_falls_back_to_empty_object(self):
         tool = MagicMock()
         tool.args_schema = None
-        result = _sanitize_tool_schemas([tool])
-        assert result[0].args_schema is _EmptyArgsSchema
+        out = _RawSchemaCrewAIAdapter._keep_raw_schema(tool, SimpleNamespace(inputSchema=None))
+        assert out.args_schema.model_json_schema() == _EMPTY_OBJECT_SCHEMA
 
-    def test_existing_args_schema_untouched(self):
-        class MySchema(BaseModel):
-            value: int
+    def test_native_tool_call_schema_keeps_types_and_drops_null_keys(self):
+        # End-to-end through CrewAI's native converter (not just model_json_schema()): the
+        # LLM-facing function parameters must keep every property's ``type`` and carry no
+        # null-valued keys (``enum``/``items``/``default``: null) that azure rejects. Without the
+        # raw-schema override the stock pydantic round-trip drops ``type`` and injects those null
+        # keys -- so this pins the regression the adapter fixes, below model_json_schema()'s reach.
+        raw = {
+            "type": "object",
+            "properties": {
+                "max_results": {"type": "integer", "default": 3},
+                "filters": {"type": "object", "properties": {"lang": {"type": "string"}}},
+            },
+            "required": [],
+        }
+        tool = _RawSchemaCrewAIAdapter().adapt(
+            lambda _args=None: "ok",
+            Tool(name="searcher", description="s", inputSchema=raw),
+        )
+        fn_schemas, _fns, _lookup = convert_tools_to_openai_schema([tool])
+        params = fn_schemas[0]["function"]["parameters"]
 
-        tool = MagicMock()
-        tool.args_schema = MySchema
-        result = _sanitize_tool_schemas([tool])
-        assert result[0].args_schema is MySchema
+        assert params["properties"]["max_results"]["type"] == "integer"
+        assert params["properties"]["filters"]["properties"]["lang"]["type"] == "string"
 
-    def test_mixed_tools_sanitized_correctly(self):
-        class MySchema(BaseModel):
-            value: int
+        def null_valued_keys(node):
+            if isinstance(node, dict):
+                here = [k for k, v in node.items() if v is None]
+                return here + [p for v in node.values() for p in null_valued_keys(v)]
+            if isinstance(node, list):
+                return [p for v in node for p in null_valued_keys(v)]
+            return []
 
-        tool_with_schema = MagicMock()
-        tool_with_schema.args_schema = MySchema
-        tool_without_schema = MagicMock()
-        tool_without_schema.args_schema = None
-        result = _sanitize_tool_schemas([tool_with_schema, tool_without_schema])
-        assert result[0].args_schema is MySchema
-        assert result[1].args_schema is _EmptyArgsSchema
-
-    def test_empty_args_schema_produces_valid_openai_parameters(self):
-        # Azure OpenAI requires parameters to be type "object"; verify the
-        # fallback schema serializes correctly.
-        schema = _EmptyArgsSchema.model_json_schema()
-        assert schema.get("type") == "object"
+        assert null_valued_keys(params) == []
 
 
 class TestMCPToolsContext:
@@ -101,7 +135,7 @@ class TestMCPToolsContext:
         async with mcp_tools_context(mcp_config) as tools:
             assert tools == mock_tools
             mock_adapter.assert_called_once()
-            # Check that the server config was passed correctly
+            # Check that the server config was passed correctly (first positional arg)
             call_args = mock_adapter.call_args[0][0]
             assert call_args["url"] == test_url
             assert call_args["transport"] == "streamable-http"
@@ -123,7 +157,6 @@ class TestMCPToolsContext:
         async with mcp_tools_context(mcp_config) as tools:
             assert tools == mock_tools
             mock_adapter.assert_called_once()
-            # Check that the server config was passed correctly
             call_args = mock_adapter.call_args[0][0]
             expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
             assert call_args["url"] == expected_url
@@ -152,81 +185,39 @@ class TestMCPToolsContext:
         async with mcp_tools_context(mcp_config) as tools:
             assert tools == mock_tools
             mock_adapter.assert_called_once()
-            # Check that forwarded headers are included in the server config
             call_args = mock_adapter.call_args[0][0]
             assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
             assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
 
     @pytest.mark.usefixtures("mock_adapter")
     async def test_mcp_tools_context_propagates_exceptions(self):
-        """Test context manager propagates exceptions."""
+        """Exceptions raised inside the context body propagate (not swallowed)."""
         test_url = "https://mcp-server.example.com/mcp"
         mcp_config = MCPConfig(external_mcp_url=test_url)
         with pytest.raises(RuntimeError):
             async with mcp_tools_context(mcp_config):
                 raise RuntimeError("Connection failed")
 
-    async def test_mcp_tools_context_sanitizes_none_args_schema(self, mock_adapter):
-        """Tools with None args_schema get a valid empty schema so
-        Azure OpenAI doesn't reject them.
-        """
-        null_schema_tool = MagicMock()
-        null_schema_tool.args_schema = None
-        with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
-            instance = MagicMock()
-            instance.__enter__.return_value = [null_schema_tool]
-            instance.__exit__.return_value = None
-            mock.return_value = instance
-            test_url = "https://mcp-server.example.com/mcp"
-            mcp_config = MCPConfig(external_mcp_url=test_url)
-            async with mcp_tools_context(mcp_config) as tools:
-                assert len(tools) == 1
-                assert tools[0].args_schema is _EmptyArgsSchema
-
-    async def test_mcp_tools_context_preserves_existing_args_schema(self, mock_adapter):
-        """Tools that already have a valid args_schema are left untouched."""
-
-        class MySchema(BaseModel):
-            query: str
-
-        tool_with_schema = MagicMock()
-        tool_with_schema.args_schema = MySchema
-        with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock:
-            instance = MagicMock()
-            instance.__enter__.return_value = [tool_with_schema]
-            instance.__exit__.return_value = None
-            mock.return_value = instance
-            test_url = "https://mcp-server.example.com/mcp"
-            mcp_config = MCPConfig(external_mcp_url=test_url)
-            async with mcp_tools_context(mcp_config) as tools:
-                assert tools[0].args_schema is MySchema
-
     async def test_mcp_tools_context_connection_error_yields_empty(self):
         """Test graceful fallback when MCP server connection fails."""
         test_url = "https://mcp-server.example.com/mcp"
         mcp_config = MCPConfig(external_mcp_url=test_url)
-        with patch(
-            "datarobot_genai.crewai.mcp.MCPServerAdapter", side_effect=ConnectionError("refused")
-        ):
+        with patch("datarobot_genai.crewai.mcp.MCPAdapt", side_effect=ConnectionError("refused")):
             async with mcp_tools_context(mcp_config) as tools:
                 assert tools == []
 
     async def test_unreachable_local_server_skips_adapter(self):
-        """A local MCP server that isn't running short-circuits before the adapter
-        is built, avoiding the ~30s blocking connect and background-thread traceback.
+        """A local MCP server that isn't running short-circuits before the adapter is
+        built, avoiding the ~30s blocking connect and background-thread traceback.
         """
-        # Hold a bound-but-not-listening socket: connections are refused, and
-        # keeping it open reserves the port so the OS can't reuse it mid-test.
+        # Bound-but-not-listening socket: connections are refused, and holding it open
+        # reserves the port so the OS can't reuse it mid-test.
         bound = socket.socket()
         bound.bind(("127.0.0.1", 0))
         closed_port = bound.getsockname()[1]
         try:
             mcp_config = MCPConfig(mcp_server_port=closed_port)
-            with patch("datarobot_genai.crewai.mcp.MCPServerAdapter") as mock_adapter:
-                instance = MagicMock()
-                instance.__enter__.return_value = []
-                instance.__exit__.return_value = None
-                mock_adapter.return_value = instance
+            with patch("datarobot_genai.crewai.mcp.MCPAdapt") as mock_adapter:
                 async with mcp_tools_context(mcp_config) as tools:
                     assert tools == []
                 mock_adapter.assert_not_called()
@@ -246,8 +237,8 @@ class TestLocalServerReachable:
             listener.close()
 
     def test_unreachable_when_closed(self):
-        # Hold a bound-but-not-listening socket: connections are refused, and
-        # keeping it open reserves the port so the OS can't reuse it mid-test.
+        # Bound-but-not-listening socket: connection refused; holding it open reserves
+        # the port so the OS can't reuse it mid-test.
         bound = socket.socket()
         bound.bind(("127.0.0.1", 0))
         port = bound.getsockname()[1]

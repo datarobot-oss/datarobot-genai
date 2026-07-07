@@ -21,11 +21,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from nat.builder.context import Context
 from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChoice
 from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Usage
 from openai.types.chat import ChatCompletion
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.trace import NonRecordingSpan
+from opentelemetry.trace import SpanContext
+from opentelemetry.trace import TraceFlags
 
 from datarobot_genai.dragent import execute_dragent_inline_async
 from datarobot_genai.dragent.inline import _resolve_config_path
@@ -90,6 +96,53 @@ def _install_fake_workflow(monkeypatch: pytest.MonkeyPatch, response: ChatRespon
     monkeypatch.setattr(
         "datarobot_genai.nat.helpers.load_workflow",
         _build_fake_load_workflow(response),
+    )
+    monkeypatch.setattr(
+        "datarobot_genai.dragent.inline._resolve_config_path",
+        lambda custom_model_dir, config_file: Path("/tmp/fake-workflow.yaml"),
+    )
+
+
+def _build_trace_id_recording_load_workflow(response: ChatResponse, observed: dict):
+    """Fake load_workflow whose runner records the NAT ``workflow_trace_id``.
+
+    Mirrors what NAT's real runner reads: the ``workflow_trace_id`` that is
+    active on the singleton context state at ``runner.result()`` time.
+    """
+
+    class _FakeRunner:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def result(self, to_type=None):
+            observed["workflow_trace_id"] = Context.get().workflow_trace_id
+            return response
+
+    class _FakeSession:
+        def run(self, _input):
+            return _FakeRunner()
+
+    class _FakeSessionManager:
+        @asynccontextmanager
+        async def session(self, user_id=None):
+            yield _FakeSession()
+
+    @asynccontextmanager
+    async def _fake_load_workflow(_path, headers=None):
+        yield _FakeSessionManager()
+
+    return _fake_load_workflow
+
+
+def _install_trace_id_recording_workflow(
+    monkeypatch: pytest.MonkeyPatch, response: ChatResponse, observed: dict
+) -> None:
+    monkeypatch.setattr(
+        "datarobot_genai.nat.helpers.load_workflow",
+        _build_trace_id_recording_load_workflow(response, observed),
     )
     monkeypatch.setattr(
         "datarobot_genai.dragent.inline._resolve_config_path",
@@ -303,3 +356,58 @@ async def test_execute_dragent_inline_forwards_default_headers(
 
     # THEN: load_workflow received the supplied headers
     assert captured["headers"] == {"x-datarobot-api-token": "secret"}
+
+
+# --- Trace id propagation -----------------------------------------------
+
+
+async def test_execute_dragent_inline_propagates_active_trace_id_to_nat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN: an active OTel trace (as run_agent opens around the inline call)
+    observed: dict = {}
+    _install_trace_id_recording_workflow(monkeypatch, _make_chat_response(content="ok"), observed)
+
+    trace_id = 0x0AF7651916CD43DD8448EB211C80319C
+    span_context = SpanContext(
+        trace_id=trace_id,
+        span_id=0xB7AD6B7169203331,
+        is_remote=False,
+        trace_flags=TraceFlags(TraceFlags.SAMPLED),
+    )
+    token = otel_context.attach(trace.set_span_in_context(NonRecordingSpan(span_context)))
+    try:
+        # WHEN: running the workflow inline
+        await execute_dragent_inline_async(
+            chat_completion={
+                "model": "datarobot-e2e",
+                "messages": [{"role": "user", "content": "hi"}],
+            },  # type: ignore[arg-type]
+            custom_model_dir=Path("/tmp"),
+        )
+    finally:
+        otel_context.detach(token)
+
+    # THEN: NAT saw the caller's trace id as its workflow_trace_id, so its spans
+    # (and the middleware's) join the trace run_agent started.
+    assert observed["workflow_trace_id"] == trace_id
+
+
+async def test_execute_dragent_inline_without_active_trace_leaves_nat_trace_id_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN: no active OTel span (invalid span context)
+    observed: dict = {}
+    _install_trace_id_recording_workflow(monkeypatch, _make_chat_response(content="ok"), observed)
+
+    # WHEN: running the workflow inline outside any span
+    await execute_dragent_inline_async(
+        chat_completion={
+            "model": "datarobot-e2e",
+            "messages": [{"role": "user", "content": "hi"}],
+        },  # type: ignore[arg-type]
+        custom_model_dir=Path("/tmp"),
+    )
+
+    # THEN: nothing is seeded — NAT keeps generating its own trace id downstream.
+    assert observed["workflow_trace_id"] is None

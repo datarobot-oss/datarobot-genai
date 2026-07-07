@@ -28,17 +28,43 @@ from pathlib import Path
 
 from openai.types.chat import ChatCompletion
 
+from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import E2E_ROOT
-from dragent_tests.helpers import OTEL_EXPORTER_OTLP_ENDPOINT
-from dragent_tests.helpers import OTEL_EXPORTER_OTLP_HEADERS
 from dragent_tests.helpers import agent_dir
-from dragent_tests.helpers import assert_tracing_conventions
 from dragent_tests.helpers import build_chat_completion
 from dragent_tests.helpers import spawn_runner
 from dragent_tests.helpers import workflow_file
-from dragent_tests.mock_otel_collector import MockOtelCollector
+from dragent_tests.otel_helpers import GEN_AI_PROMPT
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_ENDPOINT
+from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_HEADERS
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
+
+# Name of the span the runner opens around ``execute_dragent_inline`` (mirrors
+# how ``datarobot-user-models``'s ``run_agent.py`` roots a trace before invoking
+# the agent). See ``dragent/run_agent.py``.
+RUN_AGENT_SPAN_NAME = "run_agent"
+
+# HTTP client spans that fire during import / workflow-load -- before any
+# workflow trace exists -- so they legitimately root their own trace. Unlike the
+# server-based tests (where these fire during startup, before the collector is
+# reset), the inline runner bootstraps the whole runtime inside the test window
+# and captures them. Matched by URL fragment and excluded from the single-trace
+# assertion.
+#   * LiteLLM fetches its model-cost map from GitHub on import.
+#   * The DataRobot python client (used by moderation) checks the API version.
+#   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
+#
+
+# In this particular test we intentionally ignore these spans because they are emmited before
+# the workflow trace exists.
+SETUP_HTTP_SPAN_URLS = (
+    "model_prices_and_context_window",
+    "/api/v2/version",
+    "/directAccess/mcp",
+)
 
 
 def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> None:
@@ -84,8 +110,36 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
         f"Expected non-empty assistant message content.\n{result.stderr}\n{result_text}"
     )
 
-    # THEN: the inline run exported convention spans with the DR auth headers
-    assert_tracing_conventions(otel_collector, prompt)
+    # THEN: the inline run exported convention spans with the DR auth headers.
+    # Setup-time HTTP client spans (LiteLLM cost map, DR version check, MCP
+    # discovery) root their own trace and are ignored for the single-trace check.
+    assert_tracing_conventions(
+        otel_collector, prompt, framework=AGENT, ignore_span_urls=SETUP_HTTP_SPAN_URLS
+    )
+
+    # THEN: the ``run_agent`` span the runner opened around the inline call was
+    # exported and shares the agent's trace. The inline path seeds NAT's
+    # workflow_trace_id from this active span, so the datarobot_agent span (and
+    # its children) join the trace run_agent started instead of a NAT-only one.
+    run_agent_spans = otel_collector.wait_for_spans(
+        lambda span: span.name == RUN_AGENT_SPAN_NAME
+    )
+    assert run_agent_spans, (
+        f"Expected a {RUN_AGENT_SPAN_NAME!r} span exported from the inline runner; "
+        f"observed span names {sorted({s.name for s in otel_collector.spans()})}."
+    )
+
+    agent_trace_ids = {
+        span.trace_id
+        for span in otel_collector.spans()
+        if span.attributes.get(GEN_AI_PROMPT) == prompt
+    }
+    run_agent_trace_ids = {span.trace_id for span in run_agent_spans}
+    assert run_agent_trace_ids == agent_trace_ids, (
+        f"Expected the {RUN_AGENT_SPAN_NAME!r} span to share the agent's trace_id, but "
+        f"run_agent trace(s)={sorted(t.hex() for t in run_agent_trace_ids)} vs "
+        f"agent trace(s)={sorted(t.hex() for t in agent_trace_ids)}."
+    )
 
 
 def test_inline_runner_script_is_packaged_with_tests() -> None:
