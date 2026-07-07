@@ -21,6 +21,7 @@ from nat.llm.litellm_llm import LiteLlmModelConfig
 from nat.llm.nim_llm import NIMModelConfig
 from nat.llm.openai_llm import OpenAIModelConfig
 from pydantic import AliasChoices
+from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
@@ -30,8 +31,21 @@ from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 
 
+class DataRobotReasoningMixin(BaseModel):
+    """Shared ``reasoning`` toggle for all DataRobot LLM provider configs."""
+
+    reasoning: bool = Field(
+        default=False,
+        description=(
+            "Whether to enable LLM extended reasoning/thinking. When false (default), "
+            "reasoning is explicitly disabled via ``extra_body``. When true and no "
+            "``extra_body`` is set, a default extended-thinking configuration is applied."
+        ),
+    )
+
+
 class DataRobotLLMComponentModelConfig(
-    LLMConfig, OpenAIModelConfig, name="datarobot-llm-component"
+    DataRobotReasoningMixin, LLMConfig, OpenAIModelConfig, name="datarobot-llm-component"
 ):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
@@ -59,14 +73,6 @@ class DataRobotLLMComponentModelConfig(
         description="Additional headers send to LLM deployment.",
         default=None,
     )
-    reasoning: bool = Field(
-        default=False,
-        description=(
-            "Whether to enable LLM extended reasoning/thinking. When false (default), "
-            "reasoning is explicitly disabled via ``extra_body``. When true and no "
-            "``extra_body`` is set, a default extended-thinking configuration is applied."
-        ),
-    )
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
@@ -78,7 +84,9 @@ async def datarobot_llm_component(
     )
 
 
-class DataRobotLLMGatewayModelConfig(OpenAIModelConfig, name="datarobot-llm-gateway"):  # type: ignore[call-arg]
+class DataRobotLLMGatewayModelConfig(
+    DataRobotReasoningMixin, OpenAIModelConfig, name="datarobot-llm-gateway"
+):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
 
@@ -91,7 +99,9 @@ async def datarobot_llm_gateway(
     )
 
 
-class DataRobotLLMDeploymentModelConfig(OpenAIModelConfig, name="datarobot-llm-deployment"):  # type: ignore[call-arg]
+class DataRobotLLMDeploymentModelConfig(
+    DataRobotReasoningMixin, OpenAIModelConfig, name="datarobot-llm-deployment"
+):  # type: ignore[call-arg]
     """A DataRobot LLM provider to be used with an LLM client."""
 
     model_name: str = Field(
@@ -119,7 +129,7 @@ async def datarobot_llm_deployment(
     )
 
 
-class DataRobotNIMModelConfig(NIMModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
+class DataRobotNIMModelConfig(DataRobotReasoningMixin, NIMModelConfig, name="datarobot-nim"):  # type: ignore[call-arg]
     """A DataRobot NIM LLM provider to be used with an LLM client."""
 
     model_name: str | None = Field(
@@ -141,7 +151,7 @@ async def datarobot_nim(config: DataRobotNIMModelConfig, _builder: Builder) -> L
     )
 
 
-class DataRobotLitellmConfig(LiteLlmModelConfig, name="datarobot-litellm"):  # type: ignore[call-arg]
+class DataRobotLitellmConfig(DataRobotReasoningMixin, LiteLlmModelConfig, name="datarobot-litellm"):  # type: ignore[call-arg]
     """A DataRobot Litellm provider to be used with an LLM client."""
 
     model_name: str | None = Field(

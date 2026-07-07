@@ -47,6 +47,64 @@ def test_apply_reasoning_config_enables_anthropic_sonnet_thinking() -> None:
     }
 
 
+def test_apply_reasoning_config_gateway_provider() -> None:
+    llm_config = DataRobotLLMGatewayModelConfig(
+        reasoning=True,
+        temperature=0,
+        model_name="vertex_ai/gemini-3.5-flash",
+        api_key="some_token",
+    )
+    config = apply_reasoning_config(
+        {"temperature": 0, "model": "vertex_ai/gemini-3.5-flash"}, llm_config
+    )
+    assert "temperature" not in config
+    assert config["extra_body"] == {"thinking_config": {"thinking_budget": 1024}}
+
+
+def test_apply_reasoning_config_deployment_provider() -> None:
+    llm_config = DataRobotLLMDeploymentModelConfig(
+        reasoning=True,
+        temperature=0,
+        llm_deployment_id="123",
+        model_name="azure/gpt-5-4-2026-03-05",
+        api_key="some_token",
+    )
+    config = apply_reasoning_config(
+        {"temperature": 0, "model": "azure/gpt-5-4-2026-03-05"}, llm_config
+    )
+    assert "temperature" not in config
+    assert config["extra_body"] == {"reasoning_effort": "low"}
+
+
+def test_apply_reasoning_config_nim_provider() -> None:
+    llm_config = DataRobotNIMModelConfig(
+        reasoning=True,
+        temperature=0,
+        nim_deployment_id="123",
+        model_name="anthropic/claude-sonnet-4-6",
+        api_key="some_token",
+    )
+    config = apply_reasoning_config(
+        {"temperature": 0, "model": "anthropic/claude-sonnet-4-6"}, llm_config
+    )
+    assert "temperature" not in config
+    assert config["extra_body"] == {
+        "thinking": {"type": "enabled", "budget_tokens": 1024},
+    }
+
+
+def test_apply_reasoning_config_litellm_provider() -> None:
+    llm_config = DataRobotLitellmConfig(
+        reasoning=True,
+        temperature=0,
+        model_name="openai/o3-mini",
+        api_key="test-key",
+    )
+    config = apply_reasoning_config({"temperature": 0, "model": "openai/o3-mini"}, llm_config)
+    assert "temperature" not in config
+    assert config["extra_body"] == {"reasoning_effort": "low"}
+
+
 @pytest.mark.parametrize(
     ("model_name", "expected_extra_body"),
     [

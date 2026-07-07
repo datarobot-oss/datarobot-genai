@@ -18,6 +18,7 @@ import re
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Protocol
 from typing import TypeVar
 
 from nat.builder.builder import Builder
@@ -43,6 +44,14 @@ ModelType = TypeVar("ModelType")
 
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
+
+
+class SupportsReasoningConfig(Protocol):
+    reasoning: bool
+    model_fields_set: set[str]
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]: ...
+
 
 EXCLUDE_FIELDS = {
     "type",
@@ -84,13 +93,13 @@ def _normalize_model_name(model_name: str | None) -> str:
 
 
 def _resolve_model_name(
-    llm_config: DataRobotLLMComponentModelConfig,
+    llm_config: SupportsReasoningConfig,
     config: dict[str, Any],
 ) -> str | None:
     return (
-        llm_config.model_name
+        getattr(llm_config, "model_name", None)
         or config.get("model")
-        or llm_config.llm_default_model
+        or getattr(llm_config, "llm_default_model", None)
         or default_model_name()
     )
 
@@ -113,7 +122,7 @@ def default_reasoning_extra_body(model_name: str | None) -> dict[str, Any]:
 
 def apply_reasoning_config(
     config: dict[str, Any],
-    llm_config: DataRobotLLMComponentModelConfig,
+    llm_config: SupportsReasoningConfig,
 ) -> dict[str, Any]:
     """Map workflow ``reasoning`` to provider ``extra_body`` and temperature."""
     if "extra_body" in llm_config.model_fields_set:
@@ -125,6 +134,21 @@ def apply_reasoning_config(
         config.pop("temperature", None)
         config["extra_body"] = default_reasoning_extra_body(_resolve_model_name(llm_config, config))
     return config
+
+
+def prepare_llm_parameters(
+    llm_config: SupportsReasoningConfig,
+    *,
+    exclude_unset: bool = False,
+) -> dict[str, Any]:
+    """Dump LLM config kwargs and apply ``reasoning`` / ``extra_body`` mapping."""
+    dumped = llm_config.model_dump(
+        exclude=EXCLUDE_FIELDS,
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=exclude_unset,
+    )
+    return apply_reasoning_config(dumped, llm_config)
 
 
 def patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> ModelType:
@@ -153,11 +177,7 @@ async def datarobot_llm_gateway_langchain(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
     client = get_datarobot_gateway_llm(config["model"], parameters=config)
     yield langchain_patch_llm_based_on_config(client, config)
 
@@ -176,11 +196,7 @@ async def datarobot_llm_deployment_langchain(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
 
     context_headers = extract_headers_from_context(["X-DataRobot-Identity-Token"])
     if llm_config.headers:
@@ -206,11 +222,7 @@ async def datarobot_nim_langchain(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
     client = get_datarobot_nim_llm(
         llm_config.nim_deployment_id, llm_config.model_name, parameters=config
     )
@@ -233,14 +245,7 @@ async def datarobot_llm_component_langchain(
     from datarobot_genai.langgraph.llm import get_external_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
-    config = apply_reasoning_config(
-        llm_config.model_dump(
-            exclude=EXCLUDE_FIELDS,
-            by_alias=True,
-            exclude_none=True,
-        ),
-        llm_config,
-    )
+    config = prepare_llm_parameters(llm_config)
     llm_type = llm_config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
@@ -270,14 +275,10 @@ async def litellm_langchain_internal(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
+    config = prepare_llm_parameters(llm_config, exclude_unset=True)
     client = get_external_llm(
         llm_config.model_name,
-        llm_config.model_dump(
-            exclude={"type", "thinking", "api_type"},
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        ),
+        config,
     )
 
     yield patch_llm_based_on_config(client, llm_config)
