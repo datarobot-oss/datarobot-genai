@@ -19,20 +19,15 @@ from typing import Any
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.context import Context
 from nat.cli.register_workflow import register_auth_provider
-from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
-from nat.data_models.common import OptionalSecretStr
-from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
-from datarobot_genai.dragent.plugins.okta_a2a_auth import _get_default_principal_id
-from datarobot_genai.dragent.plugins.okta_a2a_auth import _get_default_private_jwk
 from datarobot_genai.dragent.plugins.okta_a2a_auth import get_token_exchange
 
 logger = logging.getLogger(__name__)
@@ -67,37 +62,10 @@ def extract_token_value_from_bearer_or_non_bearer_header(http_header_value: str)
 
 
 class XAAAuthProviderConfig(
-    AuthProviderBaseConfig,
+    OAuth2CrossApplicationAccessAuthProviderConfig,
     name="xaa_auth_provider_config",
 ):  # type: ignore[call-arg]
-    okta_token_header: str = Field(
-        default="x-datarobot-external-access-token",
-        description=(
-            "Incoming header carrying the caller's access token. "
-            "Used as ``subject_token`` in Step 1 of the XAA exchange. "
-            "Matched case-insensitively."
-        ),
-    )
-    fallback_token_headers: list[str] = Field(
-        default=["authorization"],
-        description=(
-            "Fallback headers to try (in order) when ``okta_token_header`` is absent. "
-            "If the value starts with 'Bearer ', the prefix is stripped automatically."
-        ),
-    )
-    principal_id: str | None = Field(
-        default_factory=_get_default_principal_id,
-        description=(
-            "Okta AI agent principal ID (env: ``IDP_AGENT_ID``). "
-            "Used as ``iss``/``sub`` in the JWT client assertion."
-        ),
-    )
-    private_jwk: OptionalSecretStr = Field(
-        default_factory=_get_default_private_jwk,
-        description=(
-            "Base64-encoded or raw-JSON RSA private JWK (env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
-        ),
-    )
+    pass
 
 
 class XAAAuthProvider(AuthProviderBase[XAAAuthProviderConfig]):
@@ -128,16 +96,6 @@ class XAAAuthProvider(AuthProviderBase[XAAAuthProviderConfig]):
             target_audience=self._xaa_params.step_two_token_request_params.target_audience,
             token_endpoint_auth_method="private_key_jwt",
             id_jag_scopes=self._xaa_params.step_two_token_request_params.id_jag_scopes,
-        )
-
-    def get_oauth2_cross_app_access_auth_provider_config(
-        self,
-    ) -> OAuth2CrossApplicationAccessAuthProviderConfig:
-        return OAuth2CrossApplicationAccessAuthProviderConfig(
-            okta_token_header=self.config.okta_token_header,
-            fallback_token_headers=self.config.fallback_token_headers,
-            principal_id=self.config.principal_id,
-            private_jwk=self.config.private_jwk,
         )
 
     def extract_subject_token_from_inbound_request(self, headers: dict[str, str]) -> str:
@@ -177,9 +135,7 @@ class XAAAuthProvider(AuthProviderBase[XAAAuthProviderConfig]):
         self,
         headers: dict[str, str],
     ) -> BearerTokenCred:
-        token_exchange_impl = get_token_exchange(
-            self.get_oauth2_cross_app_access_auth_provider_config()
-        )
+        token_exchange_impl = get_token_exchange(self.config)
         flow_params = self.get_cross_app_flow_params()
         subject_token = self.extract_subject_token_from_inbound_request(headers)
         exchanged_token = await token_exchange_impl.exchange_token(flow_params, subject_token)

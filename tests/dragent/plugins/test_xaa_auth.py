@@ -23,9 +23,6 @@ from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from pydantic import SecretStr
 
-from datarobot_genai.dragent.plugins.okta_a2a_auth import (
-    OAuth2CrossApplicationAccessAuthProviderConfig,
-)
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 from datarobot_genai.dragent.plugins.xaa_auth import XAAAuthProvider
 from datarobot_genai.dragent.plugins.xaa_auth import XAAAuthProviderConfig
@@ -84,14 +81,6 @@ class TestXAAAuthProvider:
         with patch.object(
             XAAAuthProvider,
             "extract_subject_token_from_inbound_request",
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_get_oauth2_cross_app_access_auth_provider_config(self) -> Iterator[Mock]:
-        with patch.object(
-            XAAAuthProvider,
-            "get_oauth2_cross_app_access_auth_provider_config",
         ) as mock_func:
             yield mock_func
 
@@ -183,23 +172,6 @@ class TestXAAAuthProvider:
             xaa_params.step_two_token_request_params.target_audience,
             "private_key_jwt",
             xaa_params.step_two_token_request_params.id_jag_scopes,
-        )
-
-    def test_get_oauth2_cross_app_access_auth_provider_config(self) -> None:
-        auth_provider_config = XAAAuthProviderConfig(
-            okta_token_header="adfaadf",
-            fallback_token_headers=["dafdaas"],
-            principal_id="dsafa",
-            private_jwk="dasdfae",
-        )
-        auth_provider = XAAAuthProvider(auth_provider_config)
-        output = auth_provider.get_oauth2_cross_app_access_auth_provider_config()
-
-        assert output == OAuth2CrossApplicationAccessAuthProviderConfig(
-            okta_token_header=auth_provider_config.okta_token_header,
-            fallback_token_headers=auth_provider_config.fallback_token_headers,
-            principal_id=auth_provider_config.principal_id,
-            private_jwk=auth_provider_config.private_jwk,
         )
 
     def test_get_non_forwardable_header_keys(self) -> None:
