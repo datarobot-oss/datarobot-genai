@@ -18,13 +18,15 @@ from typing import Annotated
 from ag_ui.core import RunAgentInput
 from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.langgraph.telemetry import instrument as langgraph_instrument
 from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
 
 # INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
-instrument(framework="langgraph")
+instrument()
+langgraph_instrument()
 
 
 class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):

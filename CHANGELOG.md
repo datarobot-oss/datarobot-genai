@@ -4,15 +4,45 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.21.2
+## 0.23.3
 - `drtools/core/sandbox`: SLO/SLI observability for sandboxed code execution. New `InstrumentedSandbox` wraps any `Sandbox` backend and emits OTel metrics around each run — `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, and `sandbox.execution_failure_total{reason}` (failure taxonomy: `timeout`/`oom`/`infra`/`crash`) — plus a `sandbox.execute` span. Adds structured `SandboxError` (`exit_code`/`stderr`) and `SandboxInfraError`, a pure `classify_outcome`, and an OTLP metrics-provider bootstrap in `drmcpbase.datarobot_otel_metrics` (genai previously wired traces+logs but no metrics). `drtools` stays OTel-optional.
+- `drmcp`: wired the metrics leg into the config-driven telemetry startup — `initialize_telemetry` (gated by the existing `OTEL_ENABLED`) now installs the OTLP `MeterProvider` alongside the trace/log providers, and `execute_code` runs its sandbox through `InstrumentedSandbox`, so sandbox SLIs export with no extra configuration.
+
+## 0.23.2
+- `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.
+
+## 0.23.1
+- `drtools`: polished MCP tool metadata across connectors, predictive, panels, files API, workloads, and web search — sentence-case display names, capitalized JSON/ID in user-facing text, clearer agent descriptions and parameter help, and ampersands spelled out as "and".
+- `drtools/workload`: renamed workload MCP tools for clearer naming — `workload_create_payload`→`workload_create_payload_build`, `workload_action`→`workload_action_run`, `bundle_list`→`workload_bundle_list`, `workload_replacement`→`workload_artifact_replace`, `workload_stats`→`workload_stats_get`, `workload_logs`→`workload_logs_get`, `workload_activity`→`workload_activity_get`, `proton_get`→`workload_proton_get`, `artifact_build_get`→`artifact_get_build`, `artifact_build_action`→`artifact_build_run_action`, `artifact_action`→`artifact_action_run`. Update allowlists and agent configs that reference the old names.
+- `drmcputils`: made `dr_use_cases` and `dr_deployments` standalone leaf categories (they are no longer expanded by `dr_predictive`).
+
+## 0.23.0
+- *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
+
+## 0.22.1
+- `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
+- `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.
+
+## 0.22.0
+- *Breaking change*: `core.telemetry.agent.instrument` no longer provide instrumentation for specific agent frameworks. Instrumentation for specific frameworks moved to subpackages, and should be called explicitly: `from datarobot_genai.llama_index.telemetry import instrument`.
+- Implemented instrumentation to CrewAI new async API `akickoff`.
+- Fixed issue with trace id not passed to NAT during inline execution.
+
+## 0.21.3
+- Added the ProperDocs-powered documentation site and GitHub Pages publishing workflow.
+- Limited the CI version bump check to changes that touch the library package.
+- Updated a few generated API docstrings to match the current parameter names.
+
+## 0.21.2
+- Removed `fastapi` OpenTelemetry instrumentation from `dragent`
+- Attach `datarobot_agent` spans to NAT workflow trace context
 
 ## 0.21.1
 - Added `cryptography>=48.0.1` and `PyJWT>=2.13.0` to `override-dependencies` in pyproject.toml to address CVE-2026-54283 / CVE-2026-54282 (starlette) and related cryptography/JWT CVEs
 
 ## 0.21.0
-- **Breaking** Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
-- **Breaking** Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
+- *Breaking change*: Removed the `memory` optional extra; `mem0ai` is now installed with `[nat]` (and therefore `[dragent]`). Replace `datarobot-genai[memory]` or `datarobot-genai[nat,memory]` with `datarobot-genai[nat]` (or `datarobot-genai[dragent]`).
+- *Breaking change*: Moved `datarobot_mem0_memory` from `datarobot_genai.nat` to `datarobot_genai.dragent.plugins`. Update imports from `datarobot_genai.nat.datarobot_mem0_memory` to `datarobot_genai.dragent.plugins.datarobot_mem0_memory`.
 
 ## 0.20.1
 - `crewai` MCP: unreachable local (loopback) MCP server → skip the adapter and log one clean warning, instead of a ~30s stall + background-thread traceback before continuing without tools.

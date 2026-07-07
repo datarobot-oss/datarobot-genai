@@ -23,7 +23,7 @@ from typing import Any
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 
-from datarobot_genai.drmcpbase.fastmcp_transforms.categories import resolve_to_tool_names
+from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 
 MCP_MODE_HEADER = "x-datarobot-mcp-mode"
 MCP_TOOLS_HEADER = "x-datarobot-mcp-tools"
@@ -66,34 +66,6 @@ class MCPRequestMode(Enum):
             return cls[token]
         except KeyError:
             return cls.TOOLS
-
-
-def _parse_header_entries(raw: str | None) -> frozenset[str] | None:
-    """Split a comma-separated header value into a frozenset of stripped tokens.
-
-    Returns None when the header is absent or blank (means "no filter").
-    """
-    if raw is None:
-        return None
-    stripped = raw.strip()
-    if not stripped:
-        return None
-    entries = frozenset(part.strip() for part in stripped.split(",") if part.strip())
-    return entries if entries else None
-
-
-def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:
-    """Parse the x-datarobot-mcp-tools header and resolve any category names.
-
-    Category names (e.g. ``dr_connectors``, ``dr_connector_jira``) are expanded
-    to the set of tool function names they contain.  Plain tool names and unknown
-    entries are kept as-is.  Returns None when the header is absent or blank,
-    meaning no tool filtering should be applied.
-    """
-    entries = _parse_header_entries(raw)
-    if entries is None:
-        return None
-    return resolve_to_tool_names(entries)
 
 
 def _resolve_toolsets(raw: str | None) -> frozenset[str]:

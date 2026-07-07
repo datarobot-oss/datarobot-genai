@@ -18,6 +18,6 @@ from datarobot_genai.nat.tool import nat_tool
 from dragent.tool import generate_objectid
 
 # INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
-instrument(framework="nat")
+instrument()
 
 nat_tool(generate_objectid, "generate_objectid")

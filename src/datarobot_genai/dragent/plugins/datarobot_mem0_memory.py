@@ -70,7 +70,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
 
     mem0_api_key: str | None = None
     agent_memory_space_id: str | None = None
-    agent_memory_ttl_seconds: int | None = None
+    agent_memory_ttl_days: int | None = None
 
 
 def _get_default_memory_backend_config() -> Config:
@@ -88,20 +88,19 @@ def _get_default_agent_memory_space_id() -> str | None:
     return _get_default_memory_backend_config().agent_memory_space_id
 
 
-def _get_default_ttl_seconds() -> int | None:
-    return Config().agent_memory_ttl_seconds
+def _get_default_ttl_days() -> int | None:
+    return Config().agent_memory_ttl_days
 
 
-def _ttl_to_expiration_date(ttl_seconds: int) -> str:
-    """Translate a TTL in seconds into Mem0's ``expiration_date`` format.
+def _ttl_to_expiration_date(ttl_days: int) -> str:
+    """Translate a TTL in days into Mem0's ``expiration_date`` format.
 
     Mem0's REST ``add`` endpoint expects ``expiration_date`` as a
     ``YYYY-MM-DD`` calendar date (not a timestamp); the platform's
-    expiration sweep deletes memories on or after that date. Sub-day TTLs
-    are rounded up to "today" by the calendar floor — callers needing
-    finer granularity should pass ``expiration_date`` explicitly.
+    expiration sweep deletes memories on or after that date. Callers
+    needing finer granularity should pass ``expiration_date`` explicitly.
     """
-    return (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).strftime("%Y-%m-%d")
+    return (datetime.now(UTC) + timedelta(days=ttl_days)).strftime("%Y-%m-%d")
 
 
 class _UserManagerShim:
@@ -180,18 +179,18 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
             "Defaults to the ``DATAROBOT_API_TOKEN`` env var."
         ),
     )
-    default_ttl_seconds: int | None = Field(
-        default_factory=_get_default_ttl_seconds,
+    default_ttl_days: int | None = Field(
+        default_factory=_get_default_ttl_days,
         ge=0,
         description=(
-            "Default TTL in seconds for stored memories. When set to a "
+            "Default TTL in days for stored memories. When set to a "
             "positive value, the editor passes "
-            "``expiration_date = today + default_ttl_seconds`` (UTC, "
+            "``expiration_date = today + default_ttl_days`` (UTC, "
             "``YYYY-MM-DD``) through to Mem0's ``add`` API so memories "
             "auto-expire. Callers may override per-call by passing "
             "``expiration_date`` in ``add_params``. ``None`` or ``0`` "
             "leaves the field unset (no expiration). Defaults from the "
-            "``AGENT_MEMORY_TTL_SECONDS`` env var."
+            "``AGENT_MEMORY_TTL_DAYS`` env var."
         ),
     )
 
@@ -220,14 +219,14 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
     def __init__(
         self,
         client: Any,
-        ttl_seconds: int | None = None,
+        ttl_days: int | None = None,
         *,
         store_name: str = "mem0",
         store_id: str | None = None,
     ) -> None:
         self._client = client
         self._mem0 = client._memory
-        self._ttl_seconds = ttl_seconds
+        self._ttl_days = ttl_days
         self._store_name = store_name
         self._store_id = store_id
 
@@ -273,8 +272,8 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
         # the caller hasn't supplied one. Per-call overrides (e.g. via
         # ``add_params: {expiration_date: ...}`` in workflow.yaml) win so
         # special-case memories can opt out of or extend the default.
-        if "expiration_date" not in add_kwargs and self._ttl_seconds:
-            add_kwargs["expiration_date"] = _ttl_to_expiration_date(self._ttl_seconds)
+        if "expiration_date" not in add_kwargs and self._ttl_days:
+            add_kwargs["expiration_date"] = _ttl_to_expiration_date(self._ttl_days)
 
         coroutines = []
         for item in items:
@@ -467,7 +466,7 @@ async def dr_mem0_memory_client(
 
     editor: MemoryEditor = DRMem0Editor(
         _create_mem0_client(config, api_key),
-        ttl_seconds=config.default_ttl_seconds,
+        ttl_days=config.default_ttl_days,
         store_name=store_name,
         store_id=store_id,
     )

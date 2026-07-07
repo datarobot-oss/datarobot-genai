@@ -279,7 +279,8 @@ class NatAgent(BaseAgent[None]):
 
         Args:
             workflow_path: Path to the NAT workflow configuration file
-            input_str: Input string to process through the workflow
+            chat_request: The chat request to process through the workflow
+            headers: Optional HTTP headers to forward to the workflow
 
         Returns
         -------

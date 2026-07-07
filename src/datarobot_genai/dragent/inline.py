@@ -26,10 +26,13 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from openai.types.chat import ChatCompletion
 from openai.types.chat.completion_create_params import CompletionCreateParamsBase
+from opentelemetry import trace
 from opentelemetry.context import attach
 from opentelemetry.context import detach
 from opentelemetry.context import get_current
@@ -60,6 +63,35 @@ def _resolve_config_path(custom_model_dir: Path, config_file: Path | None) -> Pa
             f"Pass config_file=... or place {WORKFLOW_FILENAME} in {custom_model_dir}."
         )
     return candidate
+
+
+@asynccontextmanager
+async def _seed_nat_workflow_trace_id() -> AsyncIterator[None]:
+    """Seed NAT's ``workflow_trace_id`` from the active OpenTelemetry trace.
+
+    The inline path has no HTTP request, so NAT can't recover the caller's
+    trace from a ``traceparent`` / ``workflow-trace-id`` header (as it does on
+    the FastAPI server path) and would mint a fresh ``workflow_trace_id`` per
+    run. That roots the ``datarobot_agent`` span (and its children) under a
+    NAT-only trace, disconnected from the trace ``run_agent`` opened around this
+    call, so the run's spans go missing from the caller's trace.
+
+    Setting NAT's ``workflow_trace_id`` to the active span's trace id keeps
+    every SDK span in the caller's trace: NAT reuses the id
+    (``NATRunner.result`` prefers an existing ``workflow_trace_id``) and the
+    ``datarobot_otel_conventions`` middleware's ``use_nat_workflow_trace_context``
+    attaches SDK spans to it. When there is no active span, nothing is set and
+    NAT keeps generating its own trace id (prior behaviour).
+    """
+    # Local import keeps the optional NAT dependency out of import-only paths.
+    from nat.builder.context import Context
+
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        yield
+        return
+    with Context.scope(workflow_trace_id=span_context.trace_id):
+        yield
 
 
 async def execute_dragent_inline_async(
@@ -122,10 +154,13 @@ async def execute_dragent_inline_async(
     base_input = convert_chat_completion_params_to_run_agent_input(chat_completion)
     run_agent_input = DRAgentRunAgentInput.model_validate(base_input.model_dump())
 
-    async with load_workflow(workflow_path, headers=default_headers) as session_manager:
-        async with session_manager.session(user_id=INLINE_USER_ID) as session:
-            async with session.run(run_agent_input) as runner:
-                response: ChatResponse = await runner.result(to_type=ChatResponse)
+    async with (
+        load_workflow(workflow_path, headers=default_headers) as session_manager,
+        session_manager.session(user_id=INLINE_USER_ID) as session,
+        _seed_nat_workflow_trace_id(),
+        session.run(run_agent_input) as runner,
+    ):
+        response: ChatResponse = await runner.result(to_type=ChatResponse)
 
     # NAT's ``ChatResponse`` is documented as OpenAI Chat Completions API
     # compatible (same field layout); ``mode="json"`` serialises ``created`` as

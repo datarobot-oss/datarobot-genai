@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.21.2"
+version = "0.23.3"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -68,15 +68,16 @@ override-dependencies = [
   "PyJWT>=2.13.0",
   "litellm>=1.83.0,<2.0.0",
   "ragas>=0.4.3,<0.5.0",
-  # crewai pins OpenTelemetry <1.35; datarobot-moderations (core) pulls
-  # requires opentelemetry-instrumentation 0.60b1, which pulls otel-api 1.39.x. Align the
-  # stack so `--all-extras` / `[crewai,dragent]` resolves (same approach as the agent app recipe).
-  "opentelemetry-api>=1.39.0,<2.0.0",
-  "opentelemetry-sdk>=1.39.0,<2.0.0",
-  "opentelemetry-exporter-otlp-proto-http>=1.39.0,<2.0.0",
-  "opentelemetry-exporter-otlp-proto-common>=1.39.0,<2.0.0",
-  "opentelemetry-exporter-otlp-proto-grpc>=1.39.0,<2.0.0",
-  "opentelemetry-instrumentation>=0.60b1,<0.61",
+  # Align the whole OpenTelemetry stack at the latest release train (core 1.43.x /
+  # instrumentation 0.64b0) so the traceloop instrumentors (crewai/langchain/llamaindex
+  # 0.62.1) resolve. These overrides force the family to stay version-synchronized
+  # regardless of the older upper bounds that crewai / drum / moderations declare.
+  "opentelemetry-api>=1.43.0,<2.0.0",
+  "opentelemetry-sdk>=1.43.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.43.0,<2.0.0",
+  "opentelemetry-instrumentation>=0.64b0,<0.65",
 ]
 exclude-dependencies = [
   "uv",                       # package manager bundled by crewai; runtime unnecessary
@@ -120,13 +121,6 @@ dev = [
   "tavily-python>=0.7.20",
   "perplexityai>=0.27",
   "datarobot-predict>=1.13.2",
-  # OTel SDK + OTLP/HTTP exporter for the metrics-bootstrap tests
-  # (tests/drmcpbase/test_datarobot_otel_metrics.py). The drmcpbase runtime
-  # extra deliberately omits OTel (lazy-imported, no-ops without it), so these
-  # live in the dev group to exercise the real install path without adding a
-  # runtime dependency. Versions mirror the override-dependencies pins.
-  "opentelemetry-sdk>=1.39.0,<2.0.0",
-  "opentelemetry-exporter-otlp-proto-http>=1.39.0,<2.0.0",
 ]
 
 [tool.mypy]
