@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.4
+- `drtools/jira`: `jira_transition_issue` now POSTs to `issue/{key}/transitions` — it POSTed to `issue/{key}`, which the Jira API rejects, so issue transitions never happened.
+- `drtools/perplexity`: `perplexity_search` accepts a list of sub-queries again — the parameter was annotated `Annotated[str, list[str], ...]`, which makes `list[str]` inert metadata, so multi-query lists were rejected at schema validation despite being fully supported downstream.
+- `drtools/predictive`: dataset-insights text-column detection no longer mutates the categorical list while iterating (the column right after each detected text column was skipped) and no longer raises on object columns holding non-strings.
+- `drtools/dr_docs`: search results return a ~300-char word-boundary snippet as `description` instead of the full page body (tens of KB per result); a failed docs-index build now backs off for 5 minutes instead of re-running the sitemap + full content fetch on every search just to return "no results".
+- `drmcp`: `dr_mcp_prompt` no longer uses a shared mutable `PromptInitArguments()` default — each decoration gets a fresh instance, so one prompt's category/meta can't leak into another's registration.
+
 ## 0.23.3
 - `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
 

@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
+from fastmcp.tools import Tool
 
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drtools.core.clients.perplexity import PerplexityError
@@ -344,3 +345,18 @@ class TestPerplexityThink:
             with pytest.raises(Exception) as exc_info:
                 await perplexity_sonar(prompt="test prompt")
             assert "unexpected error" in str(exc_info.value).lower()
+
+
+class TestPerplexitySearchSchema:
+    def test_query_schema_accepts_string_or_list(self) -> None:
+        """GIVEN the tool schema generated from the signature
+        THEN 'query' accepts a string OR a list of strings
+        (regression: Annotated[str, list[str], ...] made list[str] inert
+        metadata, so multi-query lists were rejected at schema validation).
+        """
+        tool = Tool.from_function(perplexity_search)
+
+        query_schema = tool.parameters["properties"]["query"]
+        types = {branch.get("type") for branch in query_schema.get("anyOf", [])}
+        assert "string" in types
+        assert "array" in types

@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
+from datarobot_genai.drtools.core.clients.dr_docs import DESCRIPTION_SNIPPET_MAX_CHARS
+from datarobot_genai.drtools.core.clients.dr_docs import FAILED_BUILD_RETRY_SECONDS
 from datarobot_genai.drtools.core.clients.dr_docs import DocPage
 from datarobot_genai.drtools.core.clients.dr_docs import _compute_tf
 from datarobot_genai.drtools.core.clients.dr_docs import _DocsIndex
@@ -623,3 +626,58 @@ class TestFetchPageContent:
             # Should use URL-derived title
             assert "Modeling" in result["title"]
             assert "Autopilot" in result["title"]
+
+
+class TestDocPageSnippet:
+    def test_long_body_is_truncated_at_word_boundary(self) -> None:
+        """Search results return a snippet, not the full page body
+        (regression: as_dict dumped the entire page text — tens of KB per
+        result — as 'description').
+        """
+        page = DocPage(url="https://docs.datarobot.com/x", title="T", text="word " * 200)
+
+        description = page.as_dict()["description"]
+
+        assert description.endswith("\u2026")
+        assert len(description) <= DESCRIPTION_SNIPPET_MAX_CHARS + 1
+        # The cut lands on a word boundary — no partial token before the ellipsis.
+        assert set(description[:-1].split()) == {"word"}
+
+    def test_short_body_unchanged(self) -> None:
+        page = DocPage(url="https://docs.datarobot.com/x", title="T", text="short text")
+
+        assert page.as_dict()["description"] == "short text"
+
+
+class TestFailedBuildBackoff:
+    def test_is_stale_backs_off_after_failed_build(self) -> None:
+        """GIVEN an empty index whose last build failed
+        THEN it is not stale during the cooldown and stale again afterwards
+        (regression: a failed build left the index permanently stale, so every
+        search re-ran the sitemap + full content fetch just to return nothing).
+        """
+        index = _DocsIndex()
+        assert index.is_stale  # a first build is always allowed
+
+        index.mark_build_failed()
+        assert not index.is_stale
+
+        index._last_build_failed_at = time.time() - (FAILED_BUILD_RETRY_SECONDS + 1)
+        assert index.is_stale
+
+    async def test_ensure_index_marks_failure_on_empty_build(self) -> None:
+        import datarobot_genai.drtools.core.clients.dr_docs as dr_docs_module
+
+        fresh_index = _DocsIndex()
+        with (
+            patch.object(dr_docs_module, "_index", fresh_index),
+            patch.object(
+                dr_docs_module,
+                "_create_datarobot_agentic_docs_pages",
+                new=AsyncMock(return_value=[]),
+            ) as mock_create,
+        ):
+            await dr_docs_module._ensure_index()
+            await dr_docs_module._ensure_index()
+
+        assert mock_create.await_count == 1

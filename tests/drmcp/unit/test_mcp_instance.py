@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from collections.abc import Iterator
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -19,6 +20,7 @@ from unittest.mock import patch
 import pytest
 from fastmcp.exceptions import NotFoundError
 
+from datarobot_genai.drmcp.core.enums import DataRobotMCPPromptCategory
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import PromptInitArguments
 from datarobot_genai.drmcp.core.mcp_instance import ResourceInitArguments
@@ -26,6 +28,7 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_prompt
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_resource
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 
@@ -402,3 +405,32 @@ class TestMCPResourceDecorator:
         # The handler must be registered unwrapped: a sync pass-through wrapper
         # would hide an async handler's coroutine-ness from FastMCP.
         assert registered_func is mock_mcp_resource_callable
+
+
+class TestDrMcpPromptInitArgsIsolation:
+    def test_default_prompt_init_args_is_none(self) -> None:
+        """Regression: the signature default was a single PromptInitArguments
+        instance created at import time — shared and mutated
+        (set_prompt_category) by every decoration that used the default.
+        """
+        default = inspect.signature(dr_mcp_prompt).parameters["prompt_init_args"].default
+        assert default is None
+
+    def test_each_decoration_gets_isolated_meta(self) -> None:
+        """Two default-arg decorations must not share init-args state."""
+        with patch.object(mcp, "prompt") as mock_prompt:
+            mock_prompt.return_value = lambda func: func
+
+            @dr_mcp_prompt(DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE)
+            def prompt_one() -> str:
+                return "one"
+
+            @dr_mcp_prompt(DataRobotMCPPromptCategory.USER_PROMPT_TEMPLATE_VERSION)
+            def prompt_two() -> str:
+                return "two"
+
+        first_meta = mock_prompt.call_args_list[0].kwargs["meta"]
+        second_meta = mock_prompt.call_args_list[1].kwargs["meta"]
+        assert first_meta["prompt_category"] == "USER_PROMPT_TEMPLATE"
+        assert second_meta["prompt_category"] == "USER_PROMPT_TEMPLATE_VERSION"
+        assert first_meta is not second_meta

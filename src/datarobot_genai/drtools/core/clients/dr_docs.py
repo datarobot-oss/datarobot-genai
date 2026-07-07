@@ -63,6 +63,16 @@ AGENTIC_AI_PATH = "/en/docs/agentic-ai/"
 # Cache TTL in seconds (1 day)
 CACHE_TTL_SECONDS = 86400
 
+# Cooldown before retrying a failed index build.  Without it a failed build
+# leaves the index permanently "stale", so every search re-runs the whole
+# sitemap + content fetch (serialized behind the build lock) just to return
+# nothing again.
+FAILED_BUILD_RETRY_SECONDS = 300
+
+# Search results return a snippet of the page body, not the full text — a full
+# page is tens of KB and result sets are up to MAX_RESULTS pages.
+DESCRIPTION_SNIPPET_MAX_CHARS = 300
+
 # Maximum number of results to return
 MAX_RESULTS = 10
 MAX_RESULTS_DEFAULT = 3
@@ -125,11 +135,16 @@ class DocPage:
         self.tf = _compute_tf(self._title_tokens * 3 + self._text_tokens)
 
     def as_dict(self) -> dict[str, str]:
-        """Return a dictionary representation of the page."""
+        """Return a dictionary representation of the page (body as a snippet)."""
+        description = self.text
+        if len(description) > DESCRIPTION_SNIPPET_MAX_CHARS:
+            # Cut at a word boundary so the snippet doesn't end mid-word.
+            cut = description.rfind(" ", 0, DESCRIPTION_SNIPPET_MAX_CHARS)
+            description = description[: cut if cut > 0 else DESCRIPTION_SNIPPET_MAX_CHARS] + "…"
         return {
             "url": self.url,
             "title": self.title,
-            "description": self.text,
+            "description": description,
         }
 
 
@@ -140,13 +155,20 @@ class _DocsIndex:
         self.pages: list[DocPage] = []
         self._df: dict[str, int] = {}  # document frequency
         self._built_at: float = 0.0  # timestamp of when the last index was built
+        self._last_build_failed_at: float = 0.0
 
     @property
     def is_stale(self) -> bool:
         """Check if the index needs refreshing."""
         if not self.pages:
-            return True
+            # After a failed build, wait out the cooldown instead of re-running
+            # the full sitemap + content fetch on every search.
+            return (time.time() - self._last_build_failed_at) > FAILED_BUILD_RETRY_SECONDS
         return (time.time() - self._built_at) > CACHE_TTL_SECONDS
+
+    def mark_build_failed(self) -> None:
+        """Record a failed build so `is_stale` backs off before retrying."""
+        self._last_build_failed_at = time.time()
 
     def build(self, pages: list[DocPage]) -> None:
         """
@@ -313,12 +335,17 @@ async def _ensure_index() -> _DocsIndex:
             return _index
 
         logger.info("Building DataRobot agentic-ai docs index...")
-        async with aiohttp.ClientSession() as session:
-            pages = await _create_datarobot_agentic_docs_pages(session)
-            if pages:
-                _index.build(pages)
-            else:
-                logger.warning("No pages found for docs index")
+        try:
+            async with aiohttp.ClientSession() as session:
+                pages = await _create_datarobot_agentic_docs_pages(session)
+        except Exception:
+            _index.mark_build_failed()
+            raise
+        if pages:
+            _index.build(pages)
+        else:
+            _index.mark_build_failed()
+            logger.warning("No pages found for docs index")
 
     return _index
 

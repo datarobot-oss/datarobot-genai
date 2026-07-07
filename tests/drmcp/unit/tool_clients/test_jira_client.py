@@ -245,6 +245,36 @@ class TestJiraClient:
                 mock_get_cloud_id.assert_awaited_once()
                 assert mock_get_cloud_id.call_args.kwargs["auth"] == auth
 
+    @pytest.mark.asyncio
+    async def test_transition_issue_posts_to_transitions_endpoint(
+        self, mock_access_token: str, mock_cloud_id: str
+    ) -> None:
+        """GIVEN an issue key and a transition id
+        WHEN transition_jira_issue is called
+        THEN the payload is POSTed to issue/{key}/transitions
+        (regression: it POSTed to issue/{key}, which the Jira API rejects —
+        the transition never happened).
+        """
+        with patch(
+            "datarobot_genai.drtools.core.clients.jira.get_atlassian_cloud_id",
+            new_callable=AsyncMock,
+            return_value=mock_cloud_id,
+        ):
+            async with JiraClient(mock_access_token) as client:
+                captured: dict = {}
+
+                async def mock_post(url: str, json: dict | None = None) -> httpx.Response:
+                    captured["url"] = url
+                    captured["json"] = json
+                    return make_response(204, None, mock_cloud_id)
+
+                client._client.post = mock_post
+
+                await client.transition_jira_issue("PROJ-123", "31")
+
+        assert captured["url"].endswith("/rest/api/3/issue/PROJ-123/transitions")
+        assert captured["json"] == {"transition": {"id": "31"}}
+
 
 class TestIssueModel:
     def _base_fields(self, **overrides: object) -> dict[str, object]:
