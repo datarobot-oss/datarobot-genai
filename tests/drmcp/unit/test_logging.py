@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import pytest
 from fastmcp.exceptions import ToolError as FastMCPToolError
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from pydantic import TypeAdapter
 
+from datarobot_genai.drmcp.core.logging import SecretRedactingFormatter
 from datarobot_genai.drmcp.core.logging import log_execution
 from datarobot_genai.drmcputils.exceptions import ToolError as DRToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
@@ -121,3 +124,61 @@ async def test_log_execution_wraps_exception_with_403_as_authentication() -> Non
     with pytest.raises(FastMCPToolError) as exc_info:
         await forbidden()
     assert str(exc_info.value).startswith("[authentication]")
+
+
+_MESSAGES_CONTAINING_SECRET = [
+    "sk-a1b1c1111111111A1B1C1111119111191111111181111117",  # OpenAI key
+    "sk-proj-a1b1c111_111111A1B1C111111911119111-11_181111117991122aaa",  # newer OpenAI key
+    "AKIAA1B11C11111D1111",  # AWS key
+    "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.c2lnbmF0dXJl",  # JWT
+    "Bearer abcDEF123456789xyz",  # Authorization header value
+    "basic dXNlcjpwYXNzd29yZA==",  # Basic auth value (case-insensitive)
+    "password=Sup3rS3cret!",  # key=value assignment
+    "api_key: 12345secretvalue",  # key: value assignment
+    "DATAROBOT_API_TOKEN=NjM4someToken-value_here",  # env-style token assignment
+]
+
+# Regression guard for the removed catch-all ``([a-zA-Z0-9]{20,})``: operational
+# identifiers must survive redaction so logs stay debuggable.
+_MESSAGES_WITHOUT_SECRETS = [
+    "UserMCPProvider: API client not yet initialised",  # class name
+    "request_id=abc123def456ghi789jkl012 completed",  # long request id
+    "deployment 6513f86cd799439011abcdef failed",  # 24-hex ObjectId
+    "trace_id=4bf92f3577b34da6a3ce929d0e0e4736",  # trace id
+    "tokens=1500 completion_tokens=300",  # LLM usage counters (plural 'tokens')
+    "Registered tool datarobot_docs_search_documentation",  # long tool name
+]
+
+
+def _format_with_redaction(msg: str) -> str:
+    formatter = SecretRedactingFormatter("%(message)s")
+    record = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="", lineno=0, msg=msg, args=None, exc_info=None
+    )
+    return formatter.format(record)
+
+
+@pytest.mark.parametrize("msg", _MESSAGES_CONTAINING_SECRET)
+def test_secret_redacting_formatter_redacts_secrets(msg: str) -> None:
+    # GIVEN a log message containing a secret
+    # WHEN it is formatted / THEN the secret is fully replaced
+    assert _format_with_redaction(msg) == "[REDACTED]"
+
+
+@pytest.mark.parametrize("msg", _MESSAGES_WITHOUT_SECRETS)
+def test_secret_redacting_formatter_preserves_operational_identifiers(msg: str) -> None:
+    # GIVEN a log line with ids/class names but no secret
+    # WHEN it is formatted / THEN the message is untouched
+    assert _format_with_redaction(msg) == msg
+
+
+def test_secret_redacting_formatter_redacts_secret_within_context() -> None:
+    # GIVEN a realistic line mixing a secret with operational context
+    msg = "Auth failed for deployment 6513f86cd799439011abcdef: Authorization: Bearer eyJa.eyJb.sig"
+
+    redacted = _format_with_redaction(msg)
+
+    # THEN the token is gone but the surrounding context survives
+    assert "eyJa.eyJb.sig" not in redacted
+    assert "[REDACTED]" in redacted
+    assert "6513f86cd799439011abcdef" in redacted
