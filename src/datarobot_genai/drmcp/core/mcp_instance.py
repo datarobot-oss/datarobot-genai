@@ -531,7 +531,7 @@ async def register_prompt(
     prompt_name_no_duplicate = await get_prompt_name_no_duplicate(mcp, prompt_name)
 
     meta = meta or {}
-    meta["resource_category"] = prompt_category.name
+    meta["prompt_category"] = prompt_category.name
     prompt = Prompt.from_function(
         fn=wrapped_fn,
         name=prompt_name_no_duplicate,
