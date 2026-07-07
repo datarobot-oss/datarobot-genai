@@ -163,11 +163,11 @@ class TestMCPRequestContextCategoryGates:
         ctx = MCPRequestContext.from_headers(
             {
                 MCP_ENABLE_DYNAMIC_TOOLS_HEADER: "false",
-                "x-datarobot-mcp-mode": "code_execute",
+                "x-datarobot-mcp-mode": "code",
                 "x-datarobot-mcp-tools": "add",
             }
         )
-        assert ctx.mode == MCPRequestMode.CODE_EXECUTE
+        assert ctx.mode == MCPRequestMode.CODE
         assert ctx.tool_allowlist == frozenset({"add"})
         assert ctx.disabled_categories == frozenset(
             {DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name}
@@ -220,12 +220,17 @@ class TestMCPRequestMode:
         mock_get_fast_mcp_headers.return_value = {"x-datarobot-mcp-mode": tools}
         assert MCPRequestContext.from_current_http_request().mode == MCPRequestMode.TOOLS
 
-    @pytest.mark.parametrize("code_execute", ["code_execute", "CODE_EXECUTE"])
-    def test_returns_code_execute_when_header_set(
-        self, code_execute: str, mock_get_fast_mcp_headers: Mock
+    @pytest.mark.parametrize("code", ["code", "CODE"])
+    def test_returns_code_when_header_set(self, code: str, mock_get_fast_mcp_headers: Mock) -> None:
+        mock_get_fast_mcp_headers.return_value = {"x-datarobot-mcp-mode": code}
+        assert MCPRequestContext.from_current_http_request().mode == MCPRequestMode.CODE
+
+    @pytest.mark.parametrize("search", ["search", "SEARCH"])
+    def test_returns_search_when_header_set(
+        self, search: str, mock_get_fast_mcp_headers: Mock
     ) -> None:
-        mock_get_fast_mcp_headers.return_value = {"x-datarobot-mcp-mode": code_execute}
-        assert MCPRequestContext.from_current_http_request().mode == MCPRequestMode.CODE_EXECUTE
+        mock_get_fast_mcp_headers.return_value = {"x-datarobot-mcp-mode": search}
+        assert MCPRequestContext.from_current_http_request().mode == MCPRequestMode.SEARCH
 
     def test_unknown_header_value_falls_back_to_tools(
         self, mock_get_fast_mcp_headers: Mock
@@ -301,9 +306,9 @@ class TestDataRobotMCPCatalogTransform:
         assert "execute" not in names
 
     @pytest.mark.asyncio
-    async def test_code_execute_mode_collapses_catalog(self, mock_context: Mock) -> None:
+    async def test_code_mode_collapses_catalog(self, mock_context: Mock) -> None:
         mock_context.return_value = MCPRequestContext(
-            mode=MCPRequestMode.CODE_EXECUTE, tool_allowlist=frozenset({"add"})
+            mode=MCPRequestMode.CODE, tool_allowlist=frozenset({"add"})
         )
         mcp = self.make_server()
 
@@ -352,9 +357,7 @@ class TestDataRobotMCPCatalogTransform:
         )
         tools_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
 
-        mock_context.return_value = MCPRequestContext(
-            mode=MCPRequestMode.CODE_EXECUTE, tool_allowlist=None
-        )
+        mock_context.return_value = MCPRequestContext(mode=MCPRequestMode.CODE, tool_allowlist=None)
         code_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
         assert code_view == {"search", "get_schema", "execute"}
 
@@ -465,10 +468,10 @@ class TestCategoryGatesInTransform:
         assert await mcp.get_tool("add") is not None
 
     @pytest.mark.asyncio
-    async def test_gate_applies_in_code_execute_mode_get_tool(self, mock_context: Mock) -> None:
-        # GIVEN code_execute mode with the proxy category gated off
+    async def test_gate_applies_in_code_mode_get_tool(self, mock_context: Mock) -> None:
+        # GIVEN code mode with the proxy category gated off
         mock_context.return_value = MCPRequestContext(
-            mode=MCPRequestMode.CODE_EXECUTE,
+            mode=MCPRequestMode.CODE,
             tool_allowlist=None,
             disabled_categories=frozenset({self.PROXIED}),
         )
@@ -496,6 +499,226 @@ class TestCategoryGatesInTransform:
         )
         ungated = {t.name for t in await mcp.list_tools(run_middleware=False)}
         assert "proxied_tool" in ungated
+
+
+class TestSearchMode:
+    """`x-datarobot-mcp-mode: search` — catalog collapses to tool_search + call_tool."""
+
+    PROXIED = DataRobotMCPToolCategory.PROXIED_USER_MCP.name
+
+    @staticmethod
+    def make_server() -> FastMCP:
+        mcp = FastMCP("search mode test")
+
+        @mcp.tool
+        def add(a: int, b: int) -> int:
+            """Add two numbers."""
+            return a + b
+
+        @mcp.tool
+        def greet(name: str) -> str:
+            """Say hello."""
+            return f"Hello, {name}!"
+
+        @mcp.tool(meta={"tool_category": DataRobotMCPToolCategory.PROXIED_USER_MCP.name})
+        def proxied_tool() -> str:
+            """Return a canned proxied value."""
+            return "proxied"
+
+        mcp.add_transform(
+            DataRobotMCPCatalogTransform(sandbox_provider=_UnsafeTestSandboxProvider())
+        )
+        return mcp
+
+    @pytest.fixture
+    def mock_context(self, transform_module: str) -> Iterator[Mock]:
+        with patch(f"{transform_module}.get_request_context") as m:
+            m.return_value = MCPRequestContext(mode=MCPRequestMode.SEARCH, tool_allowlist=None)
+            yield m
+
+    @pytest.mark.asyncio
+    async def test_listing_collapses_to_search_interface(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+
+        assert names == {"tool_search", "call_tool"}
+
+    @pytest.mark.asyncio
+    async def test_allowlisted_tools_stay_pinned_in_listing(self, mock_context: Mock) -> None:
+        # GIVEN a client that re-lists with x-datarobot-mcp-tools=<found names>
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH, tool_allowlist=frozenset({"add"})
+        )
+        mcp = self.make_server()
+
+        # THEN the allowlisted tool's full definition rides along with the interface
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+        assert names == {"add", "tool_search", "call_tool"}
+
+    @pytest.mark.asyncio
+    async def test_tool_search_finds_matching_tools(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        result = await mcp.call_tool("tool_search", {"query": "add two numbers"})
+
+        text = result.content[0].text
+        assert "add" in text
+
+    @pytest.mark.asyncio
+    async def test_tool_search_respects_category_gates(self, mock_context: Mock) -> None:
+        # GIVEN the proxied category is gated off for this request
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        # WHEN searching with a query that would match the gated tool
+        result = await mcp.call_tool("tool_search", {"query": "canned proxied value"})
+
+        # THEN the gated tool does not appear in the results
+        assert "proxied_tool" not in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_search_respects_allowlist_cap(self, mock_context: Mock) -> None:
+        # GIVEN an allowlist that excludes `greet`
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH, tool_allowlist=frozenset({"add"})
+        )
+        mcp = self.make_server()
+
+        result = await mcp.call_tool("tool_search", {"query": "say hello greeting"})
+
+        assert "greet" not in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_call_tool_proxy_executes_discovered_tool(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        result = await mcp.call_tool("call_tool", {"name": "add", "arguments": {"a": 1, "b": 2}})
+
+        assert "3" in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_call_tool_proxy_rejects_synthetic_names(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        with pytest.raises(Exception, match="synthetic"):
+            await mcp.call_tool("call_tool", {"name": "tool_search", "arguments": {}})
+
+    @pytest.mark.asyncio
+    async def test_hidden_tools_remain_resolvable_without_allowlist(
+        self, mock_context: Mock
+    ) -> None:
+        # Hidden-but-callable is the search-mode contract: tool_search returns
+        # names that must be directly callable (no dangling references).
+        mcp = self.make_server()
+
+        assert await mcp.get_tool("tool_search") is not None
+        assert await mcp.get_tool("call_tool") is not None
+        assert await mcp.get_tool("greet") is not None
+
+    @pytest.mark.asyncio
+    async def test_gates_and_allowlist_cap_resolution(self, mock_context: Mock) -> None:
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH,
+            tool_allowlist=frozenset({"add"}),
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        # Synthetic interface tools stay resolvable despite the allowlist
+        assert await mcp.get_tool("tool_search") is not None
+        assert await mcp.get_tool("call_tool") is not None
+        assert await mcp.get_tool("add") is not None
+        # Catalog tools outside the allowlist / in a gated category do not resolve
+        assert await mcp.get_tool("greet") is None
+        assert await mcp.get_tool("proxied_tool") is None
+
+    @pytest.mark.asyncio
+    async def test_call_tool_proxy_blocked_for_gated_tool(self, mock_context: Mock) -> None:
+        # GIVEN the proxied category is gated off
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        # THEN the proxy cannot be used to reach the gated tool
+        with pytest.raises(Exception, match="proxied_tool"):
+            await mcp.call_tool("call_tool", {"name": "proxied_tool", "arguments": {}})
+
+
+class TestCodeModeAllowlistEnforcement:
+    """H5 regression: code mode must honor the tool allowlist."""
+
+    @staticmethod
+    def make_server() -> FastMCP:
+        return TestSearchMode.make_server()
+
+    @pytest.fixture
+    def mock_context(self, transform_module: str) -> Iterator[Mock]:
+        with patch(f"{transform_module}.get_request_context") as m:
+            m.return_value = MCPRequestContext(
+                mode=MCPRequestMode.CODE, tool_allowlist=frozenset({"add"})
+            )
+            yield m
+
+    @pytest.mark.asyncio
+    async def test_get_tool_blocked_when_not_in_allowlist(self, mock_context: Mock) -> None:
+        # GIVEN code mode with an allowlist
+        mcp = self.make_server()
+
+        # THEN a non-allowlisted tool is not resolvable — switching the mode
+        # header no longer escapes the allowlist (regression: it used to)
+        assert await mcp.get_tool("greet") is None
+        assert await mcp.get_tool("add") is not None
+
+    @pytest.mark.asyncio
+    async def test_synthetic_mode_tools_stay_resolvable(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        assert await mcp.get_tool("execute") is not None
+        assert await mcp.get_tool("search") is not None
+        assert await mcp.get_tool("get_schema") is not None
+
+    @pytest.mark.asyncio
+    async def test_execute_cannot_call_non_allowlisted_tool(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        with pytest.raises(Exception, match="greet"):
+            await mcp.call_tool(
+                "execute",
+                {"code": 'return await call_tool("greet", {"name": "x"})'},
+            )
+
+    @pytest.mark.asyncio
+    async def test_discovery_search_does_not_leak_non_allowlisted_tools(
+        self, mock_context: Mock
+    ) -> None:
+        # GIVEN code-mode discovery reads the catalog through get_tool_catalog,
+        # which bypasses transform_tools (regression: gates/allowlist were skipped)
+        mcp = self.make_server()
+
+        result = await mcp.call_tool("search", {"query": "say hello greeting"})
+
+        assert "greet" not in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_discovery_search_does_not_leak_gated_tools(self, mock_context: Mock) -> None:
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.CODE,
+            tool_allowlist=None,
+            disabled_categories=frozenset({DataRobotMCPToolCategory.PROXIED_USER_MCP.name}),
+        )
+        mcp = self.make_server()
+
+        result = await mcp.call_tool("search", {"query": "canned proxied value"})
+
+        assert "proxied_tool" not in result.content[0].text
 
 
 class _NamedTool:

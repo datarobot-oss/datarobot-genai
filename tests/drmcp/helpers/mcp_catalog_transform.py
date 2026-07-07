@@ -17,7 +17,7 @@
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_MODE_HEADER
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_TOOLS_HEADER
 
-CODE_EXECUTE_TOOL_NAMES = frozenset({"search", "get_schema", "execute"})
+CODE_MODE_TOOL_NAMES = frozenset({"search", "get_schema", "execute"})
 
 # Tools verified to succeed when invoked with an empty argument dict (see integration tests).
 EMPTY_ARGS_CALLABLE_TOOL_NAMES = frozenset(

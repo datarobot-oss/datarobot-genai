@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.4
+- `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
+- `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
+- `drmcpbase` renamed the `x-datarobot-mcp-mode` value `code_execute` to `code` (`MCPRequestMode.CODE_EXECUTE` → `MCPRequestMode.CODE`). A request still sending `code_execute` falls back to the default `tools` mode.
+
 ## 0.23.3
 - `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
 
