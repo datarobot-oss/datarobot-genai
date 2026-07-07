@@ -38,6 +38,11 @@ class PropertyConfig:
     default_description: str
 
 
+# Nested create_schema_model recursion cap: converts a circular ``$ref`` chain
+# (e.g. #/$defs/Node referencing itself) into a clean SchemaValidationError
+# instead of an unbounded RecursionError at tool-registration time.
+MAX_SCHEMA_NESTING_DEPTH = 20
+
 # Type mapping from JSON Schema to Python types
 _JSON_TYPE_MAPPING: dict[str, type[Any]] = {
     "string": str,
@@ -195,17 +200,21 @@ def _is_optional_field(field_spec: dict[str, Any]) -> bool:
 class FieldTypeResolver:
     """Resolves Python types for JSON schema fields."""
 
-    def __init__(self, model_name: str, allow_nested: bool, resolver: SchemaResolver):
+    def __init__(
+        self, model_name: str, allow_nested: bool, resolver: SchemaResolver, depth: int = 0
+    ):
         """Initialize field type resolver.
 
         Args:
             model_name: Name of the parent model
             allow_nested: Whether nested objects/arrays are allowed
             resolver: Schema resolver for handling references
+            depth: Current nesting depth, threaded through nested model creation
         """
         self.model_name = model_name
         self.allow_nested = allow_nested
         self.resolver = resolver
+        self.depth = depth
 
     def _validate_nested_allowed(self, field_name: str, structure_type: str) -> None:
         """Validate that nested structures are allowed.
@@ -242,6 +251,7 @@ class FieldTypeResolver:
             schema=field_spec,
             allow_nested=self.allow_nested,
             definitions=self.resolver.definitions,
+            _depth=self.depth + 1,
         )
 
     def _resolve_array_type(self, field_name: str, field_spec: dict[str, Any]) -> type[Any]:
@@ -271,6 +281,7 @@ class FieldTypeResolver:
                 schema=items_spec,
                 allow_nested=self.allow_nested,
                 definitions=self.resolver.definitions,
+                _depth=self.depth + 1,
             )
             return list[item_model]  # type: ignore[valid-type]
 
@@ -330,6 +341,7 @@ def create_schema_model(
     schema: dict[str, Any],
     allow_nested: bool,
     definitions: dict[str, Any] | None = None,
+    _depth: int = 0,
 ) -> type[BaseModel]:
     """Create a Pydantic model from a JSON schema, supporting nested objects.
 
@@ -339,11 +351,24 @@ def create_schema_model(
         allow_nested: Whether to allow nested objects and arrays in
                 the schema. If False, raises error on complex types.
         definitions: Dictionary of reusable schema definitions ($defs)
+        _depth: Internal recursion depth, guarded by MAX_SCHEMA_NESTING_DEPTH
 
     Returns
     -------
         A Pydantic BaseModel class
+
+    Raises
+    ------
+        SchemaValidationError: If the schema nests deeper than
+            MAX_SCHEMA_NESTING_DEPTH (e.g. a circular ``$ref``)
     """
+    if _depth > MAX_SCHEMA_NESTING_DEPTH:
+        raise SchemaValidationError(
+            f"Schema for model '{name}' nests deeper than the maximum of "
+            f"{MAX_SCHEMA_NESTING_DEPTH} levels. The schema likely contains a "
+            f"circular '$ref' (a definition that references itself)."
+        )
+
     if not schema or not schema.get("properties"):
         return create_model(name)
 
@@ -351,7 +376,7 @@ def create_schema_model(
     definitions = definitions or schema.get("$defs", {})
 
     resolver = SchemaResolver(definitions)
-    field_resolver = FieldTypeResolver(name, allow_nested, resolver)
+    field_resolver = FieldTypeResolver(name, allow_nested, resolver, depth=_depth)
 
     properties = schema.get("properties", {})
     required_fields = set(schema.get("required", []))
@@ -368,10 +393,15 @@ def create_schema_model(
         # Resolve the field type from the resolved spec
         field_type = field_resolver.resolve(field_name, resolved_spec)
 
-        # Get default value and description
-        default = (
-            ... if is_required else (resolved_spec.get("default") or field_spec.get("default"))
-        )
+        # Get default value and description.  Look the default up by key presence
+        # so declared falsy defaults (0, False, "", []) survive instead of being
+        # collapsed to None by an ``or`` chain.
+        if is_required:
+            default = ...
+        elif "default" in resolved_spec:
+            default = resolved_spec["default"]
+        else:
+            default = field_spec.get("default")
         description = resolved_spec.get("description") or field_spec.get("description")
 
         # Wrap in Optional if field has anyOf/oneOf with null

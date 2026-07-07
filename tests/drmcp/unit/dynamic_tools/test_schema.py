@@ -961,6 +961,89 @@ class TestCreateSchemaModel:
         instance = model()
         assert instance is not None
 
+    @pytest.mark.parametrize(
+        ("field_type", "declared_default"),
+        [
+            ("integer", 0),
+            ("number", 0.0),
+            ("boolean", False),
+            ("string", ""),
+            ("array", []),
+        ],
+    )
+    def test_create_model_preserves_falsy_defaults(self, field_type, declared_default):
+        """GIVEN a field declaring a falsy default (0, False, "", [])
+        WHEN the model is created
+        THEN the declared default survives instead of collapsing to None
+        (regression: the default lookup used an ``or`` chain).
+        """
+        schema = {
+            "type": "object",
+            "properties": {"field": {"type": field_type, "default": declared_default}},
+        }
+
+        model = create_schema_model(name="FalsyDefaultModel", schema=schema, allow_nested=False)
+
+        instance = model()
+        assert instance.field == declared_default
+        assert instance.field is not None
+
+    def test_create_model_field_without_default_stays_none(self):
+        """A non-required field with no declared default still defaults to None."""
+        schema = {
+            "type": "object",
+            "properties": {"field": {"type": "integer"}},
+        }
+
+        model = create_schema_model(name="NoDefaultModel", schema=schema, allow_nested=False)
+
+        assert model().field is None
+
+    def test_create_model_rejects_circular_ref(self):
+        """GIVEN a self-referential $defs definition
+        WHEN the model is created
+        THEN a clean SchemaValidationError is raised
+        (regression: the recursion was unguarded and crashed with RecursionError).
+        """
+        schema = {
+            "type": "object",
+            "properties": {"root": {"$ref": "#/$defs/Node"}},
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {"child": {"$ref": "#/$defs/Node"}},
+                }
+            },
+        }
+
+        with pytest.raises(SchemaValidationError, match="circular"):
+            create_schema_model(name="CircularModel", schema=schema, allow_nested=True)
+
+    def test_create_model_rejects_mutually_circular_refs(self):
+        """A → B → A reference cycles are also caught."""
+        schema = {
+            "type": "object",
+            "properties": {"root": {"$ref": "#/$defs/A"}},
+            "$defs": {
+                "A": {"type": "object", "properties": {"b": {"$ref": "#/$defs/B"}}},
+                "B": {"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}},
+            },
+        }
+
+        with pytest.raises(SchemaValidationError, match="circular"):
+            create_schema_model(name="MutualCycleModel", schema=schema, allow_nested=True)
+
+    def test_create_model_allows_deep_but_finite_nesting(self):
+        """Legitimate nesting below the cap still works."""
+        # Build 5 levels of nested objects
+        leaf: dict = {"type": "object", "properties": {"value": {"type": "string"}}}
+        schema = leaf
+        for _ in range(5):
+            schema = {"type": "object", "properties": {"child": schema}}
+
+        model = create_schema_model(name="DeepModel", schema=schema, allow_nested=True)
+        assert issubclass(model, BaseModel)
+
 
 class TestSchemaValidationError:
     """Tests for SchemaValidationError exception."""
