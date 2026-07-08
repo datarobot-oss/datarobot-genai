@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.7
+- e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
+
 ## 0.23.5
 - `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
 - `drmcpbase`: `bootstrap_metrics_provider` — OTLP/HTTP `MeterProvider` bootstrap; endpoint/headers resolve the standard OTLP way from `OTEL_EXPORTER_OTLP_*` (idempotent, no-op without an endpoint, never raises).

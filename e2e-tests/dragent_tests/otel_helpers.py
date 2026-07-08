@@ -40,11 +40,19 @@ from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from typing import Any
 
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+    ExportMetricsServiceRequest,
+)
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
 # OTLP/HTTP traces ingest path. The DataRobot collector ingress lives off
 # ``/otel/v1/traces`` (see ``resolve_otel_traces_endpoint_from_env``).
 OTLP_TRACES_PATH = "/otel/v1/traces"
+
+# OTLP/HTTP metrics ingest path — the sibling signal path the OTLP metric
+# exporter derives by appending ``/v1/metrics`` to the same ``/otel`` base the
+# traces exporter uses.
+OTLP_METRICS_PATH = "/otel/v1/metrics"
 
 # --- OpenTelemetry tracing config ------------------------------------------
 # The dragent server (started before pytest) is configured to export spans to
@@ -88,6 +96,49 @@ class ExportedSpan:
     span_id: bytes
     parent_span_id: bytes
     attributes: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ExportedMetricPoint:
+    """A single datapoint parsed out of an OTLP/HTTP metrics export body.
+
+    ``value`` is the datapoint's number for sums/gauges and the observation
+    *count* for histograms (enough to assert "N executions were recorded").
+    """
+
+    name: str
+    attributes: dict[str, Any]
+    value: float
+    kind: str  # "sum" | "gauge" | "histogram"
+
+
+def _datapoint_attributes(datapoint: Any) -> dict[str, Any]:
+    return {a.key: _anyvalue_to_python(a.value) for a in datapoint.attributes}
+
+
+def _flatten_metric(metric: Any) -> list[ExportedMetricPoint]:
+    """Flatten one OTLP ``Metric`` into per-datapoint records."""
+    points: list[ExportedMetricPoint] = []
+    if metric.HasField("sum"):
+        for dp in metric.sum.data_points:
+            value = dp.as_double if dp.HasField("as_double") else dp.as_int
+            points.append(
+                ExportedMetricPoint(metric.name, _datapoint_attributes(dp), float(value), "sum")
+            )
+    elif metric.HasField("gauge"):
+        for dp in metric.gauge.data_points:
+            value = dp.as_double if dp.HasField("as_double") else dp.as_int
+            points.append(
+                ExportedMetricPoint(metric.name, _datapoint_attributes(dp), float(value), "gauge")
+            )
+    elif metric.HasField("histogram"):
+        for dp in metric.histogram.data_points:
+            points.append(
+                ExportedMetricPoint(
+                    metric.name, _datapoint_attributes(dp), float(dp.count), "histogram"
+                )
+            )
+    return points
 
 
 def _anyvalue_to_python(value: Any) -> Any:
@@ -195,6 +246,42 @@ class MockOtelCollector:
         deadline = time.monotonic() + timeout
         while True:
             matched = [span for span in self.spans() if predicate(span)]
+            if matched or time.monotonic() >= deadline:
+                return matched
+            time.sleep(poll)
+
+    def metrics(self, path: str = OTLP_METRICS_PATH) -> list[ExportedMetricPoint]:
+        """Parse every captured OTLP body at *path* into flattened datapoints."""
+        out: list[ExportedMetricPoint] = []
+        for request in self.requests:
+            if request.path != path or not request.body:
+                continue
+            message = ExportMetricsServiceRequest()
+            try:
+                message.ParseFromString(request.body)
+            except Exception:  # noqa: BLE001 — skip a malformed/partial body
+                continue
+            for resource_metrics in message.resource_metrics:
+                for scope_metrics in resource_metrics.scope_metrics:
+                    for metric in scope_metrics.metrics:
+                        out.extend(_flatten_metric(metric))
+        return out
+
+    def wait_for_metrics(
+        self,
+        predicate: Callable[[ExportedMetricPoint], bool],
+        *,
+        timeout: float = 30.0,
+        poll: float = 0.25,
+    ) -> list[ExportedMetricPoint]:
+        """Poll until ≥ 1 exported datapoint matches *predicate*; return all matches.
+
+        Returns an empty list on timeout so callers can build a rich assertion
+        message from the datapoints that *were* observed.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            matched = [point for point in self.metrics() if predicate(point)]
             if matched or time.monotonic() >= deadline:
                 return matched
             time.sleep(poll)
