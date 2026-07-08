@@ -170,8 +170,9 @@ def test_setup_otel_env_variables_deployment_shape_runtime_params() -> None:
             telemetry._setup_otel_env_variables()
 
         assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == collector_base
-        assert "x-datarobot-entity-id=deployment-deadbeef12345678" in (
-            os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+        assert (
+            "x-datarobot-entity-id=deployment-deadbeef12345678"
+            in (os.environ["OTEL_EXPORTER_OTLP_HEADERS"])
         )
 
         exporter = OTLPMetricExporter()
