@@ -56,6 +56,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
+from datarobot_genai.drmcpbase.datarobot_otel_metrics import bootstrap_metrics_provider
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .config import get_config
@@ -151,36 +152,36 @@ class OtelASGIMiddleware(BaseHTTPMiddleware):
 
 
 def _setup_otel_env_variables() -> None:
-    """Set up OpenTelemetry environment variables for DataRobot integration."""
+    """Set up OpenTelemetry environment variables for DataRobot integration.
+
+    Endpoint and headers are resolved independently — an explicitly set env var
+    always wins, then the matching Config field, then the DataRobot fallback
+    (collector base URL / credential-derived headers). Treating the pair as one
+    "already configured" unit previously meant Config-assembled headers (from
+    ``otel_entity_id``) left ``OTEL_EXPORTER_OTLP_ENDPOINT`` unset, so every
+    exporter silently targeted the OTLP localhost default.
+    """
     config = get_config()
 
-    if config.otel_exporter_otlp_endpoint:
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", config.otel_exporter_otlp_endpoint)
-    if config.otel_exporter_otlp_headers:
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_HEADERS", config.otel_exporter_otlp_headers)
+    if not os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        endpoint = config.otel_exporter_otlp_endpoint or config.otel_collector_base_url
+        if endpoint:
+            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 
-    # do not override if already set
-    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or os.environ.get(
-        "OTEL_EXPORTER_OTLP_HEADERS"
-    ):
-        root_logger.info(
-            "OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_HEADERS already set, skipping"
-        )
-        return
+    if not os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"):
+        otlp_headers = config.otel_exporter_otlp_headers
+        if not otlp_headers:
+            credentials = get_credentials()
+            otlp_headers = (
+                f"X-DataRobot-Api-Key={credentials.datarobot.datarobot_api_token},"
+                f"X-DataRobot-Entity-Id={config.otel_entity_id}"
+            )
+        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = otlp_headers
 
-    credentials = get_credentials()
-
-    otlp_endpoint = config.otel_collector_base_url
-    entity_id = config.otel_entity_id
-
-    otlp_headers = (
-        f"X-DataRobot-Api-Key={credentials.datarobot.datarobot_api_token},"
-        f"X-DataRobot-Entity-Id={entity_id}"
-    )
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = otlp_headers
     root_logger.info(
-        f"Using OTEL_EXPORTER_OTLP_ENDPOINT: {otlp_endpoint} with X-DataRobot-Entity-Id {entity_id}"
+        "Using OTEL_EXPORTER_OTLP_ENDPOINT: %s with X-DataRobot-Entity-Id %s",
+        os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+        config.otel_entity_id,
     )
 
 
@@ -305,6 +306,9 @@ def initialize_telemetry(mcp: FastMCP) -> None:
 
     # Setup OTEL exporter
     _setup_otel_exporter()
+    # Metrics leg: the OTLP exporter resolves the endpoint/headers from the same
+    # OTEL_EXPORTER_OTLP_* env vars set above (no-op when they are unset).
+    bootstrap_metrics_provider(resource_attributes=resource_attrs)
     _setup_otel_logging(resource)
 
     # Setup HTTP client instrumentation

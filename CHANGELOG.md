@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.5
+- `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
+- `drmcpbase`: `bootstrap_metrics_provider` — OTLP/HTTP `MeterProvider` bootstrap; endpoint/headers resolve the standard OTLP way from `OTEL_EXPORTER_OTLP_*` (idempotent, no-op without an endpoint, never raises).
+- `drmcp`: `initialize_telemetry` installs the metrics provider next to the trace/log providers, and `execute_code` runs through `InstrumentedSandbox` — sandbox SLIs turn on with the existing `OTEL_ENABLED` config.
+- `drmcp`: fixed `_setup_otel_env_variables` resolving endpoint/headers as a pair — with `otel_entity_id` set (validator-assembled headers) the endpoint was never bridged and exporters silently targeted the OTLP localhost default; the two env vars now resolve independently.
+- OTel (`opentelemetry-api`/`-sdk`/`-exporter-otlp-proto-http`) is now a regular dependency of the `drtools` and `drmcpbase` extras (module-level imports; no lazy-import fallbacks).
+
 ## 0.23.4
 - Upgrade github-actions to the latest releases with bug fixes, label validation and backport/cherry-picking capabilities
 
