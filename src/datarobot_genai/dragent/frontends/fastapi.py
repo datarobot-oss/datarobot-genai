@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
+from a2a.types import AgentCard
 from a2a.types import InvalidParamsError
 from a2a.utils.errors import ServerError
 from fastapi import FastAPI
@@ -27,22 +28,23 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontE
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
+from datarobot_genai.dragent.deployment_urls import DEFAULT_A2A_MOUNT_PATH
 
-from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
+from .config import DRAgentA2AConfig
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
 from .session import _auth_handler
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
+WELL_KNOWN_AGENT_CARD_PATH = "/.well-known/agent-card.json"
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +171,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._a2a_worker: A2AFrontEndPluginWorker | None = None
+        self._a2a_app: FastAPI | None = None
+        self._a2a_mount_path: str = DEFAULT_A2A_MOUNT_PATH
+        self._agent_card: AgentCard | None = None
 
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
@@ -187,36 +192,38 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
         if self.front_end_config.a2a:
-            await self._add_a2a_routes(app, builder, self.front_end_config.a2a)
+            a2a_cfg: DRAgentA2AConfig = self.front_end_config.a2a
+            await self._add_a2a_routes(app, builder, a2a_cfg)
 
     async def _add_a2a_routes(
-        self, app: FastAPI, builder: WorkflowBuilder, a2a_config: A2AFrontEndConfig
+        self, app: FastAPI, builder: WorkflowBuilder, a2a_config: DRAgentA2AConfig
     ) -> None:
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
         # Pass a full Config with the A2AFrontEndConfig substituted in, and inherit host/port
         # from the FastAPI front end so the agent card URL matches where the app is mounted.
-        a2a_config = a2a_config.server.model_copy(
+        nat_a2a_config = a2a_config.server.model_copy(
             update={"host": self.front_end_config.host, "port": self.front_end_config.port}
         )
         nat_config = self._config.model_copy(
-            update={"general": self._config.general.model_copy(update={"front_end": a2a_config})}
+            update={
+                "general": self._config.general.model_copy(update={"front_end": nat_a2a_config})
+            }
         )
         self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
 
-        cross_app_access = (
-            self.front_end_config.a2a.cross_application_access
-            if self.front_end_config.a2a
-            else None
-        )
-        skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
-        external = self.front_end_config.a2a.external if self.front_end_config.a2a else None
+        cross_app_access = a2a_config.cross_application_access
+        skills = a2a_config.skills
+        external = a2a_config.external
+        mount_path = a2a_config.mount_path  # already normalized by field_validator
 
         agent_card = await create_agent_card(
             frontend_config=self._a2a_worker.front_end_config,
             cross_app_access=cross_app_access,
             skills=skills,
             external=external,
+            mount_path=mount_path,
         )
+        self._agent_card = agent_card
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
             shared_builder=builder,
@@ -226,9 +233,12 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
-        a2a_app = a2a_server.build()
-
-        app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)
+        # Store the built sub-app and mount path; the actual app.mount() call is deferred
+        # to build_app() so that health and AG-UI routes are always registered first.
+        # This ordering is required when mount_path is "/" — a root Mount() registered
+        # before other routes would shadow them under Starlette's first-match semantics.
+        self._a2a_app = a2a_server.build()
+        self._a2a_mount_path = mount_path
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
@@ -240,6 +250,39 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
         # NAT 1.6 no longer calls self.add_health_route() so we register here.
         self._register_health_routes(app)
+
+        # Mount the A2A sub-app AFTER health and AG-UI routes so that Starlette's
+        # first-match router yields those routes first — this is required when
+        # mount_path is "/" because a root Mount() registered earlier would shadow
+        # every other route under Starlette's first-match semantics.
+        if self._a2a_app is not None:
+            app.mount(self._a2a_mount_path, self._a2a_app)
+            logger.info(f"A2A sub-app mounted at '{self._a2a_mount_path}'")
+
+        # When the A2A sub-app is mounted at a non-root path, the spec-standard
+        # /.well-known/agent-card.json is not reachable.  Register a lightweight
+        # alias on the main app so external callers (sync jobs, discovery) can
+        # always fetch the agent card at the well-known location.
+        # Skipped for root mount — the sub-app already serves it there.
+        if self._agent_card is not None and self._a2a_mount_path != "/":
+            agent_card_data = self._agent_card
+
+            async def well_known_agent_card() -> dict:
+                return agent_card_data.model_dump(mode="json", exclude_none=True)
+
+            app.add_api_route(
+                path=WELL_KNOWN_AGENT_CARD_PATH,
+                endpoint=well_known_agent_card,
+                methods=["GET"],
+                description="A2A agent card (spec-standard well-known alias)",
+                tags=["A2A"],
+                include_in_schema=False,
+            )
+            logger.info(
+                "Registered agent card alias at '%s' (A2A sub-app at '%s')",
+                WELL_KNOWN_AGENT_CARD_PATH,
+                self._a2a_mount_path,
+            )
 
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.

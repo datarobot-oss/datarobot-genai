@@ -16,15 +16,13 @@ import typing
 import warnings
 from collections.abc import AsyncGenerator
 
-from a2a.types import AgentSkill
 from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
-from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
-from pydantic import BaseModel
-from pydantic import Field
 
+from .config import DRAgentA2AConfig
+from .config import DRAgentA2AExternalConfig
+from .config import DRAgentFastApiFrontEndConfig
 from .converters import convert_chat_request_to_run_agent_input
 from .converters import convert_dragent_event_response_to_chat_response_chunk
 from .converters import convert_dragent_event_response_to_str
@@ -35,7 +33,14 @@ from .converters import convert_str_to_chat_response
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
-from .server_auth import CrossApplicationAccessConfig
+
+# Re-export the config models so the public import path
+# ``datarobot_genai.dragent.frontends.register.*`` keeps working after they moved to config.py.
+__all__ = [
+    "DRAgentA2AConfig",
+    "DRAgentA2AExternalConfig",
+    "DRAgentFastApiFrontEndConfig",
+]
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
@@ -44,59 +49,6 @@ logging_handler_setup()
 
 # Suppress UserWarning from langchain about non-default parameters (uses warnings.warn, not logging)
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
-
-
-class DRAgentA2AExternalConfig(BaseModel):
-    """Customer-provided external identity and URL override for the agent card."""
-
-    id: str | None = Field(
-        default=None, description="External agent identifier for catalog discovery."
-    )
-    url: str | None = Field(
-        default=None, description="Custom external URL override for the agent card endpoint."
-    )
-
-
-class DRAgentA2AConfig(BaseModel):
-    """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
-
-    server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
-    cross_application_access: CrossApplicationAccessConfig | None = Field(
-        default=None,
-        description=(
-            "Configuration for Cross-Application Access utilizing a hybrid RFC 8693 / "
-            "RFC 7523 flow."
-        ),
-    )
-    skills: list[AgentSkill] = Field(
-        default=[],
-        description="Skills to advertise in the A2A agent card. "
-        "If empty, a single default skill is generated from the agent name and description.",
-    )
-    external: DRAgentA2AExternalConfig | None = Field(
-        default=None,
-        description="External identity and URL override for the agent card.",
-    )
-
-
-# Register frontend
-class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"):  # type: ignore
-    a2a: DRAgentA2AConfig | None = Field(
-        default=None,
-        description="Expose this agent via the Agent2Agent protocol. "
-        "A2A server endpoints are mounted under /a2a/.",
-    )
-    workflow: typing.Annotated[
-        FastApiFrontEndConfig.EndpointBase,
-        Field(description="Endpoint for the default workflow."),
-    ] = FastApiFrontEndConfig.EndpointBase(
-        method="POST",
-        path="/v1/workflow",
-        openai_api_v1_path="/chat/completions",
-        legacy_path="/generate",
-        legacy_openai_api_path="/chat",
-        description="Executes the default NAT workflow from the loaded configuration ",
-    )
 
 
 @register_front_end(config_type=DRAgentFastApiFrontEndConfig)

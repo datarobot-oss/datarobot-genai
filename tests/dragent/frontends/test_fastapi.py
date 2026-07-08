@@ -1003,6 +1003,432 @@ class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
             pass  # should not raise
 
 
+class TestNormalizeA2AMountPath:
+    """Unit tests for normalize_a2a_mount_path and build_a2a_local_url."""
+
+    def test_bare_segment_gets_leading_slash(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("a2a") == "/a2a"
+
+    def test_rooted_segment_unchanged(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("/a2a") == "/a2a"
+
+    def test_trailing_slash_stripped(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("/api/a2a/") == "/api/a2a"
+
+    def test_root_slash_returned_as_is(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("/") == "/"
+
+    def test_empty_string_becomes_root(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("") == "/"
+
+    def test_whitespace_only_becomes_root(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("   ") == "/"
+
+    def test_nested_path(self):
+        from datarobot_genai.dragent.deployment_urls import normalize_a2a_mount_path
+
+        assert normalize_a2a_mount_path("/api/v1/agent") == "/api/v1/agent"
+
+    def test_build_a2a_local_url_default(self):
+        from datarobot_genai.dragent.deployment_urls import build_a2a_local_url
+
+        assert build_a2a_local_url("localhost", 8000, "/a2a") == "http://localhost:8000/a2a/"
+
+    def test_build_a2a_local_url_root(self):
+        from datarobot_genai.dragent.deployment_urls import build_a2a_local_url
+
+        assert build_a2a_local_url("localhost", 8000, "/") == "http://localhost:8000/"
+
+    def test_build_a2a_local_url_nested(self):
+        from datarobot_genai.dragent.deployment_urls import build_a2a_local_url
+
+        assert build_a2a_local_url("myhost", 9000, "/api/agent") == "http://myhost:9000/api/agent/"
+
+    def test_build_a2a_local_url_normalizes_unnormalized_input(self):
+        from datarobot_genai.dragent.deployment_urls import build_a2a_local_url
+
+        assert build_a2a_local_url("localhost", 8000, "a2a") == "http://localhost:8000/a2a/"
+
+
+class TestDRAgentA2AConfigMountPath:
+    """Tests for the mount_path field on DRAgentA2AConfig."""
+
+    def test_default_is_normalized_a2a(self):
+        cfg = DRAgentA2AConfig(server=A2AFrontEndConfig(name="X", description="Y"))
+        assert cfg.mount_path == "/a2a"
+
+    def test_bare_segment_normalized(self):
+        cfg = DRAgentA2AConfig(
+            server=A2AFrontEndConfig(name="X", description="Y"), mount_path="api/agent"
+        )
+        assert cfg.mount_path == "/api/agent"
+
+    def test_root_preserved(self):
+        cfg = DRAgentA2AConfig(server=A2AFrontEndConfig(name="X", description="Y"), mount_path="/")
+        assert cfg.mount_path == "/"
+
+    def test_trailing_slash_stripped(self):
+        cfg = DRAgentA2AConfig(
+            server=A2AFrontEndConfig(name="X", description="Y"), mount_path="/custom/"
+        )
+        assert cfg.mount_path == "/custom"
+
+    def test_rooted_path_preserved(self):
+        cfg = DRAgentA2AConfig(
+            server=A2AFrontEndConfig(name="X", description="Y"), mount_path="/api/v1/a2a"
+        )
+        assert cfg.mount_path == "/api/v1/a2a"
+
+
+class TestGetA2aEndpointUrlMountPath:
+    """Tests for the mount_path parameter of get_a2a_endpoint_url."""
+
+    def test_default_mount_path(self):
+        assert get_a2a_endpoint_url("localhost", 8000) == "http://localhost:8000/a2a/"
+
+    def test_custom_mount_path(self):
+        assert (
+            get_a2a_endpoint_url("localhost", 8000, "/api/agent")
+            == "http://localhost:8000/api/agent/"
+        )
+
+    def test_root_mount_path(self):
+        assert get_a2a_endpoint_url("localhost", 8000, "/") == "http://localhost:8000/"
+
+    def test_deployment_path_uses_mount_path(self):
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "dep1",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            url = get_a2a_endpoint_url("localhost", 8000, "/api/my-agent")
+            assert (
+                url
+                == "https://app.datarobot.com/api/v2/deployments/dep1/directAccess/api/my-agent/"
+            )
+
+    def test_deployment_path_default_mount_path(self):
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "dep1",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            url = get_a2a_endpoint_url("localhost", 8000)
+            assert url == "https://app.datarobot.com/api/v2/deployments/dep1/directAccess/a2a/"
+
+
+class TestCustomMountPathAgentCardUrl:
+    """Tests that a custom mount_path produces the correct agent-card URL."""
+
+    @pytest.mark.asyncio
+    async def test_custom_path_reflected_in_agent_card_url(self, patch_super_add_routes):
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(
+                    a2a=DRAgentA2AConfig(
+                        server=A2AFrontEndConfig(
+                            name="Test Agent",
+                            description="A test agent",
+                            host="localhost",
+                            port=8000,
+                        ),
+                        mount_path="/api/my-agent",
+                    )
+                )
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+
+        mock_a2a_worker = MagicMock()
+        mock_a2a_worker.front_end_config = A2AFrontEndConfig(
+            name="Test Agent", description="A test agent", host="localhost", port=8000
+        )
+        mock_a2a_worker.max_concurrency = 1
+        mock_a2a_worker.create_a2a_server = MagicMock(
+            return_value=MagicMock(build=MagicMock(return_value=FastAPI()))
+        )
+
+        app = FastAPI()
+        with (
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            await worker.add_routes(app, MagicMock())
+
+        agent_card = mock_a2a_worker.create_a2a_server.call_args[0][0]
+        assert agent_card.url == "http://localhost:8000/api/my-agent/"
+        assert worker._a2a_mount_path == "/api/my-agent"
+
+    @pytest.mark.asyncio
+    async def test_mount_path_stored_on_worker(self, patch_super_add_routes):
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(
+                    a2a=DRAgentA2AConfig(
+                        server=A2AFrontEndConfig(name="T", description="T"),
+                        mount_path="/custom",
+                    )
+                )
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+
+        mock_a2a_worker = MagicMock()
+        mock_a2a_worker.front_end_config = A2AFrontEndConfig(
+            name="T", description="T", host="localhost", port=8000
+        )
+        mock_a2a_worker.max_concurrency = 1
+        mock_a2a_worker.create_a2a_server = MagicMock(
+            return_value=MagicMock(build=MagicMock(return_value=FastAPI()))
+        )
+
+        app = FastAPI()
+        with (
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            await worker.add_routes(app, MagicMock())
+
+        assert worker._a2a_mount_path == "/custom"
+        assert worker._a2a_app is not None
+
+
+class TestRootMountRouteOrdering:
+    """Integration-style tests: with mount_path='/', health routes still win.
+
+    These tests verify the deferred-mount ordering:  health routes (registered
+    in ``_register_health_routes``) appear before the A2A Mount("/") in the
+    Starlette route table, so Starlette's first-FULL-match rule resolves
+    ``GET /`` to the health handler and ``POST /`` to the A2A sub-app.
+
+    The fixture manually sets ``worker._a2a_app`` to a small Starlette sub-app
+    (simulating the built A2A server) rather than going through the full
+    ``add_routes`` flow, which would require a real NAT workflow to be loaded.
+    """
+
+    @pytest.fixture
+    def app_with_root_a2a(self):
+        """Build a FastAPI app with a synthetic A2A sub-app at mount_path='/'.
+
+        1. Creates the worker (configure is mocked so the parent lifespan works).
+        2. Manually wires ``_a2a_app`` / ``_a2a_mount_path`` on the worker so
+           ``build_app()`` picks them up and mounts after health routes.
+        3. Patches WorkflowBuilder so lifespan startup succeeds.
+        """
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+
+        async def a2a_rpc(request: Request) -> JSONResponse:
+            return JSONResponse({"jsonrpc": "2.0", "result": "ok", "id": "1"})
+
+        async def agent_card(request: Request) -> JSONResponse:
+            return JSONResponse({"name": "Root Agent", "url": "http://localhost:8000/"})
+
+        a2a_sub_app = Starlette(
+            routes=[
+                Route("/", a2a_rpc, methods=["POST"]),
+                Route("/.well-known/agent-card.json", agent_card, methods=["GET"]),
+            ]
+        )
+
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+
+        worker._a2a_app = a2a_sub_app
+        worker._a2a_mount_path = "/"
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            yield worker.build_app()
+
+    def test_get_root_returns_health_not_a2a(self, app_with_root_a2a):
+        """GET / must be served by the health route registered before the Mount."""
+        with TestClient(app_with_root_a2a) as client:
+            response = client.get("/")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
+
+    def test_get_ping_returns_health(self, app_with_root_a2a):
+        with TestClient(app_with_root_a2a) as client:
+            response = client.get("/ping")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
+
+    def test_post_root_reaches_a2a_sub_app(self, app_with_root_a2a):
+        """POST / must reach the A2A sub-app, not return 405 from the health GET route."""
+        with TestClient(app_with_root_a2a) as client:
+            response = client.post("/", json={"jsonrpc": "2.0", "method": "ping", "id": "1"})
+        assert response.status_code == 200, (
+            f"POST / must be routed to A2A sub-app (status {response.status_code})"
+        )
+        assert response.json().get("result") == "ok"
+
+    def test_well_known_agent_card_reachable(self, app_with_root_a2a):
+        """GET /.well-known/agent-card.json must be served by the A2A sub-app."""
+        with TestClient(app_with_root_a2a) as client:
+            response = client.get("/.well-known/agent-card.json")
+        assert response.status_code == 200
+        assert response.json().get("name") == "Root Agent"
+
+
+class TestWellKnownAgentCardAlias:
+    """The main app must always serve /.well-known/agent-card.json regardless of mount_path."""
+
+    @staticmethod
+    def _build_app_with_mount_path(mount_path: str):
+        """Build a FastAPI app with a synthetic A2A sub-app at the given mount_path."""
+        from a2a.types import AgentCapabilities
+        from a2a.types import AgentCard
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+
+        async def a2a_rpc(request: Request) -> JSONResponse:
+            return JSONResponse({"jsonrpc": "2.0", "result": "ok", "id": "1"})
+
+        async def sub_app_agent_card(request: Request) -> JSONResponse:
+            return JSONResponse({"name": "Sub App Card", "url": "http://localhost:8000/"})
+
+        a2a_sub_app = Starlette(
+            routes=[
+                Route("/", a2a_rpc, methods=["POST"]),
+                Route("/.well-known/agent-card.json", sub_app_agent_card, methods=["GET"]),
+            ]
+        )
+
+        agent_card = AgentCard(
+            name="Test Agent",
+            description="A test agent",
+            url="http://localhost:8000/",
+            version="1.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False, push_notifications=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+
+        worker._a2a_app = a2a_sub_app
+        worker._a2a_mount_path = mount_path
+        worker._agent_card = agent_card
+        return worker
+
+    @pytest.fixture
+    def app_custom_mount(self):
+        worker = self._build_app_with_mount_path("/custom")
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            yield worker.build_app()
+
+    @pytest.fixture
+    def app_default_mount(self):
+        worker = self._build_app_with_mount_path("/a2a")
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            yield worker.build_app()
+
+    @pytest.fixture
+    def app_root_mount(self):
+        worker = self._build_app_with_mount_path("/")
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            yield worker.build_app()
+
+    def test_well_known_served_when_custom_mount_path(self, app_custom_mount):
+        """GET /.well-known/agent-card.json returns the agent card even though
+        the sub-app is mounted at /custom.
+        """
+        with TestClient(app_custom_mount) as client:
+            response = client.get("/.well-known/agent-card.json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Test Agent"
+
+    def test_well_known_served_with_default_mount_path(self, app_default_mount):
+        """Both /a2a/.well-known/agent-card.json (sub-app) and
+        /.well-known/agent-card.json (alias) return the card.
+        """
+        with TestClient(app_default_mount) as client:
+            alias = client.get("/.well-known/agent-card.json")
+            sub_app = client.get("/a2a/.well-known/agent-card.json")
+        assert alias.status_code == 200
+        assert alias.json()["name"] == "Test Agent"
+        assert sub_app.status_code == 200
+
+    def test_well_known_not_duplicated_for_root_mount(self, app_root_mount):
+        """When mount_path='/', the sub-app already serves /.well-known/agent-card.json.
+        The alias route must NOT be registered (no duplicate).
+        """
+        with TestClient(app_root_mount) as client:
+            response = client.get("/.well-known/agent-card.json")
+        assert response.status_code == 200
+        # Should be the sub-app's response (not the alias), proving the alias
+        # was skipped and the sub-app handles the path directly.
+        assert response.json()["name"] == "Sub App Card"
+
+
 class TestDRAgentFastApiFrontEndPlugin:
     def test_get_worker_class(self):
         plugin = DRAgentFastApiFrontEndPlugin(full_config=Config(general=GeneralConfig()))

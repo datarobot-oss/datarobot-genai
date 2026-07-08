@@ -36,10 +36,12 @@ from a2a.types import SecurityScheme
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.dragent.deployment_urls import DEFAULT_A2A_MOUNT_PATH
+from datarobot_genai.dragent.deployment_urls import build_a2a_local_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
-from .register import DRAgentA2AExternalConfig
+from .config import DRAgentA2AExternalConfig
 from .server_auth import CrossApplicationAccessConfig
 
 logger = logging.getLogger(__name__)
@@ -47,8 +49,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-A2A_MOUNT_PATH = "a2a"
 
 OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "OAuth 2.0 authorization utilizing RFC 7523 JWT Bearer Grant. Requires a prerequisite "
@@ -87,20 +87,23 @@ EXTERNAL_IDENTITY_DESCRIPTION = (
 # ---------------------------------------------------------------------------
 
 
-def get_a2a_endpoint_url(host: str, port: int) -> str:
+def get_a2a_endpoint_url(host: str, port: int, mount_path: str = DEFAULT_A2A_MOUNT_PATH) -> str:
     """Construct the A2A endpoint URL for the running server.
 
     In a DataRobot deployment (``MLOPS_DEPLOYMENT_ID`` is set), uses the
     deployment's direct-access URL built from ``DATAROBOT_PUBLIC_API_ENDPOINT``
-    / ``DATAROBOT_ENDPOINT``.  Otherwise falls back to the local
-    ``http://{host}:{port}/a2a/`` URL.
+    / ``DATAROBOT_ENDPOINT``.  The ``mount_path`` is not used in that case
+    because the deployment gateway controls the external path.
+
+    Otherwise falls back to the local ``http://{host}:{port}/{mount_path}/``
+    URL, where ``mount_path`` defaults to ``"a2a"``.
     """
     mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
     if mlops_deployment_id:
         datarobot_endpoint = resolve_datarobot_endpoint(require=True)
         assert datarobot_endpoint is not None  # guaranteed by require=True
-        return build_deployment_a2a_url(datarobot_endpoint, mlops_deployment_id)
-    return f"http://{host}:{port}/{A2A_MOUNT_PATH}/"
+        return build_deployment_a2a_url(datarobot_endpoint, mlops_deployment_id, mount_path)
+    return build_a2a_local_url(host, port, mount_path)
 
 
 # ---------------------------------------------------------------------------
@@ -243,11 +246,12 @@ def _collect_extensions(
 def _resolve_url(
     frontend_config: A2AFrontEndConfig,
     external: DRAgentA2AExternalConfig | None,
+    mount_path: str = DEFAULT_A2A_MOUNT_PATH,
 ) -> str:
     """Return the agent card URL, preferring ``external.url`` when provided."""
     if external and external.url:
         return external.url
-    return get_a2a_endpoint_url(frontend_config.host, frontend_config.port)
+    return get_a2a_endpoint_url(frontend_config.host, frontend_config.port, mount_path)
 
 
 async def build_security_schemes(
@@ -303,11 +307,18 @@ async def create_agent_card(
     cross_app_access: CrossApplicationAccessConfig | None,
     skills: list[AgentSkill],
     external: DRAgentA2AExternalConfig | None = None,
+    mount_path: str = DEFAULT_A2A_MOUNT_PATH,
 ) -> AgentCard:
     """Build an :class:`~a2a.types.AgentCard` for a DataRobot-hosted A2A agent.
 
     When ``skills`` is empty, a single default skill is generated from
     ``frontend_config.name`` / ``frontend_config.description``.
+
+    ``mount_path`` controls the local agent-card ``url`` field (e.g. ``"a2a"``
+    for ``http://host:port/a2a/``, or ``"/"`` for ``http://host:port/``).
+    It is ignored when ``external.url`` is explicitly set, or when
+    ``MLOPS_DEPLOYMENT_ID`` is configured (the deployment gateway controls
+    the external path in that case).
     """
     security_schemes, security = await build_security_schemes(frontend_config, cross_app_access)
     extensions = _collect_extensions(cross_app_access, external)
@@ -322,7 +333,7 @@ async def create_agent_card(
         )
     ]
 
-    url = _resolve_url(frontend_config, external)
+    url = _resolve_url(frontend_config, external, mount_path)
 
     return AgentCard(
         name=frontend_config.name,

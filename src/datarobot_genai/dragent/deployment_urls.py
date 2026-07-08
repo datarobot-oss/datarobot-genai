@@ -23,7 +23,59 @@ functions so that the patterns stay in sync automatically.
 
 import os
 
-A2A_DIRECT_ACCESS_PATH = "directAccess/a2a"
+# Default in-process A2A mount path (relative, without leading slash).
+# Override via ``general.front_end.a2a.mount_path`` in workflow.yaml.
+DEFAULT_A2A_MOUNT_PATH = "a2a"
+
+# DataRobot gateway prefix for direct deployment access.
+# The full gateway segment is ``_DIRECT_ACCESS_GATEWAY_PREFIX + normalized mount_path``,
+# e.g. ``"directAccess/a2a"`` for the default mount path.
+_DIRECT_ACCESS_GATEWAY_PREFIX = "directAccess"
+
+# Backward-compatible constant — equals the gateway segment when mount_path is the default.
+A2A_DIRECT_ACCESS_PATH = f"{_DIRECT_ACCESS_GATEWAY_PREFIX}/{DEFAULT_A2A_MOUNT_PATH}"
+
+
+def normalize_a2a_mount_path(mount_path: str) -> str:
+    """Return a canonical Starlette mount path: leading slash, no trailing slash.
+
+    ``"/"`` is returned as-is (root mount).  Empty or whitespace-only input
+    also yields ``"/"`` — Starlette requires at least ``"/"`` for a catch-all.
+
+    Examples::
+
+        normalize_a2a_mount_path("a2a")       == "/a2a"
+        normalize_a2a_mount_path("/api/a2a/") == "/api/a2a"
+        normalize_a2a_mount_path("/")         == "/"
+        normalize_a2a_mount_path("")          == "/"
+    """
+    path = mount_path.strip()
+    if not path:
+        return "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    if path != "/":
+        path = path.rstrip("/")
+    return path
+
+
+def build_a2a_local_url(host: str, port: int, mount_path: str) -> str:
+    """Return the local agent-card base URL with a trailing slash.
+
+    The ``mount_path`` argument should already be normalized (as produced by
+    :func:`normalize_a2a_mount_path`), but the function tolerates unnormalized
+    input by normalizing it internally.
+
+    Examples::
+
+        build_a2a_local_url("localhost", 8000, "/a2a")  == "http://localhost:8000/a2a/"
+        build_a2a_local_url("localhost", 8000, "/")     == "http://localhost:8000/"
+    """
+    normalized = normalize_a2a_mount_path(mount_path)
+    if normalized == "/":
+        return f"http://{host}:{port}/"
+    return f"http://{host}:{port}{normalized}/"
+
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 
@@ -68,8 +120,18 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     return _DEFAULT_DATAROBOT_ENDPOINT
 
 
-def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
+def build_deployment_a2a_url(
+    endpoint: str,
+    deployment_id: str,
+    mount_path: str = DEFAULT_A2A_MOUNT_PATH,
+) -> str:
     """Construct the A2A direct-access URL for a DataRobot deployment.
+
+    The DataRobot gateway exposes deployment A2A endpoints under the
+    ``directAccess{mount_path}`` sub-path.  When ``mount_path`` is the default
+    ``"a2a"``, this produces the canonical ``directAccess/a2a/`` URL; custom
+    mount paths (e.g. ``"/api/my-agent"``) are reflected in the gateway path so
+    the advertised agent-card URL matches the actual endpoint.
 
     Parameters
     ----------
@@ -78,14 +140,24 @@ def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
         A trailing slash is stripped before composing the URL.
     deployment_id:
         The DataRobot deployment ID.
+    mount_path:
+        The A2A mount path, as configured via ``general.front_end.a2a.mount_path``.
+        Defaults to ``DEFAULT_A2A_MOUNT_PATH`` (``"a2a"``).
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``.
+        A URL of the form
+        ``{endpoint}/deployments/{deployment_id}/directAccess{mount_path}/``.
     """
     base = endpoint.rstrip("/")
-    return f"{base}/deployments/{deployment_id}/{A2A_DIRECT_ACCESS_PATH}/"
+    normalized = normalize_a2a_mount_path(mount_path)
+    if normalized == "/":
+        # Root mount: gateway segment is just "directAccess" (no extra slash before "/")
+        gateway_segment = _DIRECT_ACCESS_GATEWAY_PREFIX
+    else:
+        gateway_segment = f"{_DIRECT_ACCESS_GATEWAY_PREFIX}{normalized}"
+    return f"{base}/deployments/{deployment_id}/{gateway_segment}/"
 
 
 def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:

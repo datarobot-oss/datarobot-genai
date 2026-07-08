@@ -52,6 +52,22 @@ class TestBuildDeploymentA2aUrl:
         url = build_deployment_a2a_url("https://app.datarobot.com/api/v2", deployment_id)
         assert f"/deployments/{deployment_id}/" in url
 
+    @pytest.mark.parametrize(
+        "mount_path,expected_suffix",
+        [
+            ("a2a", "/directAccess/a2a/"),
+            ("/a2a", "/directAccess/a2a/"),
+            ("api/my-agent", "/directAccess/api/my-agent/"),
+            ("/api/my-agent/", "/directAccess/api/my-agent/"),
+            ("/", "/directAccess/"),
+        ],
+    )
+    def test_custom_mount_path_reflected_in_url(self, mount_path, expected_suffix):
+        url = build_deployment_a2a_url("https://app.datarobot.com/api/v2", "abc123", mount_path)
+        assert url.endswith(expected_suffix), (
+            f"Expected URL ending {expected_suffix!r}, got {url!r}"
+        )
+
 
 class TestBuildDeploymentAgentCardUrl:
     @pytest.mark.parametrize(
