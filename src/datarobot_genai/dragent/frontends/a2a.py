@@ -212,15 +212,24 @@ def build_cross_app_capability_extension(
 
 
 def build_internal_identity_extension() -> AgentExtension | None:
-    """Build the internal identity extension from MLOPS_DEPLOYMENT_ID, or None in local dev."""
-    deployment_id = get_deployment_id()
-    if not deployment_id:
+    """Build the internal identity extension for the current runtime, or None in local dev.
+
+    In a deployment container (``MLOPS_DEPLOYMENT_ID``) the params carry
+    ``deployment_id``; in a workload container (``WORKLOAD_ID``) they carry
+    ``workload_id``.  Returns *None* when neither identity is present.
+    """
+    if dep_id := get_deployment_id():
+        params = {"deployment_id": dep_id}
+    elif wl_id := get_workload_id():
+        params = {"workload_id": wl_id}
+    else:
         return None
+
     return AgentExtension(
         uri=INTERNAL_IDENTITY_URI,
         description=INTERNAL_IDENTITY_DESCRIPTION,
         required=True,
-        params={"deployment_id": deployment_id},
+        params=params,
     )
 
 
