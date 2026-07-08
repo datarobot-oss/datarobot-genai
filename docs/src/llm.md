@@ -102,6 +102,23 @@ In Python, this uses **`get_router_llm(primary, fallbacks, router_settings)`** f
 
 For the full agent-component checklist and copy-paste examples, see [LLM provider fallback (router)](fallback.md).
 
+## Extended reasoning
+
+Pass **`reasoning=True`** on any **`get_*_llm()`** helper (or set **`reasoning: true`** under an `llms:` block in `workflow.yaml`) to enable provider-specific extended thinking. The library picks a default **`extra_body`** from the model name (Anthropic Sonnet, Opus, Gemini, OpenAI/Azure reasoning models) and omits **`temperature`**, which is incompatible with thinking on many providers.
+
+Explicit **`extra_body`** in `parameters` or workflow YAML always wins; with **`reasoning=True`** only temperature is cleared in that case.
+
+```python
+from datarobot_genai.langgraph.llm import get_datarobot_gateway_llm
+
+llm = get_datarobot_gateway_llm(
+    "datarobot/anthropic/claude-sonnet-4-6",
+    reasoning=True,
+)
+```
+
+Lower-level helpers live in **`datarobot_genai.core.llm.reasoning`** (`default_reasoning_extra_body`, `apply_reasoning_to_parameters`).
+
 ## `get_llm()` (environment-driven routing)
 
 Prefer the explicit **`get_*`** helpers above when you know the route. Use **`get_llm()`** as a single entry point when you want one code path and you steer behavior entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
@@ -129,7 +146,7 @@ Example (LangGraph; adjust the import for LlamaIndex or CrewAI):
 ```python
 from datarobot_genai.langgraph.llm import get_llm
 
-llm = get_llm()  # optional: model_name="...", parameters={...}, streaming=True
+llm = get_llm()  # optional: model_name="...", parameters={...}, streaming=True, reasoning=False
 ```
 
 # In `workflow.yaml`

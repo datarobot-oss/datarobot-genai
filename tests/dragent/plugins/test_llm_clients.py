@@ -24,7 +24,6 @@ from nat.builder.workflow_builder import WorkflowBuilder
 import datarobot_genai.dragent.plugins.llm_clients  # noqa: F401
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.dragent.plugins.llm_clients import apply_reasoning_config
-from datarobot_genai.dragent.plugins.llm_clients import default_reasoning_extra_body
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLitellmConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMComponentModelConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMDeploymentModelConfig
@@ -103,48 +102,6 @@ def test_apply_reasoning_config_litellm_provider() -> None:
     config = apply_reasoning_config({"temperature": 0, "model": "openai/o3-mini"}, llm_config)
     assert "temperature" not in config
     assert config["extra_body"] == {"reasoning_effort": "low"}
-
-
-@pytest.mark.parametrize(
-    ("model_name", "expected_extra_body"),
-    [
-        pytest.param(
-            "anthropic/claude-sonnet-4-6",
-            {"thinking": {"type": "enabled", "budget_tokens": 1024}},
-            id="anthropic-sonnet",
-        ),
-        pytest.param(
-            "bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
-            {"thinking": {"type": "enabled", "budget_tokens": 1024}},
-            id="bedrock-sonnet",
-        ),
-        pytest.param(
-            "vertex_ai/claude-opus-4-7",
-            {"thinking": {"type": "adaptive"}},
-            id="anthropic-opus",
-        ),
-        pytest.param(
-            "vertex_ai/gemini-3.5-flash",
-            {"thinking_config": {"thinking_budget": 1024}},
-            id="gemini",
-        ),
-        pytest.param(
-            "azure/gpt-5-4-2026-03-05",
-            {"reasoning_effort": "low"},
-            id="azure-gpt-5",
-        ),
-        pytest.param(
-            "openai/o3-mini",
-            {"reasoning_effort": "low"},
-            id="openai-o-series",
-        ),
-    ],
-)
-def test_default_reasoning_extra_body_for_provider_models(
-    model_name: str,
-    expected_extra_body: dict,
-) -> None:
-    assert default_reasoning_extra_body(model_name) == expected_extra_body
 
 
 def test_apply_reasoning_config_preserves_explicit_extra_body() -> None:

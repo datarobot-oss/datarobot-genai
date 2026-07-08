@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
 - Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
 - `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`; langgraph and llamaindex e2e workflows set `reasoning: true`. The flag is available on all DataRobot LLM provider `_type`s (gateway, deployment, NIM, litellm, component) and is applied in every LLM client handler.
+- Moved LLM extended-reasoning helpers to `core.llm.reasoning` (`default_reasoning_extra_body`, `apply_reasoning_to_parameters`); `dragent` delegates from `apply_reasoning_config`.
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
 
 ## 0.22.1
 - `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
