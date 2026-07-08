@@ -22,6 +22,11 @@ from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
+from datarobot_genai.dragent.deployment_urls import get_deployment_id
+from datarobot_genai.dragent.deployment_urls import get_workload_id
+from datarobot_genai.dragent.deployment_urls import is_deployment_mode
+from datarobot_genai.dragent.deployment_urls import is_hosted_runtime
+from datarobot_genai.dragent.deployment_urls import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 
@@ -189,3 +194,73 @@ class TestUrlConsistency:
         assert a2a == f"{endpoint}/endpoints/workloads/{workload_id}/a2a/"
         assert card == f"{endpoint}/workloads/{workload_id}/agentCard/"
         assert a2a != card
+
+
+class TestGetWorkloadId:
+    @pytest.mark.parametrize("value", ["", "   ", "\t"])
+    def test_returns_none_when_unset_or_blank(self, value):
+        with patch.dict(os.environ, {"WORKLOAD_ID": value}, clear=True):
+            assert get_workload_id() is None
+
+    def test_returns_none_when_env_absent(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_workload_id() is None
+
+    @pytest.mark.parametrize("value,expected", [("wl-123", "wl-123"), ("  wl-9  ", "wl-9")])
+    def test_returns_stripped_value(self, value, expected):
+        with patch.dict(os.environ, {"WORKLOAD_ID": value}, clear=True):
+            assert get_workload_id() == expected
+
+
+class TestGetDeploymentId:
+    @pytest.mark.parametrize("value", ["", "   ", "\t"])
+    def test_returns_none_when_unset_or_blank(self, value):
+        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": value}, clear=True):
+            assert get_deployment_id() is None
+
+    def test_returns_none_when_env_absent(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_deployment_id() is None
+
+    @pytest.mark.parametrize("value,expected", [("dep-123", "dep-123"), ("  dep-9  ", "dep-9")])
+    def test_returns_stripped_value(self, value, expected):
+        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": value}, clear=True):
+            assert get_deployment_id() == expected
+
+
+class TestIsWorkloadMode:
+    def test_true_when_workload_id_set(self):
+        with patch.dict(os.environ, {"WORKLOAD_ID": "wl-1"}, clear=True):
+            assert is_workload_mode() is True
+
+    @pytest.mark.parametrize("env", [{}, {"WORKLOAD_ID": ""}, {"WORKLOAD_ID": "  "}])
+    def test_false_when_absent_or_blank(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            assert is_workload_mode() is False
+
+
+class TestIsDeploymentMode:
+    def test_true_when_deployment_id_set(self):
+        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "dep-1"}, clear=True):
+            assert is_deployment_mode() is True
+
+    @pytest.mark.parametrize(
+        "env", [{}, {"MLOPS_DEPLOYMENT_ID": ""}, {"MLOPS_DEPLOYMENT_ID": "  "}]
+    )
+    def test_false_when_absent_or_blank(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            assert is_deployment_mode() is False
+
+
+class TestIsHostedRuntime:
+    def test_false_when_neither_set(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert is_hosted_runtime() is False
+
+    def test_true_when_deployment_only(self):
+        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "dep-1"}, clear=True):
+            assert is_hosted_runtime() is True
+
+    def test_true_when_workload_only(self):
+        with patch.dict(os.environ, {"WORKLOAD_ID": "wl-1"}, clear=True):
+            assert is_hosted_runtime() is True
