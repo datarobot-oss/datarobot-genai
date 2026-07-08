@@ -25,9 +25,6 @@ functions:
     _type: llamaindex_agent
     llm_name: datarobot_llm
     description: E2E agent with DataRobot Memory Service.
-    middleware:
-      - datarobot_guardrails
-      - datarobot_otel_conventions
     verbose: true
     allow_parallel_tool_calls: true
 
@@ -35,6 +32,9 @@ workflow:
   _type: streaming_memory_agent
   llm_name: datarobot_llm
   description: "E2E agent with DataRobot Memory Service."
+  middleware:
+    - datarobot_guardrails
+    - datarobot_otel_conventions
   inner_agent_name: chat_agent
   memory_name: mem0_memory
   save_ai_messages_to_memory: false

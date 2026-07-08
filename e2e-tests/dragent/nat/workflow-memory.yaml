@@ -24,9 +24,6 @@ functions:
   chat_agent:
     _type: per_user_tool_calling_agent
     llm_name: datarobot_llm
-    middleware:
-      - datarobot_guardrails
-      - datarobot_otel_conventions
     tool_names:
       - generate_objectid
     system_prompt: |
@@ -39,6 +36,9 @@ workflow:
   _type: streaming_memory_agent
   llm_name: datarobot_llm
   description: "E2E agent with DataRobot Memory Service."
+  middleware:
+    - datarobot_guardrails
+    - datarobot_otel_conventions
   inner_agent_name: chat_agent
   memory_name: mem0_memory
   save_ai_messages_to_memory: false
