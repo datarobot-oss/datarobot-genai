@@ -11,11 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections.abc import AsyncGenerator
 from typing import Any
+from typing import Literal
+from urllib.parse import urlsplit
 
 import httpx
+from nat.builder.builder import Builder
+from nat.cli.register_workflow import register_per_user_function_group
+from nat.plugins.mcp.client.client_config import MCPServerConfig
+from nat.plugins.mcp.client.client_config import PerUserMCPClientConfig
+from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
+from nat.plugins.mcp.client.client_impl import per_user_mcp_client_function_group
+from pydantic import Field
+from pydantic import HttpUrl
 
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessOAuth2AuthProvider,
+)
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 
@@ -23,16 +37,17 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
     mcp_auth_server_metadata: dict[str, Any],
 ) -> _CrossAppFlowParams:
     xaa_metadata = mcp_auth_server_metadata["urn:datarobot:nat_mcp_xaa_client"]
-    token_exchange_metata = xaa_metadata["tokenExchange"]
-    token_request_metata = xaa_metadata["tokenRequest"]
+    token_endpoint_auth_method = xaa_metadata["token_endpoint_auth_method"]
+    token_exchange_metata = xaa_metadata["token_exchange"]
+    token_request_metata = xaa_metadata["token_request"]
 
     return _CrossAppFlowParams(
-        trusted_issuer=token_exchange_metata["trustedIssuer"],
+        trusted_issuer=token_exchange_metata["trusted_issuer"],
         exchange_audience=token_exchange_metata["audience"],
-        token_url=token_request_metata["tokenUrl"],
+        token_url=token_request_metata["token_url"],
         target_audience=token_request_metata["audience"],
         id_jag_scopes=token_request_metata["scopes"],
-        token_endpoint_auth_method="private_key_jwt",
+        token_endpoint_auth_method=token_endpoint_auth_method,
     )
 
 
@@ -50,3 +65,72 @@ async def get_xaa_param_from_mcp_auth_server_metadata(
             )
 
     return parse_xaa_params_from_mcp_auth_server_metadata(resp.json())
+
+
+class CustomizedMCPServerConfig(MCPServerConfig):
+    transport: Literal["streamable-http"] = Field(
+        default="streamable-http",
+        description=(
+            "Transport type to connect to the MCP server (only streamable-http is supported)."
+        ),
+    )
+
+    url: HttpUrl = Field(
+        description="URL of the MCP server (for streamable-http transport).",
+    )
+
+
+class MCPClientWithXAASupportConfig(  # type: ignore[call-arg]
+    PerUserMCPClientConfig,
+    name="mcp_client_with_xaa_support",
+):
+    server: CustomizedMCPServerConfig = Field(
+        description="Server connection details (transport, url/command, etc.)",
+    )
+
+    forward_inbound_headers: bool = Field(
+        default=True,
+        description=(
+            "If set to True, all HTTP headers of inbound request are forwarded "
+            "except for reserved headers configured in auth_provider."
+        ),
+    )
+
+
+def get_mcp_auth_server_metadata_url(
+    config: MCPClientWithXAASupportConfig,
+) -> str:
+    mcp_server_url = str(config.server.url)
+    url_split = urlsplit(mcp_server_url)
+    return (
+        f"{url_split.scheme}://{url_split.netloc}"
+        f"/.well-known/oauth-protected-resource{url_split.path}"
+    )
+
+
+async def setup_auth_provider(
+    auth_provider: OAuth2CrossApplicationAccessOAuth2AuthProvider,
+    config: MCPClientWithXAASupportConfig,
+) -> OAuth2CrossApplicationAccessOAuth2AuthProvider:
+    mcp_auth_server_metadata_url = get_mcp_auth_server_metadata_url(config)
+    xaa_params = await get_xaa_param_from_mcp_auth_server_metadata(mcp_auth_server_metadata_url)
+    auth_provider.set_cross_app_flow_params(xaa_params)
+
+    if config.forward_inbound_headers:
+        auth_provider.set_forward_inbound_http_headers(True)
+
+    return auth_provider
+
+
+@register_per_user_function_group(config_type=MCPClientWithXAASupportConfig)
+async def mcp_client_with_xaa_support_function_group(
+    config: MCPClientWithXAASupportConfig,
+    builder: Builder,
+) -> AsyncGenerator[PerUserMCPFunctionGroup, None]:
+    auth_provider = await builder.get_auth_provider(config.server.auth_provider)
+    if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
+        raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")
+    await setup_auth_provider(auth_provider, config)
+
+    async with per_user_mcp_client_function_group(config, builder) as group:
+        yield group
