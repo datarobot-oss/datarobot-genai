@@ -1,0 +1,40 @@
+name: Ensure PR-automation labels
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ensure PR-automation labels
+# One-shot, idempotent label setup for the PR-automation & backport workflows.
+# Run from Actions → Run workflow. Optionally pass release branches to also make
+# backport label pairs, or enable cleanup of confusable review-label variants.
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUIRED LABELS
+# - None — this workflow CREATES the labels the others require:
+#   `00 - Ready for Review`, `00 - Reviewed`, `backport-failed`, `do not merge`
+#   (+ `backport <branch>` / `backported <branch>` for any branches you pass).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Triggered by: manual dispatch only (run from the Actions tab).
+on:
+  workflow_dispatch:
+    inputs:
+      backport_branches:
+        description: 'Backport branches, comma/space-separated (e.g. "release/11.1, release/11.2"). Leave blank to skip.'
+        required: false
+        default: ''
+        type: string
+      delete_confusable:
+        description: 'Delete confusable review-label variants (migrates open PRs first)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # Create/repair the automation labels (idempotent); optionally add per-branch
+  # backport labels and clean up confusable review-label variants.
+  ensure-labels:
+    uses: datarobot-oss/github-actions/.github/workflows/ensure-labels.yaml@0.0.18
+    with:
+      backport_branches: ${{ inputs.backport_branches }}
+      delete_confusable: ${{ inputs.delete_confusable }}
+    permissions:
+      issues: write
+      pull-requests: write

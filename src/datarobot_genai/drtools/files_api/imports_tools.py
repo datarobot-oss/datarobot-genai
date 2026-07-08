@@ -30,6 +30,7 @@ from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.file_system_store import is_terminal_import_failure_status
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.files_api.common_utils import OVERWRITE_STRATEGY_DOC
 from datarobot_genai.drtools.files_api.common_utils import get_store as _get_store
 from datarobot_genai.drtools.files_api.common_utils import require_file_path as _require_file_path
 from datarobot_genai.drtools.files_api.common_utils import require_path as _require_path
@@ -56,7 +57,7 @@ _IMPORT_STATUS_NOTE = (
         "  - source='url': set url to a file or archive URL reachable by DataRobot.\n"
         "  - source='data_source': set data_source_id (and optional credential_id).\n"
         "  - unpack_archive: extract zip/tar archives when true (default).\n"
-        "  - overwrite: 'rename' (default), 'replace', 'skip', or 'error'.\n\n"
+        f"  - {OVERWRITE_STRATEGY_DOC}\n\n"
         "Example: file_import(path='dr://abc123/data/', source='url', "
         "url='https://example.com/report.zip')\n"
         "Example: file_import(path='dr://abc123/in/', source='data_source', "
@@ -96,7 +97,7 @@ async def file_import(
     ] = True,
     overwrite: Annotated[
         Literal["rename", "replace", "skip", "error"],
-        "Conflict strategy when a file already exists at the destination.",
+        f"{OVERWRITE_STRATEGY_DOC} Default 'rename'.",
     ] = "rename",
 ) -> dict[str, Any]:
     cleaned = _require_file_path(path)

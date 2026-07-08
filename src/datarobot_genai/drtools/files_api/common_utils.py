@@ -35,6 +35,26 @@ from datarobot_genai.drmcputils.files.file_system_store import FileSystemStore
 
 ROOT_PATH = DR_PROTOCOL
 
+# Shared agent-facing documentation for DataRobot's conflict-handling semantics.
+# Unlike POSIX filesystems, most write-like operations default to auto-renaming
+# ('name (2).ext') instead of replacing an existing file at the destination.
+OVERWRITE_STRATEGY_DOC = (
+    "Conflict handling (DataRobot differs from POSIX): when a destination file "
+    "already exists, 'rename' (default) auto-renames to 'name (2).ext' instead "
+    "of replacing it; use 'replace' to overwrite the existing file, 'skip' to "
+    "leave it unchanged, or 'error' to fail."
+)
+FILE_WRITE_MODE_DOC = (
+    "file_write uses mode (not overwrite): mode='overwrite' replaces content at "
+    "the exact path; mode='create' fails if the file already exists."
+)
+LIST_BROWSE_HINT = (
+    "To search a catalog tree without listing every subdirectory in a loop, "
+    "use pattern='dr://<catalog_id>/**/*.ext' or recursive=True with maxdepth "
+    "on a parent path. Paginate with offset/limit instead of re-listing the "
+    "same path."
+)
+
 
 class FilesApiLocalSettings(DataRobotAppFrameworkBaseSettings):
     """Settings governing local-disk access for the Files API tools.

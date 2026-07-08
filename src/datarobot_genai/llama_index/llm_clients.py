@@ -24,8 +24,8 @@ from nat.cli.register_workflow import register_llm_client
 from nat.utils.responses_api import validate_no_responses_api
 
 from datarobot_genai.core.config import LLMType
-from datarobot_genai.dragent.plugins.llm_clients import EXCLUDE_FIELDS
 from datarobot_genai.dragent.plugins.llm_clients import patch_llm_based_on_config
+from datarobot_genai.dragent.plugins.llm_clients import prepare_llm_parameters
 from datarobot_genai.dragent.plugins.llm_clients import router_settings_from_config
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLitellmConfig
 from datarobot_genai.dragent.plugins.llm_providers import DataRobotLLMComponentModelConfig
@@ -51,11 +51,7 @@ async def datarobot_llm_gateway_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
 
     client = get_datarobot_gateway_llm(config["model"], config)
     yield patch_llm_based_on_config(client, config)
@@ -71,11 +67,7 @@ async def datarobot_llm_deployment_llamaindex(
     from datarobot_genai.llama_index.llm import get_datarobot_deployment_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
 
     if llm_config.headers:
         config["additional_kwargs"] = {"extra_headers": llm_config.headers}
@@ -94,11 +86,7 @@ async def datarobot_nim_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
     if not llm_config.nim_deployment_id:
         raise ValueError("nim_deployment_id is required")
     client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
@@ -118,11 +106,7 @@ async def datarobot_llm_component_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
-    config = llm_config.model_dump(
-        exclude=EXCLUDE_FIELDS,
-        by_alias=True,
-        exclude_none=True,
-    )
+    config = prepare_llm_parameters(llm_config)
 
     llm_type = llm_config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
@@ -156,12 +140,7 @@ async def litellm_llamaindex_internal(
 
     llm = get_external_llm(
         llm_config.model_name,
-        llm_config.model_dump(
-            exclude={"api_type", "thinking", "type", "verify_ssl"},
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        ),
+        prepare_llm_parameters(llm_config, exclude_unset=True),
     )
 
     yield patch_llm_based_on_config(llm, llm_config)

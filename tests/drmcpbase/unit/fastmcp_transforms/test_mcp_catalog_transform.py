@@ -23,8 +23,11 @@ import pytest
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import _ensure_async
 
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
 from datarobot_genai.drmcpbase.fastmcp_transforms.transform import DataRobotMCPCatalogTransform
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_ENABLE_DYNAMIC_TOOLS_HEADER
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_ENABLE_PROXY_HEADER
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_TOOLSETS_HEADER
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestMode
@@ -33,7 +36,10 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import _resolve_toolsets
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_header_case_insensitive
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_category_disabled_for_request
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allowed
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_bool_header
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_disabled_categories
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_tool_allowlist_header
 
 
@@ -79,6 +85,119 @@ class TestParseToolAllowlistHeader:
 
     def test_none_when_only_commas(self) -> None:
         assert parse_tool_allowlist_header(",,,") is None
+
+
+class TestParseBoolHeader:
+    def test_default_true_when_absent(self) -> None:
+        # GIVEN no header value / WHEN parsed / THEN the default (true) applies
+        assert parse_bool_header(None) is True
+
+    def test_default_false_when_absent_and_default_false(self) -> None:
+        assert parse_bool_header(None, default=False) is False
+
+    @pytest.mark.parametrize("raw", ["false", "FALSE", "False", " false ", "0", "no", "off"])
+    def test_false_variants(self, raw: str) -> None:
+        assert parse_bool_header(raw) is False
+
+    @pytest.mark.parametrize("raw", ["true", "TRUE", " true ", "1", "yes", "on"])
+    def test_true_variants(self, raw: str) -> None:
+        assert parse_bool_header(raw, default=False) is True
+
+    @pytest.mark.parametrize("raw", ["", "  ", "banana", "flase"])
+    def test_unrecognized_values_fall_back_to_default(self, raw: str) -> None:
+        assert parse_bool_header(raw) is True
+        assert parse_bool_header(raw, default=False) is False
+
+
+class TestParseDisabledCategories:
+    def test_empty_when_no_gate_headers(self) -> None:
+        assert parse_disabled_categories({}) == frozenset()
+
+    def test_explicit_true_disables_nothing(self) -> None:
+        headers = {MCP_ENABLE_PROXY_HEADER: "true", MCP_ENABLE_DYNAMIC_TOOLS_HEADER: "true"}
+        assert parse_disabled_categories(headers) == frozenset()
+
+    def test_proxy_gate_false_disables_proxied_user_mcp(self) -> None:
+        headers = {MCP_ENABLE_PROXY_HEADER: "false"}
+        assert parse_disabled_categories(headers) == frozenset(
+            {DataRobotMCPToolCategory.PROXIED_USER_MCP.name}
+        )
+
+    def test_dynamic_tools_gate_false_disables_user_tool_deployment(self) -> None:
+        headers = {MCP_ENABLE_DYNAMIC_TOOLS_HEADER: "false"}
+        assert parse_disabled_categories(headers) == frozenset(
+            {DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name}
+        )
+
+    def test_both_gates_false_disables_both_categories(self) -> None:
+        headers = {
+            MCP_ENABLE_PROXY_HEADER: "false",
+            MCP_ENABLE_DYNAMIC_TOOLS_HEADER: "false",
+        }
+        assert parse_disabled_categories(headers) == frozenset(
+            {
+                DataRobotMCPToolCategory.PROXIED_USER_MCP.name,
+                DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name,
+            }
+        )
+
+    def test_mixed_case_header_key_is_recognized(self) -> None:
+        headers = {"X-DataRobot-MCP-Enable-Proxy": "false"}
+        assert parse_disabled_categories(headers) == frozenset(
+            {DataRobotMCPToolCategory.PROXIED_USER_MCP.name}
+        )
+
+
+class TestMCPRequestContextCategoryGates:
+    def test_default_context_has_no_disabled_categories(self) -> None:
+        ctx = MCPRequestContext.from_headers({})
+        assert ctx.disabled_categories == frozenset()
+
+    def test_gate_header_populates_disabled_categories(self) -> None:
+        ctx = MCPRequestContext.from_headers({MCP_ENABLE_PROXY_HEADER: "false"})
+        assert ctx.disabled_categories == frozenset(
+            {DataRobotMCPToolCategory.PROXIED_USER_MCP.name}
+        )
+
+    def test_gates_are_independent_of_mode_and_allowlist(self) -> None:
+        ctx = MCPRequestContext.from_headers(
+            {
+                MCP_ENABLE_DYNAMIC_TOOLS_HEADER: "false",
+                "x-datarobot-mcp-mode": "code_execute",
+                "x-datarobot-mcp-tools": "add",
+            }
+        )
+        assert ctx.mode == MCPRequestMode.CODE_EXECUTE
+        assert ctx.tool_allowlist == frozenset({"add"})
+        assert ctx.disabled_categories == frozenset(
+            {DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name}
+        )
+
+
+class TestIsCategoryDisabledForRequest:
+    def test_false_when_gate_absent(self, utils_module: str) -> None:
+        with patch(f"{utils_module}.get_fast_mcp_http_headers", return_value={}):
+            assert not is_category_disabled_for_request(
+                DataRobotMCPToolCategory.PROXIED_USER_MCP.name
+            )
+
+    def test_true_when_gate_header_false(self, utils_module: str) -> None:
+        with patch(
+            f"{utils_module}.get_fast_mcp_http_headers",
+            return_value={MCP_ENABLE_PROXY_HEADER: "false"},
+        ):
+            assert is_category_disabled_for_request(DataRobotMCPToolCategory.PROXIED_USER_MCP.name)
+
+    def test_false_when_request_context_unavailable(self, utils_module: str) -> None:
+        # GIVEN no HTTP request context (e.g. startup retrospection)
+        with patch(
+            f"{utils_module}.get_fast_mcp_http_headers",
+            side_effect=RuntimeError("no request"),
+        ):
+            # WHEN the gate is consulted / THEN it fails open to "not disabled"
+            assert not is_category_disabled_for_request(
+                DataRobotMCPToolCategory.PROXIED_USER_MCP.name
+            )
 
 
 class TestMCPRequestMode:
@@ -244,6 +363,139 @@ class TestDataRobotMCPCatalogTransform:
         )
         back_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
         assert back_view == tools_view
+
+
+class TestCategoryGatesInTransform:
+    """Category gates (Track 0) — precedence: gates → mode → allowlist."""
+
+    PROXIED = DataRobotMCPToolCategory.PROXIED_USER_MCP.name
+    DYNAMIC = DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name
+
+    @staticmethod
+    def make_server() -> FastMCP:
+        mcp = FastMCP("category gates test")
+
+        @mcp.tool
+        def add(a: int, b: int) -> int:
+            """Add two numbers (built-in, untagged)."""
+            return a + b
+
+        @mcp.tool(meta={"tool_category": DataRobotMCPToolCategory.PROXIED_USER_MCP.name})
+        def proxied_tool() -> str:
+            """Return a canned value (stands in for a proxied user-MCP tool)."""
+            return "proxied"
+
+        @mcp.tool(meta={"tool_category": DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name})
+        def dynamic_tool() -> str:
+            """Return a canned value (stands in for a dynamic deployment tool)."""
+            return "dynamic"
+
+        mcp.add_transform(
+            DataRobotMCPCatalogTransform(sandbox_provider=_UnsafeTestSandboxProvider())
+        )
+        return mcp
+
+    @pytest.fixture
+    def mock_context(self, transform_module: str) -> Iterator[Mock]:
+        with patch(f"{transform_module}.get_request_context") as m:
+            m.return_value = MCPRequestContext(mode=MCPRequestMode.TOOLS, tool_allowlist=None)
+            yield m
+
+    @pytest.mark.asyncio
+    async def test_gates_default_on_all_tools_visible(self, mock_context: Mock) -> None:
+        # GIVEN no gate headers (defaults: enabled)
+        mcp = self.make_server()
+
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+
+        assert {"add", "proxied_tool", "dynamic_tool"} <= names
+
+    @pytest.mark.asyncio
+    async def test_proxy_gate_hides_proxied_tools_only(self, mock_context: Mock) -> None:
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+
+        assert "proxied_tool" not in names
+        assert {"add", "dynamic_tool"} <= names
+
+    @pytest.mark.asyncio
+    async def test_dynamic_gate_hides_deployment_tools_only(self, mock_context: Mock) -> None:
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.DYNAMIC}),
+        )
+        mcp = self.make_server()
+
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+
+        assert "dynamic_tool" not in names
+        assert {"add", "proxied_tool"} <= names
+
+    @pytest.mark.asyncio
+    async def test_gate_takes_precedence_over_allowlist(self, mock_context: Mock) -> None:
+        # GIVEN the proxied tool is explicitly allowlisted but its category is gated off
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS,
+            tool_allowlist=frozenset({"proxied_tool", "add"}),
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        # WHEN listing / THEN the gated tool stays hidden despite the allowlist
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+        assert names == {"add"}
+
+    @pytest.mark.asyncio
+    async def test_gated_tool_is_not_resolvable(self, mock_context: Mock) -> None:
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        assert await mcp.get_tool("proxied_tool") is None
+        assert await mcp.get_tool("add") is not None
+
+    @pytest.mark.asyncio
+    async def test_gate_applies_in_code_execute_mode_get_tool(self, mock_context: Mock) -> None:
+        # GIVEN code_execute mode with the proxy category gated off
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.CODE_EXECUTE,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        mcp = self.make_server()
+
+        # THEN the gated tool cannot be resolved even in code mode,
+        # while the synthetic discovery tools stay available (no category meta)
+        assert await mcp.get_tool("proxied_tool") is None
+        assert await mcp.get_tool("execute") is not None
+
+    @pytest.mark.asyncio
+    async def test_gate_off_then_on_between_requests(self, mock_context: Mock) -> None:
+        mcp = self.make_server()
+
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS,
+            tool_allowlist=None,
+            disabled_categories=frozenset({self.PROXIED}),
+        )
+        gated = {t.name for t in await mcp.list_tools(run_middleware=False)}
+        assert "proxied_tool" not in gated
+
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.TOOLS, tool_allowlist=None
+        )
+        ungated = {t.name for t in await mcp.list_tools(run_middleware=False)}
+        assert "proxied_tool" in ungated
 
 
 class _NamedTool:

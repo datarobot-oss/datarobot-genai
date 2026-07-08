@@ -41,7 +41,7 @@ class ResultsSummarizer:
 
         s: dict[str, Any] = data.get("summary", {})
         print("\nSummary")
-        print(f"  Mean quality score : {s.get('mean_quality_score')}")
+        print(f"  Mean score         : {s.get('mean_score')}")
         print(f"  Pass rate          : {s.get('pass_rate')}")
         print(f"  Good case pass     : {s.get('good_case_pass_rate')}")
         print(f"  Bad case pass      : {s.get('bad_case_pass_rate')}")
@@ -58,10 +58,10 @@ class ResultsSummarizer:
             print(f"  {'ID':<15} {'Expect':<8} {'Score':<7} {'Pass':<6} Reason")
             print(f"  {'-' * 15} {'-' * 8} {'-' * 7} {'-' * 6} {'-' * 45}")
             for c in cases:
-                score = c.get("quality_score")
+                score = c.get("score")
                 score_str = f"{score:.2f}" if isinstance(score, float) else str(score)
                 passed = "✓" if c.get("passed") else ("✗" if c.get("passed") is False else "?")
-                reason = (c.get("judge_reason") or "")[:50]
+                reason = (c.get("reason") or "")[:50]
                 print(
                     f"  {(c.get('id') or '?'):<15} {(c.get('expected_behavior') or '?'):<8} "
                     f"{score_str:<7} {passed:<6} {reason}"
