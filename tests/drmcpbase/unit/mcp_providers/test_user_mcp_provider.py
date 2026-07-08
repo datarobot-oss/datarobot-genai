@@ -21,12 +21,14 @@ import httpx
 import pytest
 from aiohttp import ClientResponseError
 from fastmcp.server.transforms import Namespace
+from fastmcp.tools.base import Tool
 
 from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
 from datarobot_genai.drmcpbase.auth.exceptions import (
     NoDataRobotBearerTokenFoundInRequestContextError,
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
 from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import CACHE_TTL_IN_SECOND
 from datarobot_genai.drmcpbase.mcp_providers.user_mcp_provider import (
@@ -175,6 +177,7 @@ class TestUserMCPProvider:
         mock_is_datarobot_api_client_initialized.return_value = True
 
         mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
         await mcp_provider._list_tools()
 
         mock_is_mcp_tools_gallery_support_enabled.assert_called_once_with(
@@ -184,6 +187,36 @@ class TestUserMCPProvider:
         mock_mcp_proxy_provider.list_tools.assert_called_once_with()
         mock_asyncio_gather.assert_called_once()
         assert mock_asyncio_gather.call_args.kwargs == {"return_exceptions": True}
+
+    @pytest.mark.asyncio
+    async def test_private_method_list_tools_short_circuits_when_proxy_gate_disabled(
+        self,
+        module_under_test: str,
+        mock_asyncio_gather: AsyncMock,
+        mock_get_user_mcp_proxy_providers_for_user: AsyncMock,
+        mock_is_datarobot_api_client_initialized: Mock,
+        mock_is_mcp_tools_gallery_support_enabled: Mock,
+        mock_mcp_proxy_provider: Mock,
+    ) -> None:
+        # GIVEN a request with x-datarobot-mcp-enable-proxy: false
+        mock_is_datarobot_api_client_initialized.return_value = True
+        mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
+
+        with patch(
+            f"{module_under_test}.is_category_disabled_for_request", return_value=True
+        ) as mock_gate:
+            # WHEN tools are listed
+            output = await mcp_provider._list_tools()
+
+        # THEN the whole fan-out is skipped — no entitlement check, no deployment
+        # listing, no per-deployment expansion — not just an empty listing
+        mock_gate.assert_called_once_with(DataRobotMCPToolCategory.PROXIED_USER_MCP.name)
+        mock_is_mcp_tools_gallery_support_enabled.assert_not_called()
+        mock_get_user_mcp_proxy_providers_for_user.assert_not_called()
+        mock_mcp_proxy_provider.list_tools.assert_not_called()
+        mock_asyncio_gather.assert_not_called()
+        assert output == []
 
     @pytest.mark.asyncio
     async def test_private_method_list_tools_return_empty_if_dr_api_client_uninitialized(
@@ -216,16 +249,25 @@ class TestUserMCPProvider:
         mock_asyncio_gather: AsyncMock,
         mock_is_datarobot_api_client_initialized: Mock,
     ) -> None:
-        tools_in_one_proxy_provider = [Mock()]
-        mock_asyncio_gather.return_value = [tools_in_one_proxy_provider, BaseException()]
+        def remote_search(q: str) -> str:
+            """Search."""
+            return q
+
+        proxied_tool = Tool.from_function(fn=remote_search, name="user-mcp-ab12_search")
+        mock_asyncio_gather.return_value = [[proxied_tool], BaseException()]
         mock_is_datarobot_api_client_initialized.return_value = True
 
         mcp_provider = UserMCPProvider(Mock())
+        mcp_provider.datarobot_api_client = Mock()
         outputs = await mcp_provider._list_tools()
 
         mock_asyncio_gather.assert_called_once()
         assert mock_asyncio_gather.call_args.kwargs == {"return_exceptions": True}
-        assert outputs == tools_in_one_proxy_provider
+        # The healthy proxy's tool is returned, stamped so the gallery sees it as a
+        # hosted, third-party proxied user-MCP tool; the failed proxy is dropped.
+        assert len(outputs) == 1
+        assert outputs[0].name == "user-mcp-ab12_search"
+        assert outputs[0].meta == {"tool_category": DataRobotMCPToolCategory.PROXIED_USER_MCP.name}
 
     def test_get_or_create_mcp_proxy_provider(
         self,

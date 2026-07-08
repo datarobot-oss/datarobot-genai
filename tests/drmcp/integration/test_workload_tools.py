@@ -34,25 +34,25 @@ _EXPECTED_TOOLS = frozenset(
     {
         "workload_list",
         "workload_get",
-        "workload_create_payload",
+        "workload_create_payload_build",
         "workload_create",
         "workload_update",
-        "workload_action",
-        "bundle_list",
+        "workload_action_run",
+        "workload_bundle_list",
         "artifact_get",
         "artifact_create",
         "artifact_update",
-        "artifact_action",
+        "artifact_action_run",
         "artifact_repository_get",
         "artifact_repository_delete",
-        "artifact_build_get",
-        "artifact_build_action",
+        "artifact_get_build",
+        "artifact_build_run_action",
         "workload_settings",
-        "workload_replacement",
-        "workload_stats",
-        "workload_logs",
-        "workload_activity",
-        "proton_get",
+        "workload_artifact_replace",
+        "workload_stats_get",
+        "workload_logs_get",
+        "workload_activity_get",
+        "workload_proton_get",
     }
 )
 
@@ -84,7 +84,7 @@ class TestMCPWorkloadToolsRegistration:
 
 @pytest.mark.asyncio
 class TestMCPWorkloadDiscoveryIntegration:
-    """Integration tests for workload_list, workload_get, and bundle_list."""
+    """Integration tests for workload_list, workload_get, and workload_bundle_list."""
 
     async def test_workload_list_returns_workloads(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
@@ -129,7 +129,7 @@ class TestMCPWorkloadDiscoveryIntegration:
 
     async def test_bundle_list_returns_bundles(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
-            data = _parse_result(await session.call_tool("bundle_list", {}))
+            data = _parse_result(await session.call_tool("workload_bundle_list", {}))
             assert "data" in data
             bundle_ids = [b["id"] for b in data["data"]]
             assert STUB_BUNDLE_ID in bundle_ids
@@ -137,13 +137,13 @@ class TestMCPWorkloadDiscoveryIntegration:
 
 @pytest.mark.asyncio
 class TestMCPWorkloadCreateIntegration:
-    """Integration tests for workload_create_payload and workload_create."""
+    """Integration tests for workload_create_payload_build and workload_create."""
 
     async def test_workload_create_payload_existing_artifact(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_create_payload",
+                    "workload_create_payload_build",
                     {"name": "integration-wl", "artifact_id": STUB_ARTIFACT_ID},
                 )
             )
@@ -154,7 +154,7 @@ class TestMCPWorkloadCreateIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_create_payload",
+                    "workload_create_payload_build",
                     {
                         "name": "echo-wl",
                         "artifact_name": "echo",
@@ -172,7 +172,7 @@ class TestMCPWorkloadCreateIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             payload_data = _parse_result(
                 await session.call_tool(
-                    "workload_create_payload",
+                    "workload_create_payload_build",
                     {"name": "new-wl", "artifact_id": STUB_ARTIFACT_ID},
                 )
             )
@@ -185,7 +185,7 @@ class TestMCPWorkloadCreateIntegration:
 
 @pytest.mark.asyncio
 class TestMCPWorkloadLifecycleIntegration:
-    """Integration tests for workload_update and workload_action."""
+    """Integration tests for workload_update and workload_action_run."""
 
     async def test_workload_update_name(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
@@ -201,7 +201,7 @@ class TestMCPWorkloadLifecycleIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_action",
+                    "workload_action_run",
                     {"workload_id": STUB_WORKLOAD_ID, "action": "start"},
                 )
             )
@@ -213,7 +213,7 @@ class TestMCPWorkloadLifecycleIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_action",
+                    "workload_action_run",
                     {"workload_id": STUB_WORKLOAD_ID, "action": "delete"},
                 )
             )
@@ -222,7 +222,7 @@ class TestMCPWorkloadLifecycleIntegration:
 
 @pytest.mark.asyncio
 class TestMCPArtifactToolsIntegration:
-    """Integration tests for artifact_get, artifact_create, artifact_update, artifact_action."""
+    """Integration tests for artifact_get, artifact_create, artifact_update, artifact_action_run."""
 
     async def test_artifact_get_list(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
@@ -283,7 +283,7 @@ class TestMCPArtifactToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "artifact_action",
+                    "artifact_action_run",
                     {"artifact_id": STUB_ARTIFACT_ID, "action": "lock"},
                 )
             )
@@ -293,7 +293,7 @@ class TestMCPArtifactToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "artifact_action",
+                    "artifact_action_run",
                     {
                         "artifact_id": STUB_ARTIFACT_ID,
                         "action": "clone",
@@ -337,12 +337,12 @@ class TestMCPArtifactRepositoryToolsIntegration:
 
 @pytest.mark.asyncio
 class TestMCPArtifactBuildToolsIntegration:
-    """Integration tests for artifact_build_get and artifact_build_action."""
+    """Integration tests for artifact_get_build and artifact_build_run_action."""
 
     async def test_artifact_build_get_list(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
-                await session.call_tool("artifact_build_get", {"artifact_id": STUB_ARTIFACT_ID})
+                await session.call_tool("artifact_get_build", {"artifact_id": STUB_ARTIFACT_ID})
             )
             assert "builds" in data
             build_ids = [b["id"] for b in data["builds"]]
@@ -352,7 +352,7 @@ class TestMCPArtifactBuildToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "artifact_build_get",
+                    "artifact_get_build",
                     {
                         "artifact_id": STUB_ARTIFACT_ID,
                         "build_id": STUB_BUILD_ID,
@@ -368,7 +368,7 @@ class TestMCPArtifactBuildToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "artifact_build_action",
+                    "artifact_build_run_action",
                     {"artifact_id": STUB_ARTIFACT_ID, "action": "trigger"},
                 )
             )
@@ -377,7 +377,7 @@ class TestMCPArtifactBuildToolsIntegration:
 
 @pytest.mark.asyncio
 class TestMCPWorkloadRuntimeToolsIntegration:
-    """Integration tests for workload_settings and workload_replacement."""
+    """Integration tests for workload_settings and workload_artifact_replace."""
 
     async def test_workload_settings_read(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
@@ -401,7 +401,9 @@ class TestMCPWorkloadRuntimeToolsIntegration:
     async def test_workload_replacement_read(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
-                await session.call_tool("workload_replacement", {"workload_id": STUB_WORKLOAD_ID})
+                await session.call_tool(
+                    "workload_artifact_replace", {"workload_id": STUB_WORKLOAD_ID}
+                )
             )
             assert "candidateArtifactId" in data
 
@@ -409,7 +411,7 @@ class TestMCPWorkloadRuntimeToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_replacement",
+                    "workload_artifact_replace",
                     {
                         "workload_id": STUB_WORKLOAD_ID,
                         "artifact_id": STUB_ARTIFACT_ID,
@@ -421,12 +423,12 @@ class TestMCPWorkloadRuntimeToolsIntegration:
 
 @pytest.mark.asyncio
 class TestMCPWorkloadObservabilityToolsIntegration:
-    """Integration tests for stats, logs, activity, and proton_get."""
+    """Integration tests for stats, logs, activity, and workload_proton_get."""
 
     async def test_workload_stats(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
-                await session.call_tool("workload_stats", {"workload_id": STUB_WORKLOAD_ID})
+                await session.call_tool("workload_stats_get", {"workload_id": STUB_WORKLOAD_ID})
             )
             assert data["requestCount"] == 120
             assert "errorRate" in data
@@ -434,7 +436,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
     async def test_workload_logs(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
-                await session.call_tool("workload_logs", {"workload_id": STUB_WORKLOAD_ID})
+                await session.call_tool("workload_logs_get", {"workload_id": STUB_WORKLOAD_ID})
             )
             assert "logs" in data
             assert data["count"] >= 1
@@ -443,7 +445,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_activity",
+                    "workload_activity_get",
                     {"workload_id": STUB_WORKLOAD_ID, "kind": "history"},
                 )
             )
@@ -454,7 +456,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_activity",
+                    "workload_activity_get",
                     {"workload_id": STUB_WORKLOAD_ID, "kind": "events"},
                 )
             )
@@ -464,7 +466,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "workload_activity",
+                    "workload_activity_get",
                     {"workload_id": STUB_WORKLOAD_ID, "kind": "related"},
                 )
             )
@@ -473,7 +475,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
     async def test_proton_get_list(self) -> None:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
-                await session.call_tool("proton_get", {"workload_id": STUB_WORKLOAD_ID})
+                await session.call_tool("workload_proton_get", {"workload_id": STUB_WORKLOAD_ID})
             )
             assert "protons" in data
             proton_ids = [p["id"] for p in data["protons"]]
@@ -483,7 +485,7 @@ class TestMCPWorkloadObservabilityToolsIntegration:
         async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
             data = _parse_result(
                 await session.call_tool(
-                    "proton_get",
+                    "workload_proton_get",
                     {
                         "workload_id": STUB_WORKLOAD_ID,
                         "proton_id": STUB_PROTON_ID,

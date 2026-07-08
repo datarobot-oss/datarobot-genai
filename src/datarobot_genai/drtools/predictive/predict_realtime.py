@@ -54,11 +54,13 @@ def _parse_datetime(value: str) -> datetime:
         "(predict_batch_predictions_from_dataset plus predict_get_batch_job_status), "
         "not project-partition batch (predict_batch_predictions_from_partition)."
     ),
+    display_name="Predictions — Score catalog (realtime)",
+    description_ui="Score a catalog dataset through a deployment and return rows immediately.",
 )
 async def predict_score_catalog_realtime(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
-    dataset_id: Annotated[str, "AI Catalog dataset id (tabular)."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID (tabular)."],
     timeout: Annotated[int, "Client wait cap in seconds."] | None = 600,
 ) -> dict[str, Any]:
     if not deployment_id or not deployment_id.strip():
@@ -133,10 +135,12 @@ async def predict_score_catalog_realtime(
         "forecast_point or forecast_range_start+end, plus series_id_column if multiseries. "
         "deployment_validate_prediction_data can sanity-check CSV shape first."
     ),
+    display_name="Predictions — Score inline (realtime)",
+    description_ui="Score inline CSV or JSON rows through a deployment immediately.",
 )
 async def predict_score_inline_realtime(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
     dataset: Annotated[
         str,
         (

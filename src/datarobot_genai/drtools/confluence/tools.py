@@ -40,7 +40,7 @@ _FOOTER_COMMENTS_DOCS = (
 @tool_metadata(
     tags={"confluence", "read", "get", "page"},
     description=(
-        "[Confluence—get page] Use when you have a numeric page id, or an exact page title plus "
+        "[Confluence—get page] Use when you have a numeric page ID, or an exact page title plus "
         "space_key, and need the page body (storage HTML). Not CQL multi-page search "
         "(confluence_search_space), not Jira (jira_get_issue).\n\n"
         'Examples: By ID: page_id_or_title="856391684". By title: '
@@ -48,6 +48,9 @@ _FOOTER_COMMENTS_DOCS = (
         "using a title).\n\n"
         f"Reference: {_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Get page",
+    description_ui="Retrieve Confluence page contents by ID or by exact title within a space.",
+    auth_provider="confluence",
 )
 async def confluence_get_page(
     *,
@@ -86,12 +89,15 @@ async def confluence_get_page(
     tags={"confluence", "write", "create", "page"},
     description=(
         "[Confluence—create page] Use when publishing a new page in a space (space_key, title, "
-        "body storage format), optional parent page id. Not updating an existing page "
+        "body storage format), optional parent page ID. Not updating an existing page "
         "(confluence_update_page), not comments (confluence_add_comment).\n\n"
         'Examples: Root page: space_key="PROJ", title="New Page", '
         'body_content="<p>Content</p>". Child page: same fields plus parent_id=123456.\n\n'
         f"References (body representation / storage): {_PAGE_BODY_DOCS} {_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Create page",
+    description_ui="Create a new Confluence page in a space, optionally under a parent page.",
+    auth_provider="confluence",
 )
 async def confluence_create_page(
     *,
@@ -136,6 +142,9 @@ async def confluence_create_page(
         'Example: page_id="856391684", comment_body="Great work on this documentation!"\n\n'
         f"Reference: {_FOOTER_COMMENTS_DOCS}"
     ),
+    display_name="Confluence — Add comment",
+    description_ui="Add a comment to an existing Confluence page.",
+    auth_provider="confluence",
 )
 async def confluence_add_comment(
     *,
@@ -176,10 +185,13 @@ async def confluence_add_comment(
         "[Confluence—CQL search] Use when finding pages or content with Confluence Query Language "
         "(type, space, text filters). Optional full body per hit. "
         "Not Jira JQL (jira_search_issues), "
-        "not single-page fetch by id alone (confluence_get_page when key already known).\n\n"
+        "not single-page fetch by ID alone (confluence_get_page when key already known).\n\n"
         'Example: cql_query="type=page and space=DOC", max_results=10, include_body=false.\n\n'
         f"Reference (CQL): {_CQL_DOCS}"
     ),
+    display_name="Confluence — Search",
+    description_ui="Search Confluence content using Confluence Query Language (CQL).",
+    auth_provider="confluence",
 )
 async def confluence_search_space(
     *,
@@ -245,6 +257,11 @@ async def confluence_search_space(
         f"version_number.\n\nReferences (body representation / storage): {_PAGE_BODY_DOCS} "
         f"{_PAGE_REST_DOCS}"
     ),
+    display_name="Confluence — Update page",
+    description_ui=(
+        "Update the body of an existing Confluence page (requires current page version number)."
+    ),
+    auth_provider="confluence",
 )
 async def confluence_update_page(
     *,

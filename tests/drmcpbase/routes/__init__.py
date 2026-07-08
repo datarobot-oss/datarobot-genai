@@ -11,15 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Core utilities and shared components for DataRobot tools."""
-
-from .tool_metadata import get_registered_tools
-from .tool_metadata import get_tool_ui_metadata
-from .tool_metadata import tool_metadata
-
-__all__ = [
-    "tool_metadata",
-    "get_registered_tools",
-    "get_tool_ui_metadata",
-]
