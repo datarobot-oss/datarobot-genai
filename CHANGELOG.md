@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.9
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery 
+
 ## 0.23.8
 - Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
 - Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
