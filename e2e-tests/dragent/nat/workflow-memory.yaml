@@ -14,32 +14,19 @@
 # limitations under the License.
 # E2E overlay: NAT agent wrapped with streaming_memory_agent and dr_mem0_memory.
 # AGENT_MEMORY_SPACE_ID must be set in the environment (see cases/memory.yaml).
-general:
-  front_end:
-    _type: dragent_fastapi
-    a2a:
-      server:
-        name: "E2E Memory NAT Agent"
-        description: "NAT agent with DataRobot Memory Service for end-to-end testing."
-  telemetry:
-    tracing:
-      otelcollector:
-        _type: datarobot_otelcollector
-        project: "nat"
+base: workflow.yaml
 
 memory:
   mem0_memory:
     _type: dr_mem0_memory
 
 functions:
-  generate_objectid:
-    _type: generate_objectid
-    description: A tool that generates an object ID for a deployment.
   chat_agent:
     _type: per_user_tool_calling_agent
     llm_name: datarobot_llm
     middleware:
       - datarobot_guardrails
+      - datarobot_otel_conventions
     tool_names:
       - generate_objectid
     system_prompt: |
@@ -47,28 +34,6 @@ functions:
       When the user shares a fact to remember, acknowledge briefly.
       When asked to recall stored information, answer with ONLY the requested fact.
       Do not use tools unless explicitly asked to generate an object ID.
-
-llms:
-  datarobot_llm:
-    _type: datarobot-llm-component
-    temperature: 0
-
-middleware:
-  datarobot_guardrails:
-    _type: datarobot_moderation
-    moderation:
-      guards:
-        - name: Prompt Tokens
-          description: Track the number of tokens associated with the input to the LLM.
-          ootb_type: token_count
-          stage: prompt
-          type: ootb
-        - name: Response Tokens
-          description: Track the number of tokens associated with the output from the LLM.
-          ootb_type: token_count
-          stage: response
-          type: ootb
-      timeout_sec: 60
 
 workflow:
   _type: streaming_memory_agent
