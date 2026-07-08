@@ -40,13 +40,18 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
     tags={"artifact", "workload", "datarobot", "get", "list"},
     description=(
         "[Artifact—get] Read artifacts.\n"
-        "  - Omit artifact_id to LIST artifacts (id, name, status draft/locked, type, "
+        "  - Omit artifact_id to LIST artifacts (ID, name, status draft/locked, type, "
         "spec, timestamps); paginated with optional status / type / repository / search "
         "filters.\n"
         "  - Set artifact_id to GET a single artifact (full spec, status, type, version, "
         "repository, timestamps).\n\n"
         "Example (list): artifact_get(search='my-service', status='draft')\n"
         "Example (get):  artifact_get(artifact_id='art-abc123')"
+    ),
+    display_name="Artifact — Get",
+    description_ui=(
+        "Read artifacts (list them with status, type, and filters) or get a "
+        "single artifact's full specification."
     ),
 )
 async def artifact_get(
@@ -55,11 +60,11 @@ async def artifact_get(
         str | None, "Id of the artifact. Omit to list artifacts with filters."
     ] = None,
     search: Annotated[
-        str | None, "List filter: case-insensitive match on name, description, and partial id."
+        str | None, "List filter: case-insensitive match on name, description, and partial ID."
     ] = None,
     status: Annotated[str | None, "List filter by status: 'draft' or 'locked'."] = None,
     artifact_type: Annotated[str | None, "List filter by type: 'service' or 'nim'."] = None,
-    repository_id: Annotated[str | None, "List filter by artifact repository id."] = None,
+    repository_id: Annotated[str | None, "List filter by artifact repository ID."] = None,
     limit: Annotated[int, "Max artifacts to return when listing (1–100). Default 100."] = 100,
     offset: Annotated[int, "Artifacts to skip for pagination when listing. Default 0."] = 0,
 ) -> dict[str, Any]:
@@ -124,6 +129,11 @@ async def artifact_get(
         "'containerGroups': [{'containers': [{'name': 'main', 'imageUri': 'nginx:latest', "
         "'primary': true, 'port': 8080}]}]}})"
     ),
+    display_name="Artifact — Create",
+    description_ui=(
+        "Create a new draft artifact from a payload containing a name and a specification "
+        "with type and container groups."
+    ),
 )
 async def artifact_create(
     *,
@@ -164,9 +174,11 @@ async def artifact_create(
         "[Artifact—update] Partially update a draft artifact: name, description, "
         "or spec. Only the supplied fields are changed. At least one field is required. "
         "Locked artifacts cannot be updated. To lock an artifact use "
-        "artifact_action(action='lock').\n\n"
+        "artifact_action_run(action='lock').\n\n"
         "Example: artifact_update(artifact_id='art-abc', name='new-name')"
     ),
+    display_name="Artifact — Update",
+    description_ui="Partially update a draft artifact's name, description, or specification.",
 )
 async def artifact_update(
     *,
@@ -204,7 +216,7 @@ async def artifact_update(
 
 
 # ------------------------------------------------------------------ #
-# artifact_action  (lock / clone / delete)                            #
+# artifact_action_run  (lock / clone / delete)                            #
 # ------------------------------------------------------------------ #
 
 
@@ -214,18 +226,23 @@ async def artifact_update(
         "[Artifact—action] Run an action on an artifact. action is one of:\n"
         "  'lock'   — lock a draft artifact so it can be versioned and used in "
         "production. Once locked it cannot be updated or deleted. (To lock the "
-        "artifact currently running on a workload, use workload_action "
+        "artifact currently running on a workload, use workload_action_run "
         "action='promote'.)\n"
         "  'clone'  — duplicate the artifact under a new name (requires 'name'). The "
         "clone is always a draft, regardless of the original's status.\n"
         "  'delete' — permanently delete a draft artifact. Locked artifacts and "
         "artifacts in use by a workload cannot be deleted.\n\n"
-        "Example (lock):   artifact_action(artifact_id='art-abc', action='lock')\n"
-        "Example (clone):  artifact_action(artifact_id='art-abc', action='clone', name='svc-v2')\n"
-        "Example (delete): artifact_action(artifact_id='art-abc', action='delete')"
+        "Example (lock):   artifact_action_run(artifact_id='art-abc', action='lock')\n"
+        "Example (clone):  artifact_action_run("
+        "artifact_id='art-abc', action='clone', name='svc-v2')\n"
+        "Example (delete): artifact_action_run(artifact_id='art-abc', action='delete')"
+    ),
+    display_name="Artifact — Run action",
+    description_ui=(
+        "Run an action on an artifact: lock a draft, clone it under a new name, or delete it."
     ),
 )
-async def artifact_action(
+async def artifact_action_run(
     *,
     artifact_id: Annotated[str, "Id of the artifact to act on."],
     action: Annotated[

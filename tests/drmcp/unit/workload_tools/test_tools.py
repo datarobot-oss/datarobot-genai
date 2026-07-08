@@ -203,7 +203,7 @@ async def test_workload_get_empty_target_raises() -> None:
 
 
 # ------------------------------------------------------------------ #
-# bundle_list                                                          #
+# workload_bundle_list                                                          #
 # ------------------------------------------------------------------ #
 
 
@@ -212,7 +212,7 @@ async def test_bundle_list_success(patched_dr_client: MagicMock) -> None:
     bundles_payload = {"data": [{"id": "cpu.small", "cpuCount": 1}]}
     patched_dr_client.get.return_value = MagicMock(json=lambda: bundles_payload)
 
-    result = await workloads.bundle_list()
+    result = await workloads.workload_bundle_list()
 
     patched_dr_client.get.assert_called_once_with("mlops/compute/bundles")
     assert result == bundles_payload
@@ -222,18 +222,18 @@ async def test_bundle_list_success(patched_dr_client: MagicMock) -> None:
 async def test_bundle_list_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("500", status_code=500, json={})
     with pytest.raises(ToolError) as exc_info:
-        await workloads.bundle_list()
+        await workloads.workload_bundle_list()
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 # ------------------------------------------------------------------ #
-# workload_create_payload                                              #
+# workload_create_payload_build                                              #
 # ------------------------------------------------------------------ #
 
 
 @pytest.mark.asyncio
 async def test_create_payload_existing_artifact() -> None:
-    result = await workloads.workload_create_payload(name="my-wl", artifact_id="art-abc")
+    result = await workloads.workload_create_payload_build(name="my-wl", artifact_id="art-abc")
     p = result["payload"]
     assert p["name"] == "my-wl"
     assert p["artifactId"] == "art-abc"
@@ -244,7 +244,7 @@ async def test_create_payload_existing_artifact() -> None:
 
 @pytest.mark.asyncio
 async def test_create_payload_inline_artifact() -> None:
-    result = await workloads.workload_create_payload(
+    result = await workloads.workload_create_payload_build(
         name="test-echo",
         artifact_name="echo",
         image_uri="hashicorp/http-echo:0.2.3",
@@ -266,7 +266,7 @@ async def test_create_payload_inline_artifact() -> None:
 @pytest.mark.asyncio
 async def test_create_payload_both_modes_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_create_payload(
+        await workloads.workload_create_payload_build(
             name="x",
             artifact_id="art-abc",
             artifact_name="echo",
@@ -281,21 +281,23 @@ async def test_create_payload_both_modes_raises() -> None:
 @pytest.mark.asyncio
 async def test_create_payload_neither_mode_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_create_payload(name="x")
+        await workloads.workload_create_payload_build(name="x")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_create_payload_invalid_importance_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_create_payload(name="wl", artifact_id="art-1", importance="ultra")
+        await workloads.workload_create_payload_build(
+            name="wl", artifact_id="art-1", importance="ultra"
+        )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_create_payload_invalid_port_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_create_payload(
+        await workloads.workload_create_payload_build(
             name="wl", artifact_name="x", image_uri="x:1", port=80, cpu=1, memory_bytes=1
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -303,7 +305,7 @@ async def test_create_payload_invalid_port_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_create_payload_env_vars() -> None:
-    result = await workloads.workload_create_payload(
+    result = await workloads.workload_create_payload_build(
         name="app-wl",
         artifact_name="app",
         image_uri="my-image:latest",
@@ -406,7 +408,7 @@ async def test_workload_update_invalid_importance_raises() -> None:
 
 
 # ------------------------------------------------------------------ #
-# workload_action  (start / stop / delete / promote)                  #
+# workload_action_run  (start / stop / delete / promote)                  #
 # ------------------------------------------------------------------ #
 
 
@@ -416,7 +418,7 @@ async def test_workload_action_start(patched_dr_client: MagicMock) -> None:
         content=b'{"accepted":true}', json=lambda: {"accepted": True}
     )
 
-    result = await workloads.workload_action(workload_id="wkld-abc", action="start")
+    result = await workloads.workload_action_run(workload_id="wkld-abc", action="start")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/start")
     assert result["workload_id"] == "wkld-abc"
@@ -431,7 +433,7 @@ async def test_workload_action_stop(patched_dr_client: MagicMock) -> None:
         content=b'{"accepted":true}', json=lambda: {"accepted": True}
     )
 
-    result = await workloads.workload_action(workload_id="wkld-abc", action="stop")
+    result = await workloads.workload_action_run(workload_id="wkld-abc", action="stop")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/stop")
     assert "workload_get(" in result["note"]
@@ -442,7 +444,7 @@ async def test_workload_action_stop(patched_dr_client: MagicMock) -> None:
 async def test_workload_action_delete(patched_dr_client: MagicMock) -> None:
     patched_dr_client.delete.return_value = MagicMock()
 
-    result = await workloads.workload_action(workload_id="wkld-abc", action="delete")
+    result = await workloads.workload_action_run(workload_id="wkld-abc", action="delete")
 
     patched_dr_client.delete.assert_called_once_with("workloads/wkld-abc")
     assert result == {"deleted": True, "workload_id": "wkld-abc"}
@@ -455,7 +457,7 @@ async def test_workload_action_promote(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "wkld-abc", "artifactId": "art-locked"},
     )
 
-    result = await workloads.workload_action(workload_id="wkld-abc", action="promote")
+    result = await workloads.workload_action_run(workload_id="wkld-abc", action="promote")
 
     patched_dr_client.post.assert_called_once_with("workloads/wkld-abc/promote")
     assert result["artifactId"] == "art-locked"
@@ -465,7 +467,7 @@ async def test_workload_action_promote(patched_dr_client: MagicMock) -> None:
 async def test_workload_action_promote_empty_body(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.return_value = MagicMock(content=b"", json=lambda: {})
 
-    result = await workloads.workload_action(workload_id="wkld-abc", action="promote")
+    result = await workloads.workload_action_run(workload_id="wkld-abc", action="promote")
 
     assert result == {}
 
@@ -473,7 +475,7 @@ async def test_workload_action_promote_empty_body(patched_dr_client: MagicMock) 
 @pytest.mark.asyncio
 async def test_workload_action_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_action(workload_id="", action="start")
+        await workloads.workload_action_run(workload_id="", action="start")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -481,7 +483,7 @@ async def test_workload_action_empty_id_raises() -> None:
 async def test_workload_action_stop_not_found(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.side_effect = ClientError("404 Not Found", status_code=404, json={})
     with pytest.raises(ToolError) as exc_info:
-        await workloads.workload_action(workload_id="wkld-abc", action="stop")
+        await workloads.workload_action_run(workload_id="wkld-abc", action="stop")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -544,7 +546,7 @@ async def test_workload_settings_read_client_error(patched_dr_client: MagicMock)
 
 
 # ------------------------------------------------------------------ #
-# workload_replacement  (read / create / cancel)                      #
+# workload_artifact_replace  (read / create / cancel)                      #
 # ------------------------------------------------------------------ #
 
 
@@ -554,7 +556,7 @@ async def test_workload_replacement_read(patched_dr_client: MagicMock) -> None:
         json=lambda: {"candidateArtifactId": "art-new", "strategy": "rolling"}
     )
 
-    result = await workload_runtime.workload_replacement(workload_id="wkld-abc")
+    result = await workload_runtime.workload_artifact_replace(workload_id="wkld-abc")
 
     patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/replacement")
     assert result["candidateArtifactId"] == "art-new"
@@ -566,7 +568,7 @@ async def test_workload_replacement_create(patched_dr_client: MagicMock) -> None
         json=lambda: {"candidateArtifactId": "art-xyz", "strategy": "rolling"}
     )
 
-    result = await workload_runtime.workload_replacement(
+    result = await workload_runtime.workload_artifact_replace(
         workload_id="wkld-abc", artifact_id="art-xyz"
     )
 
@@ -585,7 +587,7 @@ async def test_workload_replacement_create(patched_dr_client: MagicMock) -> None
 async def test_workload_replacement_create_with_config(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.return_value = MagicMock(json=lambda: {"candidateArtifactId": "art-xyz"})
 
-    await workload_runtime.workload_replacement(
+    await workload_runtime.workload_artifact_replace(
         workload_id="wkld-abc",
         artifact_id="art-xyz",
         warmup_duration_minutes=5,
@@ -607,7 +609,7 @@ async def test_workload_replacement_create_with_runtime(patched_dr_client: Magic
     patched_dr_client.post.return_value = MagicMock(json=lambda: {"candidateArtifactId": "art-xyz"})
     runtime = {"containerGroups": [{"resourceBundles": ["bundle-1"]}]}
 
-    await workload_runtime.workload_replacement(
+    await workload_runtime.workload_artifact_replace(
         workload_id="wkld-abc", artifact_id="art-xyz", runtime=runtime
     )
 
@@ -620,7 +622,7 @@ async def test_workload_replacement_cancel(patched_dr_client: MagicMock) -> None
         content=b'{"status": "cancelled"}', json=lambda: {"status": "cancelled"}
     )
 
-    result = await workload_runtime.workload_replacement(workload_id="wkld-abc", cancel=True)
+    result = await workload_runtime.workload_artifact_replace(workload_id="wkld-abc", cancel=True)
 
     patched_dr_client.delete.assert_called_once_with("workloads/wkld-abc/replacement")
     assert result["status"] == "cancelled"
@@ -629,7 +631,7 @@ async def test_workload_replacement_cancel(patched_dr_client: MagicMock) -> None
 @pytest.mark.asyncio
 async def test_workload_replacement_create_and_cancel_conflict_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(
+        await workload_runtime.workload_artifact_replace(
             workload_id="wkld-abc", artifact_id="art-xyz", cancel=True
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -638,14 +640,14 @@ async def test_workload_replacement_create_and_cancel_conflict_raises() -> None:
 @pytest.mark.asyncio
 async def test_workload_replacement_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(workload_id="")
+        await workload_runtime.workload_artifact_replace(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_replacement_invalid_strategy_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(
+        await workload_runtime.workload_artifact_replace(
             workload_id="wkld-abc", artifact_id="art-xyz", strategy="bluegreen"
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -654,7 +656,7 @@ async def test_workload_replacement_invalid_strategy_raises() -> None:
 @pytest.mark.asyncio
 async def test_workload_replacement_negative_warmup_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(
+        await workload_runtime.workload_artifact_replace(
             workload_id="wkld-abc", artifact_id="art-xyz", warmup_duration_minutes=-1
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -663,7 +665,7 @@ async def test_workload_replacement_negative_warmup_raises() -> None:
 @pytest.mark.asyncio
 async def test_workload_replacement_missing_container_groups_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(
+        await workload_runtime.workload_artifact_replace(
             workload_id="wkld-abc", artifact_id="art-xyz", runtime={"replicaCount": 2}
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -673,16 +675,18 @@ async def test_workload_replacement_missing_container_groups_raises() -> None:
 async def test_workload_replacement_create_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.side_effect = ClientError("400", status_code=400, json={})
     with pytest.raises(ToolError) as exc_info:
-        await workload_runtime.workload_replacement(workload_id="wkld-abc", artifact_id="art-xyz")
+        await workload_runtime.workload_artifact_replace(
+            workload_id="wkld-abc", artifact_id="art-xyz"
+        )
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 # ================================================================== #
-# workload_observability — stats / logs / activity / proton_get        #
+# workload_observability — stats / logs / activity / workload_proton_get        #
 # ================================================================== #
 
 # ------------------------------------------------------------------ #
-# workload_stats                                                       #
+# workload_stats_get                                                       #
 # ------------------------------------------------------------------ #
 
 
@@ -691,7 +695,7 @@ async def test_workload_stats_success(patched_dr_client: MagicMock) -> None:
     stats = {"requestCount": 100, "errorRate": 0.01}
     patched_dr_client.get.return_value = MagicMock(json=lambda: stats)
 
-    result = await workload_observability.workload_stats(workload_id="wkld-abc")
+    result = await workload_observability.workload_stats_get(workload_id="wkld-abc")
 
     patched_dr_client.get.assert_called_once_with(
         "workloads/wkld-abc/stats",
@@ -704,7 +708,7 @@ async def test_workload_stats_success(patched_dr_client: MagicMock) -> None:
 async def test_workload_stats_with_options(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(json=lambda: {})
 
-    await workload_observability.workload_stats(
+    await workload_observability.workload_stats_get(
         workload_id="wkld-abc",
         proton_id="ptn-1",
         start_time="2026-01-01T00:00:00Z",
@@ -728,14 +732,14 @@ async def test_workload_stats_with_options(patched_dr_client: MagicMock) -> None
 @pytest.mark.asyncio
 async def test_workload_stats_invalid_quantile_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_stats(
+        await workload_observability.workload_stats_get(
             workload_id="wkld-abc", response_time_quantile=1.5
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 # ------------------------------------------------------------------ #
-# workload_logs                                                        #
+# workload_logs_get                                                        #
 # ------------------------------------------------------------------ #
 
 
@@ -745,7 +749,7 @@ async def test_workload_logs_success(patched_dr_client: MagicMock) -> None:
         json=lambda: {"data": [{"body": "Server started"}], "count": 1, "totalCount": 1}
     )
 
-    result = await workload_observability.workload_logs(workload_id="wkld-abc")
+    result = await workload_observability.workload_logs_get(workload_id="wkld-abc")
 
     patched_dr_client.get.assert_called_once_with(
         "otel/workload/wkld-abc/logs/",
@@ -758,7 +762,7 @@ async def test_workload_logs_success(patched_dr_client: MagicMock) -> None:
 async def test_workload_logs_with_filters(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.return_value = MagicMock(json=lambda: {"data": [], "count": 0})
 
-    await workload_observability.workload_logs(
+    await workload_observability.workload_logs_get(
         workload_id="wkld-abc",
         level="error",
         start_time="2026-01-01T00:00:00Z",
@@ -789,19 +793,19 @@ async def test_workload_logs_with_filters(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_logs_invalid_level_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_logs(workload_id="wkld-abc", level="verbose")
+        await workload_observability.workload_logs_get(workload_id="wkld-abc", level="verbose")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_workload_logs_negative_offset_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_logs(workload_id="wkld-abc", offset=-1)
+        await workload_observability.workload_logs_get(workload_id="wkld-abc", offset=-1)
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 # ------------------------------------------------------------------ #
-# workload_activity  (history / events / related)                     #
+# workload_activity_get  (history / events / related)                     #
 # ------------------------------------------------------------------ #
 
 
@@ -811,7 +815,9 @@ async def test_workload_activity_history(patched_dr_client: MagicMock) -> None:
         json=lambda: {"data": [{"artifactId": "art-1"}], "count": 1, "totalCount": 1}
     )
 
-    result = await workload_observability.workload_activity(workload_id="wkld-abc", kind="history")
+    result = await workload_observability.workload_activity_get(
+        workload_id="wkld-abc", kind="history"
+    )
 
     patched_dr_client.get.assert_called_once_with(
         "workloads/wkld-abc/history", params={"limit": 20, "offset": 0}
@@ -825,7 +831,9 @@ async def test_workload_activity_events(patched_dr_client: MagicMock) -> None:
         json=lambda: {"data": [{"type": "status_change"}], "count": 1, "totalCount": 1}
     )
 
-    result = await workload_observability.workload_activity(workload_id="wkld-abc", kind="events")
+    result = await workload_observability.workload_activity_get(
+        workload_id="wkld-abc", kind="events"
+    )
 
     patched_dr_client.get.assert_called_once_with(
         "workloads/wkld-abc/events", params={"limit": 20, "offset": 0}
@@ -838,7 +846,9 @@ async def test_workload_activity_related(patched_dr_client: MagicMock) -> None:
     payload = {"artifacts": [{"id": "art-1"}]}
     patched_dr_client.get.return_value = MagicMock(json=lambda: payload)
 
-    result = await workload_observability.workload_activity(workload_id="wkld-abc", kind="related")
+    result = await workload_observability.workload_activity_get(
+        workload_id="wkld-abc", kind="related"
+    )
 
     patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/related")
     assert result == payload
@@ -847,7 +857,7 @@ async def test_workload_activity_related(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_workload_activity_negative_offset_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_activity(
+        await workload_observability.workload_activity_get(
             workload_id="wkld-abc", kind="history", offset=-1
         )
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
@@ -856,7 +866,7 @@ async def test_workload_activity_negative_offset_raises() -> None:
 @pytest.mark.asyncio
 async def test_workload_activity_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_activity(workload_id="", kind="events")
+        await workload_observability.workload_activity_get(workload_id="", kind="events")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -864,12 +874,12 @@ async def test_workload_activity_empty_id_raises() -> None:
 async def test_workload_activity_events_client_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("500", status_code=500, json={})
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.workload_activity(workload_id="wkld-abc", kind="events")
+        await workload_observability.workload_activity_get(workload_id="wkld-abc", kind="events")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
 # ------------------------------------------------------------------ #
-# proton_get  (list / single / status details)                       #
+# workload_proton_get  (list / single / status details)                       #
 # ------------------------------------------------------------------ #
 
 
@@ -883,7 +893,7 @@ async def test_proton_get_list(patched_dr_client: MagicMock) -> None:
         }
     )
 
-    result = await workload_observability.proton_get(workload_id="wkld-abc")
+    result = await workload_observability.workload_proton_get(workload_id="wkld-abc")
 
     patched_dr_client.get.assert_called_once_with(
         "workloads/wkld-abc/protons", params={"limit": 20, "offset": 0}
@@ -897,7 +907,9 @@ async def test_proton_get_single(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "ptn-1", "status": "running"}
     )
 
-    result = await workload_observability.proton_get(workload_id="wkld-abc", proton_id="ptn-1")
+    result = await workload_observability.workload_proton_get(
+        workload_id="wkld-abc", proton_id="ptn-1"
+    )
 
     patched_dr_client.get.assert_called_once_with("workloads/wkld-abc/protons/ptn-1")
     assert result["id"] == "ptn-1"
@@ -911,7 +923,7 @@ async def test_proton_get_with_status_details(patched_dr_client: MagicMock) -> N
         MagicMock(content=b'{"replicas": []}', json=lambda: snapshot),
     ]
 
-    result = await workload_observability.proton_get(
+    result = await workload_observability.workload_proton_get(
         workload_id="wkld-abc", proton_id="ptn-1", include_status_details=True
     )
 
@@ -930,7 +942,7 @@ async def test_proton_get_status_details_pending(patched_dr_client: MagicMock) -
         MagicMock(content=b"", json=lambda: None),
     ]
 
-    result = await workload_observability.proton_get(
+    result = await workload_observability.workload_proton_get(
         workload_id="wkld-abc", proton_id="ptn-1", include_status_details=True
     )
 
@@ -940,21 +952,21 @@ async def test_proton_get_status_details_pending(patched_dr_client: MagicMock) -
 @pytest.mark.asyncio
 async def test_proton_get_empty_workload_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.proton_get(workload_id="")
+        await workload_observability.workload_proton_get(workload_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_proton_get_blank_proton_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.proton_get(workload_id="wkld-abc", proton_id="   ")
+        await workload_observability.workload_proton_get(workload_id="wkld-abc", proton_id="   ")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_proton_get_list_negative_offset_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await workload_observability.proton_get(workload_id="wkld-abc", offset=-1)
+        await workload_observability.workload_proton_get(workload_id="wkld-abc", offset=-1)
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -1131,7 +1143,7 @@ async def test_artifact_update_no_fields_raises() -> None:
 
 
 # ------------------------------------------------------------------ #
-# artifact_action  (lock / clone / delete)                            #
+# artifact_action_run  (lock / clone / delete)                            #
 # ------------------------------------------------------------------ #
 
 
@@ -1141,7 +1153,7 @@ async def test_artifact_action_lock(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "art-abc", "status": "locked"}
     )
 
-    result = await artifacts.artifact_action(artifact_id="art-abc", action="lock")
+    result = await artifacts.artifact_action_run(artifact_id="art-abc", action="lock")
 
     patched_dr_client.patch.assert_called_once_with("artifacts/art-abc", json={"status": "locked"})
     assert result["status"] == "locked"
@@ -1153,7 +1165,9 @@ async def test_artifact_action_clone(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "art-new", "name": "svc-v2", "status": "draft"}
     )
 
-    result = await artifacts.artifact_action(artifact_id="art-abc", action="clone", name="svc-v2")
+    result = await artifacts.artifact_action_run(
+        artifact_id="art-abc", action="clone", name="svc-v2"
+    )
 
     patched_dr_client.post.assert_called_once_with(
         "artifacts/art-abc/clone", json={"name": "svc-v2"}
@@ -1164,7 +1178,7 @@ async def test_artifact_action_clone(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_artifact_action_clone_missing_name_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await artifacts.artifact_action(artifact_id="art-abc", action="clone")
+        await artifacts.artifact_action_run(artifact_id="art-abc", action="clone")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -1172,7 +1186,7 @@ async def test_artifact_action_clone_missing_name_raises() -> None:
 async def test_artifact_action_delete(patched_dr_client: MagicMock) -> None:
     patched_dr_client.delete.return_value = MagicMock()
 
-    result = await artifacts.artifact_action(artifact_id="art-abc", action="delete")
+    result = await artifacts.artifact_action_run(artifact_id="art-abc", action="delete")
 
     patched_dr_client.delete.assert_called_once_with("artifacts/art-abc")
     assert result == {"deleted": True, "artifact_id": "art-abc"}
@@ -1181,7 +1195,7 @@ async def test_artifact_action_delete(patched_dr_client: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_artifact_action_empty_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await artifacts.artifact_action(artifact_id="", action="lock")
+        await artifacts.artifact_action_run(artifact_id="", action="lock")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -1189,7 +1203,7 @@ async def test_artifact_action_empty_id_raises() -> None:
 async def test_artifact_action_delete_conflict(patched_dr_client: MagicMock) -> None:
     patched_dr_client.delete.side_effect = ClientError("409 Conflict", status_code=409, json={})
     with pytest.raises(ToolError) as exc_info:
-        await artifacts.artifact_action(artifact_id="art-locked", action="delete")
+        await artifacts.artifact_action_run(artifact_id="art-locked", action="delete")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -1208,7 +1222,7 @@ async def test_artifact_build_get_list(patched_dr_client: MagicMock) -> None:
         }
     )
 
-    result = await artifact_builds.artifact_build_get(artifact_id="art-abc")
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc")
 
     patched_dr_client.get.assert_called_once_with(
         "artifacts/art-abc/builds", params={"limit": 100, "offset": 0}
@@ -1222,7 +1236,7 @@ async def test_artifact_build_get_single(patched_dr_client: MagicMock) -> None:
         json=lambda: {"id": "bld-xyz", "status": "success"}
     )
 
-    result = await artifact_builds.artifact_build_get(artifact_id="art-abc", build_id="bld-xyz")
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="bld-xyz")
 
     patched_dr_client.get.assert_called_once_with("artifacts/art-abc/builds/bld-xyz")
     assert result["id"] == "bld-xyz"
@@ -1235,7 +1249,7 @@ async def test_artifact_build_get_with_logs(patched_dr_client: MagicMock) -> Non
         MagicMock(text="Step 1/3: FROM python:3.11\n"),
     ]
 
-    result = await artifact_builds.artifact_build_get(
+    result = await artifact_builds.artifact_get_build(
         artifact_id="art-abc", build_id="bld-xyz", include_logs=True
     )
 
@@ -1246,14 +1260,14 @@ async def test_artifact_build_get_with_logs(patched_dr_client: MagicMock) -> Non
 @pytest.mark.asyncio
 async def test_artifact_build_get_empty_artifact_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await artifact_builds.artifact_build_get(artifact_id="")
+        await artifact_builds.artifact_get_build(artifact_id="")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
 async def test_artifact_build_get_blank_build_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await artifact_builds.artifact_build_get(artifact_id="art-abc", build_id="   ")
+        await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="   ")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 
@@ -1261,7 +1275,7 @@ async def test_artifact_build_get_blank_build_id_raises() -> None:
 async def test_artifact_build_get_list_not_found(patched_dr_client: MagicMock) -> None:
     patched_dr_client.get.side_effect = ClientError("404", status_code=404, json={})
     with pytest.raises(ToolError) as exc_info:
-        await artifact_builds.artifact_build_get(artifact_id="art-missing")
+        await artifact_builds.artifact_get_build(artifact_id="art-missing")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
 
 
@@ -1269,7 +1283,9 @@ async def test_artifact_build_get_list_not_found(patched_dr_client: MagicMock) -
 async def test_artifact_build_action_trigger(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.return_value = MagicMock(json=lambda: {"buildIds": ["bld-new"]})
 
-    result = await artifact_builds.artifact_build_action(artifact_id="art-abc", action="trigger")
+    result = await artifact_builds.artifact_build_run_action(
+        artifact_id="art-abc", action="trigger"
+    )
 
     patched_dr_client.post.assert_called_once_with("artifacts/art-abc/builds")
     assert result["buildIds"] == ["bld-new"]
@@ -1279,7 +1295,7 @@ async def test_artifact_build_action_trigger(patched_dr_client: MagicMock) -> No
 async def test_artifact_build_action_trigger_locked_error(patched_dr_client: MagicMock) -> None:
     patched_dr_client.post.side_effect = ClientError("422", status_code=422, json={})
     with pytest.raises(ToolError) as exc_info:
-        await artifact_builds.artifact_build_action(artifact_id="art-locked", action="trigger")
+        await artifact_builds.artifact_build_run_action(artifact_id="art-locked", action="trigger")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
@@ -1287,7 +1303,7 @@ async def test_artifact_build_action_trigger_locked_error(patched_dr_client: Mag
 async def test_artifact_build_action_delete(patched_dr_client: MagicMock) -> None:
     patched_dr_client.delete.return_value = MagicMock()
 
-    result = await artifact_builds.artifact_build_action(
+    result = await artifact_builds.artifact_build_run_action(
         artifact_id="art-abc", action="delete", build_id="bld-xyz"
     )
 
@@ -1298,7 +1314,7 @@ async def test_artifact_build_action_delete(patched_dr_client: MagicMock) -> Non
 @pytest.mark.asyncio
 async def test_artifact_build_action_delete_missing_build_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
-        await artifact_builds.artifact_build_action(artifact_id="art-abc", action="delete")
+        await artifact_builds.artifact_build_run_action(artifact_id="art-abc", action="delete")
     assert exc_info.value.kind is ToolErrorKind.VALIDATION
 
 

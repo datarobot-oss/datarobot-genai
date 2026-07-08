@@ -108,6 +108,77 @@ def test_setup_otel_env_variables_setdefault_no_override() -> None:
         assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == "x-key=explicit"
 
 
+def test_setup_otel_env_variables_entity_id_headers_do_not_orphan_endpoint() -> None:
+    """Regression: when the Config validator assembles headers from
+    ``otel_entity_id``, the endpoint must still be bridged (previously the
+    "already set" early-return fired on the headers it had just written,
+    leaving exporters on the OTLP localhost default).
+    """
+    mock_config = MagicMock()
+    mock_config.otel_exporter_otlp_endpoint = ""
+    mock_config.otel_exporter_otlp_headers = (
+        "x-datarobot-entity-id=deployment-abc,x-datarobot-api-key=tok"
+    )
+    mock_config.otel_collector_base_url = "https://app.example.com/otel"
+    mock_config.otel_entity_id = "deployment-abc"
+
+    with (
+        patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        telemetry._setup_otel_env_variables()
+
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://app.example.com/otel"
+        assert (
+            os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+            == "x-datarobot-entity-id=deployment-abc,x-datarobot-api-key=tok"
+        )
+
+
+def test_setup_otel_env_variables_deployment_shape_runtime_params() -> None:
+    """Deployment shape, no mocks on the config: only ``MLOPS_RUNTIME_PARAM_*``
+    envelopes + DataRobot credentials in the environment (what a deployment
+    container actually gets when OTel is configured via runtime parameters).
+    The real ``MCPServerConfig`` must resolve them, the bridge must populate
+    both OTLP env vars, and a no-arg metric exporter must land on the
+    collector's ``/v1/metrics`` — proving the whole chain without a network.
+    """
+    import json
+
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
+    from datarobot_genai.drmcp.core.config import MCPServerConfig
+
+    deployment_env = {
+        "DATAROBOT_ENDPOINT": "https://app.example.com/api/v2",
+        "DATAROBOT_API_TOKEN": "test-token-123",
+        "MLOPS_DEPLOYMENT_ID": "deadbeef12345678",
+        "MLOPS_RUNTIME_PARAM_OTEL_ENTITY_ID": json.dumps(
+            {"type": "string", "payload": "deployment-deadbeef12345678"}
+        ),
+    }
+    with patch.dict("os.environ", deployment_env, clear=True):
+        config = MCPServerConfig()
+        assert config.otel_entity_id == "deployment-deadbeef12345678"
+        # The collector default derives from DATAROBOT_ENDPOINT at config-module
+        # import time (fine in a deployment where env precedes the process, but
+        # not pinnable to a literal here) — anchor on the resolved value.
+        collector_base = config.otel_collector_base_url
+        assert collector_base.endswith("/otel")
+
+        with patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=config):
+            telemetry._setup_otel_env_variables()
+
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == collector_base
+        assert (
+            "x-datarobot-entity-id=deployment-deadbeef12345678"
+            in (os.environ["OTEL_EXPORTER_OTLP_HEADERS"])
+        )
+
+        exporter = OTLPMetricExporter()
+        assert exporter._endpoint == collector_base + "/v1/metrics"
+
+
 def test_initialize_telemetry_proceeds_with_config_headers() -> None:
     """initialize_telemetry should NOT skip when otel_exporter_otlp_headers is set
     in Config, even if otel_entity_id is empty.
@@ -132,6 +203,33 @@ def test_initialize_telemetry_proceeds_with_config_headers() -> None:
     ):
         _real_initialize_telemetry(mcp_mock)
         mock_trace.set_tracer_provider.assert_called_once()
+
+
+def test_initialize_telemetry_installs_metrics_leg() -> None:
+    """The config-gated startup path wires metrics next to traces and logs."""
+    mcp_mock = MagicMock()
+    mock_config = MagicMock()
+    mock_config.otel_enabled = True
+    mock_config.otel_entity_id = "entity"
+    mock_config.otel_exporter_otlp_headers = ""
+    mock_config.mcp_server_name = "test-mcp"
+    mock_config.otel_attributes = {}
+    mock_config.otel_enabled_http_instrumentors = False
+
+    with (
+        patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_env_variables"),
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_exporter"),
+        patch("datarobot_genai.drmcp.core.telemetry.bootstrap_metrics_provider") as mock_bootstrap,
+        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_logging"),
+        patch("datarobot_genai.drmcp.core.telemetry.trace"),
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        _real_initialize_telemetry(mcp_mock)
+
+    mock_bootstrap.assert_called_once_with(
+        resource_attributes={"datarobot.service.name": "test-mcp"}
+    )
 
 
 @pytest.mark.asyncio

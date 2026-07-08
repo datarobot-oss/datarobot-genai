@@ -51,6 +51,9 @@ _TAVILY_CRAWL_API = "https://docs.tavily.com/documentation/api-reference/endpoin
         "include_answer=True. Advanced depth uses more credits.\n\n"
         f"Reference: {_TAVILY_SEARCH_API}"
     ),
+    display_name="Tavily — Search web",
+    description_ui="Search the public web by keyword and return ranked results.",
+    auth_provider="tavily",
 )
 async def tavily_search_web(
     *,
@@ -125,6 +128,9 @@ async def tavily_search_web(
         'chunks_per_source=5); extract_depth="advanced". Up to 20 URLs; chunks_per_source 1-5.\n\n'
         f"Reference: {_TAVILY_EXTRACT_API}"
     ),
+    display_name="Tavily — Extract text",
+    description_ui="Extract clean text from one or more web page URLs.",
+    auth_provider="tavily",
 )
 async def tavily_extract_text(
     *,
@@ -199,6 +205,9 @@ async def tavily_extract_text(
         'instructions="API sections").\n\n'
         f"Reference: {_TAVILY_MAP_API}"
     ),
+    display_name="Tavily — List links",
+    description_ui="List links discovered on a website starting from a root URL.",
+    auth_provider="tavily",
 )
 async def tavily_list_links(
     *,
@@ -243,6 +252,9 @@ async def tavily_list_links(
         "up to API max; exclude_paths regex list. Higher depth/limit uses more credits.\n\n"
         f"Reference: {_TAVILY_CRAWL_API}"
     ),
+    display_name="Tavily — Crawl site",
+    description_ui="Crawl a website and return extracted text from multiple related pages.",
+    auth_provider="tavily",
 )
 async def tavily_crawl_site(
     *,

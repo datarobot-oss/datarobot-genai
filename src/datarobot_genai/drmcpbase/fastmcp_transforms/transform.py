@@ -24,7 +24,9 @@ from fastmcp.utilities.versions import VersionSpec
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestMode
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_category_gates
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_category_disabled
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allowed
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,9 @@ class DataRobotMCPCatalogTransform(CodeMode):
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         ctx = self._request_context()
+        # Category gates run first — precedence: gates → mode → allowlist.  A tool
+        # in a disabled category stays hidden even when allowlisted.
+        tools = filter_tools_by_category_gates(tools, ctx.disabled_categories)
         if ctx.mode is MCPRequestMode.CODE_EXECUTE:
             return await super().transform_tools(tools)
         if ctx.tool_allowlist is None:
@@ -51,10 +56,19 @@ class DataRobotMCPCatalogTransform(CodeMode):
     ) -> Tool | None:
         ctx = self._request_context()
         if ctx.mode is MCPRequestMode.CODE_EXECUTE:
-            return await super().get_tool(name, call_next, version=version)
-        if ctx.tool_allowlist is not None and not is_tool_name_allowed(name, ctx.tool_allowlist):
+            tool = await super().get_tool(name, call_next, version=version)
+        else:
+            if ctx.tool_allowlist is not None and not is_tool_name_allowed(
+                name, ctx.tool_allowlist
+            ):
+                return None
+            tool = await call_next(name, version=version)
+        # Category gates apply in every mode: a tool in a disabled category is not
+        # resolvable — and therefore not callable — for this request.  (CodeMode's
+        # synthetic discovery tools carry no category meta and are never gated.)
+        if tool is not None and is_tool_category_disabled(tool, ctx.disabled_categories):
             return None
-        return await call_next(name, version=version)
+        return tool
 
 
 def register_mcp_catalog_transform(mcp: Any) -> None:

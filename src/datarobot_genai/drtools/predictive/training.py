@@ -199,14 +199,16 @@ def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
         "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
         "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
         "heuristic candidate targets. Read-only; does not train. Lighter than "
-        "catalog_get_eda_insights; does not rank ML use-case ideas "
+        "catalog_get_eda_insights; does not rank ML use-case IDeas "
         "(catalog_suggest_ml_problems calls this "
         "internally)."
     ),
+    display_name="Catalog — Analyze dataset",
+    description_ui="Return profile of an AI Catalog dataset (columns, types, and missing values).",
 )
 async def catalog_analyze_dataset(
     *,
-    dataset_id: Annotated[str, "AI Catalog dataset id."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID."],
 ) -> dict[str, Any]:
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -225,10 +227,12 @@ async def catalog_analyze_dataset(
         "or deep EDA "
         "(catalog_get_eda_insights)."
     ),
+    display_name="Catalog — Suggest ML problems",
+    description_ui="Recommend a target (which defines a problem type) from a dataset.",
 )
 async def catalog_suggest_ml_problems(
     *,
-    dataset_id: Annotated[str, "AI Catalog dataset id."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID."],
 ) -> dict[str, Any]:
     if not dataset_id:
         raise ToolError("Dataset ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -259,10 +263,14 @@ async def catalog_suggest_ml_problems(
         "upload data. Heavier than catalog_analyze_dataset; not time-series eligibility "
         "(catalog_check_timeseries_eligibility)."
     ),
+    display_name="Catalog — Get EDA insights",
+    description_ui=(
+        "Run exploratory data analysis (EDA) on a dataset and return summary statistics."
+    ),
 )
 async def catalog_get_eda_insights(
     *,
-    dataset_id: Annotated[str, "AI Catalog dataset id."],
+    dataset_id: Annotated[str, "AI Catalog dataset ID."],
     target_col: Annotated[
         str, "If set, add target-centric stats (must be an existing column name)."
     ]
@@ -611,12 +619,14 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
         "(deployment_create_deployment), not batch scoring (predict_*), not dataset upload "
         "(catalog_upload_dataset) unless they already registered data."
     ),
+    display_name="Modeling — Start Autopilot",
+    description_ui="Start or resume Autopilot training for a modeling project.",
 )
 async def modeling_start_autopilot(
     *,
     target: Annotated[str, "Column name in the training table to predict."],
     project_id: Annotated[
-        str, "Existing project id to resume; omit when creating from dataset_url or dataset_id."
+        str, "Existing project ID to resume; omit when creating from dataset_url or dataset_id."
     ]
     | None = None,
     mode: Annotated[
@@ -631,7 +641,7 @@ async def modeling_start_autopilot(
     | None = None,
     dataset_id: Annotated[
         str,
-        "For new projects: AI Catalog dataset id (mutually exclusive with dataset_url).",
+        "For new projects: AI Catalog dataset ID (mutually exclusive with dataset_url).",
     ]
     | None = None,
     project_name: Annotated[
@@ -639,7 +649,7 @@ async def modeling_start_autopilot(
     ] = "MCP Project",
     use_case_id: Annotated[
         str,
-        "Optional org use-case id; some tenants require it on new projects.",
+        "Optional org use-case ID; some tenants require it on new projects.",
     ]
     | None = None,
 ) -> dict[str, Any]:
@@ -704,11 +714,16 @@ async def modeling_start_autopilot(
         "not deployment "
         "monitoring (deployment_get_prediction_history)."
     ),
+    display_name="Modeling — Get ROC curve",
+    description_ui=(
+        "Get ROC curve data (classification, performance, and statistics) for a "
+        "binary classification model."
+    ),
 )
 async def modeling_get_model_roc(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
-    model_id: Annotated[str, "Leaderboard model id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
+    model_id: Annotated[str, "Leaderboard model ID."],
     source: Annotated[
         str,
         "Pass exactly one of these strings (camelCase as shown): 'validation', 'holdout', "
@@ -769,11 +784,16 @@ async def modeling_get_model_roc(
         "(those come from predict_score_inline_realtime explanation flags), not "
         "lift chart bins (modeling_get_model_lift_chart)."
     ),
+    display_name="Modeling — Get feature impact",
+    description_ui=(
+        "Get feature impact for a model, which identifies the features most strongly "
+        "driving the model's decisions."
+    ),
 )
 async def modeling_get_model_feature_impact(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
-    model_id: Annotated[str, "Leaderboard model id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
+    model_id: Annotated[str, "Leaderboard model ID."],
 ) -> dict[str, Any]:
     if not project_id:
         raise ToolError("Project ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -802,11 +822,13 @@ async def modeling_get_model_feature_impact(
         "metrics dump "
         "(modeling_get_modeldetails)."
     ),
+    display_name="Modeling — Get lift chart",
+    description_ui="Get lift chart data for a binary or multiclass classification model.",
 )
 async def modeling_get_model_lift_chart(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
-    model_id: Annotated[str, "Leaderboard model id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
+    model_id: Annotated[str, "Leaderboard model ID."],
     source: Annotated[
         str,
         "Pass exactly one of these strings (camelCase as shown): 'validation', 'holdout', "

@@ -97,12 +97,33 @@ class FakeFS:
         self.recorded = ("rm", path, recursive, maxdepth)
         return self._resolve("rm", None)
 
-    def copy(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
-        self.recorded = ("copy", path1, path2, recursive, maxdepth)
+    def copy(
+        self,
+        path1: str,
+        path2: str,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        self.recorded = (
+            "copy",
+            path1,
+            path2,
+            recursive,
+            maxdepth,
+            kwargs.get("overwrite_strategy"),
+        )
         return self._resolve("copy", None)
 
-    def mv(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
-        self.recorded = ("mv", path1, path2, recursive, maxdepth)
+    def mv(
+        self,
+        path1: str,
+        path2: str,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        self.recorded = ("mv", path1, path2, recursive, maxdepth, kwargs.get("overwrite_strategy"))
         return self._resolve("mv", None)
 
     def clone_catalog_item_dir(self, path_or_id: str, files_to_omit: Any = None) -> Any:
@@ -285,10 +306,24 @@ async def test_delete_copy_move_delegate() -> None:
     store, fs = _store_and_fs()
     await store.delete("dr://abc/x", recursive=True, maxdepth=2)
     assert fs.recorded == ("rm", "dr://abc/x", True, 2)
-    await store.copy("dr://abc/a", "dr://abc/b", recursive=True)
-    assert fs.recorded == ("copy", "dr://abc/a", "dr://abc/b", True, None)
-    await store.move("dr://abc/a", "dr://abc/b")
-    assert fs.recorded == ("mv", "dr://abc/a", "dr://abc/b", False, None)
+    await store.copy("dr://abc/a", "dr://abc/b", recursive=True, overwrite="replace")
+    assert fs.recorded == (
+        "copy",
+        "dr://abc/a",
+        "dr://abc/b",
+        True,
+        None,
+        FilesOverwriteStrategy.REPLACE,
+    )
+    await store.move("dr://abc/a", "dr://abc/b", overwrite="skip")
+    assert fs.recorded == (
+        "mv",
+        "dr://abc/a",
+        "dr://abc/b",
+        False,
+        None,
+        FilesOverwriteStrategy.SKIP,
+    )
 
 
 async def test_clone_returns_new_catalog_id() -> None:
