@@ -20,6 +20,8 @@ import pytest
 from datarobot_genai.dragent.deployment_urls import _DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
+from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
+from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 
@@ -78,6 +80,61 @@ class TestBuildDeploymentAgentCardUrl:
         assert build_deployment_agent_card_url(endpoint, dep_id) == expected
 
 
+class TestBuildWorkloadA2aUrl:
+    @pytest.mark.parametrize(
+        "endpoint,workload_id,expected",
+        [
+            (
+                "https://app.datarobot.com/api/v2",
+                "abc123",
+                "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/",
+            ),
+            (
+                "https://app.datarobot.com/api/v2/",
+                "abc123",
+                "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/",
+            ),
+            (
+                "https://acme.internal/api/v2",
+                "wl-999",
+                "https://acme.internal/api/v2/endpoints/workloads/wl-999/a2a/",
+            ),
+        ],
+    )
+    def test_builds_correct_url(self, endpoint, workload_id, expected):
+        assert build_workload_a2a_url(endpoint, workload_id) == expected
+
+    @pytest.mark.parametrize("workload_id", ["wl1", "abc-123", "0" * 24])
+    def test_workload_id_appears_verbatim_in_path(self, workload_id):
+        url = build_workload_a2a_url("https://app.datarobot.com/api/v2", workload_id)
+        assert f"/endpoints/workloads/{workload_id}/" in url
+
+
+class TestBuildWorkloadAgentCardUrl:
+    @pytest.mark.parametrize(
+        "endpoint,workload_id,expected",
+        [
+            (
+                "https://app.datarobot.com/api/v2",
+                "abc123",
+                "https://app.datarobot.com/api/v2/workloads/abc123/agentCard/",
+            ),
+            (
+                "https://app.datarobot.com/api/v2/",
+                "abc123",
+                "https://app.datarobot.com/api/v2/workloads/abc123/agentCard/",
+            ),
+            (
+                "https://acme.internal/api/v2",
+                "wl-999",
+                "https://acme.internal/api/v2/workloads/wl-999/agentCard/",
+            ),
+        ],
+    )
+    def test_builds_correct_url(self, endpoint, workload_id, expected):
+        assert build_workload_agent_card_url(endpoint, workload_id) == expected
+
+
 class TestResolveDataRobotEndpoint:
     def test_prefers_public_api_endpoint_over_endpoint(self):
         env = {
@@ -122,4 +179,13 @@ class TestUrlConsistency:
         expected_prefix = f"{endpoint}/deployments/{dep_id}/"
         assert a2a.startswith(expected_prefix)
         assert card.startswith(expected_prefix)
+        assert a2a != card
+
+    def test_workload_a2a_and_agent_card_urls_differ_and_include_workload_id(self):
+        endpoint = "https://app.datarobot.com/api/v2"
+        workload_id = "abc123"
+        a2a = build_workload_a2a_url(endpoint, workload_id)
+        card = build_workload_agent_card_url(endpoint, workload_id)
+        assert a2a == f"{endpoint}/endpoints/workloads/{workload_id}/a2a/"
+        assert card == f"{endpoint}/workloads/{workload_id}/agentCard/"
         assert a2a != card
