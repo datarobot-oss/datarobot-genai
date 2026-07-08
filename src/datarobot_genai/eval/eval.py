@@ -170,7 +170,10 @@ class EvalRunner:
             return 2
         finally:
             if dataset_jsonl and Path(dataset_jsonl).exists():
-                os.unlink(dataset_jsonl)
+                try:
+                    os.unlink(dataset_jsonl)
+                except OSError:
+                    pass  # best-effort temp cleanup; never mask the eval result
 
         # 5. Normalize output
         try:
