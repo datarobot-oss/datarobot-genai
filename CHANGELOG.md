@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.8
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
+
 ## 0.23.7
 - Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
 - Add `has_judge` and `benchmark` to outputs in eval package.

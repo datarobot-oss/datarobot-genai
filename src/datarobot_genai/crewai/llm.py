@@ -39,6 +39,7 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.model_info import get_model_info
 
 
@@ -292,14 +293,15 @@ def _crewai_model_factory(config: dict) -> LLM:
     return LitellmStopWordLLM(**config)
 
 
-def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_datarobot_gateway_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = {
         "api_key": default_api_key(),
         "api_base": default_datarobot_llm_gateway_url(),
     }
-
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -308,41 +310,47 @@ def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | 
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
 
     return _crewai_model_factory(config)
 
 
 def get_datarobot_deployment_llm(
-    deployment_id: str, model_name: str | None = None, parameters: dict | None = None
+    deployment_id: str,
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
 ) -> LLM:
     config = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(deployment_id),
     }
 
-    if parameters:
-        config.update(parameters)
-
     model_name = model_name or default_model_name() or DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _crewai_model_factory(config)
 
 
 def get_datarobot_nim_llm(
-    nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None
+    nim_deployment_id: str,
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
 ) -> LLM:
     config = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(nim_deployment_id),
     }
 
-    if parameters:
-        config.update(parameters)
-
     model_name = model_name or default_model_name()
     if model_name is None:
         raise ValueError("Model name is required")
@@ -350,22 +358,30 @@ def get_datarobot_nim_llm(
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _crewai_model_factory(config)
 
 
-def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_external_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = {
         # Everything else is loaded from the environment by LiteLLM
     }
 
-    if parameters:
-        config.update(parameters)
     model_name = model_name or default_model_name()
     if model_name is None:
         raise ValueError("Model name is required")
 
     model_name = model_name.removeprefix("datarobot/")
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
 
     return _crewai_model_factory(config)
@@ -486,16 +502,30 @@ def get_router_llm(
     return RouterLitellmOnlyLLM(model="datarobot-router")
 
 
-def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = Config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
-        return get_datarobot_gateway_llm(model_name, parameters)
+        return get_datarobot_gateway_llm(model_name, parameters, reasoning)
     elif llm_type == LLMType.DEPLOYMENT:
-        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+        return get_datarobot_deployment_llm(
+            config.llm_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            reasoning,
+        )
     elif llm_type == LLMType.NIM:
-        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+        return get_datarobot_nim_llm(
+            config.nim_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            reasoning,
+        )
     elif llm_type == LLMType.EXTERNAL:
-        return get_external_llm(model_name, parameters)
+        return get_external_llm(model_name, parameters, reasoning)
     else:
         raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {config}")
