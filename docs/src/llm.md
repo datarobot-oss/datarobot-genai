@@ -117,7 +117,7 @@ llm = get_datarobot_gateway_llm(
 )
 ```
 
-Lower-level helpers live in **`datarobot_genai.core.llm.reasoning`** (`default_reasoning_extra_body`, `apply_reasoning_to_parameters`).
+Lower-level helpers live in **`datarobot_genai.core.llm_parameters`** (`default_reasoning_extra_body`, `apply_reasoning_to_parameters`).
 
 ## `get_llm()` (environment-driven routing)
 

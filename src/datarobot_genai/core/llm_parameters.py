@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Framework-agnostic LiteLLM request parameter helpers.
+
+Shared by dragent workflow YAML and the LangGraph / LlamaIndex / CrewAI
+``get_*_llm()`` factories. For parsing reasoning **output** blocks from model
+responses, see ``datarobot_genai.core.agents.reasoning``.
+"""
+
 from __future__ import annotations
 
 import re

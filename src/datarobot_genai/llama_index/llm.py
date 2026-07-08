@@ -24,7 +24,7 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.llm.reasoning import apply_reasoning_to_parameters
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 
 
 def _create_datarobot_litellm(config: dict[str, Any]) -> Any:

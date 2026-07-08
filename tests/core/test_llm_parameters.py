@@ -16,8 +16,8 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.core.llm.reasoning import apply_reasoning_to_parameters
-from datarobot_genai.core.llm.reasoning import default_reasoning_extra_body
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
+from datarobot_genai.core.llm_parameters import default_reasoning_extra_body
 from datarobot_genai.langgraph.llm import get_datarobot_gateway_llm
 
 

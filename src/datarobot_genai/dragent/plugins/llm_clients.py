@@ -30,7 +30,7 @@ from nat.utils.responses_api import validate_no_responses_api
 
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.llm.reasoning import apply_reasoning_to_parameters
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.dragent.context import extract_headers_from_context
 
 from .llm_providers import DataRobotLitellmConfig
