@@ -1,1 +1,0 @@
-GLOBAL_MCP_ENABLED: bool = False

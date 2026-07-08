@@ -13,4 +13,3 @@
 # limitations under the License.
 
 
-GLOBAL_MCP_ENABLED: bool = False
