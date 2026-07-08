@@ -8,6 +8,10 @@
 /setup.py @datarobot-oss/buzok @datarobot-oss/mcp
 /uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
 /e2e-tests/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
+# OTel wire-level e2e harness/tests exercise MCP-owned sandbox SLIs from the
+# shared dragent e2e suite, so either team can approve.
+/e2e-tests/dragent_tests/otel_helpers.py @datarobot-oss/buzok @datarobot-oss/mcp
+/e2e-tests/dragent_tests/test_otel_metrics.py @datarobot-oss/buzok @datarobot-oss/mcp
 /README.md @datarobot-oss/buzok @datarobot-oss/mcp
 /.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
 /.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
