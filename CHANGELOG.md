@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.7
+## 0.23.8
 - Fix `eval_status.json` not updated to failed on early input validation errors.
 
 ## 0.23.7
