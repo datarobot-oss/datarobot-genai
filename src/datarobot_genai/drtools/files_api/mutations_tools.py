@@ -211,7 +211,7 @@ async def file_upload(
     ),
     display_name="Files — Manage",
     description_ui=(
-        "Runs structural filesystem actions: create directory, delete, copy, move, or clone."
+        "Runs structural filesystem actions: create catalog directory, delete, copy, move, or clone catalog directory."
     ),
 )
 async def file_manage(

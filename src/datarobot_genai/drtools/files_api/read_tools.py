@@ -90,7 +90,7 @@ def _list_browse_hint(
     ),
     display_name="Files — List",
     description_ui=(
-        "Browses the DataRobot filesystem, listing catalog items or directory "
+        "Browses the DataRobot filesystem, listing catalog directories and their "
         "contents with optional glob or recursive matching."
     ),
 )
@@ -226,7 +226,7 @@ async def file_info(
     ),
     display_name="Files — Read",
     description_ui=(
-        "Reads a file's content as UTF-8 text or base64, optionally limited to a byte range."
+        "Reads a file's content as UTF-8 text or base64, optionally limits read to a byte range."
     ),
 )
 async def file_read(
