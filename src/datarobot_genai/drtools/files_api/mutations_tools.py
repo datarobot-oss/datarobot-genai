@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
     ),
     display_name="Files — Write",
     description_ui=(
-        "Writes inline text or binary content to a file under a catalog item, "
+        "Writes inline text or binary content to a file under a catalog directory, "
         "creating parent folders as needed."
     ),
 )
@@ -197,8 +197,8 @@ async def file_upload(
         "[Files—manage] Run a structural action on the filesystem. action is one of:\n"
         "  'create_dir' — create a new empty catalog item directory; returns its "
         "dr://<catalog_id>/ path. (path/target_path ignored.)\n"
-        "  'delete'     — delete file(s)/director(ies) at path. Set recursive=True to "
-        "remove a non-empty directory. Silent if the path does not exist.\n"
+        "  'delete'     — delete file(s)/director(y|ies) at path. Set recursive=True to "
+        "remove all contents under the specified path. Silent if the path does not exist.\n"
         "  'copy'       — copy path to target_path. Set recursive=True for directories.\n"
         "  'move'       — move/rename path to target_path. Set recursive=True for directories.\n"
         "  'clone'      — clone a whole catalog item directory (path) to a new catalog "
