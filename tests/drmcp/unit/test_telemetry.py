@@ -134,31 +134,6 @@ def test_initialize_telemetry_proceeds_with_config_headers() -> None:
         mock_trace.set_tracer_provider.assert_called_once()
 
 
-def test_setup_otel_metrics_appends_signal_path_and_resource() -> None:
-    with (
-        patch("datarobot_genai.drmcp.core.telemetry.bootstrap_metrics_provider") as mock_bootstrap,
-        patch.dict(
-            "os.environ", {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318/otel/"}, clear=True
-        ),
-    ):
-        telemetry._setup_otel_metrics({"datarobot.service.name": "test-mcp"})
-
-    mock_bootstrap.assert_called_once_with(
-        endpoint="http://collector:4318/otel/v1/metrics",
-        resource_attributes={"datarobot.service.name": "test-mcp"},
-    )
-
-
-def test_setup_otel_metrics_skips_without_endpoint() -> None:
-    with (
-        patch("datarobot_genai.drmcp.core.telemetry.bootstrap_metrics_provider") as mock_bootstrap,
-        patch.dict("os.environ", {}, clear=True),
-    ):
-        telemetry._setup_otel_metrics({})
-
-    mock_bootstrap.assert_not_called()
-
-
 def test_initialize_telemetry_installs_metrics_leg() -> None:
     """The config-gated startup path wires metrics next to traces and logs."""
     mcp_mock = MagicMock()
@@ -174,14 +149,16 @@ def test_initialize_telemetry_installs_metrics_leg() -> None:
         patch("datarobot_genai.drmcp.core.telemetry.get_config", return_value=mock_config),
         patch("datarobot_genai.drmcp.core.telemetry._setup_otel_env_variables"),
         patch("datarobot_genai.drmcp.core.telemetry._setup_otel_exporter"),
-        patch("datarobot_genai.drmcp.core.telemetry._setup_otel_metrics") as mock_metrics,
+        patch("datarobot_genai.drmcp.core.telemetry.bootstrap_metrics_provider") as mock_bootstrap,
         patch("datarobot_genai.drmcp.core.telemetry._setup_otel_logging"),
         patch("datarobot_genai.drmcp.core.telemetry.trace"),
         patch.dict("os.environ", {}, clear=True),
     ):
         _real_initialize_telemetry(mcp_mock)
 
-    mock_metrics.assert_called_once_with({"datarobot.service.name": "test-mcp"})
+    mock_bootstrap.assert_called_once_with(
+        resource_attributes={"datarobot.service.name": "test-mcp"}
+    )
 
 
 @pytest.mark.asyncio

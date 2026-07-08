@@ -27,7 +27,10 @@ from datarobot_genai.drmcpbase import datarobot_otel_metrics as m
 
 
 @pytest.fixture(autouse=True)
-def _reset() -> None:
+def _reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Clear any ambient collector config so each test controls resolution fully.
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
     m._reset_for_testing()
     yield
     m._reset_for_testing()
@@ -57,9 +60,7 @@ def sdk_stubs(monkeypatch: pytest.MonkeyPatch) -> dict:
     return seen
 
 
-def test_no_op_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
+def test_no_op_without_endpoint() -> None:
     assert m.bootstrap_metrics_provider() is False
 
 
@@ -72,11 +73,29 @@ def test_installs_once_then_idempotent(sdk_stubs: dict) -> None:
     assert sdk_stubs["set_provider_calls"] == 1
 
 
-def test_endpoint_from_env(monkeypatch: pytest.MonkeyPatch, sdk_stubs: dict) -> None:
+def test_explicit_endpoint_passed_to_exporter(sdk_stubs: dict) -> None:
+    assert m.bootstrap_metrics_provider(endpoint="http://collector:4318/v1/metrics") is True
+    assert sdk_stubs["exporter_kwargs"] == {"endpoint": "http://collector:4318/v1/metrics"}
+
+
+def test_shared_base_endpoint_env_installs_and_delegates_resolution(
+    monkeypatch: pytest.MonkeyPatch, sdk_stubs: dict
+) -> None:
+    # The shared base URL (also used for traces/logs) is enough on its own; the
+    # OTLP exporter appends /v1/metrics itself, so no endpoint kwarg is passed.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318/otel")
+
+    assert m.bootstrap_metrics_provider() is True
+    assert sdk_stubs["exporter_kwargs"] == {}
+
+
+def test_metrics_specific_endpoint_env_installs(
+    monkeypatch: pytest.MonkeyPatch, sdk_stubs: dict
+) -> None:
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://collector:4318/v1/metrics")
 
     assert m.bootstrap_metrics_provider() is True
-    assert sdk_stubs["exporter_kwargs"] == {"endpoint": "http://collector:4318/v1/metrics"}
+    assert sdk_stubs["exporter_kwargs"] == {}
 
 
 def test_resource_attributes_merged_over_service_name(sdk_stubs: dict) -> None:

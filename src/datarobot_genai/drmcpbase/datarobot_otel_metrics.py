@@ -47,19 +47,6 @@ _STATE: dict[str, bool] = {"installed": False}
 _DEFAULT_EXPORT_INTERVAL_MS = 10_000
 
 
-def resolve_metrics_endpoint_from_env() -> str:
-    """Metrics-specific OTLP endpoint from env (``""`` if unset).
-
-    Deliberately honors only ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` — *not* the
-    shared ``OTEL_EXPORTER_OTLP_ENDPOINT``. In this repo the shared var can hold a
-    traces-specific URL (e.g. ``…/otel/v1/traces``, see ``core/telemetry/datarobot_otel.py``),
-    and passing that to ``OTLPMetricExporter`` would send metrics to the wrong
-    signal path. Callers that want the shared base endpoint should pass
-    ``endpoint=`` explicitly (and include the ``/v1/metrics`` path themselves).
-    """
-    return os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")
-
-
 def _resolve_service_name() -> str:
     return os.getenv("OTEL_SERVICE_NAME") or "datarobot-sandbox"
 
@@ -73,6 +60,13 @@ def bootstrap_metrics_provider(
 ) -> bool:
     """Install a global OTLP/HTTP ``MeterProvider``; return whether it installed.
 
+    When ``endpoint`` is not passed, the exporter resolves it the standard OTLP
+    way: ``OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`` if set, otherwise the shared
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` collector *base* URL (the same one traces
+    and logs use) with ``/v1/metrics`` appended. Headers likewise come from
+    ``OTEL_EXPORTER_OTLP_HEADERS`` unless passed explicitly, so a process that
+    already configured OTel for traces needs nothing extra for metrics.
+
     Returns ``False`` (silently) when no endpoint is configured (the local-dev /
     CI shape), when already installed in this process, or when setup raises.
 
@@ -83,8 +77,13 @@ def bootstrap_metrics_provider(
     if _STATE["installed"]:
         return False
 
-    endpoint = endpoint or resolve_metrics_endpoint_from_env()
-    if not endpoint:
+    if not (
+        endpoint
+        or os.environ.get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+        or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    ):
+        # Without this guard the exporter would fall back to its built-in
+        # localhost default and every unconfigured process would try to export.
         logger.info(
             "Skipping OTel MeterProvider bootstrap: no OTEL_EXPORTER_OTLP_"
             "(METRICS_)ENDPOINT set and no endpoint passed."
@@ -92,11 +91,12 @@ def bootstrap_metrics_provider(
         return False
 
     try:
-        exporter = (
-            OTLPMetricExporter(endpoint=endpoint, headers=headers)
-            if headers
-            else OTLPMetricExporter(endpoint=endpoint)
-        )
+        exporter_kwargs: dict[str, Any] = {}
+        if endpoint:
+            exporter_kwargs["endpoint"] = endpoint
+        if headers:
+            exporter_kwargs["headers"] = headers
+        exporter = OTLPMetricExporter(**exporter_kwargs)
         reader = PeriodicExportingMetricReader(
             exporter,
             export_interval_millis=export_interval_ms or _DEFAULT_EXPORT_INTERVAL_MS,
@@ -111,7 +111,10 @@ def bootstrap_metrics_provider(
         return False
 
     _STATE["installed"] = True
-    logger.info("OTel MeterProvider installed → %s", endpoint)
+    logger.info(
+        "OTel MeterProvider installed → %s",
+        endpoint or "endpoint resolved from OTEL_EXPORTER_OTLP_* env",
+    )
     return True
 
 

@@ -195,24 +195,6 @@ def _setup_otel_exporter() -> None:
         provider.add_span_processor(span_processor)
 
 
-def _setup_otel_metrics(resource_attrs: dict[str, Any]) -> None:
-    """Install the OTLP ``MeterProvider`` alongside the trace/log providers.
-
-    ``OTEL_EXPORTER_OTLP_ENDPOINT`` holds the collector *base* URL (set by
-    ``_setup_otel_env_variables``), so the metrics signal path is appended here.
-    Headers come from ``OTEL_EXPORTER_OTLP_HEADERS``, which the OTLP exporter
-    reads itself when no explicit ``headers`` are passed.
-    """
-    base = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-    if not base:
-        root_logger.info("OTEL_EXPORTER_OTLP_ENDPOINT not set, skipping metrics provider")
-        return
-    bootstrap_metrics_provider(
-        endpoint=base.rstrip("/") + "/v1/metrics",
-        resource_attributes=resource_attrs,
-    )
-
-
 class _ExcludeOtelLogsFilter(logging.Filter):
     """A logging filter to exclude logs from the opentelemetry library."""
 
@@ -324,7 +306,9 @@ def initialize_telemetry(mcp: FastMCP) -> None:
 
     # Setup OTEL exporter
     _setup_otel_exporter()
-    _setup_otel_metrics(resource_attrs)
+    # Metrics leg: the OTLP exporter resolves the endpoint/headers from the same
+    # OTEL_EXPORTER_OTLP_* env vars set above (no-op when they are unset).
+    bootstrap_metrics_provider(resource_attributes=resource_attrs)
     _setup_otel_logging(resource)
 
     # Setup HTTP client instrumentation
