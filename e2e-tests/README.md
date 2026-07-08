@@ -84,14 +84,14 @@ Tests vary by agent and LLM context; some cases are skipped or interpreted diffe
 
 ## DataRobot Memory Service
 
-The `dr-memory-service` case in [cases/pr-tests.yaml](cases/pr-tests.yaml) runs [dragent_tests/test_memory.py](dragent_tests/test_memory.py) against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory`.
+The `memory` case in [cases/memory.yaml](cases/memory.yaml) runs the full test suite against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory` (including [dragent_tests/test_memory.py](dragent_tests/test_memory.py)).
 
 ```shell
 # Full lifecycle (provision MemorySpace → start dragent → pytest → cleanup):
-task cases-run -- pr-tests.yaml --case dr-memory-service
+task cases-run -- memory.yaml
 
-# Trigger the PR matrix in CI (includes dr-memory-service):
-task cases-ci -- pr-tests.yaml
+# Trigger the memory matrix in CI:
+task cases-ci -- memory.yaml
 ```
 
 When iterating with `--no-server`, export `AGENT_MEMORY_SPACE_ID` yourself before starting dragent (the runner skips provisioning in that mode unless the variable is already set).

@@ -376,7 +376,7 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
         "--all-agents-cases",
         default=None,
         help="Comma-separated case names that ignore --agents and expand every "
-             "matrix AGENT (e.g. 'dr-memory-service').",
+             "matrix AGENT (e.g. 'memory').",
     )
 
 

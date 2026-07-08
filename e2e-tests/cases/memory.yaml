@@ -1,0 +1,15 @@
+cases:
+  - name: memory
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      WORKFLOW_FILE: workflow-memory.yaml
+      E2E_PROVISION_MEMORY_SPACE: "true"
+    tests:
+      - ./dragent_tests  # all tests indiscriminately
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex

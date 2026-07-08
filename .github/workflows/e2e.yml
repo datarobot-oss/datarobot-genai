@@ -102,14 +102,15 @@ jobs:
           else
             # PR / push: filter the matrix to agents whose code changed.
             agents_csv=$(echo '${{ needs.detect-changes.outputs.agents }}' | jq -r 'join(",")')
-            extra_args=()
-            if [[ "${{ needs.detect-changes.outputs.memory_changed }}" == "true" ]]; then
-              extra_args+=(--all-agents-cases dr-memory-service)
-            fi
             matrix=$(uv run --script scripts/cases.py generate-matrix \
               pr-tests.yaml \
-              --agents "$agents_csv" \
-              "${extra_args[@]}")
+              --agents "$agents_csv")
+            if [[ "${{ needs.detect-changes.outputs.memory_changed }}" == "true" ]]; then
+              memory_matrix=$(uv run --script scripts/cases.py generate-matrix \
+                memory.yaml)
+              matrix=$(jq -s '{include: (.[0].include + .[1].include)}' \
+                <<< "$matrix"$'\n'"$memory_matrix")
+            fi
           fi
           # Empty `include:` would make the downstream job blow up
           # ("Matrix vector 'include' does not contain any values"); emit a
