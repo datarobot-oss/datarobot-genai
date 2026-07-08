@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.7
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
 ## 0.23.6
 - `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
 
