@@ -14,7 +14,6 @@
 
 import functools
 import logging
-import re
 import traceback
 from collections.abc import Callable
 from typing import Any
@@ -26,33 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from datarobot_genai.drmcputils.exceptions import ToolError as DRToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
-
-# Secret patterns to redact from logs.  Applied in order by
-# ``SecretRedactingFormatter`` (whole match → "[REDACTED]").  Deliberately
-# targeted: a previous catch-all for any 20+-char alphanumeric string also
-# redacted ObjectIds, request/trace ids and class names — making logs unusable
-# while still missing secrets that contain ``-`` or ``_``.
-SECRET_PATTERNS = [
-    r"sk-[a-zA-Z0-9_-]+",  # OpenAI-style keys (incl. sk-proj-…, any length)
-    r"AKIA[0-9A-Z]{16}",  # AWS Access Key pattern
-    # JWTs — three base64url segments (DataRobot/Okta access tokens)
-    r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
-    # Authorization header values: "Bearer <token>" / "Basic <base64>".  The value
-    # must be credential-shaped — contain a digit/base64 symbol, or 10+ chars of
-    # mixed case — so prose like "Basic authentication disabled" survives.  The
-    # (?i:) scope keeps the shape checks case-sensitive.
-    r"(?i:\b(?:bearer|basic))\s+"
-    r"(?:(?=\S*[0-9+/=])[A-Za-z0-9._~+/=-]{6,}"
-    r"|(?=\S*[a-z])(?=\S*[A-Z])[A-Za-z0-9._~+/=-]{10,})",
-    # Assignments of secret-shaped keys, incl. prefixed forms: token=…, api_key: …,
-    # DATAROBOT_API_TOKEN=…, client_secret=…, X-DataRobot-Authorization: …
-    # The stem must END the key (``tokens=1500`` survives) and the value must be
-    # credential-shaped: not a bare number (``completion_token=300`` survives) and
-    # not a short lowercase diagnostic word (``api_key: missing`` survives).
-    r"(?i:\b[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|apikey|"
-    r"access[_-]?key|authorization|credentials?))\b\s*[=:]\s*"
-    r"(?!\d+\b)(?:(?=\S*[0-9+/=])\S{6,}|(?=\S*[a-z])(?=\S*[A-Z])\S{10,}|\S{16,})",
-]
+from datarobot_genai.drmcputils.log_redaction import redact_secrets
 
 
 class SecretRedactingFormatter(logging.Formatter):
@@ -60,13 +33,7 @@ class SecretRedactingFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         msg = super().format(record)
-        return self._redact_secrets(msg)
-
-    def _redact_secrets(self, message: str) -> str:
-        """Redact potential secrets from log messages."""
-        for pattern in SECRET_PATTERNS:
-            message = re.sub(pattern, "[REDACTED]", message)
-        return message
+        return redact_secrets(msg)
 
 
 class MCPLogging:
