@@ -145,7 +145,13 @@ class EvalRunner:
         # 5. Normalize output
         try:
             normalized = normalize_output(
-                nemo_output_dir, dataset, self.endpoint, self.pipeline, run_id
+                nemo_output_dir,
+                dataset,
+                self.endpoint,
+                self.pipeline,
+                run_id,
+                benchmark=str(cfg["benchmark"]["name"]),
+                has_judge=bool(cfg.get("judge")),
             )
         except Exception as e:  # noqa: BLE001
             write_status(
@@ -169,7 +175,7 @@ class EvalRunner:
         print("Results: output/eval_results.json")
         print(f"  Total cases:        {normalized['total_cases']}")
         print(f"  Scored / inconcl.:  {s['scored_cases']} / {s['inconclusive_cases']}")
-        print(f"  Mean quality score: {s['mean_quality_score']}")
+        print(f"  Mean score:         {s['mean_score']}")
         print(f"  Pass rate:          {s['pass_rate']}")
         print(f"  Good case pass:     {s['good_case_pass_rate']}")
         print(f"  Bad case pass:      {s['bad_case_pass_rate']}")

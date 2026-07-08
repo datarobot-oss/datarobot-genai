@@ -32,6 +32,8 @@ def normalize_output(
     endpoint: str,
     pipeline: str,
     run_id: str,
+    benchmark: str = "",
+    has_judge: bool = False,
 ) -> dict[str, Any]:
     dataset_by_id: dict[str, dict[str, Any]] = {}
     for c in dataset:
@@ -66,38 +68,43 @@ def normalize_output(
             original = dataset_by_id.get(case_id, {})
 
             scores: dict[str, Any] = pred.get("scores") or {}
-            quality_score: Any = scores.get("score")
+            score: Any = scores.get("score")
             grade: str = scores.get("judge_grade", "")
-            reason: str = scores.get("reason", "")
+            reason_raw: str = scores.get("reason", "")
             status: str = pred.get("status", "")
 
-            scored_ok = isinstance(quality_score, (int, float))
-            passed: bool | None = quality_score >= PASS_THRESHOLD if scored_ok else None
+            scored_ok = isinstance(score, (int, float))
+            passed: bool | None = score >= PASS_THRESHOLD if scored_ok else None
 
-            # A sample is "inconclusive" when the agent answered but the judge
-            # call failed (no numeric score). See BUGS.md #3.
-            # Judge-free benchmarks emit a human-readable ``reason`` (e.g.
-            # "canary present", "found EMAIL"); judge-based ones report the grade.
+            # ``reason`` is the human-readable explanation for the score,
+            # whatever its source: a judge grade for judge-based benchmarks, or a
+            # deterministic match explanation for judge-free ones. A sample is
+            # "inconclusive" when the agent answered but scoring produced no
+            # numeric score (e.g. a judge call failed). See BUGS.md #3.
             if scored_ok:
-                judge_reason = reason or f"judge grade: {grade}"
+                reason = reason_raw or (f"judge grade: {grade}" if grade else "")
             elif status == "scored":
-                detail = reason or grade or "returned no score"
-                judge_reason = f"inconclusive — {detail}"
+                detail = reason_raw or grade or "returned no score"
+                reason = f"inconclusive — {detail}"
             else:
-                judge_reason = f"inconclusive — agent {status}"
+                reason = f"inconclusive — agent {status}"
 
             cases.append(
                 {
                     "id": case_id,
+                    "benchmark": benchmark,
                     "input": original.get("input", meta.get("input", "")),
                     "expected_behavior": meta.get(
                         "expected_behavior", original.get("expected_behavior")
                     ),
                     "agent_response": pred.get("response") or "",
-                    "quality_score": quality_score,
-                    "judge_reason": judge_reason,
+                    "has_judge": has_judge,
+                    "score": score,
                     "passed": passed,
-                    "answer_match_score": None,
+                    "reason": reason,
+                    # Raw judge grade, preserved for traceability; null when no
+                    # judge ran or the judge returned no grade.
+                    "judge_grade": grade or None,
                     "notes": original.get("notes", meta.get("notes", "")),
                     "source": original.get("source", meta.get("source", "")),
                 }
@@ -110,13 +117,15 @@ def normalize_output(
             cases.append(
                 {
                     "id": c["id"],
+                    "benchmark": benchmark,
                     "input": c.get("input", ""),
                     "expected_behavior": c.get("expected_behavior"),
                     "agent_response": "",
-                    "quality_score": None,
-                    "judge_reason": "inconclusive — no prediction",
+                    "has_judge": has_judge,
+                    "score": None,
                     "passed": None,
-                    "answer_match_score": None,
+                    "reason": "inconclusive — no prediction",
+                    "judge_grade": None,
                     "notes": c.get("notes", ""),
                     "source": c.get("source", ""),
                 }
@@ -133,9 +142,9 @@ def normalize_output(
                         "value"
                     )
 
-    scored = [c for c in cases if isinstance(c["quality_score"], (int, float))]
+    scored = [c for c in cases if isinstance(c["score"], (int, float))]
     inconclusive = len(cases) - len(scored)
-    mean_score = sum(c["quality_score"] for c in scored) / len(scored) if scored else None
+    mean_score = sum(c["score"] for c in scored) / len(scored) if scored else None
     pass_rate = sum(1 for c in scored if c["passed"]) / len(scored) if scored else None
     good = [c for c in scored if c["expected_behavior"] == "good"]
     bad = [c for c in scored if c["expected_behavior"] == "bad"]
@@ -149,7 +158,7 @@ def normalize_output(
         "summary": {
             "scored_cases": len(scored),
             "inconclusive_cases": inconclusive,
-            "mean_quality_score": round(mean_score, 4) if mean_score is not None else None,
+            "mean_score": round(mean_score, 4) if mean_score is not None else None,
             "pass_rate": round(pass_rate, 4) if pass_rate is not None else None,
             "good_case_pass_rate": (
                 round(sum(1 for c in good if c["passed"]) / len(good), 4) if good else None

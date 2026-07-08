@@ -4,8 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.7
+## 0.23.9
 - e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
+
+## 0.23.8
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
+
+## 0.23.7
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
+## 0.23.6
+- `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
 
 ## 0.23.5
 - `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
