@@ -1,3 +1,5 @@
+# Manual-only: full dragent_tests suite with workflow-memory.yaml.
+# PR/push uses the memory case in pr-tests.yaml (memory + tools + streaming).
 cases:
   - name: memory
     env:

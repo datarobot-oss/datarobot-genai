@@ -84,13 +84,18 @@ Tests vary by agent and LLM context; some cases are skipped or interpreted diffe
 
 ## DataRobot Memory Service
 
-The `memory` case in [cases/memory.yaml](cases/memory.yaml) runs the full test suite against each dragent agent framework wrapped with `streaming_memory_agent` and `dr_mem0_memory` (including [dragent_tests/test_memory.py](dragent_tests/test_memory.py)).
+PR and push runs use [cases/pr-tests.yaml](cases/pr-tests.yaml):
+
+- `memory` — `test_memory.py`, `test_tools.py`, and `test_streaming.py` with `workflow-memory.yaml` and ephemeral MemorySpace provisioning.
+
+The separate [cases/memory.yaml](cases/memory.yaml) case is for **manual** runs only: it exercises the full `./dragent_tests` suite against each agent wrapped with `streaming_memory_agent` and `dr_mem0_memory`.
 
 ```shell
-# Full lifecycle (provision MemorySpace → start dragent → pytest → cleanup):
-task cases-run -- memory.yaml
+# PR/push (via pr-tests.yaml — also what CI runs on pull_request):
+task cases-run -- pr-tests.yaml --case memory AGENT=nat
 
-# Trigger the memory matrix in CI:
+# Full memory matrix (manual / workflow_dispatch only):
+task cases-run -- memory.yaml
 task cases-ci -- memory.yaml
 ```
 

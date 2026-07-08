@@ -19,9 +19,10 @@ message via ``dr_mem0_memory`` (backed by a real ``MemorySpace``), then a
 follow-up turn retrieves the fact and the inner agent recalls it in the
 response.
 
-Requires the ``memory`` case in ``cases/memory.yaml`` (or equivalent env): ``WORKFLOW_FILE=workflow-memory.yaml``
-and ``AGENT_MEMORY_SPACE_ID`` set before the dragent server starts
-(``E2E_PROVISION_MEMORY_SPACE=true`` handles that in ``run_local.py`` / CI).
+Requires ``WORKFLOW_FILE=workflow-memory.yaml`` and ``AGENT_MEMORY_SPACE_ID`` set
+before the dragent server starts (``E2E_PROVISION_MEMORY_SPACE=true`` handles that
+in ``run_local.py`` / CI). Runs on PRs via the ``memory`` case in
+``cases/pr-tests.yaml``; the full suite uses ``cases/memory.yaml`` (manual only).
 Works with any dragent agent framework (NAT, CrewAI, LangGraph, LlamaIndex).
 """
 
