@@ -218,13 +218,25 @@ class FileSystemStore(Protocol):
         ...
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
         """Copy ``source`` to ``dest`` within the filesystem."""
         ...
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
         """Move/rename ``source`` to ``dest`` within the filesystem."""
         ...
@@ -389,14 +401,44 @@ class DataRobotFileSystemStore:
         await self._run(lambda fs: fs.rm(path, recursive=recursive, maxdepth=maxdepth))
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
-        await self._run(lambda fs: fs.copy(source, dest, recursive=recursive, maxdepth=maxdepth))
+        strategy = overwrite_strategy_from_name(overwrite)
+        await self._run(
+            lambda fs: fs.copy(
+                source,
+                dest,
+                recursive=recursive,
+                maxdepth=maxdepth,
+                overwrite_strategy=strategy,
+            )
+        )
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
-        await self._run(lambda fs: fs.mv(source, dest, recursive=recursive, maxdepth=maxdepth))
+        strategy = overwrite_strategy_from_name(overwrite)
+        await self._run(
+            lambda fs: fs.mv(
+                source,
+                dest,
+                recursive=recursive,
+                maxdepth=maxdepth,
+                overwrite_strategy=strategy,
+            )
+        )
 
     async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
         return await self._run(
