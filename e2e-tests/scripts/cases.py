@@ -302,11 +302,7 @@ def expand(
     out: list[Combination] = []
     for case in selected:
         out.extend(
-            _expand_case(
-                case,
-                agents=agents,
-                overrides=overrides,
-            )
+            _expand_case(case, agents=agents, overrides=overrides)
         )
     return out
 
@@ -383,11 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         case_path = resolve_case_file(args.case_file)
         cases = load_cases(case_path)
         agents = _parse_csv(args.agents)
-        combos = expand(
-            cases,
-            case_name=args.case,
-            agents=agents,
-        )
+        combos = expand(cases, case_name=args.case, agents=agents)
     except (ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

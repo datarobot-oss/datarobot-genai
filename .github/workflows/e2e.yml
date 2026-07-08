@@ -75,7 +75,7 @@ jobs:
       always() && (
         github.event_name == 'workflow_dispatch' ||
         (needs.detect-changes.result == 'success' &&
-         needs.detect-changes.outputs.agents != '[]'))
+         needs.detect-changes.outputs.agents != '[]')
       )
     runs-on: ubuntu-latest
     outputs:
