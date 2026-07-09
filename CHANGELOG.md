@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.10
+## 0.23.11
 - `dragent`: added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
+## 0.23.10
+- `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.
+- `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
 
 ## 0.23.9
 - Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery 
