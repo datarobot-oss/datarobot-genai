@@ -25,16 +25,12 @@ class TestDrtoolsPrivateMetadataKeys:
     def test_contains_all_expected_keys(self) -> None:
         assert DRTOOLS_PRIVATE_METADATA_KEYS == frozenset(
             {
-                "excluded_from_global_mcp",
                 "display_name",
                 "description_ui",
                 "auth_provider",
                 "categories",
             }
         )
-
-    def test_excluded_from_global_mcp_in_set(self) -> None:
-        assert "excluded_from_global_mcp" in DRTOOLS_PRIVATE_METADATA_KEYS
 
     def test_gallery_display_fields_in_set(self) -> None:
         for key in ("display_name", "description_ui", "auth_provider", "categories"):

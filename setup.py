@@ -123,6 +123,11 @@ drtools =  drmcputils + [
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
+    # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
+    # drmcpbase metrics bootstrap) import these at module level.
+    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-sdk>=1.22.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
 
 # eval is standalone set of dependencies for evaluation utilities only (no core).
@@ -139,6 +144,11 @@ drmcpbase = drmcputils + [
     "aiohttp>=3.13.3,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
     "cachetools>=5.0.0,<8.0.0",
+    # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
+    # drmcpbase metrics bootstrap) import these at module level.
+    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-sdk>=1.22.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.

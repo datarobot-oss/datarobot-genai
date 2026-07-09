@@ -263,3 +263,20 @@ async def test_execute_code_sandbox_error_translates(dr_env: None) -> None:
             await execute_code("raise RuntimeError('boom')")
 
     assert excinfo.value.kind == ToolErrorKind.UPSTREAM
+
+
+@pytest.mark.asyncio
+async def test_execute_code_runs_through_instrumented_sandbox(dr_env: None) -> None:
+    # The SLIs only fire if the workload sandbox is wrapped in InstrumentedSandbox.
+    mock_wrapper = MagicMock()
+    mock_wrapper.return_value.run = AsyncMock(return_value=_result())
+    with patch(
+        "datarobot_genai.drtools.core.sandbox.utils.InstrumentedSandbox",
+        new=mock_wrapper,
+    ):
+        await execute_code("_return = None")
+
+    mock_wrapper.assert_called_once()
+    inner = mock_wrapper.call_args.args[0]
+    assert type(inner).__name__ == "DataRobotWorkloadSandbox"
+    mock_wrapper.return_value.run.assert_awaited_once()

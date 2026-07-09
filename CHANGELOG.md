@@ -4,9 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.3
+## 0.23.10
 - `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.
 - `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
+
+## 0.23.9
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery 
+
+## 0.23.8
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
+
+## 0.23.7
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
+## 0.23.6
+- `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
+
+## 0.23.5
+- `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
+- `drmcpbase`: `bootstrap_metrics_provider` — OTLP/HTTP `MeterProvider` bootstrap; endpoint/headers resolve the standard OTLP way from `OTEL_EXPORTER_OTLP_*` (idempotent, no-op without an endpoint, never raises).
+- `drmcp`: `initialize_telemetry` installs the metrics provider next to the trace/log providers, and `execute_code` runs through `InstrumentedSandbox` — sandbox SLIs turn on with the existing `OTEL_ENABLED` config.
+- `drmcp`: fixed `_setup_otel_env_variables` resolving endpoint/headers as a pair — with `otel_entity_id` set (validator-assembled headers) the endpoint was never bridged and exporters silently targeted the OTLP localhost default; the two env vars now resolve independently.
+- OTel (`opentelemetry-api`/`-sdk`/`-exporter-otlp-proto-http`) is now a regular dependency of the `drtools` and `drmcpbase` extras (module-level imports; no lazy-import fallbacks).
+
+## 0.23.4
+- Upgrade github-actions to the latest releases with bug fixes, label validation and backport/cherry-picking capabilities
+
+## 0.23.3
+- `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
 
 ## 0.23.2
 - `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.

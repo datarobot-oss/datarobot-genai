@@ -124,7 +124,6 @@ async def file_write(
         "Example (glob): file_upload(local_path='/tmp/**/*.csv', path='dr://abc123/csv/', "
         "recursive=True)"
     ),
-    excluded_from_global_mcp=True,
     display_name="Files — Upload",
     description_ui=(
         "Streams files, directories, or glob matches from the server's local disk "
