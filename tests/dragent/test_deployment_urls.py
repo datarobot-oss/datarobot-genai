@@ -17,16 +17,16 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.core.runtime import get_deployment_id
+from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.core.runtime import is_deployment_mode
+from datarobot_genai.core.runtime import is_hosted_runtime
+from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import _DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
-from datarobot_genai.dragent.deployment_urls import get_deployment_id
-from datarobot_genai.dragent.deployment_urls import get_workload_id
-from datarobot_genai.dragent.deployment_urls import is_deployment_mode
-from datarobot_genai.dragent.deployment_urls import is_hosted_runtime
-from datarobot_genai.dragent.deployment_urls import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 

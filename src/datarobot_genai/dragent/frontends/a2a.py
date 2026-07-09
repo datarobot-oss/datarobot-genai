@@ -35,10 +35,10 @@ from a2a.types import SecurityScheme
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.core.runtime import get_deployment_id
+from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
-from datarobot_genai.dragent.deployment_urls import get_deployment_id
-from datarobot_genai.dragent.deployment_urls import get_workload_id
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 from .register import DRAgentA2AExternalConfig

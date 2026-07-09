@@ -26,9 +26,6 @@ import os
 DEPLOYMENT_A2A_PATH = "directAccess/a2a"
 WORKLOAD_A2A_PATH = "a2a"
 
-WORKLOAD_ID_ENV = "WORKLOAD_ID"
-DEPLOYMENT_ID_ENV = "MLOPS_DEPLOYMENT_ID"
-
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 
 
@@ -70,31 +67,6 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     if require:
         raise ValueError("DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set.")
     return _DEFAULT_DATAROBOT_ENDPOINT
-
-
-def get_workload_id() -> str | None:
-    """Return the platform-injected workload ID, or None when not on a workload."""
-    return os.environ.get(WORKLOAD_ID_ENV, "").strip() or None
-
-
-def get_deployment_id() -> str | None:
-    """Return the platform-injected deployment ID, or None when not on a deployment."""
-    return os.environ.get(DEPLOYMENT_ID_ENV, "").strip() or None
-
-
-def is_workload_mode() -> bool:
-    """Return True when running inside a DataRobot workload container."""
-    return get_workload_id() is not None
-
-
-def is_deployment_mode() -> bool:
-    """Return True when running inside a DataRobot custom-model deployment container."""
-    return get_deployment_id() is not None
-
-
-def is_hosted_runtime() -> bool:
-    """Return True when running in any DataRobot-hosted runtime (vs local dev)."""
-    return is_workload_mode() or is_deployment_mode()
 
 
 def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
