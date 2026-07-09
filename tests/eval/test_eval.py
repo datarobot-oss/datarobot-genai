@@ -41,7 +41,7 @@ _NORMALIZED_RESULTS: dict[str, Any] = {
     "summary": {
         "scored_cases": 1,
         "inconclusive_cases": 0,
-        "mean_quality_score": 1.0,
+        "mean_score": 1.0,
         "pass_rate": 1.0,
         "good_case_pass_rate": 1.0,
         "bad_case_pass_rate": None,
