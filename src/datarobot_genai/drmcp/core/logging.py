@@ -14,7 +14,6 @@
 
 import functools
 import logging
-import re
 import traceback
 from collections.abc import Callable
 from typing import Any
@@ -26,13 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from datarobot_genai.drmcputils.exceptions import ToolError as DRToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
-
-# Secret patterns to redact from logs
-SECRET_PATTERNS = [
-    r"([a-zA-Z0-9]{20,})",  # Long alphanumeric strings (potential tokens)
-    r"(sk-[a-zA-Z0-9]{48})",  # OpenAI-style keys
-    r"(AKIA[0-9A-Z]{16})",  # AWS Access Key pattern
-]
+from datarobot_genai.drmcputils.log_redaction import redact_secrets
 
 
 class SecretRedactingFormatter(logging.Formatter):
@@ -40,13 +33,7 @@ class SecretRedactingFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         msg = super().format(record)
-        return self._redact_secrets(msg)
-
-    def _redact_secrets(self, message: str) -> str:
-        """Redact potential secrets from log messages."""
-        for pattern in SECRET_PATTERNS:
-            message = re.sub(pattern, "[REDACTED]", message)
-        return message
+        return redact_secrets(msg)
 
 
 class MCPLogging:
