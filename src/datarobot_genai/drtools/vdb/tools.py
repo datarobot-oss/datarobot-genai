@@ -33,13 +33,24 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 logger = logging.getLogger(__name__)
 
 
+def _is_vector_database_deployment(deployment: dict[str, Any]) -> bool:
+    model = deployment.get("model")
+    if isinstance(model, dict) and model.get("targetType") == "VectorDatabase":
+        return True
+    capabilities = deployment.get("capabilities")
+    return (
+        isinstance(capabilities, dict)
+        and capabilities.get("supportsVectorDatabaseQuerying") is True
+    )
+
+
 @tool_metadata(
     tags={"vdb", "read", "list", "daria"},
     description=(
         "[VDB—discover deployments] Use when the user needs deployed Vector Databases (VDBs) as "
-        "ID/label/status records. Read-only. Filters DataRobot deployments to "
-        "modelTargetType=VectorDatabase. Not predictive deployments (deployment_get_list), not "
-        "AI Catalog datasets (catalog_list_datasets). Next step: vdb_query."
+        "ID/label/status records. Read-only. Filters deployments client-side to vector-database "
+        "targets. Not predictive deployments (deployment_get_list), not AI Catalog datasets "
+        "(catalog_list_datasets). Next step: vdb_query."
     ),
     display_name="Vector Database — List",
     description_ui="List deployed vector database (VDB) deployments.",
@@ -59,21 +70,29 @@ async def vdb_list(
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
 
     limit, message = clamp_limit(limit)
-
-    params: dict[str, Any] = {"limit": limit, "modelTargetType": "VectorDatabase"}
-    if offset is not None:
-        params["offset"] = offset
+    start = offset or 0
 
     with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
         try:
-            response = rest_client.get("deployments/", params=params)
+            all_deployments = list(
+                dr.utils.pagination.unpaginate(
+                    initial_url="deployments/",
+                    initial_params={},
+                    client=rest_client,
+                )
+            )
         except ClientError as e:
             raise_tool_error_for_client_error(e)
-        api_response = response.json()
-        vdbs = api_response.get("data", [])
-        if not isinstance(vdbs, list):
-            vdbs = []
+
+        vdb_deployments = [d for d in all_deployments if _is_vector_database_deployment(d)]
+        total_count = len(vdb_deployments)
+        vdbs = vdb_deployments[start : start + limit]
+        api_response: dict[str, Any] = {"total_count": total_count}
+        if start + limit < total_count:
+            api_response["next"] = start + limit
+        if start > 0:
+            api_response["previous"] = max(0, start - limit)
 
     final_results: dict[str, Any] = {
         "vector_databases": [

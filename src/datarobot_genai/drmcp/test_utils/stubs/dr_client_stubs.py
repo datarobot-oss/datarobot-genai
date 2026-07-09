@@ -507,14 +507,6 @@ def test_create_dr_client() -> StubDRClient:
                     "model": {"targetType": "Binary"},
                 },
             ]
-            model_target_type = (params or {}).get("modelTargetType")
-            if model_target_type:
-                all_deployments = [
-                    d
-                    for d in all_deployments
-                    if isinstance(d.get("model"), dict)
-                    and d["model"].get("targetType") == model_target_type
-                ]
             response = StubRestResponse({"data": all_deployments, "next": None})
         elif "useCases" in url:
             data: list[dict] = [
