@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.16
+## 0.23.17
 - `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.16
+- Fix `eval_status.json` not updated to failed on early input validation errors.
 
 ## 0.23.15
 - `drtools/core/clients` (MODEL-24077): fixed `WorkloadApiClient.list_workload_logs()` (used by the `workload_logs_get` tool) raising `AssertionError: Wrong type` on every call — it built its request `params` as a `list[tuple[str, Any]]` instead of the `dict[str, Any]` the DataRobot SDK's REST client requires; `includes`/`excludes` still encode as repeated query keys since `requests` accepts list-valued dict entries.
