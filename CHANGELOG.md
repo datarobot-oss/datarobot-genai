@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.17
+## 0.23.18
 - `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
+
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
 
 ## 0.23.16
 - Fix `eval_status.json` not updated to failed on early input validation errors.
