@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). This can cause HTTP 422 results in streaming agents.
+
 ## 0.23.16
 - Fix `eval_status.json` not updated to failed on early input validation errors.
 
