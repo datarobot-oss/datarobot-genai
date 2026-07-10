@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
 
 ## 0.23.13
 - `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 

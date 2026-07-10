@@ -1094,7 +1094,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-early-access"
-version = "3.14.0.2026.3.18.162920"
+version = "3.16.0.2026.5.25.174233"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1109,9 +1109,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/63/1ea3461a165c51f255ccdcb96411e82671cf8d0b3791718c2042aa5f0bfc/datarobot_early_access-3.14.0.2026.3.18.162920.tar.gz", hash = "sha256:94eacf05010a01131679017b2742b6bca6800d23e2c48210e1968af6e40e6e35", size = 837031, upload-time = "2026-03-18T16:29:24.138Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/e2/c13f1f4eddccdade45c13486e85ea917c9f9b277a7a24e12084728c538c2/datarobot_early_access-3.16.0.2026.5.25.174233.tar.gz", hash = "sha256:6ba44eb699721f9492e9d94fbb596e919509b58bd91e20718583348ee0b4e94d", size = 858150, upload-time = "2026-05-25T17:42:37.806Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/7b/b1a34fb997290d22159db756a41a047c47335f656598d52f4bb014a6a0f1/datarobot_early_access-3.14.0.2026.3.18.162920-py3-none-any.whl", hash = "sha256:7625a2cd3c1670b5d6b927b48e464750f68dff4463db11079f6e81fab257305e", size = 909539, upload-time = "2026-03-18T16:29:22.525Z" },
+    { url = "https://files.pythonhosted.org/packages/52/30/b983933e139fd4640d864dc21f830e5628e7e2c197a81f19acf012fd5217/datarobot_early_access-3.16.0.2026.5.25.174233-py3-none-any.whl", hash = "sha256:91927f577219f1e77c12a863416e464d6a70d4aa68592b2dcbaeda823020cb96", size = 932480, upload-time = "2026-05-25T17:42:35.539Z" },
 ]
 
 [package.optional-dependencies]
@@ -1121,7 +1121,7 @@ fs = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.23.13"
+version = "0.23.14"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1439,16 +1439,16 @@ requires-dist = [
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.14.0.2026.3.18.162920" },
+    { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.16.0.2026.5.25.174233" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.33,<12.0.0" },
