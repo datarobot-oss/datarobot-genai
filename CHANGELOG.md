@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.15
+- `drtools/core/clients` (MODEL-24077): fixed `WorkloadApiClient.list_workload_logs()` (used by the `workload_logs_get` tool) raising `AssertionError: Wrong type` on every call — it built its request `params` as a `list[tuple[str, Any]]` instead of the `dict[str, Any]` the DataRobot SDK's REST client requires; `includes`/`excludes` still encode as repeated query keys since `requests` accepts list-valued dict entries.
+
 ## 0.23.14
 - `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
 
