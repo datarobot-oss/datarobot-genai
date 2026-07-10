@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.18
+- `core`/`drmcp` (BUZZOK-31543): replaced `datarobot-early-access` with stable `datarobot>=3.17` (`[fs]` + the `datarobot.models` user-MCP-server API for `drmcp`, promoted in 3.17) → no more early-access/stable `datarobot` namespace clash.
+
 ## 0.23.17
 - Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
 
@@ -17,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
 
 ## 0.23.13
-- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
 
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
