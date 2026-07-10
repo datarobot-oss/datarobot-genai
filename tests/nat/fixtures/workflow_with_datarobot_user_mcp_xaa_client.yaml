@@ -1,0 +1,12 @@
+authentication:
+  okta_auth:
+    _type: okta_cross_app_access
+
+function_groups:
+  mcp:
+    _type: mcp_client_with_xaa_support
+    forward_inbound_headers: true
+    server:
+      transport: streamable-http
+      url: "https://fool/bar/mcp"
+      auth_provider: okta_auth

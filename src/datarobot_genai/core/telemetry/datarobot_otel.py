@@ -19,16 +19,13 @@ both the NAT telemetry exporter
 (``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
 the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 
-* ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``DATAROBOT_API_TOKEN`` /
-  ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into the values the OTel ingest
-  expects (``deployment-<id>`` entity id; ``<host>/otel/v1/traces`` endpoint).
+* ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``WORKLOAD_ID`` /
+  ``DATAROBOT_API_TOKEN`` / ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into
+  the values the OTel ingest expects (``deployment-<id>`` or ``workload-<id>``
+  entity id; ``<host>/otel/v1/traces`` endpoint).
 * ``bootstrap_otel_provider_for_datarobot`` — install a global OTel SDK
   ``TracerProvider`` pointed at the DataRobot ingest so framework
-  auto-instrumentors (``LangchainInstrumentor``, ``CrewAIInstrumentor``,
-  ``LlamaIndexInstrumentor``) actually export spans. NAT's own exporter
-  pipeline (``OTLPSpanAdapterExporter``) does not touch the OTel SDK's global
-  ``TracerProvider``, so without this bootstrap, framework spans go to the
-  default no-op tracer and never reach DataRobot.
+  auto-instrumentors actually export spans.
 """
 
 from __future__ import annotations
@@ -36,6 +33,9 @@ from __future__ import annotations
 import logging
 import os
 import urllib.parse
+
+from datarobot_genai.core.runtime import get_deployment_id
+from datarobot_genai.core.runtime import get_workload_id
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,11 @@ logger = logging.getLogger(__name__)
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 
 # The DataRobot OTel ingest expects entity ids (and deployment-derived service
-# names) in the ``deployment-<id>`` shape. Single source of truth so the
-# resolver that produces it and the validator that checks it can't drift.
-ENTITY_ID_PREFIX = "deployment-"
+# names) in the ``deployment-<id>`` or ``workload-<id>`` shape. Single source
+# of truth so the resolver that produces it and the validator that checks it
+# can't drift.
+DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
+WORKLOAD_ENTITY_ID_PREFIX = "workload-"
 
 
 def resolve_api_key_from_env() -> str:
@@ -58,11 +60,14 @@ def resolve_api_key_from_env() -> str:
 
 
 def resolve_entity_id_from_env() -> str:
-    # MLOPS_DEPLOYMENT_ID holds the bare deployment ID inside a DR deployment;
-    # auto-prepend the 'deployment-' prefix required by the OTel ingest path.
-    # Mirrors the MLOPS_DEPLOYMENT_ID-driven pattern used by the A2A frontend.
-    deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    return f"{ENTITY_ID_PREFIX}{deployment_id}" if deployment_id else ""
+    # MLOPS_DEPLOYMENT_ID / WORKLOAD_ID hold the bare ID inside a DR container;
+    # auto-prepend the 'deployment-' or 'workload-' prefix required by the OTel
+    # ingest path. Deployment takes precedence when both are present.
+    if deployment_id := get_deployment_id():
+        return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
+    if workload_id := get_workload_id():
+        return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
+    return ""
 
 
 def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
@@ -125,8 +130,10 @@ def _resolve_service_name() -> str:
     # then a generic fallback so spans always have *some* service identity.
     if name := os.getenv("OTEL_SERVICE_NAME"):
         return name
-    if deployment_id := os.getenv("MLOPS_DEPLOYMENT_ID"):
-        return f"{ENTITY_ID_PREFIX}{deployment_id}"
+    if deployment_id := get_deployment_id():
+        return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
+    if workload_id := get_workload_id():
+        return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
     return "datarobot-agent"
 
 
@@ -152,12 +159,15 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
       routes off the ``X-DataRobot-*`` headers we set on the exporter, not off
       resource attributes, so the merge is safe.
 
+    Entity identity is derived from ``MLOPS_DEPLOYMENT_ID`` or ``WORKLOAD_ID``
+    (deployment takes precedence).
+
     Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
 
-    * the DataRobot deployment env is incomplete (``MLOPS_DEPLOYMENT_ID``,
-      ``DATAROBOT_API_TOKEN``, or ``DATAROBOT_(PUBLIC_)ENDPOINT`` missing) —
-      the local-dev / CI shape;
+    * the hosted-runtime env is incomplete (``MLOPS_DEPLOYMENT_ID`` or
+      ``WORKLOAD_ID``, ``DATAROBOT_API_TOKEN``, or
+      ``DATAROBOT_(PUBLIC_)ENDPOINT`` missing) — the local-dev / CI shape;
     * something other than an SDK ``TracerProvider`` or the default proxy is
       already installed (we can't attach to an unknown provider type);
     * this function has already run successfully in this process.
@@ -169,8 +179,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     endpoint = resolve_otel_traces_endpoint_from_env()
     if not headers or not endpoint:
         logger.info(
-            "Skipping OTel TracerProvider bootstrap: DataRobot deployment env "
-            "(MLOPS_DEPLOYMENT_ID / DATAROBOT_API_TOKEN / "
+            "Skipping OTel TracerProvider bootstrap: hosted-runtime env "
+            "(MLOPS_DEPLOYMENT_ID or WORKLOAD_ID / DATAROBOT_API_TOKEN / "
             "DATAROBOT_(PUBLIC_)ENDPOINT) not fully set."
         )
         return False

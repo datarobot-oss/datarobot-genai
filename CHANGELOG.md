@@ -4,8 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.11
+## 0.23.15
 - `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
+
+## 0.23.12
+- `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
+- `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
+## 0.23.11
+- `drtools/files_api` (MODEL-24055): fixed `file_manage(action='delete')` reporting `{"deleted": true}` when a non-recursive delete targeted a non-empty directory — it now raises a validation `ToolError` telling the caller to pass `recursive=True`. Deleting a nonexistent path remains a silent no-op.
+- `drtools/files_api` (MODEL-24056): made `file_manage(action='clone')`'s `files_to_omit` tolerate a JSON-encoded string (some MCP clients serialize array arguments this way) and treat an empty list the same as omitting the argument (the platform rejects an empty list outright).
 
 ## 0.23.10
 - `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.

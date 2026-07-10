@@ -24,6 +24,8 @@ import pytest
 
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.files.file_system_store import DirectoryNotEmptyError
 from datarobot_genai.drtools.files_api import common_utils
 from datarobot_genai.drtools.files_api import mutations_tools as mut_mod
 
@@ -31,8 +33,11 @@ from datarobot_genai.drtools.files_api import mutations_tools as mut_mod
 class FakeStore:
     """Async FileSystemStore double recording calls; create_dir/clone return scripted ids."""
 
-    def __init__(self, *, new_catalog_id: str = "newcat") -> None:
+    def __init__(
+        self, *, new_catalog_id: str = "newcat", delete_error: Exception | None = None
+    ) -> None:
         self._new_catalog_id = new_catalog_id
+        self._delete_error = delete_error
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
     def _record(self, name: str, *args: Any, **kwargs: Any) -> None:
@@ -60,6 +65,8 @@ class FakeStore:
 
     async def delete(self, path: str, *, recursive: bool = False, maxdepth: Any = None) -> None:
         self._record("delete", path, recursive=recursive, maxdepth=maxdepth)
+        if self._delete_error is not None:
+            raise self._delete_error
 
     async def copy(
         self,
@@ -281,6 +288,33 @@ async def test_file_manage_delete_recursive(monkeypatch: pytest.MonkeyPatch) -> 
     assert store.calls[0] == ("delete", ("dr://abc/old/",), {"recursive": True, "maxdepth": 2})
 
 
+async def test_file_manage_delete_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    result = await mut_mod.file_manage(action="delete", path="dr://abc/a.txt")
+    assert result == {"deleted": True, "path": "dr://abc/a.txt"}
+    assert store.calls[0] == ("delete", ("dr://abc/a.txt",), {"recursive": False, "maxdepth": None})
+
+
+async def test_file_manage_delete_nonexistent_path_is_silent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _use_store(monkeypatch, FakeStore())
+    result = await mut_mod.file_manage(action="delete", path="dr://abc/missing")
+    assert result == {"deleted": True, "path": "dr://abc/missing"}
+    assert store.calls[0][0] == "delete"
+
+
+async def test_file_manage_delete_non_empty_dir_without_recursive_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_store(
+        monkeypatch, FakeStore(delete_error=DirectoryNotEmptyError("dr://abc/dir is non-empty"))
+    )
+    with pytest.raises(ToolError, match="recursive=True") as exc:
+        await mut_mod.file_manage(action="delete", path="dr://abc/dir")
+    assert exc.value.kind == ToolErrorKind.VALIDATION
+
+
 async def test_file_manage_copy(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _use_store(monkeypatch, FakeStore())
     result = await mut_mod.file_manage(
@@ -332,6 +366,56 @@ async def test_file_manage_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["catalog_id"] == "clone99"
     assert result["path"] == "dr://clone99/"
     assert store.calls[0] == ("clone", ("dr://abc/",), {"files_to_omit": ["secret.txt"]})
+
+
+async def test_file_manage_clone_empty_files_to_omit_normalizes_to_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The platform rejects an empty list; an empty omit should behave like omitting it."""
+    store = _use_store(monkeypatch, FakeStore(new_catalog_id="clone99"))
+    result = await mut_mod.file_manage(action="clone", path="dr://abc/", files_to_omit=[])
+    assert result["cloned"] is True
+    assert store.calls[0] == ("clone", ("dr://abc/",), {"files_to_omit": None})
+
+
+async def test_file_manage_clone_files_to_omit_accepts_json_encoded_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for MODEL-24056: some MCP clients send array args as a JSON string."""
+    from fastmcp.tools import Tool
+
+    store = _use_store(monkeypatch, FakeStore(new_catalog_id="clone99"))
+    tool = Tool.from_function(fn=mut_mod.file_manage)
+    result = await tool.run(
+        {"action": "clone", "path": "dr://abc/", "files_to_omit": '["secret.txt"]'}
+    )
+    assert result.structured_content["cloned"] is True
+    assert store.calls[0] == ("clone", ("dr://abc/",), {"files_to_omit": ["secret.txt"]})
+
+
+async def test_file_manage_clone_files_to_omit_json_encoded_empty_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact Claude Desktop repro: files_to_omit sent as the JSON string '[]'."""
+    from fastmcp.tools import Tool
+
+    store = _use_store(monkeypatch, FakeStore(new_catalog_id="clone99"))
+    tool = Tool.from_function(fn=mut_mod.file_manage)
+    result = await tool.run({"action": "clone", "path": "dr://abc/", "files_to_omit": "[]"})
+    assert result.structured_content["cloned"] is True
+    assert store.calls[0] == ("clone", ("dr://abc/",), {"files_to_omit": None})
+
+
+async def test_file_manage_clone_files_to_omit_still_rejects_garbage_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastmcp.tools import Tool
+    from pydantic import ValidationError
+
+    _use_store(monkeypatch, FakeStore())
+    tool = Tool.from_function(fn=mut_mod.file_manage)
+    with pytest.raises(ValidationError):
+        await tool.run({"action": "clone", "path": "dr://abc/", "files_to_omit": "not json"})
 
 
 async def test_file_manage_copy_requires_target(monkeypatch: pytest.MonkeyPatch) -> None:

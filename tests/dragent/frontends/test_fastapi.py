@@ -811,6 +811,24 @@ class TestCreateAgentCard:
         assert internal.required is True
         assert internal.params == {"deployment_id": "dep-abc123"}
 
+    async def test_internal_identity_extension_when_workload_id_set(self, a2a_frontend_config):
+        """GIVEN WORKLOAD_ID is set WHEN create_agent_card is called THEN the internal
+        identity extension is present with the workload_id.
+        """
+        env = {
+            "WORKLOAD_ID": "wl-abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert INTERNAL_IDENTITY_URI in uris
+        internal = next(e for e in card.capabilities.extensions if e.uri == INTERNAL_IDENTITY_URI)
+        assert internal.required is True
+        assert internal.params == {"workload_id": "wl-abc123"}
+
     async def test_no_internal_identity_extension_in_local_dev(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is not set WHEN create_agent_card is called THEN the
         internal identity extension is absent.
