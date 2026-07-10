@@ -34,6 +34,9 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
+from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
+from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
@@ -55,8 +58,6 @@ from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_hea
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
-from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig, CrossAppTokenExchange, \
-    CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 

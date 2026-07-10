@@ -25,6 +25,7 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
 
+from ..cross_app_access_config import CrossApplicationAccessConfig
 from .converters import convert_chat_request_to_run_agent_input
 from .converters import convert_dragent_event_response_to_chat_response_chunk
 from .converters import convert_dragent_event_response_to_str
@@ -35,7 +36,6 @@ from .converters import convert_str_to_chat_response
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
-from ..cross_app_access_config import CrossApplicationAccessConfig
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)

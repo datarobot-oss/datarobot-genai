@@ -21,8 +21,10 @@ import pytest
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
     get_mcp_auth_server_metadata_url,
 )
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import get_xaa_params
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import get_xaa_params_from_config
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
-    get_xaa_param_from_mcp_auth_server_metadata,
+    get_xaa_params_from_mcp_auth_server_metadata,
 )
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
     mcp_client_with_xaa_support_function_group,
@@ -59,6 +61,13 @@ class TestMCPAuthServerMetadataDiscovery:
             f"{module_under_test}.get_retriable_async_http_client",
         ) as mock_func:
             mock_func.return_value.__aenter__.return_value = mock_async_http_client
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_auth_server_metadata_url(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.get_mcp_auth_server_metadata_url",
+        ) as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -102,17 +111,21 @@ class TestMCPAuthServerMetadataDiscovery:
         )
 
     @pytest.mark.asyncio
-    async def test_get_xaa_param_from_mcp_auth_server_metadata(
+    async def test_get_xaa_params_from_mcp_auth_server_metadata(
         self,
         mock_async_http_client: Mock,
+        mock_get_mcp_auth_server_metadata_url: Mock,
         mock_get_retriable_async_http_client: Mock,
         mock_parse_xaa_params_from_mcp_auth_server_metadata: Mock,
     ) -> None:
-        mcp_auth_server_metadata_url = Mock()
-        await get_xaa_param_from_mcp_auth_server_metadata(mcp_auth_server_metadata_url)
+        config = Mock()
+        await get_xaa_params_from_mcp_auth_server_metadata(config)
 
+        mock_get_mcp_auth_server_metadata_url.assert_called_once_with(config)
         mock_get_retriable_async_http_client.assert_called_once_with()
-        mock_async_http_client.get.assert_called_once_with(mcp_auth_server_metadata_url)
+        mock_async_http_client.get.assert_called_once_with(
+            mock_get_mcp_auth_server_metadata_url.return_value
+        )
         mock_resp = mock_async_http_client.get.return_value
         mock_resp.raise_for_status.assert_called_once_with()
         mock_parse_xaa_params_from_mcp_auth_server_metadata.assert_called_once_with(
@@ -129,11 +142,24 @@ class TestSetupAuthProvider:
             yield mock_func
 
     @pytest.fixture
-    def mock_get_xaa_param_from_mcp_auth_server_metadata(
+    def mock_get_xaa_params_from_mcp_auth_server_metadata(
         self, module_under_test: str
     ) -> Iterator[AsyncMock]:
         with patch(
-            f"{module_under_test}.get_xaa_param_from_mcp_auth_server_metadata",
+            f"{module_under_test}.get_xaa_params_from_mcp_auth_server_metadata",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_xaa_params_from_config(self, module_under_test: str) -> Iterator[AsyncMock]:
+        with patch(f"{module_under_test}.get_xaa_params_from_config") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_xaa_params(self, module_under_test: str) -> Iterator[AsyncMock]:
+        with patch(
+            f"{module_under_test}.get_xaa_params",
             new_callable=AsyncMock,
         ) as mock_func:
             yield mock_func
@@ -144,41 +170,71 @@ class TestSetupAuthProvider:
         output = get_mcp_auth_server_metadata_url(config)
         assert output == "https://foo:8081/.well-known/oauth-protected-resource/bar/mcp"
 
+    def test_get_xaa_params_from_config(self) -> None:
+        xaa_config = Mock()
+        output = get_xaa_params_from_config(xaa_config)
+
+        assert output.trusted_issuer == xaa_config.token_exchange.trusted_issuer
+        assert output.exchange_audience == xaa_config.token_exchange.audience
+        assert output.token_url == xaa_config.token_request.token_url
+        assert output.target_audience == xaa_config.token_request.audience
+        assert output.id_jag_scopes == xaa_config.token_request.scopes
+        assert output.token_endpoint_auth_method == xaa_config.token_endpoint_auth_method
+
+    @pytest.mark.asyncio
+    async def test_get_xaa_params_from_remote_mcp_auth_server_metadata(
+        self,
+        mock_get_xaa_params_from_config: Mock,
+        mock_get_xaa_params_from_mcp_auth_server_metadata: AsyncMock,
+    ) -> None:
+        config = Mock()
+        config.cross_application_access = None
+        output = await get_xaa_params(config)
+
+        mock_get_xaa_params_from_mcp_auth_server_metadata.assert_called_once_with(config)
+        mock_get_xaa_params_from_config.assert_not_called()
+        assert output == mock_get_xaa_params_from_mcp_auth_server_metadata.return_value
+
+    @pytest.mark.asyncio
+    async def test_get_xaa_params_from_local_config(
+        self,
+        mock_get_xaa_params_from_config: Mock,
+        mock_get_xaa_params_from_mcp_auth_server_metadata: AsyncMock,
+    ) -> None:
+        config = Mock()
+        output = await get_xaa_params(config)
+
+        mock_get_xaa_params_from_config.assert_called_once_with(config.cross_application_access)
+        mock_get_xaa_params_from_mcp_auth_server_metadata.assert_not_called()
+        assert output == mock_get_xaa_params_from_config.return_value
+
     @pytest.mark.asyncio
     async def test_setup_auth_provider_with_inbound_headers_forwarded(
         self,
-        mock_get_mcp_auth_server_metadata_url: Mock,
-        mock_get_xaa_param_from_mcp_auth_server_metadata: AsyncMock,
+        mock_get_xaa_params: AsyncMock,
     ) -> None:
         mock_auth_provider = Mock()
         mock_config = Mock(forward_inbound_headers=True)
         _ = await setup_auth_provider(mock_auth_provider, mock_config)
 
-        mock_get_mcp_auth_server_metadata_url.assert_called_once_with(mock_config)
-        mock_get_xaa_param_from_mcp_auth_server_metadata.assert_called_once_with(
-            mock_get_mcp_auth_server_metadata_url.return_value,
-        )
+        mock_get_xaa_params.assert_called_once_with(mock_config)
         mock_auth_provider.set_cross_app_flow_params.assert_called_once_with(
-            mock_get_xaa_param_from_mcp_auth_server_metadata.return_value,
+            mock_get_xaa_params.return_value,
         )
         mock_auth_provider.set_forward_inbound_http_headers.assert_called_once_with(True)
 
     @pytest.mark.asyncio
     async def test_setup_auth_provider_without_inbound_headers_forwarded(
         self,
-        mock_get_mcp_auth_server_metadata_url: Mock,
-        mock_get_xaa_param_from_mcp_auth_server_metadata: AsyncMock,
+        mock_get_xaa_params: AsyncMock,
     ) -> None:
         mock_auth_provider = Mock()
         mock_config = Mock(forward_inbound_headers=False)
         _ = await setup_auth_provider(mock_auth_provider, mock_config)
 
-        mock_get_mcp_auth_server_metadata_url.assert_called_once_with(mock_config)
-        mock_get_xaa_param_from_mcp_auth_server_metadata.assert_called_once_with(
-            mock_get_mcp_auth_server_metadata_url.return_value,
-        )
+        mock_get_xaa_params.assert_called_once_with(mock_config)
         mock_auth_provider.set_cross_app_flow_params.assert_called_once_with(
-            mock_get_xaa_param_from_mcp_auth_server_metadata.return_value,
+            mock_get_xaa_params.return_value,
         )
         mock_auth_provider.set_forward_inbound_http_headers.assert_not_called()
 
