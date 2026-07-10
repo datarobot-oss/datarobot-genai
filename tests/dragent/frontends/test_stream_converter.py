@@ -143,6 +143,39 @@ class TestToolCall:
         assert events[1].delta == '{"loc":'
 
     @pytest.mark.asyncio
+    async def test_tool_call_followup_with_gemini_thought_id_keeps_first_id(self):
+        """Gemini may append ``__thought__<sig>`` to tool ids on later chunks; first id wins."""
+        base_id = "call_6464809420104580982e1b40c23b"
+        thought_id = f"{base_id}__thought__AY89a1+sig"
+        first = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id=base_id,
+                    function=ChoiceDeltaToolCallFunction(name="planner", arguments=""),
+                )
+            ]
+        )
+        followup = _make_chunk(
+            tool_calls=[
+                ChoiceDeltaToolCall(
+                    index=0,
+                    id=thought_id,
+                    function=ChoiceDeltaToolCallFunction(arguments='{"topic":'),
+                )
+            ]
+        )
+        responses = await _collect(convert_chunks_to_agui_events(_async_iter(first, followup)))
+        events = _flat_events(responses)
+
+        starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
+        args_events = [e for e in events if isinstance(e, ToolCallArgsEvent)]
+        assert len(starts) == 1
+        assert starts[0].tool_call_id == base_id
+        assert len(args_events) == 1
+        assert args_events[0].tool_call_id == base_id
+
+    @pytest.mark.asyncio
     async def test_tool_call_followup_chunks_use_index_lookup(self):
         first = _make_chunk(
             tool_calls=[

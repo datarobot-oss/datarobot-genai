@@ -124,6 +124,7 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.stream_converter import resolve_streaming_tool_call_id
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.dragent.workflow_paths import discover_workflow_yaml
 from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
@@ -642,10 +643,13 @@ def _agui_tool_events_from_openai_delta_tool_calls(
     if not tool_calls:
         return events
     for tc in tool_calls:
-        tc_id = tc.id or tool_index_map.get(tc.index)
+        tc_id, is_new = resolve_streaming_tool_call_id(
+            index=tc.index,
+            chunk_id=tc.id,
+            tool_index_map=tool_index_map,
+        )
         if tc_id is None:
             continue
-        is_new = tc.id is not None and tc.index not in tool_index_map
         fn = tc.function
         if is_new:
             tool_index_map[tc.index] = tc_id

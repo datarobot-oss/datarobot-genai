@@ -45,6 +45,25 @@ from .tool_call_registry import register_tool_call
 logger = logging.getLogger(__name__)
 
 
+def resolve_streaming_tool_call_id(
+    *,
+    index: int,
+    chunk_id: str | None,
+    tool_index_map: dict[int, str],
+) -> tuple[str | None, bool]:
+    """Return ``(tool_call_id, is_new)`` for one OpenAI-style streaming tool delta.
+
+    Follow-up chunks should only carry ``index``, but some providers (Gemini via
+    LiteLLM) may re-emit a new ``id`` that appends a ``__thought__`` signature.
+    Once an index is mapped, keep the first id for START/ARGS correlation.
+    """
+    if index in tool_index_map:
+        return tool_index_map[index], False
+    if chunk_id is None:
+        return None, False
+    return chunk_id, True
+
+
 async def convert_chunks_to_agui_events(
     chunks: AsyncGenerator[ChatResponseChunk, None],
 ) -> AsyncGenerator[DRAgentEventResponse, None]:
@@ -74,8 +93,8 @@ async def convert_chunks_to_agui_events(
             if delta and delta.content:
                 # Args streaming is complete for all tracked tool calls.
                 # Flush any end/result events deferred by the step adaptor.
-                for tc_id in tool_index_map.values():
-                    events.extend(mark_args_done(tc_id))
+                for mapped_tc_id in tool_index_map.values():
+                    events.extend(mark_args_done(mapped_tc_id))
                 tool_index_map.clear()
 
                 if active_message_id is None:
@@ -98,14 +117,17 @@ async def convert_chunks_to_agui_events(
                 seen_tool_calls = True
 
                 for tc in delta.tool_calls:
-                    tc_id = tc.id or tool_index_map.get(tc.index)  # type: ignore[assignment]
+                    tc_id, is_new = resolve_streaming_tool_call_id(
+                        index=tc.index,
+                        chunk_id=tc.id,
+                        tool_index_map=tool_index_map,
+                    )
                     if tc_id is None:
                         logger.warning(
                             "Tool call chunk at index %d has no id and no prior mapping; skipping",
                             tc.index,
                         )
                         continue
-                    is_new = tc.id is not None and tc.index not in tool_index_map
                     if is_new:
                         tool_index_map[tc.index] = tc_id
                         tool_name = tc.function.name if tc.function else ""
@@ -137,8 +159,8 @@ async def convert_chunks_to_agui_events(
     # propagated as exceptions, so NAT's streaming infrastructure stays stable.
     end: list[Event] = []
     # Mark remaining in-flight tool calls as args-done and flush deferred events.
-    for tc_id in tool_index_map.values():
-        end.extend(mark_args_done(tc_id))
+    for mapped_tc_id in tool_index_map.values():
+        end.extend(mark_args_done(mapped_tc_id))
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))
     if error is not None:
