@@ -49,7 +49,7 @@ def expectations_for_bundle_list_success() -> ETETestExpectations:
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="bundle_list",
+                name="workload_bundle_list",
                 parameters={},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -122,7 +122,7 @@ def expectations_for_workload_stats_success(workload_id: str) -> ETETestExpectat
     return ETETestExpectations(
         tool_calls_expected=[
             ToolCallTestExpectations(
-                name="workload_stats",
+                name="workload_stats_get",
                 parameters={"workload_id": workload_id},
                 result=SHOULD_NOT_BE_EMPTY,
             ),
@@ -169,10 +169,10 @@ class TestWorkloadToolsE2E(ToolBaseE2E):
         llm_client: Any,
         expectations_for_bundle_list_success: ETETestExpectations,
     ) -> None:
-        """LLM lists compute bundles via bundle_list."""
+        """LLM lists compute bundles via workload_bundle_list."""
         prompt = (
             "Show me the available compute resource bundles for DataRobot workloads. "
-            "Use the bundle_list tool."
+            "Use the workload_bundle_list tool."
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
@@ -256,9 +256,9 @@ class TestWorkloadToolsE2E(ToolBaseE2E):
         workload_id: str,
         expectations_for_workload_stats_success: ETETestExpectations,
     ) -> None:
-        """LLM reads workload performance stats via workload_stats."""
+        """LLM reads workload performance stats via workload_stats_get."""
         prompt = (
-            f"Get performance statistics for workload '{workload_id}' using workload_stats. "
+            f"Get performance statistics for workload '{workload_id}' using workload_stats_get. "
             "Summarize request volume or error rate if present."
         )
         async with ete_test_mcp_session() as session:

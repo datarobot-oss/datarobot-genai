@@ -59,11 +59,13 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     tags={"predictive", "data", "write", "upload", "catalog", "daria"},
     description=(
         "[Catalog—register new data] Use when the user has file bytes or a public HTTPS URL "
-        "and needs a new AI Catalog dataset_id (nothing registered yet). Exactly one of "
-        "base64 file content or file_url. Returns dataset id, version id, and name for "
+        "and needs a new AI Catalog dataset ID (nothing registered yet). Exactly one of "
+        "base64 file content or file_url. Returns dataset ID, version ID, and name for "
         "Autopilot, scoring, or inspection. Not for listing existing items "
         "(catalog_list_datasets), not external DB browsing (catalog_list_datastores)."
     ),
+    display_name="Catalog — Upload dataset",
+    description_ui="Upload or register a dataset from a local file or URL.",
 )
 async def catalog_upload_dataset(
     *,
@@ -144,11 +146,13 @@ async def catalog_upload_dataset(
     tags={"predictive", "data", "read", "list", "catalog", "daria"},
     description=(
         "[Catalog—list datasets] Use when the user needs catalog datasets they already have "
-        "as id-to-name map. Read-only. Not project-attached datasets "
+        "as ID-to-name map. Read-only. Not project-attached datasets "
         "(modeling_get_project_dataset), not modeling projects (modeling_list_projects). "
         "Follow with "
         "catalog_get_preview or scoring tools that take dataset_id."
     ),
+    display_name="Catalog — List datasets",
+    description_ui="List datasets registered in DataRobot.",
 )
 async def catalog_list_datasets(
     offset: Annotated[
@@ -212,10 +216,12 @@ async def catalog_list_datasets(
         "Lighter than full EDA (catalog_analyze_dataset / catalog_get_eda_insights); not datastore "
         "SQL (catalog_query_datastore)."
     ),
+    display_name="Catalog — Get preview",
+    description_ui="Get metadata and optional sample rows for a dataset.",
 )
 async def catalog_get_preview(
     *,
-    dataset_id: Annotated[str, "AI Catalog dataset id (from catalog_list_datasets or upload)."]
+    dataset_id: Annotated[str, "AI Catalog dataset ID (from catalog_list_datasets or upload)."]
     | None = None,
     include_sample: Annotated[
         bool, "If true, include columns and up to sample_rows example rows."
@@ -252,11 +258,13 @@ async def catalog_get_preview(
     tags={"predictive", "data", "read", "datastore", "list", "daria"},
     description=(
         "[Datastore—list connections] Use when the user works with saved external connections "
-        "(DB, warehouse, bucket, etc.) and needs datastore ids. Read-only. Not AI Catalog "
+        "(DB, warehouse, bucket, etc.) and needs datastore IDs. Read-only. Not AI Catalog "
         "datasets (catalog_list_datasets), not modeling projects. "
         "Next step: catalog_browse_datastore "
         "or catalog_query_datastore."
     ),
+    display_name="Catalog — List datastores",
+    description_ui="List external database and storage connections configured in DataRobot.",
 )
 async def catalog_list_datastores(
     offset: Annotated[
@@ -319,10 +327,12 @@ async def catalog_list_datastores(
         "tables, or folders inside one connection. Read-only; optional path, search filter, "
         "pagination. Not SQL execution (catalog_query_datastore), not catalog dataset listing."
     ),
+    display_name="Catalog — Browse datastore",
+    description_ui="Browse schemas, tables, or folders inside an external datastore.",
 )
 async def catalog_browse_datastore(
     *,
-    datastore_id: Annotated[str, "Connection id from catalog_list_datastores."] | None = None,
+    datastore_id: Annotated[str, "Connection ID from catalog_list_datastores."] | None = None,
     path: Annotated[str, "Path within the connection (e.g. schema or folder); omit for root."]
     | None = None,
     offset: Annotated[int, "Pagination offset."] = 0,
@@ -384,10 +394,12 @@ async def catalog_browse_datastore(
         "rows, columns, and row count up to limit. Not DataRobot catalog inspection "
         "(catalog_get_preview), not browsing without SQL (catalog_browse_datastore)."
     ),
+    display_name="Catalog — Query datastore",
+    description_ui="Run a SQL query against an external datastore.",
 )
 async def catalog_query_datastore(
     *,
-    datastore_id: Annotated[str, "Connection id from catalog_list_datastores."] | None = None,
+    datastore_id: Annotated[str, "Connection ID from catalog_list_datastores."] | None = None,
     sql: Annotated[str, "SQL SELECT statement to run against that connection."] | None = None,
     offset: Annotated[int, "Number of rows to skip (0-based) for pagination"] = 0,
     limit: Annotated[

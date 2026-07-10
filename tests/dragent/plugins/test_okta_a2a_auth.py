@@ -16,6 +16,9 @@
 
 import base64
 import json
+from collections.abc import Iterator
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from unittest.mock import patch
 from urllib.parse import parse_qs
 
@@ -29,7 +32,11 @@ from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from httpx import Response
+from nat.builder.context import Context
+from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
+from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.okta_a2a_auth import ApiTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
@@ -404,6 +411,25 @@ class TestAuthenticate:
         provider.set_agent_card(_make_agent_card())
         return provider
 
+    @pytest.fixture
+    def mock_get_forwardable_headers_from_inbound_request(self) -> Iterator[Mock]:
+        with patch.object(
+            OAuth2CrossApplicationAccessOAuth2AuthProvider,
+            "get_forwardable_headers_from_inbound_request",
+        ) as mock_func:
+            mock_func.return_value = [HeaderCred(name="afda", value="sdafas")]
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_exchanged_token(self) -> Iterator[AsyncMock]:
+        with patch.object(
+            OAuth2CrossApplicationAccessOAuth2AuthProvider,
+            "get_exchanged_token",
+            new_callable=AsyncMock,
+        ) as mock_func:
+            mock_func.return_value = BearerTokenCred(token="adfa")
+            yield mock_func
+
     async def test_returns_bearer_cred(self, provider_with_card):
         with (
             patch(f"{_MODULE}.Context") as mock_ctx,
@@ -503,6 +529,136 @@ class TestAuthenticate:
             }
             with pytest.raises(ValueError, match=match):
                 await provider.authenticate()
+
+    @pytest.mark.asyncio
+    async def test_not_forward_inbound_headers_during_authenticate(
+        self,
+        mock_get_forwardable_headers_from_inbound_request: Mock,
+        mock_get_exchanged_token: AsyncMock,
+    ) -> None:
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+        auth_provider.set_cross_app_flow_params(Mock())
+        output = await auth_provider.authenticate()
+
+        mock_get_forwardable_headers_from_inbound_request.assert_not_called()
+        mock_get_exchanged_token.assert_called_once_with()
+        assert output == AuthResult(credentials=[mock_get_exchanged_token.return_value])
+
+    @pytest.mark.asyncio
+    async def test_forward_inbound_headers_during_authenticate(
+        self,
+        mock_get_forwardable_headers_from_inbound_request: Mock,
+        mock_get_exchanged_token: AsyncMock,
+    ) -> None:
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+        auth_provider.set_cross_app_flow_params(Mock())
+        auth_provider.set_forward_inbound_http_headers(True)
+        output = await auth_provider.authenticate()
+
+        mock_get_forwardable_headers_from_inbound_request.assert_called_once_with()
+        mock_get_exchanged_token.assert_called_once_with()
+        assert output == AuthResult(
+            credentials=[
+                *mock_get_forwardable_headers_from_inbound_request.return_value,
+                mock_get_exchanged_token.return_value,
+            ]
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: other APIs of OAuth2CrossApplicationAccessOAuth2AuthProvider
+# ---------------------------------------------------------------------------
+
+
+class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
+    @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.dragent.plugins.okta_a2a_auth"
+
+    @pytest.fixture
+    def mock_nat_context_get(self) -> Iterator[Mock]:
+        with patch.object(Context, "get") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_extract_token(self) -> Iterator[Mock]:
+        with patch.object(
+            OAuth2CrossApplicationAccessOAuth2AuthProvider,
+            "_extract_token",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_token_exchange(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(
+            f"{module_under_test}.get_token_exchange",
+        ) as mock_func:
+            mock_func.return_value.exchange_token = AsyncMock(return_value="TOKEN")
+            yield mock_func
+
+    def test_set_cross_app_flow_params(self) -> None:
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(Mock())
+        cross_app_params = Mock()
+        auth_provider.set_cross_app_flow_params(cross_app_params)
+
+        assert auth_provider._flow_params == cross_app_params
+
+    def test_set_forward_inbound_http_headers(self) -> None:
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(Mock())
+        enabled = Mock()
+        auth_provider.set_forward_inbound_http_headers(enabled)
+
+        assert auth_provider._forward_inbound_http_headers == enabled
+
+    def test_get_non_forwardable_header_keys(self) -> None:
+        auth_provider_config = OAuth2CrossApplicationAccessAuthProviderConfig()
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(auth_provider_config)
+
+        output = auth_provider.get_non_forwardable_header_keys()
+        assert output == {"x-datarobot-external-access-token", "authorization"}
+
+    def test_get_forwardable_headers_from_inbound_request(self, mock_nat_context_get: Mock) -> None:
+        auth_provider_config = OAuth2CrossApplicationAccessAuthProviderConfig()
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(auth_provider_config)
+        headers = {"afda": "sdafas"}
+        mock_nat_context_get.return_value.metadata.headers = headers
+        output = auth_provider.get_forwardable_headers_from_inbound_request()
+
+        assert output == [HeaderCred(name="afda", value=SecretStr(headers["afda"]))]
+
+    @pytest.mark.asyncio
+    async def test_get_exchanged_token(
+        self,
+        mock_extract_token: Mock,
+        mock_get_token_exchange: Mock,
+    ) -> None:
+        mock_auth_provider_config = Mock()
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(mock_auth_provider_config)
+        mock_cross_app_params = Mock()
+        auth_provider.set_cross_app_flow_params(mock_cross_app_params)
+
+        output = await auth_provider.get_exchanged_token()
+
+        mock_extract_token.assert_called_once_with()
+        mock_get_token_exchange.assert_called_once_with(mock_auth_provider_config)
+        mock_exchange_token_impl = mock_get_token_exchange.return_value
+        mock_exchange_token_impl.exchange_token.assert_called_once_with(
+            mock_cross_app_params, mock_extract_token.return_value
+        )
+        assert isinstance(output, BearerTokenCred)
+        assert output.token == SecretStr(mock_exchange_token_impl.exchange_token.return_value)
+
+    @pytest.mark.asyncio
+    async def test_get_exchanged_token_raises_error_if_flow_params_not_set(self) -> None:
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(Mock())
+
+        with pytest.raises(RuntimeError):
+            assert auth_provider._flow_params is None
+            await auth_provider.get_exchanged_token()
 
 
 # ---------------------------------------------------------------------------

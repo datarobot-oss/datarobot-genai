@@ -4,6 +4,64 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 
+
+## 0.23.12
+- `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
+- `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
+## 0.23.11
+- `drtools/files_api` (MODEL-24055): fixed `file_manage(action='delete')` reporting `{"deleted": true}` when a non-recursive delete targeted a non-empty directory — it now raises a validation `ToolError` telling the caller to pass `recursive=True`. Deleting a nonexistent path remains a silent no-op.
+- `drtools/files_api` (MODEL-24056): made `file_manage(action='clone')`'s `files_to_omit` tolerate a JSON-encoded string (some MCP clients serialize array arguments this way) and treat an empty list the same as omitting the argument (the platform rejects an empty list outright).
+
+## 0.23.10
+- `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.
+- `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
+
+## 0.23.9
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery
+
+## 0.23.8
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
+
+## 0.23.7
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
+## 0.23.6
+- `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
+
+## 0.23.5
+- `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
+- `drmcpbase`: `bootstrap_metrics_provider` — OTLP/HTTP `MeterProvider` bootstrap; endpoint/headers resolve the standard OTLP way from `OTEL_EXPORTER_OTLP_*` (idempotent, no-op without an endpoint, never raises).
+- `drmcp`: `initialize_telemetry` installs the metrics provider next to the trace/log providers, and `execute_code` runs through `InstrumentedSandbox` — sandbox SLIs turn on with the existing `OTEL_ENABLED` config.
+- `drmcp`: fixed `_setup_otel_env_variables` resolving endpoint/headers as a pair — with `otel_entity_id` set (validator-assembled headers) the endpoint was never bridged and exporters silently targeted the OTLP localhost default; the two env vars now resolve independently.
+- OTel (`opentelemetry-api`/`-sdk`/`-exporter-otlp-proto-http`) is now a regular dependency of the `drtools` and `drmcpbase` extras (module-level imports; no lazy-import fallbacks).
+
+## 0.23.4
+- Upgrade github-actions to the latest releases with bug fixes, label validation and backport/cherry-picking capabilities
+
+## 0.23.3
+- `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.
+
+## 0.23.2
+- `drtools/files_api`: expose `overwrite` on `file_manage` copy/move (defaults to `rename`; use `replace` to overwrite existing files). Reject recursive `file_list` at `dr://` and return browse hints to reduce agent listing loops.
+
+## 0.23.1
+- `drtools`: polished MCP tool metadata across connectors, predictive, panels, files API, workloads, and web search — sentence-case display names, capitalized JSON/ID in user-facing text, clearer agent descriptions and parameter help, and ampersands spelled out as "and".
+- `drtools/workload`: renamed workload MCP tools for clearer naming — `workload_create_payload`→`workload_create_payload_build`, `workload_action`→`workload_action_run`, `bundle_list`→`workload_bundle_list`, `workload_replacement`→`workload_artifact_replace`, `workload_stats`→`workload_stats_get`, `workload_logs`→`workload_logs_get`, `workload_activity`→`workload_activity_get`, `proton_get`→`workload_proton_get`, `artifact_build_get`→`artifact_get_build`, `artifact_build_action`→`artifact_build_run_action`, `artifact_action`→`artifact_action_run`. Update allowlists and agent configs that reference the old names.
+- `drmcputils`: made `dr_use_cases` and `dr_deployments` standalone leaf categories (they are no longer expanded by `dr_predictive`).
+
+## 0.23.0
+- *Breaking change*: `dr_mem0_memory` agent memory TTL is now specified in days instead of seconds. Renamed `default_ttl_seconds` → `default_ttl_days` on `DRMem0MemoryClientConfig` and `AGENT_MEMORY_TTL_SECONDS` → `AGENT_MEMORY_TTL_DAYS` for the runtime parameter / env var.
+
 ## 0.22.1
 - `crewai`: stream AG-UI `ToolCall*` and per-agent `Step*` events so crews render like the langgraph/llamaindex agents — per-agent steps, per-turn message bubbles, and tool calls (errors surfaced as the result), with injected tools reliably reaching the model.
 - `crewai`: preserve the MCP server's raw `inputSchema` instead of mcpadapt's lossy pydantic round-trip (which dropped property `type`s / added null keys that azure rejects), matching langgraph/llamaindex.

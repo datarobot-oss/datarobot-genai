@@ -23,7 +23,8 @@ functions so that the patterns stay in sync automatically.
 
 import os
 
-A2A_DIRECT_ACCESS_PATH = "directAccess/a2a"
+DEPLOYMENT_A2A_PATH = "directAccess/a2a"
+WORKLOAD_A2A_PATH = "a2a"
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 
@@ -85,7 +86,7 @@ def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
         A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``.
     """
     base = endpoint.rstrip("/")
-    return f"{base}/deployments/{deployment_id}/{A2A_DIRECT_ACCESS_PATH}/"
+    return f"{base}/deployments/{deployment_id}/{DEPLOYMENT_A2A_PATH}/"
 
 
 def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
@@ -106,6 +107,46 @@ def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
     """
     base = endpoint.rstrip("/")
     return f"{base}/deployments/{deployment_id}/agentCard/"
+
+
+def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
+    """Construct the A2A URL for a DataRobot workload.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot API endpoint base URL, e.g. ``https://app.datarobot.com/api/v2``.
+        A trailing slash is stripped before composing the URL.
+    workload_id:
+        The DataRobot workload ID.
+
+    Returns
+    -------
+    str
+        A URL of the form ``{endpoint}/endpoints/workloads/{workload_id}/a2a/``.
+    """
+    base = endpoint.removesuffix("/")
+    return f"{base}/endpoints/workloads/{workload_id}/{WORKLOAD_A2A_PATH}/"
+
+
+def build_workload_agent_card_url(endpoint: str, workload_id: str) -> str:
+    """Construct the agent card URL for a DataRobot workload.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot API endpoint base URL, e.g. ``https://app.datarobot.com/api/v2``.
+        A trailing slash is stripped before composing the URL.
+    workload_id:
+        The DataRobot workload ID.
+
+    Returns
+    -------
+    str
+        A URL of the form ``{endpoint}/workloads/{workload_id}/agentCard/``.
+    """
+    base = endpoint.removesuffix("/")
+    return f"{base}/workloads/{workload_id}/agentCard/"
 
 
 def build_agent_cards_registry_url(endpoint: str) -> str:

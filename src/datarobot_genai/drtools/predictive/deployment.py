@@ -37,10 +37,12 @@ logger = logging.getLogger(__name__)
     tags={"predictive", "deployment", "read", "management", "list", "daria"},
     description=(
         "[Deploy—discover deployments] Use when the user needs their MLOps deployments as "
-        "id-to-label map. Read-only. Not modeling projects (modeling_list_projects), not logged "
+        "ID-to-label map. Read-only. Not modeling projects (modeling_list_projects), not logged "
         "prediction rows (deployment_get_prediction_history), not scoring payloads "
         "(predict_* / deployment_get_info)."
     ),
+    display_name="Deployment — List",
+    description_ui="List DataRobot deployments.",
 )
 async def deployment_get_list() -> dict[str, Any]:
     with ThreadSafeDataRobotClient().request_user_client():
@@ -55,14 +57,16 @@ async def deployment_get_list() -> dict[str, Any]:
     tags={"predictive", "deployment", "read", "model", "info", "daria"},
     description=(
         "[Deploy—model linkage] Use when the user wants the model record attached to a deployment "
-        "(model id, project linkage). Read-only and narrow. For input feature names, types, and "
+        "(model ID, project linkage). Read-only and narrow. For input feature names, types, and "
         "prediction contract, use deployment_get_info instead; for training leaderboard details, "
         "use modeling_get_modeldetails with project_id + model_id."
     ),
+    display_name="Deployment — Get model info",
+    description_ui="Get the model record linked to a deployment (requires deployment ID).",
 )
 async def deployment_get_model_info(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -80,14 +84,16 @@ async def deployment_get_model_info(
         "[Deploy—from leaderboard model] Use when the user wants a new live MLOps deployment "
         "from an existing trained leaderboard model_id "
         "(from modeling_list_models / models_get_bestmodel). "
-        "Returns deployment id and label. Not batch or realtime scoring by itself, not custom "
+        "Returns deployment ID and label. Not batch or realtime scoring by itself, not custom "
         "folder deploy (deploy_custom_model when enabled), not listing deployments "
         "(deployment_get_list)."
     ),
+    display_name="Deployment — Create",
+    description_ui="Create a new deployment from a trained leaderboard model.",
 )
 async def deployment_create_deployment(
     *,
-    model_id: Annotated[str, "Trained model id from modeling_list_models / leaderboard."],
+    model_id: Annotated[str, "Trained model ID from modeling_list_models / leaderboard."],
     label: Annotated[str, "Human-readable deployment name shown in the UI."],
     description: Annotated[str, "Optional longer description for operators."] | None = None,
 ) -> dict[str, Any]:
@@ -205,10 +211,12 @@ async def deploy_custom_model(
         "new scores. For fresh scoring use predict_score_inline_realtime, "
         "predict_batch_predictions_from_dataset, predict_batch_predictions_from_partition, etc."
     ),
+    display_name="Deployment — Get prediction history",
+    description_ui="Retrieve logged prediction history for a deployment.",
 )
 async def deployment_get_prediction_history(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
     limit: Annotated[int, "Max rows in this page."] = 100,
     offset: Annotated[int, "Rows to skip (pagination)."] = 0,
     start_time: Annotated[str, "Optional ISO 8601 lower bound on prediction time."] | None = None,

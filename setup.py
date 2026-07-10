@@ -25,7 +25,7 @@ from setuptools import setup
 core = [
     "requests>=2.32.4,<3.0.0",
     "datarobot>=3.10.0,<4.0.0",
-    "datarobot-early-access==3.14.0.2026.3.18.162920",
+    "datarobot-early-access==3.16.0.2026.5.25.174233",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "ragas>=0.4.3,<0.5.0",
@@ -41,6 +41,7 @@ core = [
     "ag-ui-protocol==0.1.15",
     "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
     "colorama>=0.4.6,<1.0.0",
+    "httpx-retries>=0.4.0",
 ]
 
 crewai = core + [
@@ -105,7 +106,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot-early-access[fs]==3.14.0.2026.3.18.162920",
+    "datarobot-early-access[fs]==3.16.0.2026.5.25.174233",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
@@ -123,6 +124,11 @@ drtools =  drmcputils + [
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
     "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
+    # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
+    # drmcpbase metrics bootstrap) import these at module level.
+    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-sdk>=1.22.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
 
 # eval is standalone set of dependencies for evaluation utilities only (no core).
@@ -139,6 +145,11 @@ drmcpbase = drmcputils + [
     "aiohttp>=3.13.3,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
     "cachetools>=5.0.0,<8.0.0",
+    # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
+    # drmcpbase metrics bootstrap) import these at module level.
+    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-sdk>=1.22.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
 
 # drmcp is standalone set of dependencies for MCP Template Server only (no core), only depends on drmcpbase and drtools.
