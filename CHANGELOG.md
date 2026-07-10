@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.27
+- `dragent`: Extended `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin to read XAA params from NAT config.
+
 ## 0.23.26
 - e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
 
@@ -46,9 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.23.14
 - `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
-
-## 0.23.14
-- `dragent`: Extended `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin to read XAA params from NAT config. 
 
 ## 0.23.13
 - `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
