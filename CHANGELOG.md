@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.17
+- `eval`: endpoint health check now probes `<scheme>://<host>:<port>/health` (path stripped) before falling back to pinging the literal `--endpoint`, so dragent/DRUM-fronted agents log a clean 200 instead of a `404 Not Found` on the bare `/v1` base URL during validation and `--dry-run`.
+
 ## 0.23.16
 - Fix `eval_status.json` not updated to failed on early input validation errors.
 

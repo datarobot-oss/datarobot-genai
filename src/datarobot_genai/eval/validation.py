@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request
 from urllib.request import urlopen
 
@@ -81,10 +82,30 @@ def preflight_judge(judge_cfg: dict[str, Any]) -> None:
 def health_check(endpoint_url: str) -> str | None:
     """Return None if the server responds at all, else an error string.
 
-    A DRUM agentic-workflow server exposes /chat/completions but not
-    necessarily /v1/models, so any HTTP response (even 4xx/405) means the
-    server is up and reachable. Only a connection-level failure is fatal.
+    Prefer a dedicated /health probe: dragent/DRUM-fronted agents expose a
+    /health route (returning 200) at the host root, so probing it avoids the
+    404 log noise that pinging a bare /v1-style base URL generates on the
+    agent side. The endpoint's path (e.g. /v1) is stripped so /health resolves
+    against the host:port.
+
+    If /health isn't available (some deployed / production endpoints don't
+    expose it), fall back to pinging the literal endpoint and treating any HTTP
+    response (even 4xx/405) as "reachable" — a DRUM agentic-workflow server
+    exposes /chat/completions but not necessarily /v1/models. Only a
+    connection-level failure is fatal.
     """
+    parts = urlsplit(endpoint_url)
+    if parts.scheme and parts.netloc:
+        health_url = f"{parts.scheme}://{parts.netloc}/health"
+        try:
+            req = Request(health_url, headers={"Accept": "application/json"})
+            urlopen(req, timeout=10)
+            return None
+        except (HTTPError, URLError, OSError):
+            # No /health route, or it errored — fall back to the base ping,
+            # which either confirms reachability or reports the failure.
+            pass
+
     base = endpoint_url.rstrip("/")
     try:
         req = Request(base, headers={"Accept": "application/json"})
