@@ -20,6 +20,8 @@ import importlib
 import logging
 import os
 
+from datarobot_genai.core.runtime import is_hosted_runtime
+
 # Suppress the "Attempting to instrument while already instrumented" warning
 logging.getLogger("opentelemetry.instrumentation.instrumentor").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -97,7 +99,7 @@ def instrument() -> None:
     # here so notebook hosts that already install their own TracerProvider
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
-    if os.getenv("MLOPS_DEPLOYMENT_ID"):
+    if is_hosted_runtime():
         from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()

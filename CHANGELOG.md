@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.12
+- `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
+- `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
 ## 0.23.11
 - `drtools/files_api` (MODEL-24055): fixed `file_manage(action='delete')` reporting `{"deleted": true}` when a non-recursive delete targeted a non-empty directory — it now raises a validation `ToolError` telling the caller to pass `recursive=True`. Deleting a nonexistent path remains a silent no-op.
 - `drtools/files_api` (MODEL-24056): made `file_manage(action='clone')`'s `files_to_omit` tolerate a JSON-encoded string (some MCP clients serialize array arguments this way) and treat an empty list the same as omitting the argument (the platform rejects an empty list outright).
@@ -13,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
 
 ## 0.23.9
-- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery 
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery
 
 ## 0.23.8
 - Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
