@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.17
+- Fix multi-node agents (e.g. the default researcher -> responder template) concatenating every node's text into one response instead of returning only the final node's answer. AG-UI text boundaries keyed on `message.id` alone, so nodes whose streamed messages shared or omitted an id emitted no boundary event: an empty id silently fused both nodes' text (and, with a null id, produced a malformed stream). Boundaries are now keyed on `(langgraph_node, message_id)` with a minted id when the node omits one, so the non-streaming chat-completion path (used by evaluations) returns only the final node's output.
+
 ## 0.23.16
 - Fix `eval_status.json` not updated to failed on early input validation errors.
 
