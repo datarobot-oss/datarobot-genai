@@ -55,9 +55,8 @@ from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_hea
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
-from datarobot_genai.dragent.frontends.server_auth import CrossApplicationAccessConfig
-from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenExchange
-from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenRequest
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig, CrossAppTokenExchange, \
+    CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 

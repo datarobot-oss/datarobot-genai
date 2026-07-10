@@ -35,7 +35,7 @@ from .converters import convert_str_to_chat_response
 from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
-from .server_auth import CrossApplicationAccessConfig
+from ..cross_app_access_config import CrossApplicationAccessConfig
 
 # Suppress specific non-actionable NAT warning messages by content.
 # Patch Handler.handle (inherited by all subclasses - they only override emit)
