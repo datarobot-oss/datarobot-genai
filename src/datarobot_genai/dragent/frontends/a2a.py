@@ -21,7 +21,6 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
-import os
 
 import httpx
 from a2a.types import AgentCapabilities
@@ -36,7 +35,10 @@ from a2a.types import SecurityScheme
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.core.runtime import get_deployment_id
+from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
+from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 from .register import DRAgentA2AExternalConfig
@@ -95,12 +97,19 @@ def get_a2a_endpoint_url(host: str, port: int) -> str:
     / ``DATAROBOT_ENDPOINT``.  Otherwise falls back to the local
     ``http://{host}:{port}/a2a/`` URL.
     """
-    mlops_deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    if mlops_deployment_id:
-        datarobot_endpoint = resolve_datarobot_endpoint(require=True)
-        assert datarobot_endpoint is not None  # guaranteed by require=True
-        return build_deployment_a2a_url(datarobot_endpoint, mlops_deployment_id)
-    return f"http://{host}:{port}/{A2A_MOUNT_PATH}/"
+    deployment_id = get_deployment_id()
+    workload_id = get_workload_id()
+
+    if not (deployment_id or workload_id):
+        return f"http://{host}:{port}/{A2A_MOUNT_PATH}/"
+
+    datarobot_endpoint = resolve_datarobot_endpoint(require=True)
+    assert datarobot_endpoint is not None  # guaranteed by require=True
+
+    if deployment_id:
+        return build_deployment_a2a_url(datarobot_endpoint, deployment_id)
+    assert workload_id is not None  # non-None guaranteed by the early-return above
+    return build_workload_a2a_url(datarobot_endpoint, workload_id)
 
 
 # ---------------------------------------------------------------------------
@@ -203,15 +212,24 @@ def build_cross_app_capability_extension(
 
 
 def build_internal_identity_extension() -> AgentExtension | None:
-    """Build the internal identity extension from MLOPS_DEPLOYMENT_ID, or None in local dev."""
-    deployment_id = os.getenv("MLOPS_DEPLOYMENT_ID", "")
-    if not deployment_id:
+    """Build the internal identity extension for the current runtime, or None in local dev.
+
+    In a deployment container (``MLOPS_DEPLOYMENT_ID``) the params carry
+    ``deployment_id``; in a workload container (``WORKLOAD_ID``) they carry
+    ``workload_id``.  Returns *None* when neither identity is present.
+    """
+    if dep_id := get_deployment_id():
+        params = {"deployment_id": dep_id}
+    elif wl_id := get_workload_id():
+        params = {"workload_id": wl_id}
+    else:
         return None
+
     return AgentExtension(
         uri=INTERNAL_IDENTITY_URI,
         description=INTERNAL_IDENTITY_DESCRIPTION,
         required=True,
-        params={"deployment_id": deployment_id},
+        params=params,
     )
 
 

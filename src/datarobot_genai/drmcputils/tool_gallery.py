@@ -22,13 +22,11 @@ from typing import Any
 
 from datarobot_genai.drmcputils.categories import categories_for_tool
 
-# Keys present in @tool_metadata(...) that carry UI/gallery metadata or
-# server-side registration hints.  These must be stripped before the metadata
-# dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
+# Keys present in @tool_metadata(...) that carry UI/gallery metadata. These must be stripped
+# before the metadata dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
 # them in tools/list or tools/call responses.
 DRTOOLS_PRIVATE_METADATA_KEYS: frozenset[str] = frozenset(
     {
-        "excluded_from_global_mcp",
         "display_name",
         "description_ui",
         "auth_provider",

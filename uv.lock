@@ -1094,7 +1094,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-early-access"
-version = "3.14.0.2026.3.18.162920"
+version = "3.16.0.2026.5.25.174233"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1109,9 +1109,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/63/1ea3461a165c51f255ccdcb96411e82671cf8d0b3791718c2042aa5f0bfc/datarobot_early_access-3.14.0.2026.3.18.162920.tar.gz", hash = "sha256:94eacf05010a01131679017b2742b6bca6800d23e2c48210e1968af6e40e6e35", size = 837031, upload-time = "2026-03-18T16:29:24.138Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/e2/c13f1f4eddccdade45c13486e85ea917c9f9b277a7a24e12084728c538c2/datarobot_early_access-3.16.0.2026.5.25.174233.tar.gz", hash = "sha256:6ba44eb699721f9492e9d94fbb596e919509b58bd91e20718583348ee0b4e94d", size = 858150, upload-time = "2026-05-25T17:42:37.806Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/7b/b1a34fb997290d22159db756a41a047c47335f656598d52f4bb014a6a0f1/datarobot_early_access-3.14.0.2026.3.18.162920-py3-none-any.whl", hash = "sha256:7625a2cd3c1670b5d6b927b48e464750f68dff4463db11079f6e81fab257305e", size = 909539, upload-time = "2026-03-18T16:29:22.525Z" },
+    { url = "https://files.pythonhosted.org/packages/52/30/b983933e139fd4640d864dc21f830e5628e7e2c197a81f19acf012fd5217/datarobot_early_access-3.16.0.2026.5.25.174233-py3-none-any.whl", hash = "sha256:91927f577219f1e77c12a863416e464d6a70d4aa68592b2dcbaeda823020cb96", size = 932480, upload-time = "2026-05-25T17:42:35.539Z" },
 ]
 
 [package.optional-dependencies]
@@ -1121,7 +1121,7 @@ fs = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.23.9"
+version = "0.23.17"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1140,6 +1140,7 @@ core = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
     { name = "opentelemetry-instrumentation-httpx" },
@@ -1162,6 +1163,7 @@ crewai = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "litellm" },
     { name = "mcpadapt", version = "0.1.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "mcpadapt", version = "0.1.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1187,6 +1189,7 @@ dragent = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
@@ -1297,6 +1300,7 @@ langgraph = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
@@ -1321,6 +1325,7 @@ llamaindex = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "litellm" },
     { name = "llama-index" },
     { name = "llama-index-core" },
@@ -1350,6 +1355,7 @@ nat = [
     { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
@@ -1433,16 +1439,16 @@ requires-dist = [
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.14.0.2026.3.18.162920" },
+    { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.16.0.2026.5.25.174233" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.16.0.2026.5.25.174233" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.33,<12.0.0" },
@@ -1464,6 +1470,12 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'drmcpbase'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcputils'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
+    { name = "httpx-retries", marker = "extra == 'core'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'crewai'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'dragent'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'langgraph'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'llamaindex'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'nat'", specifier = ">=0.4.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
@@ -2654,6 +2666,18 @@ http2 = [
 ]
 
 [[package]]
+name = "httpx-retries"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/d3/b7a8bb09543af40009717a08a2ceba90b6d4c6f0cdf171404217d8f4c37d/httpx_retries-0.6.0.tar.gz", hash = "sha256:3e0b404969a564829d368417964fd21e6b400a10d17c92d29b8bc247ce8186e3", size = 21122, upload-time = "2026-07-06T00:52:30.093Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/c6/7f3d6ab3549267a1959161b38df4c0fb435eceaf2d531d8addfac01abaca/httpx_retries-0.6.0-py3-none-any.whl", hash = "sha256:d1e52a8f68a5df42de75ab89049d5020b2d0ab2f5f8bceacda008d12aa1257a3", size = 11776, upload-time = "2026-07-06T00:52:31.033Z" },
+]
+
+[[package]]
 name = "httpx-sse"
 version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2817,17 +2841,17 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "decorator", marker = "python_full_version < '3.12'" },
-    { name = "ipython-pygments-lexers", marker = "python_full_version < '3.12'" },
-    { name = "jedi", marker = "python_full_version < '3.12'" },
-    { name = "matplotlib-inline", marker = "python_full_version < '3.12'" },
-    { name = "pexpect", marker = "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "prompt-toolkit", marker = "python_full_version < '3.12'" },
-    { name = "pygments", marker = "python_full_version < '3.12'" },
-    { name = "stack-data", marker = "python_full_version < '3.12'" },
-    { name = "traitlets", marker = "python_full_version < '3.12'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "decorator" },
+    { name = "ipython-pygments-lexers" },
+    { name = "jedi" },
+    { name = "matplotlib-inline" },
+    { name = "pexpect", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "prompt-toolkit" },
+    { name = "pygments" },
+    { name = "stack-data" },
+    { name = "traitlets" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a6/60/2111715ea11f39b1535bed6024b7dec7918b71e5e5d30855a5b503056b50/ipython-9.10.0.tar.gz", hash = "sha256:cd9e656be97618a0676d058134cd44e6dc7012c0e5cb36a9ce96a8c904adaf77", size = 4426526, upload-time = "2026-02-02T10:00:33.594Z" }
 wheels = [
@@ -2843,16 +2867,16 @@ resolution-markers = [
     "python_full_version == '3.12.*'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "decorator", marker = "python_full_version >= '3.12'" },
-    { name = "ipython-pygments-lexers", marker = "python_full_version >= '3.12'" },
-    { name = "jedi", marker = "python_full_version >= '3.12'" },
-    { name = "matplotlib-inline", marker = "python_full_version >= '3.12'" },
-    { name = "pexpect", marker = "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "prompt-toolkit", marker = "python_full_version >= '3.12'" },
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
-    { name = "stack-data", marker = "python_full_version >= '3.12'" },
-    { name = "traitlets", marker = "python_full_version >= '3.12'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "decorator" },
+    { name = "ipython-pygments-lexers" },
+    { name = "jedi" },
+    { name = "matplotlib-inline" },
+    { name = "pexpect", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "prompt-toolkit" },
+    { name = "pygments" },
+    { name = "stack-data" },
+    { name = "traitlets" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/28/a4698eda5a8928a45d6b693578b135b753e14fa1c2b36ee9441e69a45576/ipython-9.11.0.tar.gz", hash = "sha256:2a94bc4406b22ecc7e4cb95b98450f3ea493a76bec8896cda11b78d7752a6667", size = 4427354, upload-time = "2026-03-05T08:57:30.549Z" }
 wheels = [
@@ -4040,10 +4064,10 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "jsonref", marker = "python_full_version < '3.12'" },
-    { name = "mcp", extra = ["ws"], marker = "python_full_version < '3.12'" },
-    { name = "pydantic", marker = "python_full_version < '3.12'" },
-    { name = "python-dotenv", marker = "python_full_version < '3.12'" },
+    { name = "jsonref" },
+    { name = "mcp", extra = ["ws"] },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/28/64fc666fa5d86bb1b048c167975d4ea19210f9f8571b64b26563739774ac/mcpadapt-0.1.19.tar.gz", hash = "sha256:dfab84fc75cc84a49a40bd61079773b1faf840227b74b82c71a7755b9c1957c5", size = 4227721, upload-time = "2025-10-16T07:11:56.736Z" }
 wheels = [
@@ -4059,10 +4083,10 @@ resolution-markers = [
     "python_full_version == '3.12.*'",
 ]
 dependencies = [
-    { name = "jsonref", marker = "python_full_version >= '3.12'" },
-    { name = "mcp", extra = ["ws"], marker = "python_full_version >= '3.12'" },
-    { name = "pydantic", marker = "python_full_version >= '3.12'" },
-    { name = "python-dotenv", marker = "python_full_version >= '3.12'" },
+    { name = "jsonref" },
+    { name = "mcp", extra = ["ws"] },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e3/71/1bbbe157e55d30ab4a74fa878f6942cc0586e9820f03e03451a3d2297e9b/mcpadapt-0.1.20.tar.gz", hash = "sha256:4047c0da61e481dd0673a48936a427da9e6547c6cf0d580ff4e4761dcf058ed1", size = 4203656, upload-time = "2025-10-24T15:35:02.135Z" }
 wheels = [
