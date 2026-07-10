@@ -101,10 +101,10 @@ def test_multiturn_replays_tool_call_and_reasoning_history(http_client: httpx.Cl
         f"{getattr(tool_result, 'content', None)!r}"
     )
 
+    # Reasoning is only emitted by langgraph and llama_index (with thinking enabled);
+    # for those the fold must also carry it as a reasoning message.
+    # And not all models support it.
     if should_run_reasoning_test():
-        # Reasoning is only emitted by langgraph and llama_index (with thinking enabled);
-        # for those the fold must also carry it as a reasoning message.
-        # And not models support it.
         assert "reasoning" in roles, (
             "expected the run to emit reasoning (thinking enabled) and the helper to "
             f"capture it; history roles were {roles}"
