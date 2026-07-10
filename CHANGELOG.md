@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 
+
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
 - `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
