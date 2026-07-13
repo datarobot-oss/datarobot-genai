@@ -412,7 +412,7 @@ def _streaming_text_events_from_openai_chunk(
     """Rebuild AG-UI text events from a streaming OpenAI chunk (single delta, no synthetic start/end).
 
     Only ``TextMessageContentEvent`` is emitted for assistant text so the moderated stream always
-    uses the explicit START/CONTENT/END lifecycle. 
+    uses the explicit START/CONTENT/END lifecycle.
     """
     delta_content = completion.choices[0].delta.content
     text = "" if delta_content is None else delta_content
