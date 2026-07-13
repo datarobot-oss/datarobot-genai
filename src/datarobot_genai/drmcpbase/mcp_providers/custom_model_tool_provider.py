@@ -28,6 +28,13 @@ Tools are assembled from the same pure seams the startup path uses
 tool definitions. Because the caller's bearer token is baked into each tool's
 outbound auth headers, built tools are cached per (deployment, token) — one
 user's tools are never served to another.
+
+Hot-path cost: static tools are unaffected (providers are consulted only on a
+static miss). tools/list and deployment-tool calls resolve against per-user
+TTL caches — the deployment listing (60s) and the built tools (10 min) — so
+steady-state adds no DR API round trip. A newly tagged deployment appears
+when the listing entry expires or immediately after ``invalidate_for_user``
+(exposed as the ``refresh_deployment_tools`` MCP tool in drmcp).
 """
 
 import asyncio
@@ -36,6 +43,7 @@ import logging
 from collections.abc import AsyncIterator
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from aiohttp import ClientResponseError
 from cachetools import TTLCache
@@ -69,6 +77,12 @@ logger = logging.getLogger(__name__)
 
 TOOL_CACHE_TTL_IN_SECOND = 10 * TimeMeasurement.MINUTE.to_numeric_value_in_second()
 MAX_DEPLOYMENT_TOOLS_TO_CACHE = 256
+# The per-user deployment-id listing is the only per-request DR API call on
+# the hot path; cache it briefly so repeated tools/list and tool calls don't
+# each pay a listing round trip. Newly tagged deployments appear when the
+# entry expires or on an explicit refresh (see invalidate_for_user).
+LISTING_CACHE_TTL_IN_SECOND = 60
+MAX_LISTINGS_TO_CACHE = 512
 
 # Exceptions that mean "this request has no usable per-user credentials" — the
 # provider contributes no tools rather than failing the whole tools/list.
@@ -81,10 +95,14 @@ _TOKEN_RESOLUTION_ERRORS = (
 )
 
 
+def _token_digest(datarobot_token: str) -> str:
+    """Short digest identifying a user's token without retaining it."""
+    return hashlib.sha256(datarobot_token.encode("utf-8")).hexdigest()[:16]
+
+
 def _cache_key(deployment_id: str, datarobot_token: str) -> tuple[str, str]:
     """Cache key isolating built tools per user without retaining the raw token."""
-    digest = hashlib.sha256(datarobot_token.encode("utf-8")).hexdigest()[:16]
-    return (deployment_id, digest)
+    return (deployment_id, _token_digest(datarobot_token))
 
 
 class CustomModelToolProvider(Provider):
@@ -102,6 +120,7 @@ class CustomModelToolProvider(Provider):
         self,
         datarobot_api_endpoint: str,
         allow_empty_schema: bool = False,
+        listing_cache_ttl_s: float = LISTING_CACHE_TTL_IN_SECOND,
     ) -> None:
         super().__init__()
         self.datarobot_api_client: DataRobotClientWithAsyncAPI | None = None
@@ -110,6 +129,8 @@ class CustomModelToolProvider(Provider):
         self._tool_cache: TTLCache = TTLCache(
             maxsize=MAX_DEPLOYMENT_TOOLS_TO_CACHE, ttl=TOOL_CACHE_TTL_IN_SECOND
         )
+        # user digest -> list of tool-tagged deployment ids
+        self._ids_cache: TTLCache = TTLCache(maxsize=MAX_LISTINGS_TO_CACHE, ttl=listing_cache_ttl_s)
 
     @asynccontextmanager
     async def lifespan(self) -> AsyncIterator[None]:
@@ -127,9 +148,31 @@ class CustomModelToolProvider(Provider):
                 "Because it executed before the MCP provider entered lifespan."
             )
             return []
-        return await self.datarobot_api_client._list_mcp_tool_custom_model_deployment_ids(  # type: ignore[union-attr]
-            datarobot_token
-        )
+        digest = _token_digest(datarobot_token)
+        ids = self._ids_cache.get(digest)
+        if ids is None:
+            ids = await self.datarobot_api_client._list_mcp_tool_custom_model_deployment_ids(  # type: ignore[union-attr]
+                datarobot_token
+            )
+            self._ids_cache[digest] = ids
+        return ids
+
+    def invalidate_for_user(self, datarobot_token: str) -> int:
+        """Drop the caller's cached deployment listing and built tools.
+
+        The next listing (or tool call) re-discovers tool-tagged deployments
+        immediately instead of waiting out the listing TTL. Returns the number
+        of cache entries dropped. Only the calling user's entries are touched.
+        """
+        digest = _token_digest(datarobot_token)
+        dropped = 0
+        if self._ids_cache.pop(digest, None) is not None:
+            dropped += 1
+        stale_tool_keys = [key for key in self._tool_cache if key[1] == digest]
+        for key in stale_tool_keys:
+            self._tool_cache.pop(key, None)
+            dropped += 1
+        return dropped
 
     async def _build_tool(self, deployment_id: str, datarobot_token: str) -> Tool:
         """Build a Tool for one deployment with the caller's credentials.
@@ -213,3 +256,31 @@ class CustomModelToolProvider(Provider):
             else:
                 tools.append(result)
         return tools
+
+    async def _get_tool(self, name: str, version: Any = None) -> Tool | None:
+        """Resolve a tool call without a DR API round trip when possible.
+
+        Tool calls land here (static tools take precedence, so only
+        deployment tools reach this provider). If the calling user already has
+        a built tool of this name in the cache, serve it directly; otherwise
+        fall back to the default listing-based resolution (which itself hits
+        the cached deployment listing). A cached tool only exists because a
+        prior fully-gated listing built it for this same user.
+        """
+        if version is None and not is_category_disabled_for_request(
+            DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name
+        ):
+            try:
+                datarobot_token = (
+                    DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_from_mcp_request()
+                )
+            except _TOKEN_RESOLUTION_ERRORS:
+                return None
+            digest = _token_digest(datarobot_token)
+            for key in list(self._tool_cache):
+                if key[1] != digest:
+                    continue
+                tool = self._tool_cache.get(key)
+                if tool is not None and tool.name == name:
+                    return tool
+        return await super()._get_tool(name, version)

@@ -30,6 +30,7 @@ from starlette.middleware import Middleware
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
+from datarobot_genai.drmcpbase.auth.enums import DataRobotBearerHeaderEnum
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
 from datarobot_genai.drmcpbase.mcp_providers.custom_model_tool_provider import (
     CustomModelToolProvider,
@@ -90,6 +91,37 @@ def _import_modules_from_dir(
                         importlib.import_module(module_name)
                 except ImportError as e:
                     logging.warning(f"Failed to import module {module_name}: {e}")
+
+
+def _register_refresh_deployment_tools(
+    mcp_server: FastMCP, provider: CustomModelToolProvider
+) -> None:
+    """Expose an explicit cache-refresh tool alongside the deployment-tool provider.
+
+    The provider caches the caller's deployment listing briefly (see
+    ``LISTING_CACHE_TTL_IN_SECOND``); this tool drops the caller's cache
+    entries so a just-tagged deployment appears immediately instead of when
+    the TTL expires.
+    """
+
+    @mcp_server.tool(
+        name="refresh_deployment_tools",
+        description=(
+            "Refresh the caller's deployment-backed MCP tools. Call this after "
+            "deploying or tagging a DataRobot deployment as a tool (tag tool=tool) "
+            "to make it available immediately instead of waiting for the discovery "
+            "cache to expire. Returns the refreshed deployment tool names."
+        ),
+    )
+    async def refresh_deployment_tools() -> dict[str, Any]:
+        datarobot_token = DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION.get_from_mcp_request()
+        dropped = provider.invalidate_for_user(datarobot_token)
+        tools = await provider._list_tools()
+        return {
+            "refreshed": True,
+            "dropped_cache_entries": dropped,
+            "deployment_tools": sorted(tool.name for tool in tools),
+        }
 
 
 class DataRobotMCPServer:
@@ -160,12 +192,12 @@ class DataRobotMCPServer:
         # appears on the next tools/list — no restart (MODEL-24094).
         if self._config.mcp_server_enable_deployment_tool_provider:
             datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT", DEFAULT_DATAROBOT_ENDPOINT)
-            mcp.add_provider(
-                CustomModelToolProvider(
-                    datarobot_endpoint,
-                    allow_empty_schema=self._config.mcp_server_tool_registration_allow_empty_schema,
-                )
+            deployment_tool_provider = CustomModelToolProvider(
+                datarobot_endpoint,
+                allow_empty_schema=self._config.mcp_server_tool_registration_allow_empty_schema,
             )
+            mcp.add_provider(deployment_tool_provider)
+            _register_refresh_deployment_tools(mcp, deployment_tool_provider)
             self._logger.info("CustomModelToolProvider registered (request-time deployment tools)")
 
         # Load native MCP tools modules (only when load_native_mcp_tools is True)

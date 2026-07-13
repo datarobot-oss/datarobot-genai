@@ -129,7 +129,7 @@ class TestListTools:
         mock_gates: tuple[Mock, AsyncMock],
         mock_token: Mock,
     ) -> None:
-        """The zero-restart contract: each listing re-reads tagged deployments."""
+        """The zero-restart contract: a refresh re-reads tagged deployments."""
         second_id = "68bbbbbbbbbbbbbbbbbbbbbb"
         mock_api_client._list_mcp_tool_custom_model_deployment_ids = AsyncMock(
             side_effect=[[DEPLOYMENT_ID], [DEPLOYMENT_ID, second_id]]
@@ -141,6 +141,7 @@ class TestListTools:
             side_effect=lambda dep_id, token: _make_tool(f"tool_{dep_id[-4:]}"),
         ):
             first = await provider._list_tools()
+            provider.invalidate_for_user(TOKEN)  # or wait out the listing TTL
             second = await provider._list_tools()
 
         assert [t.name for t in first] == [f"tool_{DEPLOYMENT_ID[-4:]}"]
@@ -148,6 +149,67 @@ class TestListTools:
             f"tool_{DEPLOYMENT_ID[-4:]}",
             f"tool_{second_id[-4:]}",
         ]
+
+    @pytest.mark.asyncio
+    async def test_listing_is_cached_within_ttl(
+        self,
+        provider: CustomModelToolProvider,
+        mock_api_client: Mock,
+        mock_gates: tuple[Mock, AsyncMock],
+        mock_token: Mock,
+    ) -> None:
+        """Repeated listings must not each pay a deployments API round trip."""
+        with patch.object(
+            provider, "_build_tool", new_callable=AsyncMock, return_value=_make_tool()
+        ):
+            await provider._list_tools()
+            await provider._list_tools()
+        mock_api_client._list_mcp_tool_custom_model_deployment_ids.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_tool_serves_cached_tool_without_listing(
+        self,
+        provider: CustomModelToolProvider,
+        mock_api_client: Mock,
+        mock_gates: tuple[Mock, AsyncMock],
+        mock_token: Mock,
+    ) -> None:
+        """Tool calls hit the per-user tool cache — no DR API round trip."""
+        tool = _make_tool()
+        with patch.object(provider, "_build_tool", new_callable=AsyncMock, return_value=tool):
+            await provider._list_tools()  # builds + caches the tool
+            mock_api_client._list_mcp_tool_custom_model_deployment_ids.reset_mock()
+            with patch(f"{MODULE}.is_category_disabled_for_request", return_value=False):
+                resolved = await provider._get_tool(tool.name)
+        assert resolved is tool
+        mock_api_client._list_mcp_tool_custom_model_deployment_ids.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_invalidate_only_touches_the_calling_user(
+        self,
+        provider: CustomModelToolProvider,
+        mock_api_client: Mock,
+        mock_gates: tuple[Mock, AsyncMock],
+    ) -> None:
+        with (
+            patch.object(
+                provider, "_build_tool", new_callable=AsyncMock, return_value=_make_tool()
+            ),
+            patch.object(
+                DataRobotBearerHeaderEnum.X_DATAROBOT_AUTHORIZATION,
+                "get_from_mcp_request",
+            ) as mock_get,
+        ):
+            mock_get.return_value = "token-of-user-a"
+            await provider._list_tools()
+            mock_get.return_value = "token-of-user-b"
+            await provider._list_tools()
+
+        dropped = provider.invalidate_for_user("token-of-user-a")
+        assert dropped == 2  # user A's listing + built tool
+        # user B's entries survive
+        assert provider.invalidate_for_user("token-of-user-b") == 2
+        assert provider.invalidate_for_user("token-of-user-a") == 0
 
     @pytest.mark.asyncio
     async def test_category_disabled_for_request_skips_everything(
