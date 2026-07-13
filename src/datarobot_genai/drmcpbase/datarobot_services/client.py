@@ -31,6 +31,10 @@ from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
 from datarobot.utils import from_api
 
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.discovery import TOOL_TAG_NAME
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.discovery import TOOL_TAG_VALUE
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.discovery import is_tool_tagged
+
 logger = logging.getLogger(__name__)
 
 
@@ -169,13 +173,13 @@ class DataRobotClientWithAsyncAPI:
 
     async def _list_mcp_tool_custom_model_deployment_ids(self, dr_bearer_token: str) -> list[str]:
         url = self.get_api_v2_endpoint(self._dr_host, "/deployments")
-        url = f"{url}?tagValues=tool&tagKeys=tool"
+        url = f"{url}?tagValues={TOOL_TAG_VALUE}&tagKeys={TOOL_TAG_NAME}"
         headers = {"Authorization": f"Bearer {dr_bearer_token}"}
         ids: list[str] = []
         async for deployment in self._unpaginate(url, headers):
-            for tag in deployment.get("tags", []):
-                if tag.get("name") == "tool" and tag.get("value") == "tool":
-                    ids.append(deployment["id"])
+            # The API ORs multi-tag filters; is_tool_tagged re-checks with AND.
+            if is_tool_tagged(deployment.get("tags")):
+                ids.append(deployment["id"])
         return ids
 
     async def _get_datarobot_deployment(
