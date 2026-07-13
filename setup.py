@@ -95,7 +95,7 @@ dragent = nat + [
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot[auth]>=3.10.0,<4.0.0",
+  "datarobot[auth]>=3.17.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
