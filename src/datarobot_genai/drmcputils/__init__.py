@@ -17,3 +17,9 @@
 Shared base for ``drtools`` (tools) and ``drmcpbase`` (resources/prompts) so both,
 and the MCP servers built on them, reuse one client/auth/error/flag foundation.
 """
+
+from datarobot_genai.drmcputils.ard_catalog import get_global_mcp_prebuilt_tools
+
+__all__ = [
+    "get_global_mcp_prebuilt_tools",
+]
