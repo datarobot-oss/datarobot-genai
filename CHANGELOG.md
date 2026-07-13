@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.17
+## 0.23.20
 - `eval`: endpoint health check now probes `<scheme>://<host>:<port>/health` (path stripped) before falling back to pinging the literal `--endpoint`, so dragent/DRUM-fronted agents log a clean 200 instead of a `404 Not Found` on the bare `/v1` base URL during validation and `--dry-run`.
+
+## 0.23.19
+- `drtools/files_api`: Tweak `description` and `description_ui` fields for file-related tools to improve agent operations and user understanding.
+
+## 0.23.18
+- `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
+
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
 
 ## 0.23.16
 - Fix `eval_status.json` not updated to failed on early input validation errors.

@@ -161,6 +161,15 @@ jobs:
       # late-flushed batch bleeds into the next trace and trips the
       # single-trace-id assertion.
       DATAROBOT_OTEL_SPAN_PROCESSOR: simple
+      # Bound each span export to a few seconds (value is in seconds for the
+      # Python OTLP exporter, despite the spec's milliseconds). During the "Run
+      # dragent server in background" step the mock collector is not listening
+      # yet (pytest binds it later), so a synchronous SimpleSpanProcessor export
+      # would otherwise block on the exporter's ~10s retry/backoff. Stacked
+      # across startup spans that can push the agent past the health-check
+      # window and flake the run. Real exports to the local collector during the
+      # test run are sub-second, so this ceiling never bites there.
+      OTEL_EXPORTER_OTLP_TIMEOUT: "3"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -223,7 +232,10 @@ jobs:
           working-directory: e2e-tests
           run: task dragent:run-${{ matrix.agent }} &
           wait-on: http-get://localhost:8080/health
-          wait-for: 60s
+          # Heavier agents (crewai) plus any blocked startup span exports can be
+          # slow to become healthy; give startup headroom so a slow-but-working
+          # boot does not flake as a timeout.
+          wait-for: 120s
 
       - name: Run e2e tests
         working-directory: e2e-tests
