@@ -423,6 +423,8 @@ def _streaming_text_events_from_openai_chunk(
         ev0 = source_ag_ui_events[0]
         if isinstance(ev0, (TextMessageContentEvent, TextMessageChunkEvent)):
             message_id = ev0.message_id
+    if not message_id:
+        message_id = str(uuid.uuid4())
     return [TextMessageContentEvent(message_id=message_id, delta=text)]
 
 
