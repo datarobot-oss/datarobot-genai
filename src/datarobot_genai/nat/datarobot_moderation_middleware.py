@@ -409,27 +409,21 @@ def _streaming_text_events_from_openai_chunk(
     completion: ChatCompletionChunk,
     source_ag_ui_events: list[Any] | None,
 ) -> list[Any]:
-    """Rebuild AG-UI text events from a streaming OpenAI chunk (single delta, no synthetic start/end)."""
+    """Rebuild AG-UI text events from a streaming OpenAI chunk (single delta, no synthetic start/end).
+
+    Only ``TextMessageContentEvent`` is emitted for assistant text so the moderated stream always
+    uses the explicit START/CONTENT/END lifecycle. 
+    """
     delta_content = completion.choices[0].delta.content
     text = "" if delta_content is None else delta_content
+    if not text:
+        return []
+    message_id = ""
     if source_ag_ui_events:
         ev0 = source_ag_ui_events[0]
-        if isinstance(ev0, TextMessageContentEvent):
-            if text:
-                return [TextMessageContentEvent(message_id=ev0.message_id, delta=text)]
-            return [TextMessageChunkEvent(message_id=ev0.message_id, role="assistant", delta="")]
-        if isinstance(ev0, TextMessageChunkEvent):
-            return [
-                TextMessageChunkEvent(
-                    message_id=ev0.message_id,
-                    role=ev0.role,
-                    delta=text or "",
-                )
-            ]
-    mid = str(uuid.uuid4())
-    if text:
-        return [TextMessageContentEvent(message_id=mid, delta=text)]
-    return [TextMessageChunkEvent(message_id=mid, role="assistant", delta="")]
+        if isinstance(ev0, (TextMessageContentEvent, TextMessageChunkEvent)):
+            message_id = ev0.message_id
+    return [TextMessageContentEvent(message_id=message_id, delta=text)]
 
 
 def dragent_event_response_to_dome_chunk(
