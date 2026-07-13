@@ -24,8 +24,7 @@ from setuptools import setup
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
-    "datarobot>=3.10.0,<4.0.0",
-    "datarobot-early-access==3.16.0.2026.5.25.174233",
+    "datarobot>=3.17.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "ragas>=0.4.3,<0.5.0",
@@ -96,7 +95,7 @@ dragent = nat + [
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot[auth]>=3.10.0,<4.0.0",
+  "datarobot[auth]>=3.17.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
@@ -106,7 +105,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot-early-access[fs]==3.16.0.2026.5.25.174233",
+    "datarobot[fs]>=3.17.0,<4.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
