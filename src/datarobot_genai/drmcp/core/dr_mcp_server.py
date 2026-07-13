@@ -31,7 +31,11 @@ from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
+from datarobot_genai.drmcpbase.mcp_providers.custom_model_tool_provider import (
+    CustomModelToolProvider,
+)
 from datarobot_genai.drmcpbase.panels import register_panel_resources
+from datarobot_genai.drmcputils.constants import DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .clients import RequestHeadersMiddleware
@@ -151,6 +155,18 @@ class DataRobotMCPServer:
         initialize_oauth_middleware(mcp)
 
         register_mcp_catalog_transform(mcp)
+
+        # Request-time deployment tools: tag a deployment `tool=tool` and it
+        # appears on the next tools/list — no restart (MODEL-24094).
+        if self._config.mcp_server_enable_deployment_tool_provider:
+            datarobot_endpoint = os.environ.get("DATAROBOT_ENDPOINT", DEFAULT_DATAROBOT_ENDPOINT)
+            mcp.add_provider(
+                CustomModelToolProvider(
+                    datarobot_endpoint,
+                    allow_empty_schema=self._config.mcp_server_tool_registration_allow_empty_schema,
+                )
+            )
+            self._logger.info("CustomModelToolProvider registered (request-time deployment tools)")
 
         # Load native MCP tools modules (only when load_native_mcp_tools is True)
         base_dir = Path(__file__).parent.parent
