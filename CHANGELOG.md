@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
 
 ## 0.23.13
-- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 
 
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
