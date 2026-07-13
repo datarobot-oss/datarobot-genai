@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.24
+- `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
+
 ## 0.23.23
 - `crewai`: strip the per-tool `strict` flag on native tool calls.
 

@@ -20,6 +20,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import InvalidParamsError
 from a2a.utils.errors import ServerError
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from fastapi import FastAPI
 from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugin
@@ -288,6 +289,47 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             logger.info(f"Added health check endpoint at {path}")
 
 
+class _GunicornSettings(DataRobotAppFrameworkBaseSettings):
+    """Gunicorn worker settings for the dragent front end.
+
+    Controllable via prefix-free environment variables (including Runtime Parameters),
+    following the standard :class:`DataRobotAppFrameworkBaseSettings` resolution chain.
+    """
+
+    agent_gunicorn_worker_timeout: int = Field(
+        default=600,
+        gt=0,
+        description=(
+            "Gunicorn worker (and graceful) timeout in seconds for the dragent front end, "
+            "raised above gunicorn's 30s default so long agent turns aren't killed "
+            "mid-stream. Default: 600."
+        ),
+    )
+
+
+def _patch_gunicorn_worker_timeout() -> None:
+    """Raise gunicorn's 30s default worker timeout for the dragent front end.
+
+    ``nat dragent serve --use_gunicorn true`` builds gunicorn's app with a hardcoded
+    options dict (``bind``/``workers``/``worker_class`` only) and ignores
+    ``GUNICORN_CMD_ARGS``/``gunicorn.conf.py``/CLI flags, so there is no supported way to
+    raise the timeout. Agent turns make several sequential LLM calls and routinely exceed
+    30s, so the worker is SIGABRT'd mid-stream and the caller gets a silent empty response.
+    Patching the ``Setting`` class defaults before gunicorn's ``Config()`` is built changes
+    the effective timeout. Override via ``AGENT_GUNICORN_WORKER_TIMEOUT`` (seconds).
+    """
+    try:
+        import gunicorn.config as gunicorn_config
+    except ImportError:
+        # gunicorn isn't used in this mode (local dev / uvicorn) — nothing to patch.
+        return
+
+    timeout_seconds = _GunicornSettings().agent_gunicorn_worker_timeout
+    gunicorn_config.Timeout.default = timeout_seconds
+    gunicorn_config.GracefulTimeout.default = timeout_seconds
+    logger.info("Raised gunicorn worker/graceful timeout defaults to %ss", timeout_seconds)
+
+
 class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -302,6 +344,8 @@ class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
         from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
         publish_dragent_config_file_env()
+        if self.front_end_config.use_gunicorn:
+            _patch_gunicorn_worker_timeout()
         await super().run()
 
     def get_worker_class(self) -> type[FastApiFrontEndPluginWorker]:
