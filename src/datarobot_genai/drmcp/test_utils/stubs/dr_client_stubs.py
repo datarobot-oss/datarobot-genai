@@ -42,6 +42,9 @@ STUB_USE_CASE_ID = "stub_use_case_id"
 # VDB deployment id used by test_create_dr_client(); use for integration tests with stubs.
 STUB_VDB_DEPLOYMENT_ID = "stub_vdb_deployment_id"
 
+# Vector database id returned by stub ``VectorDatabase.create``.
+STUB_VECTOR_DATABASE_ID = "stub_vector_database_id"
+
 
 class StubRocCurve:
     """Stub DataRobot ROC curve object."""
@@ -133,6 +136,12 @@ class StubDeployment:
         self.label = f"Deployment {deployment_id}"
         self.model = {"project_id": project_id, "id": model_id}
         self.status = "active"
+        self.default_prediction_server = {
+            "id": "stub_prediction_server_id",
+            "url": "https://stub-prediction-server.example.com",
+            "datarobot-key": "stub-datarobot-key",
+        }
+        self.prediction_environment = None
 
     def get_features(self) -> list:
         """
@@ -352,8 +361,11 @@ class StubDRClient:
         self.UseCase = MagicMock()
         self.client = MagicMock()
         self.BatchPredictionJob = StubBatchPredictionJobAPI()
+        self.create_vector_database: Any = None
+        self.get_vector_database: Any = None
         self.stub_rest_get: Any = None
         self.stub_rest_post: Any = None
+        self.stub_rest_request: Any = None
         self.stub_rest_patch: Any = None
         self.stub_rest_delete: Any = None
 
@@ -458,6 +470,40 @@ def test_create_dr_client() -> StubDRClient:
         name = "Stub Use Case" if use_case_id == STUB_USE_CASE_ID else f"Use Case {use_case_id}"
         return StubUseCase(use_case_id, name=name)
 
+    def create_vector_database(
+        dataset_id: str,
+        chunking_parameters: Any = None,
+        use_case: Any = None,
+        name: str | None = None,
+        **kwargs: Any,
+    ) -> SimpleNamespace:
+        """Stub VectorDatabase.create; returns a minimal vector database record."""
+        del chunking_parameters, kwargs
+        use_case_id = use_case if isinstance(use_case, str) else STUB_USE_CASE_ID
+        return SimpleNamespace(
+            id=STUB_VECTOR_DATABASE_ID,
+            name=name or "Vector Database for stub_dataset.csv",
+            execution_status="new",
+            use_case_id=use_case_id,
+            dataset_id=dataset_id,
+        )
+
+    def get_vector_database(vector_database_id: str) -> SimpleNamespace:
+        """Stub VectorDatabase.get; returns a vector database with a deploy method."""
+
+        def deploy(**kwargs: Any) -> SimpleNamespace:
+            del kwargs
+            return SimpleNamespace(
+                id=STUB_VDB_DEPLOYMENT_ID,
+                label="Stub VDB Deployment",
+            )
+
+        return SimpleNamespace(
+            id=vector_database_id,
+            execution_status="COMPLETED",
+            deploy=deploy,
+        )
+
     # --- REST method stubs for dr_module.client.get_client() ---
     def _stub_get_non_workload(url: str, params: dict | None) -> StubRestResponse:
         response = StubRestResponse({"data": [], "next": None})
@@ -508,6 +554,15 @@ def test_create_dr_client() -> StubDRClient:
                 },
             ]
             response = StubRestResponse({"data": all_deployments, "next": None})
+        elif url.rstrip("/").startswith("deployments/"):
+            dep_id = url.rstrip("/").split("/")[-1]
+            response = StubRestResponse(
+                {
+                    "id": dep_id,
+                    "label": "Stub VDB Deployment",
+                    "status": "active",
+                }
+            )
         elif "useCases" in url:
             data: list[dict] = [
                 {"id": STUB_USE_CASE_ID, "name": "Stub Use Case"},
@@ -559,6 +614,24 @@ def test_create_dr_client() -> StubDRClient:
             )
         return StubRestResponse({"data": []})
 
+    def stub_request(
+        method: str,
+        url: str,
+        join_endpoint: bool = False,
+        **kwargs: Any,
+    ) -> StubRestResponse:
+        """Stub for rest_client.request() REST calls."""
+        del join_endpoint
+        if method.upper() == "POST":
+            return stub_post(url, **kwargs)
+        if method.upper() == "GET":
+            return stub_get(url, **kwargs)
+        if method.upper() == "PATCH":
+            return stub_patch(url, **kwargs)
+        if method.upper() == "DELETE":
+            return stub_delete(url, **kwargs)
+        return StubRestResponse({})
+
     def stub_patch(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:
         """Stub for rest_client.patch() REST calls."""
         workload_response = workload_stub_patch(url, json, **kwargs)
@@ -582,10 +655,13 @@ def test_create_dr_client() -> StubDRClient:
     client.Dataset.iterate = iterate_datasets
     client.DataStore.list = list_datastores
     client.UseCase.get = get_use_case
+    client.create_vector_database = create_vector_database
+    client.get_vector_database = get_vector_database
     # Store REST stubs on the client so integration_mcp_server can wire them
     # onto mock_rest after replacing client.client.
     client.stub_rest_get = stub_get
     client.stub_rest_post = stub_post
+    client.stub_rest_request = stub_request
     client.stub_rest_patch = stub_patch
     client.stub_rest_delete = stub_delete
     return client
