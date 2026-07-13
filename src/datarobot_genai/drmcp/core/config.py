@@ -196,6 +196,13 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         description="Register dynamic tools on startup. When enabled, the MCP server will "
         "automatically register all DataRobot tool deployments as MCP tools during startup.",
     )
+    mcp_server_enable_deployment_tool_provider: bool = Field(
+        default=False,
+        description="Serve tool-tagged deployments as MCP tools at request time. When "
+        "enabled, the server re-discovers deployments tagged tool=tool on every "
+        "tools/list, so newly tagged deployments appear without a restart (the "
+        "zero-restart counterpart to mcp_server_register_dynamic_tools_on_startup).",
+    )
     mcp_server_tool_registration_allow_empty_schema: bool = Field(
         default=False,
         description="Allow registration of tools with no input parameters. When enabled, "

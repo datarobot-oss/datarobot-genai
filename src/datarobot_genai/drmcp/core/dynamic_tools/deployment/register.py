@@ -19,6 +19,8 @@ from fastmcp.tools.tool import Tool
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcp.core.exceptions import DynamicToolRegistrationError
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.discovery import TOOL_TAG_QUERY_PARAMS
+from datarobot_genai.drmcpbase.dynamic_tools.deployment.discovery import is_tool_tagged
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
@@ -81,16 +83,13 @@ def get_datarobot_tool_deployments() -> list[str]:
     with request_user_dr_client(headers_auth_only=False) as client:
         deployments_data = dr.utils.pagination.unpaginate(
             initial_url="deployments/",
-            initial_params={"tag_values": "tool", "tag_keys": "tool"},
+            initial_params=dict(TOOL_TAG_QUERY_PARAMS),
             client=client,
         )
 
     # The API filters with OR logic for tags, so we need to filter for AND logic
-    valid_deployment_ids = []
-    for deployment in deployments_data:
-        for tag in deployment.get("tags", []):
-            if tag.get("name") == "tool" and tag.get("value") == "tool":
-                valid_deployment_ids.append(deployment["id"])
-                break
-
-    return valid_deployment_ids
+    return [
+        deployment["id"]
+        for deployment in deployments_data
+        if is_tool_tagged(deployment.get("tags"))
+    ]
