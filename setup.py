@@ -105,7 +105,6 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    # 3.17: Files API ([fs]) + user-MCP-server lineage API (promoted from _experimental)
     "datarobot[fs]>=3.17.0,<4.0.0",
 ]
 
