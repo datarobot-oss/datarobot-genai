@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.19
+## 0.23.20
 - `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
+
+## 0.23.19
+- `drtools/files_api`: Tweak `description` and `description_ui` fields for file-related tools to improve agent operations and user understanding.
 
 ## 0.23.18
 - `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
