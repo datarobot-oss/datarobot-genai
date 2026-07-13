@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.19
+- `drmcpbase`/`drmcp` (MODEL-24094): added `CustomModelToolProvider` — serves `tool=tool`-tagged deployments as MCP tools at request time, so newly tagged deployments appear on the next `tools/list` without a server restart (per-user auth isolation via a token-scoped TTL cache). Extracted the shared `is_tool_tagged` discovery predicate (the deployments API ORs multi-tag filters; the AND re-check was duplicated between the startup batch registration and the async lister). New opt-in `MCP_SERVER_ENABLE_DEPLOYMENT_TOOL_PROVIDER` wires the provider into self-hosted drmcp servers.
+
 ## 0.23.18
 - `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
 
