@@ -214,23 +214,19 @@ class WorkloadApiClient:
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         """GET /otel/workload/{id}/logs/ — OTel log lines for a workload."""
-        params: list[tuple[str, Any]] = [
-            ("limit", limit),
-            ("offset", offset),
-            ("level", level),
-        ]
+        params: dict[str, Any] = {"limit": limit, "offset": offset, "level": level}
         if start_time:
-            params.append(("startTime", start_time))
+            params["startTime"] = start_time
         if end_time:
-            params.append(("endTime", end_time))
-        for v in includes or []:
-            params.append(("includes", v))
-        for v in excludes or []:
-            params.append(("excludes", v))
+            params["endTime"] = end_time
+        if includes:
+            params["includes"] = includes
+        if excludes:
+            params["excludes"] = excludes
         if span_id:
-            params.append(("spanId", span_id))
+            params["spanId"] = span_id
         if trace_id:
-            params.append(("traceId", trace_id))
+            params["traceId"] = trace_id
         with request_user_dr_client() as client:
             return client.get(f"otel/workload/{workload_id}/logs/", params=params).json()
 

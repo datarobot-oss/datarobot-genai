@@ -37,8 +37,8 @@ from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
 from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.store import DEFAULT_SOURCE
 from datarobot_genai.drtools.core import tool_metadata
+from datarobot_genai.drtools.core.sandbox import execute_code as _execute_code
 from datarobot_genai.drtools.panels.datasource import _rows_to_parquet
-from datarobot_genai.drtools.sandbox import execute_code as _execute_code
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +120,15 @@ async def _run_transform(
         "DataFrame `df`; assign the resulting rows to `_return` (a list of dicts), e.g. "
         "`_return = df.group_by('region').agg(pl.col('rev').sum()).to_dicts()`."
     ),
+    display_name="Panels — Transform",
+    description_ui=(
+        "Runs user-supplied Python code over a dataset panel in the sandbox and saves the result "
+        "as a derived child panel."
+    ),
 )
 async def transform_panel(
     *,
-    panel_id: Annotated[str, "Source Dataset panel id."],
+    panel_id: Annotated[str, "Source Dataset panel ID."],
     code: Annotated[str, "Python operating on `df`; assign result rows to `_return`."],
     title: Annotated[str, "Title for the derived panel."],
     description: Annotated[str | None, "Optional description."] = None,
@@ -141,10 +146,15 @@ async def transform_panel(
         "saving the filtered rows as a derived child panel. `where` is a polars expression over "
         "`df`, e.g. \"pl.col('rev') > 1000\"."
     ),
+    display_name="Panels — Filter",
+    description_ui=(
+        "Filters a dataset panel by a polars boolean expression in the sandbox, "
+        "saving the result as a derived child panel."
+    ),
 )
 async def filter_panel(
     *,
-    panel_id: Annotated[str, "Source Dataset panel id."],
+    panel_id: Annotated[str, "Source Dataset panel ID."],
     where: Annotated[str, "polars boolean expression, e.g. \"pl.col('rev') > 1000\"."],
     title: Annotated[str, "Title for the filtered panel."],
     description: Annotated[str | None, "Optional description."] = None,

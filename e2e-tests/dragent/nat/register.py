@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.nat.tool import nat_tool
 
 from dragent.tool import generate_objectid
+
+# INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
+instrument()
 
 nat_tool(generate_objectid, "generate_objectid")

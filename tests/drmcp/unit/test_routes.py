@@ -22,6 +22,7 @@ import pytest
 from fastmcp.prompts import Prompt
 
 from datarobot_genai import __version__ as drmcp_genai_version
+from datarobot_genai.drmcp.core.routes import _tools_gallery_enabled
 from datarobot_genai.drmcp.core.routes import register_routes
 
 
@@ -845,3 +846,40 @@ class TestMetadataRoute:
         response_data = json.loads(response.body.decode("utf-8"))
         assert "error" in response_data
         assert "Failed to retrieve metadata" in response_data["error"]
+
+
+GATE_FLAG = (
+    "datarobot_genai.drmcp.core.routes.FeatureFlag."
+    "is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user"
+)
+
+
+class TestToolsGalleryGate:
+    """The user-mcp gallery route is gated on the static-container-user feature flag."""
+
+    def test_tools_gallery_route_registered_with_gate(self):
+        """register_routes wires the gallery route with the feature-flag gate."""
+        registered: dict[str, object] = {}
+
+        def mock_custom_route(route_path, methods=None):
+            def decorator(handler):
+                registered[route_path] = handler
+                return handler
+
+            return decorator
+
+        mock_mcp = Mock()
+        mock_mcp.custom_route = mock_custom_route
+        with patch(
+            "datarobot_genai.drmcp.core.routes.register_tool_gallery_routes"
+        ) as mock_register:
+            register_routes(mock_mcp)
+        _, kwargs = mock_register.call_args
+        assert kwargs["gate"] is _tools_gallery_enabled
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("enabled", [True, False])
+    async def test_gate_reflects_feature_flag(self, enabled: bool):
+        with patch(GATE_FLAG, new=AsyncMock(return_value=enabled)) as mock_flag:
+            assert await _tools_gallery_enabled(Mock()) is enabled
+        mock_flag.assert_awaited_once_with()

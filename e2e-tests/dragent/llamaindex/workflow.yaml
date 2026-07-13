@@ -26,11 +26,14 @@ general:
       otelcollector:
         _type: datarobot_otelcollector
         project: "llamaindex"
+        # Export every NAT span immediately (default is 100) so a request's
+        # spans drain before the next e2e test resets the shared mock collector.
+        batch_size: 1
 
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
-    temperature: 0
+    reasoning: true
 
 middleware:
   datarobot_guardrails:
@@ -50,6 +53,8 @@ middleware:
           stage: response
           type: ootb
       timeout_sec: 60
+  datarobot_otel_conventions:
+    _type: datarobot_otel_conventions
 
 
 workflow:
@@ -58,5 +63,6 @@ workflow:
   description: LlamaIndex planner/writer agent
   middleware:
     - datarobot_guardrails
+    - datarobot_otel_conventions
   verbose: True
   allow_parallel_tool_calls: True

@@ -25,6 +25,8 @@ from dragent_tests.helpers import AGENT_SUPPORTS_TOOL_CALLS_STREAMING
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
+from dragent_tests.otel_helpers import MockOtelCollector
+from dragent_tests.otel_helpers import assert_tracing_conventions
 
 if not os.environ.get("MCP_DEPLOYMENT_ID"):
     pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)
@@ -42,7 +44,9 @@ EXPECTED_TOOL_CALL_NAMES = {
     "mcp_tools__search_datarobot_agentic_docs"
 }
 
-def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[type-arg]
+def test_mcp_tool_is_called(
+    http_client: httpx.Client, otel_collector: MockOtelCollector
+) -> None:  # type: ignore[type-arg]
     """Agent invokes an MCP tool (search_datarobot_agentic_docs)."""
     # GIVEN: a prompt that invokes the search_datarobot_agentic_docs tool
     # WHEN: the agent is invoked
@@ -78,3 +82,13 @@ def test_mcp_tool_is_called(http_client: httpx.Client) -> None:  # type: ignore[
         assert not event_types & tool_types, (
             f"Tool call events found when framework does not support them. Got: {event_types}"
         )
+
+    # THEN: the run exported DataRobot Tracing-table spans to the OTel ingest.
+    # tool_name is only populated for frameworks that surface tool calls as
+    # AG-UI events; others still export gen_ai.prompt / gen_ai.completion.
+    assert_tracing_conventions(
+        otel_collector,
+        MCP_TOOL_PROMPT,
+        expect_tool_name=AGENT_SUPPORTS_TOOL_CALLS_STREAMING,
+        framework=AGENT,
+    )

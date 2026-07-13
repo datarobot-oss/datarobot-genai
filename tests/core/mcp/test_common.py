@@ -44,6 +44,45 @@ class TestMCPConfig:
         assert config.datarobot_api_token is None
         assert config.server_config is None
 
+    def test_is_local_server_true_for_mcp_server_port(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert MCPConfig(mcp_server_port=9000).is_local_server is True
+
+    def test_is_local_server_false_for_external_url(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(external_mcp_url="https://mcp.example.com/mcp")
+        assert config.is_local_server is False
+
+    def test_is_local_server_false_when_unconfigured(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert MCPConfig().is_local_server is False
+
+    def test_is_local_server_false_when_deployment_takes_priority(self):
+        # mcp_server_port set but a deployment also configured -> deployment wins.
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(
+                mcp_server_port=9000,
+                mcp_deployment_id="a" * 24,
+                datarobot_endpoint="https://app.datarobot.com",
+                datarobot_api_token="tok",
+            )
+        assert config.is_local_server is False
+        assert "directAccess/mcp" in config.server_config["url"]
+
+    def test_is_local_server_false_when_external_takes_priority(self):
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=9000, external_mcp_url="https://mcp.example.com/mcp")
+        assert config.is_local_server is False
+        assert config.server_config["url"] == "https://mcp.example.com/mcp"
+
+    def test_invalid_mcp_server_port_ignored(self):
+        # Out-of-range port is dropped (warn + None) rather than producing a config.
+        with patch.dict(os.environ, {}, clear=True):
+            config = MCPConfig(mcp_server_port=99999)
+        assert config.mcp_server_port is None
+        assert config.is_local_server is False
+        assert config.server_config is None
+
     def test_mcp_config_with_external_url(self):
         """Test MCP config with external URL."""
         test_url = "https://mcp-server.example.com/mcp"

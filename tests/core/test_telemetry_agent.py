@@ -14,39 +14,27 @@
 
 from unittest.mock import patch
 
-from datarobot_genai.core.telemetry_agent import instrument
+from datarobot_genai.core.telemetry.agent import instrument
 
 
-def test_instrument_idempotent_no_framework() -> None:
+def test_instrument_idempotent() -> None:
     instrument()
     instrument()  # idempotent
 
 
-def test_instrument_with_frameworks() -> None:
-    # Calls should not raise even if instrumentation packages are present or missing
-    instrument("crewai")
-    instrument("langgraph")
-    instrument("llamaindex")
-    # Repeat to ensure idempotency
-    instrument("crewai")
-    instrument("langgraph")
-    instrument("llamaindex")
-
-
-def test_instrument_nat() -> None:
-    instrument("nat")
-    instrument("nat")
-
-
 def test_instrument_skips_bootstrap_without_deployment_id(monkeypatch) -> None:
     monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
-    with patch("datarobot_genai.core.datarobot_otel.bootstrap_otel_provider_for_datarobot") as mock:
+    with patch(
+        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
+    ) as mock:
         instrument()
     mock.assert_not_called()
 
 
 def test_instrument_bootstraps_when_deployment_id_set(monkeypatch) -> None:
     monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-    with patch("datarobot_genai.core.datarobot_otel.bootstrap_otel_provider_for_datarobot") as mock:
+    with patch(
+        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
+    ) as mock:
         instrument()
     mock.assert_called_once()

@@ -1,0 +1,136 @@
+site_name: DataRobot GenAI Library
+site_url: https://datarobot-oss.github.io/datarobot-genai/
+site_description: Documentation for the DataRobot GenAI library — build agents with LangGraph, LlamaIndex, CrewAI, and NAT on DataRobot.
+repo_url: https://github.com/datarobot-oss/datarobot-genai
+repo_name: datarobot-oss/datarobot-genai
+edit_uri: edit/main/docs/src/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - ../src
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            unwrap_annotated: true
+
+# Output configuration
+site_dir: site
+docs_dir: src
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - LLM Configuration: llm.md
+  - LLM Failover: fallback.md
+  - LangGraph:
+    - langgraph/README.md
+    - Agent: langgraph/agent.md
+    - LLM: langgraph/prompt.md
+    - MCP: langgraph/mcp.md
+    - HITL: langgraph/hitl.md
+  - LlamaIndex:
+    - llamaindex/README.md
+    - Agent: llamaindex/agent.md
+    - LLM: llamaindex/prompt.md
+    - MCP: llamaindex/mcp.md
+  - CrewAI:
+    - crewai/README.md
+    - Agent: crewai/agent.md
+    - LLM: crewai/prompt.md
+    - MCP: crewai/mcp.md
+    - Caveats: crewai/caveats.md
+  - NAT + DRAgent:
+    - nat/README.md
+    - Agent: nat/agent.md
+    - LLM: nat/llm.md
+    - MCP: nat/mcp.md
+    - A2A Client: nat/a2a-client.md
+    - A2A Auth: nat/a2a-auth.md
+    - Memory: nat/memory.md
+    - Caveats: nat/caveats.md
+  - DRAgent:
+    - dragent/README.md
+    - Tracing: dragent/tracing.md
+  - DR Tools:
+    - drtools/README.md
+    - Authentication: drtools/auth.md
+    - Atlassian Auth: drtools/auth-atlassian.md
+  - Design:
+    - design/nat-1.6-streaming.md
+  - API Reference: api/
+
+# Suppress warnings for links that point to repo files (e2e-tests, src, etc.)
+# which exist in the repository but are outside the docs directory.
+validation:
+  links:
+    not_found: ignore
+    unrecognized_links: ignore
+
+# Exclude patterns to avoid processing non-documentation files
+exclude_docs: |
+  site/
+  .venv/
+  pyproject.toml

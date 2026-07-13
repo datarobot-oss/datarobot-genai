@@ -57,10 +57,14 @@ def _feature_importance_value(feature: Any) -> float:
         "view is deployment_get_features; model training diagnostics stay on the project "
         "(modeling_get_modeldetails)."
     ),
+    display_name="Deployment — Get info",
+    description_ui=(
+        "Get deployment scoring information (feature details, model settings, and deployment ID)."
+    ),
 )
 async def deployment_get_info(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id (from deployment_get_list or product UI)."],
+    deployment_id: Annotated[str, "MLOps deployment ID (from deployment_get_list or product UI)."],
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
@@ -133,10 +137,14 @@ async def deployment_get_info(
         "predict_score_inline_realtime CSV/JSON, not for batch catalog jobs "
         "or project model scoring."
     ),
+    display_name="Deployment — Generate prediction sample",
+    description_ui=(
+        "Generate sample prediction rows with required columns for valid prediction output."
+    ),
 )
 async def deployment_generate_prediction_sample(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
     n_rows: Annotated[int, "How many identical-length template rows to generate (≥1)."] = 1,
 ) -> dict[str, Any]:
     if not deployment_id:
@@ -229,15 +237,17 @@ async def deployment_generate_prediction_sample(
     description=(
         "[Deploy—validate CSV only] Use when the user has inline CSV text and wants a schema "
         "check against one deployment before scoring (columns, basic types, time-series "
-        "datetime and series id columns). Does not score; returns valid/invalid plus "
+        "datetime and series ID columns). Does not score; returns valid/invalid plus "
         "errors/warnings. Same csv_string shape as predict_score_inline_realtime "
         "dataset when CSV; not for "
         "catalog dataset_id flows or JSON-only payloads."
     ),
+    display_name="Deployment — Validate prediction data",
+    description_ui="Validate inline CSV prediction data against a deployment schema.",
 )
 async def deployment_validate_prediction_data(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
     csv_string: Annotated[
         str,
         "Single CSV document (header + rows), same shape as predict_score_inline_realtime dataset.",
@@ -378,10 +388,12 @@ async def deployment_validate_prediction_data(
         "narrative. Read-only; subset of deployment_get_info (which remains the default first "
         "call for predict_score_inline_realtime prep)."
     ),
+    display_name="Deployment — Get features",
+    description_ui="Get input features, including target summary, for a deployment.",
 )
 async def deployment_get_features(
     *,
-    deployment_id: Annotated[str, "MLOps deployment id."],
+    deployment_id: Annotated[str, "MLOps deployment ID."],
 ) -> dict[str, Any]:
     if not deployment_id:
         raise ToolError("Deployment ID must be provided", kind=ToolErrorKind.VALIDATION)
