@@ -23,12 +23,12 @@ from datarobot.errors import ClientError
 from datarobot.models.genai.vector_database import ChunkingParameters
 from datarobot.models.genai.vector_database import VectorDatabase
 
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import build_deployment_auth_headers
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import get_deployment_base_url
 from datarobot_genai.drmcputils.client_exceptions import raise_tool_error_for_client_error
 from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drmcputils.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.deployment import build_deployment_auth_headers
+from datarobot_genai.drmcputils.deployment import get_deployment_base_url
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
