@@ -2675,4 +2675,3 @@ def test_streaming_text_events_from_openai_chunk_ignores_non_text_source_event()
 
     assert len(events) == 1
     assert events[0].message_id != "start-msg"
-
