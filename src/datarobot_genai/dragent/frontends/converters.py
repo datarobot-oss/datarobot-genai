@@ -20,9 +20,12 @@ from typing import Literal
 from typing import cast
 
 from ag_ui.core import CustomEvent
+from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallChunkEvent
 from ag_ui.core import ToolCallStartEvent
@@ -30,13 +33,16 @@ from langchain_core.messages import ToolMessage
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChoice
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
+from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Message
 from nat.data_models.api_server import Usage
+from nat.data_models.api_server import UserMessageContentRoleType
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as OpenAIChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta as OpenAIChoiceDelta
@@ -222,6 +228,62 @@ def convert_str_to_chat_response(data: str) -> ChatResponse:
     return ChatResponse.from_string(data, usage=usage, model=default_response_model())
 
 
+def _usage_from_usage_metrics(usage_metrics: dict[str, int] | None) -> Usage:
+    metrics = usage_metrics or {}
+    return Usage(
+        prompt_tokens=metrics.get("prompt_tokens", 0),
+        completion_tokens=metrics.get("completion_tokens", 0),
+        total_tokens=metrics.get("total_tokens", 0),
+    )
+
+
+def convert_dragent_event_response_to_chat_response(
+    response: DRAgentEventResponse,
+) -> ChatResponse:
+    """Convert a (usually aggregated) ``DRAgentEventResponse`` to a NAT ``ChatResponse``.
+
+    Used by the non-streaming ``/chat/completions`` and inline paths so
+    ``datarobot_moderations`` survive the ``DRAgentEventResponse -> ChatResponse``
+    boundary. NAT's default path would route through ``str``
+    (``convert_dragent_event_response_to_str`` then ``convert_str_to_chat_response``),
+    dropping the moderation extra.
+    """
+    content = convert_dragent_event_response_to_str(response)
+
+    model = response.model
+    if model in (None, "unknown-model") and response.original_chunk is not None:
+        model = response.original_chunk.model
+    model = backfill_model(model, default_response_model())
+
+    finish_reason: str = "stop"
+    if response.original_chunk is not None and response.original_chunk.choices:
+        chunk_finish = response.original_chunk.choices[0].finish_reason
+        if chunk_finish is not None:
+            finish_reason = chunk_finish
+
+    chat_response = ChatResponse(
+        id=uuid.uuid4().hex,
+        model=model,
+        created=datetime.datetime.now(datetime.UTC),
+        choices=[
+            ChatResponseChoice(
+                index=0,
+                message=ChoiceMessage(
+                    content=content,
+                    role=UserMessageContentRoleType.ASSISTANT,
+                ),
+                finish_reason=cast(_FINISH_REASON, finish_reason),
+            )
+        ],
+        usage=_usage_from_usage_metrics(response.usage_metrics),
+    )
+    if response.datarobot_moderations is not None:
+        chat_response = chat_response.model_copy(
+            update={"datarobot_moderations": response.datarobot_moderations}
+        )
+    return chat_response
+
+
 def _backfill_chunk_model(chunk: ChatResponseChunk) -> ChatResponseChunk:
     """Replace NAT's ``"unknown-model"`` placeholder on a chunk with the configured model.
 
@@ -388,6 +450,63 @@ def convert_str_to_dragent_event_response(
         usage_metrics=default_usage_metrics(),
         pipeline_interactions=None,
         events=[CustomEvent(name="DEFAULT_NAT_RESPONSE", value={"delta": response})],
+    )
+
+
+def build_assistant_text_events(content: str | None) -> list[Event]:
+    """Build an assistant ``TextMessageStart/Content/End`` AG-UI event sequence.
+
+    Produces real assistant text deltas (not a ``CustomEvent``) so downstream
+    consumers that detect assistant text (e.g. moderation postscore) and
+    :func:`convert_dragent_event_response_to_str` see the content.
+    """
+    message_id = str(uuid.uuid4())
+    events: list[Event] = [TextMessageStartEvent(message_id=message_id, role="assistant")]
+    text = content or ""
+    if text:
+        events.append(TextMessageContentEvent(message_id=message_id, delta=text))
+    else:
+        events.append(TextMessageChunkEvent(message_id=message_id, role="assistant", delta=""))
+    events.append(TextMessageEndEvent(message_id=message_id))
+    return events
+
+
+def convert_str_to_dragent_text_response(response: str) -> DRAgentEventResponse:
+    """Convert a native-NAT ``str`` output to a text-bearing ``DRAgentEventResponse``.
+
+    Unlike :func:`convert_str_to_dragent_event_response` (which wraps the text as a
+    ``DEFAULT_NAT_RESPONSE`` custom event), this emits assistant ``TextMessage*``
+    events so the result carries detectable assistant text — required for the
+    non-streaming normalization + moderation path.
+    """
+    return DRAgentEventResponse(
+        usage_metrics=default_usage_metrics(),
+        events=build_assistant_text_events(response),
+    )
+
+
+def convert_chat_response_to_dragent_event_response(
+    response: ChatResponse,
+) -> DRAgentEventResponse:
+    """Convert a native-NAT ``ChatResponse`` to a text-bearing ``DRAgentEventResponse``.
+
+    Preserves ``model`` and token usage; emits assistant ``TextMessage*`` events for
+    the message content. NAT ``ChoiceMessage`` carries no tool calls, so only text is
+    represented (matching the non-streaming NAT contract).
+    """
+    content = ""
+    if response.choices:
+        content = response.choices[0].message.content or ""
+    usage_metrics = {
+        "prompt_tokens": response.usage.prompt_tokens or 0,
+        "completion_tokens": response.usage.completion_tokens or 0,
+        "total_tokens": response.usage.total_tokens or 0,
+    }
+    model = response.model if response.model not in (None, "unknown-model") else None
+    return DRAgentEventResponse(
+        events=build_assistant_text_events(content),
+        model=model,
+        usage_metrics=usage_metrics,
     )
 
 

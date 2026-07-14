@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.24.0
+- *Breaking change*: Native NAT agents now require a middleware `datarobot_dragent_normalization` in order to adopt AG-UI interface
+- Simplified type conversion strategy to make it AG-UI aligned throughout `dragent`
+- Added `datarobot_moderations` response for inline execution and `/chat/completions` route
+
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
 - `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.

@@ -19,6 +19,8 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallChunkEvent
@@ -34,12 +36,20 @@ from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.api_server import Message
+from nat.data_models.api_server import Usage
 
 # Importing register applies dragent's GlobalTypeConverter registrations (including the
 # str -> ChatResponse override), matching production import side effects.
 import datarobot_genai.dragent.frontends.register  # noqa: E402, F401
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
 from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.frontends.converters import (
+    convert_chat_response_to_dragent_event_response,
+)
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_event_response_to_chat_response,
+)
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_chat_response_chunk,
 )
@@ -61,6 +71,7 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.converters import convert_str_to_chat_response
 from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
+from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_text_response
 from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -250,6 +261,100 @@ def test_convert_str_to_dragent_event_response() -> None:
     # THEN event is a CustomEvent with the correct name and value
     assert result.events[0].value["delta"] == delta
     assert result.events[0].name == "DEFAULT_NAT_RESPONSE"
+
+
+# --- build_assistant_text_events / str|ChatResponse -> DRAgentEventResponse (normalization) ---
+
+
+def test_build_assistant_text_events_with_text() -> None:
+    events = build_assistant_text_events("hello")
+
+    assert isinstance(events[0], TextMessageStartEvent)
+    assert isinstance(events[1], TextMessageContentEvent)
+    assert events[1].delta == "hello"
+    assert isinstance(events[-1], TextMessageEndEvent)
+    # start / content / end share a message id
+    assert events[0].message_id == events[1].message_id == events[-1].message_id
+
+
+def test_build_assistant_text_events_empty_uses_chunk_placeholder() -> None:
+    events = build_assistant_text_events("")
+
+    assert isinstance(events[0], TextMessageStartEvent)
+    assert isinstance(events[1], TextMessageChunkEvent)
+    assert events[1].delta == ""
+    assert isinstance(events[-1], TextMessageEndEvent)
+
+
+def test_convert_str_to_dragent_text_response_emits_text_events() -> None:
+    # Unlike convert_str_to_dragent_event_response (CustomEvent), this emits real
+    # assistant text deltas so downstream text detection + str extraction work.
+    result = convert_str_to_dragent_text_response("normalized")
+
+    assert isinstance(result, DRAgentEventResponse)
+    assert convert_dragent_event_response_to_str(result) == "normalized"
+
+
+def test_convert_chat_response_to_dragent_event_response_preserves_model_and_usage() -> None:
+    usage = Usage(prompt_tokens=3, completion_tokens=5, total_tokens=8)
+    chat_response = ChatResponse.from_string("answer", usage=usage, model="my-model")
+
+    result = convert_chat_response_to_dragent_event_response(chat_response)
+
+    assert isinstance(result, DRAgentEventResponse)
+    assert convert_dragent_event_response_to_str(result) == "answer"
+    assert result.model == "my-model"
+    assert result.usage_metrics == {
+        "prompt_tokens": 3,
+        "completion_tokens": 5,
+        "total_tokens": 8,
+    }
+
+
+# --- DRAgentEventResponse -> ChatResponse ---
+
+
+def test_convert_dragent_event_response_to_chat_response_basic() -> None:
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="Hello world")],
+        model="agent-model",
+        usage_metrics={"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6},
+    )
+
+    result = convert_dragent_event_response_to_chat_response(response)
+
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == "Hello world"
+    assert result.model == "agent-model"
+    assert result.usage.prompt_tokens == 2
+    assert result.usage.completion_tokens == 4
+    assert result.usage.total_tokens == 6
+    assert result.choices[0].finish_reason == "stop"
+
+
+def test_convert_dragent_event_response_to_chat_response_preserves_moderations() -> None:
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+        datarobot_moderations={"score": 0.42},
+    )
+
+    result = convert_dragent_event_response_to_chat_response(response)
+
+    assert getattr(result, "datarobot_moderations", None) == {"score": 0.42}
+
+
+def test_convert_dragent_event_response_to_chat_response_registered() -> None:
+    # The direct converter must be registered so NAT prefers it over the lossy
+    # DRAgentEventResponse -> str -> ChatResponse path.
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+        datarobot_moderations={"score": 0.5},
+    )
+
+    result = GlobalTypeConverter.convert(response, to_type=ChatResponse)
+
+    assert isinstance(result, ChatResponse)
+    assert getattr(result, "datarobot_moderations", None) == {"score": 0.5}
 
 
 # --- Various converters ---

@@ -76,14 +76,19 @@ middleware:
       timeout_sec: 60
   datarobot_otel_conventions:
     _type: datarobot_otel_conventions
+  datarobot_dragent_normalization:
+    _type: datarobot_dragent_normalization
 
 
 workflow:
   _type: per_user_tool_calling_agent
   llm_name: datarobot_llm
+  # Order matters: normalization is innermost (last) so it converts the agent's native
+  # ChatResponseChunk / str output into DRAgentEventResponse before otel and guardrails run.
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
+    - datarobot_dragent_normalization
   tool_names:
     - planner
     - writer

@@ -18,10 +18,12 @@ loads ``@register_middleware`` without a custom recipe mapping (``_type: datarob
 
 Expected workflow contracts:
 
-* **DRAgent** (``dragent_fastapi`` + LangGraph / LlamaIndex / CrewAI per-user functions): input
-  ``RunAgentInput`` (or ``DRAgentRunAgentInput``), streaming output ``DRAgentEventResponse``.
-* **Native NAT chat** (LLM Gateway agents): input ``ChatRequest`` / ``ChatRequestOrMessage``,
-  non-streaming output ``ChatResponse``.
+* **Input**: ``RunAgentInput`` (or ``DRAgentRunAgentInput``) for DRAgent workflows, or
+  ``ChatRequest`` / ``ChatRequestOrMessage`` for native NAT chat agents.
+* **Output**: always ``DRAgentEventResponse`` (both single and streaming). Native NAT agents emit
+  ``str`` / ``ChatResponseChunk``; the innermost ``datarobot_dragent_normalization`` middleware
+  converts that into ``DRAgentEventResponse`` before this middleware runs, so moderation only ever
+  handles the canonical type.
 
 Guard configuration (``_type: datarobot_moderation``):
 
@@ -52,7 +54,6 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from typing import Literal
 from typing import TypeAlias
 from typing import cast
 
@@ -78,7 +79,6 @@ from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
 from datarobot_dome.chat_helper import build_moderations_attribute_for_completion
-from datarobot_dome.constants import CHAT_COMPLETION_OBJECT
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
@@ -91,14 +91,11 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
-from nat.data_models.api_server import ChatResponse
-from nat.data_models.api_server import ChatResponseChoice
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
-from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Usage as NATUsage
 from nat.data_models.api_server import UserMessageContentRoleType
 from nat.data_models.middleware import FunctionMiddlewareBaseConfig
@@ -119,6 +116,7 @@ from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_openai_chat_completion_chunk,
 )
@@ -201,7 +199,7 @@ def resolve_moderation_model_dir(model_dir: str | None) -> str:
 
 
 def moderation_config_file_path(model_dir: str | None) -> Path:
-    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or workflow dir)."""
+    """Return the DRUM-style ``moderation_config.yaml`` path under ``model_dir`` (or workflow dir)."""  # noqa: E501
     return Path(resolve_moderation_model_dir(model_dir)) / MODERATION_CONFIG_FILE_NAME
 
 
@@ -409,7 +407,7 @@ def _streaming_text_events_from_openai_chunk(
     completion: ChatCompletionChunk,
     source_ag_ui_events: list[Any] | None,
 ) -> list[Any]:
-    """Rebuild AG-UI text events from a streaming OpenAI chunk (single delta, no synthetic start/end)."""
+    """Rebuild AG-UI text events from a streaming OpenAI chunk (single delta, no synthetic start/end)."""  # noqa: E501
     delta_content = completion.choices[0].delta.content
     text = "" if delta_content is None else delta_content
     if source_ag_ui_events:
@@ -514,17 +512,7 @@ def _json_safe_moderation_metadata(obj: Any) -> Any:  # noqa: PLR0911
 
 
 def _assistant_text_events_from_message(content: str | None) -> list[Any]:
-    message_id = str(uuid.uuid4())
-    events: list[Any] = [
-        TextMessageStartEvent(message_id=message_id, role="assistant"),
-    ]
-    text = content or ""
-    if text:
-        events.append(TextMessageContentEvent(message_id=message_id, delta=text))
-    else:
-        events.append(TextMessageChunkEvent(message_id=message_id, role="assistant", delta=""))
-    events.append(TextMessageEndEvent(message_id=message_id))
-    return events
+    return build_assistant_text_events(content)
 
 
 def _datarobot_moderations_from_completion(
@@ -562,7 +550,7 @@ def _prescore_datarobot_moderations_from_df(
     pipeline: Any,
     prescore_df: pd.DataFrame,
 ) -> dict[str, Any] | None:
-    """Serialize prescore guard metrics the same way dome attaches them to the first stream chunk."""
+    """Serialize prescore guard metrics the same way dome attaches them to the first stream chunk."""  # noqa: E501
     raw = build_moderations_attribute_for_completion(pipeline, prescore_df)
     if not raw:
         return None
@@ -736,7 +724,8 @@ def _dragent_event_response_from_postscore_assistant_text(
 ) -> DRAgentEventResponse:
     """Build AG-UI output after postscore from message, finish reason, and eval (no ChatCompletion).
 
-    Matches ``dome_chunk_to_dragent_event_response`` for a text-only chunk without going through dome.
+    Matches ``dome_chunk_to_dragent_event_response`` for a text-only chunk without going through
+    dome.
     """
     use_moderation_model = _should_use_moderation_model_name(response_eval, prompt_eval=prompt_eval)
     chunk_model = (
@@ -769,56 +758,6 @@ def _dragent_event_response_from_postscore_assistant_text(
         usage_metrics=default_usage_metrics(),
         original_chunk=chunk,
         model=response_model,
-        datarobot_moderations=_datarobot_moderations_merged_prompt_and_response_eval(
-            response_eval,
-            prompt_eval=prompt_eval,
-        ),
-    )
-
-
-def _nat_chat_response_from_postscore_assistant_text(
-    response_message: str,
-    finish_reason: str,
-    original_nat_response: ChatResponse,
-    response_eval: EvaluationResult,
-    *,
-    prompt_eval: EvaluationResult | None = None,
-) -> ChatResponse:
-    """Build NAT ``ChatResponse`` after postscore without an intermediate OpenAI ``ChatCompletion``.
-
-    Preserves ``usage`` from ``original_nat_response`` when present (same as the former
-    ``build_non_streaming_chat_completion`` + ``model_validate`` path). Attaches
-    ``datarobot_moderations`` as an extra field (NAT ``ChatResponse`` allows extras), aligned
-    with ``_dragent_event_response_from_postscore_assistant_text``.
-    """
-    usage = original_nat_response.usage
-    if usage is None:
-        usage = NATUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-    out_model = (
-        MODERATION_MODEL_NAME
-        if _should_use_moderation_model_name(response_eval, prompt_eval=prompt_eval)
-        else original_nat_response.model
-    )
-    return ChatResponse(
-        id=str(uuid.uuid4()),
-        object=CHAT_COMPLETION_OBJECT,
-        model=out_model,
-        created=datetime.now(tz=UTC),
-        choices=[
-            ChatResponseChoice(
-                index=0,
-                finish_reason=cast(
-                    Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
-                    | None,
-                    finish_reason,
-                ),
-                message=ChoiceMessage(
-                    content=response_message,
-                    role=UserMessageContentRoleType.ASSISTANT,
-                ),
-            )
-        ],
-        usage=usage,
         datarobot_moderations=_datarobot_moderations_merged_prompt_and_response_eval(
             response_eval,
             prompt_eval=prompt_eval,
@@ -999,7 +938,7 @@ def workflow_input_to_completion_dict(workflow_input: WorkflowInput) -> dict[str
 def _apply_moderated_prompt_text_to_run_agent_input(
     run_agent_input: RunAgentInput, moderated_text: str
 ) -> bool:
-    """Write prescore-moderated prompt text onto the AG-UI message list (last ``UserMessage``).
+    r"""Write prescore-moderated prompt text onto the AG-UI message list (last ``UserMessage``).
 
     Prescore guards set ``replaced_<prompt_col>``; the moderated string lives in
     ``filtered_df`` under the prompt column. ``RunAgentInput.messages`` are Pydantic
@@ -1080,7 +1019,9 @@ def _prompt_sent_after_prescore_replacement(
     prescore_df: pd.DataFrame,
     prompt_column: str,
 ) -> tuple[str, bool]:
-    """Apply prescore replacement to workflow input; return prompt for postscore and whether it applied."""
+    """Apply prescore replacement to workflow input; return prompt for postscore and whether it
+    applied.
+    """
     replacement = prompt_eval.replacement
     if not (prompt_eval.replaced and replacement is not None):
         return original_prompt, False
@@ -1159,7 +1100,8 @@ def _merge_moderations_into_multi_event_response(
 
 
 def _defer_until_after_moderated_chunk(event: Event) -> bool:
-    """Defer START/END until after the moderated chunk: late moderated deltas still use the prior message_id.
+    """Defer START/END until after the moderated chunk: late moderated deltas still use the prior
+    message_id.
 
     If TEXT_MESSAGE_START for the next segment is yielded before moderated content for the
     previous segment, storage switches active_message and can drop or mis-attribute the
@@ -1363,11 +1305,11 @@ class DataRobotModerationMiddleware(
 ):
     """Guardrails middleware for DRAgent NAT workflows and native NAT chat agents.
 
-    * **DRAgent** (``RunAgentInput`` in, ``DRAgentEventResponse`` stream out): prescore/postscore
-      on AG-UI text; streaming moderation uses ``dragent_event_response_to_dome_chunk`` at the
-      dome boundary.
-    * **NAT chat** (``ChatRequest`` / ``ChatRequestOrMessage`` in, ``ChatResponse`` out): same
-      guard pipeline with NAT message models instead of AG-UI.
+    Prescore/postscore run on AG-UI text of ``DRAgentEventResponse``; streaming moderation uses
+    ``dragent_event_response_to_dome_chunk`` at the dome boundary. Native NAT agents
+    (``ChatRequest`` / ``ChatRequestOrMessage`` in, ``str`` / ``ChatResponseChunk`` out) are first
+    converted to ``DRAgentEventResponse`` by the innermost ``datarobot_dragent_normalization``
+    middleware, so this middleware only ever sees the canonical output type.
 
     When no guards are configured (missing inline block and YAML file, or empty guard list),
     ``load_llm_moderation_pipeline`` returns ``None`` and this middleware is a no-op
@@ -1380,7 +1322,7 @@ class DataRobotModerationMiddleware(
         self._moderation = load_llm_moderation_pipeline(config)
 
     def _get_moderation(self) -> ModerationPipeline | None:
-        """Return the moderation pipeline, retrying discovery if startup missed ``workflow.yaml``."""
+        """Return the moderation pipeline, retrying discovery if startup missed ``workflow.yaml``."""  # noqa: E501
         if self._moderation is None:
             publish_dragent_config_file_env()
             self._moderation = load_llm_moderation_pipeline(self._config)
@@ -1432,7 +1374,8 @@ class DataRobotModerationMiddleware(
         Args:
             context: Invocation context containing function metadata and args
 
-        Returns:
+        Returns
+        -------
             InvocationContext if modified (including when the prompt is blocked and
             ``context.output`` holds the guard message), or None to pass through unchanged.
         """
@@ -1478,7 +1421,8 @@ class DataRobotModerationMiddleware(
         Args:
             context: Invocation context containing function metadata, args, and output
 
-        Returns:
+        Returns
+        -------
             InvocationContext if modified, or None to pass through unchanged.
         """
         original_output = context.output
@@ -1486,18 +1430,14 @@ class DataRobotModerationMiddleware(
         if moderation is None:
             return None
 
-        if isinstance(original_output, DRAgentEventResponse):
-            if not _response_has_assistant_text_deltas(original_output):
-                return None
-            response_text = convert_dragent_event_response_to_str(original_output)
-        elif isinstance(original_output, ChatResponse):
-            if not original_output.choices:
-                return None
-            response_text = original_output.choices[0].message.content or ""
-        elif isinstance(original_output, str):
-            response_text = original_output
-        else:
+        # The ``datarobot_dragent_normalization`` middleware (declared innermost) converts every
+        # agent's native output into ``DRAgentEventResponse`` before this hook runs, so moderation
+        # only ever handles that canonical type.
+        if not isinstance(original_output, DRAgentEventResponse):
             return None
+        if not _response_has_assistant_text_deltas(original_output):
+            return None
+        response_text = convert_dragent_event_response_to_str(original_output)
 
         if not response_text.strip():
             return None
@@ -1528,37 +1468,26 @@ class DataRobotModerationMiddleware(
             response_message = response_text
             finish_reason = "stop"
 
-        if isinstance(original_output, DRAgentEventResponse):
-            moderated_dr = _dragent_event_response_from_postscore_assistant_text(
-                response_message,
-                finish_reason,
-                response_eval,
-                upstream_model=_upstream_model_from_dragent_response(original_output),
-                prompt_eval=prompt_eval,
-            )
-            preserve_ag_ui_envelope = (
-                len(original_output.events) > 1
-                and finish_reason == "stop"
-                and not response_eval.blocked
-                and not response_eval.replaced
-                and response_message == response_text
-            )
-            if preserve_ag_ui_envelope:
-                context.output = _merge_moderations_into_multi_event_response(
-                    original_output, moderated_dr
-                )
-            else:
-                context.output = moderated_dr
-        elif isinstance(original_output, ChatResponse):
-            context.output = _nat_chat_response_from_postscore_assistant_text(
-                response_message,
-                finish_reason,
-                original_output,
-                response_eval,
-                prompt_eval=prompt_eval,
+        moderated_dr = _dragent_event_response_from_postscore_assistant_text(
+            response_message,
+            finish_reason,
+            response_eval,
+            upstream_model=_upstream_model_from_dragent_response(original_output),
+            prompt_eval=prompt_eval,
+        )
+        preserve_ag_ui_envelope = (
+            len(original_output.events) > 1
+            and finish_reason == "stop"
+            and not response_eval.blocked
+            and not response_eval.replaced
+            and response_message == response_text
+        )
+        if preserve_ag_ui_envelope:
+            context.output = _merge_moderations_into_multi_event_response(
+                original_output, moderated_dr
             )
         else:
-            context.output = response_message
+            context.output = moderated_dr
 
         return context
 
@@ -1583,7 +1512,8 @@ class DataRobotModerationMiddleware(
             context: Static function metadata.
             kwargs: Keyword arguments for the function.
 
-        Yields:
+        Yields
+        ------
             Stream chunks with per-delta postscore via ``ModerationPipeline.stream_response_async``.
 
         When prescore blocks the prompt, ``pre_invoke`` sets ``ctx.output``; we yield that
