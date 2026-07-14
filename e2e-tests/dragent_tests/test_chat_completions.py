@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 from datarobot_genai.core.config import default_response_model
 from openai import OpenAI
+from openai.types.chat import ChatCompletionChunk
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import BASE_URL
@@ -51,7 +52,9 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
     if stream:
         full_response = ""
         content_chunk_models: set[str] = set()
+        chunks: list[ChatCompletionChunk] = []
         for chunk in response:
+            chunks.append(chunk)
             assert chunk.choices
             content = chunk.choices[0].delta.content
             tool_calls = chunk.choices[0].delta.tool_calls
@@ -68,6 +71,13 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         assert content_chunk_models == {default_response_model()}, (
             f"streaming chunks must report the configured model, saw {content_chunk_models}"
         )
+        # THEN: token-count guards attach serialized moderation metadata to at least one chunk
+        assert any(
+            getattr(chunk, "datarobot_moderations", None) for chunk in chunks
+        ), (
+            "Expected at least one streamed chunk to include datarobot_moderations "
+            "when guards are configured"
+        )
     else:
         # THEN: the response follows the Chat Completions shape with non-empty assistant text
         assert response.choices
@@ -77,3 +87,7 @@ def test_chat_completions_openai_client(authorization_context_encoded: str, stre
         # the configured LLM is reported (not NAT's "unknown-model", not the request's model).
         assert response.model != "unknown-model", response.model
         assert response.model == default_response_model()
+        # THEN: token-count guards attach serialized moderation metadata to the completion
+        assert getattr(response, "datarobot_moderations", None), (
+            "Expected datarobot_moderations on ChatCompletion when guards are configured"
+        )
