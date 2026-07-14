@@ -137,6 +137,34 @@ with ORM markers:
 Declare range-key fields **in query order** — a list query must specify a
 *contiguous leading prefix* (see §Range-key encoding below).
 
+#### Lifecycle strategies (TTL)
+
+By default, every `DRSession` subclass sends a single `soft_delete` lifecycle
+strategy on creation, triggered by a **2-year TTL** (`DEFAULT_SESSION_TTL_SECONDS`,
+`63072000` seconds) — the Memory Service's own maximum for a TTL trigger. Sessions
+therefore auto-clean unless you override this.
+
+Override `__lifecycle_strategies__` to use a shorter TTL (or a different strategy):
+
+```python
+class ChatSession(DRSession):
+    __description_prefix__ = "chat"
+    __lifecycle_strategies__ = [
+        {"type": "soft_delete", "trigger": {"ttl": 30 * 86400}},  # 30 days
+    ]
+    ...
+```
+
+Set it to an empty list to send no lifecycle strategies at all:
+
+```python
+class ChatSession(DRSession):
+    __lifecycle_strategies__ = []
+```
+
+Lifecycle strategies are sent **on create only**; `session.patch(...)` never
+touches them. Up to 5 strategy objects are allowed per session.
+
 ### Events (`DREvent`)
 
 An append-only log under a session.  Bind to a session type with
@@ -265,6 +293,7 @@ from datarobot_genai.application_utils.persistence import (
     DRConcurrencyField,
     DRMemoryServiceClient,
     SYSTEM_PARTICIPANT,
+    DEFAULT_SESSION_TTL_SECONDS,
     DRMemoryServiceError,
     DRMemoryNotFoundError,
     DRMemoryBadRequestError,

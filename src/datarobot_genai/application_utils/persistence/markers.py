@@ -81,3 +81,7 @@ class DRConcurrencyField:
 #: This is a client-side convention; the Memory Service treats it as any
 #: other valid 24-hex ObjectId.
 SYSTEM_PARTICIPANT: str = "000000000000000000000000"
+
+#: Default session TTL in seconds (2 years). Also the Memory Service maximum for a
+#: TTL trigger; used to build the default ``soft_delete`` lifecycle strategy.
+DEFAULT_SESSION_TTL_SECONDS: int = 63_072_000

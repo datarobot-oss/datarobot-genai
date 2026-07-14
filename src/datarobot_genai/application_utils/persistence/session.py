@@ -85,6 +85,7 @@ from datarobot_genai.application_utils.persistence._routing import SessionRoutin
 from datarobot_genai.application_utils.persistence._routing import build_session_routing
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
 from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
 
 if TYPE_CHECKING:
@@ -105,8 +106,11 @@ class DRSession(BaseModel):
         to the subclass name.  Keep it short and stable; it is part of every
         stored description and every list-query filter.
     __lifecycle_strategies__ : list[dict[str, Any]]
-        Lifecycle strategy objects sent on session creation.  Defaults to ``[]``
-        (the service injects a default ``soft_delete`` strategy when omitted).
+        Lifecycle strategy objects sent on session creation.  Defaults to a single
+        ``soft_delete`` strategy with a ``DEFAULT_SESSION_TTL_SECONDS`` (2 year) TTL
+        trigger, so sessions auto-clean unless a subclass overrides this.  Override
+        with a different strategy list to change the TTL/strategy, or set to ``[]``
+        to send no lifecycle strategies at all.
 
     Read-only properties
     --------------------
@@ -133,7 +137,9 @@ class DRSession(BaseModel):
 
     # ── Class-level configuration ─────────────────────────────────────────
     __description_prefix__: ClassVar[str] = ""
-    __lifecycle_strategies__: ClassVar[builtins.list[dict[str, Any]]] = []
+    __lifecycle_strategies__: ClassVar[builtins.list[dict[str, Any]]] = [
+        {"type": "soft_delete", "trigger": {"ttl": DEFAULT_SESSION_TTL_SECONDS}}
+    ]
 
     # Routing table — built lazily on first ORM call; shared across instances.
     _dr_routing: ClassVar[SessionRoutingTable | None] = None

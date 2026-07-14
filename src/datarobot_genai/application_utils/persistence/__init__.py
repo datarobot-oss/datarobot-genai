@@ -64,6 +64,7 @@ from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNot
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryServiceError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryValidationError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
 from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
 from datarobot_genai.application_utils.persistence.markers import DRConcurrencyField
 from datarobot_genai.application_utils.persistence.markers import DRDeduplicationKey
@@ -80,6 +81,7 @@ __all__ = [
     "DRConcurrencyField",
     "DRMemoryServiceClient",
     "SYSTEM_PARTICIPANT",
+    "DEFAULT_SESSION_TTL_SECONDS",
     "DRMemoryServiceError",
     "DRMemoryNotFoundError",
     "DRMemoryBadRequestError",

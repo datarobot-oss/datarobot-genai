@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
 import httpx
 import pytest
@@ -26,8 +27,11 @@ from datarobot_genai.application_utils.persistence import DRMemoryNotFoundError
 from datarobot_genai.application_utils.persistence import DRMemoryServiceClient
 from datarobot_genai.application_utils.persistence import DRMemorySpace
 from datarobot_genai.application_utils.persistence import DRMemoryVersionConflictError
+from datarobot_genai.application_utils.persistence import DRSession
 from datarobot_genai.application_utils.persistence._encoding import build_description
+from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
 from datarobot_genai.application_utils.persistence.markers import SYSTEM_PARTICIPANT
+from datarobot_genai.application_utils.persistence.markers import DRDeduplicationKey
 from tests.application_utils.persistence.unit.conftest import PARTICIPANT
 from tests.application_utils.persistence.unit.conftest import SESSION_ID
 from tests.application_utils.persistence.unit.conftest import SPACE_ID
@@ -240,6 +244,78 @@ async def test_post_puts_metadata_fields_in_metadata() -> None:
     )
     assert "metadata" in captured["body"]
     assert captured["body"]["metadata"]["title"] == "My Title"
+
+
+@respx.mock
+async def test_post_sends_default_two_year_soft_delete_lifecycle_strategy() -> None:
+    """GIVEN no override WHEN post THEN the default 2yr soft_delete strategy is sent."""
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(201, json=_session_wire())
+
+    respx.post(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await ChatSession.post(
+        space,
+        tenant="acme",
+        topic="billing",
+        chat_id="chat-001",
+        title="Test",
+        rev=1,
+    )
+    assert captured["body"]["lifecycleStrategies"] == [
+        {"type": "soft_delete", "trigger": {"ttl": DEFAULT_SESSION_TTL_SECONDS}}
+    ]
+
+
+@respx.mock
+async def test_post_sends_overridden_lifecycle_strategies() -> None:
+    """GIVEN an overridden __lifecycle_strategies__ WHEN post THEN the custom list is sent."""
+
+    class ShortTTLSession(DRSession):
+        __description_prefix__ = "short-ttl"
+        __lifecycle_strategies__ = [
+            {"type": "soft_delete", "trigger": {"ttl": 30 * 86400}},
+        ]
+
+        key: Annotated[str, DRDeduplicationKey]
+
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(201, json=_session_wire())
+
+    respx.post(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await ShortTTLSession.post(space, key="k1")
+    assert captured["body"]["lifecycleStrategies"] == [
+        {"type": "soft_delete", "trigger": {"ttl": 30 * 86400}}
+    ]
+
+
+@respx.mock
+async def test_post_sends_empty_lifecycle_strategies_when_opted_out() -> None:
+    """GIVEN a subclass with __lifecycle_strategies__ = [] WHEN post THEN no strategies are sent."""
+
+    class NoTTLSession(DRSession):
+        __description_prefix__ = "no-ttl"
+        __lifecycle_strategies__ = []
+
+        key: Annotated[str, DRDeduplicationKey]
+
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(201, json=_session_wire())
+
+    respx.post(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await NoTTLSession.post(space, key="k2")
+    assert captured["body"]["lifecycleStrategies"] == []
 
 
 # ── DRSession.get ─────────────────────────────────────────────────────────────
