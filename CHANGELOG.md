@@ -4,11 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.10
+## 0.23.26
 - e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
 
+## 0.23.25
+- `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
+- `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
+- `drtools/vdb`: added `vdb_get` for non-blocking build and deployment status checks with optional `target_status` (`completed` / `active`), following the same poll pattern as `file_get_status` and `workload_get`.
+- `drtools/vdb`: fixed `vdb_query` to score through the deployment prediction server with the `promptText` JSON payload expected by vector database deployments, instead of posting to the main API `deployments/{id}/predictions/` route.
+- `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.24
+- `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
+
+## 0.23.23
+- `crewai`: strip the per-tool `strict` flag on native tool calls.
+
+## 0.23.22
+- Fix streaming interruption with response guards
+
+## 0.23.21
+- Fix multi-node agents (e.g. the default researcher -> responder template) concatenating every node's text into one response instead of returning only the final node's answer. AG-UI text boundaries keyed on `message.id` alone, so nodes whose streamed messages shared or omitted an id emitted no boundary event: an empty id silently fused both nodes' text (and, with a null id, produced a malformed stream). Boundaries are now keyed on `(langgraph_node, message_id)` with a minted id when the node omits one, so the non-streaming chat-completion path (used by evaluations) returns only the final node's output.
+
+## 0.23.20
+- `eval`: endpoint health check now probes `<scheme>://<host>:<port>/health` (path stripped) before falling back to pinging the literal `--endpoint`, so dragent/DRUM-fronted agents log a clean 200 instead of a `404 Not Found` on the bare `/v1` base URL during validation and `--dry-run`.
+
+## 0.23.19
+- `drtools/files_api`: Tweak `description` and `description_ui` fields for file-related tools to improve agent operations and user understanding.
+
+## 0.23.18
+- `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
+
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
+
+## 0.23.16
+- Fix `eval_status.json` not updated to failed on early input validation errors.
+
+## 0.23.15
+- `drtools/core/clients` (MODEL-24077): fixed `WorkloadApiClient.list_workload_logs()` (used by the `workload_logs_get` tool) raising `AssertionError: Wrong type` on every call — it built its request `params` as a `list[tuple[str, Any]]` instead of the `dict[str, Any]` the DataRobot SDK's REST client requires; `includes`/`excludes` still encode as repeated query keys since `requests` accepts list-valued dict entries.
+
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
+
+## 0.23.12
+- `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
+- `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
+## 0.23.11
+- `drtools/files_api` (MODEL-24055): fixed `file_manage(action='delete')` reporting `{"deleted": true}` when a non-recursive delete targeted a non-empty directory — it now raises a validation `ToolError` telling the caller to pass `recursive=True`. Deleting a nonexistent path remains a silent no-op.
+- `drtools/files_api` (MODEL-24056): made `file_manage(action='clone')`'s `files_to_omit` tolerate a JSON-encoded string (some MCP clients serialize array arguments this way) and treat an empty list the same as omitting the argument (the platform rejects an empty list outright).
+
+## 0.23.10
+- `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.
+- `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
+
 ## 0.23.9
-- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery 
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery
 
 ## 0.23.8
 - Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.

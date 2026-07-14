@@ -54,7 +54,7 @@ base_agent = "dragent.base.register"
 package = true
 override-dependencies = [
     "crewai[litellm]>=1.11.0",
-    "litellm>=1.83.0,<2.0.0",
+    "litellm>=1.91.1,<2.0.0",
     "ag-ui-protocol==0.1.15",
     # Align the whole OpenTelemetry stack at the latest release train (core 1.43.x /
     # instrumentation 0.64b0) so the traceloop instrumentors (crewai/langchain/llamaindex

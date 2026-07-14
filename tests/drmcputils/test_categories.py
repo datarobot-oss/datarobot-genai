@@ -100,6 +100,9 @@ class TestResolveToToolNamesAdditional:
 
     def test_dr_db_parent_expands_to_vdb_tools(self) -> None:
         result = resolve_to_tool_names(frozenset({"dr_db"}))
+        assert "vdb_create" in result
+        assert "vdb_deploy" in result
+        assert "vdb_get" in result
         assert "vdb_list" in result
         assert "vdb_query" in result
 

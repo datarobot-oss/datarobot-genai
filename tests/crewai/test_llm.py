@@ -464,6 +464,80 @@ def test_sanitize_tool_schema_keeps_valid_schema() -> None:
     assert crewai_llm._sanitize_tool_schema(schema) == schema
 
 
+def test_strip_strict_flags_drops_function_strict_but_keeps_param_named_strict() -> None:
+    """Drop the function-level ``strict`` flag, but keep a tool *parameter* named ``strict``."""
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "toggle",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"strict": {"type": "boolean"}},
+                    "required": ["strict"],
+                },
+            },
+        }
+    ]
+    cleaned = crewai_llm._strip_strict_flags(tools)
+    assert "strict" not in cleaned[0]["function"]
+    assert cleaned[0]["function"]["parameters"]["properties"] == {"strict": {"type": "boolean"}}
+    assert cleaned[0]["function"]["parameters"]["required"] == ["strict"]
+
+
+def test_litellm_stop_word_llm_call_strips_strict_from_native_tools(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """The native call strips crewai's per-tool ``strict`` before calling litellm."""
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "t1", "parameters": {"type": "object"}, "strict": True},
+        },
+        {
+            "type": "function",
+            "function": {"name": "t2", "parameters": {"type": "object"}, "strict": True},
+        },
+    ]
+    captured: dict[str, object] = {}
+
+    def fake_completion(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return iter([_delta(content="ok")])
+
+    with patch("litellm.completion", side_effect=fake_completion):
+        stop_word_llm.call("m", tools=tools, available_functions=None)
+
+    assert all("strict" not in tool["function"] for tool in captured["tools"])
+
+
+async def test_litellm_stop_word_llm_acall_strips_strict_from_native_tools(
+    stop_word_llm: LitellmStopWordLLM,
+) -> None:
+    """The async native path strips ``strict`` from tools like the sync path."""
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "t1", "parameters": {"type": "object"}, "strict": True},
+        },
+    ]
+    captured: dict[str, object] = {}
+
+    async def fake_acompletion(**kwargs: object) -> object:
+        captured.update(kwargs)
+
+        async def gen() -> object:
+            yield _delta(content="ok")
+
+        return gen()
+
+    with patch("litellm.acompletion", fake_acompletion):
+        await stop_word_llm.acall("m", tools=tools, available_functions=None)
+
+    assert all("strict" not in tool["function"] for tool in captured["tools"])
+
+
 def test_litellm_stop_word_llm_call_stop_word_absent_returns_unchanged(
     stop_word_llm: LitellmStopWordLLM,
 ) -> None:

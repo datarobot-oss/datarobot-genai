@@ -78,11 +78,17 @@ def test_run_returns_1_on_validation_failure(tmp_path: Path) -> None:
         assert runner.run() == 1
 
 
-def test_run_does_not_write_status_on_validation_failure(tmp_path: Path) -> None:
+def test_run_writes_failed_status_on_validation_failure(tmp_path: Path) -> None:
     runner = _make_runner(tmp_path)
-    with patch("datarobot_genai.eval.eval.validate_inputs", return_value=["bad"]):
+    with patch(
+        "datarobot_genai.eval.eval.validate_inputs",
+        return_value=["Endpoint not reachable", "Dataset not found"],
+    ):
         runner.run()
-    assert not (tmp_path / "output" / "eval_status.json").exists()
+    status = json.loads((tmp_path / "output" / "eval_status.json").read_text())
+    assert status["status"] == "failed"
+    assert "Endpoint not reachable" in status["error"]
+    assert "Dataset not found" in status["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +224,51 @@ def test_run_happy_path_status_complete(tmp_path: Path) -> None:
     status = json.loads((tmp_path / "output" / "eval_status.json").read_text())
     assert status["status"] == "complete"
     assert status["error"] is None
+
+
+# ---------------------------------------------------------------------------
+# Last-resort guard → any unhandled failure still leaves status = failed
+# ---------------------------------------------------------------------------
+
+
+def test_run_writes_failed_status_on_unexpected_error(tmp_path: Path) -> None:
+    # load_pipeline raising is not caught by any inner branch; the top-level
+    # guard must still flip the status to "failed" rather than let a traceback
+    # escape with no status written.
+    runner = _make_runner(tmp_path)
+    with (
+        patch("datarobot_genai.eval.eval.validate_inputs", return_value=[]),
+        patch(
+            "datarobot_genai.eval.eval.load_pipeline",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        assert runner.run() == 1
+    status = json.loads((tmp_path / "output" / "eval_status.json").read_text())
+    assert status["status"] == "failed"
+    assert "boom" in status["error"]
+
+
+def test_run_not_left_running_when_results_write_fails(tmp_path: Path) -> None:
+    # After status is flipped to "running", a failure serializing/writing the
+    # results (here: a non-JSON-serializable normalized result) must not leave
+    # the status stuck at "running" — the guard flips it to failed. The small
+    # status payload is plain strings, so it still serializes and persists.
+    unserializable = {"total_cases": 1, "summary": {}, "extra": {1, 2, 3}}
+    runner = _make_runner(tmp_path)
+    with (
+        patch("datarobot_genai.eval.eval.validate_inputs", return_value=[]),
+        patch("datarobot_genai.eval.eval.load_pipeline", return_value=_PIPELINE_CFG),
+        patch("datarobot_genai.eval.eval.preflight_judge"),
+        patch("datarobot_genai.eval.eval.run_byob"),
+        patch(
+            "datarobot_genai.eval.eval.normalize_output",
+            return_value=unserializable,
+        ),
+    ):
+        assert runner.run() == 1
+    status = json.loads((tmp_path / "output" / "eval_status.json").read_text())
+    assert status["status"] == "failed"
 
 
 # ---------------------------------------------------------------------------
