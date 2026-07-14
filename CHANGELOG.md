@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.23
+- `crewai`: strip crewai's hardcoded per-tool `strict: True` before native tool calls. Bedrock (via the gateway) caps strict tools at 20, so crews with 21+ tools failed with "Too many strict tools". This brings crewai in line with the langgraph/llamaindex adapters, which never mark tools strict.
+
 ## 0.23.22
 - Fix streaming interruption with response guards
 
