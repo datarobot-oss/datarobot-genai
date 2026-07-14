@@ -70,7 +70,6 @@ from datarobot_genai.dragent.frontends.converters import (
     convert_run_agent_input_to_chat_request_or_message,
 )
 from datarobot_genai.dragent.frontends.converters import convert_str_to_chat_response
-from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
 from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_text_response
 from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
@@ -239,30 +238,6 @@ def test_convert_chat_request_to_run_agent_input() -> None:
     assert result.tools[0].name == "get_weather"
 
 
-# --- Output converters: str -> DRAgentEventResponse ---
-
-
-def test_convert_str_to_dragent_event_response() -> None:
-    # GIVEN a response string
-    delta = "streaming delta"
-
-    # WHEN converting to DRAgentEventResponse
-    result = convert_str_to_dragent_event_response(delta)
-
-    # THEN result has default usage_metrics and events
-    assert isinstance(result, DRAgentEventResponse)
-    assert result.usage_metrics is not None
-    assert result.usage_metrics["prompt_tokens"] == 0
-    assert result.usage_metrics["completion_tokens"] == 0
-    assert result.usage_metrics["total_tokens"] == 0
-    assert result.events is not None
-    assert len(result.events) == 1
-
-    # THEN event is a CustomEvent with the correct name and value
-    assert result.events[0].value["delta"] == delta
-    assert result.events[0].name == "DEFAULT_NAT_RESPONSE"
-
-
 # --- build_assistant_text_events / str|ChatResponse -> DRAgentEventResponse (normalization) ---
 
 
@@ -287,8 +262,7 @@ def test_build_assistant_text_events_empty_uses_chunk_placeholder() -> None:
 
 
 def test_convert_str_to_dragent_text_response_emits_text_events() -> None:
-    # Unlike convert_str_to_dragent_event_response (CustomEvent), this emits real
-    # assistant text deltas so downstream text detection + str extraction work.
+    # Emits real assistant text deltas so downstream text detection + str extraction work.
     result = convert_str_to_dragent_text_response("normalized")
 
     assert isinstance(result, DRAgentEventResponse)

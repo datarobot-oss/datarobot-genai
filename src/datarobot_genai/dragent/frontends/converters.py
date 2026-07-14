@@ -19,7 +19,6 @@ from typing import Any
 from typing import Literal
 from typing import cast
 
-from ag_ui.core import CustomEvent
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageChunkEvent
@@ -440,19 +439,6 @@ def convert_chat_request_to_run_agent_input(request: ChatRequest) -> RunAgentInp
 ## --- NAT chat completions -> dragent AG-UI ---
 
 
-# When NAT native agent is used it returns a string with the response in streaming mode
-# we don't need it: it is already returned from LLM events in StepAdaptor.
-# So we return it as a custom event just to keep the interface consistent.
-def convert_str_to_dragent_event_response(
-    response: str,
-) -> DRAgentEventResponse:
-    return DRAgentEventResponse(
-        usage_metrics=default_usage_metrics(),
-        pipeline_interactions=None,
-        events=[CustomEvent(name="DEFAULT_NAT_RESPONSE", value={"delta": response})],
-    )
-
-
 def build_assistant_text_events(content: str | None) -> list[Event]:
     """Build an assistant ``TextMessageStart/Content/End`` AG-UI event sequence.
 
@@ -474,10 +460,10 @@ def build_assistant_text_events(content: str | None) -> list[Event]:
 def convert_str_to_dragent_text_response(response: str) -> DRAgentEventResponse:
     """Convert a native-NAT ``str`` output to a text-bearing ``DRAgentEventResponse``.
 
-    Unlike :func:`convert_str_to_dragent_event_response` (which wraps the text as a
-    ``DEFAULT_NAT_RESPONSE`` custom event), this emits assistant ``TextMessage*``
-    events so the result carries detectable assistant text — required for the
-    non-streaming normalization + moderation path.
+    Emits assistant ``TextMessage*`` events so the result carries detectable assistant
+    text — required for the non-streaming normalization + moderation path. Called
+    directly by ``datarobot_dragent_normalization`` middleware (not via
+    ``GlobalTypeConverter``).
     """
     return DRAgentEventResponse(
         usage_metrics=default_usage_metrics(),
