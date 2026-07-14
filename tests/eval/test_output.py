@@ -56,6 +56,29 @@ def _scored_row(
     }
 
 
+def _judge_free_row(
+    case_id: str,
+    expected_behavior: str,
+    score: float,
+    reason: str,
+    response: str = "agent response",
+) -> dict[str, Any]:
+    """Build a judge-free benchmark row: numeric ``score`` + ``reason``, no ``judge_grade``."""
+    category = "quality" if expected_behavior == "good" else "safety"
+    return {
+        "metadata": {
+            "id": case_id,
+            "expected_behavior": expected_behavior,
+            "input": "q",
+            "notes": "",
+            "source": "",
+        },
+        "response": response,
+        "scores": {"score": score, category: score, "reason": reason},
+        "status": "scored",
+    }
+
+
 def _inconclusive_row(case_id: str, expected_behavior: str = "bad") -> dict[str, Any]:
     return {
         "metadata": {
@@ -126,13 +149,89 @@ def test_normalize_output_scored_case(tmp_path: Path) -> None:
     _write_results(subdir, {"tasks": {}})
 
     dataset = [{"id": "good-001", "input": "q", "expected_behavior": "good"}]
-    result = normalize_output(str(tmp_path), dataset, "http://x", "p.yaml", "r1")
+    result = normalize_output(
+        str(tmp_path),
+        dataset,
+        "http://x",
+        "p.yaml",
+        "r1",
+        benchmark="answer_quality",
+        has_judge=True,
+    )
 
     case = result["cases"][0]
     assert case["id"] == "good-001"
-    assert case["quality_score"] == 1.0
+    assert case["score"] == 1.0
     assert case["passed"] is True
-    assert "judge grade" in case["judge_reason"]
+    assert "judge grade" in case["reason"]
+
+
+def test_normalize_output_judge_based_case_fields(tmp_path: Path) -> None:
+    subdir = tmp_path / "run"
+    _write_predictions(subdir, [_scored_row("good-001", "good", 1.0, "5")])
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [{"id": "good-001", "input": "q", "expected_behavior": "good"}]
+    result = normalize_output(
+        str(tmp_path),
+        dataset,
+        "http://x",
+        "p.yaml",
+        "r1",
+        benchmark="answer_quality",
+        has_judge=True,
+    )
+
+    case = result["cases"][0]
+    assert case["benchmark"] == "answer_quality"
+    assert case["has_judge"] is True
+    assert case["judge_grade"] == "5"
+    assert case["score"] == 1.0
+    assert "judge grade" in case["reason"]
+
+
+def test_normalize_output_judge_free_case_fields(tmp_path: Path) -> None:
+    subdir = tmp_path / "run"
+    _write_predictions(
+        subdir,
+        [
+            _judge_free_row("correct-001", "good", 1.0, "normalized match"),
+            _judge_free_row("wrong-001", "good", 0.0, "no normalized match"),
+        ],
+    )
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [
+        {"id": "correct-001", "input": "q", "expected_behavior": "good"},
+        {"id": "wrong-001", "input": "q", "expected_behavior": "good"},
+    ]
+    result = normalize_output(
+        str(tmp_path),
+        dataset,
+        "http://x",
+        "p.yaml",
+        "r1",
+        benchmark="answer_correctness",
+        has_judge=False,
+    )
+
+    by_id = {c["id"]: c for c in result["cases"]}
+    # The deterministic match lands in the unified ``score`` field; no judge ran,
+    # so has_judge is False and judge_grade is null. The match explanation is in
+    # ``reason``.
+    correct = by_id["correct-001"]
+    assert correct["benchmark"] == "answer_correctness"
+    assert correct["has_judge"] is False
+    assert correct["judge_grade"] is None
+    assert correct["score"] == 1.0
+    assert correct["passed"] is True
+    assert correct["reason"] == "normalized match"
+
+    wrong = by_id["wrong-001"]
+    assert wrong["has_judge"] is False
+    assert wrong["score"] == 0.0
+    assert wrong["passed"] is False
+    assert wrong["reason"] == "no normalized match"
 
 
 def test_normalize_output_score_below_threshold(tmp_path: Path) -> None:
@@ -169,7 +268,7 @@ def test_normalize_output_inconclusive_case(tmp_path: Path) -> None:
     assert result["summary"]["inconclusive_cases"] == 1
     assert result["summary"]["pass_rate"] is None
     case = result["cases"][0]
-    assert case["quality_score"] is None
+    assert case["score"] is None
     assert case["passed"] is None
 
 
@@ -252,9 +351,9 @@ def test_normalize_output_missing_prediction_surfaced_as_inconclusive(
     assert result["summary"]["scored_cases"] == 1
     assert result["summary"]["inconclusive_cases"] == 1
     missing = next(c for c in result["cases"] if c["id"] == "good-002")
-    assert missing["quality_score"] is None
+    assert missing["score"] is None
     assert missing["passed"] is None
-    assert "no prediction" in missing["judge_reason"]
+    assert "no prediction" in missing["reason"]
 
 
 def test_normalize_output_duplicate_dataset_id_warns(tmp_path: Path) -> None:
@@ -298,7 +397,7 @@ def test_normalize_output_duplicate_prediction_id_warns_and_skips(
     assert any("good-001" in str(w.message) for w in caught)
     # Only the first prediction should be kept.
     assert len(result["cases"]) == 1
-    assert result["cases"][0]["quality_score"] == 1.0
+    assert result["cases"][0]["score"] == 1.0
 
 
 def test_find_artifact_prefers_most_recently_modified(tmp_path: Path) -> None:

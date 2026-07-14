@@ -32,20 +32,10 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from ag_ui.core import EventType
-from ag_ui.core import ReasoningEndEvent
-from ag_ui.core import ReasoningMessageContentEvent
-from ag_ui.core import ReasoningMessageEndEvent
-from ag_ui.core import ReasoningMessageStartEvent
-from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
-from ag_ui.core import StepFinishedEvent
-from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
-from ag_ui.core import TextMessageContentEvent
-from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import TextMessageStartEvent
 from crewai import Agent
 from crewai import Crew
 from crewai import Task
@@ -60,6 +50,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.crewai.agui_stream import AGUIStreamEmitter
 from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.logging_events import CrewAILoggingEventListener
 from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
@@ -72,6 +63,21 @@ if TYPE_CHECKING:
     from ragas.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
+
+
+def _dedupe_tools_by_name(tools: list[BaseTool]) -> list[BaseTool]:
+    """Keep the first tool per name, so an injected tool sharing a name with an agent's own
+    tool isn't passed to CrewAI as a duplicate (CrewAI mangles dupes into ``name_2``/``name_3``,
+    which bedrock then rejects).
+    """
+    seen: set[str] = set()
+    unique: list[BaseTool] = []
+    for tool in tools:
+        if tool.name in seen:
+            continue
+        seen.add(tool.name)
+        unique.append(tool)
+    return unique
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -165,6 +171,22 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         super().set_tools(tools)
         for agent in self.agents:
             agent.tools = tools
+        self._propagate_tools_to_tasks()
+
+    def _propagate_tools_to_tasks(self) -> None:
+        """Re-sync each task's tools to its agent's tools.
+
+        CrewAI snapshots ``agent.tools`` into ``task.tools`` when the Crew is built,
+        and runs tasks off that snapshot. Without this, platform-injected tools (e.g.
+        MCP) reach ``agent.tools`` but never the model — the stale snapshot wins.
+
+        Only tasks with an explicit ``agent`` are re-synced; a hierarchical/manager crew
+        that assigns agents at runtime would keep its build-time snapshot.
+        """
+        for task in self.tasks:
+            agent = getattr(task, "agent", None)
+            if agent is not None:
+                task.tools = agent.tools
 
     def set_verbose(self, verbose: bool) -> None:
         super().set_verbose(verbose)
@@ -426,170 +448,58 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             for agent in self.agents:
                 agent.agent_executor = None
             crew_output = await crew.akickoff(inputs=kickoff_inputs)
-            current_agent_role = ""
-            message_id = str(uuid.uuid4())
 
             if isinstance(crew_output, CrewStreamingOutput):
-                reasoning_started = False
-                text_started = False
-                async for chunk in crew_output:
-                    logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
-                    if chunk.agent_role != current_agent_role:
-                        if current_agent_role:
-                            # Close any open text/reasoning message scoped to the
-                            # outgoing step so each step gets its own AG-UI message
-                            # with a unique message_id.
-                            if text_started:
-                                yield (
-                                    TextMessageEndEvent(
-                                        type=EventType.TEXT_MESSAGE_END,
-                                        message_id=message_id,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                                text_started = False
-                            if reasoning_started:
-                                yield (
-                                    ReasoningMessageEndEvent(
-                                        type=EventType.REASONING_MESSAGE_END,
-                                        message_id=message_id,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                                yield (
-                                    ReasoningEndEvent(
-                                        type=EventType.REASONING_END,
-                                        message_id=message_id,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                                reasoning_started = False
-                            yield (
-                                StepFinishedEvent(
-                                    type=EventType.STEP_FINISHED,
-                                    step_name=current_agent_role,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                            message_id = str(uuid.uuid4())
-                        # Only non-empty roles open a step. CrewAI emits boundary
-                        # chunks with an empty agent_role ("[] Working on task:");
-                        # opening a step for one is never closed -> trips the AG-UI
-                        # verifier at RUN_FINISHED.
-                        if chunk.agent_role:
-                            yield (
-                                StepStartedEvent(
-                                    type=EventType.STEP_STARTED,
-                                    step_name=chunk.agent_role,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                        current_agent_role = chunk.agent_role
+                emitter = AGUIStreamEmitter()
 
-                    if streaming_event_listener.reasoning_event:
-                        if not reasoning_started:
-                            yield (
-                                ReasoningStartEvent(
-                                    type=EventType.REASONING_START,
-                                    message_id=message_id,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                            yield (
-                                ReasoningMessageStartEvent(
-                                    type=EventType.REASONING_MESSAGE_START,
-                                    message_id=message_id,
-                                    role="reasoning",
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                            reasoning_started = True
-                    elif reasoning_started:
-                        yield (
-                            ReasoningMessageEndEvent(
-                                type=EventType.REASONING_MESSAGE_END,
-                                message_id=message_id,
-                            ),
-                            None,
-                            zero_metrics,
-                        )
-                        yield (
-                            ReasoningEndEvent(
-                                type=EventType.REASONING_END,
-                                message_id=message_id,
-                            ),
-                            None,
-                            zero_metrics,
-                        )
-                        reasoning_started = False
+                def out(events: Any, metrics: UsageMetrics = zero_metrics) -> Any:
+                    """Wrap bare events into the (event, interactions, metrics) tuple."""
+                    for ev in events:
+                        yield (ev, None, metrics)
 
-                    # Display text chunks
+                def drain(metrics: UsageMetrics = zero_metrics) -> Any:
+                    """Emit the tool-call events the bus has queued so far."""
+                    pending = streaming_event_listener.tool_call_events
+                    while not pending.empty():
+                        yield from out(emitter.tool_call(pending.get_nowait()), metrics)
+
+                def events_for(chunk: Any) -> Any:
+                    """Translate one CrewAI chunk into AG-UI events via the emitter."""
+                    yield from drain()  # tool calls the bus queued since the last chunk
+                    # Gateway chunks carry an empty agent_role; fall back to the bus-tracked role.
+                    role = chunk.agent_role or streaming_event_listener.active_agent_role
+                    yield from out(emitter.step(role))
+                    yield from out(emitter.reasoning(streaming_event_listener.reasoning_event))
                     if chunk.chunk_type == StreamChunkType.TEXT and chunk.content:
-                        if streaming_event_listener.reasoning_event:
-                            yield (
-                                ReasoningMessageContentEvent(
-                                    type=EventType.REASONING_MESSAGE_CONTENT,
-                                    message_id=message_id,
-                                    delta=chunk.content,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                        else:
-                            if not text_started:
-                                yield (
-                                    TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START,
-                                        message_id=message_id,
-                                    ),
-                                    None,
-                                    zero_metrics,
-                                )
-                            text_started = True
-                            yield (
-                                TextMessageContentEvent(
-                                    type=EventType.TEXT_MESSAGE_CONTENT,
-                                    message_id=message_id,
-                                    delta=chunk.content,
-                                ),
-                                None,
-                                zero_metrics,
-                            )
-                pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                    ragas_event_listener.messages
-                )
-                usage_metrics = self._extract_usage_metrics(crew_output.result)
-                if text_started:
-                    yield (
-                        TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id),
-                        None,
-                        usage_metrics,
+                        yield from out(emitter.text(chunk.content))
+
+                try:
+                    async for chunk in crew_output:
+                        logger.debug(f"CrewAI chunk: {chunk.model_dump_json()}")
+                        for item in events_for(chunk):
+                            yield item
+
+                    pipeline_interactions = self.create_pipeline_interactions_from_messages(
+                        ragas_event_listener.messages
                     )
-                if reasoning_started:
-                    yield (
-                        ReasoningMessageEndEvent(
-                            type=EventType.REASONING_MESSAGE_END,
-                            message_id=message_id,
-                        ),
-                        None,
-                        usage_metrics,
-                    )
-                    yield (
-                        ReasoningEndEvent(
-                            type=EventType.REASONING_END,
-                            message_id=message_id,
-                        ),
-                        None,
-                        usage_metrics,
-                    )
+                    usage_metrics = self._extract_usage_metrics(crew_output.result)
+                    # Stream done: close the open message, flush tool calls that fired after the
+                    # last chunk (now detached, parent=""), then close the open step.
+                    for item in out(emitter.close_messages(), usage_metrics):
+                        yield item
+                    for item in drain(usage_metrics):
+                        yield item
+                    for item in out(emitter.finish(), usage_metrics):
+                        yield item
+                except Exception:
+                    # Aborted mid-stream (dropped connection, bad chunk): close the open message and
+                    # step so the partial AG-UI stream stays well-formed -- an orphaned STEP_STARTED
+                    # rejects any terminal event the caller appends -- then let the error propagate.
+                    for item in out(emitter.finish(), usage_metrics):
+                        yield item
+                    raise
             else:
+                message_id = str(uuid.uuid4())
                 response_text = str(crew_output.raw)
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
                     ragas_event_listener.messages
@@ -607,15 +517,6 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                         usage_metrics,
                     )
 
-            if current_agent_role:
-                yield (
-                    StepFinishedEvent(
-                        type=EventType.STEP_FINISHED,
-                        step_name=current_agent_role,
-                    ),
-                    None,
-                    usage_metrics,
-                )
             yield (
                 RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id),
                 pipeline_interactions,
@@ -672,57 +573,21 @@ def datarobot_agent_class_from_crew(
     # :mod:`datarobot_genai.crewai.kickoff_storage`).
     crew = neutralize_kickoff_storage(crew)
 
-    class DataRobotAgent(CrewAIAgent):
-        def __init__(
-            self,
-            api_key: str | None = None,
-            api_base: str | None = None,
-            llm: Any | None = None,
-            tools: list[BaseTool] | None = None,
-            verbose: bool = True,
-            timeout: int = 90,
-            forwarded_headers: dict[str, str] | None = None,
-            max_history_messages: int | None = None,
-            model: str | None = None,
-            roles: Sequence[str] | None = None,
-            goals: Sequence[str] | None = None,
-            backstories: Sequence[str] | None = None,
-            max_iter: int | None = None,
-            max_rpm: int | None = None,
-            max_execution_time: int | None = None,
-            allow_delegation: bool | None = None,
-            max_retry_limit: int | None = None,
-            reasoning: bool | None = None,
-            max_reasoning_attempts: int | None = None,
-        ) -> None:
-            self._original_agent_tools = {agent: agent.tools for agent in agents}
-            super().__init__(
-                api_key=api_key,
-                api_base=api_base,
-                llm=llm,
-                tools=tools,
-                verbose=verbose,
-                timeout=timeout,
-                forwarded_headers=forwarded_headers,
-                max_history_messages=max_history_messages,
-                model=model,
-                roles=roles,
-                goals=goals,
-                backstories=backstories,
-                max_iter=max_iter,
-                max_rpm=max_rpm,
-                max_execution_time=max_execution_time,
-                allow_delegation=allow_delegation,
-                max_retry_limit=max_retry_limit,
-                reasoning=reasoning,
-                max_reasoning_attempts=max_reasoning_attempts,
-            )
+    # Capture each agent's original tools ONCE here, not per-instance: the crew/agents are reused
+    # across requests, so re-deriving per request would snapshot the *previous* request's injected
+    # MCP tools (bound to a now-closed event loop) -> "Event loop is closed".
+    original_agent_tools = {agent: list(agent.tools) for agent in agents}
 
+    class DataRobotAgent(CrewAIAgent):
         def set_tools(self, tools: list[BaseTool]) -> None:
             super().set_tools(tools)
             for agent in agents:
-                # make sure we don't overwrite the original tools
-                agent.tools = self._original_agent_tools[agent] + tools
+                # Original tools + freshly-injected; dedupe so platform tools don't accumulate
+                # across requests on the reused crew (see _dedupe_tools_by_name).
+                agent.tools = _dedupe_tools_by_name(original_agent_tools[agent] + tools)
+            # Re-sync tasks now that agent.tools carries original + injected tools
+            # (super() synced them to the injected-only set).
+            self._propagate_tools_to_tasks()
 
         @property
         def crew(self) -> Crew:

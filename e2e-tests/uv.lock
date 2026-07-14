@@ -11,7 +11,7 @@ resolution-markers = [
 overrides = [
     { name = "ag-ui-protocol", specifier = "==0.1.15" },
     { name = "crewai", extras = ["litellm"], specifier = ">=1.11.0" },
-    { name = "litellm", specifier = ">=1.83.0,<2.0.0" },
+    { name = "litellm", specifier = ">=1.91.1,<2.0.0" },
     { name = "opentelemetry-api", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.43.0,<2.0.0" },
@@ -914,7 +914,7 @@ wheels = [
 
 [[package]]
 name = "datarobot"
-version = "3.13.0"
+version = "3.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -929,36 +929,14 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/28/6794448d1f853ceae0d9f4f9756fe357c095574c6234275caf199533ffc0/datarobot-3.13.0.tar.gz", hash = "sha256:469468636e525f4671fa361d7a743e5ab62e1dbb21889c2a338163cf5d018310", size = 767425, upload-time = "2026-03-10T17:53:21.877Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/2e/2d72db2fe202e2f5151a3d465a026c7ffa0f06ec0900260973daeb2cf69c/datarobot-3.17.0.tar.gz", hash = "sha256:a3587725adb06bfc58942dec0f7cd26e7ba0918e11b6e72a6848636ba5fb58fa", size = 834279, upload-time = "2026-06-30T12:52:39.292Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/b6/a68133d3a62887b232c9002b3c2366b9176305c44a2006a89358f6d94fd8/datarobot-3.13.0-py3-none-any.whl", hash = "sha256:00543ce0d073f7d9bccea8e44a621f766512d3819988278b1d77ca63ff563191", size = 830964, upload-time = "2026-03-10T17:53:19.541Z" },
-]
-
-[[package]]
-name = "datarobot-early-access"
-version = "3.14.0.2026.3.18.162920"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "python-dateutil" },
-    { name = "pytz" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "requests-toolbelt" },
-    { name = "strenum" },
-    { name = "trafaret" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/63/1ea3461a165c51f255ccdcb96411e82671cf8d0b3791718c2042aa5f0bfc/datarobot_early_access-3.14.0.2026.3.18.162920.tar.gz", hash = "sha256:94eacf05010a01131679017b2742b6bca6800d23e2c48210e1968af6e40e6e35", size = 837031, upload-time = "2026-03-18T16:29:24.138Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/7b/b1a34fb997290d22159db756a41a047c47335f656598d52f4bb014a6a0f1/datarobot_early_access-3.14.0.2026.3.18.162920-py3-none-any.whl", hash = "sha256:7625a2cd3c1670b5d6b927b48e464750f68dff4463db11079f6e81fab257305e", size = 909539, upload-time = "2026-03-18T16:29:22.525Z" },
+    { url = "https://files.pythonhosted.org/packages/63/bb/9771102c62cea69f9e1ade151a23855d93c959109d30668fba598272d9ab/datarobot-3.17.0-py3-none-any.whl", hash = "sha256:c54471022ea29324fe8a21b34b9473d1d75da1599de66ad8ef8d28dde47b08b0", size = 902398, upload-time = "2026-06-30T12:52:37.68Z" },
 ]
 
 [[package]]
 name = "datarobot-genai"
-version = "0.22.0"
+version = "0.23.18"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -970,10 +948,12 @@ crewai = [
     { name = "crewai", extra = ["litellm"] },
     { name = "crewai-tools", extra = ["mcp"] },
     { name = "datarobot" },
-    { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "litellm" },
+    { name = "mcpadapt", version = "0.1.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "mcpadapt", version = "0.1.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "nvidia-nat-crewai" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -993,9 +973,9 @@ dragent = [
     { name = "anyio" },
     { name = "colorama" },
     { name = "datarobot" },
-    { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-a2a" },
@@ -1018,9 +998,9 @@ langgraph = [
     { name = "ag-ui-protocol" },
     { name = "colorama" },
     { name = "datarobot" },
-    { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "langgraph-prebuilt" },
@@ -1042,9 +1022,9 @@ llamaindex = [
     { name = "ag-ui-protocol" },
     { name = "colorama" },
     { name = "datarobot" },
-    { name = "datarobot-early-access" },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
+    { name = "httpx-retries" },
     { name = "litellm" },
     { name = "llama-index" },
     { name = "llama-index-core" },
@@ -1098,28 +1078,22 @@ requires-dist = [
     { name = "colorama", marker = "extra == 'nat'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
-    { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcpbase'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.10.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.10.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", marker = "extra == 'nat'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["fs"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-early-access", marker = "extra == 'core'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'crewai'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'dragent'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'langgraph'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'llamaindex'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", marker = "extra == 'nat'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = "==3.14.0.2026.3.18.162920" },
-    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = "==3.14.0.2026.3.18.162920" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.33,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.33,<12.0.0" },
@@ -1141,19 +1115,26 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'drmcpbase'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drmcputils'", specifier = ">=0.28.1,<1.0.0" },
     { name = "httpx", marker = "extra == 'drtools'", specifier = ">=0.28.1,<1.0.0" },
+    { name = "httpx-retries", marker = "extra == 'core'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'crewai'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'dragent'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'langgraph'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'llamaindex'", specifier = ">=0.4.0" },
+    { name = "httpx-retries", marker = "extra == 'nat'", specifier = ">=0.4.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.83.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.83.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.83.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.83.0,<2.0.0" },
+    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.91.1,<2.0.0" },
+    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.91.1,<2.0.0" },
+    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.91.1,<2.0.0" },
+    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.91.1,<2.0.0" },
     { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.8.0,<1.0.0" },
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
+    { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
     { name = "mem0ai", marker = "extra == 'nat'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
@@ -1182,9 +1163,15 @@ requires-dist = [
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.0.0,<3.0.0" },
     { name = "openai", marker = "extra == 'nat'", specifier = ">=2.0.0,<3.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.22.0,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcpbase'", specifier = ">=1.22.0,<2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drtools'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'core'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'crewai'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'dragent'", specifier = ">=0.64b0,<1.0.0" },
@@ -1221,7 +1208,10 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'langgraph'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'llamaindex'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-threading", marker = "extra == 'nat'", specifier = ">=0.64b0,<1.0.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-sdk", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'drmcpbase'", specifier = ">=1.22.0,<2.0.0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'drtools'", specifier = ">=1.22.0,<2.0.0" },
     { name = "perplexityai", marker = "extra == 'drmcp'", specifier = ">=0.27,<1.0" },
     { name = "perplexityai", marker = "extra == 'drtools'", specifier = ">=0.27,<1.0" },
     { name = "polars", marker = "extra == 'drmcp'", specifier = ">=1.0.0,<2.0.0" },
@@ -2313,6 +2303,18 @@ http2 = [
 ]
 
 [[package]]
+name = "httpx-retries"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/d3/b7a8bb09543af40009717a08a2ceba90b6d4c6f0cdf171404217d8f4c37d/httpx_retries-0.6.0.tar.gz", hash = "sha256:3e0b404969a564829d368417964fd21e6b400a10d17c92d29b8bc247ce8186e3", size = 21122, upload-time = "2026-07-06T00:52:30.093Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/c6/7f3d6ab3549267a1959161b38df4c0fb435eceaf2d531d8addfac01abaca/httpx_retries-0.6.0-py3-none-any.whl", hash = "sha256:d1e52a8f68a5df42de75ab89049d5020b2d0ab2f5f8bceacda008d12aa1257a3", size = 11776, upload-time = "2026-07-06T00:52:31.033Z" },
+]
+
+[[package]]
 name = "httpx-sse"
 version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3336,7 +3338,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.83.0"
+version = "1.91.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3352,9 +3354,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/22/92/6ce9737554994ca8e536e5f4f6a87cc7c4774b656c9eb9add071caf7d54b/litellm-1.83.0.tar.gz", hash = "sha256:860bebc76c4bb27b4cf90b4a77acd66dba25aced37e3db98750de8a1766bfb7a", size = 17333062, upload-time = "2026-03-31T05:08:25.331Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/70/1b419158085e0cc1615642dd62c7a5d4c3254db3de77df65dade3b25165b/litellm-1.91.1.tar.gz", hash = "sha256:49a24593df7e37262c52243a8e07572d451d37c100aa1b1f347d80d501d2e386", size = 14872532, upload-time = "2026-07-08T23:07:04.559Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/2c/a670cc050fcd6f45c6199eb99e259c73aea92edba8d5c2fc1b3686d36217/litellm-1.83.0-py3-none-any.whl", hash = "sha256:88c536d339248f3987571493015784671ba3f193a328e1ea6780dbebaa2094a8", size = 15610306, upload-time = "2026-03-31T05:08:21.987Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/52/166a934d194afcff2a7ec4e1928f1865504ade2e26f62e24d49aaec400d1/litellm-1.91.1-py3-none-any.whl", hash = "sha256:bf8e3d23cddf0eb4c05714dffcaafd8a944adf0f9c9b01c6c863b2637309de2e", size = 16670790, upload-time = "2026-07-08T23:07:01.151Z" },
 ]
 
 [[package]]

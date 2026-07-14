@@ -31,11 +31,13 @@ logger = logging.getLogger(__name__)
 @tool_metadata(
     tags={"predictive", "project", "read", "management", "list"},
     description=(
-        "[Project—discover ids] Use when the user needs their modeling projects as id-to-name "
+        "[Project—discover IDs] Use when the user needs their modeling projects as ID-to-name "
         "map (no single project_id yet). Read-only. Not for datasets inside one project "
         "(modeling_get_project_dataset), not catalog datasets (catalog_list_datasets), not "
         "deployments (deployment_get_list)."
     ),
+    display_name="Modeling — List projects",
+    description_ui="List all modeling projects associated with the user's organization.",
 )
 async def modeling_list_projects() -> dict[str, Any]:
     with ThreadSafeDataRobotClient().request_user_client():
@@ -55,10 +57,12 @@ async def modeling_list_projects() -> dict[str, Any]:
         "the project source or a prediction upload. Not for listing all projects "
         "(modeling_list_projects) or arbitrary catalog lookup."
     ),
+    display_name="Modeling — Get project dataset",
+    description_ui="Find a project dataset (requires project name).",
 )
 async def modeling_get_project_dataset(
     *,
-    project_id: Annotated[str, "DataRobot modeling project id."],
+    project_id: Annotated[str, "DataRobot modeling project ID."],
     dataset_name: Annotated[str, "Substring to match against dataset display names."],
 ) -> dict[str, Any]:
     if not project_id:

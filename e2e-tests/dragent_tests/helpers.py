@@ -17,9 +17,11 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 import litellm
+import yaml
 from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -31,7 +33,7 @@ GENERATE_PATH = "/generate"
 
 AGENT = os.environ.get("AGENT", "base")
 AGENT_SUPPORTS_TOOL_CALLS = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
-AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex"]
+AGENT_SUPPORTS_TOOL_CALLS_STREAMING = AGENT in ["langgraph", "nat", "llamaindex", "crewai"]
 
 LLM = os.environ.get("LLM", "llmgw")
 LLM_DEFAULT_MODEL = os.environ.get("LLM_DEFAULT_MODEL")
@@ -47,11 +49,42 @@ def llm_supports_reasoning(llm_default_model: str) -> bool:
     return litellm.supports_reasoning(llm_default_model)
 
 
+def _merge_workflow_llm_config(path: Path) -> dict[str, Any]:
+    data = yaml.safe_load(path.read_text()) or {}
+    llms = dict(data.get("llms") or {})
+    base_name = data.get("base")
+    if base_name:
+        base_data = yaml.safe_load((path.parent / base_name).read_text()) or {}
+        base_llms = dict(base_data.get("llms") or {})
+        for name, overlay in llms.items():
+            merged = dict(base_llms.get(name) or {})
+            merged.update(overlay)
+            llms[name] = merged
+    return llms.get("datarobot_llm") or {}
+
+
+def workflow_reasoning_enabled() -> bool:
+    llm_cfg = _merge_workflow_llm_config(workflow_file())
+    if llm_cfg.get("reasoning") is True:
+        return True
+
+    extra_body = llm_cfg.get("extra_body") or {}
+    thinking = extra_body.get("thinking") or {}
+    if thinking.get("type") == "enabled":
+        return True
+    if extra_body.get("thinking_config"):
+        return True
+
+    reasoning_effort = extra_body.get("reasoning_effort")
+    return bool(reasoning_effort and reasoning_effort != "none")
+
+
 def should_run_reasoning_test() -> bool:
     return (
         LLM_DEFAULT_MODEL
         and llm_supports_reasoning(LLM_DEFAULT_MODEL)
         and AGENT in ("langgraph", "llamaindex")
+        and workflow_reasoning_enabled()
     )
 
 

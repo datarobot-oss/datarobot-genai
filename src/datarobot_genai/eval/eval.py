@@ -53,7 +53,29 @@ class EvalRunner:
 
     def run(self, dry_run: bool = False) -> int:
         run_id = make_run_id()
+        try:
+            return self._execute(run_id, dry_run=dry_run)
+        except Exception as e:  # noqa: BLE001
+            # Last-resort guard: every failure must leave a terminal status.
+            # The branches in _execute already write "failed" for the errors
+            # they anticipate; this catches anything they don't — a raise in
+            # load_pipeline, or a failure in the results/status write itself
+            # (disk full, permissions) after status was flipped to "running".
+            # Without it, such a path would leave eval_status.json stale at
+            # "running" (or absent), which is exactly what external tooling
+            # polling this file must never see.
+            write_status(
+                "failed",
+                run_id,
+                self.pipeline,
+                self.endpoint,
+                self.output_dir,
+                error=str(e),
+            )
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
 
+    def _execute(self, run_id: str, dry_run: bool = False) -> int:
         # 1. Validate
         print("Validating inputs...")
         errors = validate_inputs(
@@ -67,6 +89,14 @@ class EvalRunner:
             print("Validation failed:", file=sys.stderr)
             for e in errors:
                 print(f"  ✗ {e}", file=sys.stderr)
+            write_status(
+                "failed",
+                run_id,
+                self.pipeline,
+                self.endpoint,
+                self.output_dir,
+                error="; ".join(errors),
+            )
             return 1
         print(f"  ✓ Endpoint reachable: {self.endpoint}")
         print(f"  ✓ Pipeline found:     user_pipelines/{self.pipeline}")
@@ -140,12 +170,21 @@ class EvalRunner:
             return 2
         finally:
             if dataset_jsonl and Path(dataset_jsonl).exists():
-                os.unlink(dataset_jsonl)
+                try:
+                    os.unlink(dataset_jsonl)
+                except OSError:
+                    pass  # best-effort temp cleanup; never mask the eval result
 
         # 5. Normalize output
         try:
             normalized = normalize_output(
-                nemo_output_dir, dataset, self.endpoint, self.pipeline, run_id
+                nemo_output_dir,
+                dataset,
+                self.endpoint,
+                self.pipeline,
+                run_id,
+                benchmark=str(cfg["benchmark"]["name"]),
+                has_judge=bool(cfg.get("judge")),
             )
         except Exception as e:  # noqa: BLE001
             write_status(
@@ -169,7 +208,7 @@ class EvalRunner:
         print("Results: output/eval_results.json")
         print(f"  Total cases:        {normalized['total_cases']}")
         print(f"  Scored / inconcl.:  {s['scored_cases']} / {s['inconclusive_cases']}")
-        print(f"  Mean quality score: {s['mean_quality_score']}")
+        print(f"  Mean score:         {s['mean_score']}")
         print(f"  Pass rate:          {s['pass_rate']}")
         print(f"  Good case pass:     {s['good_case_pass_rate']}")
         print(f"  Bad case pass:      {s['bad_case_pass_rate']}")

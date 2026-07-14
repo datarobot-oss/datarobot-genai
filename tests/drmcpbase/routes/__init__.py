@@ -1,4 +1,3 @@
----
 # Copyright 2026 DataRobot, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# E2E overlay: gateway extended thinking via workflow ``extra_body`` (see docs/nat/llm.md).
-base: workflow.yaml
-
-llms:
-  datarobot_llm:
-    temperature: ~  # unset inherited base temperature: thinking is incompatible with temperature
-    extra_body:
-      thinking_config:
-        thinking_budget: 1024

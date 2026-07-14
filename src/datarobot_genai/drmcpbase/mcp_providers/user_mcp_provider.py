@@ -41,9 +41,24 @@ from datarobot_genai.drmcpbase.auth.exceptions import (
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
-from datarobot_genai.drmcpbase.feature_flags import FeatureFlagEvaluation
+from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_category_disabled_for_request
+from datarobot_genai.drmcpbase.feature_flags import check_mcp_tools_gallery_support
 
 logger = logging.getLogger(__name__)
+
+
+def _mark_as_proxied_user_mcp(tool: Tool) -> Tool:
+    """Tag a proxied user-MCP tool so the tools-gallery can classify it.
+
+    Proxied tools arrive from the remote user MCP server without DataRobot meta. We stamp
+    ``meta.tool_category = PROXIED_USER_MCP`` (preserving any existing meta) so the gallery
+    surfaces them as hosted, third-party tools — mirroring how ``CustomModelToolProvider``
+    tags its deployment tools ``USER_TOOL_DEPLOYMENT``. Returns a copy; the original is not
+    mutated.
+    """
+    meta = {**(tool.meta or {}), "tool_category": DataRobotMCPToolCategory.PROXIED_USER_MCP.name}
+    return tool.model_copy(update={"meta": meta})
 
 
 CACHE_TTL_IN_SECOND = 10 * TimeMeasurement.MINUTE.to_numeric_value_in_second()
@@ -195,12 +210,14 @@ class UserMCPProvider(Provider):
     async def _list_tools(self) -> Sequence[Tool]:
         tools: list[Tool] = []
 
-        if (
-            self.is_datarobot_api_client_initialized()
-            and await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(  # noqa: E501
-                self.datarobot_api_client,  # type: ignore[arg-type]
-            )
-        ):
+        if is_category_disabled_for_request(DataRobotMCPToolCategory.PROXIED_USER_MCP.name):
+            # Per-request gate (x-datarobot-mcp-enable-proxy: false): skip the whole
+            # user-MCP expansion — the entitlement check, the deployment listing and
+            # the per-deployment fan-out — not just the final listing.
+            logger.debug("Proxied user-MCP tools are disabled for this request; skipping fan-out.")
+            return tools
+
+        if await check_mcp_tools_gallery_support(self.datarobot_api_client):
             results = await asyncio.gather(
                 *[p.list_tools() for p in await self.get_user_mcp_proxy_providers_for_user()],
                 return_exceptions=True,
@@ -209,5 +226,5 @@ class UserMCPProvider(Provider):
                 if isinstance(r, BaseException):
                     logger.warning("Failed to list tools from user MCP proxy: %s", r)
                 else:
-                    tools.extend(r)
+                    tools.extend(_mark_as_proxied_user_mcp(tool) for tool in r)
         return tools
