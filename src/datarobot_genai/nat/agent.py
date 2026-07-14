@@ -38,7 +38,6 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
-from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:
@@ -275,7 +274,7 @@ class NatAgent(BaseAgent[None]):
 
     async def run_nat_workflow(
         self, workflow_path: StrPath, chat_request: ChatRequest, headers: dict[str, str] | None
-    ) -> tuple[ChatResponse | DRAgentEventResponse | str, list[IntermediateStep]]:
+    ) -> tuple[ChatResponse | str, list[IntermediateStep]]:
         """Run the NAT workflow with the provided config file and input string.
 
         Args:
@@ -285,7 +284,7 @@ class NatAgent(BaseAgent[None]):
 
         Returns
         -------
-            ChatResponse | DRAgentEventResponse | str: The result from the NAT workflow
+            ChatResponse | str: The result from the NAT workflow
             list[IntermediateStep]: The list of intermediate steps
         """
         async with load_workflow(
