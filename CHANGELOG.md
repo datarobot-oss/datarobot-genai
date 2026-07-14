@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.23
+- `crewai`: strip the per-tool `strict` flag on native tool calls.
+
 ## 0.23.22
 - Fix streaming interruption with response guards
 
