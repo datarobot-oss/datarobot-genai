@@ -5,8 +5,9 @@ version: '3'
 # pyproject.toml [tool.uv] is the single source of truth for the
 # override / exclude / constraint lists. The shipped consumer copy
 # (src/datarobot_genai/_packaging/uv_consumer_config.toml) is GENERATED from it,
-# and the clean-room audit proves a downstream consumer resolves cleanly with
-# that copy applied. See scripts/gen_consumer_config.py and scripts/clean_room_audit.py.
+# and the consumer install check proves each extra actually resolves with that
+# copy applied. See scripts/gen_consumer_config.py and scripts/check_consumer_install.py.
+# CVE scanning/ticketing is handled separately (Trivy / GameWarden), not here.
 
 tasks:
   sync-consumer-config:
@@ -22,17 +23,8 @@ tasks:
       - uv run --no-project python scripts/gen_consumer_config.py --check
     silent: true
 
-  audit-consumers:
-    desc: "Clean-room CVE audit of the DEFAULT consumer extras (crewai,dragent,auth)"
+  check-consumer-install:
+    desc: "Per-extra consumer install check: naive (no config) and with the shipped config"
     cmds:
-      - uv run --no-project python scripts/clean_room_audit.py --audit
-    silent: true
-
-  audit-consumers-matrix:
-    desc: "Clean-room CVE audit of the FULL framework extras matrix"
-    cmds:
-      - >-
-        uv run --no-project python scripts/clean_room_audit.py
-        --extras crewai,langgraph,llamaindex,nat,dragent,drmcp,drtools,auth
-        --audit
+      - uv run --no-project python scripts/check_consumer_install.py
     silent: true

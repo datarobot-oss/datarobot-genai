@@ -2,18 +2,17 @@ name: Packaging CI
 
 # Guards the consumer-facing packaging contract:
 #   1. uv_consumer_config.toml stays in sync with pyproject.toml [tool.uv].
-#   2. A naive downstream consumer applying the shipped config resolves cleanly
-#      and is CVE-free, for both the default extras and the full framework matrix.
+#   2. Each extra installs standalone (pip install datarobot-genai[extra]), both
+#      naively (no consumer config) and with the shipped config applied.
 # uv override/exclude/constraint settings are NOT published in package metadata,
-# so a green CI in this repo does not prove consumers are safe -- these jobs do.
+# so a green CI in this repo does not prove consumers can actually resolve the
+# package -- this job does. CVE scanning/ticketing is handled separately
+# (Trivy / GameWarden), not here.
 
 on:
   pull_request:
   push:
     branches: [ main ]
-  schedule:
-    # Daily, so newly disclosed upstream CVEs surface even without a code change.
-    - cron: '0 4 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -52,17 +51,9 @@ jobs:
       - name: Check uv_consumer_config.toml is in sync with pyproject.toml
         run: task check-consumer-config
 
-  clean-room-audit:
-    name: Clean-room audit (${{ matrix.name }})
+  consumer-install-check:
+    name: Consumer install check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: default-extras
-            task: audit-consumers
-          - name: full-matrix
-            task: audit-consumers-matrix
     permissions:
       contents: read
       pull-requests: read
@@ -89,12 +80,12 @@ jobs:
       - name: Cache uv download cache
         uses: actions/cache@v4
         with:
-          # Content-addressed download cache only (never .venv); the audit builds
+          # Content-addressed download cache only (never .venv); the check builds
           # throwaway consumer projects and resolves them from scratch each run.
           path: ~/.cache/uv
-          key: uv-${{ runner.os }}-audit-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-consumer-install-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-${{ runner.os }}-audit-
+            uv-${{ runner.os }}-consumer-install-
 
-      - name: Clean-room consumer audit
-        run: task ${{ matrix.task }}
+      - name: Consumer install check
+        run: task check-consumer-install
