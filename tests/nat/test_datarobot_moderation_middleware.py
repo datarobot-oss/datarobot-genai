@@ -92,6 +92,9 @@ from datarobot_genai.nat.datarobot_moderation_middleware import (
     _prescore_datarobot_moderations_from_df,
 )
 from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
+from datarobot_genai.nat.datarobot_moderation_middleware import (
+    _streaming_text_events_from_openai_chunk,
+)
 from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
 from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
 from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
@@ -2620,3 +2623,56 @@ def test_dome_chunk_to_dragent_event_response_serializes_numpy_moderations() -> 
     assert out.datarobot_moderations["nested"]["x"] == 1.5
     assert "2026-01-01" in str(out.datarobot_moderations["ts"])
     out.model_dump_json()
+
+
+def _openai_chunk_with_content(content: str | None) -> ChatCompletionChunk:
+    return ChatCompletionChunk(
+        id="chunk-1",
+        choices=[
+            OpenAIChunkChoice(
+                index=0,
+                delta=OpenAIChoiceDelta(content=content),
+                finish_reason=None,
+            )
+        ],
+        created=1700000000,
+        model="test-model",
+        object="chat.completion.chunk",
+    )
+
+
+def test_streaming_text_events_from_openai_chunk_reuses_source_message_id() -> None:
+    """A text delta must inherit the message_id of the source AG-UI text event."""
+    chunk = _openai_chunk_with_content("hello")
+    source = [TextMessageContentEvent(message_id="msg-source", delta="hello")]
+
+    events = _streaming_text_events_from_openai_chunk(chunk, source)
+
+    assert len(events) == 1
+    assert isinstance(events[0], TextMessageContentEvent)
+    assert events[0].message_id == "msg-source"
+    assert events[0].delta == "hello"
+
+
+def test_streaming_text_events_from_openai_chunk_reuses_chunk_event_message_id() -> None:
+    """A ``TextMessageChunkEvent`` source must also supply the message_id."""
+    chunk = _openai_chunk_with_content("world")
+    source = [TextMessageChunkEvent(message_id="chunk-source", delta="world")]
+
+    events = _streaming_text_events_from_openai_chunk(chunk, source)
+
+    assert len(events) == 1
+    assert events[0].message_id == "chunk-source"
+    assert events[0].delta == "world"
+
+
+def test_streaming_text_events_from_openai_chunk_ignores_non_text_source_event() -> None:
+    """A non-text leading source event must fall back to a generated UUID."""
+    chunk = _openai_chunk_with_content("hi")
+    source = [TextMessageStartEvent(message_id="start-msg")]
+
+    events = _streaming_text_events_from_openai_chunk(chunk, source)
+
+    assert len(events) == 1
+    assert events[0].message_id != "start-msg"
+
