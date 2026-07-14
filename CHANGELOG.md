@@ -10,6 +10,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added `datarobot_moderations` response for inline execution and `/chat/completions` route
 - Rework E2E examples to use memory streaming agent (as agentic templates)
 
+## 0.23.21
+- Fix multi-node agents (e.g. the default researcher -> responder template) concatenating every node's text into one response instead of returning only the final node's answer. AG-UI text boundaries keyed on `message.id` alone, so nodes whose streamed messages shared or omitted an id emitted no boundary event: an empty id silently fused both nodes' text (and, with a null id, produced a malformed stream). Boundaries are now keyed on `(langgraph_node, message_id)` with a minted id when the node omits one, so the non-streaming chat-completion path (used by evaluations) returns only the final node's output.
+
+## 0.23.20
+- `eval`: endpoint health check now probes `<scheme>://<host>:<port>/health` (path stripped) before falling back to pinging the literal `--endpoint`, so dragent/DRUM-fronted agents log a clean 200 instead of a `404 Not Found` on the bare `/v1` base URL during validation and `--dry-run`.
+
+## 0.23.19
+- `drtools/files_api`: Tweak `description` and `description_ui` fields for file-related tools to improve agent operations and user understanding.
+
+## 0.23.18
+- `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
+
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
+
+## 0.23.16
+- Fix `eval_status.json` not updated to failed on early input validation errors.
+
+## 0.23.15
+- `drtools/core/clients` (MODEL-24077): fixed `WorkloadApiClient.list_workload_logs()` (used by the `workload_logs_get` tool) raising `AssertionError: Wrong type` on every call — it built its request `params` as a `list[tuple[str, Any]]` instead of the `dict[str, Any]` the DataRobot SDK's REST client requires; `includes`/`excludes` still encode as repeated query keys since `requests` accepts list-valued dict entries.
+
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
+
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
 - `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.

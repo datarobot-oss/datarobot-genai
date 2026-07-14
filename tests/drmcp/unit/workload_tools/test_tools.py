@@ -18,6 +18,7 @@ Style: GIVEN preconditions / WHEN behavior under test / THEN expected outcomes.
 """
 
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -753,7 +754,7 @@ async def test_workload_logs_success(patched_dr_client: MagicMock) -> None:
 
     patched_dr_client.get.assert_called_once_with(
         "otel/workload/wkld-abc/logs/",
-        params=[("limit", 100), ("offset", 0), ("level", "debug")],
+        params={"limit": 100, "offset": 0, "level": "debug"},
     )
     assert result["logs"][0]["body"] == "Server started"
 
@@ -775,19 +776,54 @@ async def test_workload_logs_with_filters(patched_dr_client: MagicMock) -> None:
 
     patched_dr_client.get.assert_called_once_with(
         "otel/workload/wkld-abc/logs/",
-        params=[
-            ("limit", 100),
-            ("offset", 0),
-            ("level", "error"),
-            ("startTime", "2026-01-01T00:00:00Z"),
-            ("endTime", "2026-01-02T00:00:00Z"),
-            ("includes", "ERROR"),
-            ("includes", "FATAL"),
-            ("excludes", "healthcheck"),
-            ("spanId", "span-1"),
-            ("traceId", "trace-1"),
-        ],
+        params={
+            "limit": 100,
+            "offset": 0,
+            "level": "error",
+            "startTime": "2026-01-01T00:00:00Z",
+            "endTime": "2026-01-02T00:00:00Z",
+            "includes": ["ERROR", "FATAL"],
+            "excludes": ["healthcheck"],
+            "spanId": "span-1",
+            "traceId": "trace-1",
+        },
     )
+
+
+@pytest.mark.asyncio
+async def test_workload_logs_params_pass_sdk_to_api_validation() -> None:
+    """Regression: the DataRobot SDK's REST client runs every ``params``
+    through ``to_api()``, which asserts ``isinstance(data, dict)`` and raises
+    ``AssertionError: Wrong type`` otherwise. list_workload_logs used to build params as a
+    list[tuple[str, Any]], which fails that assertion unconditionally. patched_dr_client
+    mocks client.get() directly and would not have caught this, since it never calls the
+    real to_api(); this test runs params through the real SDK function instead.
+    """
+    from datarobot.utils import to_api
+
+    captured: dict[str, Any] = {}
+
+    class _ToApiValidatingClient:
+        def get(self, url: str, params: Any = None, **kwargs: Any) -> MagicMock:
+            captured["url"] = url
+            captured["params"] = to_api(params)
+            return MagicMock(json=lambda: {"data": [], "count": 0})
+
+    with patch(
+        "datarobot_genai.drtools.core.clients.datarobot_workload.request_user_dr_client"
+    ) as mock_cm:
+        mock_cm.return_value.__enter__.return_value = _ToApiValidatingClient()
+        mock_cm.return_value.__exit__.return_value = False
+
+        await workload_observability.workload_logs_get(
+            workload_id="wkld-abc",
+            includes=["ERROR", "FATAL"],
+            excludes=["healthcheck"],
+        )
+
+    assert captured["url"] == "otel/workload/wkld-abc/logs/"
+    assert captured["params"]["includes"] == ["ERROR", "FATAL"]
+    assert captured["params"]["excludes"] == ["healthcheck"]
 
 
 @pytest.mark.asyncio
