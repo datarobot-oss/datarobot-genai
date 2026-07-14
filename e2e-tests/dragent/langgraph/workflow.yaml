@@ -79,3 +79,8 @@ workflow:
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
+  save_ai_messages_to_memory: false
+  search_params:
+    top_k: 5
+  add_params:
+    async_mode: false
