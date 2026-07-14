@@ -70,6 +70,18 @@ def _sanitize_tool_schema(node: Any) -> Any:
     return node
 
 
+def _strip_strict_flags(tools: list[Any]) -> list[Any]:
+    """Drop crewai's per-tool ``strict: True`` (bedrock caps strict tools at 20).
+
+    Strips the function-level flag only, never a tool *parameter* named ``strict``.
+    """
+    for tool in tools:
+        function = tool.get("function")
+        if isinstance(function, dict):
+            function.pop("strict", None)
+    return tools
+
+
 # Instrumentation scope name; matches the CrewAI instrumentor so these spans
 # share the same scope as the sync/async spans emitted from telemetry.py.
 _INSTRUMENTATION_NAME = "opentelemetry.instrumentation.crewai"
@@ -211,7 +223,7 @@ class LitellmStopWordLLM(LLM):
             import litellm  # noqa: PLC0415
 
             with _llm_span(self.model):
-                tools = _sanitize_tool_schema(kwargs["tools"])
+                tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
                 call_id = str(uuid.uuid4())
@@ -255,7 +267,7 @@ class LitellmStopWordLLM(LLM):
             import litellm  # noqa: PLC0415
 
             with _llm_span(self.model):
-                tools = _sanitize_tool_schema(kwargs["tools"])
+                tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
                 call_id = str(uuid.uuid4())

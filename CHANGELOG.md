@@ -4,12 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.22
+## 0.23.24
 - `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
 - `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
 - `drtools/vdb`: added `vdb_get` for non-blocking build and deployment status checks with optional `target_status` (`completed` / `active`), following the same poll pattern as `file_get_status` and `workload_get`.
 - `drtools/vdb`: fixed `vdb_query` to score through the deployment prediction server with the `promptText` JSON payload expected by vector database deployments, instead of posting to the main API `deployments/{id}/predictions/` route.
 - `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.23
+- `crewai`: strip the per-tool `strict` flag on native tool calls.
+
+## 0.23.22
+- Fix streaming interruption with response guards
 
 ## 0.23.21
 - Fix multi-node agents (e.g. the default researcher -> responder template) concatenating every node's text into one response instead of returning only the final node's answer. AG-UI text boundaries keyed on `message.id` alone, so nodes whose streamed messages shared or omitted an id emitted no boundary event: an empty id silently fused both nodes' text (and, with a null id, produced a malformed stream). Boundaries are now keyed on `(langgraph_node, message_id)` with a minted id when the node omits one, so the non-streaming chat-completion path (used by evaluations) returns only the final node's output.
