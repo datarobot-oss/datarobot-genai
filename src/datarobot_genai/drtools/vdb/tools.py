@@ -515,7 +515,7 @@ async def vdb_get(
     tags={"vdb", "write", "deploy", "daria"},
     description=(
         "[VDB—deploy] Use when the user wants to deploy a built vector database "
-        "(vector_database_id from vdb_create) to a live MLOps deployment for querying. "
+        "(vector_database_id from vdb_create) to a live deployment for querying. "
         "Requires build status COMPLETED (poll vdb_get first). Returns deployment_id, label, "
         "and status. REQUIRED follow-up: poll vdb_get with deployment_id and "
         "target_status='active' until target_reached, then vdb_query. Not creating the vector "
