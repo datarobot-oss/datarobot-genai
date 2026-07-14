@@ -329,7 +329,7 @@ def _resolve_chunking_parameters(
     description=(
         "[VDB—create] Use when the user wants to create a new DataRobot vector database from an "
         "AI Catalog dataset (dataset_id from catalog_list_datasets or catalog_upload_dataset) "
-        "linked to a use case (use_case_id from datarobot_usecases_list). "
+        "linked to a Use Case (use_case_id from datarobot_usecases_list). "
         "Chunking parameters are required by the platform; when omitted, defaults are applied "
         f"(embedding_model={DEFAULT_EMBEDDING_MODEL!r}, chunking_method='recursive', "
         f"chunk_size={DEFAULT_CHUNK_SIZE}, chunk_overlap_percentage="
