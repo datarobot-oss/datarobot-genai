@@ -271,6 +271,9 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
     ),
     MCPToolCategory.DR_VDB: frozenset(
         {
+            "vdb_create",
+            "vdb_deploy",
+            "vdb_get",
             "vdb_list",
             "vdb_query",
         }

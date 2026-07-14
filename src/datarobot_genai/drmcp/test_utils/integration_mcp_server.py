@@ -37,6 +37,7 @@ from unittest.mock import Mock
 
 import datarobot as dr
 import datarobot_predict.deployment as _dr_predict_deployment
+from datarobot.models.genai.vector_database import VectorDatabase
 
 from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp.core.dynamic_prompts import register as prompt_register
@@ -127,17 +128,24 @@ def _get_datarobot_access_token_stdio_fallback(*, headers_auth_only: bool = True
     return token
 
 
-@contextmanager
-def _stub_thread_safe_request_user_client(
-    self: Any, *, headers_auth_only: bool = True
-) -> Generator[MagicMock, None, None]:
-    del headers_auth_only
-    """No-op stub for ThreadSafeDataRobotClient.request_user_client.
+def _make_stub_thread_safe_request_user_client(
+    mock_rest: MagicMock,
+) -> Any:
+    """Return a stub for ThreadSafeDataRobotClient.request_user_client yielding mock_rest.
 
-    Tools use dr.X.Y() directly inside the with block; the real SDK classes are
-    monkey-patched in _apply_dr_client_stubs so no actual HTTP calls are made.
+    Tools either use dr.X.Y() directly inside the with block (the real SDK classes
+    are monkey-patched in _apply_dr_client_stubs) or call REST methods on the
+    yielded client, which are wired to the stub handlers on mock_rest.
     """
-    yield MagicMock()
+
+    @contextmanager
+    def _stub_thread_safe_request_user_client(
+        self: Any, *, headers_auth_only: bool = True
+    ) -> Generator[MagicMock, None, None]:
+        del self, headers_auth_only
+        yield mock_rest
+
+    return _stub_thread_safe_request_user_client
 
 
 @contextmanager
@@ -194,6 +202,9 @@ def _apply_dr_sdk_stubs(stub_dr: Any, mock_rest: MagicMock) -> None:
     dr.Dataset.iterate = stub_dr.Dataset.iterate  # type: ignore[method-assign]
     dr.DataStore.list = stub_dr.DataStore.list  # type: ignore[method-assign]
     dr.UseCase.get = stub_dr.UseCase.get  # type: ignore[method-assign]
+    dr.PredictionServer.list = stub_dr.PredictionServer.list  # type: ignore[method-assign]
+    VectorDatabase.create = stub_dr.create_vector_database  # type: ignore[method-assign]
+    VectorDatabase.get = stub_dr.get_vector_database  # type: ignore[method-assign]
     dr.BatchPredictionJob = stub_dr.BatchPredictionJob  # type: ignore[misc]
     dr.client.get_client = lambda: mock_rest  # type: ignore[method-assign]
 
@@ -212,6 +223,8 @@ def _apply_dr_client_stubs() -> None:
         mock_rest.get = stub_dr.stub_rest_get
     if stub_dr.stub_rest_post:
         mock_rest.post = stub_dr.stub_rest_post
+    if stub_dr.stub_rest_request:
+        mock_rest.request = stub_dr.stub_rest_request
     if stub_dr.stub_rest_patch:
         mock_rest.patch = stub_dr.stub_rest_patch
     if stub_dr.stub_rest_delete:
@@ -224,7 +237,9 @@ def _apply_dr_client_stubs() -> None:
     tools_datarobot_client.request_user_dr_sdk = _stub_request_user_dr_sdk
     tools_datarobot_client.request_user_dr_client = _make_stub_request_user_dr_client(mock_rest)
     thread_safe_client = tools_datarobot_client.ThreadSafeDataRobotClient
-    thread_safe_client.request_user_client = _stub_thread_safe_request_user_client  # type: ignore[method-assign]
+    thread_safe_client.request_user_client = _make_stub_thread_safe_request_user_client(  # type: ignore[method-assign]
+        mock_rest
+    )
     tools_datarobot_client.get_datarobot_access_token = _get_datarobot_access_token_stdio_fallback
     _apply_predict_stubs()
     _apply_prompt_stubs()

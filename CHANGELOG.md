@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.25
+- `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
+- `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
+- `drtools/vdb`: added `vdb_get` for non-blocking build and deployment status checks with optional `target_status` (`completed` / `active`), following the same poll pattern as `file_get_status` and `workload_get`.
+- `drtools/vdb`: fixed `vdb_query` to score through the deployment prediction server with the `promptText` JSON payload expected by vector database deployments, instead of posting to the main API `deployments/{id}/predictions/` route.
+- `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
 ## 0.23.24
 - `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
 
@@ -38,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
 
 ## 0.23.13
-- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin. 
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
 
 ## 0.23.12
 - `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
