@@ -45,6 +45,9 @@ STUB_VDB_DEPLOYMENT_ID = "stub_vdb_deployment_id"
 # Vector database id returned by stub ``VectorDatabase.create``.
 STUB_VECTOR_DATABASE_ID = "stub_vector_database_id"
 
+# Prediction server id returned by stub ``PredictionServer.list``.
+STUB_PREDICTION_SERVER_ID = "stub_prediction_server_id"
+
 
 class StubRocCurve:
     """Stub DataRobot ROC curve object."""
@@ -137,7 +140,7 @@ class StubDeployment:
         self.model = {"project_id": project_id, "id": model_id}
         self.status = "active"
         self.default_prediction_server = {
-            "id": "stub_prediction_server_id",
+            "id": STUB_PREDICTION_SERVER_ID,
             "url": "https://stub-prediction-server.example.com",
             "datarobot-key": "stub-datarobot-key",
         }
@@ -359,6 +362,7 @@ class StubDRClient:
         self.Dataset = MagicMock()
         self.DataStore = MagicMock()
         self.UseCase = MagicMock()
+        self.PredictionServer = MagicMock()
         self.client = MagicMock()
         self.BatchPredictionJob = StubBatchPredictionJobAPI()
         self.create_vector_database: Any = None
@@ -503,6 +507,10 @@ def test_create_dr_client() -> StubDRClient:
             execution_status="COMPLETED",
             deploy=deploy,
         )
+
+    def list_prediction_servers() -> list[SimpleNamespace]:
+        """Stub PredictionServer.list; returns one default prediction server."""
+        return [SimpleNamespace(id=STUB_PREDICTION_SERVER_ID)]
 
     # --- REST method stubs for dr_module.client.get_client() ---
     def _stub_get_non_workload(url: str, params: dict | None) -> StubRestResponse:
@@ -655,6 +663,7 @@ def test_create_dr_client() -> StubDRClient:
     client.Dataset.iterate = iterate_datasets
     client.DataStore.list = list_datastores
     client.UseCase.get = get_use_case
+    client.PredictionServer.list = list_prediction_servers
     client.create_vector_database = create_vector_database
     client.get_vector_database = get_vector_database
     # Store REST stubs on the client so integration_mcp_server can wire them

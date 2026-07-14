@@ -202,6 +202,7 @@ def _apply_dr_sdk_stubs(stub_dr: Any, mock_rest: MagicMock) -> None:
     dr.Dataset.iterate = stub_dr.Dataset.iterate  # type: ignore[method-assign]
     dr.DataStore.list = stub_dr.DataStore.list  # type: ignore[method-assign]
     dr.UseCase.get = stub_dr.UseCase.get  # type: ignore[method-assign]
+    dr.PredictionServer.list = stub_dr.PredictionServer.list  # type: ignore[method-assign]
     VectorDatabase.create = stub_dr.create_vector_database  # type: ignore[method-assign]
     VectorDatabase.get = stub_dr.get_vector_database  # type: ignore[method-assign]
     dr.BatchPredictionJob = stub_dr.BatchPredictionJob  # type: ignore[misc]
