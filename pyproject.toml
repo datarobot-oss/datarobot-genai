@@ -63,7 +63,10 @@ package = true
 # metadata and never propagate to downstream consumers. The canonical copy that
 # consumers must paste into their own workspace root is shipped in the wheel at
 # datarobot_genai/_packaging/uv_consumer_config.toml (print it with the
-# `datarobot-genai-uv-config` command). Keep the two in sync.
+# `datarobot-genai-uv-config` command). THIS BLOCK IS THE SOURCE OF TRUTH: that
+# file is GENERATED from the three lists below by scripts/gen_consumer_config.py.
+# After editing them, run `task sync-consumer-config` and commit; Packaging CI
+# fails if the shipped file drifts.
 constraint-dependencies = [
     # Residual CVE floors that cannot be expressed as real dependency metadata:
     # `pip` is build/environment tooling (never a runtime Requires-Dist) and
@@ -98,8 +101,6 @@ override-dependencies = [
 exclude-dependencies = [
     # Unused / vulnerable transitive packages removed to shrink install + CVE surface.
     # genai's own source imports none of these (verified); genai's CLI uses click, not typer.
-    # This list is the authoritative source for the consumer copy shipped at
-    # datarobot_genai/_packaging/uv_consumer_config.toml -- keep the two in sync.
     "annoy",                    # optional vector index pulled in by crewai; build issues, not used
     "build",                    # Python build system pulled in by crewai; runtime unnecessary
     "datarobot-early-access",   # randomly overlaps the core `datarobot` package

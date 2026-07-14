@@ -1,6 +1,11 @@
 # =============================================================================
 # datarobot-genai -- canonical uv configuration for CONSUMERS
 # =============================================================================
+# AUTO-GENERATED from pyproject.toml [tool.uv] by scripts/gen_consumer_config.py.
+# Do NOT edit by hand: run `task sync-consumer-config` after changing the
+# [tool.uv] lists in pyproject.toml, and commit the result. CI (Packaging CI)
+# regenerates this file and fails the build if it drifts.
+# -----------------------------------------------------------------------------
 # These three lists CANNOT be delivered through package metadata. uv reads
 # override-dependencies / exclude-dependencies / constraint-dependencies ONLY
 # from the *workspace-root* pyproject.toml, and they are never published in a
@@ -47,6 +52,7 @@ override-dependencies = [
 
 exclude-dependencies = [
     # Unused / vulnerable transitive packages removed to shrink install + CVE surface.
+    # genai's own source imports none of these (verified); genai's CLI uses click, not typer.
     "annoy",                    # optional vector index pulled in by crewai; build issues, not used
     "build",                    # Python build system pulled in by crewai; runtime unnecessary
     "datarobot-early-access",   # randomly overlaps the core `datarobot` package
@@ -76,8 +82,11 @@ exclude-dependencies = [
 ]
 
 constraint-dependencies = [
-    # Residual CVE floors that datarobot-genai cannot express as real dependency
-    # metadata (build/environment tooling and a transitive-of-transitive).
+    # Residual CVE floors that cannot be expressed as real dependency metadata:
+    # `pip` is build/environment tooling (never a runtime Requires-Dist) and
+    # `pdfminer.six` only ever arrives as a transitive-of-transitive (via pdfplumber).
+    # Every other floor that used to live here is now a real dependency in setup.py,
+    # so downstream consumers inherit it automatically.
     "pip>=26.1.2",
     "pdfminer.six>=20251230",
 ]

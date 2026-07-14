@@ -1,0 +1,100 @@
+name: Packaging CI
+
+# Guards the consumer-facing packaging contract:
+#   1. uv_consumer_config.toml stays in sync with pyproject.toml [tool.uv].
+#   2. A naive downstream consumer applying the shipped config resolves cleanly
+#      and is CVE-free, for both the default extras and the full framework matrix.
+# uv override/exclude/constraint settings are NOT published in package metadata,
+# so a green CI in this repo does not prove consumers are safe -- these jobs do.
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+  schedule:
+    # Daily, so newly disclosed upstream CVEs surface even without a code change.
+    - cron: '0 4 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TASK_VERSION: 3.48.0
+
+jobs:
+  consumer-config-sync:
+    name: Consumer config in sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check uv_consumer_config.toml is in sync with pyproject.toml
+        run: task check-consumer-config
+
+  clean-room-audit:
+    name: Clean-room audit (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default-extras
+            task: audit-consumers
+          - name: full-matrix
+            task: audit-consumers-matrix
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache uv download cache
+        uses: actions/cache@v4
+        with:
+          # Content-addressed download cache only (never .venv); the audit builds
+          # throwaway consumer projects and resolves them from scratch each run.
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-audit-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-audit-
+
+      - name: Clean-room consumer audit
+        run: task ${{ matrix.task }}

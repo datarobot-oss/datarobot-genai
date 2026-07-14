@@ -1,0 +1,38 @@
+version: '3'
+
+# Packaging / consumer-facing dependency configuration.
+#
+# pyproject.toml [tool.uv] is the single source of truth for the
+# override / exclude / constraint lists. The shipped consumer copy
+# (src/datarobot_genai/_packaging/uv_consumer_config.toml) is GENERATED from it,
+# and the clean-room audit proves a downstream consumer resolves cleanly with
+# that copy applied. See scripts/gen_consumer_config.py and scripts/clean_room_audit.py.
+
+tasks:
+  sync-consumer-config:
+    desc: "Regenerate _packaging/uv_consumer_config.toml from pyproject.toml [tool.uv]"
+    cmds:
+      - echo "Regenerating uv_consumer_config.toml from pyproject.toml [tool.uv]..."
+      - uv run --no-project python scripts/gen_consumer_config.py
+    silent: true
+
+  check-consumer-config:
+    desc: "Fail if uv_consumer_config.toml is out of sync with pyproject.toml (CI gate)"
+    cmds:
+      - uv run --no-project python scripts/gen_consumer_config.py --check
+    silent: true
+
+  audit-consumers:
+    desc: "Clean-room CVE audit of the DEFAULT consumer extras (crewai,dragent,auth)"
+    cmds:
+      - uv run --no-project python scripts/clean_room_audit.py --audit
+    silent: true
+
+  audit-consumers-matrix:
+    desc: "Clean-room CVE audit of the FULL framework extras matrix"
+    cmds:
+      - >-
+        uv run --no-project python scripts/clean_room_audit.py
+        --extras crewai,langgraph,llamaindex,nat,dragent,drmcp,drtools,auth
+        --audit
+    silent: true
