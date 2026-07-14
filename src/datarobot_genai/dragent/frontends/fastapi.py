@@ -290,38 +290,25 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
 
 class _GunicornSettings(DataRobotAppFrameworkBaseSettings):
-    """Gunicorn worker settings for the dragent front end.
-
-    Controllable via prefix-free environment variables (including Runtime Parameters),
-    following the standard :class:`DataRobotAppFrameworkBaseSettings` resolution chain.
-    """
+    """Gunicorn worker settings for the dragent front end (prefix-free env / Runtime Parameters)."""
 
     agent_gunicorn_worker_timeout: int = Field(
         default=600,
         gt=0,
-        description=(
-            "Gunicorn worker (and graceful) timeout in seconds for the dragent front end, "
-            "raised above gunicorn's 30s default so long agent turns aren't killed "
-            "mid-stream. Default: 600."
-        ),
+        description="Gunicorn worker/graceful timeout (seconds) for the dragent front end.",
     )
 
 
 def _patch_gunicorn_worker_timeout() -> None:
-    """Raise gunicorn's 30s default worker timeout for the dragent front end.
+    """Raise gunicorn's 30s default worker timeout so long agent turns aren't SIGABRT'd mid-stream.
 
-    ``nat dragent serve --use_gunicorn true`` builds gunicorn's app with a hardcoded
-    options dict (``bind``/``workers``/``worker_class`` only) and ignores
-    ``GUNICORN_CMD_ARGS``/``gunicorn.conf.py``/CLI flags, so there is no supported way to
-    raise the timeout. Agent turns make several sequential LLM calls and routinely exceed
-    30s, so the worker is SIGABRT'd mid-stream and the caller gets a silent empty response.
-    Patching the ``Setting`` class defaults before gunicorn's ``Config()`` is built changes
-    the effective timeout. Override via ``AGENT_GUNICORN_WORKER_TIMEOUT`` (seconds).
+    ``nat dragent serve`` ignores gunicorn's timeout config, so patch the ``Setting`` class
+    defaults before ``Config()`` is built. Override via ``AGENT_GUNICORN_WORKER_TIMEOUT``.
     """
     try:
         import gunicorn.config as gunicorn_config
     except ImportError:
-        # gunicorn isn't used in this mode (local dev / uvicorn) — nothing to patch.
+        # gunicorn not used in this mode (local dev / uvicorn).
         return
 
     timeout_seconds = _GunicornSettings().agent_gunicorn_worker_timeout
