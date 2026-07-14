@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.23.26
+- e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
+
 ## 0.23.25
 - `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
 - `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
