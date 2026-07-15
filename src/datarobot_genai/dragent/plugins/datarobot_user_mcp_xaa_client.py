@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Literal
@@ -32,6 +33,8 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
+
+logger = logging.getLogger(__name__)
 
 
 def parse_xaa_params_from_mcp_auth_server_metadata(
@@ -109,11 +112,13 @@ async def get_xaa_params_from_mcp_auth_server_metadata(
         try:
             resp = await http_client.get(mcp_auth_server_metadata_url)
             resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(
+        except httpx.HTTPStatusError as exc:
+            error_message = (
                 "Failed to fetch MCP auth server metadata from "
                 f"{mcp_auth_server_metadata_url}: {exc}"
             )
+            logger.exception(error_message)
+            raise exc
 
     return parse_xaa_params_from_mcp_auth_server_metadata(resp.json())
 
@@ -130,9 +135,15 @@ def get_xaa_params_from_config(xaa_config: CrossApplicationAccessConfig) -> _Cro
 
 
 async def get_xaa_params(config: MCPClientWithXAASupportConfig) -> _CrossAppFlowParams:
-    if config.cross_application_access:
-        return get_xaa_params_from_config(config.cross_application_access)
-    return await get_xaa_params_from_mcp_auth_server_metadata(config)
+    try:
+        return await get_xaa_params_from_mcp_auth_server_metadata(config)
+    except httpx.HTTPStatusError:
+        if config.cross_application_access:
+            logger.info("Fall back to load XAA params from NAT workflow.yaml")
+            return get_xaa_params_from_config(config.cross_application_access)
+        raise RuntimeError(
+            "Failed to load XAA params from both MCP well-known metadata and NAT workflow.yaml."
+        )
 
 
 async def setup_auth_provider(

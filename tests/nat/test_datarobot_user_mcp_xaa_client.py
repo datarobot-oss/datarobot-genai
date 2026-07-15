@@ -17,9 +17,9 @@ import pytest
 from nat.data_models.config import Config
 from nat.runtime.loader import load_config
 
-import datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client  # noqa: F401 — registers mcp_client_with_xaa_support
+import datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client  # noqa: F401 — registers mcp_client_with_xaa_support
 import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     MCPClientWithXAASupportConfig,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
