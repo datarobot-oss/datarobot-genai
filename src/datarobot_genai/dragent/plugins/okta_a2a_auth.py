@@ -793,7 +793,7 @@ class _TokenRequestParams(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     grant_type: str = Field(validation_alias=AliasChoices("grantType", "grant_type"))
-    audience: str
+    audience: str | None = Field(default=None)
 
 
 class _CrossAppExtensionFields(BaseModel):
