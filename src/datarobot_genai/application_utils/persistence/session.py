@@ -83,6 +83,8 @@ from datarobot_genai.application_utils.persistence._encoding import parse_descri
 from datarobot_genai.application_utils.persistence._encoding import validate_range_key
 from datarobot_genai.application_utils.persistence._routing import SessionRoutingTable
 from datarobot_genai.application_utils.persistence._routing import build_session_routing
+from datarobot_genai.application_utils.persistence._serde import deserialize_field
+from datarobot_genai.application_utils.persistence._serde import serialize_field
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
 from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
@@ -233,7 +235,7 @@ class DRSession(BaseModel):
         metadata: dict[str, Any] = {}
         for fname in routing.metadata_fields:
             if fname in kwargs:
-                metadata[fname] = kwargs[fname]
+                metadata[fname] = serialize_field(cls, fname, kwargs[fname])
 
         payload: dict[str, Any] = {"participants": participants}
         if dedup_key is not None:
@@ -294,7 +296,7 @@ class DRSession(BaseModel):
         metadata = data.get("metadata") or {}
         for fname in routing.metadata_fields:
             if fname in metadata:
-                init_kwargs[fname] = metadata[fname]
+                init_kwargs[fname] = deserialize_field(cls, fname, metadata[fname])
             elif cls.model_fields[fname].is_required():
                 init_kwargs[fname] = None
 
@@ -332,7 +334,7 @@ class DRSession(BaseModel):
         metadata = data.get("metadata") or {}
         for fname in routing.metadata_fields:
             if fname in metadata:
-                setattr(self, fname, metadata[fname])
+                setattr(self, fname, deserialize_field(type(self), fname, metadata[fname]))
 
         # Sync range fields from description
         for fname, val in type(self)._decode_range_fields(routing, data).items():
@@ -632,11 +634,11 @@ class DRSession(BaseModel):
             new_metadata: dict[str, Any] = {}
             for fname in routing.metadata_fields:
                 if fname in kwargs:
-                    new_metadata[fname] = kwargs[fname]
+                    new_metadata[fname] = serialize_field(type(self), fname, kwargs[fname])
                 else:
                     current_val = getattr(self, fname, None)
                     if current_val is not None:
-                        new_metadata[fname] = current_val
+                        new_metadata[fname] = serialize_field(type(self), fname, current_val)
             payload["metadata"] = new_metadata
 
         # The description encodes the range keys; only rebuild and send it when a

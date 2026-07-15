@@ -1,4 +1,4 @@
-# application-utils — Memory Service Light ORM
+# Memory Service ORM
 
 `datarobot-genai[application-utils]` ships a lightweight async ORM over the
 DataRobot Agentic Memory Service.  Think of it as a typed, Pydantic v2-style
@@ -177,6 +177,12 @@ class ChatMessage(DREvent, session=ChatSession):
     score: float = 0.0
 ```
 
+Declared fields round-trip through **any** Pydantic-expressible type — nested
+models, `list[Model]`, `Optional[Model]`, enums and dicts all serialize into the
+event `body` (and session `metadata`) and validate back on read.  This is what
+lets the [chat-history layer](chat_history.md) nest typed `ToolCall` / `Reasoning`
+models inside a single message event.
+
 ## Range-key encoding
 
 Range keys are encoded in the session `description` field using a hierarchical
@@ -310,7 +316,6 @@ Integration tests are skipped by default.  To run them against a live endpoint:
 ```bash
 export DATAROBOT_ENDPOINT="https://app.datarobot.com/api/v2"
 export DATAROBOT_API_TOKEN="<your-token>"
-export DR_MEMORY_LIVE_INTEGRATION="1"
 
-uv run pytest tests/application_utils/persistence/integration -vv
+uv run pytest tests/application_utils/persistence/acceptance -m integration -vv
 ```

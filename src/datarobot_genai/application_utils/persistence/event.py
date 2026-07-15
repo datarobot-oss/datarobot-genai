@@ -86,6 +86,8 @@ from pydantic import PrivateAttr
 from datarobot_genai.application_utils.persistence._routing import _EVENT_RESERVED
 from datarobot_genai.application_utils.persistence._routing import EventRoutingTable
 from datarobot_genai.application_utils.persistence._routing import build_event_routing
+from datarobot_genai.application_utils.persistence._serde import deserialize_field
+from datarobot_genai.application_utils.persistence._serde import serialize_field
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
 
 if TYPE_CHECKING:
@@ -188,7 +190,7 @@ class DREvent(BaseModel):
         body: dict[str, Any] = {"content": kwargs["content"]}
         for fname in routing.body_fields:
             if fname in kwargs:
-                body[fname] = kwargs[fname]
+                body[fname] = serialize_field(cls, fname, kwargs[fname])
         return body
 
     @staticmethod
@@ -223,7 +225,7 @@ class DREvent(BaseModel):
         # default are left for model_construct to fill.
         for fname in routing.body_fields:
             if fname in body:
-                init_kwargs[fname] = body[fname]
+                init_kwargs[fname] = deserialize_field(cls, fname, body[fname])
             elif cls.model_fields[fname].is_required():
                 init_kwargs[fname] = None
 
@@ -243,7 +245,7 @@ class DREvent(BaseModel):
             self.content = body["content"]
         for fname in routing.body_fields:
             if fname in body:
-                setattr(self, fname, body[fname])
+                setattr(self, fname, deserialize_field(type(self), fname, body[fname]))
         emitter_type = data.get("emitterType")
         if emitter_type is not None:
             self.emitter_type = emitter_type
@@ -522,7 +524,7 @@ class DREvent(BaseModel):
             for fname in routing.body_fields:
                 new_val = kwargs.get(fname, getattr(self, fname, None))
                 if new_val is not None:
-                    body[fname] = new_val
+                    body[fname] = serialize_field(type(self), fname, new_val)
 
         payload: dict[str, Any] = {}
         if body is not None:
@@ -617,7 +619,9 @@ class DREvent(BaseModel):
             content = kwargs.get("content")
             emitter_type = kwargs.get("emitter_type")
             emitter_id = kwargs.get("emitter_id")
-            body_kwargs = {k: v for k, v in kwargs.items() if k in routing.body_fields}
+            body_kwargs = {
+                k: serialize_field(cls, k, v) for k, v in kwargs.items() if k in routing.body_fields
+            }
 
             item: dict[str, Any] = {"sequenceId": event.sequence_id}
             if event.created_at:
