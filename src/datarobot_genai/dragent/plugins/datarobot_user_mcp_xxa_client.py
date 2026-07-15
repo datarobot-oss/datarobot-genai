@@ -39,15 +39,15 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
 ) -> _CrossAppFlowParams:
     xaa_metadata = mcp_auth_server_metadata["urn:datarobot:nat_mcp_xaa_client"]
     token_endpoint_auth_method = xaa_metadata["token_endpoint_auth_method"]
-    token_exchange_metata = xaa_metadata["token_exchange"]
-    token_request_metata = xaa_metadata["token_request"]
+    token_exchange_metadata = xaa_metadata["token_exchange"]
+    token_request_metadata = xaa_metadata["token_request"]
 
     return _CrossAppFlowParams(
-        trusted_issuer=token_exchange_metata["trusted_issuer"],
-        exchange_audience=token_exchange_metata["audience"],
-        token_url=token_request_metata["token_url"],
-        target_audience=token_request_metata["audience"],
-        id_jag_scopes=token_request_metata["scopes"],
+        trusted_issuer=token_exchange_metadata["trusted_issuer"],
+        exchange_audience=token_exchange_metadata["audience"],
+        token_url=token_request_metadata["token_url"],
+        target_audience=token_request_metadata.get("audience"),
+        id_jag_scopes=token_request_metadata["scopes"],
         token_endpoint_auth_method=token_endpoint_auth_method,
     )
 
