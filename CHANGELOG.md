@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.24.1
+- `application-utils`: `DRSession` now defaults to a 2-year `soft_delete` lifecycle strategy (`__lifecycle_strategies__`), so sessions auto-clean unless overridden. New exported constant `DEFAULT_SESSION_TTL_SECONDS` (63072000 s, the Memory Service TTL max). Override `__lifecycle_strategies__` to change the TTL/strategy, or set it to `[]` to send none.
+
 ## 0.24.0
 - `application-utils`: **Memory Service Light ORM** — new standalone extra `datarobot-genai[application-utils]` that wraps the DataRobot Agentic Memory Service with a Pydantic v2 / SQLModel-style async ORM.  Declare typed session and event models with annotation-driven routing markers (`DRDeduplicationKey`, `DRRangeKey`, `DRConcurrencyField`); the ORM handles wire serialization, camelCase mapping, description-path encoding for range-key prefix queries, optimistic concurrency (`If-Match` for sessions; `createdAt` token for events), and idempotent create via 409-adopt.  Public import: `from datarobot_genai.application_utils.persistence import DRMemorySpace, DRSession, DREvent`.  Dependencies: `httpx>=0.28.1,<1.0.0` + `pydantic>=2.6.1,<3.0.0` only (no core / OTel weight).  Unit tests cover encoding, routing, transport, space CRUD, session CRUD, and event CRUD; integration tests are env-gated and skipped by default.
-- `application-utils`: `DRSession` now defaults to a 2-year `soft_delete` lifecycle strategy (`__lifecycle_strategies__`), so sessions auto-clean unless overridden. New exported constant `DEFAULT_SESSION_TTL_SECONDS` (63072000 s, the Memory Service TTL max). Override `__lifecycle_strategies__` to change the TTL/strategy, or set it to `[]` to send none.
 
 ## 0.23.24
 - `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
