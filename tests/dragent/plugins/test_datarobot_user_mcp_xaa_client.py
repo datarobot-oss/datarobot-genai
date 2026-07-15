@@ -18,21 +18,21 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     get_mcp_auth_server_metadata_url,
 )
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import get_xaa_params
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import get_xaa_params_from_config
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import get_xaa_params
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import get_xaa_params_from_config
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     get_xaa_params_from_mcp_auth_server_metadata,
 )
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     mcp_client_with_xaa_support_function_group,
 )
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import (
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     parse_xaa_params_from_mcp_auth_server_metadata,
 )
-from datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client import setup_auth_provider
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import setup_auth_provider
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
@@ -41,7 +41,7 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 @pytest.fixture
 def module_under_test() -> str:
-    return "datarobot_genai.dragent.plugins.datarobot_user_mcp_xxa_client"
+    return "datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client"
 
 
 class TestMCPAuthServerMetadataDiscovery:
