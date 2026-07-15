@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.24.3
+- `dragent`: Improved XAA parameter retrieval logic in `mcp_client_with_xaa_support` type MCP client.
+
 ## 0.24.2
 - `dragent`: Made audience attribute optional in `class CrossAppTokenRequest`.
 
