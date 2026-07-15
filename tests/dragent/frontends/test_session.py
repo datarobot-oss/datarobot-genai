@@ -140,7 +140,7 @@ class TestDRAgentAGUISessionManager:
         @asynccontextmanager
         async def exploding_nat_session(self, **kwargs: object):
             raise RuntimeError("builder creation failed")
-            yield  # noqa: unreachable — required for generator syntax
+            yield  # noqa
 
         metadata_before = context_state._metadata.get()
 

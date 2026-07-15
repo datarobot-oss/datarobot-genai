@@ -27,13 +27,13 @@ from pydantic import Field
 
 from ..cross_app_access_config import CrossApplicationAccessConfig
 from .converters import convert_chat_request_to_run_agent_input
+from .converters import convert_dragent_event_response_to_chat_response
 from .converters import convert_dragent_event_response_to_chat_response_chunk
 from .converters import convert_dragent_event_response_to_str
 from .converters import convert_dragent_run_agent_input_to_chat_request
 from .converters import convert_dragent_run_agent_input_to_chat_request_or_message
 from .converters import convert_run_agent_input_to_chat_request_or_message
 from .converters import convert_str_to_chat_response
-from .converters import convert_str_to_dragent_event_response
 from .converters import convert_tool_message_to_str
 from .logging import logging_handler_setup
 
@@ -127,9 +127,12 @@ GlobalTypeConverter.register_converter(convert_chat_request_to_run_agent_input)
 GlobalTypeConverter.register_converter(convert_dragent_run_agent_input_to_chat_request_or_message)
 GlobalTypeConverter.register_converter(convert_run_agent_input_to_chat_request_or_message)
 GlobalTypeConverter.register_converter(convert_tool_message_to_str)
-GlobalTypeConverter.register_converter(convert_str_to_dragent_event_response)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_str)
 GlobalTypeConverter.register_converter(convert_dragent_event_response_to_chat_response_chunk)
+# Direct DRAgentEventResponse -> ChatResponse so the non-streaming /chat/completions and
+# inline paths preserve ``datarobot_moderations`` instead of routing through the lossy
+# DRAgentEventResponse -> str -> ChatResponse path.
+GlobalTypeConverter.register_converter(convert_dragent_event_response_to_chat_response)
 # Overrides NAT's built-in str -> ChatResponse so the non-streaming /chat/completions
 # response reports the agent's configured model instead of NAT's "unknown-model" default.
 GlobalTypeConverter.register_converter(convert_str_to_chat_response)

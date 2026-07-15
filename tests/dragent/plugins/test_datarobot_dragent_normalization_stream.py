@@ -29,12 +29,14 @@ from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
-from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import defer_tool_end
 from datarobot_genai.dragent.frontends.tool_call_registry import is_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    convert_chunks_to_agui_events,
+)
 
 
 @pytest.fixture(autouse=True)

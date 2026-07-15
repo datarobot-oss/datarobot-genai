@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.23.27"
+version = "0.24.0"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -25,7 +25,8 @@ streaming_memory_agent = "datarobot_genai.dragent.plugins.streaming_memory_agent
 datarobot_otel_conventions_middleware = "datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware"
 datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
 datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
-datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
+datarobot_moderation_middleware = "datarobot_genai.dragent.plugins.datarobot_moderation_middleware"
+datarobot_dragent_normalization = "datarobot_genai.dragent.plugins.datarobot_dragent_normalization"
 datarobot_otelcollector = "datarobot_genai.dragent.plugins.datarobot_otelcollector"
 datarobot_mem0_memory = "datarobot_genai.dragent.plugins.datarobot_mem0_memory"
 llm_providers = "datarobot_genai.dragent.plugins.llm_providers"
@@ -178,13 +179,6 @@ fixable = [
 ]
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
-]
-"src/datarobot_genai/nat/datarobot_moderation_middleware.py" = [
-    "D301", # Ported docstrings use escaped markup incompatible with r""" convention here
-    "D406", # Ported Google-style sections vs numpy section naming
-    "D407",
-    "E501", # Long comments/docstrings carried over from upstream recipe
-    "PLR0911", # Ported post_invoke has many early exits mirroring upstream control flow
 ]
 "docs/**/*.py" = [
     "INP001", # implicit-namespace-package: standalone example scripts
