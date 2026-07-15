@@ -163,6 +163,78 @@ async def test_list_logs_when_page_limit_is_hit(
 
 
 @pytest.mark.asyncio
+async def test_list_with_multiple_tags_enforces_and_semantics(fake_dr: MagicMock) -> None:
+    """The Files catalog tag search is OR; list() must post-filter to AND.
+
+    Without this, listing [dr_panel, dr_panel_source:staging] leaks every
+    dr_panel blob from every source (and payload blobs sharing a source tag).
+    """
+    fake_dr.models.Files.search_catalog.return_value = [
+        _files_obj(id="both", name="a", tags=["dr_panel", "dr_panel_source:staging"]),
+        _files_obj(id="only_manifest", name="b", tags=["dr_panel", "dr_panel_source:main"]),
+        _files_obj(
+            id="only_source", name="c", tags=["dr_panel_payload", "dr_panel_source:staging"]
+        ),
+    ]
+
+    refs = await DataRobotFilesBlobStore().list(tags=["dr_panel", "dr_panel_source:staging"])
+
+    assert [r.files_id for r in refs] == ["both"]
+
+
+@pytest.mark.asyncio
+async def test_list_with_tags_pages_past_leaked_results(fake_dr: MagicMock) -> None:
+    """A full server page of mostly-leaked results must not truncate the AND matches."""
+    wanted = ["dr_panel", "dr_panel_source:staging"]
+    leaked = ["dr_panel", "dr_panel_source:main"]
+    page1 = [_files_obj(id="m1", name="m1", tags=wanted)] + [
+        _files_obj(id=f"x{i}", name=f"x{i}", tags=leaked) for i in range(99)
+    ]
+    page2 = [
+        _files_obj(id="m2", name="m2", tags=wanted),
+        _files_obj(id="m3", name="m3", tags=wanted),
+    ]
+    fake_dr.models.Files.search_catalog.side_effect = [page1, page2]
+
+    refs = await DataRobotFilesBlobStore().list(tags=wanted, limit=2)
+
+    assert [r.files_id for r in refs] == ["m1", "m2"]
+    offsets = [c.kwargs["offset"] for c in fake_dr.models.Files.search_catalog.call_args_list]
+    assert offsets == [0, 100]
+
+
+@pytest.mark.asyncio
+async def test_list_with_tags_applies_offset_after_filtering(fake_dr: MagicMock) -> None:
+    wanted = ["dr_panel"]
+    fake_dr.models.Files.search_catalog.return_value = [
+        _files_obj(id=f"m{i}", name=f"m{i}", tags=wanted) for i in range(3)
+    ]
+
+    refs = await DataRobotFilesBlobStore().list(tags=wanted, limit=2, offset=1)
+
+    assert [r.files_id for r in refs] == ["m1", "m2"]
+
+
+@pytest.mark.asyncio
+async def test_set_tags_modifies_the_container_in_place(fake_dr: MagicMock) -> None:
+    container = MagicMock()
+    fake_dr.models.Files.get.return_value = container
+
+    await DataRobotFilesBlobStore().set_tags("abc12", ["dr_panel", "dr_panel_source:main"])
+
+    fake_dr.models.Files.get.assert_called_once_with("abc12")
+    container.modify.assert_called_once_with(tags=["dr_panel", "dr_panel_source:main"])
+
+
+@pytest.mark.asyncio
+async def test_set_tags_client_error_becomes_tool_error(fake_dr: MagicMock) -> None:
+    fake_dr.models.Files.get.side_effect = ClientError("nope", 403)
+    with pytest.raises(ToolError) as excinfo:
+        await DataRobotFilesBlobStore().set_tags("abc12", ["t"])
+    assert excinfo.value.kind == ToolErrorKind.UPSTREAM
+
+
+@pytest.mark.asyncio
 async def test_put_and_list_refs_are_equal(fake_dr: MagicMock) -> None:
     """The asymmetry fix: a ref from put() equals the same blob's ref from list()."""
     stored = _files_obj(id="p1", name="panel.json", tags=["dr_panel"])
@@ -242,3 +314,8 @@ def test_delete_signature_matches() -> None:
 def test_download_signature_matches() -> None:
     # `download` is an instance method: bind a placeholder self plus our kwarg.
     inspect.signature(Files.download).bind(MagicMock(), filelike=MagicMock())
+
+
+def test_modify_signature_matches() -> None:
+    # `modify` is an instance method used by set_tags for the in-place retag.
+    inspect.signature(Files.modify).bind(MagicMock(), tags=["t"])

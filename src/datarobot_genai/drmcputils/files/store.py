@@ -45,6 +45,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIST_LIMIT = 100
 DEFAULT_PUT_TIMEOUT_SECONDS = 600  # matches the Files SDK default for read_timeout/max_wait
+# Safety cap on internal catalog pages scanned per list() call when AND-filtering
+# tags client-side (the Files catalog itself matches tags with OR semantics).
+_MAX_TAG_FILTER_PAGES = 50
 
 
 class _NamedBytesIO(io.BytesIO):
@@ -115,6 +118,10 @@ class BlobStore(Protocol):
         """Delete the blob referenced by ``ref``."""
         ...
 
+    async def set_tags(self, ref: BlobRef | str, tags: list[str]) -> None:
+        """Replace the tags on an existing blob in place (the blob id is unchanged)."""
+        ...
+
     async def list(
         self,
         *,
@@ -123,7 +130,12 @@ class BlobStore(Protocol):
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> list[BlobRef]:
-        """List stored blobs the requesting user can access."""
+        """List stored blobs the requesting user can access.
+
+        ``tags`` filtering is **AND** semantics: only blobs carrying *every*
+        requested tag are returned. ``limit``/``offset`` page the filtered
+        result set.
+        """
         ...
 
 
@@ -208,6 +220,19 @@ class DataRobotFilesBlobStore:
             except ClientError as exc:
                 raise_tool_error_for_client_error(exc)
 
+    async def set_tags(self, ref: BlobRef | str, tags: list[str]) -> None:
+        """Replace a container's tags in place via ``Files.modify`` (id is preserved)."""
+        files_id = _files_id(ref)
+
+        def _modify() -> None:
+            dr.models.Files.get(files_id).modify(tags=tags)
+
+        with request_user_dr_sdk(headers_auth_only=self._headers_auth_only):
+            try:
+                await asyncio.to_thread(_modify)
+            except ClientError as exc:
+                raise_tool_error_for_client_error(exc)
+
     async def list(
         self,
         *,
@@ -216,24 +241,60 @@ class DataRobotFilesBlobStore:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> list[BlobRef]:
-        def _search() -> list[object]:
+        def _search(page_limit: int, page_offset: int) -> list[object]:
             return dr.models.Files.search_catalog(
                 search=search,
                 tags=tags,
-                limit=limit,
-                offset=offset,
+                limit=page_limit,
+                offset=page_offset,
             )
 
+        if not tags:
+            with request_user_dr_sdk(headers_auth_only=self._headers_auth_only):
+                try:
+                    results = await asyncio.to_thread(_search, limit, offset)
+                except ClientError as exc:
+                    raise_tool_error_for_client_error(exc)
+            if limit and len(results) >= limit:
+                # The Files API caps each page at ``limit``; more may exist. Callers
+                # that need them must page via ``offset``.
+                logger.debug(
+                    "list() hit the page limit of %d; additional blobs may exist "
+                    "(use offset to page)",
+                    limit,
+                )
+            return [_blob_ref(item) for item in results]
+
+        # The Files catalog matches tags with OR semantics, but the BlobStore
+        # contract is AND: without post-filtering, a [dr_panel,
+        # dr_panel_source:staging] query would leak every panel from every
+        # source (and every blob sharing any one tag). Filter client-side and
+        # page the *server* results internally so limit/offset apply to the
+        # AND-filtered set.
+        wanted = set(tags)
+        needed = offset + limit if limit else 0
+        page_size = max(limit, DEFAULT_LIST_LIMIT)
+        matches: list[BlobRef] = []
+        server_offset = 0
         with request_user_dr_sdk(headers_auth_only=self._headers_auth_only):
-            try:
-                results = await asyncio.to_thread(_search)
-            except ClientError as exc:
-                raise_tool_error_for_client_error(exc)
-        if limit and len(results) >= limit:
-            # The Files API caps each page at ``limit``; more may exist. Callers
-            # that need them must page via ``offset``.
-            logger.debug(
-                "list() hit the page limit of %d; additional blobs may exist (use offset to page)",
-                limit,
-            )
-        return [_blob_ref(item) for item in results]
+            for _page in range(_MAX_TAG_FILTER_PAGES):
+                try:
+                    results = await asyncio.to_thread(_search, page_size, server_offset)
+                except ClientError as exc:
+                    raise_tool_error_for_client_error(exc)
+                matches.extend(
+                    _blob_ref(item)
+                    for item in results
+                    if wanted.issubset(getattr(item, "tags", None) or ())
+                )
+                if len(results) < page_size:
+                    break  # last server page
+                if needed and len(matches) >= needed:
+                    break
+                server_offset += page_size
+            else:
+                logger.warning(
+                    "list() stopped after scanning %d catalog pages; results may be incomplete",
+                    _MAX_TAG_FILTER_PAGES,
+                )
+        return matches[offset : offset + limit] if limit else matches[offset:]
