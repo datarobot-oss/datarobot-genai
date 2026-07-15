@@ -88,3 +88,6 @@ prof/
 
 # Docs build output
 docs/site/
+
+# cve-sync policy cache (sparse checkout of datarobot-oss/cve-sync policy/)
+.cve-sync-cache/
