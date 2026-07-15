@@ -110,6 +110,11 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
         f"Expected non-empty assistant message content.\n{result.stderr}\n{result_text}"
     )
 
+    # THEN: token-count guards attach serialized moderation metadata to the completion
+    assert getattr(completion, "datarobot_moderations", None), (
+        "Expected datarobot_moderations on inline ChatCompletion when guards are configured"
+    )
+
     # THEN: the inline run exported convention spans with the DR auth headers.
     # Setup-time HTTP client spans (LiteLLM cost map, DR version check, MCP
     # discovery) root their own trace and are ignored for the single-trace check.
