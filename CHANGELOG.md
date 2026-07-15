@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.24.2
+## 0.24.3
 - `drmcputils`/`drtools`: **`MCP_SANDBOX_DISABLED` kill-switch** — new env var (also resolvable as an `MLOPS_RUNTIME_PARAM_` runtime parameter) that turns MCP sandboxing off entirely: the `ENABLE_MCP_SANDBOX` entitlement guard (`_require_mcp_sandbox`) becomes a no-op (no DR API call) and `execute_code` routes to a new `LocalProcessSandbox` backend that runs the snippet in a plain subprocess of the MCP server's interpreter (same `Sandbox` protocol, workload-runner wire contract, timeout → `SandboxTimeout`, nonzero exit → `SandboxError`). Default is unchanged/fail-closed: unset, falsy, or unparseable values keep the workload-api sandbox and entitlement check exactly as before; enabling the switch logs a loud once-per-process warning because local execution has **no isolation**. Intended for local development and deployments without the workload-api sandbox. FastMCP's built-in Monty sandbox (`MontySandboxProvider`, fastmcp 3.4.x) was evaluated and rejected for this path: `pydantic-monty` cannot import real packages (`import polars` fails even when installed), which the panel transform/filter tools require.
 
 ## 0.24.1
