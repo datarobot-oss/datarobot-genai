@@ -57,11 +57,30 @@ middleware:
     _type: datarobot_otel_conventions
 
 
+functions:
+  langgraph_agent:
+    _type: langgraph_agent
+    llm_name: datarobot_llm
+    description: LangGraph planner/writer agent
+    verbose: true
+
+memory:
+  mem0_memory:
+    _type: dr_mem0_memory
+
 workflow:
-  _type: langgraph_agent
+  # When memory is not configured streaming_memory_agent is a passthrough so it is safe to use
+  # unconditionally.
+  _type: streaming_memory_agent
+  inner_agent_name: langgraph_agent
+  memory_name: mem0_memory
   llm_name: datarobot_llm
-  description: LangGraph planner/writer agent
+  description: LangGraph planner/writer agent with automatic memory capture and retrieval
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
-  verbose: true
+  save_ai_messages_to_memory: false
+  search_params:
+    top_k: 5
+  add_params:
+    async_mode: false

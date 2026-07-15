@@ -59,8 +59,12 @@ from datarobot_dome.constants import ROUGE_1_COLUMN_NAME
 from datarobot_dome.constants import TASK_ADHERENCE_SCORE_COLUMN_NAME
 
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
-from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    DataRobotModerationConfig,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    DataRobotModerationMiddleware,
+)
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from tests.nat.test_datarobot_moderation_middleware import _fn_context
 from tests.nat.test_datarobot_moderation_middleware import _make_run_input

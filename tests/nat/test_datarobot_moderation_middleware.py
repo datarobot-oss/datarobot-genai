@@ -64,6 +64,7 @@ from nat.data_models.api_server import ChatResponseChoice
 from nat.data_models.api_server import ChoiceMessage
 from nat.data_models.api_server import Message as NATAPIMessage
 from nat.data_models.api_server import Usage as NATChatUsage
+from nat.middleware.function_middleware import FunctionMiddlewareChain
 from nat.middleware.middleware import FunctionMiddlewareContext
 from nat.middleware.middleware import InvocationContext
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
@@ -79,31 +80,55 @@ from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationConfig
-from datarobot_genai.nat.datarobot_moderation_middleware import DataRobotModerationMiddleware
-from datarobot_genai.nat.datarobot_moderation_middleware import (
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    DataRobotDRAgentNormalizationConfig,
+)
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    DataRobotDRAgentNormalizationMiddleware,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    DataRobotModerationConfig,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    DataRobotModerationMiddleware,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
-from datarobot_genai.nat.datarobot_moderation_middleware import _moderation_invoke_state_ctx
-from datarobot_genai.nat.datarobot_moderation_middleware import (
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    _moderation_invoke_state_ctx,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _postscore_only_datarobot_moderations,
 )
-from datarobot_genai.nat.datarobot_moderation_middleware import (
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _prescore_datarobot_moderations_from_df,
 )
-from datarobot_genai.nat.datarobot_moderation_middleware import _set_moderation_invoke_state
-from datarobot_genai.nat.datarobot_moderation_middleware import (
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _require_workflow_input
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    _set_moderation_invoke_state,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _streaming_text_events_from_openai_chunk,
 )
-from datarobot_genai.nat.datarobot_moderation_middleware import _workflow_input_from_args
-from datarobot_genai.nat.datarobot_moderation_middleware import dome_chunk_to_dragent_event_response
-from datarobot_genai.nat.datarobot_moderation_middleware import load_llm_moderation_pipeline
-from datarobot_genai.nat.datarobot_moderation_middleware import moderation_config_has_guards
-from datarobot_genai.nat.datarobot_moderation_middleware import (
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    dome_chunk_to_dragent_event_response,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    load_llm_moderation_pipeline,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    moderation_config_has_guards,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     moderation_prompt_from_workflow_input,
 )
-from datarobot_genai.nat.datarobot_moderation_middleware import resolve_moderation_model_dir
-from datarobot_genai.nat.datarobot_moderation_middleware import workflow_input_to_completion_dict
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    resolve_moderation_model_dir,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    workflow_input_to_completion_dict,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -162,6 +187,25 @@ def _moderation_middleware_for_fixture_dir(
     mw = DataRobotModerationMiddleware(cfg, builder_mock)
     assert mw.enabled is True
     return mw
+
+
+async def _invoke_with_normalization_and_moderation(
+    moderation_mw: DataRobotModerationMiddleware,
+    *,
+    workflow_input: Any,
+    call_next: Any,
+    builder_mock: MagicMock,
+) -> Any:
+    """Invoke through moderation then normalization (production middleware order)."""
+    norm_mw = DataRobotDRAgentNormalizationMiddleware(
+        DataRobotDRAgentNormalizationConfig(), builder_mock
+    )
+    chain = FunctionMiddlewareChain(
+        middleware=(moderation_mw, norm_mw),
+        context=_fn_context(),
+    )
+    wrapped = chain.build_single(call_next)
+    return await wrapped(workflow_input)
 
 
 # ``moderation_prompt_length_block/moderation_config.yaml`` blocks when prompt token count
@@ -481,13 +525,38 @@ def test_moderation_prompt_from_workflow_input_input_message_only() -> None:
     assert moderation_prompt_from_workflow_input(crm) == "gateway string only"
 
 
-def test_workflow_input_from_args_empty_returns_none() -> None:
-    assert _workflow_input_from_args(()) is None
+def test_require_workflow_input_empty_raises() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Moderation middleware expected a workflow input, but got an empty tuple",
+    ):
+        _require_workflow_input(())
 
 
-def test_workflow_input_from_args_unrecognized_type_raises() -> None:
+def test_require_workflow_input_unrecognized_type_raises() -> None:
     with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
-        _workflow_input_from_args(("not a workflow input",))
+        _require_workflow_input(("not a workflow input",))
+
+
+async def test_pre_invoke_empty_args_raises(builder_mock: MagicMock) -> None:
+    ctx = InvocationContext(
+        function_context=_fn_context(),
+        original_args=(),
+        original_kwargs={},
+        modified_args=(),
+        modified_kwargs={},
+        output=None,
+    )
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=None,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(
+            TypeError,
+            match="Moderation middleware expected a workflow input, but got an empty tuple",
+        ):
+            await mw.pre_invoke(ctx)
 
 
 @pytest.mark.asyncio
@@ -504,7 +573,7 @@ async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: Magic
     )
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -540,10 +609,10 @@ def test_load_llm_moderation_pipeline_no_guards_is_noop_without_credentials() ->
     with (
         patch.dict(os.environ, {}, clear=True),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_config",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_config",
         ) as from_config,
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
         ) as from_yaml,
     ):
         assert load_llm_moderation_pipeline(cfg) is None
@@ -607,7 +676,7 @@ def test_load_llm_moderation_pipeline_default_model_dir_from_dragent_config_file
 
 def test_load_llm_moderation_pipeline_config_file_missing_is_noop(tmp_path: Path) -> None:
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
         assert (
             load_llm_moderation_pipeline(DataRobotModerationConfig(model_dir=str(tmp_path))) is None
@@ -636,7 +705,7 @@ def test_load_llm_moderation_pipeline_config_file_empty_guards_in_yaml_is_noop(
     (tmp_path / "moderation_config.yaml").write_text("guards: []\n", encoding="utf-8")
     cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
         assert load_llm_moderation_pipeline(cfg) is None
     from_yaml.assert_not_called()
@@ -649,7 +718,7 @@ def test_load_llm_moderation_pipeline_inline_does_not_fallback_to_config_file() 
         moderation=ModerationConfig.model_validate({"guards": []}),
     )
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
         assert load_llm_moderation_pipeline(cfg) is None
     from_yaml.assert_not_called()
@@ -665,7 +734,7 @@ def test_load_llm_moderation_pipeline_inline_takes_priority_over_config_file() -
     with (
         patch.dict(os.environ, _CREDENTIAL_ENV),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
         ) as from_yaml,
     ):
         pipeline = load_llm_moderation_pipeline(cfg)
@@ -733,7 +802,7 @@ def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
 def test_load_llm_moderation_pipeline_from_config_file_missing_is_noop(tmp_path: Path) -> None:
     cfg = DataRobotModerationConfig(model_dir=str(tmp_path))
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
     ) as from_yaml:
         assert load_llm_moderation_pipeline(cfg) is None
     from_yaml.assert_not_called()
@@ -749,7 +818,7 @@ def test_load_llm_moderation_pipeline_inline_uses_moderation_field() -> None:
     with (
         patch.dict(os.environ, _CREDENTIAL_ENV),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.ModerationPipeline.from_yaml",
         ) as from_yaml,
     ):
         pipeline = load_llm_moderation_pipeline(cfg)
@@ -780,7 +849,7 @@ def test_enabled_false_when_pipeline_not_loaded(builder_mock: MagicMock) -> None
     # WHEN middleware is constructed
     # THEN enabled is False
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=None,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -808,7 +877,7 @@ async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replace
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -839,7 +908,7 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -876,7 +945,7 @@ async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_m
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -905,7 +974,7 @@ async def test_pre_invoke_replaces_last_user_message(builder_mock: MagicMock) ->
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -947,7 +1016,7 @@ async def test_pre_invoke_replaces_chat_request_or_message_input_message(
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -983,11 +1052,11 @@ async def test_pre_invoke_replacement_apply_failure_clears_prescore_replaced_fla
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware._apply_moderated_prompt_text_to_workflow_input",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware._apply_moderated_prompt_text_to_workflow_input",
             return_value=False,
         ),
     ):
@@ -1024,7 +1093,7 @@ async def test_post_invoke_skips_non_text_first_event(builder_mock: MagicMock) -
     ctx = _invocation(_make_run_input(), output=tool_first)
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1080,7 +1149,7 @@ async def test_post_invoke_skips_dr_agent_when_joined_text_blank(
     ctx = _invocation(_make_run_input(), output=response)
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1134,7 +1203,7 @@ async def test_post_invoke_preserves_aggregate_ag_ui_when_response_text_unchange
     ctx = _invocation(run_input, output=aggregate)
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1174,7 +1243,7 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     ctx = _invocation(run_input, output=_text_response("model-out"))
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1195,12 +1264,8 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     assert text == "final-out"
 
 
-async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
-    builder_mock: MagicMock,
-) -> None:
-    """NAT ``single_fn`` returns ``ChatResponse``, not ``DRAgentEventResponse``;
-    postscore still runs.
-    """
+async def test_post_invoke_rejects_nat_chat_response_output(builder_mock: MagicMock) -> None:
+    """``post_invoke`` requires ``DRAgentEventResponse`` when moderation is enabled."""
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -1214,7 +1279,7 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
     ctx = _invocation(_make_run_input(), output=nat_out)
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1225,18 +1290,16 @@ async def test_post_invoke_rewrites_nat_chat_response_when_postscore_succeeds(
             latency_so_far=0.0,
         )
         try:
-            out = await mw.post_invoke(ctx)
+            with pytest.raises(TypeError, match="datarobot_dragent_normalization"):
+                await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    assert out is not None
-    assert isinstance(ctx.output, ChatResponse)
-    assert ctx.output.choices[0].message.content == "final-out"
+    assert ctx.output is nat_out
 
 
-async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
-    builder_mock: MagicMock,
-) -> None:
+async def test_post_invoke_rejects_plain_str_output(builder_mock: MagicMock) -> None:
+    """``post_invoke`` requires ``DRAgentEventResponse`` when moderation is enabled."""
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -1249,7 +1312,7 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
     ctx = _invocation(_make_run_input(), output="model-out")
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1260,12 +1323,12 @@ async def test_post_invoke_rewrites_plain_str_when_postscore_succeeds(
             latency_so_far=0.0,
         )
         try:
-            out = await mw.post_invoke(ctx)
+            with pytest.raises(TypeError, match="datarobot_dragent_normalization"):
+                await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    assert out is not None
-    assert ctx.output == "final-out"
+    assert ctx.output == "model-out"
 
 
 async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_to_empty_str(
@@ -1285,7 +1348,7 @@ async def test_post_invoke_blocked_empty_postscore_coerces_none_blocked_message_
     ctx = _invocation(_make_run_input(), output=_text_response("ignored"))
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1322,7 +1385,7 @@ async def test_function_middleware_invoke_blocked_short_circuits(builder_mock: M
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -1370,7 +1433,7 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
         return _text_response("x")
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -1444,7 +1507,7 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
             NATAPIMessage(role="user", content="Count moderation tokens for this prompt."),
         ],
     )
-    result: ChatResponse
+    result: DRAgentEventResponse
     with patch.dict(
         os.environ,
         {
@@ -1459,15 +1522,15 @@ async def test_function_middleware_invoke_integration_nat_chat_input_chat_respon
         async def call_next(*_a: Any, **_k: Any) -> ChatResponse:
             return _nat_chat_response_assistant_text("This is a test response.")
 
-        result = await mw.function_middleware_invoke(
-            crm,
+        result = await _invoke_with_normalization_and_moderation(
+            mw,
+            workflow_input=crm,
             call_next=call_next,
-            context=_fn_context(),
+            builder_mock=builder_mock,
         )
 
-    assert isinstance(result, ChatResponse)
-    assert result.choices[0].message.content == "This is a test response."
-    assert result.usage == NATChatUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == "This is a test response."
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
     assert mods["Prompts_token_count"] == 7
@@ -1698,16 +1761,18 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         mw = _moderation_middleware_for_fixture_dir(
             model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        result = await mw.function_middleware_invoke(
-            crm,
+        result = await _invoke_with_normalization_and_moderation(
+            mw,
+            workflow_input=crm,
             call_next=call_next,
-            context=_fn_context(),
+            builder_mock=builder_mock,
         )
 
     call_next.assert_awaited_once()
-    assert isinstance(result, ChatResponse)
-    assert result.choices[0].message.content == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
-    assert result.choices[0].finish_reason == "content_filter"
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == _RESPONSE_TOKEN_CAP_BLOCK_MESSAGE
+    assert result.original_chunk is not None
+    assert result.original_chunk.choices[0].finish_reason == "content_filter"
     assert result.model == MODERATION_MODEL_NAME
     assert result.datarobot_moderations is not None
     mods = result.datarobot_moderations
@@ -1834,17 +1899,18 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
         mw = _moderation_middleware_for_fixture_dir(
             model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        result = await mw.function_middleware_invoke(
-            crm,
+        result = await _invoke_with_normalization_and_moderation(
+            mw,
+            workflow_input=crm,
             call_next=call_next,
-            context=_fn_context(),
+            builder_mock=builder_mock,
         )
 
     call_next.assert_awaited_once()
     assert predict_inputs
     assert crm.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
-    assert isinstance(result, ChatResponse)
-    assert result.choices[0].message.content == "model-out"
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == "model-out"
 
 
 async def test_function_middleware_stream_prompt_replace(
@@ -1971,17 +2037,19 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_response_
         mw = _moderation_middleware_for_fixture_dir(
             model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        result = await mw.function_middleware_invoke(
-            crm,
+        result = await _invoke_with_normalization_and_moderation(
+            mw,
+            workflow_input=crm,
             call_next=call_next,
-            context=_fn_context(),
+            builder_mock=builder_mock,
         )
 
     call_next.assert_awaited_once()
     assert predict_inputs
-    assert isinstance(result, ChatResponse)
-    assert result.choices[0].message.content == _MODEL_RESPONSE_REPLACEMENT
-    assert result.choices[0].finish_reason == "content_filter"
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == _MODEL_RESPONSE_REPLACEMENT
+    assert result.original_chunk is not None
+    assert result.original_chunk.choices[0].finish_reason == "content_filter"
     assert result.model == MODERATION_MODEL_NAME
 
 
@@ -2052,7 +2120,7 @@ async def test_function_middleware_stream_yields_blocked_pre_invoke(
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -2138,7 +2206,7 @@ async def test_function_middleware_stream_attaches_prescore_to_text_message_star
     stream_next = MagicMock(return_value=upstream())
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -2184,7 +2252,7 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -2235,7 +2303,7 @@ async def test_function_middleware_stream_synthesizes_text_message_end_on_conten
     stream_next = MagicMock(return_value=upstream())
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -2278,11 +2346,11 @@ async def test_function_middleware_stream_closes_generators_on_early_consumer_ex
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware._aclose_async_iterator",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware._aclose_async_iterator",
             new_callable=AsyncMock,
         ) as aclose_mock,
     ):
@@ -2300,12 +2368,12 @@ async def test_function_middleware_stream_closes_generators_on_early_consumer_ex
     aclose_mock.assert_awaited()
 
 
-async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
+async def test_function_middleware_stream_raises_when_no_workflow_input(
     builder_mock: MagicMock,
 ) -> None:
-    # GIVEN pre_invoke returns before prescore (no first positional arg / no run input)
+    # GIVEN moderation is enabled but the stream call has no workflow input arg
     # WHEN function_middleware_stream runs
-    # THEN upstream chunks are yielded and stream_response_async is never used
+    # THEN pre_invoke fails before the upstream stream is started
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
 
@@ -2314,24 +2382,22 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
 
     stream_next = MagicMock(return_value=upstream())
 
-    with (
-        patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        chunks = [
-            item
-            async for item in mw.function_middleware_stream(
+        with pytest.raises(
+            TypeError,
+            match="Moderation middleware expected a workflow input, but got an empty tuple",
+        ):
+            async for _ in mw.function_middleware_stream(
                 call_next=stream_next,
                 context=_fn_context(),
-            )
-        ]
+            ):
+                pass
 
-    stream_next.assert_called_once()
-    assert len(chunks) == 1
-    assert chunks[0].events == _text_response("passthrough").events
+    stream_next.assert_not_called()
 
 
 async def test_function_middleware_stream_preserves_message_id_per_text_chunk(
@@ -2360,7 +2426,7 @@ async def test_function_middleware_stream_preserves_message_id_per_text_chunk(
     stream_next = MagicMock(return_value=upstream())
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
@@ -2421,7 +2487,7 @@ async def test_function_middleware_stream_defers_text_message_end_before_run_fin
 
     with (
         patch(
-            "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
             return_value=moderation,
         ),
     ):
@@ -2512,7 +2578,7 @@ async def test_function_middleware_stream_preserves_step_order_at_agent_transiti
     stream_next = MagicMock(return_value=upstream())
 
     with patch(
-        "datarobot_genai.nat.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)

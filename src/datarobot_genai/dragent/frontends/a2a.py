@@ -41,8 +41,8 @@ from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
+from ..cross_app_access_config import CrossApplicationAccessConfig
 from .register import DRAgentA2AExternalConfig
-from .server_auth import CrossApplicationAccessConfig
 
 logger = logging.getLogger(__name__)
 
