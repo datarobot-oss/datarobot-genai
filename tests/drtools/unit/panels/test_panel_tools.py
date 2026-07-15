@@ -108,3 +108,51 @@ def test_require_mcp_sandbox_allows_when_entitlement_on(monkeypatch: pytest.Monk
 
 def test_get_store_returns_panelstore() -> None:
     assert isinstance(access_mod._get_store(), PanelStore)
+
+
+async def test_move_panel_promotes_staging_to_main(panel_tools: PanelStore) -> None:
+    # GIVEN a staging panel
+    created = await tools_mod.create_text_panel(title="T", text="hi", source="staging")
+    panel_id = created["id"]
+
+    # WHEN it is moved to main
+    moved = await tools_mod.move_panel(panel_id=panel_id, to_source="main")
+
+    # THEN the id is preserved and the panel now lists under main only
+    assert moved["moved"] is True
+    assert moved["panel"]["id"] == panel_id
+    assert (await tools_mod.list_panels(source="main"))["panels"][0]["id"] == panel_id
+    assert (await tools_mod.list_panels(source="staging"))["count"] == 0
+
+
+async def test_move_panel_requires_id(panel_tools: PanelStore) -> None:
+    with pytest.raises(ToolError):
+        await tools_mod.move_panel(panel_id="", to_source="main")
+
+
+def test_get_store_is_unscoped_without_conversation_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(access_mod, "get_request_headers", lambda: {})
+    assert access_mod._get_store().conversation_id is None
+
+
+def test_get_store_scopes_to_the_conversation_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    # GIVEN a request carrying the conversation header (set by the caller, e.g. ABP)
+    monkeypatch.setattr(
+        access_mod,
+        "get_request_headers",
+        lambda: {"x-datarobot-conversation-id": "conv-abc-123"},
+    )
+    # THEN the store is scoped to the normalized (tag-safe) conversation id
+    assert access_mod._get_store().conversation_id == "conv_abc_123"
+
+
+async def test_list_panels_reports_conversation_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = PanelStore(FakeBlobStore(), conversation_id="conv-1")
+    monkeypatch.setattr(tools_mod, "_require_mcp_sandbox", lambda: None)
+    monkeypatch.setattr(tools_mod, "_get_store", lambda: store)
+
+    await tools_mod.create_text_panel(title="T", text="hi", source="staging")
+    listed = await tools_mod.list_panels(source="staging")
+
+    assert listed["conversation_id"] == "conv_1"
+    assert listed["count"] == 1

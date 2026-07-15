@@ -53,6 +53,10 @@ class BasePanel(BaseModel):
     type: PanelType
     title: str
     description: str | None = None
+    # Normalized id of the conversation the panel belongs to (None = unscoped).
+    # Recorded on create by a conversation-scoped store so moves/retags can
+    # rebuild the panel's tags without depending on the mover's own scope.
+    conversation_id: str | None = None
     parents: list[str] = Field(default_factory=list)
     execution_context: dict[str, Any] | None = None
     updated_by: str | None = None

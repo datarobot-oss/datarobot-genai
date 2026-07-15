@@ -56,6 +56,14 @@ class FakeBlobStore:
         files_id = ref.files_id if isinstance(ref, BlobRef) else ref
         self.blobs.pop(files_id, None)
 
+    async def set_tags(self, ref: BlobRef | str, tags: list[str]) -> None:
+        files_id = ref.files_id if isinstance(ref, BlobRef) else ref
+        if files_id not in self.blobs:
+            raise KeyError(files_id)
+        data, old_ref, _old_tags = self.blobs[files_id]
+        new_ref = BlobRef(files_id=old_ref.files_id, name=old_ref.name, tags=tuple(tags))
+        self.blobs[files_id] = (data, new_ref, set(tags))
+
     async def list(
         self,
         *,

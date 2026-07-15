@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.panels.access import _get_store
 from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
 from datarobot_genai.drmcputils.panels.models import Json
 from datarobot_genai.drmcputils.panels.models import Text
@@ -40,7 +40,9 @@ from datarobot_genai.drmcputils.panels.store import PanelStore
 
 
 def _store() -> PanelStore:
-    return PanelStore(DataRobotFilesBlobStore())
+    # Shared factory: conversation-scoped when the request carries the
+    # x-datarobot-conversation-id header, unscoped otherwise.
+    return _get_store()
 
 
 async def panels_list_resource(source: str) -> str:

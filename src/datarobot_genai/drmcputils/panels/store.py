@@ -20,6 +20,18 @@ discovery, plus an optional separate *payload* blob for bulky content (a
 Dataset's Parquet, a Chart's spec). The manifest blob's id is the panel id, so
 no separate id allocation is needed and ids are globally unique.
 
+**Conversation scoping.** A store may be scoped to a conversation
+(``PanelStore(blobs, conversation_id=...)``). Scoped panels are stored under a
+folder-style name prefix ``panels/<conversation_id>/`` (the Files registry has
+no real directories, so the structured name is the hierarchy) and tagged
+``dr_panel_conversation:<conversation_id>`` so ``list`` returns only the
+current conversation's panels. Unscoped stores keep the legacy behavior: blobs
+under ``panels/`` and a global list view, so consumers without conversations
+(and panels created before scoping existed) keep working. ``get``/``delete``
+are id-based and never scoped. Staging vs main separation stays tag-based
+(``dr_panel_source:<source>``), and ``move`` promotes a panel between sources
+by retagging in place, preserving the panel id.
+
 The store depends only on the ``BlobStore`` Protocol, so it is backed by the
 DataRobot Files API in production and by an in-memory fake in tests.
 """
@@ -29,6 +41,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import logging
+import re
 
 from datarobot_genai.drmcputils.files.store import BlobStore
 from datarobot_genai.drmcputils.panels.models import BasePanel
@@ -40,14 +53,49 @@ logger = logging.getLogger(__name__)
 DEFAULT_SOURCE = "main"
 DEFAULT_LIST_LIMIT = 100
 
+# HTTP header carrying the conversation id (same header the previous
+# panel-library MCP server used, so existing clients keep working unchanged).
+CONVERSATION_ID_HEADER = "x-datarobot-conversation-id"
+
 # NOTE: the DataRobot Files API rejects tags containing "-" (422), so panel tags
 # use "_" as the word separator. ":" is permitted and used for key:value tags.
+# Conversation ids are normalized to [0-9A-Za-z_] for the same reason.
 _MANIFEST_TAG = "dr_panel"
 _PAYLOAD_TAG = "dr_panel_payload"
+
+# Folder-style name prefix: the Files registry renders no hierarchy of its own,
+# so panel blobs are named "panels/<conversation_id>/<file>" (scoped) or
+# "panels/<file>" (unscoped) to keep the registry page structured.
+_NAME_ROOT = "panels"
+
+_CONVERSATION_ID_MAX_LENGTH = 128
+_CONVERSATION_ID_SANITIZE = re.compile(r"[^0-9A-Za-z_]")
+
+
+def normalize_conversation_id(conversation_id: str | None) -> str | None:
+    """Normalize a raw conversation id to a Files-API-safe token.
+
+    Every character outside ``[0-9A-Za-z_]`` becomes ``_`` (the Files API
+    rejects tags containing ``-``), and the result is capped at 128 characters.
+    Returns ``None`` for missing/blank ids (an unscoped store).
+    """
+    if not conversation_id:
+        return None
+    cleaned = _CONVERSATION_ID_SANITIZE.sub("_", conversation_id.strip())
+    cleaned = cleaned[:_CONVERSATION_ID_MAX_LENGTH]
+    return cleaned or None
 
 
 def _source_tag(source: str) -> str:
     return f"dr_panel_source:{source}"
+
+
+def _conversation_tag(conversation_id: str) -> str:
+    return f"dr_panel_conversation:{conversation_id}"
+
+
+def _type_tag(panel: BasePanel) -> str:
+    return f"dr_panel_type:{panel.type.value}"
 
 
 def _now_iso() -> str:
@@ -55,10 +103,40 @@ def _now_iso() -> str:
 
 
 class PanelStore:
-    """CRUD + listing for panels over a :class:`BlobStore`."""
+    """CRUD + listing for panels over a :class:`BlobStore`.
 
-    def __init__(self, blob_store: BlobStore) -> None:
+    ``conversation_id`` (optional) scopes the store to one conversation: blobs
+    it creates are placed under ``panels/<conversation_id>/`` and ``list``
+    returns only that conversation's panels. ``None`` keeps the legacy
+    unscoped behavior (global list view).
+    """
+
+    def __init__(self, blob_store: BlobStore, *, conversation_id: str | None = None) -> None:
         self._blobs = blob_store
+        self._conversation_id = normalize_conversation_id(conversation_id)
+
+    @property
+    def conversation_id(self) -> str | None:
+        """The normalized conversation id this store is scoped to (None = unscoped)."""
+        return self._conversation_id
+
+    def _name(self, filename: str, *, conversation_id: str | None = None) -> str:
+        conversation_id = conversation_id or self._conversation_id
+        if conversation_id:
+            return f"{_NAME_ROOT}/{conversation_id}/{filename}"
+        return f"{_NAME_ROOT}/{filename}"
+
+    def _manifest_tags(self, panel: BasePanel, source: str) -> list[str]:
+        tags = [_MANIFEST_TAG, _source_tag(source), _type_tag(panel)]
+        if panel.conversation_id:
+            tags.append(_conversation_tag(panel.conversation_id))
+        return tags
+
+    def _payload_tags(self, panel: BasePanel, source: str) -> list[str]:
+        tags = [_PAYLOAD_TAG, _source_tag(source)]
+        if panel.conversation_id:
+            tags.append(_conversation_tag(panel.conversation_id))
+        return tags
 
     async def create(
         self,
@@ -71,12 +149,13 @@ class PanelStore:
     ) -> Panel:
         """Persist ``panel`` (and an optional ``payload`` blob); returns it with ``id`` set."""
         panel.updated_at = _now_iso()
+        panel.conversation_id = self._conversation_id
         if payload is not None:
             payload_ref = await self._blobs.put(
                 payload,
-                name=payload_name or f"{panel.type.value}-payload",
+                name=self._name(payload_name or f"{panel.type.value}-payload"),
                 content_type=content_type,
-                tags=[_PAYLOAD_TAG, _source_tag(source)],
+                tags=self._payload_tags(panel, source),
             )
             panel.payload_files_id = payload_ref.files_id
             panel.payload_name = payload_ref.name
@@ -85,9 +164,9 @@ class PanelStore:
         try:
             manifest_ref = await self._blobs.put(
                 manifest,
-                name=f"panel-{panel.type.value}.json",
+                name=self._name(f"panel-{panel.type.value}.json"),
                 content_type="application/json",
-                tags=[_MANIFEST_TAG, _source_tag(source), f"dr_panel_type:{panel.type.value}"],
+                tags=self._manifest_tags(panel, source),
             )
         except Exception:
             # The panel was not created; don't leave the payload blob orphaned.
@@ -106,7 +185,12 @@ class PanelStore:
         return panel  # type: ignore[return-value]
 
     async def get(self, panel_id: str) -> Panel:
-        """Load a panel by id (its manifest blob id). Payload is not hydrated here."""
+        """Load a panel by id (its manifest blob id). Payload is not hydrated here.
+
+        Id-based access is intentionally not conversation-scoped: panel ids are
+        globally unique blob ids, and panels created before conversation
+        scoping existed must stay reachable.
+        """
         raw = await self._blobs.get(panel_id)
         manifest = json.loads(raw.decode("utf-8"))
         panel = panel_from_manifest(manifest)
@@ -120,10 +204,15 @@ class PanelStore:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> list[Panel]:
-        """List panels in ``source`` (metadata only); page with ``limit``/``offset``."""
-        refs = await self._blobs.list(
-            tags=[_MANIFEST_TAG, _source_tag(source)], limit=limit, offset=offset
-        )
+        """List panels in ``source`` (metadata only); page with ``limit``/``offset``.
+
+        A conversation-scoped store lists only its conversation's panels; an
+        unscoped store keeps the legacy global view across conversations.
+        """
+        tags = [_MANIFEST_TAG, _source_tag(source)]
+        if self._conversation_id:
+            tags.append(_conversation_tag(self._conversation_id))
+        refs = await self._blobs.list(tags=tags, limit=limit, offset=offset)
         panels: list[Panel] = []
         for ref in refs:
             raw = await self._blobs.get(ref.files_id)
@@ -136,6 +225,20 @@ class PanelStore:
             panel.id = ref.files_id
             panels.append(panel)
         return panels
+
+    async def move(self, panel_id: str, *, to_source: str) -> Panel:
+        """Move a panel to ``to_source`` (e.g. promote staging→main), preserving its id.
+
+        The move is an in-place retag of the manifest (and payload) blobs — no
+        copy, no delete — so the panel id and any external references to it
+        stay valid. The panel's own conversation scope (recorded on create) is
+        kept regardless of the scope of the store performing the move.
+        """
+        panel = await self.get(panel_id)
+        await self._blobs.set_tags(panel_id, self._manifest_tags(panel, to_source))
+        if panel.payload_files_id:
+            await self._blobs.set_tags(panel.payload_files_id, self._payload_tags(panel, to_source))
+        return panel
 
     async def get_payload(self, panel: Panel | str) -> bytes | None:
         """Fetch a panel's payload blob bytes (by id or loaded panel); None if it has none."""
