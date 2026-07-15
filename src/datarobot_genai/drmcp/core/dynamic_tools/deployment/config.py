@@ -25,10 +25,10 @@ from datarobot_genai.drmcp.core.dynamic_tools.deployment.metadata import get_mcp
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import (
     assemble_deployment_tool_config,
 )
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import build_deployment_auth_headers
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import get_deployment_base_url
 from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
+from datarobot_genai.drmcputils.deployment import build_deployment_auth_headers
+from datarobot_genai.drmcputils.deployment import get_deployment_base_url
 
 
 def create_deployment_tool_config(

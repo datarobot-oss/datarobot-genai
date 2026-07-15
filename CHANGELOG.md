@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added `datarobot_moderations` response for inline execution and `/chat/completions` route
 - Rework E2E examples to use memory streaming agent (as agentic templates)
 
+## 0.23.27
+- `dragent`: Extended `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin to read XAA params from NAT config.
+
+## 0.23.26
+- e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
+
+## 0.23.25
+- `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
+- `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
+- `drtools/vdb`: added `vdb_get` for non-blocking build and deployment status checks with optional `target_status` (`completed` / `active`), following the same poll pattern as `file_get_status` and `workload_get`.
+- `drtools/vdb`: fixed `vdb_query` to score through the deployment prediction server with the `promptText` JSON payload expected by vector database deployments, instead of posting to the main API `deployments/{id}/predictions/` route.
+- `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.24
+- `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
+
 ## 0.23.23
 - `crewai`: strip the per-tool `strict` flag on native tool calls.
 

@@ -10,3 +10,12 @@ function_groups:
       transport: streamable-http
       url: "https://fool/bar/mcp"
       auth_provider: okta_auth
+    cross_application_access:
+      token_exchange:
+        trusted_issuer: "https://foo/bar"
+        audience: "https://foo/bar"
+      token_request:
+        token_url: "https://foo/bar"
+        audience: "https://foo/bar"
+        scopes:
+          - "dr.impersonation"
