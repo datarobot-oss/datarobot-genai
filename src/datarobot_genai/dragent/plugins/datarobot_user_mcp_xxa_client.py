@@ -26,6 +26,7 @@ from nat.plugins.mcp.client.client_impl import per_user_mcp_client_function_grou
 from pydantic import Field
 from pydantic import HttpUrl
 
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
@@ -49,22 +50,6 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
         id_jag_scopes=token_request_metata["scopes"],
         token_endpoint_auth_method=token_endpoint_auth_method,
     )
-
-
-async def get_xaa_param_from_mcp_auth_server_metadata(
-    mcp_auth_server_metadata_url: str,
-) -> _CrossAppFlowParams:
-    async with get_retriable_async_http_client() as http_client:
-        try:
-            resp = await http_client.get(mcp_auth_server_metadata_url)
-            resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(
-                "Failed to fetch MCP auth server metadata from "
-                f"{mcp_auth_server_metadata_url}: {exc}"
-            )
-
-    return parse_xaa_params_from_mcp_auth_server_metadata(resp.json())
 
 
 class CustomizedMCPServerConfig(MCPServerConfig):
@@ -96,6 +81,14 @@ class MCPClientWithXAASupportConfig(  # type: ignore[call-arg]
         ),
     )
 
+    cross_application_access: CrossApplicationAccessConfig | None = Field(
+        default=None,
+        description=(
+            "Configuration for Cross-Application Access utilizing a hybrid RFC 8693 / "
+            "RFC 7523 flow. If not configured, it will be read from MCP auth server metadata."
+        ),
+    )
+
 
 def get_mcp_auth_server_metadata_url(
     config: MCPClientWithXAASupportConfig,
@@ -108,12 +101,45 @@ def get_mcp_auth_server_metadata_url(
     )
 
 
+async def get_xaa_params_from_mcp_auth_server_metadata(
+    config: MCPClientWithXAASupportConfig,
+) -> _CrossAppFlowParams:
+    mcp_auth_server_metadata_url = get_mcp_auth_server_metadata_url(config)
+    async with get_retriable_async_http_client() as http_client:
+        try:
+            resp = await http_client.get(mcp_auth_server_metadata_url)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(
+                "Failed to fetch MCP auth server metadata from "
+                f"{mcp_auth_server_metadata_url}: {exc}"
+            )
+
+    return parse_xaa_params_from_mcp_auth_server_metadata(resp.json())
+
+
+def get_xaa_params_from_config(xaa_config: CrossApplicationAccessConfig) -> _CrossAppFlowParams:
+    return _CrossAppFlowParams(
+        trusted_issuer=xaa_config.token_exchange.trusted_issuer,
+        exchange_audience=xaa_config.token_exchange.audience,
+        token_url=xaa_config.token_request.token_url,
+        target_audience=xaa_config.token_request.audience,
+        id_jag_scopes=xaa_config.token_request.scopes,
+        token_endpoint_auth_method=xaa_config.token_endpoint_auth_method,
+    )
+
+
+async def get_xaa_params(config: MCPClientWithXAASupportConfig) -> _CrossAppFlowParams:
+    if config.cross_application_access:
+        return get_xaa_params_from_config(config.cross_application_access)
+    return await get_xaa_params_from_mcp_auth_server_metadata(config)
+
+
 async def setup_auth_provider(
     auth_provider: OAuth2CrossApplicationAccessOAuth2AuthProvider,
     config: MCPClientWithXAASupportConfig,
 ) -> OAuth2CrossApplicationAccessOAuth2AuthProvider:
-    mcp_auth_server_metadata_url = get_mcp_auth_server_metadata_url(config)
-    xaa_params = await get_xaa_param_from_mcp_auth_server_metadata(mcp_auth_server_metadata_url)
+    xaa_params = await get_xaa_params(config)
     auth_provider.set_cross_app_flow_params(xaa_params)
 
     if config.forward_inbound_headers:
