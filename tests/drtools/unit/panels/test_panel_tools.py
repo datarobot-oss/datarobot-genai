@@ -106,5 +106,39 @@ def test_require_mcp_sandbox_allows_when_entitlement_on(monkeypatch: pytest.Monk
     access_mod._require_mcp_sandbox()
 
 
+def test_require_mcp_sandbox_noop_when_kill_switch_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datarobot_genai.drmcputils import sandbox_mode
+
+    # GIVEN MCP_SANDBOX_DISABLED=true and a DR API that would fail if touched
+    monkeypatch.setenv(sandbox_mode.MCP_SANDBOX_DISABLED_ENV_VAR, "true")
+    monkeypatch.setattr(sandbox_mode, "_warning_emitted", False)
+
+    def _explode(**_kwargs: object) -> object:
+        raise AssertionError("no DR entitlement lookup may happen when the kill-switch is on")
+
+    monkeypatch.setattr(access_mod, "request_user_dr_client", _explode)
+    # WHEN the guard runs
+    # THEN it is a no-op: no DR API call, no ToolError
+    access_mod._require_mcp_sandbox()
+
+
+def test_require_mcp_sandbox_still_fails_closed_when_kill_switch_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN the kill-switch is unset and the FF lookup fails
+    monkeypatch.delenv("MCP_SANDBOX_DISABLED", raising=False)
+
+    @contextmanager
+    def _broken_client(**_kwargs: object):
+        raise RuntimeError("DR unreachable")
+        yield
+
+    monkeypatch.setattr(access_mod, "request_user_dr_client", _broken_client)
+    # WHEN the guard runs
+    # THEN it denies (fail-closed), exactly as before the kill-switch existed
+    with pytest.raises(ToolError):
+        access_mod._require_mcp_sandbox()
+
+
 def test_get_store_returns_panelstore() -> None:
     assert isinstance(access_mod._get_store(), PanelStore)
