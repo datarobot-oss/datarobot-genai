@@ -104,14 +104,12 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _prescore_datarobot_moderations_from_df,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _require_workflow_input
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _set_moderation_invoke_state,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _streaming_text_events_from_openai_chunk,
-)
-from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
-    _workflow_input_from_args,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     dome_chunk_to_dragent_event_response,
@@ -527,13 +525,38 @@ def test_moderation_prompt_from_workflow_input_input_message_only() -> None:
     assert moderation_prompt_from_workflow_input(crm) == "gateway string only"
 
 
-def test_workflow_input_from_args_empty_returns_none() -> None:
-    assert _workflow_input_from_args(()) is None
+def test_require_workflow_input_empty_raises() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Moderation middleware expected a workflow input, but got an empty tuple",
+    ):
+        _require_workflow_input(())
 
 
-def test_workflow_input_from_args_unrecognized_type_raises() -> None:
+def test_require_workflow_input_unrecognized_type_raises() -> None:
     with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
-        _workflow_input_from_args(("not a workflow input",))
+        _require_workflow_input(("not a workflow input",))
+
+
+async def test_pre_invoke_empty_args_raises(builder_mock: MagicMock) -> None:
+    ctx = InvocationContext(
+        function_context=_fn_context(),
+        original_args=(),
+        original_kwargs={},
+        modified_args=(),
+        modified_kwargs={},
+        output=None,
+    )
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=None,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(
+            TypeError,
+            match="Moderation middleware expected a workflow input, but got an empty tuple",
+        ):
+            await mw.pre_invoke(ctx)
 
 
 @pytest.mark.asyncio
@@ -1241,8 +1264,8 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     assert text == "final-out"
 
 
-async def test_post_invoke_skips_nat_chat_response_output(builder_mock: MagicMock) -> None:
-    """``post_invoke`` only handles ``DRAgentEventResponse``; native ``ChatResponse`` is skipped."""
+async def test_post_invoke_rejects_nat_chat_response_output(builder_mock: MagicMock) -> None:
+    """``post_invoke`` requires ``DRAgentEventResponse`` when moderation is enabled."""
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -1267,16 +1290,16 @@ async def test_post_invoke_skips_nat_chat_response_output(builder_mock: MagicMoc
             latency_so_far=0.0,
         )
         try:
-            out = await mw.post_invoke(ctx)
+            with pytest.raises(TypeError, match="datarobot_dragent_normalization"):
+                await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    assert out is None
     assert ctx.output is nat_out
 
 
-async def test_post_invoke_skips_plain_str_output(builder_mock: MagicMock) -> None:
-    """``post_invoke`` only handles ``DRAgentEventResponse``; native ``str`` is skipped."""
+async def test_post_invoke_rejects_plain_str_output(builder_mock: MagicMock) -> None:
+    """``post_invoke`` requires ``DRAgentEventResponse`` when moderation is enabled."""
     pipeline = _pipeline_mock()
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -1300,11 +1323,11 @@ async def test_post_invoke_skips_plain_str_output(builder_mock: MagicMock) -> No
             latency_so_far=0.0,
         )
         try:
-            out = await mw.post_invoke(ctx)
+            with pytest.raises(TypeError, match="datarobot_dragent_normalization"):
+                await mw.post_invoke(ctx)
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    assert out is None
     assert ctx.output == "model-out"
 
 
@@ -1876,17 +1899,18 @@ async def test_function_middleware_invoke_nat_chat_input_chat_response_prompt_re
         mw = _moderation_middleware_for_fixture_dir(
             model_dir, builder_mock, config_mode=moderation_config_mode
         )
-        result = await mw.function_middleware_invoke(
-            crm,
+        result = await _invoke_with_normalization_and_moderation(
+            mw,
+            workflow_input=crm,
             call_next=call_next,
-            context=_fn_context(),
+            builder_mock=builder_mock,
         )
 
     call_next.assert_awaited_once()
     assert predict_inputs
     assert crm.messages[-1].content == _MODEL_PROMPT_REPLACEMENT
-    assert isinstance(result, ChatResponse)
-    assert result.choices[0].message.content == "model-out"
+    assert isinstance(result, DRAgentEventResponse)
+    assert _assistant_text_joined_from_dragent_response(result) == "model-out"
 
 
 async def test_function_middleware_stream_prompt_replace(
@@ -2344,12 +2368,12 @@ async def test_function_middleware_stream_closes_generators_on_early_consumer_ex
     aclose_mock.assert_awaited()
 
 
-async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
+async def test_function_middleware_stream_raises_when_no_workflow_input(
     builder_mock: MagicMock,
 ) -> None:
-    # GIVEN pre_invoke returns before prescore (no first positional arg / no run input)
+    # GIVEN moderation is enabled but the stream call has no workflow input arg
     # WHEN function_middleware_stream runs
-    # THEN upstream chunks are yielded and stream_response_async is never used
+    # THEN pre_invoke fails before the upstream stream is started
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
 
@@ -2358,24 +2382,22 @@ async def test_function_middleware_stream_passthrough_when_no_run_agent_input(
 
     stream_next = MagicMock(return_value=upstream())
 
-    with (
-        patch(
-            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-            return_value=moderation,
-        ),
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        chunks = [
-            item
-            async for item in mw.function_middleware_stream(
+        with pytest.raises(
+            TypeError,
+            match="Moderation middleware expected a workflow input, but got an empty tuple",
+        ):
+            async for _ in mw.function_middleware_stream(
                 call_next=stream_next,
                 context=_fn_context(),
-            )
-        ]
+            ):
+                pass
 
-    stream_next.assert_called_once()
-    assert len(chunks) == 1
-    assert chunks[0].events == _text_response("passthrough").events
+    stream_next.assert_not_called()
 
 
 async def test_function_middleware_stream_preserves_message_id_per_text_chunk(

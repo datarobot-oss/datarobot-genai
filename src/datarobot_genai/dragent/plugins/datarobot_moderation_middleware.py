@@ -131,13 +131,34 @@ _logger = logging.getLogger(__name__)
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
 
-def _workflow_input_from_args(args: tuple[Any, ...]) -> WorkflowInput | None:
+def _require_workflow_input(args: tuple[Any, ...]) -> WorkflowInput | None:
     if not args:
-        return None
+        raise TypeError("Moderation middleware expected a workflow input, but got an empty tuple")
     candidate = args[0]
     if isinstance(candidate, (RunAgentInput, ChatRequest, ChatRequestOrMessage)):
         return candidate
     raise TypeError(f"Unsupported workflow input type for moderation: {type(candidate).__name__}")
+
+
+def _require_dragent_event_response(output: Any) -> DRAgentEventResponse:
+    if isinstance(output, DRAgentEventResponse):
+        return output
+    raise TypeError(
+        "DataRobot moderation middleware expected agent output of type "
+        f"DRAgentEventResponse, but got {type(output).__name__}. "
+        "Declare the innermost middleware ``datarobot_dragent_normalization`` on the "
+        "agent function (NAT middleware is per-function and is not inherited from the "
+        "parent workflow). Native NAT agents emit ``str`` or ``ChatResponseChunk``; "
+        "normalization converts those to ``DRAgentEventResponse`` before moderation runs."
+    )
+
+
+async def _validated_dragent_stream(
+    upstream: AsyncGenerator[Any],
+) -> AsyncGenerator[DRAgentEventResponse]:
+    """Pass through stream chunks after validating the canonical output type."""
+    async for chunk in upstream:
+        yield _require_dragent_event_response(chunk)
 
 
 class DataRobotModerationConfig(
@@ -1376,9 +1397,7 @@ class DataRobotModerationMiddleware(
             InvocationContext if modified (including when the prompt is blocked and
             ``context.output`` holds the guard message), or None to pass through unchanged.
         """
-        workflow_input = _workflow_input_from_args(context.original_args)
-        if workflow_input is None:
-            return None
+        workflow_input = _require_workflow_input(context.original_args)
         moderation = self._get_moderation()
         if moderation is None:
             return None
@@ -1420,7 +1439,10 @@ class DataRobotModerationMiddleware(
 
         Returns
         -------
-            InvocationContext if modified, or None to pass through unchanged.
+            InvocationContext if modified, or None to pass through unchanged (for example when
+            the response has no assistant text to moderate, or prescore did not run). When guards
+            are configured, agent output must already be ``DRAgentEventResponse`` (see
+            ``datarobot_dragent_normalization``); unexpected types raise ``TypeError``.
         """
         original_output = context.output
         moderation = self._get_moderation()
@@ -1430,8 +1452,7 @@ class DataRobotModerationMiddleware(
         # The ``datarobot_dragent_normalization`` middleware (declared innermost) converts every
         # agent's native output into ``DRAgentEventResponse`` before this hook runs, so moderation
         # only ever handles that canonical type.
-        if not isinstance(original_output, DRAgentEventResponse):
-            return None
+        original_output = _require_dragent_event_response(original_output)
         if not _response_has_assistant_text_deltas(original_output):
             return None
         response_text = convert_dragent_event_response_to_str(original_output)
@@ -1554,9 +1575,11 @@ class DataRobotModerationMiddleware(
 
             async with contextlib.aclosing(
                 _moderated_dragent_stream(
-                    cast(
-                        AsyncGenerator[DRAgentEventResponse, None],
-                        call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    _validated_dragent_stream(
+                        cast(
+                            AsyncGenerator[Any, None],
+                            call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                        ),
                     ),
                     moderation=moderation,
                     stream_state=stream_state,
