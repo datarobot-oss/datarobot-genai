@@ -14,6 +14,7 @@
 
 """Tests for the ``execute_code`` function."""
 
+import logging
 from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock
@@ -22,11 +23,14 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcputils import sandbox_mode
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.sandbox_mode import MCP_SANDBOX_DISABLED_ENV_VAR
 from datarobot_genai.drtools.core.sandbox.base import SandboxError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.utils import LOCAL_EXECUTION_IMAGE
 from datarobot_genai.drtools.core.sandbox.utils import execute_code
 
 
@@ -262,6 +266,98 @@ async def test_execute_code_sandbox_error_translates(dr_env: None) -> None:
         with pytest.raises(ToolError) as excinfo:
             await execute_code("raise RuntimeError('boom')")
 
+    assert excinfo.value.kind == ToolErrorKind.UPSTREAM
+
+
+# ---------------------------------------------------------------------------
+# MCP_SANDBOX_DISABLED kill-switch
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def kill_switch_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MCP_SANDBOX_DISABLED_ENV_VAR, "true")
+    monkeypatch.setattr(sandbox_mode, "_warning_emitted", False)
+
+
+@pytest.mark.asyncio
+async def test_execute_code_default_uses_workload_backend(dr_env: None) -> None:
+    # GIVEN the kill-switch is NOT set (default posture)
+    # WHEN execute_code runs
+    mock_wrapper = MagicMock()
+    mock_wrapper.return_value.run = AsyncMock(return_value=_result(return_value=1))
+    with patch(
+        "datarobot_genai.drtools.core.sandbox.utils.InstrumentedSandbox",
+        new=mock_wrapper,
+    ):
+        await execute_code("_return = 1")
+    # THEN the workload-api backend is selected
+    inner = mock_wrapper.call_args.args[0]
+    assert type(inner).__name__ == "DataRobotWorkloadSandbox"
+
+
+@pytest.mark.asyncio
+async def test_execute_code_kill_switch_runs_locally_without_dr_calls(
+    kill_switch_on: None,
+) -> None:
+    # GIVEN MCP_SANDBOX_DISABLED=true and a DR API that would fail if touched
+    with (
+        patch(
+            "datarobot_genai.drtools.core.sandbox.utils.get_datarobot_access_token",
+            side_effect=AssertionError("token derivation must not run when sandbox is disabled"),
+        ),
+        patch(
+            "datarobot_genai.drtools.core.sandbox.utils.request_user_dr_client",
+            side_effect=AssertionError("DR client must not be opened when sandbox is disabled"),
+        ),
+    ):
+        # WHEN a real snippet executes
+        out = await execute_code("print('local run')\n_return = 6 * 7")
+
+    # THEN it runs locally on the MCP server process: no DR credential/FF
+    # lookups, real output, and the local sentinel instead of a container image
+    assert out["return_value"] == 42
+    assert "local run" in out["stdout"]
+    assert out["exit_code"] == 0
+    assert out["image"] == LOCAL_EXECUTION_IMAGE
+
+
+@pytest.mark.asyncio
+async def test_execute_code_kill_switch_selects_local_backend(kill_switch_on: None) -> None:
+    # GIVEN MCP_SANDBOX_DISABLED=true
+    mock_wrapper = MagicMock()
+    mock_wrapper.return_value.run = AsyncMock(return_value=_result(return_value=1))
+    # WHEN execute_code runs
+    with patch(
+        "datarobot_genai.drtools.core.sandbox.utils.InstrumentedSandbox",
+        new=mock_wrapper,
+    ):
+        await execute_code("_return = 1")
+    # THEN the local backend is wrapped in the same instrumentation
+    inner = mock_wrapper.call_args.args[0]
+    assert type(inner).__name__ == "LocalProcessSandbox"
+
+
+@pytest.mark.asyncio
+async def test_execute_code_kill_switch_emits_warning(
+    kill_switch_on: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    # GIVEN MCP_SANDBOX_DISABLED=true
+    # WHEN execute_code runs
+    with caplog.at_level(logging.WARNING, logger=sandbox_mode.logger.name):
+        await execute_code("_return = 1")
+    # THEN a loud warning about disabled sandboxing is emitted
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("DISABLED" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_execute_code_kill_switch_local_error_translates(kill_switch_on: None) -> None:
+    # GIVEN MCP_SANDBOX_DISABLED=true and a snippet that raises
+    # WHEN execute_code runs
+    with pytest.raises(ToolError) as excinfo:
+        await execute_code("raise RuntimeError('local boom')")
+    # THEN the failure surfaces as the same ToolError contract as the workload path
     assert excinfo.value.kind == ToolErrorKind.UPSTREAM
 
 

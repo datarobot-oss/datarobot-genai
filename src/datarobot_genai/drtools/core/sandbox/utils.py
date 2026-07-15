@@ -32,9 +32,12 @@ from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.feature_flags import FeatureFlag
+from datarobot_genai.drmcputils.sandbox_mode import is_mcp_sandbox_disabled
+from datarobot_genai.drtools.core.sandbox.base import Sandbox
 from datarobot_genai.drtools.core.sandbox.base import SandboxError
 from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.local import LocalProcessSandbox
 from datarobot_genai.drtools.core.sandbox.observability import InstrumentedSandbox
 from datarobot_genai.drtools.core.sandbox.workload import DataRobotWorkloadSandbox
 
@@ -45,6 +48,9 @@ DEFAULT_SANDBOX_IMAGE = (
     "datarobotdev/datarobot-user-models:"
     "public_dropin_environments_dr_mcp_execute_sandbox_minimal_latest"
 )
+# Sentinel reported as the "image" when the MCP_SANDBOX_DISABLED kill-switch
+# routes execution to the local, non-isolated backend (no container involved).
+LOCAL_EXECUTION_IMAGE = "local-process"
 
 
 def _resolve_security_context() -> SandboxSecurityContext | None:
@@ -86,26 +92,38 @@ async def execute_code(
     This is a plain function — a later PR adds the MCP tool layer that calls it
     (gated by ``ENABLE_MCP_SANDBOX``), kept separate so it doesn't override FastMCP
     CodeMode's ``execute`` tool.
-    """
-    # Derive credentials the same way the rest of drtools / MCP does, rather
-    # than reading DATAROBOT_ENDPOINT / DATAROBOT_API_TOKEN off os.environ: the
-    # requesting user's token comes from the request headers (falling back to
-    # the application token only in non-HTTP contexts), and the endpoint comes
-    # from configured credentials. `get_datarobot_access_token` raises
-    # ToolError(AUTHENTICATION) when no token is available.
-    token = get_datarobot_access_token()
-    endpoint = get_credentials().datarobot.datarobot_endpoint
 
-    # The wrap is unconditional: without a bootstrapped MeterProvider the
-    # instruments record into OTel's no-op provider.
-    sandbox = InstrumentedSandbox(
-        DataRobotWorkloadSandbox(
+    When the ``MCP_SANDBOX_DISABLED`` kill-switch is on (see
+    :mod:`datarobot_genai.drmcputils.sandbox_mode`), the code instead runs in a
+    plain local subprocess on the MCP server — no DataRobot credentials or
+    workload-api needed, and **no isolation**. The reported ``image`` is then
+    the :data:`LOCAL_EXECUTION_IMAGE` sentinel.
+    """
+    inner: Sandbox
+    if is_mcp_sandbox_disabled():
+        # Kill-switch path: no DR credential derivation, no FF lookups — the
+        # snippet executes locally with whatever packages this process has.
+        inner = LocalProcessSandbox()
+        image = LOCAL_EXECUTION_IMAGE
+    else:
+        # Derive credentials the same way the rest of drtools / MCP does, rather
+        # than reading DATAROBOT_ENDPOINT / DATAROBOT_API_TOKEN off os.environ: the
+        # requesting user's token comes from the request headers (falling back to
+        # the application token only in non-HTTP contexts), and the endpoint comes
+        # from configured credentials. `get_datarobot_access_token` raises
+        # ToolError(AUTHENTICATION) when no token is available.
+        token = get_datarobot_access_token()
+        endpoint = get_credentials().datarobot.datarobot_endpoint
+        inner = DataRobotWorkloadSandbox(
             image=image,
             datarobot_endpoint=endpoint,
             datarobot_api_token=token,
             security_context=_resolve_security_context(),
         )
-    )
+
+    # The wrap is unconditional: without a bootstrapped MeterProvider the
+    # instruments record into OTel's no-op provider.
+    sandbox = InstrumentedSandbox(inner)
     try:
         result = await sandbox.run(code, inputs=inputs, timeout_s=timeout_s)
     except SandboxTimeout as exc:

@@ -25,16 +25,20 @@ from datarobot_genai.drtools.core.sandbox.base import SandboxInfraError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
 from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
+from datarobot_genai.drtools.core.sandbox.local import LocalProcessSandbox
 from datarobot_genai.drtools.core.sandbox.observability import InstrumentedSandbox
 from datarobot_genai.drtools.core.sandbox.observability import classify_outcome
+from datarobot_genai.drtools.core.sandbox.utils import LOCAL_EXECUTION_IMAGE
 from datarobot_genai.drtools.core.sandbox.utils import MCP_SANDBOX_FEATURE_FLAG
 from datarobot_genai.drtools.core.sandbox.utils import execute_code
 from datarobot_genai.drtools.core.sandbox.workload import DataRobotWorkloadSandbox
 
 __all__ = [
+    "LOCAL_EXECUTION_IMAGE",
     "MCP_SANDBOX_FEATURE_FLAG",
     "DataRobotWorkloadSandbox",
     "InstrumentedSandbox",
+    "LocalProcessSandbox",
     "Sandbox",
     "SandboxError",
     "SandboxInfraError",
