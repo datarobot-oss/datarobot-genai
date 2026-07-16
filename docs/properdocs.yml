@@ -118,6 +118,10 @@ nav:
     - drtools/README.md
     - Authentication: drtools/auth.md
     - Atlassian Auth: drtools/auth-atlassian.md
+  - Application Utils:
+    - application_utils/README.md
+    - Memory Service ORM: application_utils/memory_orm.md
+    - Chat History: application_utils/chat_history.md
   - Design:
     - design/nat-1.6-streaming.md
   - API Reference: api/

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.4
+- `docs`: **Application Utils docs published & split** — moved the `application_utils` docs from the unpublished `docs/application_utils/` into the published `docs/src/` tree and split them into a section-index `README.md`, the lifted `memory_orm.md` (Memory Service ORM), and a new `chat_history.md`, with a matching `Application Utils` nav block in `properdocs.yml`. Documents the always-prefix-scoped `.list` and the dedup-keyed `EntityLocator` secondary index (consistency trade-off + orphan policy). Corrected the stale `persistence/integration` test path to `persistence/acceptance -m integration`. Added `tests/docs` regression tests guarding the published layout and nav.
+
 ## 0.25.3
 - `application-utils`: **AG-UI chat-history storage** — completes the `chat_history` sub-package with the AG-UI storage layer over the models/repositories. Adds the overridable `AGUIStorageAgent` state machine (build-hook, event-dispatch registry, category-handler, and repo-protocol extensibility points) with `translate_messages` history rebuild, and a `StreamPersistenceManager`/`RunHandle` pair for disconnect-survival and cancellation (`interrupted`) with a never-hang final flush. Public import: `from datarobot_genai.application_utils.chat_history import AGUIStorageAgent, StreamPersistenceManager`. Adds the `ag-ui-protocol~=0.1.15` dependency to the `application-utils` extra (the `persistence` sub-package still never imports `ag_ui`).
 
