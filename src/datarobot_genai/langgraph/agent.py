@@ -39,11 +39,9 @@ from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from langchain.chat_models import BaseChatModel
 from langchain.tools import BaseTool
-from langchain_core.messages import AIMessage
 from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import HumanMessage
-from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import START
@@ -58,14 +56,11 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
+from datarobot_genai.langgraph.moderations_events import convert_langchain_messages
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import AIMessage as PipelineAIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage as PipelineHumanMessage
     from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-    from datarobot_genai.core.pipeline_interactions import ToolCall as PipelineToolCall
-    from datarobot_genai.core.pipeline_interactions import ToolMessage as PipelineToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -675,51 +670,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # actually records pipeline interactions.
         from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
-        return MultiTurnSample(user_input=_convert_langchain_messages(flattened))
-
-
-def _convert_langchain_messages(
-    messages: list[Any],
-) -> list[PipelineHumanMessage | PipelineAIMessage | PipelineToolMessage]:
-    """Convert LangChain messages into pipeline-interaction messages.
-
-    Ports the logic of the old ``ragas.integrations.langgraph.convert_to_ragas_messages``
-    (metadata omitted): SystemMessages are skipped, and an AIMessage's tool calls are
-    read out of ``additional_kwargs``. Content is assumed to be a plain string (the
-    caller flattens list-form content beforehand).
-    """
-    # Lazy import so the moderations-backed primitives load only when a run
-    # actually records pipeline interactions.
-    from datarobot_genai.core.pipeline_interactions import AIMessage as PipelineAIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage as PipelineHumanMessage
-    from datarobot_genai.core.pipeline_interactions import ToolCall as PipelineToolCall
-    from datarobot_genai.core.pipeline_interactions import ToolMessage as PipelineToolMessage
-
-    converted: list[PipelineHumanMessage | PipelineAIMessage | PipelineToolMessage] = []
-    for message in messages:
-        if isinstance(message, SystemMessage):
-            continue
-        if isinstance(message, AIMessage):
-            # Mirror ragas: only inspect tool calls when additional_kwargs is present;
-            # a truthy-but-tool-call-free additional_kwargs yields an empty list, not None.
-            if message.additional_kwargs:
-                tool_calls: list[PipelineToolCall] | None = [
-                    PipelineToolCall(
-                        name=tc["function"]["name"],
-                        args=json.loads(tc["function"]["arguments"]),
-                    )
-                    for tc in message.additional_kwargs.get("tool_calls", [])
-                ]
-            else:
-                tool_calls = None
-            converted.append(PipelineAIMessage(content=message.content, tool_calls=tool_calls))
-        elif isinstance(message, HumanMessage):
-            converted.append(PipelineHumanMessage(content=message.content))
-        elif isinstance(message, ToolMessage):
-            converted.append(PipelineToolMessage(content=message.content))
-        else:
-            raise ValueError(f"Unsupported message type: {type(message).__name__}")
-    return converted
+        return MultiTurnSample(user_input=convert_langchain_messages(flattened))
 
 
 def datarobot_agent_class_from_langgraph(

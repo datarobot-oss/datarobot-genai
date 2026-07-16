@@ -53,10 +53,11 @@ from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+
     from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-    from datarobot_genai.core.pipeline_interactions import ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -512,18 +513,17 @@ def _convert_llama_index_events(
     ``AgentInput`` / ``AgentOutput`` / ``ToolCallResult`` events and emits the matching
     Human / AI / Tool messages, de-duplicating tool calls by their tool id.
     """
+    # Lazy import so the moderations-backed primitives load only when a run
+    # actually records pipeline interactions.
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolCall
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
     from llama_index.core.agent.workflow import AgentInput
     from llama_index.core.agent.workflow import AgentOutput
     from llama_index.core.agent.workflow import ToolCallResult
     from llama_index.core.base.llms.types import MessageRole
     from llama_index.core.base.llms.types import TextBlock
-
-    # Lazy import so the moderations-backed primitives load only when a run
-    # actually records pipeline interactions.
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
-    from datarobot_genai.core.pipeline_interactions import ToolCall
-    from datarobot_genai.core.pipeline_interactions import ToolMessage
 
     messages: list[HumanMessage | AIMessage | ToolMessage] = []
     tool_call_ids: set[Any] = set()

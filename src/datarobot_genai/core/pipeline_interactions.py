@@ -29,26 +29,11 @@ message primitives, so we reuse those and keep only a slim, locally-owned
 from __future__ import annotations
 
 from typing import Any
-from typing import TypeAlias
 
-# Reuse the conversation-message primitives owned and exported by
-# datarobot-moderations. They are plain pydantic models (content/type/metadata,
-# plus tool_calls on AIMessage) that match the shape moderations reads back, so
-# the serialised payload stays byte-for-byte compatible with the old ragas one
-# apart from a few always-null fields we no longer emit.
 from datarobot_dome.guards.agent_goal_accuracy import AIMessage
 from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
-from datarobot_dome.guards.agent_goal_accuracy import ToolCall
 from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
 from pydantic import BaseModel
-
-# Plain (non-discriminated) union, matching the old ragas ``MultiTurnSample``.
-# We only ever *build and serialise* a sample, never parse one back, so we don't
-# need the discriminator moderations uses for round-trip decoding -- and a
-# discriminated union would reject the type-less AG-UI message dicts the base
-# agent may hand us. Pydantic's smart union keeps the old behaviour: a dict
-# without a ``type`` field validates as a ``HumanMessage`` (its ``type`` default).
-Message: TypeAlias = HumanMessage | AIMessage | ToolMessage
 
 
 class MultiTurnSample(BaseModel):
@@ -59,19 +44,10 @@ class MultiTurnSample(BaseModel):
     with the moderations model.
     """
 
-    user_input: list[Message]
+    # Plain (non-discriminated) union, matching the old ragas ``MultiTurnSample``.
+    user_input: list[HumanMessage | AIMessage | ToolMessage]
     reference: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict, dropping unset/None fields."""
         return self.model_dump(exclude_none=True)
-
-
-__all__ = [
-    "AIMessage",
-    "HumanMessage",
-    "ToolMessage",
-    "ToolCall",
-    "Message",
-    "MultiTurnSample",
-]

@@ -39,8 +39,8 @@ from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
-from datarobot_genai.core.pipeline_interactions import AIMessage
-from datarobot_genai.core.pipeline_interactions import HumanMessage
+from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 from datarobot_genai.core.agents.base import UsageMetrics

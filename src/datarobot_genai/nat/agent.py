@@ -41,10 +41,11 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.nat.helpers import load_workflow
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+
     from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-    from datarobot_genai.core.pipeline_interactions import ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,8 @@ def convert_to_pipeline_messages(
 ) -> list[HumanMessage | AIMessage | ToolMessage]:
     # Lazy import so the moderations-backed primitives load only when a run
     # actually records pipeline interactions.
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 
     def _to_message(step: IntermediateStep) -> HumanMessage | AIMessage | ToolMessage:
         if step.event_type == IntermediateStepType.LLM_START:

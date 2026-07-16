@@ -29,6 +29,8 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
+from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 from nat.data_models.intermediate_step import IntermediateStep
 from nat.data_models.intermediate_step import IntermediateStepPayload
 from nat.data_models.intermediate_step import IntermediateStepType
@@ -37,8 +39,6 @@ from nat.data_models.intermediate_step import UsageInfo
 from nat.data_models.invocation_node import InvocationNode
 from nat.data_models.token_usage import TokenUsageBaseModel
 
-from datarobot_genai.core.pipeline_interactions import AIMessage
-from datarobot_genai.core.pipeline_interactions import HumanMessage
 from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 from datarobot_genai.nat.agent import NatAgent
 

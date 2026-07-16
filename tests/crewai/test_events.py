@@ -18,9 +18,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from datarobot_genai.core.pipeline_interactions import AIMessage
-from datarobot_genai.core.pipeline_interactions import HumanMessage
-from datarobot_genai.core.pipeline_interactions import ToolMessage
+from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+
 from datarobot_genai.crewai.moderations_events import AgentExecutionCompletedEvent
 from datarobot_genai.crewai.moderations_events import AgentExecutionStartedEvent
 from datarobot_genai.crewai.moderations_events import AgentReasoningCompletedEvent

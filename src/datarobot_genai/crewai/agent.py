@@ -57,10 +57,11 @@ from datarobot_genai.crewai.moderations_events import CrewAIModerationsEventList
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+
     from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-    from datarobot_genai.core.pipeline_interactions import ToolMessage
 
 logger = logging.getLogger(__name__)
 

@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import AIMessage
-    from datarobot_genai.core.pipeline_interactions import HumanMessage
-    from datarobot_genai.core.pipeline_interactions import ToolMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
 
 from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.event_types import AgentExecutionCompletedEvent
@@ -47,10 +47,10 @@ class CrewAIModerationsEventListener:
     def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
         # Lazy import so the moderations-backed primitives load only when a run
         # actually records pipeline interactions.
-        from datarobot_genai.core.pipeline_interactions import AIMessage
-        from datarobot_genai.core.pipeline_interactions import HumanMessage
-        from datarobot_genai.core.pipeline_interactions import ToolCall
-        from datarobot_genai.core.pipeline_interactions import ToolMessage
+        from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+        from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+        from datarobot_dome.guards.agent_goal_accuracy import ToolCall
+        from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
 
         @crewai_event_bus.on(CrewKickoffStartedEvent)
         def on_crew_execution_started(_: Any, event: Any) -> None:

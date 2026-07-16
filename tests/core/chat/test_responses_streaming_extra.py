@@ -22,10 +22,10 @@ from ag_ui.core import RunStartedEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 
 from datarobot_genai.core.chat.responses import CustomModelStreamingResponse
 from datarobot_genai.core.chat.responses import to_custom_model_streaming_response
-from datarobot_genai.core.pipeline_interactions import HumanMessage
 from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 
