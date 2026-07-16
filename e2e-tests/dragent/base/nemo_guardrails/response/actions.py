@@ -78,7 +78,8 @@ async def self_check_output(
 
         response = await llm_call(llm, prompt, llm_params={"temperature": 0.0})
 
-        response = response.lower().strip()
+        # nemoguardrails 0.23: llm_call returns LLMResponse, not str.
+        response = getattr(response, "content", response).lower().strip()
         log.info(f"Output self-checking result is: `{response}`.")
 
         if "yes" in response:

@@ -76,7 +76,8 @@ async def self_check_input(
 
         check = await llm_call(llm, prompt, llm_params={"temperature": 0.0})
 
-        check = check.lower().strip()
+        # nemoguardrails 0.23: llm_call returns LLMResponse, not str.
+        check = getattr(check, "content", check).lower().strip()
         log.info(f"Input self-checking result is: `{check}`.")
 
         if "yes" in check:
