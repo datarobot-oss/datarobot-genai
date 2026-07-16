@@ -123,7 +123,9 @@ from datarobot_genai.dragent.frontends.converters import (
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
-from datarobot_genai.dragent.plugins.stream_converter import resolve_streaming_tool_call_id
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    resolve_streaming_tool_call_id,
+)
 from datarobot_genai.dragent.workflow_paths import discover_workflow_yaml
 from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
