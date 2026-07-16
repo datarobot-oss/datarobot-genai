@@ -101,6 +101,10 @@ auth = [
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
     "datarobot[fs]>=3.17.0,<4.0.0",
+    # datarobot.core.config (DataRobotAppFrameworkBaseSettings, used by
+    # credentials.py and sandbox_mode.py) imports pydantic_settings at module
+    # level, but no datarobot extra installed here provides it.
+    "pydantic-settings>=2.1.0,<3.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
