@@ -77,7 +77,7 @@ llamaindex = core + [
     "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
 ]
 
-nat = core + [
+dragent = core + [
     "nvidia-nat==1.7.0",
     "nvidia-nat-a2a==1.7.0",
     "nvidia-nat-opentelemetry==1.7.0",
@@ -85,13 +85,8 @@ nat = core + [
     "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
     "mem0ai>=1.0.4,<2.0.0",
+    "starlette>=1.0.1",  # CVE fix
 ]
-
-dragent = nat + [
-    "starlette>=1.0.1",
-]
-
-# Eventually NAT will be merged into dragent
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
@@ -182,7 +177,6 @@ extras_require = {
     "crewai": crewai,
     "langgraph": langgraph,
     "llamaindex": llamaindex,
-    "nat": nat,
     "auth": auth,
     "eval": eval_deps,
     "drmcpbase": drmcpbase,

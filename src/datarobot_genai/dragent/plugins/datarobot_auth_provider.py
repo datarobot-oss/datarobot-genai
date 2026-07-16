@@ -28,8 +28,8 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.core.mcp import MCPConfig
-from datarobot_genai.nat.helpers import extract_authorization_from_context
-from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
+from datarobot_genai.dragent.context import extract_authorization_from_context
+from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
 
 
 class Config(DataRobotAppFrameworkBaseSettings):

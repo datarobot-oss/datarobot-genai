@@ -16,15 +16,14 @@ from enum import Enum
 from typing import Any
 from unittest.mock import patch
 
+from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
+from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPServerConfig
+from datarobot_genai.nat.datarobot_mcp_client import _make_input_schema_enum_safe
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.mcp.client.client_base import MCPBaseClient
 from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 from pydantic import create_model
-
-from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
-from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPServerConfig
-from datarobot_genai.nat.datarobot_mcp_client import _make_input_schema_enum_safe
 
 
 class _InputSchema(BaseModel):

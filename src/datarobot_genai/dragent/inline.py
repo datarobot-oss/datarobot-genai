@@ -99,7 +99,6 @@ async def execute_dragent_inline_async(
     custom_model_dir: Path,
     *,
     config_file: Path | None = None,
-    default_headers: dict[str, str] | None = None,
 ) -> ChatCompletion:
     """Execute a dragent workflow in-process and return the final OpenAI ``ChatCompletion``.
 
@@ -124,9 +123,6 @@ async def execute_dragent_inline_async(
         here when ``config_file`` is not supplied.
     config_file
         Optional explicit override of the workflow YAML path.
-    default_headers
-        Optional HTTP headers to inject into the workflow's auth/LLM components
-        (forwarded to ``load_workflow``).
     """
     # Local imports keep the optional NAT dependency out of any path that just
     # imports the symbol but never calls it (e.g. when DRUM is selected).
@@ -141,7 +137,7 @@ async def execute_dragent_inline_async(
     )
     from datarobot_genai.core.config import default_response_model
     from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
-    from datarobot_genai.nat.helpers import load_workflow
+    from datarobot_genai.dragent.workflow import load_workflow
 
     workflow_path = _resolve_config_path(Path(custom_model_dir), config_file)
     logger.info("Running dragent workflow from %s", workflow_path)
@@ -155,7 +151,7 @@ async def execute_dragent_inline_async(
     run_agent_input = DRAgentRunAgentInput.model_validate(base_input.model_dump())
 
     async with (
-        load_workflow(workflow_path, headers=default_headers) as session_manager,
+        load_workflow(workflow_path) as session_manager,
         session_manager.session(user_id=INLINE_USER_ID) as session,
         _seed_nat_workflow_trace_id(),
         session.run(run_agent_input) as runner,
@@ -177,7 +173,6 @@ def execute_dragent_inline(
     custom_model_dir: Path,
     *,
     config_file: Path | None = None,
-    default_headers: dict[str, str] | None = None,
 ) -> ChatCompletion:
     """Run :func:`execute_dragent_inline_async` synchronously for ``run_agent.py``.
 
@@ -192,7 +187,6 @@ def execute_dragent_inline(
         chat_completion=chat_completion,
         custom_model_dir=custom_model_dir,
         config_file=config_file,
-        default_headers=default_headers,
     )
 
     try:

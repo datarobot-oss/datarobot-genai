@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.0
+- *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
+  - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
+  - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `load_workflow` and `load_config` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.workflow` (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+- Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
+
 ## 0.24.1
 - `application-utils`: **Memory Service Light ORM** — new standalone extra `datarobot-genai[application-utils]` that wraps the DataRobot Agentic Memory Service with a Pydantic v2 / SQLModel-style async ORM.  Declare typed session and event models with annotation-driven routing markers (`DRDeduplicationKey`, `DRRangeKey`, `DRConcurrencyField`); the ORM handles wire serialization, camelCase mapping, description-path encoding for range-key prefix queries, optimistic concurrency (`If-Match` for sessions; `createdAt` token for events), and idempotent create via 409-adopt.  Public import: `from datarobot_genai.application_utils.persistence import DRMemorySpace, DRSession, DREvent`.  Dependencies: `httpx>=0.28.1,<1.0.0` + `pydantic>=2.6.1,<3.0.0` only (no core / OTel weight).  Unit tests cover encoding, routing, transport, space CRUD, session CRUD, and event CRUD.
 

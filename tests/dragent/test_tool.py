@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.nat.tool import _sync_to_async
-from datarobot_genai.nat.tool import nat_tool
+from datarobot_genai.dragent.tool import _sync_to_async
+from datarobot_genai.dragent.tool import nat_tool
 
 
 class TestSyncToAsync:
