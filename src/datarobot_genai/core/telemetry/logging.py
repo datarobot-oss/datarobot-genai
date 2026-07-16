@@ -304,9 +304,15 @@ T = TypeVar("T")
 def log_api_call(
     func: Callable[P, Coroutine[Any, Any, T]],
 ) -> Callable[P, Coroutine[Any, Any, T]]:
+    # A plain module logger, not get_logger(): get_logger() unconditionally
+    # strips and replaces the target logger's handlers, and with the
+    # default name="" that's the root logger - destroying whatever
+    # OTel.configure_logging() attached there for OTLP export. A plain
+    # logging.getLogger() just propagates to whatever's already configured.
+    logger = logging.getLogger(func.__module__)
+
     @wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-        logger = get_logger()
         request_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         separator = f"\n{'=' * 80}\n"
         logger.info(f"{separator}API CALL START: {func.__name__} [{request_id}]{separator}")

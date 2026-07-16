@@ -23,6 +23,7 @@ from datarobot_genai.core.telemetry.logging import RedactingFormatter
 from datarobot_genai.core.telemetry.logging import TextFormatter
 from datarobot_genai.core.telemetry.logging import get_logger
 from datarobot_genai.core.telemetry.logging import init_logging
+from datarobot_genai.core.telemetry.logging import log_api_call
 
 
 def _make_record(message: str = "hello", **extra: object) -> logging.LogRecord:
@@ -141,3 +142,46 @@ def test_get_logger_readable_format() -> None:
     logger = get_logger("test.readable", format_type="readable", stream=stream)
     logger.info("hello")
     assert "INFO:test.readable:hello" in stream.getvalue()
+
+
+async def test_log_api_call_does_not_strip_root_logger_handlers() -> None:
+    # Regression test: log_api_call used to call get_logger() (default
+    # name="") on every invocation, which resolves to the root logger and
+    # unconditionally replaces its handlers - destroying whatever
+    # OTel.configure_logging() attached there for OTLP export.
+    root_logger = logging.getLogger()
+    sentinel_handler = logging.NullHandler()
+    root_logger.addHandler(sentinel_handler)
+    try:
+
+        @log_api_call
+        async def call() -> str:
+            return "ok"
+
+        assert await call() == "ok"
+        assert sentinel_handler in root_logger.handlers
+    finally:
+        root_logger.removeHandler(sentinel_handler)
+
+
+async def test_log_api_call_logs_start_and_complete(caplog) -> None:
+    @log_api_call
+    async def call() -> str:
+        return "ok"
+
+    with caplog.at_level(logging.INFO):
+        assert await call() == "ok"
+
+    assert any("API CALL START" in r.message for r in caplog.records)
+    assert any("API CALL COMPLETE" in r.message for r in caplog.records)
+
+
+async def test_log_api_call_logs_error_and_reraises(caplog) -> None:
+    @log_api_call
+    async def call() -> None:
+        raise ValueError("boom")
+
+    with caplog.at_level(logging.INFO), pytest.raises(ValueError, match="boom"):
+        await call()
+
+    assert any("ERROR IN API CALL" in r.message for r in caplog.records)
