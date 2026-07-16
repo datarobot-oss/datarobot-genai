@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.messages import ToolMessage
 
 
-def convert_langchain_messages(
+def convert_to_moderations_messages(
     messages: list[Any],
 ) -> list[PipelineHumanMessage | PipelineAIMessage | PipelineToolMessage]:
     """Convert LangChain messages into pipeline-interaction messages.

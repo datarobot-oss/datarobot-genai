@@ -668,9 +668,9 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Lazy import so the moderations-backed primitives load only when a run
         # actually records pipeline interactions.
         from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-        from datarobot_genai.langgraph.moderations_events import convert_langchain_messages
+        from datarobot_genai.langgraph.moderations_events import convert_to_moderations_messages
 
-        return MultiTurnSample(user_input=convert_langchain_messages(flattened))
+        return MultiTurnSample(user_input=convert_to_moderations_messages(flattened))
 
 
 def datarobot_agent_class_from_langgraph(
