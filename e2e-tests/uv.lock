@@ -1249,11 +1249,7 @@ requires-dist = [
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
 ]
-<<<<<<< HEAD
-provides-extras = ["core", "crewai", "langgraph", "llamaindex", "nat", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent", "application-utils"]
-=======
 provides-extras = ["core", "crewai", "langgraph", "llamaindex", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent", "application-utils"]
->>>>>>> ffcdc310528a7cf170a6800154671184f41ddd70
 
 [package.metadata.requires-dev]
 dev = [
