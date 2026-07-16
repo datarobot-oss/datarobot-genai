@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.1
+- `drtools`: `vdb_get` rejects malformed `vector_database_id` values before calling the platform and returns a clean not-found error matching the well-formed missing-ID case; API calls use `allow_redirects=False` so unexpected 3xx/HTML responses surface as structured errors instead of raw frontend pages.
+- `drtools`: `vdb_deploy` submits the deploy request and polls for the new deployment record instead of blocking on the SDK's long async wait, avoiding false MCP timeouts while the deployment is actually created.
+
 ## 0.25.0
 - *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
   - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`

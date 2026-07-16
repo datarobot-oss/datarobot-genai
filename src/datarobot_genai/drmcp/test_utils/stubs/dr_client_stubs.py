@@ -43,7 +43,10 @@ STUB_USE_CASE_ID = "stub_use_case_id"
 STUB_VDB_DEPLOYMENT_ID = "stub_vdb_deployment_id"
 
 # Vector database id returned by stub ``VectorDatabase.create``.
-STUB_VECTOR_DATABASE_ID = "stub_vector_database_id"
+STUB_VECTOR_DATABASE_ID = "69cbb73789723b6936c6c9e1"
+
+# Deployment id returned after stub ``vdb_deploy`` submit-and-poll.
+STUB_VDB_DEPLOY_RESULT_ID = "69cbb73789723b6936c6c9eb"
 
 # Prediction server id returned by stub ``PredictionServer.list``.
 STUB_PREDICTION_SERVER_ID = "stub_prediction_server_id"
@@ -512,6 +515,35 @@ def test_create_dr_client() -> StubDRClient:
         """Stub PredictionServer.list; returns one default prediction server."""
         return [SimpleNamespace(id=STUB_PREDICTION_SERVER_ID)]
 
+    _vdb_deploy_posted = False
+
+    def _stub_vector_database_api_record(vdb_id: str) -> dict[str, Any]:
+        return {
+            "id": vdb_id,
+            "name": "Stub Vector Database",
+            "size": 0,
+            "useCaseId": STUB_USE_CASE_ID,
+            "datasetId": STUB_DATASET_ID,
+            "embeddingModel": "sentence-transformers/all-MiniLM-L6-v2",
+            "chunkingMethod": "recursive",
+            "chunkSize": 256,
+            "chunkOverlapPercentage": 10,
+            "chunksCount": 1,
+            "separators": ["\n\n", "\n", " "],
+            "creationDate": "2026-01-01T00:00:00Z",
+            "creationUserId": "stub_user",
+            "organizationId": "stub_org",
+            "tenantId": "stub_tenant",
+            "lastUpdateDate": "2026-01-01T00:00:00Z",
+            "executionStatus": "COMPLETED",
+            "playgroundsCount": 0,
+            "datasetName": "stub_dataset.csv",
+            "userName": "stub_user",
+            "source": "dataset",
+            "isSeparatorRegex": False,
+            "version": 1,
+        }
+
     # --- REST method stubs for dr_module.client.get_client() ---
     def _stub_get_non_workload(url: str, params: dict | None) -> StubRestResponse:
         response = StubRestResponse({"data": [], "next": None})
@@ -561,7 +593,20 @@ def test_create_dr_client() -> StubDRClient:
                     "model": {"targetType": "Binary"},
                 },
             ]
+            if _vdb_deploy_posted:
+                all_deployments.append(
+                    {
+                        "id": STUB_VDB_DEPLOY_RESULT_ID,
+                        "label": "Stub VDB Deployment",
+                        "status": "launching",
+                        "capabilities": {"supportsVectorDatabaseQuerying": True},
+                        "model": {"targetType": "VectorDatabase"},
+                    }
+                )
             response = StubRestResponse({"data": all_deployments, "next": None})
+        elif "genai/vectorDatabases" in url:
+            vdb_id = url.rstrip("/").split("/")[-1]
+            response = StubRestResponse(_stub_vector_database_api_record(vdb_id))
         elif url.rstrip("/").startswith("deployments/"):
             dep_id = url.rstrip("/").split("/")[-1]
             response = StubRestResponse(
@@ -594,6 +639,14 @@ def test_create_dr_client() -> StubDRClient:
         workload_response = workload_stub_post(url, json, **kwargs)
         if workload_response is not None:
             return workload_response
+
+        if "genai/vectorDatabases" in url and url.rstrip("/").endswith("/deployments"):
+            nonlocal _vdb_deploy_posted
+            _vdb_deploy_posted = True
+            return StubRestResponse(
+                {},
+                headers={"Location": "https://example.com/async/vdb-deploy/"},
+            )
 
         if "deployments" in url and "predictions" in url:
             # vdb_query calls POST deployments/{id}/predictions/
