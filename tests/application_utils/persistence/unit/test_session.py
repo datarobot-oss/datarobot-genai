@@ -37,6 +37,8 @@ from tests.application_utils.persistence.unit.conftest import SESSION_ID
 from tests.application_utils.persistence.unit.conftest import SPACE_ID
 from tests.application_utils.persistence.unit.conftest import SYSTEM_OID
 from tests.application_utils.persistence.unit.conftest import ChatSession
+from tests.application_utils.persistence.unit.conftest import DedupeOnlySession
+from tests.application_utils.persistence.unit.conftest import MinimalSession
 
 BASE = "https://app.datarobot.com/api/v2"
 MEMORY_BASE = f"{BASE}/memory"
@@ -224,6 +226,40 @@ async def test_post_encodes_range_keys_as_description() -> None:
 
 
 @respx.mock
+async def test_post_range_key_less_session_stamps_prefix_description() -> None:
+    """GIVEN a session with no range keys WHEN post THEN description is the bare prefix.
+
+    Every subclass must be prefix-identifiable on the wire so ``.list`` can scope
+    by subclass, even when the subclass declares no ``DRRangeKey`` fields.
+    """
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(201, json=_session_wire())
+
+    respx.post(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await DedupeOnlySession.post(space, key="k1", notes="hello")
+    assert captured["body"]["description"] == "//dedup-only/"
+
+
+@respx.mock
+async def test_post_range_key_less_session_defaults_prefix_to_class_name() -> None:
+    """GIVEN a session with no prefix and no range keys WHEN post THEN prefix = class name."""
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(201, json=_session_wire())
+
+    respx.post(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await MinimalSession.post(space, label="x")
+    assert captured["body"]["description"] == "//MinimalSession/"
+
+
+@respx.mock
 async def test_post_puts_metadata_fields_in_metadata() -> None:
     """GIVEN title (metadata field) WHEN post THEN metadata dict contains title."""
     captured: dict = {}
@@ -384,6 +420,41 @@ async def test_list_returns_all_sessions() -> None:
     space = _make_space()
     sessions = await ChatSession.list(space)
     assert len(sessions) == 2
+
+
+@respx.mock
+async def test_list_without_range_keys_sends_prefix_scoped_description() -> None:
+    """GIVEN list() with no kwargs WHEN GET THEN description=//chat/ scopes to the subclass.
+
+    Without the prefix filter the service would return every session in the space
+    regardless of subclass — the latent bug the repository-index change fixes.
+    """
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(req.url.params)
+        return httpx.Response(200, json={"items": [], "total": 0})
+
+    respx.get(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await ChatSession.list(space)
+    assert captured["params"]["description"] == "//chat/"
+
+
+@respx.mock
+async def test_list_participant_only_still_sends_prefix_description() -> None:
+    """GIVEN list(participant=oid) with no range kwargs WHEN GET THEN prefix filter present."""
+    captured: dict = {}
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(req.url.params)
+        return httpx.Response(200, json={"items": [], "total": 0})
+
+    respx.get(SESSIONS_URL).mock(side_effect=_capture)
+    space = _make_space()
+    await ChatSession.list(space, participant=PARTICIPANT)
+    assert captured["params"]["description"] == "//chat/"
+    assert captured["params"]["participants"] == PARTICIPANT
 
 
 @respx.mock

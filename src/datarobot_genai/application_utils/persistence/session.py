@@ -83,6 +83,8 @@ from datarobot_genai.application_utils.persistence._encoding import parse_descri
 from datarobot_genai.application_utils.persistence._encoding import validate_range_key
 from datarobot_genai.application_utils.persistence._routing import SessionRoutingTable
 from datarobot_genai.application_utils.persistence._routing import build_session_routing
+from datarobot_genai.application_utils.persistence._serde import deserialize_field
+from datarobot_genai.application_utils.persistence._serde import serialize_field
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
 from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
@@ -219,27 +221,26 @@ class DRSession(BaseModel):
                 raise ValueError(f"Deduplication key {routing.dedup_field!r} must not be None.")
             dedup_key = str(dedup_value)
 
-        # Description from range keys
-        description: str | None = None
-        if routing.range_fields:
-            range_values: list[str] = []
-            for fname in routing.range_fields:
-                val = kwargs.get(fname, "")
-                validate_range_key(fname, val)
-                range_values.append(str(val))
-            description = build_description(cls._prefix(), range_values)
+        # Description always carries at least the class prefix, so every subclass is
+        # prefix-identifiable on the wire and ``list()`` can scope its results to one
+        # subclass.  Declared range keys extend the prefix into a hierarchical path.
+        range_values: list[str] = []
+        for fname in routing.range_fields:
+            val = kwargs.get(fname, "")
+            validate_range_key(fname, val)
+            range_values.append(str(val))
+        description = build_description(cls._prefix(), range_values)
 
         # Metadata from plain fields
         metadata: dict[str, Any] = {}
         for fname in routing.metadata_fields:
             if fname in kwargs:
-                metadata[fname] = kwargs[fname]
+                metadata[fname] = serialize_field(cls, fname, kwargs[fname])
 
         payload: dict[str, Any] = {"participants": participants}
         if dedup_key is not None:
             payload["deduplicationKey"] = dedup_key
-        if description is not None:
-            payload["description"] = description
+        payload["description"] = description
         if metadata:
             payload["metadata"] = metadata
         payload["lifecycleStrategies"] = cls.__lifecycle_strategies__
@@ -294,7 +295,7 @@ class DRSession(BaseModel):
         metadata = data.get("metadata") or {}
         for fname in routing.metadata_fields:
             if fname in metadata:
-                init_kwargs[fname] = metadata[fname]
+                init_kwargs[fname] = deserialize_field(cls, fname, metadata[fname])
             elif cls.model_fields[fname].is_required():
                 init_kwargs[fname] = None
 
@@ -332,7 +333,7 @@ class DRSession(BaseModel):
         metadata = data.get("metadata") or {}
         for fname in routing.metadata_fields:
             if fname in metadata:
-                setattr(self, fname, metadata[fname])
+                setattr(self, fname, deserialize_field(type(self), fname, metadata[fname]))
 
         # Sync range fields from description
         for fname, val in type(self)._decode_range_fields(routing, data).items():
@@ -477,6 +478,10 @@ class DRSession(BaseModel):
     ) -> builtins.list[DRSession]:
         """List sessions matching a range-key prefix and/or participant filter.
 
+        The query is **always** scoped to this subclass by its
+        ``__description_prefix__`` (so ``list()`` never returns sessions of a
+        different subclass sharing the space); range-key kwargs narrow it further.
+
         Range-key kwargs must form a **contiguous leading prefix** of the
         declared ``DRRangeKey`` fields (e.g. for fields ``[tenant, topic]`` you
         may filter on ``tenant=`` alone or on ``tenant=`` + ``topic=``, but not
@@ -522,16 +527,18 @@ class DRSession(BaseModel):
         # Build query params
         query_params: dict[str, Any] = {}
 
-        # Build description filter from range key kwargs
+        # Always filter by the class description prefix so list() returns only this
+        # subclass's sessions.  Without this, a range-kwarg-less list() would send no
+        # description filter and the service would return every session in the space
+        # regardless of subclass.  Leading range-key kwargs extend the prefix filter.
+        range_values: list[str] = []
         if kwargs and routing.range_fields:
-            range_values: list[str] = []
             for fname in routing.range_fields:
                 if fname in kwargs:
                     value = kwargs[fname]
                     validate_range_key(fname, value)
                     range_values.append(str(value))
-            if range_values:
-                query_params["description"] = build_query_description(cls._prefix(), range_values)
+        query_params["description"] = build_query_description(cls._prefix(), range_values)
 
         if participant is not None:
             query_params["participants"] = participant
@@ -632,11 +639,11 @@ class DRSession(BaseModel):
             new_metadata: dict[str, Any] = {}
             for fname in routing.metadata_fields:
                 if fname in kwargs:
-                    new_metadata[fname] = kwargs[fname]
+                    new_metadata[fname] = serialize_field(type(self), fname, kwargs[fname])
                 else:
                     current_val = getattr(self, fname, None)
                     if current_val is not None:
-                        new_metadata[fname] = current_val
+                        new_metadata[fname] = serialize_field(type(self), fname, current_val)
             payload["metadata"] = new_metadata
 
         # The description encodes the range keys; only rebuild and send it when a

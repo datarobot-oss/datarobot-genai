@@ -166,6 +166,28 @@ def test_different_prefix_does_not_match() -> None:
     assert query.lower() not in stored.lower()
 
 
+def test_prefix_is_not_matched_by_a_longer_prefix_sharing_its_start() -> None:
+    """GIVEN prefixes 'thread' and 'threadx' WHEN cross-querying THEN neither matches.
+
+    Trailing-slash anchoring keeps prefixes disjoint even when one is a raw-string
+    prefix of the other — the reason ``EntityLocator`` (prefix ``loc``) can share a
+    space with ``Chat`` (prefix ``thread``) without ``.list`` bleeding across them.
+    """
+    stored_thread = build_description("thread", ["acme"])  # //thread/acme/
+    stored_threadx = build_description("threadx", ["acme"])  # //threadx/acme/
+    # A no-value query for one prefix must not substring-match the other's storage.
+    assert build_query_description("thread", []).lower() not in stored_threadx.lower()
+    assert build_query_description("threadx", []).lower() not in stored_thread.lower()
+
+
+def test_loc_prefix_disjoint_from_thread_prefix() -> None:
+    """GIVEN 'loc' and 'thread' prefixes WHEN cross-querying THEN no substring match."""
+    stored_chat = build_description("thread", ["acme", "billing"])
+    stored_loc = build_description("loc", ["chat:some-uuid"])
+    assert build_query_description("loc", []).lower() not in stored_chat.lower()
+    assert build_query_description("thread", []).lower() not in stored_loc.lower()
+
+
 # ── parse_description ─────────────────────────────────────────────────────────
 
 

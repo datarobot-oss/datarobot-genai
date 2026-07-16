@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.1
+- `application-utils`: **ORM nested (de)serialization** — the persistence ORM now round-trips any Pydantic-expressible type in declared session-metadata and event-body fields (nested models, `list[Model]`, `Optional[Model]`, enums, dicts) via per-field `TypeAdapter`s, instead of only JSON primitives. *Behavior change*: on read, present field values are now best-effort coerced to their declared type (e.g. a scalar declared `int` that arrives as `"3"` becomes `3`); malformed wire values fall back to the raw value (logged at `WARNING`) with no error, and all §1 backward-compat invariants (reads via `model_construct`, absent-required→`None`, `version`/`sequenceId` defaults, patch semantics, routing markers bypass serde) are preserved.
+- `application-utils`: **ORM `.list` prefix-scoping** — `DRSession.list()` now *always* filters by the subclass's `__description_prefix__`, and `_to_wire_create` always stamps at least the prefix into `description`. Previously a range-kwarg-less `.list(space)` sent no `description` filter and returned **every** session in the space regardless of subclass; trailing-slash anchoring (`//thread/` never matches `//threadx/…` nor `//loc/…`) now keeps subclasses disjoint so they can safely share one space. No behavior change for range-key-carrying classes with range-key filters supplied.
+
 ## 0.25.0
 - *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
   - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
