@@ -94,7 +94,7 @@ def _build_fake_load_workflow(response: ChatResponse):
 def _install_fake_workflow(monkeypatch: pytest.MonkeyPatch, response: ChatResponse) -> None:
     """Patch ``load_workflow`` and bypass disk lookup of workflow.yaml."""
     monkeypatch.setattr(
-        "datarobot_genai.dragent.workflow.load_workflow",
+        "nat.runtime.loader.load_workflow",
         _build_fake_load_workflow(response),
     )
     monkeypatch.setattr(
@@ -141,7 +141,7 @@ def _install_trace_id_recording_workflow(
     monkeypatch: pytest.MonkeyPatch, response: ChatResponse, observed: dict
 ) -> None:
     monkeypatch.setattr(
-        "datarobot_genai.dragent.workflow.load_workflow",
+        "nat.runtime.loader.load_workflow",
         _build_trace_id_recording_load_workflow(response, observed),
     )
     monkeypatch.setattr(

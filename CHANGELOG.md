@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
   - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
   - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
-  - `load_workflow` and `load_config` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.workflow` (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+  - `load_workflow` usage moved from deprecated `datarobot_genai.nat.helpers` to `nat.runtime.loader.load_workflow` directly; inline execution publishes `DRAGENT_CONFIG_FILE` via `publish_dragent_config_file_env` before loading (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
 - Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
 
 ## 0.24.2

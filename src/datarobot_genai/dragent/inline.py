@@ -130,6 +130,7 @@ async def execute_dragent_inline_async(
     # plugin discovery via the ``nat.front_ends`` entry point ``dragent`` when
     # ``load_workflow`` runs.
     from nat.data_models.api_server import ChatResponse
+    from nat.runtime.loader import load_workflow
 
     from datarobot_genai.core.chat.completions import backfill_model
     from datarobot_genai.core.chat.completions import (
@@ -137,10 +138,11 @@ async def execute_dragent_inline_async(
     )
     from datarobot_genai.core.config import default_response_model
     from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
-    from datarobot_genai.dragent.workflow import load_workflow
+    from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
     workflow_path = _resolve_config_path(Path(custom_model_dir), config_file)
     logger.info("Running dragent workflow from %s", workflow_path)
+    publish_dragent_config_file_env(workflow_path)
 
     # Build the workflow input as ``DRAgentRunAgentInput`` (a ``RunAgentInput``
     # subclass) so NAT's registered converters (e.g.
