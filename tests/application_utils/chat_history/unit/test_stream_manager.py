@@ -432,6 +432,59 @@ async def test_registry_isolates_concurrent_runs() -> None:
     assert _messages(repo_b)[0].content == "beta"
 
 
+async def test_finished_run_does_not_unregister_a_key_reused_by_a_later_run() -> None:
+    """GIVEN two runs sharing one key WHEN the earlier finishes THEN the later stays registered.
+
+    The earlier run's producer must drop only *its own* registry entry; a later
+    run that reused the same key must remain registered and cancellable.
+    """
+    gate_a = asyncio.Event()
+    gate_b = asyncio.Event()
+    pre_a: list[BaseEvent] = [
+        _run_started(),
+        TextMessageStartEvent(message_id="a1", role="assistant"),
+    ]
+    pre_b: list[BaseEvent] = [
+        _run_started(),
+        TextMessageStartEvent(message_id="b1", role="assistant"),
+    ]
+
+    def build_a() -> AGUIStorageAgent:
+        return AGUIStorageAgent(
+            "assistant",
+            uuid4(),
+            InMemoryChatRepository(),
+            InMemoryMessageRepository(),
+            GatedAgent("a", pre_a, gate_a),
+        )
+
+    def build_b() -> AGUIStorageAgent:
+        return AGUIStorageAgent(
+            "assistant",
+            uuid4(),
+            InMemoryChatRepository(),
+            InMemoryMessageRepository(),
+            GatedAgent("b", pre_b, gate_b),
+        )
+
+    manager = StreamPersistenceManager(lambda build: build())
+
+    # Run A registers under the shared key and blocks on its gate.
+    handle_a = await manager.run(_input(), build_a)
+    # Run B reuses A's exact (thread_id, run_id) key, overwriting the registry entry.
+    handle_b = await manager.run(_input(), build_b)
+
+    # Let A finish: its producer's finally must not evict B, which now owns the key.
+    gate_a.set()
+    await handle_a.wait()
+
+    # B is still registered under the shared key and remains cancellable.
+    assert manager.cancel(THREAD, RUN) is True
+    await handle_b.wait()
+    # B unregistered itself on completion, so the key is finally clear.
+    assert manager.cancel(THREAD, RUN) is False
+
+
 # ── Sentinel contract ─────────────────────────────────────────────────────────────
 
 

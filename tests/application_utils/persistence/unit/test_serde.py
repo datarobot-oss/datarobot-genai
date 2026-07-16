@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Nested (de)serialisation tests for the persistence ORM (Phase 0).
+"""Nested (de)serialisation tests for the persistence ORM.
 
 Declared ``DREvent`` body fields and ``DRSession`` metadata fields must round-trip
 through any Pydantic-expressible type — nested models, ``list[Model]``,
@@ -23,6 +23,7 @@ robust (raw fallback) against malformed wire payloads.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
@@ -334,6 +335,30 @@ def test_metadata_malformed_wire_falls_back_to_raw() -> None:
     }
     session = RichSession._from_wire(_space(), wire)  # type: ignore[assignment]
     assert session.widget == "not-a-widget"  # raw preserved, no ValidationError raised
+
+
+def test_malformed_wire_fallback_logs_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """GIVEN an uncoercible field WHEN _from_wire THEN the raw fallback is logged at WARNING.
+
+    The raw value crashes downstream consumers that expect the declared type, so
+    the fallback must be observable rather than silent.
+    """
+    wire = {
+        "sequenceId": 5,
+        "createdAt": "2026-06-30T00:00:01Z",
+        "emitterType": "agent",
+        "emitterId": None,
+        "body": {"content": "hi", "widgets": "not-a-list"},
+    }
+    serde_logger = "datarobot_genai.application_utils.persistence._serde"
+    with caplog.at_level(logging.WARNING, logger=serde_logger):
+        event = RichMessage._from_wire(_session(), wire)  # type: ignore[assignment]
+
+    assert event.widgets == "not-a-list"
+    assert any(
+        r.name == serde_logger and "widgets" in r.getMessage() and "raw value" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 # ── patch preserves an unpatched nested field ───────────────────────────────────

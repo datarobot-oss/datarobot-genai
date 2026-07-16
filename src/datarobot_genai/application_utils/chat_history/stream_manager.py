@@ -255,9 +255,13 @@ class StreamPersistenceManager(Generic[P]):
             finally:
                 # ALWAYS terminate the client-facing queue and unregister, even
                 # when the producer was cancelled or raised — otherwise
-                # ``RunHandle.events`` loops forever.
+                # ``RunHandle.events`` loops forever.  Only drop the registry
+                # entry when it is still *this* run's: a later run that reused the
+                # same ``(thread_id, run_id)`` key must not be unregistered by an
+                # earlier run finishing.
                 event_queue.put(NoMoreEvents())
-                self._runs.pop(key, None)
+                if self._runs.get(key, (None, None))[0] is event_queue:
+                    self._runs.pop(key, None)
 
         task = asyncio.create_task(_produce())
         self._runs[key] = (event_queue, task)

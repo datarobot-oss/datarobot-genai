@@ -36,6 +36,13 @@ import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import BaseEvent
 from ag_ui.core import CustomEvent
+from ag_ui.core import ReasoningEncryptedValueEvent
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageChunkEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
@@ -344,6 +351,8 @@ async def test_reasoning_is_nested_and_named_from_the_thinking_title() -> None:
     assert reasonings[0].name == "Planning"
     assert reasonings[0].content == "step 1 step 2"
     assert reasonings[0].in_progress is False
+    # A normally-ended reasoning step is COMPLETE, not stranded at "active".
+    assert reasonings[0].status == MessageStatus.COMPLETE.value
 
 
 async def test_reasoning_content_without_start_uses_title_not_object() -> None:
@@ -367,6 +376,154 @@ async def test_reasoning_content_without_start_uses_title_not_object() -> None:
     # The storage.py:520 bug set name to the MessageReasoning object; it must be the title.
     assert reasonings[0].name == "Reasoning about X"
     assert reasonings[0].content == "because"
+    assert reasonings[0].status == MessageStatus.COMPLETE.value
+
+
+async def test_reasoning_events_persist_nested_reasoning_with_agui_id() -> None:
+    """GIVEN a current-protocol Reasoning* sub-stream WHEN driven THEN it persists like Thinking."""
+    events = [
+        _run_started(),
+        TextMessageStartEvent(message_id="m1", role="assistant"),
+        ReasoningStartEvent(message_id="r1"),
+        ReasoningMessageStartEvent(message_id="r1", role="reasoning"),
+        ReasoningMessageContentEvent(message_id="r1", delta="step 1 "),
+        ReasoningMessageContentEvent(message_id="r1", delta="step 2"),
+        ReasoningMessageEndEvent(message_id="r1"),
+        ReasoningEndEvent(message_id="r1"),
+        TextMessageEndEvent(message_id="m1"),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    reasonings = _messages(message_repo)[0].reasonings
+    assert len(reasonings) == 1
+    assert reasonings[0].content == "step 1 step 2"
+    # The Reasoning* events carry a message_id, persisted as agui_id (Thinking* had none).
+    assert reasonings[0].agui_id == "r1"
+    assert reasonings[0].in_progress is False
+    assert reasonings[0].status == MessageStatus.COMPLETE.value
+
+
+async def test_reasoning_content_without_message_start_creates_reasoning() -> None:
+    """GIVEN Reasoning content with no message-start WHEN driven THEN the content creates it."""
+    events = [
+        _run_started(),
+        TextMessageStartEvent(message_id="m1", role="assistant"),
+        ReasoningStartEvent(message_id="r1"),
+        # No ReasoningMessageStartEvent — the content event must create the reasoning.
+        ReasoningMessageContentEvent(message_id="r1", delta="because"),
+        ReasoningMessageEndEvent(message_id="r1"),
+        ReasoningEndEvent(message_id="r1"),
+        TextMessageEndEvent(message_id="m1"),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    reasonings = _messages(message_repo)[0].reasonings
+    assert len(reasonings) == 1
+    assert reasonings[0].content == "because"
+    assert reasonings[0].agui_id == "r1"
+    assert reasonings[0].in_progress is False
+    assert reasonings[0].status == MessageStatus.COMPLETE.value
+
+
+async def test_reasoning_message_chunk_folds_content_and_finalizes_at_run_finish() -> None:
+    """GIVEN self-contained ReasoningMessageChunk events WHEN driven THEN content is folded."""
+    events = [
+        _run_started(),
+        TextMessageStartEvent(message_id="m1", role="assistant"),
+        ReasoningMessageChunkEvent(message_id="r1", delta="chunk a "),
+        ReasoningMessageChunkEvent(message_id="r1", delta="chunk b"),
+        TextMessageEndEvent(message_id="m1"),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    reasonings = _messages(message_repo)[0].reasonings
+    assert len(reasonings) == 1
+    assert reasonings[0].content == "chunk a chunk b"
+    assert reasonings[0].agui_id == "r1"
+    # No explicit reasoning end; the run-finish finalisation completes the step.
+    assert reasonings[0].in_progress is False
+    assert reasonings[0].status == MessageStatus.COMPLETE.value
+
+
+async def test_reasoning_encrypted_value_event_is_ignored() -> None:
+    """GIVEN a ReasoningEncryptedValue event WHEN driven THEN nothing is persisted for it."""
+    events: list[BaseEvent] = [
+        _run_started(),
+        ReasoningEncryptedValueEvent(
+            subtype="message", entity_id="e1", encrypted_value="opaque-blob"
+        ),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    # The opaque encrypted value has no cleartext home and is not chat history.
+    assert _messages(message_repo) == []
+
+
+async def test_reasoning_before_text_start_folds_into_the_same_message() -> None:
+    """GIVEN reasoning before the answer's TextMessageStart WHEN driven THEN one message persists.
+
+    The reasoning opens an anonymous assistant message; when the answer's real
+    message id arrives it is adopted in place, so the reasoning and the answer
+    text persist on a single message instead of two.
+    """
+    events = [
+        _run_started(),
+        # Reasoning arrives before any TextMessageStart (typical of reasoning models).
+        ReasoningStartEvent(message_id="r1"),
+        ReasoningMessageStartEvent(message_id="r1", role="reasoning"),
+        ReasoningMessageContentEvent(message_id="r1", delta="thinking"),
+        ReasoningMessageEndEvent(message_id="r1"),
+        ReasoningEndEvent(message_id="r1"),
+        # The answer's message id must be adopted by the reasoning-opened message.
+        TextMessageStartEvent(message_id="m1", role="assistant"),
+        TextMessageContentEvent(message_id="m1", delta="answer"),
+        TextMessageEndEvent(message_id="m1"),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    messages = _messages(message_repo)
+    assert len(messages) == 1
+    message = messages[0]
+    assert message.agui_id == "m1"  # the anonymous message adopted the answer id
+    assert message.content == "answer"
+    assert len(message.reasonings) == 1
+    assert message.reasonings[0].content == "thinking"
+    assert message.reasonings[0].agui_id == "r1"
+
+
+async def test_thinking_before_text_start_folds_into_the_same_message() -> None:
+    """GIVEN deprecated Thinking events before the TextMessageStart WHEN driven THEN one message."""
+    events = [
+        _run_started(),
+        ThinkingStartEvent(title="Planning"),
+        ThinkingTextMessageStartEvent(),
+        ThinkingTextMessageContentEvent(delta="step 1"),
+        ThinkingTextMessageEndEvent(),
+        ThinkingEndEvent(),
+        TextMessageStartEvent(message_id="m1", role="assistant"),
+        TextMessageContentEvent(message_id="m1", delta="answer"),
+        TextMessageEndEvent(message_id="m1"),
+        _run_finished(),
+    ]
+
+    _, _, _, message_repo, _ = await _drive(events)
+
+    messages = _messages(message_repo)
+    assert len(messages) == 1
+    assert messages[0].agui_id == "m1"
+    assert messages[0].content == "answer"
+    assert [r.name for r in messages[0].reasonings] == ["Planning"]
+    assert messages[0].reasonings[0].content == "step 1"
 
 
 # ── Run lifecycle / steps ─────────────────────────────────────────────────────────

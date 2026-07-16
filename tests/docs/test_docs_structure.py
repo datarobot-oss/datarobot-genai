@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Regression tests for the published documentation layout and nav (plan Phase 6).
+"""Regression tests for the published documentation layout and nav.
 
 Only files under ``docs/src`` are published (``properdocs.yml`` sets
 ``docs_dir: src``).  These tests pin the Application Utils section — the
-memory-ORM/chat-history split that Phase 6 introduced — and guard the whole nav
-against references to files that do not exist.
+memory-ORM/chat-history split — and guard the whole nav against references 
+to files that do not exist.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _nav_leaves(node: object) -> list[str]:
 
 def test_application_utils_docs_are_published_and_split() -> None:
     """
-    GIVEN the Phase 6 docs move/split.
+    GIVEN the docs move/split.
 
     WHEN the published ``docs/src/application_utils`` directory is inspected.
 
@@ -71,7 +71,7 @@ def test_old_unpublished_application_utils_dir_is_removed() -> None:
     """
     GIVEN the prior PR mistakenly placed the docs outside ``docs/src``.
 
-    WHEN the repository is inspected after the Phase 6 move.
+    WHEN the repository is inspected after the application_utils move.
 
     THEN the unpublished ``docs/application_utils`` directory no longer exists.
     """

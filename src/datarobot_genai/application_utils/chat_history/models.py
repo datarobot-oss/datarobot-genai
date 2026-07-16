@@ -267,6 +267,7 @@ class MessageCreate(BaseModel):
 class MessageUpdate(BaseModel):
     """Input DTO for a partial message update; every field is optional."""
 
+    agui_id: str | None = None
     content: str | None = None
     error: str | None = None
     in_progress: bool | None = None

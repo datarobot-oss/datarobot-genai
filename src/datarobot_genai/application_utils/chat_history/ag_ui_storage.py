@@ -46,9 +46,11 @@ customise is an overridable method:
   :class:`~.repositories.MessageRepositoryLike` protocols, so any conforming
   backend (a SQL store, an in-memory fake) is a drop-in replacement.
 
-Reasoning events use the (deprecated) AG-UI ``Thinking*`` events; the dispatch
-registry makes adopting the drafted ``Reasoning*`` events a registration rather
-than a rewrite.
+Reasoning is persisted from both the current AG-UI ``Reasoning*`` events and the
+deprecated ``Thinking*`` events (still handled for backward compatibility); the
+two families map one-to-one onto the same nested :class:`~.models.Reasoning`
+records, so a single :meth:`~AGUIStorageAgent.handle_reasoning` category handler
+covers both.
 """
 
 from __future__ import annotations
@@ -68,6 +70,13 @@ from typing import Any
 from uuid import UUID
 
 from ag_ui.core import BaseEvent
+from ag_ui.core import ReasoningEncryptedValueEvent
+from ag_ui.core import ReasoningEndEvent
+from ag_ui.core import ReasoningMessageChunkEvent
+from ag_ui.core import ReasoningMessageContentEvent
+from ag_ui.core import ReasoningMessageEndEvent
+from ag_ui.core import ReasoningMessageStartEvent
+from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
@@ -166,6 +175,7 @@ class StorageState:
     active_step: str | None = None
     current_event_timestamp: datetime = field(default_factory=_epoch)
     active_reasoning_title: str | None = None
+    active_reasoning_agui_id: str | None = None
     active_reasoning: Reasoning | None = None
     active_tool_call: ToolCall | None = None
     active_message: Message | None = None
@@ -179,6 +189,7 @@ class StorageState:
         self.active_step = None
         self.current_event_timestamp = _epoch()
         self.active_reasoning_title = None
+        self.active_reasoning_agui_id = None
         self.active_reasoning = None
         self.active_tool_call = None
         self.active_message = None
@@ -302,6 +313,13 @@ class AGUIStorageAgent(AGUIAgent):
             ThinkingTextMessageStartEvent: "handle_reasoning",
             ThinkingTextMessageContentEvent: "handle_reasoning",
             ThinkingTextMessageEndEvent: "handle_reasoning",
+            ReasoningStartEvent: "handle_reasoning",
+            ReasoningEndEvent: "handle_reasoning",
+            ReasoningMessageStartEvent: "handle_reasoning",
+            ReasoningMessageContentEvent: "handle_reasoning",
+            ReasoningMessageEndEvent: "handle_reasoning",
+            ReasoningMessageChunkEvent: "handle_reasoning",
+            ReasoningEncryptedValueEvent: "handle_reasoning",
         }
 
     def _resolve_handler(self, event_type: type[BaseEvent]) -> str | None:
@@ -406,6 +424,7 @@ class AGUIStorageAgent(AGUIAgent):
         return MessageReasoningCreate(
             role=Role.REASONING.value,
             message_uuid=state.active_message.message_uuid,
+            agui_id=state.active_reasoning_agui_id,
             name=name or "",
             created_at=state.current_event_timestamp,
         )
@@ -760,53 +779,131 @@ class AGUIStorageAgent(AGUIAgent):
                 await self.flush_tool_call_buffer(state)
 
     async def handle_reasoning(self, state: StorageState, chat: Chat, event: BaseEvent) -> None:
-        """Fold ``Thinking*`` events onto a reasoning step nested in the message.
+        """Fold reasoning events onto a reasoning step nested in the active message.
 
-        Note
-        ----
-        AG-UI reasoning is still drafted; the (deprecated) ``Thinking*`` events
-        are handled here.  Adopting the drafted ``Reasoning*`` events is a matter
-        of registering them in :meth:`event_handlers`.
+        Handles both the current AG-UI ``Reasoning*`` events and the deprecated
+        ``Thinking*`` events with identical persistence semantics; the two
+        families map one-to-one:
+
+        ================================  =============================
+        Deprecated ``Thinking*``          Current ``Reasoning*``
+        ================================  =============================
+        ``ThinkingStartEvent``            ``ReasoningStartEvent``
+        ``ThinkingEndEvent``              ``ReasoningEndEvent``
+        ``ThinkingTextMessageStartEvent`` ``ReasoningMessageStartEvent``
+        ``ThinkingTextMessageContent...`` ``ReasoningMessageContentEvent``
+        ``ThinkingTextMessageEndEvent``   ``ReasoningMessageEndEvent``
+        (none)                            ``ReasoningMessageChunkEvent``
+        (none)                            ``ReasoningEncryptedValueEvent``
+        ================================  =============================
+
+        The ``Reasoning*`` events additionally carry a ``message_id`` which is
+        persisted as the reasoning step's ``agui_id`` for correlation; the
+        ``Thinking*`` events carry only an optional ``title`` (persisted as the
+        step's ``name``).
+
+        Override to store structured content instead of raw appended deltas.
         """
+        # ── Reasoning-phase lifecycle ──
         if isinstance(event, ThinkingStartEvent):
-            state.active_reasoning_title = event.title
-        elif isinstance(event, ThinkingEndEvent):
-            await self.flush_reasoning_buffer(state)
-            state.active_reasoning_title = None
-            if state.active_reasoning is not None:
-                await self._message_repo.update_message_reasoning(
-                    state.active_reasoning.uuid, MessageReasoningUpdate(in_progress=False)
-                )
-                state.active_reasoning = None
+            self._start_reasoning_phase(state, title=event.title, agui_id=None)
+        elif isinstance(event, ReasoningStartEvent):
+            self._start_reasoning_phase(state, title=None, agui_id=event.message_id)
+        elif isinstance(event, (ThinkingEndEvent, ReasoningEndEvent)):
+            await self._end_reasoning_phase(state)
+        # ── Reasoning-message lifecycle ──
         elif isinstance(event, ThinkingTextMessageStartEvent):
-            await self._ensure_message_exists(state, chat, None, None)
-            assert state.active_message is not None
-            state.active_reasoning = await self._message_repo.create_message_reasoning(
-                self.build_reasoning_create(state, state.active_reasoning_title)
-            )
+            await self._start_reasoning_message(state, chat, agui_id=None)
+        elif isinstance(event, ReasoningMessageStartEvent):
+            await self._start_reasoning_message(state, chat, agui_id=event.message_id)
         elif isinstance(event, ThinkingTextMessageContentEvent):
-            await self._ensure_message_exists(state, chat, None, None)
-            assert state.active_message is not None
-            await self._ensure_active_reasoning(state)
-            assert state.active_reasoning is not None
-            if isinstance(event.delta, str):
-                state.buffered_reasoning_content += event.delta
-            elif isinstance(event.delta, list):
-                state.buffered_reasoning_content += "\n" + json.dumps(event.delta)
-            else:
-                logger.warning("Received reasoning '%s' of unanticipated type.", event.delta)
-            if len(state.buffered_reasoning_content) >= self._minimal_chunk_to_persist:
-                await self.flush_reasoning_buffer(state)
-        elif isinstance(event, ThinkingTextMessageEndEvent):
-            await self._ensure_message_exists(state, chat, None, None)
-            assert state.active_message is not None
-            await self._ensure_active_reasoning(state)
-            assert state.active_reasoning is not None
-            await self.flush_reasoning_buffer(state)
+            await self._append_reasoning_content(state, chat, event.delta, agui_id=None)
+        elif isinstance(event, ReasoningMessageContentEvent):
+            await self._append_reasoning_content(state, chat, event.delta, agui_id=event.message_id)
+        elif isinstance(event, ReasoningMessageChunkEvent):
+            # A self-contained chunk (no explicit start/end); it is folded onto
+            # the active reasoning like a content delta and finalised at the
+            # reasoning-phase end or run finish.
+            await self._append_reasoning_content(state, chat, event.delta, agui_id=event.message_id)
+        elif isinstance(event, (ThinkingTextMessageEndEvent, ReasoningMessageEndEvent)):
+            await self._end_reasoning_message(state, chat)
+        elif isinstance(event, ReasoningEncryptedValueEvent):
+            # Opaque provider-encrypted reasoning: there is no cleartext field to
+            # store it in and it is not meaningful chat history, so it is ignored.
+            logger.debug("Ignoring ReasoningEncryptedValueEvent (subtype=%s).", event.subtype)
+
+    def _start_reasoning_phase(
+        self, state: StorageState, *, title: str | None, agui_id: str | None
+    ) -> None:
+        """Begin a reasoning phase, recording the title / id its steps inherit."""
+        state.active_reasoning_title = title
+        state.active_reasoning_agui_id = agui_id
+
+    async def _end_reasoning_phase(self, state: StorageState) -> None:
+        """End a reasoning phase: flush and finalise any still-active step.
+
+        The step is marked ``COMPLETE`` here (not deferred to run finish) because
+        clearing ``state.active_reasoning`` hides it from the run-lifecycle
+        finaliser; leaving it would strand the completed step at ``active``.
+        """
+        await self.flush_reasoning_buffer(state)
+        state.active_reasoning_title = None
+        state.active_reasoning_agui_id = None
+        if state.active_reasoning is not None:
             await self._message_repo.update_message_reasoning(
-                state.active_reasoning.uuid, MessageReasoningUpdate(in_progress=False)
+                state.active_reasoning.uuid,
+                MessageReasoningUpdate(in_progress=False, status=MessageStatus.COMPLETE.value),
             )
             state.active_reasoning = None
+
+    async def _start_reasoning_message(
+        self, state: StorageState, chat: Chat, *, agui_id: str | None
+    ) -> None:
+        """Open a new reasoning step nested in the active message."""
+        await self._ensure_message_exists(state, chat, None, None)
+        assert state.active_message is not None
+        if agui_id is not None:
+            state.active_reasoning_agui_id = agui_id
+        state.active_reasoning = await self._message_repo.create_message_reasoning(
+            self.build_reasoning_create(state, state.active_reasoning_title)
+        )
+
+    async def _append_reasoning_content(
+        self, state: StorageState, chat: Chat, delta: Any, *, agui_id: str | None
+    ) -> None:
+        """Append a content delta to the active reasoning step, creating it if needed."""
+        await self._ensure_message_exists(state, chat, None, None)
+        assert state.active_message is not None
+        if agui_id is not None:
+            state.active_reasoning_agui_id = agui_id
+        await self._ensure_active_reasoning(state)
+        assert state.active_reasoning is not None
+        if isinstance(delta, str):
+            state.buffered_reasoning_content += delta
+        elif isinstance(delta, list):
+            state.buffered_reasoning_content += "\n" + json.dumps(delta)
+        elif delta is not None:
+            logger.warning("Received reasoning '%s' of unanticipated type.", delta)
+        if len(state.buffered_reasoning_content) >= self._minimal_chunk_to_persist:
+            await self.flush_reasoning_buffer(state)
+
+    async def _end_reasoning_message(self, state: StorageState, chat: Chat) -> None:
+        """Flush and finalise the active reasoning step (end of one reasoning message).
+
+        Marks the step ``COMPLETE``: like :meth:`_end_reasoning_phase`, clearing
+        ``state.active_reasoning`` here means the run-lifecycle finaliser will not
+        see it, so the terminal status must be set now.
+        """
+        await self._ensure_message_exists(state, chat, None, None)
+        assert state.active_message is not None
+        await self._ensure_active_reasoning(state)
+        assert state.active_reasoning is not None
+        await self.flush_reasoning_buffer(state)
+        await self._message_repo.update_message_reasoning(
+            state.active_reasoning.uuid,
+            MessageReasoningUpdate(in_progress=False, status=MessageStatus.COMPLETE.value),
+        )
+        state.active_reasoning = None
 
     async def _ensure_active_reasoning(self, state: StorageState) -> None:
         """Ensure ``state.active_reasoning`` points at a live in-progress reasoning.
@@ -885,13 +982,30 @@ class AGUIStorageAgent(AGUIAgent):
     ) -> None:
         """Point ``state.active_message`` at the message this event belongs to.
 
-        Starting a message with a *new* ``agui_id`` closes out (flushes +
-        finalises) the previous active message.  An existing message is reused by
-        ``agui_id`` when given, otherwise by matching the chat's last message's
-        role; failing both, a new message is created via
-        :meth:`build_message_create`.
+        A real ``agui_id`` arriving for the current *anonymous* message — one
+        opened by reasoning or tool-call events that streamed before the
+        message-start — is adopted in place, so those nested records stay on the
+        message the id names.  Otherwise, starting a message with a *new*
+        ``agui_id`` closes out (flushes + finalises) the previous active message.
+        An existing message is reused by ``agui_id`` when given, otherwise by
+        matching the chat's last message's role; failing both, a new message is
+        created via :meth:`build_message_create`.
         """
         active_message = state.active_message
+
+        # A real id for the current anonymous message: adopt it in place rather
+        # than stranding its reasoning / tool calls on a separate, empty message.
+        if agui_id and active_message is not None and active_message.agui_id is None:
+            existing = await self._message_repo.get_message_by_agui_id(chat.chat_uuid, agui_id)
+            if existing is None:
+                active_message.agui_id = agui_id
+                updated = await self._message_repo.update_message(
+                    active_message.message_uuid, MessageUpdate(agui_id=agui_id)
+                )
+                state.active_message = updated or active_message
+                return
+            # A distinct message already owns this id; fall through to close out
+            # the anonymous message and reuse the existing one below.
 
         # Starting a different message: close out the prior one.
         if agui_id and active_message is not None and active_message.agui_id != agui_id:

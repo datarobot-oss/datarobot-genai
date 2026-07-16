@@ -31,12 +31,15 @@ field name)`` and use it to:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel
 from pydantic import TypeAdapter
 from pydantic import ValidationError
+
+logger = logging.getLogger(__name__)
 
 # One TypeAdapter per (model class, field name).  Keyed weakly on the class so the
 # adapters are collected together with a transient subclass; ``TypeAdapter``
@@ -122,4 +125,13 @@ def deserialize_field(model_cls: type[BaseModel], field_name: str, raw: Any) -> 
     try:
         return field_type_adapter(model_cls, field_name).validate_python(raw)
     except (ValidationError, TypeError, ValueError):
+        # Reads must never raise, so the raw value is returned as a last resort;
+        # log it so a malformed/foreign-written field is observable rather than
+        # silently surfacing as a downstream type error on the raw value.
+        logger.warning(
+            "Could not coerce wire value for %s.%s to its declared type; "
+            "returning the raw value unchanged.",
+            model_cls.__name__,
+            field_name,
+        )
         return raw
