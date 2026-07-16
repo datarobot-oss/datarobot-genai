@@ -22,9 +22,9 @@ from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 from pydantic import create_model
 
-from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPClientConfig
-from datarobot_genai.nat.datarobot_mcp_client import DataRobotMCPServerConfig
-from datarobot_genai.nat.datarobot_mcp_client import _make_input_schema_enum_safe
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPClientConfig
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import _make_input_schema_enum_safe
 
 
 class _InputSchema(BaseModel):
@@ -80,7 +80,7 @@ class _FakeMCPClient(MCPBaseClient):
 
 async def test_datarobot_mcp_client():
     with patch(
-        "datarobot_genai.nat.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
+        "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
     ) as mock_client:
         fake_tools = {"a": _FakeTool("a", "da"), "b": _FakeTool("b", "db")}
 

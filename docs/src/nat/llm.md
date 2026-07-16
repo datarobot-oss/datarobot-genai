@@ -33,7 +33,7 @@ llms:
 | `_type` | When it appears |
 |---|---|
 | **`datarobot-llm-gateway`** | Gateway only; no per-deployment id in the block. |
-| **`datarobot-llm-deployment`** | Fixed LLM deployment; often includes deployment id and optional headers in YAML. |
+| **`datarobot-llm-deployment`** | Fixed LLM deployment; often includes deployment id in the block. |
 | **`datarobot-nim`** | NIM deployment on DataRobot. |
 | **`datarobot-litellm`** | External LiteLLM providers; provider keys still come from the environment. |
 | **`datarobot-llm-router`** | Primary + fallback LLMs with automatic failover via LiteLLM Router; includes `primary`, `fallbacks`, and optional tuning field `num_retries`. |

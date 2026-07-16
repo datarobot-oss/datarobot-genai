@@ -69,10 +69,6 @@ class DataRobotLLMComponentModelConfig(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
-    )
 
 
 @register_llm_provider(config_type=DataRobotLLMComponentModelConfig)
@@ -113,10 +109,6 @@ class DataRobotLLMDeploymentModelConfig(
     llm_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
-    )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
     )
 
 

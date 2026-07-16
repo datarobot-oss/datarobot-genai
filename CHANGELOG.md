@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.0
+- *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
+  - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
+  - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `load_workflow` usage moved from deprecated `datarobot_genai.nat.helpers` to `nat.runtime.loader.load_workflow` directly; inline execution publishes `DRAGENT_CONFIG_FILE` via `publish_dragent_config_file_env` before loading (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+- Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
+
 ## 0.24.3
 - `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
 
