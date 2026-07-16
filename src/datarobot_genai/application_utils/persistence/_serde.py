@@ -38,6 +38,7 @@ from weakref import WeakKeyDictionary
 from pydantic import BaseModel
 from pydantic import TypeAdapter
 from pydantic import ValidationError
+from pydantic_core import PydanticSerializationError
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,12 @@ def serialize_field(model_cls: type[BaseModel], field_name: str, value: Any) -> 
     is ``"x"``); nested models, lists, optionals, enums and dicts are converted to
     their JSON representation.
 
+    ``patch()`` callers re-serialise every declared field, including ones the caller
+    isn't touching, so *value* may be a raw fallback previously returned by
+    :func:`deserialize_field` rather than an instance of the declared type. On any
+    serialisation failure that raw value is returned unchanged instead of raising,
+    so patching one field never crashes on an unrelated, already-malformed sibling.
+
     Parameters
     ----------
     model_cls : type[BaseModel]
@@ -96,9 +103,19 @@ def serialize_field(model_cls: type[BaseModel], field_name: str, value: Any) -> 
     Returns
     -------
     Any
-        A JSON-serialisable Python object.
+        A JSON-serialisable Python object, or *value* unchanged when it cannot be
+        serialised.
     """
-    return field_type_adapter(model_cls, field_name).dump_python(value, mode="json")
+    try:
+        return field_type_adapter(model_cls, field_name).dump_python(value, mode="json")
+    except PydanticSerializationError:
+        logger.warning(
+            "Could not serialize value for %s.%s to its declared type; "
+            "returning the raw value unchanged.",
+            model_cls.__name__,
+            field_name,
+        )
+        return value
 
 
 def deserialize_field(model_cls: type[BaseModel], field_name: str, raw: Any) -> Any:
