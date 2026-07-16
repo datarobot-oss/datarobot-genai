@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.1
+- `dragent`: Added NAT `mcp_client_with_xaa_support` type MCP client.
+
 ## 0.25.0
 - *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
   - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
