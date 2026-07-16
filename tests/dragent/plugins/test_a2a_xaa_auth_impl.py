@@ -25,6 +25,7 @@ The SDK tests inject a fake ``NetworkInterface`` into the real
 import base64
 import json
 from dataclasses import dataclass
+from unittest.mock import Mock
 from unittest.mock import patch
 from urllib.parse import parse_qs
 
@@ -34,6 +35,10 @@ import respx
 from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import Response
 
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _CLIENT_ASSERTION_TYPE
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _REQUESTED_TOKEN_TYPE
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _SUBJECT_TOKEN_TYPE
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _TOKEN_EXCHANGE_GRANT_TYPE
 from datarobot_genai.dragent.plugins.okta_a2a_auth import ApiTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
@@ -254,6 +259,42 @@ class TestApiTokenExchangeFormFields:
 
         body = parse_qs(step1.calls.last.request.content.decode())
         assert body["scope"] == ["dr.impersonation openid"]
+
+    def test_get_xaa_token_exchange_request_payload(self) -> None:
+        cross_app_flow_params = Mock()
+        cross_app_flow_params.id_jag_scopes = ["dsafafds"]
+        subject_token = Mock()
+        client_assertion = Mock()
+        output = ApiTokenExchange.get_xaa_token_exchange_request_payload(
+            cross_app_flow_params,
+            subject_token,
+            client_assertion,
+        )
+
+        expected_payload = {
+            "grant_type": _TOKEN_EXCHANGE_GRANT_TYPE,
+            "subject_token": subject_token,
+            "subject_token_type": _SUBJECT_TOKEN_TYPE,
+            "requested_token_type": _REQUESTED_TOKEN_TYPE,
+            "audience": cross_app_flow_params.exchange_audience,
+            "scope": " ".join(cross_app_flow_params.id_jag_scopes),
+            "client_assertion_type": _CLIENT_ASSERTION_TYPE,
+            "client_assertion": client_assertion,
+            "resource": cross_app_flow_params.target_audience,
+        }
+        assert output == expected_payload
+
+    def test_get_xaa_token_exchange_request_payload_without_resource_in_payload(self) -> None:
+        cross_app_flow_params = Mock()
+        cross_app_flow_params.target_audience = None
+        cross_app_flow_params.id_jag_scopes = ["dsafafds"]
+        output = ApiTokenExchange.get_xaa_token_exchange_request_payload(
+            cross_app_flow_params,
+            Mock(),
+            Mock(),
+        )
+
+        assert "resource" not in output
 
 
 # ---------------------------------------------------------------------------
@@ -627,3 +668,16 @@ class TestOktaTokenExchangeSdkHttpRequests:
         with patch(f"{_MODULE}._HAS_OKTA_SDK", False):
             with pytest.raises(RuntimeError, match="okta-client-python is not installed"):
                 await exchange.exchange_token(flow_params, "token")
+
+    def test_get_oauth2_client_additional_parameters(self) -> None:
+        cross_app_flow_params = Mock()
+
+        output = OktaTokenExchange.get_oauth2_client_additional_parameters(cross_app_flow_params)
+        assert output == {"resource": cross_app_flow_params.target_audience}
+
+    def test_get_oauth2_client_additional_parameters_without_resource_param(self) -> None:
+        cross_app_flow_params = Mock()
+        cross_app_flow_params.target_audience = None
+
+        output = OktaTokenExchange.get_oauth2_client_additional_parameters(cross_app_flow_params)
+        assert "resource" not in output

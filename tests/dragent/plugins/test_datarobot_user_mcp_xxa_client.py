@@ -110,6 +110,37 @@ class TestMCPAuthServerMetadataDiscovery:
             token_endpoint_auth_method=mock_token_endpoint_auth_method,
         )
 
+    def test_parse_xaa_params_from_mcp_auth_server_metadata_without_token_request_audience(
+        self,
+    ) -> None:
+        mock_token_endpoint_auth_method = Mock()
+        mock_trust_issuer = Mock()
+        mock_exchange_audience = Mock()
+        mock_token_url = Mock()
+        mock_scopes = [Mock()]
+        mcp_auth_server_metadata = {
+            "urn:datarobot:nat_mcp_xaa_client": {
+                "token_endpoint_auth_method": mock_token_endpoint_auth_method,
+                "token_exchange": {
+                    "trusted_issuer": mock_trust_issuer,
+                    "audience": mock_exchange_audience,
+                },
+                "token_request": {
+                    "token_url": mock_token_url,
+                    "scopes": mock_scopes,
+                },
+            }
+        }
+        output = parse_xaa_params_from_mcp_auth_server_metadata(mcp_auth_server_metadata)
+        assert output == _CrossAppFlowParams(
+            trusted_issuer=mock_trust_issuer,
+            exchange_audience=mock_exchange_audience,
+            token_url=mock_token_url,
+            target_audience=None,
+            id_jag_scopes=mock_scopes,
+            token_endpoint_auth_method=mock_token_endpoint_auth_method,
+        )
+
     @pytest.mark.asyncio
     async def test_get_xaa_params_from_mcp_auth_server_metadata(
         self,
