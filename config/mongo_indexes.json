@@ -1,0 +1,9 @@
+{
+  "tool_sets": [
+    {
+      "key": {"created_by": 1, "name": 1},
+      "unique": true,
+      "name": "tool_sets_created_by_name_unique"
+    }
+  ]
+}
