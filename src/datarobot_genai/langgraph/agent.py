@@ -56,7 +56,6 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
-from datarobot_genai.langgraph.moderations_events import convert_langchain_messages
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
@@ -669,6 +668,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         # Lazy import so the moderations-backed primitives load only when a run
         # actually records pipeline interactions.
         from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+        from datarobot_genai.langgraph.moderations_events import convert_langchain_messages
 
         return MultiTurnSample(user_input=convert_langchain_messages(flattened))
 
