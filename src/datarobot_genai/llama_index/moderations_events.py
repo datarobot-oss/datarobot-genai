@@ -1,5 +1,16 @@
 from typing import Any
 
+from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+from datarobot_dome.guards.agent_goal_accuracy import ToolCall
+from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+from llama_index.core.agent.workflow import AgentInput
+from llama_index.core.agent.workflow import AgentOutput
+from llama_index.core.agent.workflow import ToolCallResult
+from llama_index.core.base.llms.types import MessageRole
+from llama_index.core.base.llms.types import TextBlock
+from llama_index.core.workflow import Event
+
 
 def convert_to_moderations_messages(
     events: list[Event],
@@ -10,18 +21,6 @@ def convert_to_moderations_messages(
     ``AgentInput`` / ``AgentOutput`` / ``ToolCallResult`` events and emits the matching
     Human / AI / Tool messages, de-duplicating tool calls by their tool id.
     """
-    # Lazy import so the moderations-backed primitives load only when a run
-    # actually records pipeline interactions.
-    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
-    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
-    from datarobot_dome.guards.agent_goal_accuracy import ToolCall
-    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
-    from llama_index.core.agent.workflow import AgentInput
-    from llama_index.core.agent.workflow import AgentOutput
-    from llama_index.core.agent.workflow import ToolCallResult
-    from llama_index.core.base.llms.types import MessageRole
-    from llama_index.core.base.llms.types import TextBlock
-
     messages: list[HumanMessage | AIMessage | ToolMessage] = []
     tool_call_ids: set[Any] = set()
 

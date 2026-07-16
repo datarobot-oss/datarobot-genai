@@ -53,7 +53,6 @@ from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
-
     from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 logger = logging.getLogger(__name__)
