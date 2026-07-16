@@ -86,9 +86,9 @@ class TestNatTool:
         result = nat_tool(my_async_tool, "my_async_tool")
         assert result is my_async_tool
 
-    @patch("datarobot_genai.nat.tool.FunctionInfo")
-    @patch("datarobot_genai.nat.tool._sync_to_async")
-    @patch("datarobot_genai.nat.tool.register_function")
+    @patch("datarobot_genai.dragent.tool.FunctionInfo")
+    @patch("datarobot_genai.dragent.tool._sync_to_async")
+    @patch("datarobot_genai.dragent.tool.register_function")
     def test_sync_function_causes_sync_to_async_call(
         self,
         mock_register: MagicMock,
@@ -122,9 +122,9 @@ class TestNatTool:
         assert call_kw["fn"] is fake_async
         assert call_kw["description"] == "Echoes"
 
-    @patch("datarobot_genai.nat.tool.FunctionInfo")
-    @patch("datarobot_genai.nat.tool._sync_to_async")
-    @patch("datarobot_genai.nat.tool.register_function")
+    @patch("datarobot_genai.dragent.tool.FunctionInfo")
+    @patch("datarobot_genai.dragent.tool._sync_to_async")
+    @patch("datarobot_genai.dragent.tool.register_function")
     def test_async_function_does_not_call_sync_to_async(
         self,
         mock_register: MagicMock,
@@ -146,8 +146,8 @@ class TestNatTool:
             description="Async echo",
         )
 
-    @patch("datarobot_genai.nat.tool.FunctionInfo")
-    @patch("datarobot_genai.nat.tool.register_function")
+    @patch("datarobot_genai.dragent.tool.FunctionInfo")
+    @patch("datarobot_genai.dragent.tool.register_function")
     def test_description_none_passed_through(
         self, mock_register: MagicMock, mock_function_info: MagicMock
     ):
@@ -163,8 +163,8 @@ class TestNatTool:
         mock_function_info.from_fn.assert_called_once()
         assert mock_function_info.from_fn.call_args.kwargs["description"] is None
 
-    @patch("datarobot_genai.nat.tool.FunctionInfo")
-    @patch("datarobot_genai.nat.tool.register_function")
+    @patch("datarobot_genai.dragent.tool.FunctionInfo")
+    @patch("datarobot_genai.dragent.tool.register_function")
     def test_register_function_called_with_config_type(
         self, mock_register: MagicMock, mock_function_info: MagicMock
     ):
