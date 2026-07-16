@@ -48,7 +48,7 @@ class LLMConfig(BaseModel):
     datarobot_api_token: str | None = None
     llm_deployment_id: str | None = None
     nim_deployment_id: str | None = None
-    use_datarobot_llm_gateway: bool = True
+    use_datarobot_llm_gateway: bool = False
     llm_default_model: str | None = None
 
     def get_llm_type(self) -> LLMType:
