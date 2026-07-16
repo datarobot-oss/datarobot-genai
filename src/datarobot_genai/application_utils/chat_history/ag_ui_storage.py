@@ -1059,6 +1059,11 @@ class AGUIStorageAgent(AGUIAgent):
             and state.active_tool_call.tool_call_id == tool_call_id
         ):
             return
+        if state.active_tool_call is not None:
+            # Switching away from the current tool call: flush its buffered
+            # arguments now, before buffered_tool_call_arguments gets reused
+            # (and misattributed) for the new active_tool_call below.
+            await self.flush_tool_call_buffer(state)
         existing = await self._message_repo.get_tool_call_by_agui_id(
             state.active_message.message_uuid, tool_call_id
         )
