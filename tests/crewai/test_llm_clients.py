@@ -54,17 +54,20 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
         llm_deployment_id="123",
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
-        assert isinstance(llm, LLM)
-        assert llm.additional_params == {
-            "max_retries": 10,
-            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
-            "stream_options": {"include_usage": True},
-        }
+    with patch(
+        "datarobot_genai.crewai.llm_clients.extract_headers_from_context",
+        return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+    ):
+        async with WorkflowBuilder() as builder:
+            await builder.add_llm("datarobot_llm", llm_config)
+            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+            assert isinstance(llm, LLM)
+            assert llm.additional_params == {
+                "max_retries": 10,
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
+                "stream_options": {"include_usage": True},
+            }
 
 
 async def test_datarobot_nim_crewai():
@@ -103,14 +106,18 @@ async def test_datarobot_llm_component_crewai(
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="anthropic/claude-3",
             use_datarobot_llm_gateway=use_datarobot_llm_gateway,
-            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
-        async with WorkflowBuilder() as builder:
-            await builder.add_llm("datarobot_llm", llm_config)
-            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+        identity_patch = patch(
+            "datarobot_genai.crewai.llm_clients.extract_headers_from_context",
+            return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+        )
+        with identity_patch:
+            async with WorkflowBuilder() as builder:
+                await builder.add_llm("datarobot_llm", llm_config)
+                llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
 
         assert isinstance(llm, LLM)
         assert llm.is_litellm is True

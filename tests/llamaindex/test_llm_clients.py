@@ -58,17 +58,22 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
             llm_deployment_id="123",
             temperature=0.0,
             api_key="some_token",
-            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
         )
-        async with WorkflowBuilder() as builder:
-            await builder.add_llm("datarobot_llm", llm_config)
-            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
-        assert isinstance(llm, LiteLLM)
-        assert llm.additional_kwargs == {
-            "api_base": "https://app.datarobot.com/api/v2/deployments/123/chat/completions",
-            "api_key": "some_token",
-            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
-        }
+        with patch(
+            "datarobot_genai.llama_index.llm_clients.extract_headers_from_context",
+            return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+        ):
+            async with WorkflowBuilder() as builder:
+                await builder.add_llm("datarobot_llm", llm_config)
+                llm = await builder.get_llm(
+                    "datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
+                )
+            assert isinstance(llm, LiteLLM)
+            assert llm.additional_kwargs == {
+                "api_base": "https://app.datarobot.com/api/v2/deployments/123/chat/completions",
+                "api_key": "some_token",
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
+            }
 
 
 async def test_datarobot_nim_llamaindex():
@@ -108,14 +113,20 @@ async def test_datarobot_llm_component_llamaindex(
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="azure/gpt-5-mini",
             use_datarobot_llm_gateway=use_datarobot_llm_gateway,
-            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
-        async with WorkflowBuilder() as builder:
-            await builder.add_llm("datarobot_llm", llm_config)
-            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX)
+        identity_patch = patch(
+            "datarobot_genai.llama_index.llm_clients.extract_headers_from_context",
+            return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+        )
+        with identity_patch:
+            async with WorkflowBuilder() as builder:
+                await builder.add_llm("datarobot_llm", llm_config)
+                llm = await builder.get_llm(
+                    "datarobot_llm", wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
+                )
         assert isinstance(llm, LiteLLM)
         assert llm.temperature == 0.2
 

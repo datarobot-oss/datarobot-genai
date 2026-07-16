@@ -4,9 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.24.3
+## 0.25.1
 - `drtools`: `vdb_get` rejects malformed `vector_database_id` values before calling the platform and returns a clean not-found error matching the well-formed missing-ID case; API calls use `allow_redirects=False` so unexpected 3xx/HTML responses surface as structured errors instead of raw frontend pages.
 - `drtools`: `vdb_deploy` submits the deploy request and polls for the new deployment record instead of blocking on the SDK's long async wait, avoiding false MCP timeouts while the deployment is actually created.
+
+## 0.25.0
+- *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
+  - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
+  - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `load_workflow` usage moved from deprecated `datarobot_genai.nat.helpers` to `nat.runtime.loader.load_workflow` directly; inline execution publishes `DRAGENT_CONFIG_FILE` via `publish_dragent_config_file_env` before loading (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+- Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
+
+## 0.24.3
+- `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
 
 ## 0.24.2
 - `dragent`: Made audience attribute optional in `class CrossAppTokenRequest`.
