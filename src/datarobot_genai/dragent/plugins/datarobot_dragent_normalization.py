@@ -4,28 +4,40 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""NAT middleware: normalize native-NAT agent output to ``DRAgentEventResponse``.
 
-"""Convert ChatResponseChunk streams into AG-UI events.
+Native NAT agents (e.g. ``tool_calling_agent`` / ``per_user_tool_calling_agent``) emit
+``str`` for single output and ``ChatResponseChunk`` for streaming output. DRAgent's frontend,
+moderation, and converters all expect the canonical ``DRAgentEventResponse``. This middleware
+sits innermost (declared last in a function's ``middleware`` list) so it converts native output
+into ``DRAgentEventResponse`` before any outer middleware (moderation, otel conventions) or the
+frontend sees it. Agents that already emit ``DRAgentEventResponse`` pass through unchanged.
 
-NAT 1.6 added a ``stream_fn`` to ``tool_calling_agent`` that yields
-``ChatResponseChunk`` objects (OpenAI-compatible streaming deltas).  This
-module converts that stream into ``DRAgentEventResponse`` batches containing
-AG-UI ``TextMessage*`` and ``ToolCall*`` events.
+Because NAT middleware is per-function and opt-in (not inherited from the parent workflow), this
+middleware must be declared on whichever function actually produces native-NAT output — including
+an inner ``per_user_tool_calling_agent`` referenced by a memory wrapper's ``inner_agent_name``.
 
-See docs/nat-1.6-streaming.md for the full design.
+Streaming conversion from ``ChatResponseChunk`` to AG-UI events is implemented by
+``convert_chunks_to_agui_events`` in this module (formerly ``dragent.frontends.stream_converter``).
 """
 
+from __future__ import annotations
+
+import contextlib
 import logging
 import sys
 import uuid
 from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
+from typing import Any
+from typing import cast
 
 from ag_ui.core import Event
 from ag_ui.core import RunErrorEvent
@@ -34,13 +46,24 @@ from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
+from nat.builder.builder import Builder
+from nat.cli.register_workflow import register_middleware
+from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChunk
+from nat.data_models.middleware import FunctionMiddlewareBaseConfig
+from nat.middleware.function_middleware import FunctionMiddleware
+from nat.middleware.middleware import CallNext
+from nat.middleware.middleware import CallNextStream
+from nat.middleware.middleware import FunctionMiddlewareContext
 
 from datarobot_genai.core.agents import default_usage_metrics
-
-from .response import DRAgentEventResponse
-from .tool_call_registry import mark_args_done
-from .tool_call_registry import register_tool_call
+from datarobot_genai.dragent.frontends.converters import (
+    convert_chat_response_to_dragent_event_response,
+)
+from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_text_response
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.tool_call_registry import mark_args_done
+from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +88,8 @@ def resolve_streaming_tool_call_id(
 
 
 async def convert_chunks_to_agui_events(
-    chunks: AsyncGenerator[ChatResponseChunk, None],
-) -> AsyncGenerator[DRAgentEventResponse, None]:
+    chunks: AsyncGenerator[ChatResponseChunk],
+) -> AsyncGenerator[DRAgentEventResponse]:
     """Convert a ChatResponseChunk stream into AG-UI events.
 
     Yields ``DRAgentEventResponse`` batches as chunks arrive.  On upstream
@@ -167,3 +190,97 @@ async def convert_chunks_to_agui_events(
         end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
     if end:
         yield DRAgentEventResponse(events=end, usage_metrics=zero)
+
+
+class DataRobotDRAgentNormalizationConfig(
+    FunctionMiddlewareBaseConfig,  # type: ignore[misc]
+    name="datarobot_dragent_normalization",  # type: ignore[call-arg]
+):
+    """NAT middleware: normalize native-NAT agent output to ``DRAgentEventResponse``.
+
+    No configuration fields; declare it on a function's ``middleware`` list as the last
+    (innermost) entry so downstream moderation and converters only ever see
+    ``DRAgentEventResponse``.
+    """
+
+
+def _normalize_single_output(output: Any) -> Any:
+    if isinstance(output, DRAgentEventResponse):
+        return output
+    if isinstance(output, ChatResponse):
+        return convert_chat_response_to_dragent_event_response(output)
+    if isinstance(output, str):
+        return convert_str_to_dragent_text_response(output)
+    return output
+
+
+class DataRobotDRAgentNormalizationMiddleware(FunctionMiddleware):
+    """Convert native-NAT output (``str`` / ``ChatResponse`` / ``ChatResponseChunk``) to
+    ``DRAgentEventResponse``; pass ``DRAgentEventResponse`` through unchanged.
+    """
+
+    def __init__(
+        self,
+        config: DataRobotDRAgentNormalizationConfig,
+        builder: Builder,  # noqa: ARG002
+    ) -> None:
+        super().__init__()
+        self._config = config
+
+    @property
+    def enabled(self) -> bool:
+        return True
+
+    async def function_middleware_invoke(
+        self,
+        *args: Any,
+        call_next: CallNext,
+        context: FunctionMiddlewareContext,  # noqa: ARG002
+        **kwargs: Any,
+    ) -> Any:
+        output = await call_next(*args, **kwargs)
+        return _normalize_single_output(output)
+
+    async def function_middleware_stream(
+        self,
+        *args: Any,
+        call_next: CallNextStream,
+        context: FunctionMiddlewareContext,  # noqa: ARG002
+        **kwargs: Any,
+    ) -> AsyncIterator[DRAgentEventResponse]:
+        async with contextlib.aclosing(
+            cast(AsyncGenerator[Any, None], call_next(*args, **kwargs))
+        ) as upstream:
+            iterator = upstream.__aiter__()
+            try:
+                first = await iterator.__anext__()
+            except StopAsyncIteration:
+                return
+
+            # dragent-native agents already emit DRAgentEventResponse -> passthrough.
+            if isinstance(first, DRAgentEventResponse):
+                yield first
+                async for chunk in iterator:
+                    yield chunk
+                return
+
+            # Native NAT agents emit ChatResponseChunk -> convert to AG-UI events. Reuse
+            # the stateful stream converter, re-prepending the peeked first chunk.
+            async def _rechained() -> AsyncGenerator[Any]:
+                yield first
+                async for chunk in iterator:
+                    yield chunk
+
+            async for event_response in convert_chunks_to_agui_events(_rechained()):
+                yield event_response
+
+
+@register_middleware(  # type: ignore[untyped-decorator]
+    config_type=DataRobotDRAgentNormalizationConfig
+)
+async def datarobot_dragent_normalization_middleware(
+    config: DataRobotDRAgentNormalizationConfig,
+    builder: Builder,
+) -> AsyncIterator[DataRobotDRAgentNormalizationMiddleware]:
+    """Register the DRAgent output-normalization middleware for NAT workflows."""
+    yield DataRobotDRAgentNormalizationMiddleware(config, builder)

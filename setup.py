@@ -170,6 +170,13 @@ drmcp = drmcpbase + drtools + [
     "async-lru>=2.3.0",
 ]
 
+# application-utils: light async ORM over the Agentic Memory Service.
+# Standalone leaf — depends only on httpx and pydantic (no DataRobot SDK or OTel weight).
+application_utils = [
+    "httpx>=0.28.1,<1.0.0",
+    "pydantic>=2.6.1,<3.0.0",
+]
+
 extras_require = {
     "core": core,
     "crewai": crewai,
@@ -183,6 +190,7 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
+    "application-utils": application_utils,
 }
 
 setup(extras_require=extras_require)

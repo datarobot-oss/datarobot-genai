@@ -147,11 +147,10 @@ async def streaming_memory_agent(
     """Build the streaming memory agent workflow."""
     inner_agent_fn = await builder.get_function(config.inner_agent_name)
 
-    async def _stream_to_str(
+    async def _stream_to_dragent(
         responses: AsyncGenerator[DRAgentEventResponse],
-    ) -> str:
-        aggregated = aggregate_dragent_event_responses([r async for r in responses])
-        return convert_dragent_event_response_to_str(aggregated)
+    ) -> DRAgentEventResponse:
+        return aggregate_dragent_event_responses([r async for r in responses])
 
     memory_editor = await builder.get_memory_client(config.memory_name)
 
@@ -168,7 +167,7 @@ async def streaming_memory_agent(
 
         yield FunctionInfo.create(
             stream_fn=_passthrough_stream_fn,
-            stream_to_single_fn=_stream_to_str,
+            stream_to_single_fn=_stream_to_dragent,
             description=config.description,
         )
         return
@@ -245,6 +244,6 @@ async def streaming_memory_agent(
 
     yield FunctionInfo.create(
         stream_fn=_stream_fn,
-        stream_to_single_fn=_stream_to_str,
+        stream_to_single_fn=_stream_to_dragent,
         description=config.description,
     )
