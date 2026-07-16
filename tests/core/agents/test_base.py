@@ -24,8 +24,6 @@ from ag_ui.core.events import TextMessageContentEvent
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from ag_ui.core.types import ToolMessage
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import default_usage_metrics
@@ -34,6 +32,8 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
 from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.core.agents.history import extract_history_messages
+from datarobot_genai.core.pipeline_interactions import AIMessage
+from datarobot_genai.core.pipeline_interactions import HumanMessage
 
 
 def _make_run_agent_input_from_dicts(messages: list[dict[str, Any]]) -> RunAgentInput:
