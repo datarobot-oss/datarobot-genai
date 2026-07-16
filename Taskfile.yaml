@@ -33,6 +33,9 @@ includes:
   dev:
     taskfile: .taskfiles/dev.yml
     flatten: true
+  packaging:
+    taskfile: .taskfiles/packaging.yml
+    flatten: true
 
 tasks:
   install:

@@ -1,0 +1,30 @@
+version: '3'
+
+# Packaging / consumer-facing dependency configuration.
+#
+# pyproject.toml [tool.uv] is the single source of truth for the
+# override / exclude / constraint lists. The shipped consumer copy
+# (src/datarobot_genai/_packaging/uv_consumer_config.toml) is GENERATED from it,
+# and the consumer install check proves each extra actually resolves with that
+# copy applied. See scripts/gen_consumer_config.py and scripts/check_consumer_install.py.
+# CVE scanning/ticketing is handled separately (Trivy / GameWarden), not here.
+
+tasks:
+  sync-consumer-config:
+    desc: "Regenerate _packaging/uv_consumer_config.toml from pyproject.toml [tool.uv]"
+    cmds:
+      - echo "Regenerating uv_consumer_config.toml from pyproject.toml [tool.uv]..."
+      - uv run --no-project python scripts/gen_consumer_config.py
+    silent: true
+
+  check-consumer-config:
+    desc: "Fail if uv_consumer_config.toml is out of sync with pyproject.toml (CI gate)"
+    cmds:
+      - uv run --no-project python scripts/gen_consumer_config.py --check
+    silent: true
+
+  check-consumer-install:
+    desc: "Per-extra consumer install check: naive (no config) and with the shipped config"
+    cmds:
+      - uv run --no-project python scripts/check_consumer_install.py
+    silent: true

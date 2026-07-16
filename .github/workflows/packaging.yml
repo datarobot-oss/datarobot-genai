@@ -1,0 +1,91 @@
+name: Packaging CI
+
+# Guards the consumer-facing packaging contract:
+#   1. uv_consumer_config.toml stays in sync with pyproject.toml [tool.uv].
+#   2. Each extra installs standalone (pip install datarobot-genai[extra]), both
+#      naively (no consumer config) and with the shipped config applied.
+# uv override/exclude/constraint settings are NOT published in package metadata,
+# so a green CI in this repo does not prove consumers can actually resolve the
+# package -- this job does. CVE scanning/ticketing is handled separately
+# (Trivy / GameWarden), not here.
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TASK_VERSION: 3.48.0
+
+jobs:
+  consumer-config-sync:
+    name: Consumer config in sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check uv_consumer_config.toml is in sync with pyproject.toml
+        run: task check-consumer-config
+
+  consumer-install-check:
+    name: Consumer install check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache uv download cache
+        uses: actions/cache@v4
+        with:
+          # Content-addressed download cache only (never .venv); the check builds
+          # throwaway consumer projects and resolves them from scratch each run.
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-consumer-install-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-consumer-install-
+
+      - name: Consumer install check
+        run: task check-consumer-install
