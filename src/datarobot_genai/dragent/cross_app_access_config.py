@@ -50,7 +50,8 @@ class CrossAppTokenRequest(BaseModel):
             "Published as ``securitySchemes.oauth2.flows.clientCredentials.tokenUrl``."
         ),
     )
-    audience: str = Field(
+    audience: str | None = Field(
+        default=None,
         description=(
             "Final resource identifier for the agent. "
             "Published in ``capabilities.extensions[].params.token_request.audience``."

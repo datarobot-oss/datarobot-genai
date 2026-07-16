@@ -17,9 +17,11 @@ from nat.authentication.api_key.api_key_auth_provider import APIKeyAuthProvider
 from nat.builder.workflow_builder import WorkflowBuilder
 from pydantic import SecretStr
 
-from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
-from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProvider
-from datarobot_genai.nat.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
+from datarobot_genai.dragent.plugins.datarobot_auth_provider import (
+    DataRobotAPIKeyAuthProviderConfig,
+)
+from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProvider
+from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
 
 
 async def test_datarobot_auth_provider():

@@ -4,8 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.24.3
+## 0.25.2
 - `drmcputils`/`drtools`: **`MCP_SANDBOX_DISABLED` kill-switch** — new env var (also resolvable as an `MLOPS_RUNTIME_PARAM_` runtime parameter) that turns MCP sandboxing off entirely: the `ENABLE_MCP_SANDBOX` entitlement guard (`_require_mcp_sandbox`) becomes a no-op (no DR API call) and `execute_code` routes to a new `LocalProcessSandbox` backend that runs the snippet in a plain subprocess of the MCP server's interpreter (same `Sandbox` protocol, workload-runner wire contract, timeout → `SandboxTimeout`, nonzero exit → `SandboxError`). Default is unchanged/fail-closed: unset, falsy, or unparseable values keep the workload-api sandbox and entitlement check exactly as before; enabling the switch logs a loud once-per-process warning because local execution has **no isolation**. Intended for local development and deployments without the workload-api sandbox. FastMCP's built-in Monty sandbox (`MontySandboxProvider`, fastmcp 3.4.x) was evaluated and rejected for this path: `pydantic-monty` cannot import real packages (`import polars` fails even when installed), which the panel transform/filter tools require.
+
+## 0.25.0
+- *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
+  - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
+  - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `load_workflow` usage moved from deprecated `datarobot_genai.nat.helpers` to `nat.runtime.loader.load_workflow` directly; inline execution publishes `DRAGENT_CONFIG_FILE` via `publish_dragent_config_file_env` before loading (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+- Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
+
+## 0.24.3
+- `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
+
+## 0.24.2
+- `dragent`: Made audience attribute optional in `class CrossAppTokenRequest`.
 
 ## 0.24.1
 - `application-utils`: **Memory Service Light ORM** — new standalone extra `datarobot-genai[application-utils]` that wraps the DataRobot Agentic Memory Service with a Pydantic v2 / SQLModel-style async ORM.  Declare typed session and event models with annotation-driven routing markers (`DRDeduplicationKey`, `DRRangeKey`, `DRConcurrencyField`); the ORM handles wire serialization, camelCase mapping, description-path encoding for range-key prefix queries, optimistic concurrency (`If-Match` for sessions; `createdAt` token for events), and idempotent create via 409-adopt.  Public import: `from datarobot_genai.application_utils.persistence import DRMemorySpace, DRSession, DREvent`.  Dependencies: `httpx>=0.28.1,<1.0.0` + `pydantic>=2.6.1,<3.0.0` only (no core / OTel weight).  Unit tests cover encoding, routing, transport, space CRUD, session CRUD, and event CRUD.

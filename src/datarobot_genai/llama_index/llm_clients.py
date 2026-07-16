@@ -24,6 +24,7 @@ from nat.cli.register_workflow import register_llm_client
 from nat.utils.responses_api import validate_no_responses_api
 
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.dragent.context import extract_headers_from_context
 from datarobot_genai.dragent.plugins.llm_clients import patch_llm_based_on_config
 from datarobot_genai.dragent.plugins.llm_clients import prepare_llm_parameters
 from datarobot_genai.dragent.plugins.llm_clients import router_settings_from_config
@@ -68,9 +69,11 @@ async def datarobot_llm_deployment_llamaindex(
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
     config = prepare_llm_parameters(llm_config)
-
-    if llm_config.headers:
-        config["additional_kwargs"] = {"extra_headers": llm_config.headers}
+    additional_kwargs = dict(config.get("additional_kwargs") or {})
+    additional_kwargs["extra_headers"] = extract_headers_from_context(
+        ["X-DataRobot-Identity-Token"]
+    )
+    config["additional_kwargs"] = additional_kwargs
 
     client = get_datarobot_deployment_llm(
         llm_config.llm_deployment_id, llm_config.model_name, config
@@ -112,10 +115,11 @@ async def datarobot_llm_component_llamaindex(
     if llm_type == LLMType.GATEWAY:
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
     elif llm_type == LLMType.DEPLOYMENT:
-        if llm_config.headers:
-            additional_kwargs = dict(config.get("additional_kwargs") or {})
-            additional_kwargs["extra_headers"] = llm_config.headers
-            config["additional_kwargs"] = additional_kwargs
+        additional_kwargs = dict(config.get("additional_kwargs") or {})
+        additional_kwargs["extra_headers"] = extract_headers_from_context(
+            ["X-DataRobot-Identity-Token"]
+        )
+        config["additional_kwargs"] = additional_kwargs
         client = get_datarobot_deployment_llm(
             llm_config.llm_deployment_id,  # type: ignore[arg-type]
             llm_config.model_name,
