@@ -165,11 +165,18 @@ drmcp = drmcpbase + drtools + [
     "async-lru>=2.3.0",
 ]
 
-# application-utils: light async ORM over the Agentic Memory Service.
-# Standalone leaf — depends only on httpx and pydantic (no DataRobot SDK or OTel weight).
+# application-utils: light async ORM over the Agentic Memory Service plus the AG-UI
+# chat-history layer. Standalone leaf — depends only on httpx, pydantic, and
+# ag-ui-protocol (no DataRobot SDK or OTel weight). This extra intentionally uses a
+# compatible-release pin (~=0.1.15) instead of the exact `==0.1.15` used by `core` and the
+# other extras, so a standalone `application-utils` install can track 0.1.x updates of the
+# agent-message protocol; when co-installed with `core`, the stricter `==` pin wins during
+# resolution. Keep the 0.1.x version aligned with `core` and all consumers of agent messages
+# (e.g. the fastapi_server of the agent application template).
 application_utils = [
     "httpx>=0.28.1,<1.0.0",
     "pydantic>=2.6.1,<3.0.0",
+    "ag-ui-protocol~=0.1.15",
 ]
 
 extras_require = {

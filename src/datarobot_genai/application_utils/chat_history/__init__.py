@@ -19,6 +19,10 @@ package extends :mod:`datarobot_genai.application_utils.persistence`; the
 persistence sub-package itself never imports from here (or from ``ag_ui``).
 """
 
+from datarobot_genai.application_utils.chat_history.ag_ui_storage import AGUIAgent
+from datarobot_genai.application_utils.chat_history.ag_ui_storage import AGUIStorageAgent
+from datarobot_genai.application_utils.chat_history.ag_ui_storage import ErrorCodes
+from datarobot_genai.application_utils.chat_history.ag_ui_storage import StorageState
 from datarobot_genai.application_utils.chat_history.constants import LOCATOR_KIND_CHAT
 from datarobot_genai.application_utils.chat_history.constants import LOCATOR_KIND_MESSAGE
 from datarobot_genai.application_utils.chat_history.constants import LOCATOR_KIND_REASONING
@@ -54,6 +58,11 @@ from datarobot_genai.application_utils.chat_history.repositories import ChatSess
 from datarobot_genai.application_utils.chat_history.repositories import LocatorIndex
 from datarobot_genai.application_utils.chat_history.repositories import MessageRepository
 from datarobot_genai.application_utils.chat_history.repositories import MessageRepositoryLike
+from datarobot_genai.application_utils.chat_history.stream_manager import NoMoreEvents
+from datarobot_genai.application_utils.chat_history.stream_manager import RunHandle
+from datarobot_genai.application_utils.chat_history.stream_manager import StreamPersistenceManager
+from datarobot_genai.application_utils.chat_history.translate import ExtendedBaseMessage
+from datarobot_genai.application_utils.chat_history.translate import translate_messages
 
 __all__ = [
     # constants / helpers
@@ -97,4 +106,16 @@ __all__ = [
     "LocatorIndex",
     "ChatRepository",
     "MessageRepository",
+    # translate
+    "translate_messages",
+    "ExtendedBaseMessage",
+    # AG-UI storage
+    "AGUIAgent",
+    "AGUIStorageAgent",
+    "StorageState",
+    "ErrorCodes",
+    # stream manager (disconnect survival + cancellation)
+    "StreamPersistenceManager",
+    "RunHandle",
+    "NoMoreEvents",
 ]
