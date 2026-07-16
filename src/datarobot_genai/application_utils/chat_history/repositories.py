@@ -830,6 +830,14 @@ class MessageRepository:
         chat = await self._chat_for(chat_id)
 
         fields = {k: v for k, v in update.model_dump(exclude_unset=True).items() if v is not None}
+        if not fields:
+            # Nothing to change: skip the read-modify-write cycle so a no-op
+            # update doesn't cost an unnecessary API patch.
+            event = await self._find_event_for_message_uuid(chat, message_uuid)
+            if event is None:
+                return None
+            self._remember_maps(event, chat_id)
+            return self._hydrate(event)
 
         def mutate(message: Message) -> bool:
             for name, value in fields.items():
