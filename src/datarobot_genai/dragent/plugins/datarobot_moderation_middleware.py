@@ -1200,6 +1200,7 @@ async def _moderated_dragent_stream(
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
+    last_source_response: DRAgentEventResponse | None = None
     stopped_for_content_filter = False
     prescore_state = _StreamingPrescoreModerationState(
         prescore_moderations=_prescore_datarobot_moderations_from_df(
@@ -1251,21 +1252,33 @@ async def _moderated_dragent_stream(
             )
         ) as moderation_stream:
             async for moderated in moderation_stream:
-                source_response = moderation_source_responses.pop(0)
-                moderated_response = prescore_state.emit_moderated(
-                    dome_chunk_to_dragent_event_response(
-                        moderated,
-                        source_ag_ui_events=source_response.events,
-                        stream_tool_index_map=stream_tool_index_map,
-                    )
+                # ModerationIterator (moderations >= 11.2.45) no longer emits one moderated
+                # chunk per source chunk. On BLOCK/REPLACE it discards the buffered content and
+                # yields a synthetic sequence: a role opener, the message chunk, then a terminal
+                # finish chunk. Those extra chunks outnumber the source responses we appended,
+                # and the opener/terminal carry no delta text (empty AG-UI event lists). All the
+                # synthetic chunks derive from the same upstream text message, so once the source
+                # list drains we reuse the last source response to keep AG-UI message IDs
+                # consistent, and we surface only the chunks that actually carry events.
+                if moderation_source_responses:
+                    last_source_response = moderation_source_responses.pop(0)
+                source_response = last_source_response
+                converted = dome_chunk_to_dragent_event_response(
+                    moderated,
+                    source_ag_ui_events=(
+                        source_response.events if source_response is not None else None
+                    ),
+                    stream_tool_index_map=stream_tool_index_map,
                 )
-                _track_dragent_response_events(open_text_message_ids, moderated_response)
-                yield moderated_response
-                for item in _drain_pending_after_moderated_chunk(
-                    pending_deferred, pending_pass_through
-                ):
-                    _track_dragent_response_events(open_text_message_ids, item)
-                    yield prescore_state.emit(item)
+                if converted.events:
+                    moderated_response = prescore_state.emit_moderated(converted)
+                    _track_dragent_response_events(open_text_message_ids, moderated_response)
+                    yield moderated_response
+                    for item in _drain_pending_after_moderated_chunk(
+                        pending_deferred, pending_pass_through
+                    ):
+                        _track_dragent_response_events(open_text_message_ids, item)
+                        yield prescore_state.emit(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     for end_response in _synthetic_text_message_end_responses(
