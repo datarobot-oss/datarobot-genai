@@ -28,15 +28,17 @@ from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
 import datarobot_genai.dragent.plugins.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
+import datarobot_genai.dragent.plugins.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
 import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
-import datarobot_genai.nat.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
+from datarobot_genai.dragent.plugins.datarobot_auth_provider import (
+    DataRobotAPIKeyAuthProviderConfig,
+)
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
 )
-from datarobot_genai.nat.datarobot_auth_provider import DataRobotAPIKeyAuthProviderConfig
 
 # ---------------------------------------------------------------------------
 # Mock payloads
