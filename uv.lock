@@ -1310,33 +1310,6 @@ llamaindex = [
     { name = "pypdf" },
     { name = "requests" },
 ]
-<<<<<<< HEAD
-=======
-nat = [
-    { name = "ag-ui-protocol" },
-    { name = "anyio" },
-    { name = "colorama" },
-    { name = "datarobot" },
-    { name = "datarobot-moderations", extra = ["all"] },
-    { name = "datarobot-predict" },
-    { name = "httpx-retries" },
-    { name = "mem0ai" },
-    { name = "nvidia-nat" },
-    { name = "nvidia-nat-a2a" },
-    { name = "nvidia-nat-langchain" },
-    { name = "nvidia-nat-mcp" },
-    { name = "nvidia-nat-opentelemetry" },
-    { name = "openai" },
-    { name = "opentelemetry-instrumentation-aiohttp-client" },
-    { name = "opentelemetry-instrumentation-httpx" },
-    { name = "opentelemetry-instrumentation-openai" },
-    { name = "opentelemetry-instrumentation-requests" },
-    { name = "opentelemetry-instrumentation-threading" },
-    { name = "pyarrow" },
-    { name = "pyjwt" },
-    { name = "requests" },
-]
->>>>>>> 54073ac1 (Initial ragas removal)
 
 [package.dev-dependencies]
 dev = [
@@ -1408,7 +1381,6 @@ requires-dist = [
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.45,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.45,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.45,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'nat'", specifier = ">=11.2.45,<12.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
