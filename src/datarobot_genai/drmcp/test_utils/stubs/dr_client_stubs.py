@@ -136,11 +136,18 @@ class StubDeployment:
     """Stub DataRobot deployment object."""
 
     def __init__(
-        self, deployment_id: str, project_id: str = "test_project_123", model_id: str = "model_1"
+        self,
+        deployment_id: str,
+        project_id: str = "test_project_123",
+        model_id: str = "model_1",
+        *,
+        model: dict[str, Any] | None = None,
+        capabilities: dict[str, Any] | None = None,
     ):
         self.id = deployment_id
         self.label = f"Deployment {deployment_id}"
-        self.model = {"project_id": project_id, "id": model_id}
+        self.model = model or {"project_id": project_id, "id": model_id}
+        self.capabilities = capabilities
         self.status = "active"
         self.default_prediction_server = {
             "id": STUB_PREDICTION_SERVER_ID,
@@ -434,6 +441,16 @@ def test_create_dr_client() -> StubDRClient:
     def get_deployment(deployment_id: str | None = None, **kwargs: Any) -> StubDeployment:
         """Stub Deployment.get; accepts deployment_id as positional or keyword."""
         did = deployment_id or kwargs.get("deployment_id")
+        if did in (STUB_VDB_DEPLOYMENT_ID, STUB_VDB_DEPLOY_RESULT_ID):
+            return StubDeployment(
+                did,
+                model={
+                    "project_id": "test_project_123",
+                    "id": "model_vdb",
+                    "targetType": "VectorDatabase",
+                },
+                capabilities={"supportsVectorDatabaseQuerying": True},
+            )
         return StubDeployment(
             did or "stub_deployment_id", project_id="test_project_123", model_id="model_1"
         )

@@ -148,6 +148,7 @@ async def test_vdb_query_success(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="dep1",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -202,6 +203,7 @@ async def test_vdb_query_parses_prediction_server_response(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="dep1",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -266,6 +268,7 @@ async def test_vdb_query_client_error_404(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="missing-dep",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -293,6 +296,27 @@ async def test_vdb_query_client_error_404(
             await tools.vdb_query(deployment_id="missing-dep", query="test")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_vdb_query_rejects_non_vdb_deployment(
+    mock_get_client_context_with_token_from_request_header: Mock,
+) -> None:
+    mock_deployment = SimpleNamespace(
+        id="pred-dep",
+        model={"targetType": "Binary"},
+        capabilities={"supportsVectorDatabaseQuerying": False},
+    )
+    mock_rest_client = MagicMock()
+    mock_get_client_context_with_token_from_request_header.return_value.__enter__.return_value = (
+        mock_rest_client
+    )
+    with patch.object(dr.Deployment, "get", return_value=mock_deployment):
+        with pytest.raises(ToolError, match="not a vector database deployment") as exc_info:
+            await tools.vdb_query(deployment_id="pred-dep", query="test query")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+    mock_rest_client.request.assert_not_called()
 
 
 @pytest.mark.asyncio
