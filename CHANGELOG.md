@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.25.2
 - `drmcputils`/`drtools`: **`MCP_SANDBOX_DISABLED` kill-switch** — new env var (also resolvable as an `MLOPS_RUNTIME_PARAM_` runtime parameter) that turns MCP sandboxing off entirely: the `ENABLE_MCP_SANDBOX` entitlement guard (`_require_mcp_sandbox`) becomes a no-op (no DR API call) and `execute_code` routes to a new `LocalProcessSandbox` backend that runs the snippet in a plain subprocess of the MCP server's interpreter (same `Sandbox` protocol, workload-runner wire contract, timeout → `SandboxTimeout`, nonzero exit → `SandboxError`). Default is unchanged/fail-closed: unset, falsy, or unparseable values keep the workload-api sandbox and entitlement check exactly as before; enabling the switch logs a loud once-per-process warning because local execution has **no isolation**. Intended for local development and deployments without the workload-api sandbox. FastMCP's built-in Monty sandbox (`MontySandboxProvider`, fastmcp 3.4.x) was evaluated and rejected for this path: `pydantic-monty` cannot import real packages (`import polars` fails even when installed), which the panel transform/filter tools require.
 
+## 0.25.1
+- `drtools`: `vdb_get` rejects malformed `vector_database_id` values before calling the platform and returns a clean not-found error matching the well-formed missing-ID case; API calls use `allow_redirects=False` so unexpected 3xx/HTML responses surface as structured errors instead of raw frontend pages.
+- `drtools`: `vdb_deploy` submits the deploy request and polls for the new deployment record instead of blocking on the SDK's long async wait, avoiding false MCP timeouts while the deployment is actually created.
+
 ## 0.25.0
 - *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
   - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
