@@ -1343,13 +1343,12 @@ example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editab
 
 [[package]]
 name = "datarobot-moderations"
-version = "11.2.45"
+version = "11.2.34"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "backoff" },
     { name = "click" },
-    { name = "litellm" },
     { name = "numpy" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
@@ -1363,7 +1362,7 @@ dependencies = [
     { name = "tiktoken" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/6b/b1f753df4078e2661d1c701b22e65f421ee7eea186d6bdafb178baf2b467/datarobot_moderations-11.2.45-py3-none-any.whl", hash = "sha256:7c3b9370005f8668c332af26ae8efd749b068256da3221d10ece1e250a783d6a", size = 173940, upload-time = "2026-07-16T13:35:00.241Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/92/bc71683d5526edbeb6e6217b81370c106d0e6a6449c8bcc7d2125ec3f3ca/datarobot_moderations-11.2.34-py3-none-any.whl", hash = "sha256:a0c03e1d92c94faa26d44a6f001801ec035fc3912a25ce5b2e43d8a2d7c63f38", size = 158815, upload-time = "2026-06-10T20:08:56.623Z" },
 ]
 
 [package.optional-dependencies]
@@ -1384,6 +1383,7 @@ all = [
     { name = "nemo-microservices" },
     { name = "nemoguardrails" },
     { name = "openai" },
+    { name = "ragas" },
 ]
 
 [[package]]
