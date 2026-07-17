@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.25.1"
+version = "0.25.2"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -33,6 +33,7 @@ llm_providers = "datarobot_genai.dragent.plugins.llm_providers"
 llm_clients = "datarobot_genai.dragent.plugins.llm_clients"
 crewai_llm_clients = "datarobot_genai.crewai.llm_clients"
 llamaindex_llm_clients = "datarobot_genai.llama_index.llm_clients"
+mcp_client_with_xaa_support = "datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client"
 
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"
