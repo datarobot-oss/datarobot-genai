@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.4
+- `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server
+
 ## 0.25.3
 - Dropped the `ragas` dependency. Agent runs still record their pipeline interactions as a `MultiTurnSample`, but that type (and the `HumanMessage` / `AIMessage` / `ToolMessage` / `ToolCall` primitives) now come from the new `datarobot_genai.core.pipeline_interactions` module, which owns a slim Pydantic `MultiTurnSample` and reuses the message primitives shipped by `datarobot-moderations` (>=11.2.45). The LangGraph and LlamaIndex trace converters, previously imported from `ragas.integrations`, are reimplemented locally. Removing `ragas` also drops its `diskcache` and `scikit-network` exclusions. The serialized `pipeline_interactions` payload is unchanged apart from a few always-null fields that are no longer emitted.
 
