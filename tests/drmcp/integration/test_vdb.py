@@ -25,6 +25,7 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
 )
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_DATASET_ID
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_USE_CASE_ID
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOY_RESULT_ID
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOYMENT_ID
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VECTOR_DATABASE_ID
 
@@ -144,8 +145,9 @@ class TestMCPVDBToolsIntegration:
             )
             data = json.loads(result.content[0].text)  # type: ignore[union-attr]
             assert data["vector_database_id"] == STUB_VECTOR_DATABASE_ID
-            assert data["deployment_id"] == STUB_VDB_DEPLOYMENT_ID
+            assert data["deployment_id"] == STUB_VDB_DEPLOY_RESULT_ID
             assert data["label"] == "Stub VDB Deployment"
+            assert data["status"] == "launching"
             assert "note" in data
 
     async def test_vdb_deploy_missing_vector_database_id(self) -> None:
