@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.2
+- `core`: Added `datarobot_genai.core.telemetry` — a shared FastAPI OTel/logging module (`OTel` singleton for tracer/meter/logger provider lifecycle, `trace`/`meter`/`span` decorators and context managers, uvicorn access/error log configuration with health-check filtering, and `RedactingFormatter`/JSON/text/readable log formatters that scrub sensitive fields like `api_key`, `access_token`, `refresh_token`). Consolidates the OTel setup previously copy-pasted per app via the `af-component-fastapi-backend` Copier template; `OTel.configure()` takes any object matching the `OTelConfig` protocol, so it stays decoupled from a specific app's config class.
+
 ## 0.25.1
 - `drtools`: `vdb_get` rejects malformed `vector_database_id` values before calling the platform and returns a clean not-found error matching the well-formed missing-ID case; API calls use `allow_redirects=False` so unexpected 3xx/HTML responses surface as structured errors instead of raw frontend pages.
 - `drtools`: `vdb_deploy` submits the deploy request and polls for the new deployment record instead of blocking on the SDK's long async wait, avoiding false MCP timeouts while the deployment is actually created.
