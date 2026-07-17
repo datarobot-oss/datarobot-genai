@@ -18,65 +18,64 @@ import pytest
 
 from datarobot_genai.drmcputils.files.store import BlobRef
 
+FAKE_CONTAINER_ID = "fakecontainer1"
+
 
 class FakeBlobStore:
-    """In-memory :class:`BlobStore` implementation for hermetic panel tests.
+    """In-memory path-based :class:`BlobStore` for hermetic panel tests.
 
-    Tags are stored alongside each blob and ``list`` returns blobs whose tags
-    are a superset of the requested tags — matching the AND semantics the
-    Files-API backend uses.
+    Mirrors the shared-container backend's semantics: blobs live at
+    ``/``-separated paths inside one container (``container``); a bare token
+    without ``/`` addresses a *legacy* standalone blob by Files id
+    (``legacy``); ``delete`` silently ignores missing paths; ``list`` filters
+    by path prefix server-side.
     """
 
     def __init__(self) -> None:
-        self.blobs: dict[str, tuple[bytes, BlobRef, set[str]]] = {}
-        self._counter = 0
+        self.container: dict[str, bytes] = {}
+        self.legacy: dict[str, bytes] = {}
+        self.container_id = FAKE_CONTAINER_ID
 
     async def put(
         self,
         data: bytes,
         *,
-        name: str,
+        path: str,
         content_type: str | None = None,
-        tags: list[str] | None = None,
+        timeout: int = 600,
     ) -> BlobRef:
         # content_type is advisory and not persisted (mirrors the real backend).
-        self._counter += 1
-        files_id = f"blob{self._counter}"
-        ref = BlobRef(files_id=files_id, name=name, tags=tuple(tags or []))
-        self.blobs[files_id] = (data, ref, set(tags or []))
-        return ref
+        self.container[path] = data
+        return BlobRef(path=path, container_id=self.container_id, size=len(data))
 
-    async def get(self, ref: BlobRef | str) -> bytes:
-        files_id = ref.files_id if isinstance(ref, BlobRef) else ref
-        if files_id not in self.blobs:
-            raise KeyError(files_id)
-        return self.blobs[files_id][0]
+    async def get(self, path: str) -> bytes:
+        blobs = self.container if "/" in path else self.legacy
+        if path not in blobs:
+            raise KeyError(path)
+        return blobs[path]
 
-    async def delete(self, ref: BlobRef | str) -> None:
-        files_id = ref.files_id if isinstance(ref, BlobRef) else ref
-        self.blobs.pop(files_id, None)
+    async def delete(self, paths: str | list[str]) -> None:
+        for path in [paths] if isinstance(paths, str) else paths:
+            (self.container if "/" in path else self.legacy).pop(path, None)
 
-    async def set_tags(self, ref: BlobRef | str, tags: list[str]) -> None:
-        files_id = ref.files_id if isinstance(ref, BlobRef) else ref
-        if files_id not in self.blobs:
-            raise KeyError(files_id)
-        data, old_ref, _old_tags = self.blobs[files_id]
-        new_ref = BlobRef(files_id=old_ref.files_id, name=old_ref.name, tags=tuple(tags))
-        self.blobs[files_id] = (data, new_ref, set(tags))
+    async def move(self, from_path: str, to_path: str) -> None:
+        if from_path not in self.container:
+            raise KeyError(from_path)
+        self.container[to_path] = self.container.pop(from_path)
 
     async def list(
         self,
         *,
-        search: str | None = None,
-        tags: list[str] | None = None,
+        prefix: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[BlobRef]:
-        wanted = set(tags or [])
-        matches = [
-            ref for _data, ref, blob_tags in self.blobs.values() if wanted.issubset(blob_tags)
+        paths = sorted(p for p in self.container if prefix is None or p.startswith(prefix))
+        page = paths[offset : offset + limit] if limit else paths[offset:]
+        return [
+            BlobRef(path=p, container_id=self.container_id, size=len(self.container[p]))
+            for p in page
         ]
-        return matches[offset : offset + limit] if limit else matches
 
 
 @pytest.fixture

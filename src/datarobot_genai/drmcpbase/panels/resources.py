@@ -73,8 +73,12 @@ async def panel_content_resource(source: str, panel_id: str) -> str:
     return json.dumps(
         {
             "type": panel.type.value,
+            # payload_files_id + payload_path are exactly the Files download
+            # API's (container id, fileName) pair. payload_path is None on
+            # legacy panels, whose payload_files_id alone identifies the blob.
             "payload_files_id": panel.payload_files_id,
             "payload_name": panel.payload_name,
+            "payload_path": panel.payload_path,
         }
     )
 
