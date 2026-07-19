@@ -178,15 +178,24 @@ class DataRobotOtelConventionsMiddleware(
                 span.set_attribute(GEN_AI_PROMPT, prompt)
             # Per-invocation accumulator; no cross-session state to manage.
             parts: list[str] = []
-            async for chunk in call_next(*args, **kwargs):
-                if isinstance(chunk, DRAgentEventResponse):
-                    _emit_tool_call_spans(chunk)
-                    text = _response_text(chunk)
-                    if text:
-                        parts.append(text)
-                yield chunk
-            if parts:
-                span.set_attribute(GEN_AI_COMPLETION, "".join(parts))
+            try:
+                async for chunk in call_next(*args, **kwargs):
+                    if isinstance(chunk, DRAgentEventResponse):
+                        _emit_tool_call_spans(chunk)
+                        text = _response_text(chunk)
+                        if text:
+                            parts.append(text)
+                    yield chunk
+            finally:
+                # Attach the completion in ``finally`` so it survives early teardown.
+                # Downstream moderation may stop consuming and ``aclose()`` this generator
+                # (throwing ``GeneratorExit`` at the ``yield``) before the loop exits normally
+                # — e.g. when the moderation stream finishes before draining its source. Setting
+                # the attribute after the loop would then be skipped, dropping ``gen_ai.completion``
+                # even though the deltas were already seen. The span is still open here because the
+                # enclosing ``with`` block outlives this ``finally``.
+                if parts:
+                    span.set_attribute(GEN_AI_COMPLETION, "".join(parts))
 
 
 @register_middleware(  # type: ignore[untyped-decorator]

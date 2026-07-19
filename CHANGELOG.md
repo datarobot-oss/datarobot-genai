@@ -4,10 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.25.3
+## 0.25.5
 - `drmcputils/files`: **shared-container blob storage** — `BlobStore` is now path-based: all blobs live in one shared Files container (created via `Files.create_empty_catalog_item_dir`, discovered by the `dr_panel_root` marker tag, oldest wins on create races) under `/`-separated paths uploaded with `upload_file(prefix=...)`. This is the Files API's sanctioned folder mechanism: a path embedded in an uploaded *filename* is stripped to its basename server-side as a disk-traversal defense, so the previous per-blob-container + folder-style-name design could never produce real folders in production. Listing is one server-side prefix query (`list_contained_files(prefix=...)`) instead of client-side AND-filtering over the whole catalog (catalog tag search matches with OR semantics), and the registry shows a single `panels` folder row instead of one row per blob.
 - `drmcputils/panels`: **conversation-scoped panel storage** — a `PanelStore` can be scoped to a conversation (`PanelStore(blobs, conversation_id=...)`); the shared store factory resolves the id per request from the `x-datarobot-conversation-id` header (the same header the previous panel-library MCP server used). Panels are stored at `<source>/<conversation_id>/<panel_id>.json` (unscoped: `<source>/_shared/`), so `list_panels` / `panels://{source}` return only the current conversation's panels instead of every panel across all conversations and applications. Panel ids are client-generated (`uuid4().hex`) and embedded in the path; conversation ids are normalized to `[0-9A-Za-z_]` and capped at 128 chars; `source` and `panel_id` inputs are validated to a path-safe alphabet. Unscoped consumers keep the legacy global view; panels stored before the shared-container layout stay reachable (get/payload/delete) by id, but no longer appear in listings and cannot be moved.
 - `drtools/panels`: new `move_panel` tool and `PanelStore.move` — promote a panel between sources (staging→main) by renaming its blob paths in place, **preserving the panel id** (no copy+delete, external references stay valid) and the panel's own conversation scope. Panels with bulky payloads expose `payload_files_id` (the shared container's Files id) + `payload_path` (the file path within it) — together exactly the Files download API's `(id, fileName)` pair; `payload_name` stays the caller's display name.
+
+## 0.25.4
+- `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server
+
+## 0.25.3
+- Dropped the `ragas` dependency. Agent runs still record their pipeline interactions as a `MultiTurnSample`, but that type (and the `HumanMessage` / `AIMessage` / `ToolMessage` / `ToolCall` primitives) now come from the new `datarobot_genai.core.pipeline_interactions` module, which owns a slim Pydantic `MultiTurnSample` and reuses the message primitives shipped by `datarobot-moderations` (>=11.2.45). The LangGraph and LlamaIndex trace converters, previously imported from `ragas.integrations`, are reimplemented locally. Removing `ragas` also drops its `diskcache` and `scikit-network` exclusions. The serialized `pipeline_interactions` payload is unchanged apart from a few always-null fields that are no longer emitted.
 
 ## 0.25.2
 - `dragent`: Added NAT `mcp_client_with_xaa_support` type MCP client.

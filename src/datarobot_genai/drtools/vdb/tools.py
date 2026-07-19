@@ -166,11 +166,19 @@ def _parse_vdb_query_documents(response_data: Any) -> list[dict[str, Any]]:
     return documents
 
 
-def _is_vector_database_deployment(deployment: dict[str, Any]) -> bool:
-    model = deployment.get("model")
+def _is_vector_database_deployment(deployment: dict[str, Any] | Any) -> bool:
+    model = (
+        deployment.get("model")
+        if isinstance(deployment, dict)
+        else getattr(deployment, "model", None)
+    )
     if isinstance(model, dict) and model.get("targetType") == "VectorDatabase":
         return True
-    capabilities = deployment.get("capabilities")
+    capabilities = (
+        deployment.get("capabilities")
+        if isinstance(deployment, dict)
+        else getattr(deployment, "capabilities", None)
+    )
     return (
         isinstance(capabilities, dict)
         and capabilities.get("supportsVectorDatabaseQuerying") is True
@@ -340,6 +348,13 @@ async def vdb_query(
             deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
+
+        if not _is_vector_database_deployment(deployment):
+            raise ToolError(
+                f"Deployment {deployment_id} is not a vector database deployment. "
+                "Use vdb_list to find vector database deployments.",
+                kind=ToolErrorKind.VALIDATION,
+            )
 
         endpoint = get_credentials().datarobot.datarobot_endpoint
         token = get_datarobot_access_token()
