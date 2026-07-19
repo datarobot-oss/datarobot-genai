@@ -42,7 +42,13 @@ store keeps the legacy global view via ``<source>/``.
 the id per request from the ``x-datarobot-conversation-id`` header (the same
 header the previous panel-library MCP server used). Conversation ids are
 normalized to ``[0-9A-Za-z_]`` and capped at 128 chars so they are safe as path
-segments. ``get``/``delete`` are id-based and never scoped.
+segments. Scoping is enforced on every id-based operation, not just listings:
+a scoped store resolves ids only against its own conversation and ``_shared``
+(other conversations' panels are invisible — not-found, no existence leak), it
+can read ``_shared`` panels but not delete or move them, and resolution probes
+exact manifest paths (own scope, then ``_shared``, across the hinted + known
+sources) so the hot path never lists the whole container. An unscoped store
+keeps the global view and may modify anything.
 
 **Moves.** ``move`` promotes a panel between sources (staging→main) by renaming
 its blobs' paths in place — no copy, no delete — so the panel id and external
@@ -78,6 +84,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SOURCE = "main"
 DEFAULT_LIST_LIMIT = 100
+
+# The sources panels are created in and promoted between. Scoped id resolution
+# probes these (plus any caller-supplied source hint) with exact-path checks;
+# exotic sources are still reachable through the listing fallback.
+_KNOWN_SOURCES = (DEFAULT_SOURCE, "staging")
 
 # HTTP header carrying the conversation id (same header the previous
 # panel-library MCP server used, so existing clients keep working unchanged).
@@ -162,20 +173,67 @@ class PanelStore:
     def _manifest_path(self, source: str, panel_id: str) -> str:
         return f"{source}/{self._scope_segment()}/{panel_id}{_MANIFEST_SUFFIX}"
 
-    async def _locate(self, panel_id: str) -> str | None:
+    async def _path_exists(self, path: str) -> bool:
+        refs = await self._blobs.list(prefix=path, limit=1)
+        return any(ref.path == path for ref in refs)
+
+    async def _locate(self, panel_id: str, *, source: str | None = None) -> str | None:
         """Resolve a panel id to its manifest path in the shared container.
 
-        Ids are embedded in blob paths, not derivable from them alone (the
-        source/scope segments are unknown for a bare id), so resolution is one
-        container-wide listing plus a suffix match. Returns ``None`` when the
-        id is not in the shared container (unknown, or a legacy panel).
+        A scoped store resolves only against its own conversation and
+        ``_shared`` — other conversations' panels are invisible. Resolution
+        probes exact manifest paths under the hinted + known sources (bounded,
+        O(1)); a container-wide listing runs only for exotic sources, filtered
+        to the readable scopes. ``source`` is a hint, not a filter: a stale
+        hint (e.g. after a promote) still resolves. An unscoped store keeps
+        the global view (prefix listing per source, full listing without one).
+
+        Returns ``None`` when the id is not in the shared container (unknown,
+        other conversation, or a legacy panel).
         """
-        refs = await self._blobs.list(limit=0)
         suffix = f"/{panel_id}{_MANIFEST_SUFFIX}"
-        for ref in refs:
-            if ref.path.endswith(suffix):
-                return ref.path
-        return None
+        if self._conversation_id:
+            scopes = (self._conversation_id, _SHARED_SCOPE)
+            sources = dict.fromkeys((source, *_KNOWN_SOURCES) if source else _KNOWN_SOURCES)
+            for src in sources:
+                for scope in scopes:
+                    path = f"{src}/{scope}/{panel_id}{_MANIFEST_SUFFIX}"
+                    if await self._path_exists(path):
+                        return path
+            refs = await self._blobs.list(limit=0)
+            return next(
+                (
+                    ref.path
+                    for ref in refs
+                    if ref.path.endswith(suffix) and ref.path.split("/", 2)[1] in scopes
+                ),
+                None,
+            )
+        prefix = f"{source}/" if source else None
+        refs = await self._blobs.list(prefix=prefix, limit=0)
+        located = next((ref.path for ref in refs if ref.path.endswith(suffix)), None)
+        if located is None and source:
+            # The hint missed (e.g. the panel was promoted since): global view.
+            refs = await self._blobs.list(limit=0)
+            located = next((ref.path for ref in refs if ref.path.endswith(suffix)), None)
+        return located
+
+    def _ensure_writable(self, manifest_path: str, panel_id: str) -> None:
+        """Reject writes to panels outside the store's own conversation.
+
+        Only ``_shared`` panels can be located outside the own scope (foreign
+        conversations are invisible to ``_locate``), so this is specifically
+        the scoped-consumer-touching-shared-panels guard.
+        """
+        if not self._conversation_id:
+            return
+        if manifest_path.split("/", 2)[1] == self._conversation_id:
+            return
+        raise ToolError(
+            f"Panel '{panel_id}' is shared, not owned by this conversation; "
+            "shared panels can only be modified by an unscoped consumer.",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     @staticmethod
     def _panel_from_raw(raw: bytes, panel_id: str, manifest_path: str | None) -> Panel:
@@ -241,15 +299,19 @@ class PanelStore:
         panel.id = panel_id
         return panel  # type: ignore[return-value]
 
-    async def get(self, panel_id: str) -> Panel:
+    async def get(self, panel_id: str, *, source: str | None = None) -> Panel:
         """Load a panel by id. Payload is not hydrated here.
 
-        Id-based access is intentionally not conversation-scoped: panel ids are
-        globally unique, and panels created before conversation scoping existed
-        (legacy standalone blobs) must stay reachable.
+        A scoped store reads its own conversation's panels plus ``_shared``
+        ones; other conversations' panels are not found. ``source`` is an
+        optional resolution hint (O(1) direct probe when it matches). Panels
+        created before conversation scoping existed (legacy standalone blobs)
+        stay reachable by id.
         """
         _validate_panel_id(panel_id)
-        manifest_path = await self._locate(panel_id)
+        if source is not None:
+            _validate_source(source)
+        manifest_path = await self._locate(panel_id, source=source)
         raw = await self._blobs.get(manifest_path or panel_id)
         return self._panel_from_raw(raw, panel_id, manifest_path)
 
@@ -291,17 +353,21 @@ class PanelStore:
             panels.append(panel)
         return panels
 
-    async def move(self, panel_id: str, *, to_source: str) -> Panel:
+    async def move(self, panel_id: str, *, to_source: str, source: str | None = None) -> Panel:
         """Move a panel to ``to_source`` (e.g. promote staging→main), preserving its id.
 
         The move renames the manifest (and payload) blob paths in place — no
         copy, no delete — so the panel id and any external references to it
         stay valid. The panel's own conversation scope (recorded on create) is
-        kept regardless of the scope of the store performing the move.
+        kept regardless of the scope of the store performing the move. A
+        scoped store may only move its own conversation's panels; ``source``
+        is an optional resolution hint.
         """
         _validate_panel_id(panel_id)
         _validate_source(to_source)
-        manifest_path = await self._locate(panel_id)
+        if source is not None:
+            _validate_source(source)
+        manifest_path = await self._locate(panel_id, source=source)
         if manifest_path is None:
             raise ToolError(
                 f"Panel '{panel_id}' was not found in the shared panels container. "
@@ -309,6 +375,7 @@ class PanelStore:
                 "recreate the panel instead.",
                 kind=ToolErrorKind.NOT_FOUND,
             )
+        self._ensure_writable(manifest_path, panel_id)
         raw = await self._blobs.get(manifest_path)
         panel = self._panel_from_raw(raw, panel_id, manifest_path)
         # The scope segment is the panel's own (from its current path), not the
@@ -337,10 +404,10 @@ class PanelStore:
             panel.payload_path = _payload_path(target_path)
         return panel
 
-    async def get_payload(self, panel: Panel | str) -> bytes | None:
+    async def get_payload(self, panel: Panel | str, *, source: str | None = None) -> bytes | None:
         """Fetch a panel's payload blob bytes (by id or loaded panel); None if it has none."""
         if isinstance(panel, str):
-            panel = await self.get(panel)
+            panel = await self.get(panel, source=source)
         if panel.payload_path:
             return await self._blobs.get(panel.payload_path)
         if panel.payload_files_id:
@@ -348,22 +415,36 @@ class PanelStore:
             return await self._blobs.get(panel.payload_files_id)
         return None
 
-    async def delete(self, panel_id: str) -> None:
-        """Delete a panel's manifest and its payload blob (if any)."""
+    async def delete(self, panel_id: str, *, source: str | None = None) -> None:
+        """Delete a panel's manifest and its payload blob (if any).
+
+        A scoped store may only delete its own conversation's panels: shared
+        panels are rejected, other conversations' panels are not found.
+        ``source`` is an optional resolution hint.
+        """
         _validate_panel_id(panel_id)
-        manifest_path = await self._locate(panel_id)
+        if source is not None:
+            _validate_source(source)
+        manifest_path = await self._locate(panel_id, source=source)
         if manifest_path is not None:
+            # Reject before the legacy fallback below: for shared-layout
+            # panels payload_files_id is the shared container itself, which
+            # the fallback would delete wholesale.
+            self._ensure_writable(manifest_path, panel_id)
             # One batch delete; a missing payload path is silently ignored.
             await self._blobs.delete([manifest_path, _payload_path(manifest_path)])
             return
         # Legacy panel: standalone containers for manifest and payload. Read
-        # the manifest for the payload id first; transient fetch errors
-        # propagate (so the caller can retry without orphaning the payload),
-        # while an unreadable/corrupt manifest falls back to deleting the
-        # manifest alone, since the payload id is unknowable.
+        # the manifest for the payload id first; fetch errors — including
+        # not-found, so an unknown or other-conversation id never reports a
+        # successful delete — propagate (the caller can retry without
+        # orphaning the payload), while an unreadable/corrupt manifest falls
+        # back to deleting the manifest alone, since the payload id is
+        # unknowable.
+        raw = await self._blobs.get(panel_id)
         payload_files_id: str | None = None
         try:
-            payload_files_id = (await self.get(panel_id)).payload_files_id
+            payload_files_id = self._panel_from_raw(raw, panel_id, None).payload_files_id
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError) as exc:
             logger.warning(
                 "Panel %s manifest is unreadable (%s); deleting the manifest only", panel_id, exc

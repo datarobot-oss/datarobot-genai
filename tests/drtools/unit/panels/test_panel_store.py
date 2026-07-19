@@ -263,15 +263,170 @@ async def test_list_is_scoped_to_the_conversation(fake_blob_store: FakeBlobStore
     assert {p.id for p in await unscoped.list(source="staging")} == {in_a.id, in_b.id, loose.id}
 
 
-async def test_scoped_get_reads_any_panel_by_id(fake_blob_store: FakeBlobStore) -> None:
-    # Panel ids are globally unique; get() is not list-scoped, so any
-    # conversation's store can resolve a panel it holds the id for.
+async def test_scoped_get_reads_shared_panels(fake_blob_store: FakeBlobStore) -> None:
+    # GIVEN a panel created by an unscoped consumer (lives under _shared)
     unscoped = PanelStore(fake_blob_store)
     other = await unscoped.create(Text(title="old", text="x"), source="main")
+
+    # WHEN a conversation-scoped store fetches it by id
     scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
     got = await scoped.get(other.id)
+
+    # THEN shared panels are readable from any conversation
     assert got.id == other.id
     assert got.conversation_id is None
+
+
+class TestConversationScopeEnforcement:
+    """A conversation-scoped store must not see or touch other conversations' panels."""
+
+    async def test_scoped_get_cannot_read_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="main")
+
+        # WHEN conversation B tries to fetch it by id
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+
+        # THEN the panel is invisible (resolution falls through to the legacy
+        # lookup, which fails with the backend's not-found error)
+        with pytest.raises(KeyError):
+            await intruder.get(private.id)
+
+    async def test_scoped_delete_cannot_delete_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="main")
+
+        # WHEN conversation B tries to delete it by id
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+        with pytest.raises(KeyError):
+            await intruder.delete(private.id)
+
+        # THEN the panel is untouched
+        assert f"main/conv_a/{private.id}.json" in fake_blob_store.container
+
+    async def test_scoped_delete_cannot_delete_shared_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a shared panel with a payload (readable from any conversation)
+        unscoped = PanelStore(fake_blob_store)
+        shared = await unscoped.create(
+            Dataset(title="DS"), source="main", payload=b"DATA", payload_name="d.parquet"
+        )
+
+        # WHEN a conversation-scoped store tries to delete it
+        scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+        with pytest.raises(ToolError) as exc_info:
+            await scoped.delete(shared.id)
+
+        # THEN the delete is rejected as a scoping violation
+        assert exc_info.value.kind == ToolErrorKind.VALIDATION
+        # AND both blobs are untouched
+        assert f"main/_shared/{shared.id}.json" in fake_blob_store.container
+        assert f"main/_shared/{shared.id}.payload" in fake_blob_store.container
+        # AND the rejection never reached the legacy branch, which would have
+        # deleted payload_files_id — the *shared container itself* in production
+        assert ("delete", shared.payload_files_id) not in fake_blob_store.calls
+
+    async def test_scoped_move_cannot_move_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="staging")
+
+        # WHEN conversation B tries to promote it
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+        with pytest.raises(ToolError) as exc_info:
+            await intruder.move(private.id, to_source="main")
+
+        # THEN the panel is invisible to B (not-found, no existence leak) and unmoved
+        assert exc_info.value.kind == ToolErrorKind.NOT_FOUND
+        assert f"staging/conv_a/{private.id}.json" in fake_blob_store.container
+
+    async def test_scoped_move_cannot_move_shared_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a shared panel
+        unscoped = PanelStore(fake_blob_store)
+        shared = await unscoped.create(Text(title="S", text="s"), source="staging")
+
+        # WHEN a conversation-scoped store tries to promote it
+        scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+        with pytest.raises(ToolError) as exc_info:
+            await scoped.move(shared.id, to_source="main")
+
+        # THEN the move is rejected and the panel stays put
+        assert exc_info.value.kind == ToolErrorKind.VALIDATION
+        assert f"staging/_shared/{shared.id}.json" in fake_blob_store.container
+
+    async def test_scoped_delete_deletes_own_panel(self, fake_blob_store: FakeBlobStore) -> None:
+        # GIVEN a panel owned by this conversation
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+
+        # WHEN the same conversation deletes it
+        await store.delete(created.id)
+
+        # THEN it is gone
+        assert f"main/conv_a/{created.id}.json" not in fake_blob_store.container
+
+
+class TestScopedResolutionIsBounded:
+    """Scoped id resolution must stay O(1): direct path probes, never a
+    whole-container listing (the container holds every conversation's panels).
+    """
+
+    async def test_scoped_get_never_lists_the_whole_container(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel among other conversations' panels
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+        other = PanelStore(fake_blob_store, conversation_id="conv-b")
+        await other.create(Text(title="theirs", text="t"), source="main")
+
+        # WHEN the panel is fetched, deleted, or moved by its own conversation
+        fake_blob_store.calls.clear()
+        await store.get(created.id)
+        await store.move(created.id, to_source="staging")
+        await store.delete(created.id)
+
+        # THEN resolution used only bounded probes — no unprefixed listing
+        assert ("list", None) not in fake_blob_store.calls
+
+    async def test_get_with_source_hint_resolves_directly(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel in staging
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="staging")
+
+        # WHEN it is fetched with the source hint
+        fake_blob_store.calls.clear()
+        got = await store.get(created.id, source="staging")
+
+        # THEN the first probe is the exact manifest path (O(1))
+        assert got.id == created.id
+        assert fake_blob_store.calls[0] == ("list", f"staging/conv_a/{created.id}.json")
+
+    async def test_get_with_wrong_source_hint_still_resolves(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel in main
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+
+        # WHEN it is fetched with a stale hint (e.g. the panel was promoted)
+        got = await store.get(created.id, source="staging")
+
+        # THEN the hint is a hint, not a filter — the panel is still found
+        assert got.id == created.id
 
 
 async def test_move_preserves_panel_id_and_payload(fake_blob_store: FakeBlobStore) -> None:

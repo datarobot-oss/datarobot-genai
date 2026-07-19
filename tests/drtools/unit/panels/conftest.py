@@ -35,6 +35,9 @@ class FakeBlobStore:
         self.container: dict[str, bytes] = {}
         self.legacy: dict[str, bytes] = {}
         self.container_id = FAKE_CONTAINER_ID
+        # Op log for cost/safety assertions, e.g. ("list", <prefix>) entries
+        # prove scoped resolution never lists the whole container.
+        self.calls: list[tuple[str, str | None]] = []
 
     async def put(
         self,
@@ -49,6 +52,7 @@ class FakeBlobStore:
         return BlobRef(path=path, container_id=self.container_id, size=len(data))
 
     async def get(self, path: str) -> bytes:
+        self.calls.append(("get", path))
         blobs = self.container if "/" in path else self.legacy
         if path not in blobs:
             raise KeyError(path)
@@ -56,6 +60,7 @@ class FakeBlobStore:
 
     async def delete(self, paths: str | list[str]) -> None:
         for path in [paths] if isinstance(paths, str) else paths:
+            self.calls.append(("delete", path))
             (self.container if "/" in path else self.legacy).pop(path, None)
 
     async def move(self, from_path: str, to_path: str) -> None:
@@ -70,6 +75,7 @@ class FakeBlobStore:
         limit: int = 100,
         offset: int = 0,
     ) -> list[BlobRef]:
+        self.calls.append(("list", prefix))
         paths = sorted(p for p in self.container if prefix is None or p.startswith(prefix))
         page = paths[offset : offset + limit] if limit else paths[offset:]
         return [

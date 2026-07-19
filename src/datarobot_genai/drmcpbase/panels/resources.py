@@ -59,13 +59,13 @@ async def panels_list_resource(source: str) -> str:
 
 async def panel_metadata_resource(source: str, panel_id: str) -> str:
     _require_mcp_sandbox()
-    panel = await _store().get(panel_id)
+    panel = await _store().get(panel_id, source=source)
     return panel.model_dump_json()
 
 
 async def panel_content_resource(source: str, panel_id: str) -> str:
     _require_mcp_sandbox()
-    panel = await _store().get(panel_id)
+    panel = await _store().get(panel_id, source=source)
     if isinstance(panel, Text):
         return json.dumps({"type": "text", "text": panel.text})
     if isinstance(panel, Json):
