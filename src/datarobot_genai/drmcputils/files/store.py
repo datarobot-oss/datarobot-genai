@@ -146,8 +146,10 @@ class BlobStore(Protocol):
     ) -> list[BlobRef]:
         """List blobs under ``prefix`` (server-side filter; ``None`` = all).
 
-        ``limit=0`` returns every match. Returns ``[]`` when the shared
-        container does not exist yet (nothing was ever stored).
+        ``prefix`` must be a *directory* prefix ending with ``/`` — the Files
+        API rejects anything else with a 400. ``limit=0`` returns every match.
+        Returns ``[]`` when the shared container does not exist yet (nothing
+        was ever stored).
         """
         ...
 
@@ -294,6 +296,11 @@ class DataRobotFilesBlobStore:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> list[BlobRef]:
+        if prefix is not None and not prefix.endswith("/"):
+            # Fail fast with the API's own constraint: list_contained_files
+            # only accepts directory prefixes and 400s on anything else.
+            raise ValueError('Prefix must end with a forward slash "/".')
+
         def _list() -> list[BlobRef]:
             container = self._container_for_read()
             if container is None:
