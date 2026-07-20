@@ -14,15 +14,24 @@
 
 """Unit tests for PanelStore (backed by an in-memory FakeBlobStore)."""
 
+import json
+
 import pytest
 
+from datarobot_genai.drmcputils.exceptions import ToolError
+from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.store import BlobStore
 from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.models import PanelType
 from datarobot_genai.drmcputils.panels.models import Text
 from datarobot_genai.drmcputils.panels.store import PanelStore
+from datarobot_genai.drmcputils.panels.store import normalize_conversation_id
 
 from .conftest import FakeBlobStore
+
+
+def _container_paths(fake: FakeBlobStore) -> set[str]:
+    return set(fake.container)
 
 
 def test_fake_blob_store_satisfies_protocol(fake_blob_store: FakeBlobStore) -> None:
@@ -37,6 +46,8 @@ async def test_create_list_get_delete_roundtrip(fake_blob_store: FakeBlobStore) 
     assert created.id is not None
     assert created.type == PanelType.TEXT
     assert created.updated_at is not None
+    # The manifest lives at <source>/<scope>/<panel_id>.json.
+    assert _container_paths(fake_blob_store) == {f"staging/_shared/{created.id}.json"}
 
     got = await store.get(created.id)
     assert isinstance(got, Text)
@@ -51,6 +62,7 @@ async def test_create_list_get_delete_roundtrip(fake_blob_store: FakeBlobStore) 
 
     await store.delete(created.id)
     assert await store.list(source="staging") == []
+    assert fake_blob_store.container == {}
 
 
 async def test_create_with_payload_stores_and_cleans_up_payload_blob(
@@ -65,15 +77,27 @@ async def test_create_with_payload_stores_and_cleans_up_payload_blob(
         payload_name="d.parquet",
         content_type="application/octet-stream",
     )
-    assert created.payload_files_id is not None
+    # payload_files_id + payload_path form the Files download reference;
+    # payload_name stays the caller's display name.
+    assert created.payload_files_id == fake_blob_store.container_id
     assert created.payload_name == "d.parquet"
-    # Payload is retrievable as its own blob.
-    assert await fake_blob_store.get(created.payload_files_id) == b"PARQUET-BYTES"
+    assert created.payload_path == f"main/_shared/{created.id}.payload"
+    assert await store.get_payload(created.id) == b"PARQUET-BYTES"
 
     # Delete removes both the manifest and the payload blob.
     await store.delete(created.id)
-    assert created.payload_files_id not in fake_blob_store.blobs
-    assert created.id not in fake_blob_store.blobs
+    assert fake_blob_store.container == {}
+
+
+async def test_manifest_does_not_persist_derived_fields(fake_blob_store: FakeBlobStore) -> None:
+    # id and payload_path are derived from blob paths on load; persisting them
+    # would force a manifest rewrite on every move.
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="main", payload=b"DATA")
+    manifest = json.loads(fake_blob_store.container[f"main/_shared/{created.id}.json"])
+    assert "id" not in manifest
+    assert "payload_path" not in manifest
+    assert manifest["payload_files_id"] == fake_blob_store.container_id
 
 
 async def test_create_cleans_up_payload_when_manifest_put_fails(
@@ -94,36 +118,9 @@ async def test_create_cleans_up_payload_when_manifest_put_fails(
     with pytest.raises(RuntimeError):
         await store.create(panel, source="main", payload=b"DATA", payload_name="d.parquet")
     # No orphan payload blob is left behind and the panel keeps no stale ref.
-    assert fake_blob_store.blobs == {}
+    assert fake_blob_store.container == {}
     assert panel.payload_files_id is None
-
-
-async def test_delete_propagates_transient_get_errors(fake_blob_store: FakeBlobStore) -> None:
-    store = PanelStore(fake_blob_store)
-    created = await store.create(Dataset(title="DS"), source="main", payload=b"DATA")
-    original_get = fake_blob_store.get
-
-    async def _get_boom(ref: object):
-        raise RuntimeError("transient backend error")
-
-    fake_blob_store.get = _get_boom  # type: ignore[method-assign]
-    with pytest.raises(RuntimeError):
-        await store.delete(created.id)
-    # Nothing was deleted: the caller can retry without orphaning the payload.
-    assert created.id in fake_blob_store.blobs
-    assert created.payload_files_id in fake_blob_store.blobs
-    fake_blob_store.get = original_get  # type: ignore[method-assign]
-
-
-async def test_delete_with_corrupt_manifest_still_deletes_manifest(
-    fake_blob_store: FakeBlobStore,
-) -> None:
-    store = PanelStore(fake_blob_store)
-    created = await store.create(Dataset(title="DS"), source="main")
-    data, ref, tags = fake_blob_store.blobs[created.id]
-    fake_blob_store.blobs[created.id] = (b"not-json", ref, tags)
-    await store.delete(created.id)
-    assert created.id not in fake_blob_store.blobs
+    assert panel.payload_path is None
 
 
 async def test_list_pages_with_offset(fake_blob_store: FakeBlobStore) -> None:
@@ -139,22 +136,455 @@ async def test_list_pages_with_offset(fake_blob_store: FakeBlobStore) -> None:
     }
 
 
+async def test_list_pages_count_panels_not_blobs(fake_blob_store: FakeBlobStore) -> None:
+    # Payload blobs share the listing prefix; limit/offset must count panels.
+    store = PanelStore(fake_blob_store)
+    for i in range(3):
+        await store.create(Dataset(title=f"DS{i}"), source="main", payload=b"DATA")
+    assert len(await store.list(source="main", limit=2)) == 2
+    assert len(await store.list(source="main", limit=2, offset=2)) == 1
+
+
 async def test_list_skips_corrupt_manifests(fake_blob_store: FakeBlobStore) -> None:
     store = PanelStore(fake_blob_store)
     good = await store.create(Dataset(title="good"), source="main")
     bad = await store.create(Dataset(title="bad"), source="main")
-    data, ref, tags = fake_blob_store.blobs[bad.id]
-    fake_blob_store.blobs[bad.id] = (b'{"title": "no type field"}', ref, tags)
+    fake_blob_store.container[f"main/_shared/{bad.id}.json"] = b'{"title": "no type field"}'
     listed = await store.list(source="main")
     assert [p.id for p in listed] == [good.id]
 
 
-async def test_delete_handles_manifest_missing_type_key(
+async def test_delete_with_corrupt_manifest_still_deletes(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    # Container-layout deletes go by path and never read the manifest, so a
+    # corrupt manifest cannot block deletion.
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="main")
+    fake_blob_store.container[f"main/_shared/{created.id}.json"] = b"not-json"
+    await store.delete(created.id)
+    assert fake_blob_store.container == {}
+
+
+# --- Validation ---------------------------------------------------------------
+
+
+async def test_get_rejects_path_like_panel_ids(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    for bad_id in ("../../etc/passwd", "a/b", "", "x" * 129):
+        with pytest.raises(ToolError) as excinfo:
+            await store.get(bad_id)
+        assert excinfo.value.kind == ToolErrorKind.VALIDATION
+
+
+async def test_create_and_list_reject_path_like_sources(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    with pytest.raises(ToolError) as excinfo:
+        await store.create(Text(title="T", text="x"), source="main/../other")
+    assert excinfo.value.kind == ToolErrorKind.VALIDATION
+    with pytest.raises(ToolError):
+        await store.list(source="")
+
+
+# --- Conversation scoping ---------------------------------------------------
+
+
+class TestNormalizeConversationId:
+    def test_none_and_empty_normalize_to_none(self) -> None:
+        # GIVEN no conversation id (missing, empty, or whitespace)
+        # THEN normalization yields None (unscoped)
+        assert normalize_conversation_id(None) is None
+        assert normalize_conversation_id("") is None
+        assert normalize_conversation_id("   ") is None
+
+    def test_hyphens_become_underscores(self) -> None:
+        # Ids become path segments (and historically tags, which reject "-").
+        assert normalize_conversation_id("abc-123-def") == "abc_123_def"
+
+    def test_non_alphanumeric_characters_are_replaced(self) -> None:
+        assert normalize_conversation_id("a/b:c d.e") == "a_b_c_d_e"
+
+    def test_length_is_capped_at_128(self) -> None:
+        normalized = normalize_conversation_id("x" * 300)
+        assert normalized is not None
+        assert len(normalized) == 128
+
+    def test_clean_ids_pass_through(self) -> None:
+        assert normalize_conversation_id("65f0c0ffee15c0ffee15c0de") == "65f0c0ffee15c0ffee15c0de"
+
+
+async def test_scoped_create_places_blobs_under_the_conversation_path(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    # GIVEN a store scoped to a conversation
+    store = PanelStore(fake_blob_store, conversation_id="conv-1")
+    assert store.conversation_id == "conv_1"
+
+    # WHEN a panel with a payload is created
+    created = await store.create(
+        Text(title="T", text="hi"), source="staging", payload=b"P", payload_name="t.bin"
+    )
+
+    # THEN both blobs live under the <source>/<conversation_id>/ path
+    assert _container_paths(fake_blob_store) == {
+        f"staging/conv_1/{created.id}.json",
+        f"staging/conv_1/{created.id}.payload",
+    }
+    # AND the panel records its owning conversation
+    assert created.conversation_id == "conv_1"
+
+
+async def test_unscoped_create_uses_the_shared_scope(
     fake_blob_store: FakeBlobStore,
 ) -> None:
     store = PanelStore(fake_blob_store)
-    created = await store.create(Dataset(title="DS"), source="main")
-    data, ref, tags = fake_blob_store.blobs[created.id]
-    fake_blob_store.blobs[created.id] = (b'{"title": "decodes but no type"}', ref, tags)
-    await store.delete(created.id)
-    assert created.id not in fake_blob_store.blobs
+    created = await store.create(Text(title="T", text="hi"), source="staging")
+    assert _container_paths(fake_blob_store) == {f"staging/_shared/{created.id}.json"}
+    assert created.conversation_id is None
+
+
+async def test_list_is_scoped_to_the_conversation(fake_blob_store: FakeBlobStore) -> None:
+    # GIVEN panels created in two conversations plus one unscoped panel
+    store_a = PanelStore(fake_blob_store, conversation_id="conv-a")
+    store_b = PanelStore(fake_blob_store, conversation_id="conv-b")
+    unscoped = PanelStore(fake_blob_store)
+    in_a = await store_a.create(Text(title="A", text="a"), source="staging")
+    in_b = await store_b.create(Text(title="B", text="b"), source="staging")
+    loose = await unscoped.create(Text(title="L", text="l"), source="staging")
+
+    # WHEN each conversation lists its staging panels
+    listed_a = await store_a.list(source="staging")
+    listed_b = await store_b.list(source="staging")
+
+    # THEN each sees only its own panels (no cross-conversation leak)
+    assert [p.id for p in listed_a] == [in_a.id]
+    assert [p.id for p in listed_b] == [in_b.id]
+    # AND the unscoped store keeps the legacy global view (existing panels stay reachable)
+    assert {p.id for p in await unscoped.list(source="staging")} == {in_a.id, in_b.id, loose.id}
+
+
+async def test_scoped_get_reads_shared_panels(fake_blob_store: FakeBlobStore) -> None:
+    # GIVEN a panel created by an unscoped consumer (lives under _shared)
+    unscoped = PanelStore(fake_blob_store)
+    other = await unscoped.create(Text(title="old", text="x"), source="main")
+
+    # WHEN a conversation-scoped store fetches it by id
+    scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+    got = await scoped.get(other.id)
+
+    # THEN shared panels are readable from any conversation
+    assert got.id == other.id
+    assert got.conversation_id is None
+
+
+class TestConversationScopeEnforcement:
+    """A conversation-scoped store must not see or touch other conversations' panels."""
+
+    async def test_scoped_get_cannot_read_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="main")
+
+        # WHEN conversation B tries to fetch it by id
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+
+        # THEN the panel is invisible (resolution falls through to the legacy
+        # lookup, which fails with the backend's not-found error)
+        with pytest.raises(KeyError):
+            await intruder.get(private.id)
+
+    async def test_scoped_delete_cannot_delete_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="main")
+
+        # WHEN conversation B tries to delete it by id
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+        with pytest.raises(KeyError):
+            await intruder.delete(private.id)
+
+        # THEN the panel is untouched
+        assert f"main/conv_a/{private.id}.json" in fake_blob_store.container
+
+    async def test_scoped_delete_cannot_delete_shared_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a shared panel with a payload (readable from any conversation)
+        unscoped = PanelStore(fake_blob_store)
+        shared = await unscoped.create(
+            Dataset(title="DS"), source="main", payload=b"DATA", payload_name="d.parquet"
+        )
+
+        # WHEN a conversation-scoped store tries to delete it
+        scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+        with pytest.raises(ToolError) as exc_info:
+            await scoped.delete(shared.id)
+
+        # THEN the delete is rejected as a scoping violation
+        assert exc_info.value.kind == ToolErrorKind.VALIDATION
+        # AND both blobs are untouched
+        assert f"main/_shared/{shared.id}.json" in fake_blob_store.container
+        assert f"main/_shared/{shared.id}.payload" in fake_blob_store.container
+        # AND the rejection never reached the legacy branch, which would have
+        # deleted payload_files_id — the *shared container itself* in production
+        assert ("delete", shared.payload_files_id) not in fake_blob_store.calls
+
+    async def test_scoped_move_cannot_move_other_conversations_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a panel owned by conversation A
+        owner = PanelStore(fake_blob_store, conversation_id="conv-a")
+        private = await owner.create(Text(title="A", text="a"), source="staging")
+
+        # WHEN conversation B tries to promote it
+        intruder = PanelStore(fake_blob_store, conversation_id="conv-b")
+        with pytest.raises(ToolError) as exc_info:
+            await intruder.move(private.id, to_source="main")
+
+        # THEN the panel is invisible to B (not-found, no existence leak) and unmoved
+        assert exc_info.value.kind == ToolErrorKind.NOT_FOUND
+        assert f"staging/conv_a/{private.id}.json" in fake_blob_store.container
+
+    async def test_scoped_move_cannot_move_shared_panels(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a shared panel
+        unscoped = PanelStore(fake_blob_store)
+        shared = await unscoped.create(Text(title="S", text="s"), source="staging")
+
+        # WHEN a conversation-scoped store tries to promote it
+        scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+        with pytest.raises(ToolError) as exc_info:
+            await scoped.move(shared.id, to_source="main")
+
+        # THEN the move is rejected and the panel stays put
+        assert exc_info.value.kind == ToolErrorKind.VALIDATION
+        assert f"staging/_shared/{shared.id}.json" in fake_blob_store.container
+
+    async def test_scoped_delete_deletes_own_panel(self, fake_blob_store: FakeBlobStore) -> None:
+        # GIVEN a panel owned by this conversation
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+
+        # WHEN the same conversation deletes it
+        await store.delete(created.id)
+
+        # THEN it is gone
+        assert f"main/conv_a/{created.id}.json" not in fake_blob_store.container
+
+
+class TestScopedResolutionIsBounded:
+    """Scoped id resolution must stay O(1): direct path probes, never a
+    whole-container listing (the container holds every conversation's panels).
+    """
+
+    async def test_scoped_get_never_lists_the_whole_container(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel among other conversations' panels
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+        other = PanelStore(fake_blob_store, conversation_id="conv-b")
+        await other.create(Text(title="theirs", text="t"), source="main")
+
+        # WHEN the panel is fetched, deleted, or moved by its own conversation
+        fake_blob_store.calls.clear()
+        await store.get(created.id)
+        await store.move(created.id, to_source="staging")
+        await store.delete(created.id)
+
+        # THEN resolution used only bounded probes — no unprefixed listing
+        assert ("list", None) not in fake_blob_store.calls
+
+    async def test_get_with_source_hint_resolves_directly(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel in staging
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="staging")
+
+        # WHEN it is fetched with the source hint
+        fake_blob_store.calls.clear()
+        got = await store.get(created.id, source="staging")
+
+        # THEN the first probe is the exact manifest path (O(1))
+        assert got.id == created.id
+        assert fake_blob_store.calls[0] == ("list", f"staging/conv_a/{created.id}.json")
+
+    async def test_get_with_wrong_source_hint_still_resolves(
+        self, fake_blob_store: FakeBlobStore
+    ) -> None:
+        # GIVEN a scoped panel in main
+        store = PanelStore(fake_blob_store, conversation_id="conv-a")
+        created = await store.create(Text(title="mine", text="m"), source="main")
+
+        # WHEN it is fetched with a stale hint (e.g. the panel was promoted)
+        got = await store.get(created.id, source="staging")
+
+        # THEN the hint is a hint, not a filter — the panel is still found
+        assert got.id == created.id
+
+
+async def test_move_preserves_panel_id_and_payload(fake_blob_store: FakeBlobStore) -> None:
+    # GIVEN a staging panel with a payload
+    store = PanelStore(fake_blob_store, conversation_id="conv-a")
+    created = await store.create(
+        Dataset(title="DS"), source="staging", payload=b"DATA", payload_name="d.parquet"
+    )
+
+    # WHEN it is moved (promoted) to main
+    moved = await store.move(created.id, to_source="main")
+
+    # THEN the id is preserved (the move is an in-place path rename, not copy+delete)
+    assert moved.id == created.id
+    assert [p.id for p in await store.list(source="main")] == [created.id]
+    assert await store.list(source="staging") == []
+    # AND the payload blob moved with it and is still readable
+    assert await store.get_payload(created.id) == b"DATA"
+    assert _container_paths(fake_blob_store) == {
+        f"main/conv_a/{created.id}.json",
+        f"main/conv_a/{created.id}.payload",
+    }
+
+
+async def test_move_keeps_the_panels_own_conversation_scope(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    # GIVEN a panel created inside a conversation
+    scoped = PanelStore(fake_blob_store, conversation_id="conv-a")
+    created = await scoped.create(Text(title="T", text="x"), source="staging")
+
+    # WHEN an unscoped store performs the move (e.g. an admin/global consumer)
+    unscoped = PanelStore(fake_blob_store)
+    moved = await unscoped.move(created.id, to_source="main")
+
+    # THEN the panel stays in its original conversation (not the mover's scope)
+    assert moved.id == created.id
+    assert [p.id for p in await scoped.list(source="main")] == [created.id]
+    assert _container_paths(fake_blob_store) == {f"main/conv_a/{created.id}.json"}
+
+
+async def test_move_to_the_same_source_is_a_noop(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Text(title="T", text="x"), source="main")
+    moved = await store.move(created.id, to_source="main")
+    assert moved.id == created.id
+    assert _container_paths(fake_blob_store) == {f"main/_shared/{created.id}.json"}
+
+
+async def test_move_keeps_manifest_content(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="staging")
+    moved = await store.move(created.id, to_source="main")
+    assert isinstance(moved, Dataset)
+    assert moved.title == "DS"
+
+
+async def test_move_rolls_payload_back_when_manifest_move_fails(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    store = PanelStore(fake_blob_store)
+    created = await store.create(Dataset(title="DS"), source="staging", payload=b"DATA")
+    original_move = fake_blob_store.move
+    calls = {"n": 0}
+
+    async def _move_fail_second(from_path: str, to_path: str):
+        calls["n"] += 1
+        if calls["n"] == 2:  # first move = payload, second = manifest
+            raise RuntimeError("manifest move failed")
+        return await original_move(from_path, to_path)
+
+    fake_blob_store.move = _move_fail_second  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        await store.move(created.id, to_source="main")
+    # The panel is intact in its original source, payload co-located.
+    fake_blob_store.move = original_move  # type: ignore[method-assign]
+    assert _container_paths(fake_blob_store) == {
+        f"staging/_shared/{created.id}.json",
+        f"staging/_shared/{created.id}.payload",
+    }
+    assert await store.get_payload(created.id) == b"DATA"
+
+
+async def test_move_rejects_missing_panel_id(fake_blob_store: FakeBlobStore) -> None:
+    store = PanelStore(fake_blob_store)
+    with pytest.raises(ToolError) as excinfo:
+        await store.move("doesnotexist", to_source="main")
+    assert excinfo.value.kind == ToolErrorKind.NOT_FOUND
+
+
+# --- Legacy panels (pre shared-container layout) ------------------------------
+
+
+def _seed_legacy_panel(
+    fake: FakeBlobStore, *, manifest_id: str = "legacymanifest1", with_payload: bool = False
+) -> str:
+    manifest = {
+        "type": "dataset",
+        "title": "old",
+        "payload_files_id": "legacypayload1" if with_payload else None,
+        "payload_name": "d.parquet" if with_payload else None,
+    }
+    fake.legacy[manifest_id] = json.dumps(manifest).encode("utf-8")
+    if with_payload:
+        fake.legacy["legacypayload1"] = b"LEGACY-DATA"
+    return manifest_id
+
+
+async def test_legacy_panel_stays_reachable_by_id(fake_blob_store: FakeBlobStore) -> None:
+    panel_id = _seed_legacy_panel(fake_blob_store, with_payload=True)
+    store = PanelStore(fake_blob_store, conversation_id="conv-a")
+    got = await store.get(panel_id)
+    assert got.id == panel_id
+    assert got.title == "old"
+    # The payload path is unknown for legacy panels; payload_files_id alone
+    # identifies the standalone payload container.
+    assert got.payload_path is None
+    assert await store.get_payload(got) == b"LEGACY-DATA"
+
+
+async def test_legacy_panel_delete_removes_manifest_and_payload(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    panel_id = _seed_legacy_panel(fake_blob_store, with_payload=True)
+    await PanelStore(fake_blob_store).delete(panel_id)
+    assert fake_blob_store.legacy == {}
+
+
+async def test_legacy_panel_delete_propagates_transient_get_errors(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    panel_id = _seed_legacy_panel(fake_blob_store, with_payload=True)
+    store = PanelStore(fake_blob_store)
+    original_get = fake_blob_store.get
+
+    async def _get_boom(path: str):
+        raise RuntimeError("transient backend error")
+
+    fake_blob_store.get = _get_boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        await store.delete(panel_id)
+    # Nothing was deleted: the caller can retry without orphaning the payload.
+    fake_blob_store.get = original_get  # type: ignore[method-assign]
+    assert set(fake_blob_store.legacy) == {panel_id, "legacypayload1"}
+
+
+async def test_legacy_panel_delete_with_corrupt_manifest_deletes_manifest_only(
+    fake_blob_store: FakeBlobStore,
+) -> None:
+    fake_blob_store.legacy["legacymanifest1"] = b"not-json"
+    await PanelStore(fake_blob_store).delete("legacymanifest1")
+    assert "legacymanifest1" not in fake_blob_store.legacy
+
+
+async def test_legacy_panel_cannot_be_moved(fake_blob_store: FakeBlobStore) -> None:
+    panel_id = _seed_legacy_panel(fake_blob_store)
+    with pytest.raises(ToolError) as excinfo:
+        await PanelStore(fake_blob_store).move(panel_id, to_source="main")
+    assert excinfo.value.kind == ToolErrorKind.NOT_FOUND
+    # The legacy blob is untouched.
+    assert panel_id in fake_blob_store.legacy

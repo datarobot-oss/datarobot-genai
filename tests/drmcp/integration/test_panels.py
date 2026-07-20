@@ -33,6 +33,7 @@ _EXPECTED_TOOLS = {
     "create_text_panel",
     "create_json_panel",
     "delete_panel",
+    "move_panel",
     "create_dataset_panel_from_connector",
     "transform_panel",
     "filter_panel",

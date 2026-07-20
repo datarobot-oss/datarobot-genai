@@ -53,12 +53,21 @@ class BasePanel(BaseModel):
     type: PanelType
     title: str
     description: str | None = None
+    # Normalized id of the conversation the panel belongs to (None = unscoped).
+    # Recorded on create by a conversation-scoped store so moves/retags can
+    # rebuild the panel's tags without depending on the mover's own scope.
+    conversation_id: str | None = None
     parents: list[str] = Field(default_factory=list)
     execution_context: dict[str, Any] | None = None
     updated_by: str | None = None
     updated_at: str | None = None
     payload_files_id: str | None = None
     payload_name: str | None = None
+    # The payload's path inside the shared Files container. Transient: derived
+    # from the manifest's own blob path on load (never persisted in the
+    # manifest, so a move never rewrites it). None on legacy panels, whose
+    # payload is a standalone container fetched by payload_files_id alone.
+    payload_path: str | None = None
 
 
 class Dataset(BasePanel):

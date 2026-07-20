@@ -261,6 +261,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "describe_panel_schema",
             "validate_panel_data",
             "delete_panel",
+            "move_panel",
             "inspect_panel",
             "view_json_panel",
             "create_dataset_panel_from_connector",
