@@ -279,7 +279,16 @@ accepted by the service.
 | `DRMemoryConflictError` | 409 | Deduplication conflict on create (ORM auto-adopts) |
 | `DRMemoryVersionConflictError` | 409 / 422 | Stale If-Match or createdAt token |
 | `DRMemoryValidationError` | 422 | Schema validation error |
+| `DRMemoryRateLimitError` | 429 | Quota or rate limit exceeded; `retry_after` carries whole seconds from `Retry-After` when the service sends it (trial quota yes, storage cap no) |
+| `DRMemoryUnavailableError` | — (no response) | Request timeout or transport failure; the original `httpx` exception is on `__cause__` |
 | `DRMemoryServiceError` | other 4xx/5xx | Unexpected error |
+
+> **Behavior note:** transport failures (timeouts, connection errors) raise
+> `DRMemoryUnavailableError` instead of escaping as raw `httpx` exceptions.
+> `except DRMemoryServiceError` now covers an unreachable service too; code
+> that previously caught `httpx.ConnectError` / `httpx.TimeoutException`
+> directly should catch `DRMemoryUnavailableError` (the original exception
+> remains available as `__cause__`).
 
 ## Public API
 
@@ -300,6 +309,8 @@ from datarobot_genai.application_utils.persistence import (
     DRMemoryValidationError,
     DRMemoryConflictError,
     DRMemoryVersionConflictError,
+    DRMemoryRateLimitError,
+    DRMemoryUnavailableError,
 )
 ```
 

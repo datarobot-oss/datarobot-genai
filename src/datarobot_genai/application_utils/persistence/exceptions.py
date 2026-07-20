@@ -26,7 +26,9 @@ Exception hierarchy
     ├── DRMemoryBadRequestError      (HTTP 400)
     ├── DRMemoryValidationError      (HTTP 422, schema validation)
     ├── DRMemoryConflictError        (HTTP 409, deduplication conflict)
-    └── DRMemoryVersionConflictError (HTTP 409 session stale / 422 event stale)
+    ├── DRMemoryVersionConflictError (HTTP 409 session stale / 422 event stale)
+    ├── DRMemoryRateLimitError       (HTTP 429, quota / rate limit)
+    └── DRMemoryUnavailableError     (no response: timeout / connection failure)
 """
 
 from __future__ import annotations
@@ -121,4 +123,54 @@ class DRMemoryVersionConflictError(DRMemoryServiceError):
     and as HTTP 422 for event ``patch()`` (stale ``createdAt`` token).
 
     Resolution: re-read the resource to get the current version, then retry.
+    """
+
+
+class DRMemoryRateLimitError(DRMemoryServiceError):
+    """Raised when the service rejects a request due to quota or rate limits (HTTP 429).
+
+    The Memory Service enforces per-tenant trial quotas: monthly read/write
+    counts answer ``429`` with a ``Retry-After`` header (seconds until the
+    window resets), while the storage cap answers ``429`` *without*
+    ``Retry-After`` — storage is a level, not a windowed quota, so freeing
+    data (or upgrading) is the remedy rather than waiting.
+
+    Resolution: when ``retry_after`` is set, wait that many seconds before
+    retrying or propagate the value to your own HTTP response so the caller
+    can back off correctly.  When it is ``None``, retrying later will not
+    help by itself — inspect ``detail`` for the limit that was hit.
+
+    Parameters
+    ----------
+    retry_after : int | None
+        Whole seconds to wait before retrying, parsed from the ``Retry-After``
+        response header (supports both delta-seconds and HTTP-date forms;
+        integer so it can be propagated verbatim into another ``Retry-After``
+        header).  ``None`` when the service did not send the header (e.g. the
+        trial storage-cap ``429``).
+    """
+
+    def __init__(
+        self,
+        detail: str,
+        *,
+        status_code: int | None = None,
+        payload: dict[str, Any] | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(detail, status_code=status_code, payload=payload)
+        self.retry_after = retry_after
+
+
+class DRMemoryUnavailableError(DRMemoryServiceError):
+    """Raised when no HTTP response was received from the service.
+
+    Covers request timeouts and transport failures (connection refused, DNS
+    resolution, TLS errors, protocol violations).  The original ``httpx``
+    exception is preserved as ``__cause__``.
+
+    ``status_code`` is always ``None``: the failure happened before a status
+    code existed.  Catching ``DRMemoryServiceError`` therefore covers both
+    service-side errors *and* an unreachable service, without importing
+    ``httpx`` at call sites.
     """
