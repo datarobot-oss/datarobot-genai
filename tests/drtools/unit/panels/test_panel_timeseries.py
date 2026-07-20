@@ -312,6 +312,9 @@ async def test_ts_scoring_panel_writes_child(
     # THEN a derived Dataset panel is written with lineage + scoring context
     assert result["type"] == "dataset"
     assert result["parents"] == [panel_id]
+    # THEN the default source is the session-scoped staging area (kept from wren
+    # so BPA facade delegation doesn't silently change where TS panels land)
+    assert result["payload_path"].startswith("staging/")
     assert result["execution_context"]["kind"] == "ts_scoring"
     assert result["execution_context"]["deployment_id"] == "dep-1"
     assert result["title"].startswith("Scoring dataset (Sales")

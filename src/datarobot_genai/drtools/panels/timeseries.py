@@ -55,12 +55,17 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.panels.access import _get_store
 from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
 from datarobot_genai.drmcputils.panels.models import Dataset
-from datarobot_genai.drmcputils.panels.store import DEFAULT_SOURCE
 from datarobot_genai.drtools.core import tool_metadata
 
 logger = logging.getLogger(__name__)
 
 _PARQUET_CONTENT_TYPE = "application/vnd.apache.parquet"
+
+# Unlike the other panel tools (which default to DEFAULT_SOURCE, 'main'), TS scoring
+# datasets default to the session-scoped staging area — preserved from the wren-mcp
+# original so the BPA facade delegation doesn't silently change where TS scoring
+# panels land; promote via move_panel.
+_STAGING_SOURCE = "staging"
 
 
 def _frame_to_parquet(frame: pl.DataFrame) -> bytes:
@@ -533,7 +538,7 @@ async def get_time_series_scoring_dataset_panel(
         "Optional ISO 8601 forecast point. When omitted, the latest timestamp in the "
         "dataset's datetime partition column is used, matching the DataRobot backend default.",
     ] = None,
-    source: Annotated[str, "Target source ('main' or 'staging')."] = DEFAULT_SOURCE,
+    source: Annotated[str, "Target source ('main' or 'staging')."] = _STAGING_SOURCE,
 ) -> dict[str, Any]:
     """Build a time-series scoring Dataset panel for a deployment.
 
