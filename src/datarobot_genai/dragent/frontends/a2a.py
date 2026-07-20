@@ -21,30 +21,54 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
+from contextvars import ContextVar
 
 import httpx
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.context import ServerCallContext
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import BasePushNotificationSender
+from a2a.server.tasks import InMemoryPushNotificationConfigStore
+from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
 from a2a.types import AgentSkill
 from a2a.types import AuthorizationCodeOAuthFlow
 from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import InvalidParamsError
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
+from a2a.utils.errors import ServerError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
+from nat.data_models.user_info import UserInfo
+from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
-from ..cross_app_access_config import CrossApplicationAccessConfig
 from .register import DRAgentA2AExternalConfig
+from .session import _auth_handler
 
 logger = logging.getLogger(__name__)
+
+_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
+_GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
+_INVALID_AUTH_CONTEXT_MSG = (
+    "X-DataRobot-Authorization-Context header is present but invalid or expired"
+)
+
+# Populated by :class:`DRAgentA2AStarletteApplication` before the SDK card_modifier runs.
+_agent_card_request_headers: ContextVar[dict[str, str] | None] = ContextVar(
+    "_agent_card_request_headers", default=None
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -82,6 +106,8 @@ EXTERNAL_IDENTITY_URI = "urn:datarobot:agent:identity:external"
 EXTERNAL_IDENTITY_DESCRIPTION = (
     "Customer-provided external agent identifiers for catalog discovery."
 )
+
+_IDENTITY_EXTENSION_URIS = frozenset({INTERNAL_IDENTITY_URI, EXTERNAL_IDENTITY_URI})
 
 
 # ---------------------------------------------------------------------------
@@ -357,4 +383,162 @@ async def create_agent_card(
         skills=resolved_skills,
         security_schemes=security_schemes or None,
         security=security or None,
+        supports_authenticated_extended_card=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-request agent card selection (public redacted vs authenticated extended)
+# ---------------------------------------------------------------------------
+
+
+def _normalise_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    if not headers:
+        return None
+    return {k.lower(): v for k, v in headers.items()}
+
+
+def resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
+    """Extract gateway-validated user identity from A2A-forwarded headers.
+
+    Resolution order (first match wins):
+
+    1. ``X-DataRobot-Authorization-Context`` -- signed JWT forwarded by
+       components in the agent application template.  Decoded via
+       :data:`_auth_handler` and hashed through
+       ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
+       key as the AG-UI path.  When this header is present but validation
+       fails, raises :class:`~a2a.utils.errors.ServerError` with
+       :class:`~a2a.types.InvalidParamsError` (no fall-through to other headers
+       or ``context_id``).
+    2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
+       gateway, tied to the API-key owner.  Used only when the auth-context
+       header is absent.  Same ``_from_session_cookie`` transform is applied
+       for key-format consistency.
+    3. ``None`` -- no gateway-provided identity (local dev).
+
+    Returns ``None`` when *headers* are absent or contain no recognised
+    identity header.
+    """
+    if not headers:
+        return None
+
+    if _AUTH_CONTEXT_HEADER in headers:
+        try:
+            auth_ctx = _auth_handler.get_context(headers)
+        except Exception:
+            logger.warning("Failed to decode auth-context header", exc_info=True)
+            auth_ctx = None
+        if auth_ctx is None:
+            raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
+        return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
+
+    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
+    if raw_user_id:
+        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
+
+    return None
+
+
+def redact_agent_card(card: AgentCard) -> AgentCard:
+    """Return a public-safe view of an agent card.
+
+    Strips advertised skills and removes internal/external identity extensions
+    while preserving auth and cross-application-access metadata needed for
+    anonymous discovery.
+    """
+    extensions = card.capabilities.extensions
+    filtered_extensions = None
+    if extensions:
+        filtered = [ext for ext in extensions if ext.uri not in _IDENTITY_EXTENSION_URIS]
+        filtered_extensions = filtered or None
+
+    return card.model_copy(
+        update={
+            "skills": [],
+            "capabilities": card.capabilities.model_copy(
+                update={"extensions": filtered_extensions}
+            ),
+        }
+    )
+
+
+def _public_card_modifier(card: AgentCard) -> AgentCard:
+    """Serve the extended card to authenticated callers, redacted otherwise."""
+    headers = _agent_card_request_headers.get()
+    if resolve_identity_from_headers(headers) is not None:
+        return card
+    return redact_agent_card(card)
+
+
+def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
+    """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
+    raw_headers = context.state.get("headers") if context.state else None
+    headers = _normalise_headers(raw_headers) if isinstance(raw_headers, dict) else None
+    if resolve_identity_from_headers(headers) is None:
+        raise ServerError(
+            error=InvalidParamsError(
+                message="Authenticated identity required for extended agent card"
+            )
+        )
+    return card
+
+
+class DRAgentA2AStarletteApplication(A2AStarletteApplication):
+    """A2A server that selects redacted vs extended agent cards per request."""
+
+    async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
+        headers = _normalise_headers(dict(request.headers))
+        if headers and _AUTH_CONTEXT_HEADER in headers:
+            try:
+                resolve_identity_from_headers(headers)
+            except ServerError:
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(
+                    {"error": _INVALID_AUTH_CONTEXT_MSG},
+                    status_code=403,
+                )
+
+        token = _agent_card_request_headers.set(headers)
+        try:
+            return await super()._handle_get_agent_card(request)
+        finally:
+            _agent_card_request_headers.reset(token)
+
+
+def create_dr_a2a_server(
+    a2a_worker: A2AFrontEndPluginWorker,
+    agent_card: AgentCard,
+    agent_executor: NATWorkflowAgentExecutor,
+) -> DRAgentA2AStarletteApplication:
+    """Create an A2A server with per-request agent card selection.
+
+    Mirrors NAT's :meth:`A2AFrontEndPluginWorker.create_a2a_server` but wires
+    ``card_modifier`` / ``extended_agent_card`` / ``extended_card_modifier`` so
+    anonymous callers receive a redacted public card while same-tenant
+    authenticated callers receive the full card.
+    """
+    a2a_worker._httpx_client = httpx.AsyncClient()
+
+    push_config_store = InMemoryPushNotificationConfigStore()
+    push_sender = BasePushNotificationSender(
+        httpx_client=a2a_worker._httpx_client,
+        config_store=push_config_store,
+    )
+    request_handler = DefaultRequestHandler(
+        agent_executor=agent_executor,
+        task_store=InMemoryTaskStore(),
+        push_config_store=push_config_store,
+        push_sender=push_sender,
+    )
+
+    server = DRAgentA2AStarletteApplication(
+        agent_card=agent_card,
+        http_handler=request_handler,
+        extended_agent_card=agent_card,
+        card_modifier=_public_card_modifier,
+        extended_card_modifier=_extended_card_modifier,
+    )
+    logger.info("Created A2A server with per-request agent card selection")
+    return server
