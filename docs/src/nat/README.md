@@ -15,6 +15,7 @@ pip install "datarobot-genai[dragent]"
 | Topic | What it explains |
 |---|---|
 | [agent.md](agent.md) | Top-level **`workflow.yaml`**: `functions`, `workflow`, `llms`, how they connect |
+| [eval.md](eval.md) | **`nat eval`** + DataRobot moderations as a custom evaluator (offline scoring) |
 | [llm.md](llm.md) | The **`llms:`** block and `_type` values (e.g. `datarobot-llm-component`) |
 | [mcp.md](mcp.md) | **`function_groups`**, **`authentication`**, MCP tools in **`tool_names`** |
 | [a2a-client.md](a2a-client.md) | A2A client: calling remote agents, agent card resolution (`url` / `registry`) |

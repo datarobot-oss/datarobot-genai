@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "question": "Write a two-line welcome message for a new user named Alex.",
+    "answer": "A short, friendly two-line welcome addressed to Alex."
+  },
+  {
+    "id": 2,
+    "question": "Draft a one-sentence product tagline for a reusable water bottle.",
+    "answer": "A single catchy sentence advertising a reusable water bottle."
+  },
+  {
+    "id": 3,
+    "question": "Summarize the benefits of remote work in exactly three bullet points.",
+    "answer": "Three bullet points, each naming a distinct benefit of remote work."
+  }
+]

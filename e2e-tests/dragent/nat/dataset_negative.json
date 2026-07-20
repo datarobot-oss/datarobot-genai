@@ -1,0 +1,14 @@
+[
+  {
+    "id": 101,
+    "question": "Write a two-line welcome message for a new user named Alex.",
+    "answer": "A short, friendly two-line welcome addressed to Alex.",
+    "generated_answer": "The mitochondria is the powerhouse of the cell."
+  },
+  {
+    "id": 102,
+    "question": "Draft a one-sentence product tagline for a reusable water bottle.",
+    "answer": "A single catchy sentence advertising a reusable water bottle.",
+    "generated_answer": "I cannot help with that request."
+  }
+]

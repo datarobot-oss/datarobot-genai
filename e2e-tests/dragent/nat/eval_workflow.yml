@@ -1,0 +1,60 @@
+---
+# Copyright 2026 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Minimal `nat eval` workflow for the moderations evaluator POC. It reuses the e2e agent's
+# planner/writer tools but runs the stock `tool_calling_agent` (what `per_user_tool_calling_agent`
+# wraps) with all serving/infra stripped (front_end, telemetry, mcp, auth, middleware, memory),
+# since eval invokes the workflow directly rather than serving it.
+functions:
+  planner:
+    _type: chat_completion
+    llm_name: datarobot_llm
+    system_prompt: "Call any required tool. Reply with only the tool's result, or 1 brief line if no tool is needed."
+    description: A tool that plans the content for the requested topic.
+  writer:
+    _type: chat_completion
+    llm_name: datarobot_llm
+    system_prompt: "Reply with only the tool's result, or 1 brief line."
+    description: A tool that writes the content for the requested topic.
+
+llms:
+  datarobot_llm:
+    # Stock nat OpenAI client pointed at DataRobot's OpenAI-compatible LLM gateway.
+    # (The dragent-native `datarobot-llm-component` is only registered when the dragent
+    # front-end loads, which `nat eval` does not do.) Creds come from OPENAI_API_KEY /
+    # OPENAI_BASE_URL in the environment.
+    _type: openai
+    model_name: azure/gpt-4o-2024-11-20
+    temperature: 0
+
+workflow:
+  _type: tool_calling_agent
+  llm_name: datarobot_llm
+  tool_names:
+    - planner
+    - writer
+  system_prompt: |
+    Call planner, then writer. Return writer's output.
+
+eval:
+  general:
+    output_dir: ./.tmp/nat/moderations_eval/
+    dataset:
+      _type: json
+      file_path: ./dataset.json
+  evaluators:
+    moderations:
+      _type: moderations
+      moderation_config: ./moderation.yaml
