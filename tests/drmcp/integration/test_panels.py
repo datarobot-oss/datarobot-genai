@@ -37,6 +37,7 @@ _EXPECTED_TOOLS = {
     "create_dataset_panel_from_connector",
     "transform_panel",
     "filter_panel",
+    "get_time_series_scoring_dataset_panel",
 }
 
 _EXPECTED_RESOURCE_TEMPLATES = {
