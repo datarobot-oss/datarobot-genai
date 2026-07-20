@@ -268,6 +268,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "preview_dataset_panel",
             "transform_panel",
             "filter_panel",
+            "get_time_series_scoring_dataset_panel",
         }
     ),
     MCPToolCategory.DR_VDB: frozenset(
