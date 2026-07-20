@@ -345,6 +345,26 @@ async def test_429_unparseable_retry_after_is_none() -> None:
 
 
 @respx.mock
+async def test_429_overflow_year_retry_after_is_none() -> None:
+    """GIVEN a Retry-After date whose year overflows C long THEN retry_after is None (no crash).
+
+    On Python <= 3.13 ``parsedate_to_datetime`` raises ``OverflowError`` (not
+    ``ValueError``) for years beyond C-long range (CPython gh-153406).
+    """
+    respx.get(f"{MEMORY_BASE}/space/").mock(
+        return_value=httpx.Response(
+            429,
+            json={"detail": "Rate limited"},
+            headers={"Retry-After": "Thu, 01 Jan 99999999999999999999 00:00:00 GMT"},
+        )
+    )
+    client = DRMemoryServiceClient(endpoint=BASE, api_token="tok", http_client=httpx.AsyncClient())
+    with pytest.raises(DRMemoryRateLimitError) as exc_info:
+        await client.request("GET", "space/")
+    assert exc_info.value.retry_after is None
+
+
+@respx.mock
 async def test_429_is_catchable_as_base_service_error() -> None:
     """GIVEN a 429 THEN except DRMemoryServiceError still catches it (hierarchy intact)."""
     respx.get(f"{MEMORY_BASE}/space/").mock(

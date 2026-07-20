@@ -4,8 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.25.5
-- `application_utils/persistence`: `429` responses raise the new `DRMemoryRateLimitError` carrying `retry_after` (whole seconds parsed from `Retry-After`; `None` for the trial storage-cap 429, which sends no header by design). Request timeouts and transport failures raise the new `DRMemoryUnavailableError` instead of escaping as raw `httpx` exceptions — the original is preserved as `__cause__`; catch sites handling raw `httpx` errors around client calls should switch to the typed error. Shared-`http_client` injection is now documented as a supported production pattern (one pool, per-principal thin clients).
+## 0.26.0
+- *Breaking change*: `application_utils/persistence`: request timeouts and transport failures raise the new `DRMemoryUnavailableError` instead of escaping `DRMemoryServiceClient.request()` as raw `httpx` exceptions — the original is preserved as `__cause__`; catch sites handling raw `httpx.ConnectError`/`TimeoutException` around client calls must switch to the typed error.
+- `application_utils/persistence`: `429` responses raise the new `DRMemoryRateLimitError` carrying `retry_after` (whole seconds parsed from `Retry-After`; `None` for the trial storage-cap 429, which sends no header by design).
+- `application_utils/persistence`: shared-`http_client` injection is now documented as a supported production pattern (one pool, per-principal thin clients).
 
 ## 0.25.4
 - `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server

@@ -318,7 +318,9 @@ def _parse_retry_after(value: str | None) -> int | None:
         pass
     try:
         when = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: years beyond C-long range slip past the parser into
+        # the datetime constructor on Python <= 3.13 (CPython gh-153406).
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=UTC)
