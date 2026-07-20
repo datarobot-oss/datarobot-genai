@@ -24,6 +24,10 @@ All routes include trailing slashes — the Memory Service runs with
 
 from __future__ import annotations
 
+import math
+from datetime import UTC
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -34,7 +38,9 @@ from datarobot_genai.application_utils.persistence._config import resolve_endpoi
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryRateLimitError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryServiceError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryUnavailableError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryValidationError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryVersionConflictError
 
@@ -47,7 +53,14 @@ class DRMemoryServiceClient:
 
     Resolves ``DATAROBOT_ENDPOINT`` and ``DATAROBOT_API_TOKEN`` from the
     environment (overridable via constructor arguments).  Owns an
-    ``httpx.AsyncClient`` unless one is injected (for testing).
+    ``httpx.AsyncClient`` unless one is injected.
+
+    The instance itself is lightweight — the resolved base URL plus a headers
+    dict.  Applications that act on behalf of many principals (a different
+    API token per end user) are supported by constructing one
+    ``DRMemoryServiceClient`` per principal over a single shared
+    ``http_client``: the shared pool carries the connections, each instance
+    carries only an identity.
 
     Parameters
     ----------
@@ -56,18 +69,27 @@ class DRMemoryServiceClient:
         Defaults to the ``DATAROBOT_ENDPOINT`` environment variable.
     api_token : str | None
         DataRobot API token.  Defaults to the ``DATAROBOT_API_TOKEN``
-        environment variable.
+        environment variable.  Multi-principal applications must pass this
+        explicitly — the environment fallback is the *application's* own
+        credential, not the requesting user's.
     base_path : str
         Sub-path appended to the endpoint.  Defaults to ``"memory"`` — the
         Tyk gateway mount path for the Memory Service (``/api/v2/memory``).
     http_client : httpx.AsyncClient | None
-        Injected async client (for testing with ``respx``).  When supplied,
-        the ``DRMemoryServiceClient`` will **not** close it on ``aclose()``.
+        Injected async client.  When supplied, the ``DRMemoryServiceClient``
+        will **not** close it on ``aclose()`` — the caller owns its lifetime.
+        This is a supported production pattern (share one connection pool
+        across many per-principal client instances) as well as the hook for
+        testing with ``respx``.  When omitted, the client creates and owns a
+        pool of its own.
     timeout : float
-        Default per-request timeout in seconds.
+        Default per-request timeout in seconds.  Ignored when ``http_client``
+        is injected — configure the timeout on the injected client instead.
 
     Examples
     --------
+    One client, one credential (scripts, single-principal apps):
+
     .. code-block:: python
 
         import asyncio
@@ -82,6 +104,26 @@ class DRMemoryServiceClient:
                 print(space.id)
 
         asyncio.run(main())
+
+    One shared pool, one thin client per principal (multi-user web apps):
+
+    .. code-block:: python
+
+        import httpx
+
+        # App startup.  Do not set default auth headers on the shared pool —
+        # identity belongs on each DRMemoryServiceClient, not the transport.
+        shared_http = httpx.AsyncClient(timeout=30.0)
+
+        def client_for(user_token: str) -> DRMemoryServiceClient:
+            # Cheap: per-request construction, no new connections.
+            return DRMemoryServiceClient(
+                api_token=user_token,
+                http_client=shared_http,
+            )
+
+        async def shutdown() -> None:
+            await shared_http.aclose()  # close the pool once, at app shutdown
     """
 
     def __init__(
@@ -155,19 +197,35 @@ class DRMemoryServiceClient:
             with the event-version detail.
         DRMemoryValidationError
             HTTP 422 — schema validation error.
+        DRMemoryRateLimitError
+            HTTP 429 — quota or rate limit exceeded; carries ``retry_after``
+            seconds parsed from the ``Retry-After`` response header.
+        DRMemoryUnavailableError
+            No response received — request timeout or transport failure
+            (connection refused, DNS, TLS).  The original ``httpx`` exception
+            is preserved as ``__cause__``.
         DRMemoryServiceError
             Any other 4xx/5xx error.
         """
         headers = {**self._auth_headers, **(extra_headers or {})}
         url = self._url(path)
 
-        resp = await self._http_client.request(
-            method,
-            url,
-            params=params,
-            json=json,
-            headers=headers,
-        )
+        try:
+            resp = await self._http_client.request(
+                method,
+                url,
+                params=params,
+                json=json,
+                headers=headers,
+            )
+        except httpx.TimeoutException as exc:
+            raise DRMemoryUnavailableError(
+                f"Memory Service request timed out ({method} {url}): {exc!r}"
+            ) from exc
+        except httpx.TransportError as exc:
+            raise DRMemoryUnavailableError(
+                f"Memory Service unreachable ({method} {url}): {exc!r}"
+            ) from exc
 
         if resp.status_code < 400:
             return resp
@@ -218,6 +276,14 @@ class DRMemoryServiceClient:
                 raise DRMemoryVersionConflictError(detail, status_code=422, payload=body)
             raise DRMemoryValidationError(detail, status_code=422, payload=body)
 
+        if resp.status_code == 429:
+            raise DRMemoryRateLimitError(
+                detail,
+                status_code=429,
+                payload=body,
+                retry_after=_parse_retry_after(resp.headers.get("Retry-After")),
+            )
+
         raise DRMemoryServiceError(detail, status_code=resp.status_code, payload=body)
 
     async def aclose(self) -> None:
@@ -232,6 +298,33 @@ class DRMemoryServiceClient:
     async def __aexit__(self, *args: Any) -> None:
         """Close the client on context exit."""
         await self.aclose()
+
+
+def _parse_retry_after(value: str | None) -> int | None:
+    """Parse a ``Retry-After`` header into whole seconds.
+
+    Accepts both RFC 9110 forms: delta-seconds (``"30"``) and HTTP-date
+    (``"Wed, 22 Jul 2026 07:28:00 GMT"``, rounded up).  Whole seconds so the
+    value can be propagated verbatim into another ``Retry-After`` header —
+    RFC 9110 delay-seconds and the service's OpenAPI contract are integers,
+    and ``"30.0"`` would be rejected by digit-gated parsers.  Returns ``None``
+    when the header is absent or unparseable; never returns a negative number.
+    """
+    if not value:
+        return None
+    try:
+        return max(0, int(value.strip()))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: years beyond C-long range slip past the parser into
+        # the datetime constructor on Python <= 3.13 (CPython gh-153406).
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0, math.ceil((when - datetime.now(UTC)).total_seconds()))
 
 
 def _extract_detail(body: dict[str, Any], fallback: str) -> str:

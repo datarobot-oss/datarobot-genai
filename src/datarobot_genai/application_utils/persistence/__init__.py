@@ -61,7 +61,9 @@ from datarobot_genai.application_utils.persistence.event import DREvent
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryBadRequestError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryConflictError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryRateLimitError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryServiceError
+from datarobot_genai.application_utils.persistence.exceptions import DRMemoryUnavailableError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryValidationError
 from datarobot_genai.application_utils.persistence.exceptions import DRMemoryVersionConflictError
 from datarobot_genai.application_utils.persistence.markers import DEFAULT_SESSION_TTL_SECONDS
@@ -88,4 +90,6 @@ __all__ = [
     "DRMemoryValidationError",
     "DRMemoryConflictError",
     "DRMemoryVersionConflictError",
+    "DRMemoryRateLimitError",
+    "DRMemoryUnavailableError",
 ]
