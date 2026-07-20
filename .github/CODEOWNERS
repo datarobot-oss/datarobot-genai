@@ -17,11 +17,6 @@
 /.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
 /scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
 
-# Applications team owns application_utils
-/src/datarobot_genai/application_utils/ @datarobot-oss/applications
-/tests/application_utils/ @datarobot-oss/applications
-/docs/application_utils/ @datarobot-oss/applications
-
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
 /src/datarobot_genai/drtools/ @datarobot-oss/mcp
