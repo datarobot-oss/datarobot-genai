@@ -59,7 +59,7 @@ eval:
 
 ## `moderation.yaml` (guards)
 
-Standard moderation config. `agent_goal_accuracy` is an LLM-as-judge, agentic guard (`is_agentic: true`). Use the LLM gateway as the judge to avoid standing up a deployment:
+Standard moderation config. The example scores three LLM-as-judge guards — `agent_goal_accuracy` (agentic, `is_agentic: true`), `faithfulness` (RAG hallucination, needs `copy_citations: true`), and `task_adherence` — with the LLM gateway as the judge to avoid standing up a deployment. Keep the guards you need and set the evaluator's `metric` to the one to report as the per-row score:
 
 ```yaml
 guards:

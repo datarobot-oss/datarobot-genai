@@ -13,15 +13,39 @@
 # limitations under the License.
 #
 # Guard config consumed by the `moderations` nat evaluator via ModerationPipeline.from_yaml.
-# agent_goal_accuracy is an LLM-as-judge, trajectory-aware guard: set deployment_id to a
-# DataRobot LLM deployment to act as the judge (distinct from the agent's own LLM).
+# These are LLM-as-judge guards; the judge here is the DataRobot LLM gateway (no deployment).
+# Swap `llm_type: llmGateway` + `llm_gateway_model_id` for `llm_type: datarobot` + `deployment_id`
+# to judge with a specific deployment. Keep the guards you want to score on and drop the rest;
+# set the evaluator's `metric` to the guard you want reported as the per-row score.
 timeout_sec: 120
 guards:
+  # General agentic task success. Trajectory-aware (`is_agentic: true`).
   - name: Agent Goal Accuracy
     type: ootb
     ootb_type: agent_goal_accuracy
     stage: response
     is_agentic: true
+    llm_type: llmGateway
+    llm_gateway_model_id: "azure/gpt-4o-2024-11-20"
+    intervention:
+      action: report
+      conditions: []
+  # Hallucination check for RAG agents. `copy_citations: true` passes retrieved context to the judge.
+  - name: Faithfulness
+    type: ootb
+    ootb_type: faithfulness
+    stage: response
+    copy_citations: true
+    llm_type: llmGateway
+    llm_gateway_model_id: "azure/gpt-4o-2024-11-20"
+    intervention:
+      action: report
+      conditions: []
+  # Instruction-following: did the response adhere to the prompt's instructions.
+  - name: Task Adherence
+    type: ootb
+    ootb_type: task_adherence
+    stage: response
     llm_type: llmGateway
     llm_gateway_model_id: "azure/gpt-4o-2024-11-20"
     intervention:
