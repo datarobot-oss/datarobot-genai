@@ -268,6 +268,13 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "preview_dataset_panel",
             "transform_panel",
             "filter_panel",
+            "create_dataset_panel_from_catalog",
+            "upload_dataset_panel_to_catalog",
+            "query_datasets_to_panel",
+            "get_prediction_history",
+            "get_autopilot_status",
+            "predict_with_deployment",
+            "apply_what_if",
         }
     ),
     MCPToolCategory.DR_VDB: frozenset(
