@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.1
+- docs/e2e: added a guide (`docs/src/nat/eval.md`) and a runnable example for evaluating NAT/DRAgent workflows with `nat eval`, scoring outputs through DataRobot moderations exposed as a NAT custom evaluator.
+
 ## 0.26.0
 - *Breaking change*: Removed subpackage `application_utils`.
 
