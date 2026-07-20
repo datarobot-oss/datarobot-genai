@@ -18,7 +18,7 @@
 
 Evaluate a NAT/DRAgent workflow offline with **`nat eval`**, scoring each row through DataRobot **moderations** exposed as a NAT **custom evaluator**. Scoring runs *inside* the eval framework, so there are no DRUM code paths and no bespoke pytest assertions: you define a dataset and the guards to score, and `nat eval` produces per-row scores.
 
-Working example, in the same folder as the NAT workflow: [`e2e-tests/dragent/nat/`](../../e2e-tests/dragent/nat/) (`eval_workflow.yml`, `moderations_evaluator.py`, `moderation.yaml`, `dataset.json`).
+Copy-paste-ready files live in the [`nat-eval-moderations`](../../.cursor/skills/nat-eval-moderations/) skill's `examples/` folder (`moderations_evaluator.py`, `moderation.yaml`, `eval_workflow.yml`, `dataset.json`).
 
 ## How it works
 
@@ -50,7 +50,7 @@ eval:
 
 ## The moderations evaluator
 
-[`moderations_evaluator.py`](../../e2e-tests/dragent/nat/moderations_evaluator.py) registers `_type: moderations` and is discovered when its module is imported from [`register.py`](../../e2e-tests/dragent/nat/register.py) (NAT loads that via the package's `nat.plugins` entry point). Per row it calls `ModerationPipeline.evaluate_response_async(...)` and maps `EvaluationResult.metrics[metric]` to the score. Config fields:
+`moderations_evaluator.py` registers `_type: moderations` and is discovered when its module is imported from your agent's `register.py` (NAT loads that via the package's `nat.plugins` entry point). Per row it calls `ModerationPipeline.evaluate_response_async(...)` and maps `EvaluationResult.metrics[metric]` to the score. Config fields:
 
 - **`moderation_config`** — path to the guard YAML.
 - **`metric`** — key in `EvaluationResult.metrics` to score on (default `agent_goal_accuracy`).
@@ -80,12 +80,11 @@ Swap to `llm_type: datarobot` + `deployment_id: <24-hex>` to judge with a specif
 The dragent-native `datarobot-llm-component` is only registered when the dragent front end loads, which `nat eval` does not do. Point the agent's LLM at the OpenAI-compatible DataRobot gateway with the stock `openai` type, supplying creds via the environment:
 
 ```bash
-cd e2e-tests/dragent/nat
 export OPENAI_API_KEY="$DATAROBOT_API_TOKEN"
 export OPENAI_BASE_URL="$DATAROBOT_ENDPOINT/genai/llmgw"
 nat eval --config_file eval_workflow.yml
-# score pre-generated answers without running the agent:
-nat eval --config_file eval_workflow.yml --skip_workflow --dataset dataset_negative.json
+# or score pre-generated answers without running the agent (rows carry a `generated_answer`):
+nat eval --config_file eval_workflow.yml --skip_workflow
 ```
 
 Output lands in `output_dir` as `moderations_output.json`: an `average_score` plus one `eval_output_items[]` entry per row with `score` and `reasoning` (the guard's `blocked` flag, `trajectory_used`, and the full `metrics` map).

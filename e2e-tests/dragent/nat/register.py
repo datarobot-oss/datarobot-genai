@@ -15,7 +15,6 @@
 from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.dragent.tool import nat_tool
 
-from dragent.nat import moderations_evaluator  # noqa: F401  (runs @register_evaluator on load)
 from dragent.tool import generate_objectid
 
 # INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
