@@ -15,8 +15,11 @@
 """DataRobot Vector Database (VDB) tools."""
 
 import logging
+import re
+import time
 from typing import Annotated
 from typing import Any
+from typing import NoReturn
 
 import datarobot as dr
 from datarobot.errors import ClientError
@@ -59,6 +62,11 @@ DEFAULT_SEPARATORS = ["\n\n", "\n", " "]
 VDB_BUILD_COMPLETED_STATUS = "completed"
 VDB_BUILD_TERMINAL_FAILURE_STATUSES = frozenset({"error", "failed"})
 VDB_DEPLOY_TERMINAL_FAILURE_STATUSES = frozenset({"failed", "errored"})
+_OBJECT_ID_RE = re.compile(r"^[0-9a-fA-F]{24}$")
+_API_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+# MCP clients commonly time out tool calls around 60s; the SDK deploy() waits up to 600s.
+VDB_DEPLOY_POLL_TIMEOUT_SECONDS = 55.0
+VDB_DEPLOY_POLL_INTERVAL_SECONDS = 2.0
 
 _VDB_BUILD_STATUS_NOTE = (
     "Vector database build started. Poll vdb_get(vector_database_id=..., "
@@ -73,6 +81,49 @@ _VDB_DEPLOY_STATUS_NOTE = (
 
 def _normalize_status(status: str | None) -> str:
     return str(status).lower() if status is not None else ""
+
+
+def _looks_like_html(text: str) -> bool:
+    lowered = text.lower()
+    return "<!doctype" in lowered or "<html" in lowered
+
+
+def _raise_vdb_api_client_error(
+    exc: ClientError,
+    *,
+    resource_label: str,
+    resource_id: str,
+) -> NoReturn:
+    """Map redirect/HTML API failures to clean tool errors instead of raw page bodies."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code in _API_REDIRECT_STATUS_CODES:
+        raise ToolError(
+            f"API redirected unexpectedly for {resource_label} {resource_id!r} "
+            f"(HTTP {status_code}) — likely a malformed ID.",
+            kind=ToolErrorKind.NOT_FOUND,
+        ) from exc
+    if _looks_like_html(str(exc)):
+        raise ToolError(
+            f"DataRobot API returned a non-JSON response for {resource_label} {resource_id!r} "
+            f"(HTTP {status_code}) — likely a malformed ID.",
+            kind=ToolErrorKind.NOT_FOUND,
+        ) from exc
+    raise_tool_error_for_client_error(exc)
+
+
+def _get_vector_database(rest_client: Any, vdb_id: str) -> VectorDatabase:
+    try:
+        response = rest_client.get(
+            f"genai/vectorDatabases/{vdb_id}/",
+            allow_redirects=False,
+        )
+    except ClientError as exc:
+        _raise_vdb_api_client_error(
+            exc,
+            resource_label="vector database",
+            resource_id=vdb_id,
+        )
+    return VectorDatabase.from_server_data(response.json())
 
 
 def _normalize_vdb_document(item: dict[str, Any]) -> dict[str, Any]:
@@ -115,14 +166,85 @@ def _parse_vdb_query_documents(response_data: Any) -> list[dict[str, Any]]:
     return documents
 
 
-def _is_vector_database_deployment(deployment: dict[str, Any]) -> bool:
-    model = deployment.get("model")
+def _is_vector_database_deployment(deployment: dict[str, Any] | Any) -> bool:
+    model = (
+        deployment.get("model")
+        if isinstance(deployment, dict)
+        else getattr(deployment, "model", None)
+    )
     if isinstance(model, dict) and model.get("targetType") == "VectorDatabase":
         return True
-    capabilities = deployment.get("capabilities")
+    capabilities = (
+        deployment.get("capabilities")
+        if isinstance(deployment, dict)
+        else getattr(deployment, "capabilities", None)
+    )
     return (
         isinstance(capabilities, dict)
         and capabilities.get("supportsVectorDatabaseQuerying") is True
+    )
+
+
+def _list_vdb_deployments(rest_client: Any) -> list[dict[str, Any]]:
+    try:
+        return [
+            deployment
+            for deployment in dr.utils.pagination.unpaginate(
+                initial_url="deployments/",
+                initial_params={"limit": PAGINATION_MAX},
+                client=rest_client,
+            )
+            if _is_vector_database_deployment(deployment)
+        ]
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
+
+
+def _submit_vdb_deploy(
+    rest_client: Any,
+    *,
+    vector_database_id: str,
+    deploy_kwargs: dict[str, Any],
+) -> None:
+    """Submit a VDB deploy without blocking on the SDK's long async wait."""
+    url = f"genai/vectorDatabases/{vector_database_id}/deployments/"
+    try:
+        response = rest_client.post(url, data=deploy_kwargs or None)
+    except ClientError as e:
+        raise_tool_error_for_client_error(e)
+    if not response.headers.get("Location"):
+        raise ToolError(
+            "Vector database deploy request was accepted but returned no async status URL.",
+            kind=ToolErrorKind.UPSTREAM,
+        )
+
+
+def _wait_for_new_vdb_deployment(
+    rest_client: Any,
+    *,
+    known_deployment_ids: set[str],
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Poll deployments until a new vector-database deployment record appears."""
+    resolved_timeout = (
+        VDB_DEPLOY_POLL_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
+    resolved_interval = (
+        VDB_DEPLOY_POLL_INTERVAL_SECONDS if poll_interval_seconds is None else poll_interval_seconds
+    )
+    deadline = time.monotonic() + resolved_timeout
+    while time.monotonic() < deadline:
+        for deployment in _list_vdb_deployments(rest_client):
+            deployment_id = deployment.get("id")
+            if deployment_id and deployment_id not in known_deployment_ids:
+                return deployment
+        time.sleep(resolved_interval)
+    raise ToolError(
+        "Vector database deployment was submitted but no new deployment record appeared "
+        f"within {int(resolved_timeout)} seconds. Poll vdb_list or vdb_get before calling "
+        "vdb_deploy again to avoid duplicate deployments.",
+        kind=ToolErrorKind.UPSTREAM,
     )
 
 
@@ -226,6 +348,13 @@ async def vdb_query(
             deployment = dr.Deployment.get(deployment_id)
         except ClientError as e:
             raise_tool_error_for_client_error(e)
+
+        if not _is_vector_database_deployment(deployment):
+            raise ToolError(
+                f"Deployment {deployment_id} is not a vector database deployment. "
+                "Use vdb_list to find vector database deployments.",
+                kind=ToolErrorKind.VALIDATION,
+            )
 
         endpoint = get_credentials().datarobot.datarobot_endpoint
         token = get_datarobot_access_token()
@@ -467,13 +596,18 @@ async def vdb_get(
     else:
         target = None
 
+    if has_vdb_id:
+        vdb_id = vector_database_id.strip()  # type: ignore[union-attr]
+        if not _OBJECT_ID_RE.fullmatch(vdb_id):
+            raise ToolError(
+                f"Vector database {vdb_id} not found",
+                kind=ToolErrorKind.NOT_FOUND,
+            )
+
     with ThreadSafeDataRobotClient().request_user_client():
+        rest_client = dr.client.get_client()
         if has_vdb_id:
-            vdb_id = vector_database_id.strip()  # type: ignore[union-attr]
-            try:
-                vector_database = VectorDatabase.get(vdb_id)
-            except ClientError as e:
-                raise_tool_error_for_client_error(e)
+            vector_database = _get_vector_database(rest_client, vdb_id)
             status = vector_database.execution_status
             normalized = _normalize_status(status)
             if normalized in VDB_BUILD_TERMINAL_FAILURE_STATUSES:
@@ -487,11 +621,17 @@ async def vdb_get(
             }
         else:
             dep_id = deployment_id.strip()  # type: ignore[union-attr]
-            rest_client = dr.client.get_client()
             try:
-                response = rest_client.get(f"deployments/{dep_id}/")
-            except ClientError as e:
-                raise_tool_error_for_client_error(e)
+                response = rest_client.get(
+                    f"deployments/{dep_id}/",
+                    allow_redirects=False,
+                )
+            except ClientError as exc:
+                _raise_vdb_api_client_error(
+                    exc,
+                    resource_label="deployment",
+                    resource_id=dep_id,
+                )
             deployment = response.json()
             status = deployment.get("status")
             normalized = _normalize_status(status)
@@ -582,23 +722,26 @@ async def vdb_deploy(
         if credential_id and credential_id.strip():
             deploy_kwargs["credential_id"] = credential_id.strip()
 
-        try:
-            deployment = vector_database.deploy(**deploy_kwargs)
-        except ClientError as e:
-            raise_tool_error_for_client_error(e)
-
-        # Best-effort: the deployment already exists, so never fail the tool here.
-        deployment_status: str | None = None
-        try:
-            dep_response = dr.client.get_client().get(f"deployments/{deployment.id}/")
-            deployment_status = dep_response.json().get("status")
-        except Exception:
-            logger.debug("Could not fetch deployment status after deploy", exc_info=True)
+        rest_client = dr.client.get_client()
+        known_deployment_ids = {
+            deployment["id"]
+            for deployment in _list_vdb_deployments(rest_client)
+            if deployment.get("id")
+        }
+        _submit_vdb_deploy(
+            rest_client,
+            vector_database_id=vector_database.id,
+            deploy_kwargs=deploy_kwargs,
+        )
+        deployment_record = _wait_for_new_vdb_deployment(
+            rest_client,
+            known_deployment_ids=known_deployment_ids,
+        )
 
     return {
         "vector_database_id": vector_database_id.strip(),
-        "deployment_id": deployment.id,
-        "label": deployment.label,
-        "status": deployment_status,
+        "deployment_id": deployment_record["id"],
+        "label": deployment_record.get("label", ""),
+        "status": deployment_record.get("status"),
         "note": _VDB_DEPLOY_STATUS_NOTE,
     }

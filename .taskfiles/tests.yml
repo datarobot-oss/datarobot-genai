@@ -11,7 +11,7 @@ tasks:
           uv run pytest --junitxml=test_results/test-results.xml \
             --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
             -vv -s tests \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration --ignore=tests/application_utils/persistence/acceptance
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration
     silent: true
 
   test-module:
@@ -42,6 +42,6 @@ tasks:
           {{else}}
           uv run pytest tests/{{.MODULE}} \
             --junitxml=test_results/test-results.xml -vv -s \
-            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration --ignore=tests/application_utils/persistence/acceptance
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration
           {{end}}
     silent: true

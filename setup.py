@@ -27,14 +27,13 @@ core = [
     "datarobot>=3.17.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
-    "ragas>=0.4.3,<0.5.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
     "opentelemetry-instrumentation-requests>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.2.33,<12.0.0",
+    "datarobot-moderations[all]>=11.2.45,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -165,13 +164,6 @@ drmcp = drmcpbase + drtools + [
     "async-lru>=2.3.0",
 ]
 
-# application-utils: light async ORM over the Agentic Memory Service.
-# Standalone leaf — depends only on httpx and pydantic (no DataRobot SDK or OTel weight).
-application_utils = [
-    "httpx>=0.28.1,<1.0.0",
-    "pydantic>=2.6.1,<3.0.0",
-]
-
 extras_require = {
     "core": core,
     "crewai": crewai,
@@ -184,7 +176,6 @@ extras_require = {
     "drmcp": drmcp,
     "drtools": drtools,
     "dragent": dragent,
-    "application-utils": application_utils,
 }
 
 setup(extras_require=extras_require)

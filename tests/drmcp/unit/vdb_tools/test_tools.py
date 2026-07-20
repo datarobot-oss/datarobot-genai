@@ -28,6 +28,22 @@ from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.vdb import tools
 
+VDB_ID = "69cbb73789723b6936c6c9e1"
+
+
+def _vdb_deployment_record(
+    deployment_id: str,
+    *,
+    label: str = "My VDB Deployment",
+    status: str = "launching",
+) -> dict[str, object]:
+    return {
+        "id": deployment_id,
+        "label": label,
+        "status": status,
+        "model": {"targetType": "VectorDatabase"},
+    }
+
 
 @pytest.fixture
 def mock_request_user_client() -> Iterator[Mock]:
@@ -132,6 +148,7 @@ async def test_vdb_query_success(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="dep1",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -186,6 +203,7 @@ async def test_vdb_query_parses_prediction_server_response(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="dep1",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -250,6 +268,7 @@ async def test_vdb_query_client_error_404(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="missing-dep",
+        model={"targetType": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -277,6 +296,27 @@ async def test_vdb_query_client_error_404(
             await tools.vdb_query(deployment_id="missing-dep", query="test")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
     assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_vdb_query_rejects_non_vdb_deployment(
+    mock_get_client_context_with_token_from_request_header: Mock,
+) -> None:
+    mock_deployment = SimpleNamespace(
+        id="pred-dep",
+        model={"targetType": "Binary"},
+        capabilities={"supportsVectorDatabaseQuerying": False},
+    )
+    mock_rest_client = MagicMock()
+    mock_get_client_context_with_token_from_request_header.return_value.__enter__.return_value = (
+        mock_rest_client
+    )
+    with patch.object(dr.Deployment, "get", return_value=mock_deployment):
+        with pytest.raises(ToolError, match="not a vector database deployment") as exc_info:
+            await tools.vdb_query(deployment_id="pred-dep", query="test query")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+    mock_rest_client.request.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -404,18 +444,31 @@ async def test_vdb_create_client_error() -> None:
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_deploy_success() -> None:
     mock_server = SimpleNamespace(id="srv1")
-    mock_deployment = SimpleNamespace(id="dep-vdb-1", label="My VDB Deployment")
     mock_vdb = MagicMock()
+    mock_vdb.id = "vdb-123"
     mock_vdb.execution_status = "COMPLETED"
-    mock_vdb.deploy.return_value = mock_deployment
     mock_rest_client = MagicMock()
-    mock_rest_client.get.return_value = MagicMock(
-        json=lambda: {"status": "launching", "label": "My VDB Deployment"}
+    mock_rest_client.post.return_value = MagicMock(
+        headers={"Location": "https://example.com/async/status/1/"}
     )
+    new_deployment = _vdb_deployment_record("dep-vdb-1")
+    unpaginate_calls = {"count": 0}
+
+    def unpaginate_side_effect(**kwargs: object) -> Iterator[dict[str, object]]:
+        unpaginate_calls["count"] += 1
+        if unpaginate_calls["count"] == 1:
+            return iter([])
+        return iter([new_deployment])
+
     with (
         patch.object(dr.PredictionServer, "list", return_value=[mock_server]),
         patch.object(VectorDatabase, "get", return_value=mock_vdb) as mock_get,
         patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(
+            dr.utils.pagination,
+            "unpaginate",
+            side_effect=unpaginate_side_effect,
+        ),
     ):
         result = await tools.vdb_deploy(vector_database_id="vdb-123")
         assert result["vector_database_id"] == "vdb-123"
@@ -424,7 +477,11 @@ async def test_vdb_deploy_success() -> None:
         assert result["status"] == "launching"
         assert "note" in result
         mock_get.assert_called_once_with("vdb-123")
-        mock_vdb.deploy.assert_called_once_with(default_prediction_server_id="srv1")
+        mock_rest_client.post.assert_called_once_with(
+            "genai/vectorDatabases/vdb-123/deployments/",
+            data={"default_prediction_server_id": "srv1"},
+        )
+        mock_vdb.deploy.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -440,20 +497,34 @@ async def test_vdb_deploy_build_not_complete() -> None:
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_get_vector_database_status() -> None:
-    mock_vdb = SimpleNamespace(id="vdb-123", execution_status="RUNNING")
-    with patch.object(VectorDatabase, "get", return_value=mock_vdb):
-        result = await tools.vdb_get(vector_database_id="vdb-123")
-        assert result["vector_database_id"] == "vdb-123"
+    mock_vdb = SimpleNamespace(id=VDB_ID, execution_status="RUNNING")
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = MagicMock(json=lambda: {"id": VDB_ID})
+    with (
+        patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(VectorDatabase, "from_server_data", return_value=mock_vdb),
+    ):
+        result = await tools.vdb_get(vector_database_id=VDB_ID)
+        assert result["vector_database_id"] == VDB_ID
         assert result["execution_status"] == "RUNNING"
+        mock_rest_client.get.assert_called_once_with(
+            f"genai/vectorDatabases/{VDB_ID}/",
+            allow_redirects=False,
+        )
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_get_vector_database_target_reached() -> None:
-    mock_vdb = SimpleNamespace(id="vdb-123", execution_status="COMPLETED")
-    with patch.object(VectorDatabase, "get", return_value=mock_vdb):
+    mock_vdb = SimpleNamespace(id=VDB_ID, execution_status="COMPLETED")
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = MagicMock(json=lambda: {"id": VDB_ID})
+    with (
+        patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(VectorDatabase, "from_server_data", return_value=mock_vdb),
+    ):
         result = await tools.vdb_get(
-            vector_database_id="vdb-123",
+            vector_database_id=VDB_ID,
             target_status="completed",
         )
         assert result["target_reached"] is True
@@ -475,6 +546,10 @@ async def test_vdb_get_deployment_status() -> None:
         assert result["deployment_id"] == "dep-1"
         assert result["status"] == "launching"
         assert result["target_reached"] is False
+        mock_rest_client.get.assert_called_once_with(
+            "deployments/dep-1/",
+            allow_redirects=False,
+        )
 
 
 @pytest.mark.asyncio
@@ -488,31 +563,54 @@ async def test_vdb_get_requires_exactly_one_id() -> None:
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_get_build_failure_raises() -> None:
-    mock_vdb = SimpleNamespace(id="vdb-123", execution_status="ERROR")
-    with patch.object(VectorDatabase, "get", return_value=mock_vdb):
+    mock_vdb = SimpleNamespace(id=VDB_ID, execution_status="ERROR")
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.return_value = MagicMock(json=lambda: {"id": VDB_ID})
+    with (
+        patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(VectorDatabase, "from_server_data", return_value=mock_vdb),
+    ):
         with pytest.raises(ToolError, match="terminal status"):
-            await tools.vdb_get(vector_database_id="vdb-123")
+            await tools.vdb_get(vector_database_id=VDB_ID)
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_deploy_with_prediction_environment() -> None:
-    mock_deployment = SimpleNamespace(id="dep-vdb-2", label="Env VDB Deployment")
     mock_vdb = MagicMock()
+    mock_vdb.id = "vdb-123"
     mock_vdb.execution_status = "COMPLETED"
-    mock_vdb.deploy.return_value = mock_deployment
     mock_rest_client = MagicMock()
-    mock_rest_client.get.return_value = MagicMock(json=lambda: {"status": "launching"})
+    mock_rest_client.post.return_value = MagicMock(
+        headers={"Location": "https://example.com/async/status/2/"}
+    )
+    new_deployment = _vdb_deployment_record("dep-vdb-2", label="Env VDB Deployment")
+    unpaginate_calls = {"count": 0}
+
+    def unpaginate_side_effect(**kwargs: object) -> Iterator[dict[str, object]]:
+        unpaginate_calls["count"] += 1
+        if unpaginate_calls["count"] == 1:
+            return iter([])
+        return iter([new_deployment])
+
     with (
         patch.object(VectorDatabase, "get", return_value=mock_vdb),
         patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(
+            dr.utils.pagination,
+            "unpaginate",
+            side_effect=unpaginate_side_effect,
+        ),
     ):
         result = await tools.vdb_deploy(
             vector_database_id="vdb-123",
             prediction_environment_id="env-1",
         )
         assert result["deployment_id"] == "dep-vdb-2"
-        mock_vdb.deploy.assert_called_once_with(prediction_environment_id="env-1")
+        mock_rest_client.post.assert_called_once_with(
+            "genai/vectorDatabases/vdb-123/deployments/",
+            data={"prediction_environment_id": "env-1"},
+        )
 
 
 @pytest.mark.asyncio
@@ -538,18 +636,69 @@ async def test_vdb_deploy_no_prediction_servers() -> None:
 @pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
 async def test_vdb_deploy_client_error() -> None:
     mock_server = SimpleNamespace(id="srv1")
+    mock_vdb = MagicMock()
+    mock_vdb.id = "vdb-123"
+    mock_vdb.execution_status = "COMPLETED"
+    mock_rest_client = MagicMock()
+    mock_rest_client.post.side_effect = ClientError(
+        "404 client error: {'message': 'Vector database not found'}",
+        status_code=404,
+        json={"message": "Vector database not found"},
+    )
     with (
         patch.object(dr.PredictionServer, "list", return_value=[mock_server]),
-        patch.object(
-            VectorDatabase,
-            "get",
-            side_effect=ClientError(
-                "404 client error: {'message': 'Vector database not found'}",
-                status_code=404,
-                json={"message": "Vector database not found"},
-            ),
-        ),
+        patch.object(VectorDatabase, "get", return_value=mock_vdb),
+        patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(dr.utils.pagination, "unpaginate", return_value=iter([])),
     ):
         with pytest.raises(ToolError) as exc_info:
-            await tools.vdb_deploy(vector_database_id="missing")
+            await tools.vdb_deploy(vector_database_id="vdb-123")
     assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_vdb_deploy_poll_timeout() -> None:
+    mock_server = SimpleNamespace(id="srv1")
+    mock_vdb = MagicMock()
+    mock_vdb.id = "vdb-123"
+    mock_vdb.execution_status = "COMPLETED"
+    mock_rest_client = MagicMock()
+    mock_rest_client.post.return_value = MagicMock(
+        headers={"Location": "https://example.com/async/status/3/"}
+    )
+    with (
+        patch.object(dr.PredictionServer, "list", return_value=[mock_server]),
+        patch.object(VectorDatabase, "get", return_value=mock_vdb),
+        patch.object(dr.client, "get_client", return_value=mock_rest_client),
+        patch.object(dr.utils.pagination, "unpaginate", return_value=iter([])),
+        patch.object(tools, "VDB_DEPLOY_POLL_INTERVAL_SECONDS", 0.0),
+        patch.object(tools, "VDB_DEPLOY_POLL_TIMEOUT_SECONDS", 0.0),
+    ):
+        with pytest.raises(ToolError, match="no new deployment record appeared"):
+            await tools.vdb_deploy(vector_database_id="vdb-123")
+
+
+@pytest.mark.asyncio
+async def test_vdb_get_malformed_vector_database_id() -> None:
+    with pytest.raises(ToolError, match="Vector database bad-id-### not found") as exc_info:
+        await tools.vdb_get(vector_database_id="bad-id-###", target_status="completed")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_vdb_get_redirect_raises_clean_error() -> None:
+    html = "<!DOCTYPE html><html><body>app shell</body></html>"
+    mock_rest_client = MagicMock()
+    mock_rest_client.get.side_effect = ClientError(
+        f"307 client error: {html}",
+        status_code=307,
+        json={},
+    )
+    with patch.object(dr.client, "get_client", return_value=mock_rest_client):
+        with pytest.raises(ToolError, match="redirected unexpectedly") as exc_info:
+            await tools.vdb_get(vector_database_id=VDB_ID)
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "app shell" not in str(exc_info.value)

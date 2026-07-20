@@ -18,20 +18,20 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ragas.messages import AIMessage
-from ragas.messages import HumanMessage
-from ragas.messages import ToolMessage
+from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
 
-from datarobot_genai.crewai.ragas_events import AgentExecutionCompletedEvent
-from datarobot_genai.crewai.ragas_events import AgentExecutionStartedEvent
-from datarobot_genai.crewai.ragas_events import AgentReasoningCompletedEvent
-from datarobot_genai.crewai.ragas_events import AgentReasoningStartedEvent
-from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
-from datarobot_genai.crewai.ragas_events import CrewKickoffStartedEvent
-from datarobot_genai.crewai.ragas_events import TaskCompletedEvent
-from datarobot_genai.crewai.ragas_events import TaskStartedEvent
-from datarobot_genai.crewai.ragas_events import ToolUsageFinishedEvent
-from datarobot_genai.crewai.ragas_events import ToolUsageStartedEvent
+from datarobot_genai.crewai.moderations_events import AgentExecutionCompletedEvent
+from datarobot_genai.crewai.moderations_events import AgentExecutionStartedEvent
+from datarobot_genai.crewai.moderations_events import AgentReasoningCompletedEvent
+from datarobot_genai.crewai.moderations_events import AgentReasoningStartedEvent
+from datarobot_genai.crewai.moderations_events import CrewAIModerationsEventListener
+from datarobot_genai.crewai.moderations_events import CrewKickoffStartedEvent
+from datarobot_genai.crewai.moderations_events import TaskCompletedEvent
+from datarobot_genai.crewai.moderations_events import TaskStartedEvent
+from datarobot_genai.crewai.moderations_events import ToolUsageFinishedEvent
+from datarobot_genai.crewai.moderations_events import ToolUsageStartedEvent
 
 
 class _FakeBus:
@@ -94,7 +94,7 @@ class _ToolFinished:
 
 def test_crewai_event_listener_accumulates_messages() -> None:
     bus = _FakeBus()
-    listener = CrewAIRagasEventListener()
+    listener = CrewAIModerationsEventListener()
     listener.setup_listeners(bus)  # type: ignore[arg-type]
 
     # Fire kickoff (Human)
