@@ -64,7 +64,7 @@ def test_citations_from_eval_item_context_list() -> None:
     assert citations_from_eval_item(item) == ["a", "b"]
 
 
-def test_citations_from_eval_item_citation_columns() -> None:
+def test_citations_from_eval_item_citation_ctolumns() -> None:
     item = EvalInputItem(
         id="4",
         input_obj="q",

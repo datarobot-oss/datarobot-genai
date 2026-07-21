@@ -16,9 +16,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from datarobot_dome.guard_helpers import calculate_agent_goal_accuracy
-from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
 from nat.builder.builder import EvalBuilder
 from nat.builder.evaluator import EvaluatorInfo
 from nat.cli.register_workflow import register_evaluator
@@ -30,6 +30,9 @@ from nat.plugins.eval.evaluator.base_evaluator import BaseEvaluator
 from datarobot_genai.dragent.eval.common import coerce_text
 from datarobot_genai.dragent.eval.common import interactions_json_from_eval_item
 from datarobot_genai.dragent.eval.scorer_factory import build_agent_goal_accuracy_scorer
+
+if TYPE_CHECKING:
+    from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
 
 
 class DataRobotAgentGoalAccuracyEvaluatorConfig(EvaluatorLLMConfig, name="agent_goal_accuracy"):  # type: ignore[call-arg]

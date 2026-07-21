@@ -25,12 +25,11 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
-
 from datarobot_genai.dragent.eval.litellm_target import langchain_chat_model_to_litellm
 from datarobot_genai.dragent.eval.litellm_target import wrap_langchain_judge_for_llamaindex
 
 if TYPE_CHECKING:
+    from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
     from deepeval.metrics import TaskCompletionMetric
     from llama_index.core.evaluation import FaithfulnessEvaluator
     from llama_index.core.evaluation import GuidelineEvaluator
@@ -62,6 +61,8 @@ async def build_litellm_judge_target(builder: EvalBuilder, llm_name: str) -> Lit
 async def build_agent_goal_accuracy_scorer(
     builder: EvalBuilder, llm_name: str
 ) -> AgentGoalAccuracyEvaluator:
+    from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
+
     target = await build_litellm_judge_target(builder, llm_name)
     return AgentGoalAccuracyEvaluator(
         model=target.model,
