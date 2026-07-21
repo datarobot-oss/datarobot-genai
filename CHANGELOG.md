@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.7
-- Adding `nat eval` support and custom evaluators
+- `dragent`: NAT batch evaluation (`nat eval`) plugins for DataRobot moderation metrics — `agent_goal_accuracy`, `faithfulness`, `task_adherence`, and `agent_guideline_adherence` — scoring in-process via `datarobot-moderations` OOTB judges (no NeMo Evaluator microservice).
 
 ## 0.26.6
 - `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
