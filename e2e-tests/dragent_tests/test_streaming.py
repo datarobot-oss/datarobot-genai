@@ -31,15 +31,7 @@ from dragent_tests.otel_helpers import assert_tracing_conventions
 def test_generate_streaming(
     http_client: httpx.Client, otel_collector: MockOtelCollector
 ) -> None:
-    """Concatenated text deltas produce a non-empty moderated stream that finishes cleanly.
-
-    Guards are always configured on the e2e workflows, so this path exercises
-    ``datarobot_moderation`` + ``datarobot_otel_conventions`` around
-    ``streaming_memory_agent``. A regression in moderated streaming teardown
-    (e.g. ``stream_response_async`` consuming the LLM async generator on a
-    background task, then resetting NAT/OTel ContextVars in another context)
-    must fail here — not only when content is missing.
-    """
+    """Concatenated text deltas produce a non-empty moderated stream that finishes cleanly."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     prompt = "Say 'hello world' and nothing else."
     payload = make_generate_payload(prompt)
