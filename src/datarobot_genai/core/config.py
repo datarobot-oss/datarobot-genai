@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from enum import StrEnum
 
@@ -138,12 +137,9 @@ class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
 # app registers a provider (a zero-arg callable returning an ``LLMConfig``) at
 # import time. The app package is imported during NAT plugin discovery, which
 # runs before NAT validates the workflow config, so the provider is in place by
-# the time genai's defaults are read. When a provider is registered (and the
-# opt-in gate is enabled) genai reads the app's config instead of building its
-# own env-only ``Config()``; otherwise it falls back to the previous behavior so
-# nothing changes for callers that have not opted in.
-
-_CONFIG_INJECTION_ENV_VAR = "DATAROBOT_GENAI_CONFIG_INJECTION"
+# the time genai's defaults are read. There is exactly one flow: if a provider is
+# registered, genai reads the app's config; if not, genai falls back to its own
+# env-only ``Config()`` (a standalone genai with no app registered around it).
 
 # Module-level holder for the app config provider. A dict avoids the ``global``
 # statement (discouraged, and unused elsewhere in this package) while keeping the
@@ -154,36 +150,22 @@ _provider_registry: dict[str, Callable[[], LLMConfig] | None] = {"provider": Non
 def register_config_provider(provider: Callable[[], LLMConfig] | None) -> None:
     """Register the app's authoritative config source, or clear it with ``None``.
 
-    ``provider`` is a zero-arg callable returning an ``LLMConfig`` (typically the
-    app's ``Config`` class itself, or ``lambda: Config()``). It is called each
-    time genai resolves config, so values re-resolve through the app's settings
-    sources (env / .env / secrets / Pulumi) on every read.
+    ``provider`` is a zero-arg callable returning an ``LLMConfig`` (typically
+    ``lambda: Config()`` over the app's own config). It is called each time genai
+    resolves config, so values re-resolve through the app's settings sources
+    (env / .env / secrets / Pulumi) on every read.
     """
     _provider_registry["provider"] = provider
-
-
-def config_injection_enabled() -> bool:
-    """Whether the app-config injection seam is active.
-
-    Opt-in for now via ``DATAROBOT_GENAI_CONFIG_INJECTION`` so the seam can ship
-    and be validated without changing behavior for anyone who has not enabled it.
-    """
-    return os.environ.get(_CONFIG_INJECTION_ENV_VAR, "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 def resolve_config() -> LLMConfig:
     """Return the authoritative config genai should read from.
 
-    The app-injected config when a provider is registered and the gate is on,
-    otherwise genai's own env-reading ``Config()`` (the pre-injection behavior).
+    The app-injected config when a provider is registered, otherwise genai's own
+    env-reading ``Config()`` (a standalone genai with no app registered).
     """
     provider = _provider_registry["provider"]
-    if config_injection_enabled() and provider is not None:
+    if provider is not None:
         provided = provider()
         if provided is not None:
             return provided
