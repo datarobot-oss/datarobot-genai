@@ -170,7 +170,7 @@ def test_get_llm_routes_to_deployment() -> None:
 def test_get_llm_routes_to_nim() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.NIM
-    config.nim_deployment_id = "nim-456"
+    config.llm_nim_deployment_id = "nim-456"
     with patch.object(langgraph_llm, "resolve_config", return_value=config):
         llm = langgraph_llm.get_llm()
     assert isinstance(llm, BaseChatModel)

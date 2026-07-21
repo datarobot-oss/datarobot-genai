@@ -34,8 +34,8 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="env-token",
         llm_deployment_id=None,
-        nim_deployment_id=None,
-        use_datarobot_llm_gateway=True,
+        llm_nim_deployment_id=None,
+        llm_use_datarobot_llm_gateway=True,
         llm_default_model=None,
     )
     monkeypatch.setattr(config_mod, "Config", lambda: env)
@@ -44,8 +44,8 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_router_llm_returns_base_chat_model() -> None:
     from datarobot_genai.langgraph.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    _fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    _fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock(model_list=[{"model_name": "primary"}])
@@ -59,8 +59,8 @@ def test_get_router_llm_supports_bind_tools() -> None:
 
     from datarobot_genai.langgraph.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    _fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    _fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     @tool
     def dummy_tool(x: str) -> str:
@@ -80,8 +80,8 @@ async def test_get_router_llm_strips_tool_calls_from_additional_kwargs() -> None
     """Streaming chunks must not carry raw tool-call deltas in additional_kwargs."""
     from datarobot_genai.langgraph.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     fake_chunk = {
         "choices": [

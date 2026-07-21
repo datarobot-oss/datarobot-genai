@@ -34,8 +34,8 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="env-token",
         llm_deployment_id=None,
-        nim_deployment_id=None,
-        use_datarobot_llm_gateway=True,
+        llm_nim_deployment_id=None,
+        llm_use_datarobot_llm_gateway=True,
         llm_default_model=None,
     )
     monkeypatch.setattr(config_mod, "Config", lambda: env)
@@ -80,8 +80,8 @@ def _make_tool_call_chunks() -> list[Any]:
 def test_get_router_llm_returns_litellm_instance() -> None:
     from datarobot_genai.llama_index.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_cls:
         mock_cls.return_value = MagicMock()
@@ -100,8 +100,8 @@ def test_get_router_llm_stream_chat_yields_chunks() -> None:
     mock_router.completion.return_value = iter(chunks)
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -120,8 +120,8 @@ def test_get_router_llm_stream_chat_accumulates_tool_calls() -> None:
     mock_router.completion.return_value = iter(_make_tool_call_chunks())
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -156,8 +156,8 @@ async def test_get_router_llm_astream_chat_accumulates_tool_calls() -> None:
     mock_router.acompletion = fake_acompletion
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -192,8 +192,8 @@ async def test_get_router_llm_astream_chat_yields_chunks() -> None:
     mock_router.acompletion = fake_acompletion
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
