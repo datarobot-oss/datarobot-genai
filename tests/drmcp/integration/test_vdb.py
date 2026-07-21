@@ -23,7 +23,11 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_t
 from datarobot_genai.drmcp.test_utils.mcp_utils_integration import (
     integration_test_server_params_with_env,
 )
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_DATASET_ID
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_USE_CASE_ID
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOY_RESULT_ID
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VDB_DEPLOYMENT_ID
+from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import STUB_VECTOR_DATABASE_ID
 
 
 def _vdb_server_params():
@@ -33,15 +37,127 @@ def _vdb_server_params():
 
 @pytest.mark.asyncio
 class TestMCPVDBToolsIntegration:
-    """Integration tests for MCP VDB tools (vdb_list, vdb_query)."""
+    """Integration tests for the MCP VDB tools (create, deploy, get, list, query)."""
 
     async def test_tools_registered(self) -> None:
         """Verify that VDB tools are registered and visible in the MCP session."""
         async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
             result = await session.list_tools()
             tool_names = [t.name for t in result.tools]
+            assert "vdb_create" in tool_names
+            assert "vdb_deploy" in tool_names
+            assert "vdb_get" in tool_names
             assert "vdb_list" in tool_names
             assert "vdb_query" in tool_names
+
+    async def test_vdb_create_returns_vector_database(self) -> None:
+        """vdb_create should return a new vector database record."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_create",
+                {
+                    "dataset_id": STUB_DATASET_ID,
+                    "use_case_id": STUB_USE_CASE_ID,
+                    "name": "Integration Test VDB",
+                },
+            )
+
+            assert not result.isError, (
+                f"vdb_create failed: {result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
+            )
+            data = json.loads(result.content[0].text)  # type: ignore[union-attr]
+            assert data["vector_database_id"] == STUB_VECTOR_DATABASE_ID
+            assert data["name"] == "Integration Test VDB"
+            assert data["execution_status"] == "new"
+            assert data["use_case_id"] == STUB_USE_CASE_ID
+            assert data["dataset_id"] == STUB_DATASET_ID
+            assert "note" in data
+            assert "chunking_parameters" in data
+
+    async def test_vdb_get_vector_database_status(self) -> None:
+        """vdb_get should return vector database build status."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_get",
+                {
+                    "vector_database_id": STUB_VECTOR_DATABASE_ID,
+                    "target_status": "completed",
+                },
+            )
+
+            assert not result.isError
+            data = json.loads(result.content[0].text)  # type: ignore[union-attr]
+            assert data["vector_database_id"] == STUB_VECTOR_DATABASE_ID
+            assert data["execution_status"] == "COMPLETED"
+            assert data["target_reached"] is True
+
+    async def test_vdb_get_deployment_status(self) -> None:
+        """vdb_get should return deployment launch status."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_get",
+                {
+                    "deployment_id": STUB_VDB_DEPLOYMENT_ID,
+                    "target_status": "active",
+                },
+            )
+
+            assert not result.isError
+            data = json.loads(result.content[0].text)  # type: ignore[union-attr]
+            assert data["deployment_id"] == STUB_VDB_DEPLOYMENT_ID
+            assert data["status"] == "active"
+            assert data["target_reached"] is True
+
+    async def test_vdb_create_missing_dataset_id(self) -> None:
+        """vdb_create without dataset_id must return an error."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_create",
+                {"use_case_id": STUB_USE_CASE_ID},
+            )
+
+            assert result.isError
+            error_text = result.content[0].text  # type: ignore[union-attr]
+            assert "dataset_id" in error_text.lower()
+
+    async def test_vdb_create_missing_use_case_id(self) -> None:
+        """vdb_create without use_case_id must return an error."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_create",
+                {"dataset_id": STUB_DATASET_ID},
+            )
+
+            assert result.isError
+            error_text = result.content[0].text  # type: ignore[union-attr]
+            assert "use_case_id" in error_text.lower()
+
+    async def test_vdb_deploy_returns_deployment(self) -> None:
+        """vdb_deploy should return a deployment for the vector database."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool(
+                "vdb_deploy",
+                {"vector_database_id": STUB_VECTOR_DATABASE_ID},
+            )
+
+            assert not result.isError, (
+                f"vdb_deploy failed: {result.content[0].text if result.content else 'no content'}"  # type: ignore[union-attr]
+            )
+            data = json.loads(result.content[0].text)  # type: ignore[union-attr]
+            assert data["vector_database_id"] == STUB_VECTOR_DATABASE_ID
+            assert data["deployment_id"] == STUB_VDB_DEPLOY_RESULT_ID
+            assert data["label"] == "Stub VDB Deployment"
+            assert data["status"] == "launching"
+            assert "note" in data
+
+    async def test_vdb_deploy_missing_vector_database_id(self) -> None:
+        """vdb_deploy without vector_database_id must return an error."""
+        async with integration_test_mcp_session(server_params=_vdb_server_params()) as session:
+            result = await session.call_tool("vdb_deploy", {})
+
+            assert result.isError
+            error_text = result.content[0].text  # type: ignore[union-attr]
+            assert "vector_database_id" in error_text.lower()
 
     async def test_vdb_list_returns_vdbs(self) -> None:
         """vdb_list should return only VDB-capable deployments."""

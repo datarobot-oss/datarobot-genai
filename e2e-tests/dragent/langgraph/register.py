@@ -46,10 +46,10 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
     from datarobot_genai.core.mcp import MCPConfig
+    from datarobot_genai.dragent.context import extract_authorization_from_context
+    from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
     from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
     from datarobot_genai.langgraph.mcp import mcp_tools_context
-    from datarobot_genai.nat.helpers import extract_authorization_from_context
-    from datarobot_genai.nat.helpers import extract_datarobot_headers_from_context
     from nat.builder.function_info import FunctionInfo
     from nat.data_models.streaming import Streaming
 

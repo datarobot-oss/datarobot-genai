@@ -4,10 +4,151 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.23.4
+## 0.26.6
 - `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
 - `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
 - `drmcpbase` renamed the `x-datarobot-mcp-mode` value `code_execute` to `code` (`MCPRequestMode.CODE_EXECUTE` → `MCPRequestMode.CODE`). A request still sending `code_execute` falls back to the default `tools` mode.
+
+## 0.26.4
+- `drmcp/test_utils`: integration tests reuse one MCP stdio server subprocess per server configuration (env/command) instead of spawning a fresh server (~4s) for every test; tests passing an `elicitation_callback` or `shared=False` still get an isolated server. Integration tests now run on a single session-scoped event loop, and the suite runs under `pytest-xdist` (`-n auto --dist loadfile`).
+
+## 0.26.3
+- `drmcputils/panels`: **fix** scoped panel id resolution against the live Files API — the exact-path existence probes introduced in 0.26.1 passed a file path as a listing `prefix`, which `list_contained_files` rejects with a 400 (`Prefix must end with a forward slash "/"`), breaking every scoped `get`/`delete`/`move` in production (panel routes returned 500). Probes now list the candidate `<source>/<scope>/` *directory* (one bounded prefix query) and match the exact path client-side; `DataRobotFilesBlobStore.list` fails fast with the API's own message on non-directory prefixes, the `BlobStore` protocol documents the constraint, and the test fakes enforce it so the mismatch can't reappear.
+
+## 0.26.2
+- Revert `datarobot-moderations` to 11.2.33 due to a regression thread based in context switching.
+
+## 0.26.1
+- `drmcputils/files`: **shared-container blob storage** — `BlobStore` is now path-based: all blobs live in one shared Files container (created via `Files.create_empty_catalog_item_dir`, discovered by the `dr_panel_root` marker tag, oldest wins on create races) under `/`-separated paths uploaded with `upload_file(prefix=...)`. This is the Files API's sanctioned folder mechanism: a path embedded in an uploaded *filename* is stripped to its basename server-side as a disk-traversal defense, so the previous per-blob-container + folder-style-name design could never produce real folders in production. Listing is one server-side prefix query (`list_contained_files(prefix=...)`) instead of client-side AND-filtering over the whole catalog (catalog tag search matches with OR semantics), and the registry shows a single `panels` folder row instead of one row per blob.
+- `drmcputils/panels`: **conversation-scoped panel storage** — a `PanelStore` can be scoped to a conversation (`PanelStore(blobs, conversation_id=...)`); the shared store factory resolves the id per request from the `x-datarobot-conversation-id` header (the same header the previous panel-library MCP server used). Panels are stored at `<source>/<conversation_id>/<panel_id>.json` (unscoped: `<source>/_shared/`), so `list_panels` / `panels://{source}` return only the current conversation's panels instead of every panel across all conversations and applications. Panel ids are client-generated (`uuid4().hex`) and embedded in the path; conversation ids are normalized to `[0-9A-Za-z_]` and capped at 128 chars; `source` and `panel_id` inputs are validated to a path-safe alphabet. Scoping is enforced on every id-based operation, not just listings: a scoped store resolves ids only against its own conversation and `_shared` (other conversations' panels are invisible — not-found, no existence leak), and it can read `_shared` panels but not delete or move them. Id resolution is O(1): exact manifest-path probes across the hinted + known sources (`get`/`delete`/`move`/`get_payload` accept an optional `source` hint, and the `panels://` resources pass theirs through) instead of a container-wide listing-and-scan; only exotic sources fall back to a scope-filtered listing. Unscoped consumers keep the legacy global view and may modify anything; panels stored before the shared-container layout stay reachable (get/payload/delete) by id, but no longer appear in listings and cannot be moved.
+- `drtools/panels`: new `move_panel` tool and `PanelStore.move` — promote a panel between sources (staging→main) by renaming its blob paths in place, **preserving the panel id** (no copy+delete, external references stay valid) and the panel's own conversation scope. Panels with bulky payloads expose `payload_files_id` (the shared container's Files id) + `payload_path` (the file path within it) — together exactly the Files download API's `(id, fileName)` pair; `payload_name` stays the caller's display name.
+
+## 0.26.0
+- *Breaking change*: Removed subpackage `application_utils`.
+
+## 0.25.4
+- `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server
+
+## 0.25.3
+- Dropped the `ragas` dependency. Agent runs still record their pipeline interactions as a `MultiTurnSample`, but that type (and the `HumanMessage` / `AIMessage` / `ToolMessage` / `ToolCall` primitives) now come from the new `datarobot_genai.core.pipeline_interactions` module, which owns a slim Pydantic `MultiTurnSample` and reuses the message primitives shipped by `datarobot-moderations` (>=11.2.45). The LangGraph and LlamaIndex trace converters, previously imported from `ragas.integrations`, are reimplemented locally. Removing `ragas` also drops its `diskcache` and `scikit-network` exclusions. The serialized `pipeline_interactions` payload is unchanged apart from a few always-null fields that are no longer emitted.
+
+## 0.25.2
+- `dragent`: Added NAT `mcp_client_with_xaa_support` type MCP client.
+
+## 0.25.1
+- `drtools`: `vdb_get` rejects malformed `vector_database_id` values before calling the platform and returns a clean not-found error matching the well-formed missing-ID case; API calls use `allow_redirects=False` so unexpected 3xx/HTML responses surface as structured errors instead of raw frontend pages.
+- `drtools`: `vdb_deploy` submits the deploy request and polls for the new deployment record instead of blocking on the SDK's long async wait, avoiding false MCP timeouts while the deployment is actually created.
+
+## 0.25.0
+- *Breaking change*: Deprecated `datarobot-genai.nat`. Moved:
+  - `nat_tool` from `datarobot_genai.nat.tool` to `datarobot_genai.dragent.tool`
+  - `extract_authorization_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `extract_datarobot_headers_from_context` from `datarobot_genai.nat.helpers` to `datarobot_genai.dragent.context`
+  - `load_workflow` usage moved from deprecated `datarobot_genai.nat.helpers` to `nat.runtime.loader.load_workflow` directly; inline execution publishes `DRAGENT_CONFIG_FILE` via `publish_dragent_config_file_env` before loading (without DRUM-only header injection or moderation stripping; those remain on the deprecated `NatAgent` path)
+- Removed `headers` from `datarobot-llm-deployment` and `datarobot-llm-component` LLM provider configs; identity headers are read from NAT request context at runtime instead.
+
+## 0.24.3
+- `dragent`: keep the first streaming tool-call id per OpenAI index when later chunks re-emit a Gemini ``__thought__``-suffixed id (fixes invalid AG-UI ``TOOL_CALL_ARGS`` sequences on NAT).
+
+## 0.24.2
+- `dragent`: Made audience attribute optional in `class CrossAppTokenRequest`.
+
+## 0.24.1
+- `application-utils`: **Memory Service Light ORM** — new standalone extra `datarobot-genai[application-utils]` that wraps the DataRobot Agentic Memory Service with a Pydantic v2 / SQLModel-style async ORM.  Declare typed session and event models with annotation-driven routing markers (`DRDeduplicationKey`, `DRRangeKey`, `DRConcurrencyField`); the ORM handles wire serialization, camelCase mapping, description-path encoding for range-key prefix queries, optimistic concurrency (`If-Match` for sessions; `createdAt` token for events), and idempotent create via 409-adopt.  Public import: `from datarobot_genai.application_utils.persistence import DRMemorySpace, DRSession, DREvent`.  Dependencies: `httpx>=0.28.1,<1.0.0` + `pydantic>=2.6.1,<3.0.0` only (no core / OTel weight).  Unit tests cover encoding, routing, transport, space CRUD, session CRUD, and event CRUD.
+
+## 0.24.0
+
+- *Breaking change*: Native NAT agents now require a middleware `datarobot_dragent_normalization` in order to adopt AG-UI interface
+- Simplified type conversion strategy to make it AG-UI aligned throughout `dragent`
+- Added `datarobot_moderations` response for inline execution and `/chat/completions` route
+- Rework E2E examples to use memory streaming agent (as agentic templates)
+
+## 0.23.27
+- `dragent`: Extended `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin to read XAA params from NAT config.
+
+## 0.23.26
+- e2e: `MockOtelCollector` now parses OTLP/HTTP **metrics** bodies (`metrics()` / `wait_for_metrics()`, `/otel/v1/metrics` path) alongside spans; new `test_otel_metrics.py` drives the real `InstrumentedSandbox` SLI instruments through a real `OTLPMetricExporter` into the mock collector and asserts the sandbox SLIs + DataRobot auth headers arrive on the wire.
+
+## 0.23.25
+- `drtools/vdb`: added `vdb_create` to create a DataRobot vector database from an AI Catalog dataset linked to a use case; applies platform-valid default chunking parameters (embedding model, recursive chunking, chunk size 256, separators) and validates inputs before calling the API; returns applied settings and a polling note.
+- `drtools/vdb`: added `vdb_deploy` to deploy a built vector database to a live MLOps deployment for querying via `vdb_query`; requires build status COMPLETED, returns deployment `status` and a polling note for launch readiness.
+- `drtools/vdb`: added `vdb_get` for non-blocking build and deployment status checks with optional `target_status` (`completed` / `active`), following the same poll pattern as `file_get_status` and `workload_get`.
+- `drtools/vdb`: fixed `vdb_query` to score through the deployment prediction server with the `promptText` JSON payload expected by vector database deployments, instead of posting to the main API `deployments/{id}/predictions/` route.
+- `drtools/vdb`: fixed `vdb_list` 400 from the deployments API by removing unsupported `modelTargetType` query param; list all deployments and filter vector-database targets client-side (same pattern as MCP deployment discovery).
+
+## 0.23.24
+- `dragent`: Raised the gunicorn worker timeout default to 600s, overridable via `AGENT_GUNICORN_WORKER_TIMEOUT`.
+
+## 0.23.23
+- `crewai`: strip the per-tool `strict` flag on native tool calls.
+
+## 0.23.22
+- Fix streaming interruption with response guards
+
+## 0.23.21
+- Fix multi-node agents (e.g. the default researcher -> responder template) concatenating every node's text into one response instead of returning only the final node's answer. AG-UI text boundaries keyed on `message.id` alone, so nodes whose streamed messages shared or omitted an id emitted no boundary event: an empty id silently fused both nodes' text (and, with a null id, produced a malformed stream). Boundaries are now keyed on `(langgraph_node, message_id)` with a minted id when the node omits one, so the non-streaming chat-completion path (used by evaluations) returns only the final node's output.
+
+## 0.23.20
+- `eval`: endpoint health check now probes `<scheme>://<host>:<port>/health` (path stripped) before falling back to pinging the literal `--endpoint`, so dragent/DRUM-fronted agents log a clean 200 instead of a `404 Not Found` on the bare `/v1` base URL during validation and `--dry-run`.
+
+## 0.23.19
+- `drtools/files_api`: Tweak `description` and `description_ui` fields for file-related tools to improve agent operations and user understanding.
+
+## 0.23.18
+- `core`/`drmcp`: replaced `datarobot-early-access` with the stable `datarobot` package (`datarobot[fs]>=3.17`).
+
+## 0.23.17
+- Bumped `litellm` floor from `>=1.83.0` to `>=1.91.1` to pick up the upstream fix for an `IndexError: list index out of range` in litellm's streaming handler (`raise_on_model_repetition` accessed `.choices[0]` on usage-only chunks without guarding for empty `choices`). Older litellm crashed intermittently on streaming calls that set `stream_options={"include_usage": True}` (which the LLM wrapper always does), surfacing as false `skipped_model_error` / HTTP 422 results in streaming agents and BYOB evaluation runs (BUZZOK-31535).
+
+## 0.23.16
+- Fix `eval_status.json` not updated to failed on early input validation errors.
+
+## 0.23.15
+- `drtools/core/clients` (MODEL-24077): fixed `WorkloadApiClient.list_workload_logs()` (used by the `workload_logs_get` tool) raising `AssertionError: Wrong type` on every call — it built its request `params` as a `list[tuple[str, Any]]` instead of the `dict[str, Any]` the DataRobot SDK's REST client requires; `includes`/`excludes` still encode as repeated query keys since `requests` accepts list-valued dict entries.
+
+## 0.23.14
+- `e2e-tests`: acceptance E2E tests for the DataRobot Memory Service through DRAgent.
+
+## 0.23.13
+- `dragent`: Added `mcp_client_with_xaa_support` type MCP client with XAA supports in NAT plugin.
+
+## 0.23.12
+- `core`: Added workload-shaped URL builders and runtime-detection helpers (`is_workload_mode`, `is_hosted_runtime`, etc.); OTel bootstrap now emits `workload-<id>` entity identity when running on Workload Api.
+- `dragent`: `get_a2a_endpoint_url` and `build_internal_identity_extension` are now workload-aware.
+
+## 0.23.11
+- `drtools/files_api` (MODEL-24055): fixed `file_manage(action='delete')` reporting `{"deleted": true}` when a non-recursive delete targeted a non-empty directory — it now raises a validation `ToolError` telling the caller to pass `recursive=True`. Deleting a nonexistent path remains a silent no-op.
+- `drtools/files_api` (MODEL-24056): made `file_manage(action='clone')`'s `files_to_omit` tolerate a JSON-encoded string (some MCP clients serialize array arguments this way) and treat an empty list the same as omitting the argument (the platform rejects an empty list outright).
+
+## 0.23.10
+- `drmcp`: made log secret-redaction targeted — removed the catch-all that redacted any 20+-char alphanumeric string (ObjectIds, request/trace ids and class names became `[REDACTED]`); now redacts JWTs, `Bearer`/`Basic` authorization values and secret-shaped key assignments (`token=…`, `api_key: …`, `DATAROBOT_API_TOKEN=…`), and broadened OpenAI-key matching to `sk-proj-…` style keys of any length.
+- `drmcputils`: added `log_redaction` (`SECRET_PATTERNS`, `redact_secrets`) as the shared home for the log-redaction patterns so global-mcp and the user-MCP formatter apply the same rules; `drmcp.core.logging.SecretRedactingFormatter` now delegates to it.
+
+## 0.23.9
+- Added a new function for ARD support add changed the Global MCP tool registration to have one source of truth for both Global MCP Tools and Agentic Resource Discovery
+
+## 0.23.8
+- Updated `workflow.yaml` for LangGraph and LlamaIndex to enable reasoning and fix reasoning tests.
+- Removed llm model specific override yamls and instead added a helper function `default_reasoning_extra_body` to add the corresponding `extra_body`
+- `dragent`: added `reasoning` boolean under `llms` in `workflow.yaml` (default `false`) to enable or disable LLM extended reasoning via `extra_body`
+- Added `reasoning=False` keyword to LangGraph, LlamaIndex, and CrewAI `get_*_llm()` / `get_llm()` helpers so extended thinking works without `workflow.yaml`.
+
+## 0.23.7
+- Merge `quality_score` and `answer_match_score` in eval package into a single `score`.
+- Add `has_judge` and `benchmark` to outputs in eval package.
+
+## 0.23.6
+- `drtools.core.sandbox`: capture the one-shot sandbox workload's result reliably — treat an `errored`/`stopped` workload status as success when the runner's `__DR_SANDBOX_RESULT__` marker is present (the workload-api flags a one-shot "service" errored when its process exits), join OTEL log messages with newlines so the marker survives `parse_result_marker`, and poll the OTEL logs endpoint until the marker flushes instead of a single early read.
+
+## 0.23.5
+- `drtools/sandbox`: sandbox SLO/SLI observability — `InstrumentedSandbox` wrapper emitting `sandbox.execution_total{outcome}`, `sandbox.execution_duration_seconds{outcome}`, `sandbox.execution_failure_total{reason}` and a `sandbox.execute` span; `classify_outcome` failure taxonomy (timeout/oom/infra/crash); `SandboxError.exit_code`/`stderr`, new `SandboxInfraError`.
+- `drmcpbase`: `bootstrap_metrics_provider` — OTLP/HTTP `MeterProvider` bootstrap; endpoint/headers resolve the standard OTLP way from `OTEL_EXPORTER_OTLP_*` (idempotent, no-op without an endpoint, never raises).
+- `drmcp`: `initialize_telemetry` installs the metrics provider next to the trace/log providers, and `execute_code` runs through `InstrumentedSandbox` — sandbox SLIs turn on with the existing `OTEL_ENABLED` config.
+- `drmcp`: fixed `_setup_otel_env_variables` resolving endpoint/headers as a pair — with `otel_entity_id` set (validator-assembled headers) the endpoint was never bridged and exporters silently targeted the OTLP localhost default; the two env vars now resolve independently.
+- OTel (`opentelemetry-api`/`-sdk`/`-exporter-otlp-proto-http`) is now a regular dependency of the `drtools` and `drmcpbase` extras (module-level imports; no lazy-import fallbacks).
+
+## 0.23.4
+- Upgrade github-actions to the latest releases with bug fixes, label validation and backport/cherry-picking capabilities
 
 ## 0.23.3
 - `drmcp`: added per-request MCP tool category gates via `x-datarobot-mcp-enable-proxy` and `x-datarobot-mcp-enable-dynamic-tools` (default enabled; explicit `false` disabled `PROXIED_USER_MCP` or `USER_TOOL_DEPLOYMENT` for that request). Category gates took precedence over mode and tool allowlists — gated tools were hidden from listing and could not be resolved or called. `UserMCPProvider` short-circuited the proxied user-MCP fan-out when the proxy gate was disabled.

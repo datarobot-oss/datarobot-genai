@@ -33,7 +33,7 @@ general:
 llms:
   datarobot_llm:
     _type: datarobot-llm-component
-    temperature: 0
+    reasoning: true
 
 middleware:
   datarobot_guardrails:
@@ -57,12 +57,31 @@ middleware:
     _type: datarobot_otel_conventions
 
 
+functions:
+  llamaindex_agent:
+    _type: llamaindex_agent
+    llm_name: datarobot_llm
+    description: LlamaIndex planner/writer agent
+    verbose: True
+    allow_parallel_tool_calls: True
+
+memory:
+  mem0_memory:
+    _type: dr_mem0_memory
+
 workflow:
-  _type: llamaindex_agent
+  # When memory is not configured streaming_memory_agent is a passthrough so it is safe to use
+  # unconditionally.
+  _type: streaming_memory_agent
+  inner_agent_name: llamaindex_agent
+  memory_name: mem0_memory
   llm_name: datarobot_llm
-  description: LlamaIndex planner/writer agent
+  description: LlamaIndex planner/writer agent with automatic memory capture and retrieval
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
-  verbose: True
-  allow_parallel_tool_calls: True
+  save_ai_messages_to_memory: false
+  search_params:
+    top_k: 5
+  add_params:
+    async_mode: false

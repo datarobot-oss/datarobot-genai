@@ -57,8 +57,12 @@ def _make_fn_info(stream_fn=MagicMock()):
 
 class TestPerUserToolCallingAgentWrapper:
     @pytest.mark.asyncio
-    async def test_wraps_stream_fn_when_present(self):
-        """When stream_fn is provided, the wrapper yields a FunctionInfo with wrapped stream."""
+    async def test_yields_native_fn_info_unchanged(self):
+        """The wrapper yields the native FunctionInfo untouched.
+
+        AG-UI stream conversion now lives in the ``datarobot_dragent_normalization``
+        middleware, so ``per_user_tool_calling_agent`` no longer wraps ``stream_fn``.
+        """
         original_fn_info = _make_fn_info(stream_fn=AsyncMock())
 
         async def fake_gen(config, builder):
@@ -75,35 +79,10 @@ class TestPerUserToolCallingAgentWrapper:
             gen = _per_user_tool_calling_agent(config, builder)
             result = await gen.__anext__()
 
-            assert isinstance(result, FunctionInfo)
-            # The stream_fn should be wrapped, not the original
-            assert result.stream_fn is not original_fn_info.stream_fn
-            assert result.single_fn is original_fn_info.single_fn
-            assert result.description == original_fn_info.description
-
-            await gen.aclose()
-
-    @pytest.mark.asyncio
-    async def test_yields_fn_info_unchanged_when_stream_fn_is_none(self):
-        """When stream_fn is None, the wrapper yields fn_info as-is."""
-        original_fn_info = MagicMock(spec=FunctionInfo)
-        original_fn_info.stream_fn = None
-
-        async def fake_gen(config, builder):
-            yield original_fn_info
-
-        with patch(
-            "datarobot_genai.dragent.plugins.per_user_tool_calling_agent"
-            ".tool_calling_agent_workflow"
-        ) as mock_workflow:
-            mock_workflow.__wrapped__ = fake_gen
-            config = MagicMock()
-            builder = MagicMock()
-
-            gen = _per_user_tool_calling_agent(config, builder)
-            result = await gen.__anext__()
-
             assert result is original_fn_info
+            assert result.stream_fn is original_fn_info.stream_fn
+            assert result.single_fn is original_fn_info.single_fn
+
             await gen.aclose()
 
     @pytest.mark.asyncio

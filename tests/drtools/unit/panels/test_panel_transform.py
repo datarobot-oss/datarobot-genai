@@ -79,7 +79,7 @@ async def test_transform_panel_creates_child_with_lineage(transform_env: PanelSt
     assert child["execution_context"]["source_panel"] == src_id
     # Derived payload reads back as the sandbox's output rows.
     blobs: FakeBlobStore = store._blobs  # type: ignore[assignment]
-    frame = pl.read_parquet(io.BytesIO(blobs.blobs[child["payload_files_id"]][0]))
+    frame = pl.read_parquet(io.BytesIO(blobs.container[child["payload_path"]]))
     assert frame.to_dicts() == [{"region": "AMER", "rev": 20}]
 
 

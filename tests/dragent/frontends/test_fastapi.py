@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import sys
+import types
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -30,7 +32,11 @@ from nat.data_models.config import GeneralConfig
 from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from pydantic import ValidationError
 
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
+from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
+from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
@@ -45,14 +51,13 @@ from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
+from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
-from datarobot_genai.dragent.frontends.server_auth import CrossApplicationAccessConfig
-from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenExchange
-from datarobot_genai.dragent.frontends.server_auth import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 
@@ -811,6 +816,24 @@ class TestCreateAgentCard:
         assert internal.required is True
         assert internal.params == {"deployment_id": "dep-abc123"}
 
+    async def test_internal_identity_extension_when_workload_id_set(self, a2a_frontend_config):
+        """GIVEN WORKLOAD_ID is set WHEN create_agent_card is called THEN the internal
+        identity extension is present with the workload_id.
+        """
+        env = {
+            "WORKLOAD_ID": "wl-abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert INTERNAL_IDENTITY_URI in uris
+        internal = next(e for e in card.capabilities.extensions if e.uri == INTERNAL_IDENTITY_URI)
+        assert internal.required is True
+        assert internal.params == {"workload_id": "wl-abc123"}
+
     async def test_no_internal_identity_extension_in_local_dev(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is not set WHEN create_agent_card is called THEN the
         internal identity extension is absent.
@@ -1032,3 +1055,111 @@ class TestDRAgentFastApiFrontEndPlugin:
             patch("uvicorn.Server.serve", fake_serve),
         ):
             await plugin.run()
+
+
+class TestGunicornSettings:
+    _ENV = "AGENT_GUNICORN_WORKER_TIMEOUT"
+    _RUNTIME_PARAM_ENV = "MLOPS_RUNTIME_PARAM_AGENT_GUNICORN_WORKER_TIMEOUT"
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv(self._ENV, raising=False)
+        monkeypatch.delenv(self._RUNTIME_PARAM_ENV, raising=False)
+
+    def test_default(self):
+        assert _GunicornSettings().agent_gunicorn_worker_timeout == 600
+
+    def test_plain_env_override(self, monkeypatch):
+        monkeypatch.setenv(self._ENV, "300")
+        assert _GunicornSettings().agent_gunicorn_worker_timeout == 300
+
+    def test_numeric_runtime_param_float_payload(self, monkeypatch):
+        """A DataRobot numeric runtime param delivers a float payload; it coerces to int."""
+        monkeypatch.setenv(self._RUNTIME_PARAM_ENV, '{"type": "numeric", "payload": 300.0}')
+        assert _GunicornSettings().agent_gunicorn_worker_timeout == 300
+
+    def test_invalid_value_raises(self, monkeypatch):
+        monkeypatch.setenv(self._ENV, "not-a-number")
+        with pytest.raises(ValidationError):
+            _GunicornSettings()
+
+    def test_non_positive_raises(self, monkeypatch):
+        monkeypatch.setenv(self._ENV, "0")
+        with pytest.raises(ValidationError):
+            _GunicornSettings()
+
+
+class TestPatchGunicornWorkerTimeout:
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("AGENT_GUNICORN_WORKER_TIMEOUT", raising=False)
+        monkeypatch.delenv("MLOPS_RUNTIME_PARAM_AGENT_GUNICORN_WORKER_TIMEOUT", raising=False)
+
+    @pytest.fixture
+    def fake_gunicorn(self, monkeypatch):
+        """Install a stand-in ``gunicorn.config`` (gunicorn is not a genai dependency)."""
+
+        class Timeout:
+            default = 30
+
+        class GracefulTimeout:
+            default = 30
+
+        config_mod = types.ModuleType("gunicorn.config")
+        config_mod.Timeout = Timeout
+        config_mod.GracefulTimeout = GracefulTimeout
+        pkg = types.ModuleType("gunicorn")
+        pkg.config = config_mod
+        monkeypatch.setitem(sys.modules, "gunicorn", pkg)
+        monkeypatch.setitem(sys.modules, "gunicorn.config", config_mod)
+        return config_mod
+
+    def test_applies_default(self, fake_gunicorn):
+        _patch_gunicorn_worker_timeout()
+        assert fake_gunicorn.Timeout.default == 600
+        assert fake_gunicorn.GracefulTimeout.default == 600
+
+    def test_applies_override(self, fake_gunicorn, monkeypatch):
+        monkeypatch.setenv("AGENT_GUNICORN_WORKER_TIMEOUT", "300")
+        _patch_gunicorn_worker_timeout()
+        assert fake_gunicorn.Timeout.default == 300
+        assert fake_gunicorn.GracefulTimeout.default == 300
+
+    def test_noop_when_gunicorn_not_installed(self, monkeypatch):
+        """The real genai env has no gunicorn; the helper must no-op, not raise."""
+        monkeypatch.setitem(sys.modules, "gunicorn", None)  # forces ImportError
+        _patch_gunicorn_worker_timeout()  # must not raise
+
+
+class TestRunGunicornTimeoutGating:
+    _SUPER_RUN = "nat.front_ends.fastapi.fastapi_front_end_plugin.FastApiFrontEndPlugin.run"
+    _PATCH_FN = "datarobot_genai.dragent.frontends.fastapi._patch_gunicorn_worker_timeout"
+    _PUBLISH = "datarobot_genai.dragent.workflow_paths.publish_dragent_config_file_env"
+
+    @pytest.mark.asyncio
+    async def test_run_patches_timeout_when_use_gunicorn(self):
+        config = Config(
+            general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig(use_gunicorn=True))
+        )
+        plugin = DRAgentFastApiFrontEndPlugin(full_config=config)
+        with (
+            patch(self._PUBLISH),
+            patch(self._PATCH_FN) as mock_patch,
+            patch(self._SUPER_RUN, new_callable=AsyncMock),
+        ):
+            await plugin.run()
+        mock_patch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_skips_patch_without_use_gunicorn(self):
+        config = Config(
+            general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig(use_gunicorn=False))
+        )
+        plugin = DRAgentFastApiFrontEndPlugin(full_config=config)
+        with (
+            patch(self._PUBLISH),
+            patch(self._PATCH_FN) as mock_patch,
+            patch(self._SUPER_RUN, new_callable=AsyncMock),
+        ):
+            await plugin.run()
+        mock_patch.assert_not_called()

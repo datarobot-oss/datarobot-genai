@@ -24,14 +24,19 @@ remote files (by URL or data source), use the import tools instead.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Annotated
 from typing import Any
 from typing import Literal
 
+from pydantic import BeforeValidator
+from pydantic import Field
+
 from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+from datarobot_genai.drmcputils.files.file_system_store import DirectoryNotEmptyError
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.files_api.common_utils import FILE_WRITE_MODE_DOC
 from datarobot_genai.drtools.files_api.common_utils import OVERWRITE_STRATEGY_DOC
@@ -44,6 +49,22 @@ from datarobot_genai.drtools.files_api.common_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_json_encoded_list(value: Any) -> Any:
+    """Decode a JSON-encoded array string back into a list.
+
+    Some MCP clients/bridges serialize array arguments to a JSON string
+    (e.g. ``'["a.txt"]'``) instead of sending a native array, even though the
+    advertised schema declares an array type. Malformed strings are passed
+    through unchanged so the normal list-type validation error still fires.
+    """
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 # ------------------------------------------------------------------ #
@@ -68,7 +89,7 @@ logger = logging.getLogger(__name__)
     ),
     display_name="Files — Write",
     description_ui=(
-        "Writes inline text or binary content to a file under a catalog item, "
+        "Writes inline text or binary content to a file under a catalog directory, "
         "creating parent folders as needed."
     ),
 )
@@ -124,7 +145,6 @@ async def file_write(
         "Example (glob): file_upload(local_path='/tmp/**/*.csv', path='dr://abc123/csv/', "
         "recursive=True)"
     ),
-    excluded_from_global_mcp=True,
     display_name="Files — Upload",
     description_ui=(
         "Streams files, directories, or glob matches from the server's local disk "
@@ -197,8 +217,8 @@ async def file_upload(
         "[Files—manage] Run a structural action on the filesystem. action is one of:\n"
         "  'create_dir' — create a new empty catalog item directory; returns its "
         "dr://<catalog_id>/ path. (path/target_path ignored.)\n"
-        "  'delete'     — delete file(s)/director(ies) at path. Set recursive=True to "
-        "remove a non-empty directory. Silent if the path does not exist.\n"
+        "  'delete'     — delete file(s)/director(y|ies) at path. Set recursive=True to "
+        "remove all contents under the specified path. Silent if the path does not exist.\n"
         "  'copy'       — copy path to target_path. Set recursive=True for directories.\n"
         "  'move'       — move/rename path to target_path. Set recursive=True for directories.\n"
         "  'clone'      — clone a whole catalog item directory (path) to a new catalog "
@@ -211,7 +231,8 @@ async def file_upload(
     ),
     display_name="Files — Manage",
     description_ui=(
-        "Runs structural filesystem actions: create directory, delete, copy, move, or clone."
+        "Runs structural filesystem actions: create catalog directory, delete, copy, move, or "
+        "clone catalog directory."
     ),
 )
 async def file_manage(
@@ -238,7 +259,8 @@ async def file_manage(
     ] = None,
     files_to_omit: Annotated[
         list[str] | None,
-        "For 'clone', catalog-relative paths to exclude from the clone.",
+        BeforeValidator(_coerce_json_encoded_list),
+        Field(description="For 'clone', catalog-relative paths to exclude from the clone."),
     ] = None,
     overwrite: Annotated[
         Literal["rename", "replace", "skip", "error"],
@@ -263,12 +285,20 @@ async def file_manage(
 
     if action == "delete":
         cleaned = _require_file_path(path)
-        await store.delete(cleaned, recursive=recursive, maxdepth=maxdepth)
+        try:
+            await store.delete(cleaned, recursive=recursive, maxdepth=maxdepth)
+        except DirectoryNotEmptyError as exc:
+            raise ToolError(
+                f"{cleaned!r} is a non-empty directory; set recursive=True to delete it.",
+                kind=ToolErrorKind.VALIDATION,
+            ) from exc
         return {"deleted": True, "path": cleaned}
 
     if action == "clone":
         cleaned = _require_file_path(path)
-        catalog_id = await store.clone(cleaned, files_to_omit=files_to_omit)
+        # An empty list is rejected by the platform (it requires a non-empty list or
+        # None); normalize so an empty omit list behaves like omitting the argument.
+        catalog_id = await store.clone(cleaned, files_to_omit=files_to_omit or None)
         return {
             "cloned": True,
             "source": cleaned,

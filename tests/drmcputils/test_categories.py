@@ -100,6 +100,9 @@ class TestResolveToToolNamesAdditional:
 
     def test_dr_db_parent_expands_to_vdb_tools(self) -> None:
         result = resolve_to_tool_names(frozenset({"dr_db"}))
+        assert "vdb_create" in result
+        assert "vdb_deploy" in result
+        assert "vdb_get" in result
         assert "vdb_list" in result
         assert "vdb_query" in result
 
@@ -126,8 +129,8 @@ class TestResolveToToolNamesAdditional:
         assert "search_datarobot_agentic_docs" in result
 
     def test_file_upload_present_in_dr_file(self) -> None:
-        # file_upload is in the category definition; exclusion happens at registration time
-        # (via excluded_from_global_mcp flag), not in the category map.
+        # file_upload is in the category definition; exclusion happens via
+        # GLOBAL_MCP_EXCLUDED_TOOLS (the single source of truth), not in the category map.
         assert "file_upload" in LEAF_CATEGORY_TOOLS[MCPToolCategory.DR_FILE]
 
     def test_no_tool_name_appears_in_multiple_leaf_categories(self) -> None:

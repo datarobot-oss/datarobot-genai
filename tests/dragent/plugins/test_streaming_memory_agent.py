@@ -327,11 +327,26 @@ class TestStreamingMemoryAgentFactory:
 
     async def test_yields_function_info_with_single_fn(self, context_user_id):
         # stream_to_single_fn is wired so `nat dragent run` (and other
-        # non-streaming callers) can collapse the event stream to text.
+        # non-streaming callers) can collapse the event stream.
         config = _make_config()
         builder = _make_builder(memory_editor=AsyncMock())
         async with streaming_memory_agent(config, builder) as fn_info:
             assert fn_info.single_fn is not None
+
+    async def test_single_fn_aggregates_to_dragent_event_response(self, context_user_id):
+        # Non-streaming callers get an aggregated DRAgentEventResponse (not str), so
+        # moderation and the frontend converters keep operating on the canonical type.
+        config = _make_config(memory_name="mem0")
+        chunks = [_chunk("Hel"), _chunk("lo")]
+        builder = _make_builder(
+            memory_editor=UnconfiguredMemoryEditor(),
+            inner_agent_chunks=chunks,
+        )
+        async with streaming_memory_agent(config, builder) as fn_info:
+            result = await fn_info.single_fn(_input(_user("hi")))
+
+        assert isinstance(result, DRAgentEventResponse)
+        assert _content_deltas([result]) == ["Hel", "lo"]
 
     async def test_fetches_memory_client_and_inner_agent(self, context_user_id):
         config = _make_config(memory_name="mem0")

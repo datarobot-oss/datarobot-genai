@@ -353,7 +353,7 @@ async def test_stderr_captured_from_error_level_entries() -> None:
             {"level": "ERROR", "message": "RuntimeError: boom\n"},
         ]
     )
-    assert stdout == "starting\n"
+    assert stdout == "starting"
     assert "RuntimeError: boom" in stderr
     assert "failed" in str(excinfo.value)
 
@@ -383,7 +383,7 @@ async def test_stderr_captured_and_marker_parsed_from_stdout() -> None:
     # INFO + WARNING stay on stdout (only ERROR/CRITICAL/FATAL route to stderr);
     # the marker line is stripped from stdout by parse_result_marker.
     assert result.stdout == "deprecation notice\nhello"
-    assert result.stderr == "some diagnostic\n"
+    assert result.stderr == "some diagnostic"
 
 
 def test_partition_log_entries_captures_stacktrace() -> None:
@@ -398,7 +398,7 @@ def test_partition_log_entries_captures_stacktrace() -> None:
             },
         ]
     )
-    assert stdout == "before\n"
+    assert stdout == "before"
     assert "ValueError: bad" in stderr
     assert "Traceback (most recent call last):" in stderr
 
@@ -412,7 +412,7 @@ def test_partition_log_entries_all_stdout_when_no_errors() -> None:
             {"message": "c"},  # missing level defaults to stdout
         ]
     )
-    assert stdout == "abc"
+    assert stdout == "a\nb\nc"
     assert stderr == ""
 
 

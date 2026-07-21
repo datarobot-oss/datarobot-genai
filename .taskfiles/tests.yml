@@ -27,7 +27,6 @@ tasks:
             - drmcpbase
             - drmcputils
             - drmcp
-            - nat
             - dragent
             - eval
     cmds:
@@ -45,16 +44,4 @@ tasks:
             --junitxml=test_results/test-results.xml -vv -s \
             --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance --ignore=tests/nat/integration --ignore=tests/drtools/integration
           {{end}}
-    silent: true
-
-  test-nat-integration:
-    desc: "Run NAT integration tests"
-    cmds:
-      - mkdir -p test_results
-      - |
-          set -e
-          COV_FAIL_UNDER=80
-          uv run pytest --junitxml=test_results/test-results.xml \
-            --cov=datarobot_genai --cov-branch --cov-fail-under=${COV_FAIL_UNDER} --no-cov-on-fail \
-            -vv -s tests/nat/integration
     silent: true

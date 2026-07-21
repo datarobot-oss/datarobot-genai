@@ -13,23 +13,13 @@
 # limitations under the License.
 import logging
 
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    PromptInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    ResourceInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfPromptInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfResourceInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfToolInUserMCPServerDeployment,
-)
 from datarobot.errors import ClientError as DataRobotAPIClientError
+from datarobot.models.user_mcp_server_deployment import PromptInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ResourceInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfPromptInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfResourceInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfToolInUserMCPServerDeployment
 
 from datarobot_genai.drmcp.core.clients import (
     setup_and_return_dr_api_client_with_static_config_in_container,

@@ -104,6 +104,7 @@ from nat.cli.register_workflow import register_auth_provider
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
+from nat.data_models.authentication import HeaderCred
 from nat.data_models.common import OptionalSecretStr
 from pydantic import AliasChoices
 from pydantic import BaseModel
@@ -301,9 +302,10 @@ class _CrossAppFlowParams:
     Passed as ``audience`` in Step 1 so the org AS issues an ID-JAG scoped
     to this authorization server."""
 
-    target_audience: str
+    target_audience: str | None
     """Final resource identifier (e.g. ``https://api.example.com/``).
-    Passed as ``resource`` in Step 1 (HTTP impl only; SDK derives from AS policy)."""
+    Passed as ``resource`` in Step 1 (HTTP impl only; SDK derives from AS policy).
+    When it is None, no ``resource`` field is passed in the payload of Step 1. """
 
     token_endpoint_auth_method: str
     """Client auth method — ``"private_key_jwt"`` triggers signed JWT assertions."""
@@ -411,6 +413,15 @@ class OktaTokenExchange(XAATokenExchange):
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
         self.config = config
 
+    @staticmethod
+    def get_oauth2_client_additional_parameters(
+        cross_app_flow_params: _CrossAppFlowParams,
+    ) -> dict[str, str]:
+        additional_parameters = {}
+        if cross_app_flow_params.target_audience:
+            additional_parameters.update({"resource": cross_app_flow_params.target_audience})
+        return additional_parameters
+
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         if not _HAS_OKTA_SDK:
             raise RuntimeError(
@@ -438,11 +449,10 @@ class OktaTokenExchange(XAATokenExchange):
             audience=org_token_url,
             expires_in=300,
         )
-        additional_parameters = {"resource": params.target_audience}
         client = OAuth2Client(
             configuration=OAuth2ClientConfiguration(
                 issuer=params.trusted_issuer,
-                additional_parameters=additional_parameters,
+                additional_parameters=self.get_oauth2_client_additional_parameters(params),
                 client_authorization=ClientAssertionAuthorization(
                     assertion_claims=claims,
                     key_provider=key_provider,
@@ -495,6 +505,26 @@ class ApiTokenExchange(XAATokenExchange):
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
         self.config = config
 
+    @staticmethod
+    def get_xaa_token_exchange_request_payload(
+        cross_app_flow_params: _CrossAppFlowParams,
+        subject_token: str,
+        client_assertion: str,
+    ) -> dict[str, str]:
+        payload = {
+            "grant_type": _TOKEN_EXCHANGE_GRANT_TYPE,
+            "subject_token": subject_token,
+            "subject_token_type": _SUBJECT_TOKEN_TYPE,
+            "requested_token_type": _REQUESTED_TOKEN_TYPE,
+            "audience": cross_app_flow_params.exchange_audience,
+            "scope": " ".join(cross_app_flow_params.id_jag_scopes),
+            "client_assertion_type": _CLIENT_ASSERTION_TYPE,
+            "client_assertion": client_assertion,
+        }
+        if cross_app_flow_params.target_audience:
+            payload["resource"] = cross_app_flow_params.target_audience
+        return payload
+
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         if not self.config.principal_id:
             raise ValueError("principal_id is required for the XAA flow")
@@ -527,17 +557,7 @@ class ApiTokenExchange(XAATokenExchange):
             )
             resp1 = await http.post(
                 org_as_token_url,
-                data={
-                    "grant_type": _TOKEN_EXCHANGE_GRANT_TYPE,
-                    "subject_token": subject_token,
-                    "subject_token_type": _SUBJECT_TOKEN_TYPE,
-                    "requested_token_type": _REQUESTED_TOKEN_TYPE,
-                    "audience": params.exchange_audience,
-                    "resource": params.target_audience,
-                    "scope": " ".join(params.id_jag_scopes),
-                    "client_assertion_type": _CLIENT_ASSERTION_TYPE,
-                    "client_assertion": assertion1,
-                },
+                data=self.get_xaa_token_exchange_request_payload(params, subject_token, assertion1),
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=_TOKEN_EXCHANGE_TIMEOUT,
             )
@@ -605,6 +625,13 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
         super().__init__(config)
         self._flow_params: _CrossAppFlowParams | None = None
+        self._forward_inbound_http_headers: bool = False
+
+    def set_cross_app_flow_params(self, cross_app_flow_params: _CrossAppFlowParams) -> None:
+        self._flow_params = cross_app_flow_params
+
+    def set_forward_inbound_http_headers(self, enabled: bool) -> None:
+        self._forward_inbound_http_headers = enabled
 
     async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
         token = self._extract_token()
@@ -628,12 +655,21 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             self._flow_params.id_jag_scopes,
         )
 
-    async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
-        """Obtain a scoped agent token via the XAA flow.
+    def get_non_forwardable_header_keys(self) -> set[str]:
+        excluded_header_keys = {self.config.okta_token_header.lower()}
+        excluded_header_keys.update(header.lower() for header in self.config.fallback_token_headers)
+        return excluded_header_keys
 
-        Delegates to the configured :class:`XAATokenExchange` implementation.
-        Requires :meth:`set_agent_card` to have been called first.
-        """
+    def get_forwardable_headers_from_inbound_request(self) -> list[HeaderCred]:
+        headers: dict[str, str] = Context.get().metadata.headers or {}
+
+        return [
+            HeaderCred(name=header_key, value=SecretStr(header_value))
+            for header_key, header_value in headers.items()
+            if header_key not in self.get_non_forwardable_header_keys() and header_value is not None
+        ]
+
+    async def get_exchanged_token(self) -> BearerTokenCred:
         if self._flow_params is None:
             raise RuntimeError(
                 "authenticate() called before set_agent_card(). "
@@ -643,7 +679,23 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         subject_token = self._extract_token()
         impl = get_token_exchange(self.config)
         exchanged_token = await impl.exchange_token(self._flow_params, subject_token)
-        return AuthResult(credentials=[BearerTokenCred(token=exchanged_token)])
+        return BearerTokenCred(token=exchanged_token)
+
+    async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
+        """Obtain a scoped agent token via the XAA flow.
+
+        Delegates to the configured :class:`XAATokenExchange` implementation.
+        Requires :meth:`set_agent_card` to have been called first.
+        """
+        auth_request_credentials: list[HeaderCred | BearerTokenCred] = []
+
+        if self._forward_inbound_http_headers:
+            forwardable_header_creds = self.get_forwardable_headers_from_inbound_request()
+            auth_request_credentials.extend(forwardable_header_creds)
+        bearer_token_cred = await self.get_exchanged_token()
+        auth_request_credentials.append(bearer_token_cred)
+
+        return AuthResult(credentials=auth_request_credentials)
 
     def _extract_token(self) -> str:
         """Extract the access token from NAT request context headers.
@@ -741,7 +793,7 @@ class _TokenRequestParams(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     grant_type: str = Field(validation_alias=AliasChoices("grantType", "grant_type"))
-    audience: str
+    audience: str | None = Field(default=None)
 
 
 class _CrossAppExtensionFields(BaseModel):

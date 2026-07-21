@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.23.4"
+version = "0.26.6"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -23,15 +23,17 @@ okta_cross_app_access = "datarobot_genai.dragent.plugins.okta_a2a_auth"
 per_user_tool_calling_agent = "datarobot_genai.dragent.plugins.per_user_tool_calling_agent"
 streaming_memory_agent = "datarobot_genai.dragent.plugins.streaming_memory_agent"
 datarobot_otel_conventions_middleware = "datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware"
-datarobot_mcp_client = "datarobot_genai.nat.datarobot_mcp_client"
-datarobot_auth_provider = "datarobot_genai.nat.datarobot_auth_provider"
-datarobot_moderation_middleware = "datarobot_genai.nat.datarobot_moderation_middleware"
+datarobot_mcp_client = "datarobot_genai.dragent.plugins.datarobot_mcp_client"
+datarobot_auth_provider = "datarobot_genai.dragent.plugins.datarobot_auth_provider"
+datarobot_moderation_middleware = "datarobot_genai.dragent.plugins.datarobot_moderation_middleware"
+datarobot_dragent_normalization = "datarobot_genai.dragent.plugins.datarobot_dragent_normalization"
 datarobot_otelcollector = "datarobot_genai.dragent.plugins.datarobot_otelcollector"
 datarobot_mem0_memory = "datarobot_genai.dragent.plugins.datarobot_mem0_memory"
 llm_providers = "datarobot_genai.dragent.plugins.llm_providers"
 llm_clients = "datarobot_genai.dragent.plugins.llm_clients"
 crewai_llm_clients = "datarobot_genai.crewai.llm_clients"
 llamaindex_llm_clients = "datarobot_genai.llama_index.llm_clients"
+mcp_client_with_xaa_support = "datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client"
 
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"
@@ -66,7 +68,7 @@ override-dependencies = [
   # Overrides are required to force CVE-safe versions until NAT relaxes their upper bounds.
   "cryptography>=48.0.1",
   "PyJWT>=2.13.0",
-  "litellm>=1.83.0,<2.0.0",
+  "litellm>=1.91.1,<2.0.0",
   "ragas>=0.4.3,<0.5.0",
   # Align the whole OpenTelemetry stack at the latest release train (core 1.43.x /
   # instrumentation 0.64b0) so the traceloop instrumentors (crewai/langchain/llamaindex
@@ -110,6 +112,7 @@ dev = [
   "pre-commit",
   "twine>=5.0.0",
   "pytest-asyncio>=0.23.5",
+  "pytest-xdist>=3.5.0",
   "responses>=0.25.8",
   "ipdb>=0.13.13",
   "aioresponses>=0.7.8",
@@ -179,13 +182,6 @@ fixable = [
 "src/datarobot_genai/**/*.py" = [
     "PLC0415",# pylint import-outside-toplevel: allow lazy imports for memory optimization
 ]
-"src/datarobot_genai/nat/datarobot_moderation_middleware.py" = [
-    "D301", # Ported docstrings use escaped markup incompatible with r""" convention here
-    "D406", # Ported Google-style sections vs numpy section naming
-    "D407",
-    "E501", # Long comments/docstrings carried over from upstream recipe
-    "PLR0911", # Ported post_invoke has many early exits mirroring upstream control flow
-]
 "docs/**/*.py" = [
     "INP001", # implicit-namespace-package: standalone example scripts
 ]
@@ -207,6 +203,9 @@ max-args = 8
 [tool.pytest.ini_options]
 filterwarnings = []
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that run against a live external service (deselected by default)",
+]
 
 [tool.coverage.run]
 source = ["datarobot_genai"]

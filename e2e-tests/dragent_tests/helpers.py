@@ -17,9 +17,11 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 import litellm
+import yaml
 from ag_ui.core import Event
 from ag_ui.core import EventType
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -47,11 +49,42 @@ def llm_supports_reasoning(llm_default_model: str) -> bool:
     return litellm.supports_reasoning(llm_default_model)
 
 
+def _merge_workflow_llm_config(path: Path) -> dict[str, Any]:
+    data = yaml.safe_load(path.read_text()) or {}
+    llms = dict(data.get("llms") or {})
+    base_name = data.get("base")
+    if base_name:
+        base_data = yaml.safe_load((path.parent / base_name).read_text()) or {}
+        base_llms = dict(base_data.get("llms") or {})
+        for name, overlay in llms.items():
+            merged = dict(base_llms.get(name) or {})
+            merged.update(overlay)
+            llms[name] = merged
+    return llms.get("datarobot_llm") or {}
+
+
+def workflow_reasoning_enabled() -> bool:
+    llm_cfg = _merge_workflow_llm_config(workflow_file())
+    if llm_cfg.get("reasoning") is True:
+        return True
+
+    extra_body = llm_cfg.get("extra_body") or {}
+    thinking = extra_body.get("thinking") or {}
+    if thinking.get("type") == "enabled":
+        return True
+    if extra_body.get("thinking_config"):
+        return True
+
+    reasoning_effort = extra_body.get("reasoning_effort")
+    return bool(reasoning_effort and reasoning_effort != "none")
+
+
 def should_run_reasoning_test() -> bool:
     return (
         LLM_DEFAULT_MODEL
         and llm_supports_reasoning(LLM_DEFAULT_MODEL)
         and AGENT in ("langgraph", "llamaindex")
+        and workflow_reasoning_enabled()
     )
 
 
@@ -130,16 +163,54 @@ def make_generate_payload(content: str) -> dict:  # type: ignore[type-arg]
     }
 
 
+def raise_if_nat_workflow_error_payload(payload: str) -> None:
+    """Fail if *payload* is a bare NAT FastAPI workflow-error JSON object.
+
+    NAT's streaming helpers catch workflow exceptions and yield
+    ``Error(...).model_dump_json()`` **without** an SSE ``data:`` prefix
+    (see ``nat.front_ends.fastapi.response_helpers``).
+    """
+    text = payload.strip()
+    if not text or not text.startswith("{"):
+        return
+    try:
+        body = json.loads(text)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(body, dict):
+        return
+    code = body.get("code")
+    if code != "workflow_error":
+        return
+    message = body.get("message") or text
+    details = body.get("details") or ""
+    raise AssertionError(
+        "NAT streaming endpoint reported a workflow_error (not an SSE data "
+        f"frame). details={details!r} message={message!r}. "
+    )
+
+
 def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:  # type: ignore[type-arg]
-    """Parse SSE text/event-stream into list of DRAgentEventResponse dicts."""
+    """Parse SSE text/event-stream into list of DRAgentEventResponse dicts.
+
+    Raises ``AssertionError`` if the stream includes a bare NAT
+    ``workflow_error`` JSON payload (no ``data:`` prefix).
+    """
     responses = []
     for line in response.iter_lines():
         line = line.strip()  # noqa: PLW2901
+        if not line:
+            continue
         if line.startswith("data: "):
             data = line[len("data: ") :]
             if data == "[DONE]":
                 break
+            # Some error paths may incorrectly prefix the NAT Error object.
+            raise_if_nat_workflow_error_payload(data)
             responses.append(DRAgentEventResponse.model_validate_json(data))
+            continue
+        # Bare JSON line (no SSE framing) — fail loudly on workflow errors.
+        raise_if_nat_workflow_error_payload(line)
     return responses
 
 
@@ -148,6 +219,9 @@ def stream_sse_responses(http_client: httpx.Client, payload: dict) -> list[DRAge
 
     Asserts a 200 ``text/event-stream`` response, then returns the parsed
     DRAgentEventResponse chunks. Shared by the streaming e2e tests.
+
+    Also fails if NAT emits a bare ``workflow_error`` JSON line (see
+    ``raise_if_nat_workflow_error_payload``).
     """
     with http_client.stream("POST", GENERATE_STREAM_PATH, json=payload) as response:
         assert response.status_code == 200

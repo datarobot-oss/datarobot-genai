@@ -3,7 +3,7 @@ cases:
     env:
       LLM: llmgw
       LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
-      WORKFLOW_FILE: workflow-reasoning-sonnet.yaml
+      WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
@@ -13,6 +13,22 @@ cases:
         - langgraph
         - llamaindex
         - base
+
+  - name: memory
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+      E2E_PROVISION_MEMORY_SPACE: "true"
+    tests:
+      - ./dragent_tests/test_memory.py
+      - ./dragent_tests/test_tools.py
+      - ./dragent_tests/test_streaming.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
 
   - name: extended-llmgw
     env:
