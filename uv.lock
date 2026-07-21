@@ -1079,6 +1079,11 @@ auth = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
+core = [
+    { name = "psutil" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+]
 fs = [
     { name = "fsspec" },
 ]
@@ -1112,7 +1117,7 @@ auth = [
 core = [
     { name = "ag-ui-protocol" },
     { name = "colorama" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["core"] },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
@@ -1134,7 +1139,7 @@ crewai = [
     { name = "colorama" },
     { name = "crewai", extra = ["litellm"] },
     { name = "crewai-tools", extra = ["mcp"] },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["core"] },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
@@ -1159,7 +1164,7 @@ dragent = [
     { name = "ag-ui-protocol" },
     { name = "anyio" },
     { name = "colorama" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["core"] },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
@@ -1265,7 +1270,7 @@ eval = [
 langgraph = [
     { name = "ag-ui-protocol" },
     { name = "colorama" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["core"] },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
@@ -1289,7 +1294,7 @@ langgraph = [
 llamaindex = [
     { name = "ag-ui-protocol" },
     { name = "colorama" },
-    { name = "datarobot" },
+    { name = "datarobot", extra = ["core"] },
     { name = "datarobot-moderations", extra = ["all"] },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
@@ -1365,16 +1370,16 @@ requires-dist = [
     { name = "colorama", marker = "extra == 'llamaindex'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
-    { name = "datarobot", marker = "extra == 'core'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'crewai'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'dragent'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'langgraph'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", marker = "extra == 'llamaindex'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["core"], marker = "extra == 'core'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["core"], marker = "extra == 'crewai'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["core"], marker = "extra == 'dragent'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["core"], marker = "extra == 'langgraph'", specifier = ">=3.17.0,<4.0.0" },
+    { name = "datarobot", extras = ["core"], marker = "extra == 'llamaindex'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },

@@ -115,6 +115,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function as Open
 from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
 from datarobot_genai.dragent.frontends.converters import (
@@ -1200,6 +1201,7 @@ async def _moderated_dragent_stream(
     pending_deferred: list[DRAgentEventResponse] = []
     pending_pass_through: list[DRAgentEventResponse] = []
     moderation_source_responses: list[DRAgentEventResponse] = []
+    last_source_response: DRAgentEventResponse | None = None
     stopped_for_content_filter = False
     prescore_state = _StreamingPrescoreModerationState(
         prescore_moderations=_prescore_datarobot_moderations_from_df(
@@ -1251,21 +1253,33 @@ async def _moderated_dragent_stream(
             )
         ) as moderation_stream:
             async for moderated in moderation_stream:
-                source_response = moderation_source_responses.pop(0)
-                moderated_response = prescore_state.emit_moderated(
-                    dome_chunk_to_dragent_event_response(
-                        moderated,
-                        source_ag_ui_events=source_response.events,
-                        stream_tool_index_map=stream_tool_index_map,
-                    )
+                # ModerationIterator (moderations >= 11.2.45) no longer emits one moderated
+                # chunk per source chunk. On BLOCK/REPLACE it discards the buffered content and
+                # yields a synthetic sequence: a role opener, the message chunk, then a terminal
+                # finish chunk. Those extra chunks outnumber the source responses we appended,
+                # and the opener/terminal carry no delta text (empty AG-UI event lists). All the
+                # synthetic chunks derive from the same upstream text message, so once the source
+                # list drains we reuse the last source response to keep AG-UI message IDs
+                # consistent, and we surface only the chunks that actually carry events.
+                if moderation_source_responses:
+                    last_source_response = moderation_source_responses.pop(0)
+                source_response = last_source_response
+                converted = dome_chunk_to_dragent_event_response(
+                    moderated,
+                    source_ag_ui_events=(
+                        source_response.events if source_response is not None else None
+                    ),
+                    stream_tool_index_map=stream_tool_index_map,
                 )
-                _track_dragent_response_events(open_text_message_ids, moderated_response)
-                yield moderated_response
-                for item in _drain_pending_after_moderated_chunk(
-                    pending_deferred, pending_pass_through
-                ):
-                    _track_dragent_response_events(open_text_message_ids, item)
-                    yield prescore_state.emit(item)
+                if converted.events:
+                    moderated_response = prescore_state.emit_moderated(converted)
+                    _track_dragent_response_events(open_text_message_ids, moderated_response)
+                    yield moderated_response
+                    for item in _drain_pending_after_moderated_chunk(
+                        pending_deferred, pending_pass_through
+                    ):
+                        _track_dragent_response_events(open_text_message_ids, item)
+                        yield prescore_state.emit(item)
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     for end_response in _synthetic_text_message_end_responses(
@@ -1414,7 +1428,15 @@ class DataRobotModerationMiddleware(
         prompt = moderation_prompt_from_workflow_input(workflow_input)
 
         # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
-        prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(prompt)
+        # Wrap in the NAT workflow trace context: dome emits its ``evaluate_prompt`` span via
+        # its own tracer provider, which our ``NatWorkflowTracer`` wrapper never patches. Without
+        # an active workflow parent in context here (moderation is the outer middleware, so this
+        # runs before the ``datarobot_agent`` span exists) that span would start a disconnected
+        # trace.
+        with use_nat_workflow_trace_context():
+            prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
+                prompt
+            )
 
         if prompt_eval.blocked:
             # If all prompts in the input are blocked, means history as well as the prompt
@@ -1475,10 +1497,13 @@ class DataRobotModerationMiddleware(
         # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
         # ``_run_stage`` in dome) when response text is present.
         prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        response_eval, _, _postscore_df = await moderation.evaluate_response_async(
-            response_text,
-            prompt=state.prompt,
-        )
+        # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
+        # request trace (see the pre_invoke prescore call for the full rationale).
+        with use_nat_workflow_trace_context():
+            response_eval, _, _postscore_df = await moderation.evaluate_response_async(
+                response_text,
+                prompt=state.prompt,
+            )
 
         prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
 
