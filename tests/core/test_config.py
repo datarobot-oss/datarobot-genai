@@ -19,7 +19,9 @@ import pytest
 from datarobot_genai.core import config as config_mod
 from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.config import Config
+from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
+from datarobot_genai.core.config import config_injection_enabled
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
@@ -31,6 +33,8 @@ from datarobot_genai.core.config import default_use_datarobot_llm_gateway
 from datarobot_genai.core.config import deployment_url
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.config import llm_gateway_url
+from datarobot_genai.core.config import register_config_provider
+from datarobot_genai.core.config import resolve_config
 
 
 def _make_config(**overrides: object) -> Config:
@@ -254,3 +258,108 @@ def test_default_nim_deployment_id_returns_none_when_unset() -> None:
     cfg = _make_config(nim_deployment_id=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_nim_deployment_id() is None
+
+
+# --- App config injection seam ---------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_config_provider() -> object:
+    """Ensure the injection provider never leaks between tests."""
+    register_config_provider(None)
+    yield
+    register_config_provider(None)
+
+
+def _enable_injection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATAROBOT_GENAI_CONFIG_INJECTION", "1")
+
+
+def test_injection_gate_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATAROBOT_GENAI_CONFIG_INJECTION", raising=False)
+    assert config_injection_enabled() is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+def test_injection_gate_on_for_truthy_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("DATAROBOT_GENAI_CONFIG_INJECTION", value)
+    assert config_injection_enabled() is True
+
+
+def test_resolve_config_falls_back_to_env_config_when_no_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_injection(monkeypatch)
+    sentinel = _make_config(llm_default_model="from-env-config")
+    with patch.object(config_mod, "Config", return_value=sentinel):
+        # No provider registered -> genai's own Config() is used.
+        assert resolve_config() is sentinel
+
+
+def test_resolve_config_ignores_provider_when_gate_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATAROBOT_GENAI_CONFIG_INJECTION", raising=False)
+    injected = _make_config(llm_default_model="from-app-config")
+    env_cfg = _make_config(llm_default_model="from-env-config")
+    register_config_provider(lambda: injected)
+    with patch.object(config_mod, "Config", return_value=env_cfg):
+        # Gate off -> provider ignored, genai's Config() wins (unchanged behavior).
+        assert resolve_config() is env_cfg
+
+
+def test_resolve_config_uses_injected_provider_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_injection(monkeypatch)
+    injected = _make_config(llm_default_model="from-app-config")
+    register_config_provider(lambda: injected)
+    # Even if genai builds its own Config, the injected provider takes precedence.
+    with patch.object(config_mod, "Config", return_value=_make_config()):
+        assert resolve_config() is injected
+
+
+def test_injected_config_overrides_env_for_user_intent_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the hammer case.
+
+    A user hardcodes values in the app config and sets NO env var. genai must
+    read the app's values, not its own env-only defaults.
+    """
+    _enable_injection(monkeypatch)
+    # App config: gateway off, a deployment target, and a specific model, all set
+    # as plain values, exactly as a user would hardcode them in config.py.
+    app_config = LLMConfig(
+        use_datarobot_llm_gateway=False,
+        llm_deployment_id="dep-from-app",
+        llm_default_model="anthropic/claude-sonnet-4-20250514",
+    )
+    register_config_provider(lambda: app_config)
+
+    # genai's own env-only Config would say the opposite (gateway on, no model).
+    env_only = _make_config(use_datarobot_llm_gateway=True, llm_default_model=None)
+    with patch.object(config_mod, "Config", return_value=env_only):
+        assert default_use_datarobot_llm_gateway() is False
+        assert default_llm_deployment_id() == "dep-from-app"
+        assert default_model_name() == "anthropic/claude-sonnet-4-20250514"
+        assert resolve_config().get_llm_type() == LLMType.DEPLOYMENT
+
+
+def test_provider_is_called_each_resolve_for_dynamic_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider is a factory: re-read picks up changed values (dynamic env vars)."""
+    _enable_injection(monkeypatch)
+    calls = {"n": 0}
+
+    def _provider() -> LLMConfig:
+        calls["n"] += 1
+        return _make_config(llm_default_model=f"model-{calls['n']}")
+
+    register_config_provider(_provider)
+    with patch.object(config_mod, "Config", return_value=_make_config()):
+        assert default_model_name() == "model-1"
+        assert default_model_name() == "model-2"

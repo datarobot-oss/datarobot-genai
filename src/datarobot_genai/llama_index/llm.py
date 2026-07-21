@@ -17,13 +17,13 @@ from typing import Any
 from llama_index.llms.litellm import LiteLLM
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
-from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.llm_parameters import supports_parallel_tool_calls
 
@@ -358,7 +358,7 @@ def get_llm(
     parameters: dict | None = None,
     reasoning: bool = False,
 ) -> LiteLLM:
-    config = Config()
+    config = resolve_config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, reasoning)
