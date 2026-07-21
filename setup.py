@@ -34,7 +34,8 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.2.33,<12.0.0",
+    # TODO (MMM-24324): issues in later version of datarobot-moderations
+    "datarobot-moderations[all]==11.2.38",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
