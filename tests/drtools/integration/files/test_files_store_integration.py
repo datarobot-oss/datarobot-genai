@@ -15,8 +15,10 @@
 r"""Live, opt-in integration test for ``DataRobotFilesBlobStore``.
 
 Unlike the mocked unit tests, this exercises the real DataRobot Files API end to
-end (put → get → list → delete) and so verifies the SDK call signatures *and*
-behavior against a live cluster.
+end (put → get → list → move → delete) against the shared container, and so
+verifies the SDK call signatures *and* server behavior — in particular that
+``/``-separated paths uploaded via ``prefix`` survive intact (a path embedded in
+an uploaded *filename* would be basename-sanitized server-side).
 
 It is **opt-in** to avoid any accidental writes to a real account: it runs only
 when ``DR_FILES_LIVE_INTEGRATION`` is truthy and DataRobot credentials are
@@ -61,26 +63,35 @@ async def test_blob_store_roundtrip_live() -> None:
     # back to the ambient DATAROBOT_API_TOKEN.
     store = DataRobotFilesBlobStore(headers_auth_only=False)
     payload = f"hello {uuid.uuid4()}".encode()
-    name = f"drtools-blobstore-it-{uuid.uuid4().hex}.txt"
-    tag = f"drtools-it-{uuid.uuid4().hex[:8]}"
+    # A unique folder under a unique source segment keeps this run isolated and
+    # trivially cleanable even if an assertion fails mid-way.
+    run = f"it_{uuid.uuid4().hex[:12]}"
+    path = f"{run}/conv_a/blob.txt"
+    moved_path = f"{run}/conv_a/blob-moved.txt"
 
-    ref = await store.put(payload, name=name, content_type="text/plain", tags=[tag])
+    ref = await store.put(payload, path=path, content_type="text/plain")
     assert isinstance(ref, BlobRef)
-    assert ref.files_id
-    assert tag in ref.tags
+    assert ref.path == path
+    assert ref.container_id
 
     try:
-        # get() round-trips the exact bytes.
-        assert await store.get(ref) == payload
+        # get() by path round-trips the exact bytes — proof the '/'-separated
+        # path survived the upload (no server-side basename sanitization).
+        assert await store.get(path) == payload
 
-        # list() by our unique tag finds the blob, and its ref equals put()'s ref.
-        listed = await store.list(tags=[tag])
-        match = [r for r in listed if r.files_id == ref.files_id]
-        assert match, f"stored blob {ref.files_id} not found via list(tags={tag!r})"
-        assert match[0] == ref
+        # list() by prefix finds the blob at its full path.
+        listed = await store.list(prefix=f"{run}/", limit=0)
+        assert [r.path for r in listed] == [path]
+        assert listed[0].container_id == ref.container_id
+
+        # move() renames in place; the old path is gone, the new one reads back.
+        await store.move(path, moved_path)
+        assert await store.get(moved_path) == payload
+        assert [r.path for r in await store.list(prefix=f"{run}/", limit=0)] == [moved_path]
     finally:
-        await store.delete(ref)
+        await store.delete([path, moved_path])
 
-    # After deletion the blob is gone.
+    # After deletion the folder is empty and the blob is gone.
+    assert await store.list(prefix=f"{run}/", limit=0) == []
     with pytest.raises(ToolError):
-        await store.get(ref)
+        await store.get(moved_path)

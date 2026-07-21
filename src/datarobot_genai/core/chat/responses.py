@@ -48,7 +48,7 @@ from pydantic import field_serializer
 from datarobot_genai.core.agents import default_usage_metrics
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+    from ragas import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 

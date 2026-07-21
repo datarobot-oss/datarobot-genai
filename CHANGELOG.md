@@ -4,8 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.25.5
+## 0.26.7
 - Adding `nat eval` support and custom evaluators
+
+## 0.26.6
+- `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
+- `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
+- `drmcpbase` renamed the `x-datarobot-mcp-mode` value `code_execute` to `code` (`MCPRequestMode.CODE_EXECUTE` → `MCPRequestMode.CODE`).
+
+## 0.26.5
+- `drmcputils/global_mcp_tools`: register `files_api` and `workload` packages for global-mcp (`DR_FILE` and `DR_WORKLOAD` categories); `file_upload` remains excluded.
+
+## 0.26.4
+- `drmcp/test_utils`: integration tests reuse one MCP stdio server subprocess per server configuration (env/command) instead of spawning a fresh server (~4s) for every test; tests passing an `elicitation_callback` or `shared=False` still get an isolated server. Integration tests now run on a single session-scoped event loop, and the suite runs under `pytest-xdist` (`-n auto --dist loadfile`).
+
+## 0.26.3
+- `drmcputils/panels`: **fix** scoped panel id resolution against the live Files API — the exact-path existence probes introduced in 0.26.1 passed a file path as a listing `prefix`, which `list_contained_files` rejects with a 400 (`Prefix must end with a forward slash "/"`), breaking every scoped `get`/`delete`/`move` in production (panel routes returned 500). Probes now list the candidate `<source>/<scope>/` *directory* (one bounded prefix query) and match the exact path client-side; `DataRobotFilesBlobStore.list` fails fast with the API's own message on non-directory prefixes, the `BlobStore` protocol documents the constraint, and the test fakes enforce it so the mismatch can't reappear.
+
+## 0.26.2
+- Revert `datarobot-moderations` to 11.2.33 due to a regression thread based in context switching.
+
+## 0.26.1
+- `drmcputils/files`: **shared-container blob storage** — `BlobStore` is now path-based: all blobs live in one shared Files container (created via `Files.create_empty_catalog_item_dir`, discovered by the `dr_panel_root` marker tag, oldest wins on create races) under `/`-separated paths uploaded with `upload_file(prefix=...)`. This is the Files API's sanctioned folder mechanism: a path embedded in an uploaded *filename* is stripped to its basename server-side as a disk-traversal defense, so the previous per-blob-container + folder-style-name design could never produce real folders in production. Listing is one server-side prefix query (`list_contained_files(prefix=...)`) instead of client-side AND-filtering over the whole catalog (catalog tag search matches with OR semantics), and the registry shows a single `panels` folder row instead of one row per blob.
+- `drmcputils/panels`: **conversation-scoped panel storage** — a `PanelStore` can be scoped to a conversation (`PanelStore(blobs, conversation_id=...)`); the shared store factory resolves the id per request from the `x-datarobot-conversation-id` header (the same header the previous panel-library MCP server used). Panels are stored at `<source>/<conversation_id>/<panel_id>.json` (unscoped: `<source>/_shared/`), so `list_panels` / `panels://{source}` return only the current conversation's panels instead of every panel across all conversations and applications. Panel ids are client-generated (`uuid4().hex`) and embedded in the path; conversation ids are normalized to `[0-9A-Za-z_]` and capped at 128 chars; `source` and `panel_id` inputs are validated to a path-safe alphabet. Scoping is enforced on every id-based operation, not just listings: a scoped store resolves ids only against its own conversation and `_shared` (other conversations' panels are invisible — not-found, no existence leak), and it can read `_shared` panels but not delete or move them. Id resolution is O(1): exact manifest-path probes across the hinted + known sources (`get`/`delete`/`move`/`get_payload` accept an optional `source` hint, and the `panels://` resources pass theirs through) instead of a container-wide listing-and-scan; only exotic sources fall back to a scope-filtered listing. Unscoped consumers keep the legacy global view and may modify anything; panels stored before the shared-container layout stay reachable (get/payload/delete) by id, but no longer appear in listings and cannot be moved.
+- `drtools/panels`: new `move_panel` tool and `PanelStore.move` — promote a panel between sources (staging→main) by renaming its blob paths in place, **preserving the panel id** (no copy+delete, external references stay valid) and the panel's own conversation scope. Panels with bulky payloads expose `payload_files_id` (the shared container's Files id) + `payload_path` (the file path within it) — together exactly the Files download API's `(id, fileName)` pair; `payload_name` stays the caller's display name.
+
+## 0.26.0
+- *Breaking change*: Removed subpackage `application_utils`.
 
 ## 0.25.4
 - `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server

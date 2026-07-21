@@ -85,8 +85,10 @@ exclude-dependencies = [
     "lancedb",                  # optional vector DB pulled in by crewai; not used
     "openpyxl",                 # Excel parser pulled in by crewai-tools; not used
     "python-docx",              # Word doc parser pulled in by crewai-tools; not used
-    # llama-index / mem0ai bloat
+    # llama-index / ragas / mem0ai bloat
     "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
+    "diskcache",                # disk caching pulled in by ragas; not used
+    "scikit-network",           # graph analysis pulled in by ragas; not used
 ]
 
 [tool.uv.sources]

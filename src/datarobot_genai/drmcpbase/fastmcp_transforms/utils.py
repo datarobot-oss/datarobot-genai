@@ -101,7 +101,11 @@ def parse_disabled_categories(headers: Mapping[str, str]) -> frozenset[str]:
 
 class MCPRequestMode(Enum):
     TOOLS = auto()
-    CODE_EXECUTE = auto()
+    # Collapse the catalog to discovery + execute meta-tools (CodeMode).
+    CODE = auto()
+    # Collapse the catalog to a `tool_search` + `call_tool` pair for
+    # just-in-time tool discovery; see fastmcp_transforms/tool_search.py.
+    SEARCH = auto()
 
     @classmethod
     def from_headers(cls, headers: Mapping[str, str]) -> "MCPRequestMode":
