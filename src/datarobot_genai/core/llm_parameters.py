@@ -30,6 +30,10 @@ _OPENAI_REASONING_MODEL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# OpenAI o-series reasoning models (o1, o3, o4-mini, ...) reject the
+# ``parallel_tool_calls`` request parameter.
+_OPENAI_NO_PARALLEL_TOOL_CALLS_RE = re.compile(r"(?:^|/)o[1-9]", re.IGNORECASE)
+
 _ANTHROPIC_SONNET_EXTRA_BODY = {
     "thinking": {"type": "enabled", "budget_tokens": 1024},
 }
@@ -62,6 +66,14 @@ def default_reasoning_extra_body(model_name: str | None) -> dict[str, Any]:
         return dict(_OPENAI_EXTRA_BODY)
 
     return dict(_ANTHROPIC_SONNET_EXTRA_BODY)
+
+
+def supports_parallel_tool_calls(model_name: str | None) -> bool:
+    """Whether ``model_name`` accepts the ``parallel_tool_calls`` request param.
+
+    OpenAI o-series reasoning models reject it; everything else accepts it.
+    """
+    return not _OPENAI_NO_PARALLEL_TOOL_CALLS_RE.search(_normalize_model_name(model_name))
 
 
 def apply_reasoning_to_parameters(

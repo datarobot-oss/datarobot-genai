@@ -25,6 +25,24 @@ from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
+from datarobot_genai.core.llm_parameters import supports_parallel_tool_calls
+
+
+def _strip_unsupported_tool_params(
+    result: dict[str, Any], model_name: str | None
+) -> dict[str, Any]:
+    """Drop tool kwargs LlamaIndex always emits but some backends reject.
+
+    Some DR LLM gateway backends (e.g. Azure/GPT) reject ``tool_choice`` and
+    ``parallel_tool_calls`` when no tools are present. OpenAI o-series reasoning
+    models reject ``parallel_tool_calls`` even with tools present.
+    """
+    if not result.get("tools"):
+        result.pop("tool_choice", None)
+        result.pop("parallel_tool_calls", None)
+    elif not supports_parallel_tool_calls(model_name):
+        result.pop("parallel_tool_calls", None)
+    return result
 
 
 def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
@@ -66,13 +84,7 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
 
         def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
             result = super()._prepare_chat_with_tools(tools, **kwargs)
-            # Some DR LLM gateway backends (e.g. Azure/GPT) reject tool_choice
-            # and parallel_tool_calls when no tools are present. LlamaIndex
-            # always emits both, so strip them.
-            if not result.get("tools"):
-                result.pop("tool_choice", None)
-                result.pop("parallel_tool_calls", None)
-            return result
+            return _strip_unsupported_tool_params(result, self.model)
 
     extra_body = config.pop("extra_body", None)
     if extra_body is not None:
@@ -195,6 +207,7 @@ def get_router_llm(
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
+    primary_model_name = primary.to_litellm_params().get("model")
 
     def _tool_calls_kwargs(message: Any) -> dict:
         if not message.tool_calls:
@@ -225,13 +238,7 @@ def get_router_llm(
 
         def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
             result = super()._prepare_chat_with_tools(tools, **kwargs)
-            # Some DR LLM gateway backends (e.g. Azure/GPT) reject tool_choice
-            # and parallel_tool_calls when no tools are present. LlamaIndex
-            # always emits both, so strip them.
-            if not result.get("tools"):
-                result.pop("tool_choice", None)
-                result.pop("parallel_tool_calls", None)
-            return result
+            return _strip_unsupported_tool_params(result, primary_model_name)
 
         def _chat(self, messages: Any, **kwargs: Any) -> Any:
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
