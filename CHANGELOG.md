@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.6
+- `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
+- `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
+- `drmcpbase` renamed the `x-datarobot-mcp-mode` value `code_execute` to `code` (`MCPRequestMode.CODE_EXECUTE` → `MCPRequestMode.CODE`).
+
 ## 0.26.5
 - `drmcputils/global_mcp_tools`: register `files_api` and `workload` packages for global-mcp (`DR_FILE` and `DR_WORKLOAD` categories); `file_upload` remains excluded.
 
