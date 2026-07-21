@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from enum import StrEnum
+from typing import Any
+from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import BaseModel
@@ -24,6 +26,7 @@ from pydantic import Field
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
 DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
+DEFAULT_LLM_NAME = "llm"
 
 
 class LLMType(StrEnum):
@@ -38,12 +41,19 @@ def _with_datarobot_prefix(model_name: str) -> str:
 
 
 class LLMConfig(BaseModel):
-    """Pure LLM connection parameters — no env-var machinery, no NAT base class.
+    """One LLM instance's resolved connection parameters. A value object.
 
-    Used as a base for ``Config`` (adds env reading) and
-    ``DataRobotLLMComponentModelConfig`` (adds NAT schema), and as the
-    primary/fallback type accepted by the router so ``core`` has no NAT
-    dependency.
+    There can be MANY of these, one per configured LLM instance. It carries only
+    per-LLM routing fields (which LLM, how to reach it), never app-wide settings.
+    Produce one with :func:`resolve_llm_config` (mapped from the global
+    :class:`Config`), or accept one directly (the router does this). The two
+    ``datarobot_*`` globals are copied in for self-containment so the client
+    builder does not have to reach back to the global config.
+
+    This is deliberately NOT the same object as :class:`Config`. ``Config`` is the
+    one global; ``LLMConfig`` is one-of-many. Keeping them separate is what lets
+    ``resolve_config`` (the global) and ``resolve_llm_config`` (a single LLM) be
+    genuinely different things.
     """
 
     datarobot_endpoint: str | None = None
@@ -66,24 +76,24 @@ class LLMConfig(BaseModel):
     def to_litellm_params(self) -> dict:
         """Return a litellm_params dict suitable for ``litellm.Router``'s model_list.
 
-        Falls back to env-loaded ``Config`` values for endpoint and api_key
+        Endpoint and api_key fall back to the resolved globals
+        (:func:`resolve_datarobot_endpoint` / :func:`resolve_datarobot_api_token`)
         when they are not set on this instance directly.
         """
-        env = Config()
         api_key = (
             self.datarobot_api_token
             if self.datarobot_api_token is not None
-            else env.datarobot_api_token
+            else resolve_datarobot_api_token()
         )
         endpoint = (
             self.datarobot_endpoint
             if self.datarobot_endpoint is not None
-            else env.datarobot_endpoint
+            else resolve_datarobot_endpoint()
         )
         model_name = (
             getattr(self, "model_name", None)
             or self.llm_default_model
-            or env.llm_default_model
+            or default_model_name()
             or "datarobot-deployed-llm"
         )
         llm_type = self.get_llm_type()
@@ -113,103 +123,195 @@ class LLMConfig(BaseModel):
             }
 
 
-class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
-    """
-    Finds variables in the priority order of: env
-    variables (including Runtime Parameters), .env, file_secrets, then
-    Pulumi output variables.
+class Config(DataRobotAppFrameworkBaseSettings):
+    """The single GLOBAL application config. There is exactly one.
+
+    Finds variables in priority order: env vars (including Runtime Parameters),
+    .env, file secrets, then Pulumi outputs. It holds the two ecosystem-wide
+    globals, app-wide settings, and the default LLM instance's flat,
+    instance-namespaced fields so a standalone genai (no app registered) can still
+    resolve the default LLM from the environment.
+
+    This is NOT an :class:`LLMConfig`. genai never reads LLM routing fields off it
+    directly; those are mapped into an :class:`LLMConfig` by
+    :func:`resolve_llm_config`, and the two globals are read only through
+    :func:`resolve_datarobot_endpoint` / :func:`resolve_datarobot_api_token`.
     """
 
+    # True ecosystem-wide globals. Fixed names, shared by every LLM instance.
     datarobot_endpoint: str = DEFAULT_DATAROBOT_ENDPOINT
+    datarobot_api_token: str | None = None
 
+    # App-wide setting (genai-specific tunable).
     max_history_messages: int = Field(
         default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
     )
 
+    # Default LLM instance ("llm") fields, namespaced by instance name, so a
+    # standalone genai reads them from the environment. An app registers its own
+    # config, which may namespace by a different instance name; see the seam below.
+    llm_deployment_id: str | None = None
+    llm_nim_deployment_id: str | None = None
+    llm_use_datarobot_llm_gateway: bool = True
+    llm_default_model: str | None = None
+
 
 # --- App config injection seam ---------------------------------------------
 #
-# The application (e.g. an af-component-* agent) owns the authoritative config:
-# a ``DataRobotAppFrameworkBaseSettings`` subclass in its ``config.py``. That is
-# the single source users edit and reason about, and it is the only place that
-# guarantees a value resolves across local dev, deployment, and dynamic env vars.
+# There are exactly two config objects and two resolvers, and they are NOT the
+# same thing:
 #
-# genai is a library and cannot import the app's ``config.py`` directly, so the
-# app registers a provider (a zero-arg callable returning an ``LLMConfig``) at
-# import time. The app package is imported during NAT plugin discovery, which
-# runs before NAT validates the workflow config, so the provider is in place by
-# the time genai's defaults are read. There is exactly one flow: if a provider is
-# registered, genai reads the app's config; if not, genai falls back to its own
-# env-only ``Config()`` (a standalone genai with no app registered around it).
+#   Config       - the single GLOBAL app config (endpoint, token, app-wide
+#                  settings, and per-instance LLM fields). resolve_config() -> Config.
+#   LLMConfig    - ONE LLM instance's routing config. resolve_llm_config(name) -> LLMConfig,
+#                  mapped from the global config's {name}_* fields plus the two globals.
+#
+# The application (an af-component-* app) owns the authoritative global config: a
+# DataRobotAppFrameworkBaseSettings subclass in its config.py. genai cannot import
+# that class, so the app registers a provider (a zero-arg callable returning that
+# global config) at import time. The app package is imported during NAT plugin
+# discovery, before NAT validates the workflow config, so the provider is in place
+# before genai first reads config. One flow: a registered provider means genai
+# reads the app's global config; otherwise it falls back to its own env-only
+# Config().
+#
+# The invariant that keeps this from getting twisted again: NOTHING in genai reads
+# a config attribute directly. The two globals go through resolve_datarobot_endpoint()
+# / resolve_datarobot_api_token(); per-LLM routing goes through resolve_llm_config().
 
-# Module-level holder for the app config provider. A dict avoids the ``global``
-# statement (discouraged, and unused elsewhere in this package) while keeping the
-# registration mutable at runtime.
-_provider_registry: dict[str, Callable[[], LLMConfig] | None] = {"provider": None}
+_provider_registry: dict[str, Any] = {"provider": None, "default_llm_name": DEFAULT_LLM_NAME}
 
 
-def register_config_provider(provider: Callable[[], LLMConfig] | None) -> None:
-    """Register the app's authoritative config source, or clear it with ``None``.
+def register_config_provider(
+    provider: Callable[[], object | None] | None,
+    default_llm_name: str = DEFAULT_LLM_NAME,
+) -> None:
+    """Register the app's authoritative GLOBAL config source, or clear it with ``None``.
 
-    ``provider`` is a zero-arg callable returning an ``LLMConfig`` (typically
-    ``lambda: Config()`` over the app's own config). It is called each time genai
-    resolves config, so values re-resolve through the app's settings sources
-    (env / .env / secrets / Pulumi) on every read.
+    ``provider`` is a zero-arg callable returning the app's global config object
+    (typically ``lambda: Config()`` over the app's own ``Config``). It is called
+    each time genai resolves config, so values re-resolve through the app's
+    settings sources (env / .env / secrets / Pulumi) on every read.
+
+    ``default_llm_name`` is the app's default LLM instance name (the prefix on its
+    per-LLM fields). ``resolve_llm_config()`` with no explicit name uses it, so a
+    non-"llm" component name still works for a bare ``get_llm()``.
     """
     _provider_registry["provider"] = provider
+    _provider_registry["default_llm_name"] = default_llm_name
 
 
-def resolve_config() -> LLMConfig:
-    """Return the authoritative config genai should read from.
+def _validate_global_config(config: object) -> None:
+    """Fail loud if an injected global config is missing the required globals.
 
-    The app-injected config when a provider is registered, otherwise genai's own
-    env-reading ``Config()`` (a standalone genai with no app registered).
+    genai cannot ``isinstance``-check the app's ``Config`` (a different class it
+    cannot import), so this is a structural (duck-typed) check that the injected
+    object at least exposes the two globals every consumer relies on.
+    """
+    missing = [
+        name for name in ("datarobot_endpoint", "datarobot_api_token") if not hasattr(config, name)
+    ]
+    if missing:
+        raise TypeError(
+            f"Registered config provider returned {type(config).__name__}, which is "
+            f"missing required global field(s): {', '.join(missing)}. The app config "
+            "must expose datarobot_endpoint and datarobot_api_token."
+        )
+
+
+def resolve_config() -> Config:
+    """Return the single GLOBAL application config.
+
+    The registered app config when a provider is registered, otherwise genai's own
+    env-reading :class:`Config` (a standalone genai with no app around it). Only
+    the two globals are read off this, and only via
+    :func:`resolve_datarobot_endpoint` / :func:`resolve_datarobot_api_token`. For
+    LLM routing use :func:`resolve_llm_config`.
     """
     provider = _provider_registry["provider"]
     if provider is not None:
         provided = provider()
         if provided is not None:
-            return provided
+            _validate_global_config(provided)
+            # The app's Config is a structurally-compatible settings object; genai
+            # only reads it through the resolver helpers (getattr), so treat it as
+            # a Config for typing purposes.
+            return cast(Config, provided)
     return Config()
+
+
+def resolve_datarobot_endpoint() -> str:
+    """Resolve the DataRobot endpoint global. The only place it is read off config."""
+    endpoint: str | None = getattr(resolve_config(), "datarobot_endpoint", None)
+    return endpoint or DEFAULT_DATAROBOT_ENDPOINT
+
+
+def resolve_datarobot_api_token() -> str | None:
+    """Resolve the DataRobot API token global. The only place it is read off config."""
+    token: str | None = getattr(resolve_config(), "datarobot_api_token", None)
+    return token or None
+
+
+def resolve_llm_config(name: str | None = None) -> LLMConfig:
+    """Resolve ONE LLM instance's config from the global config.
+
+    ``name`` is the LLM component instance name; when omitted it is the app's
+    registered default (``"llm"`` for a standalone genai). Reads the instance's
+    ``{name}_*`` fields off :func:`resolve_config` and folds in the two globals,
+    producing a self-contained :class:`LLMConfig`. This is the one machine that
+    turns app config into an LLM config, and it is what ``get_llm`` runs on.
+    """
+    config = resolve_config()
+    instance = name if name is not None else cast(str, _provider_registry["default_llm_name"])
+    # Read everything off a single resolve_config() so the provider is invoked
+    # exactly once per resolution (values still re-resolve on the next call).
+    endpoint: str | None = getattr(config, "datarobot_endpoint", None)
+    api_token: str | None = getattr(config, "datarobot_api_token", None)
+    return LLMConfig(
+        datarobot_endpoint=endpoint or DEFAULT_DATAROBOT_ENDPOINT,
+        datarobot_api_token=api_token or None,
+        llm_deployment_id=getattr(config, f"{instance}_deployment_id", None),
+        llm_nim_deployment_id=getattr(config, f"{instance}_nim_deployment_id", None),
+        llm_use_datarobot_llm_gateway=getattr(
+            config, f"{instance}_use_datarobot_llm_gateway", True
+        ),
+        llm_default_model=getattr(config, f"{instance}_default_model", None),
+    )
 
 
 def get_max_history_messages_default() -> int:
     """Return the default maximum number of history messages.
 
-    This can be overridden globally via the
-    ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` environment variable.
-    Invalid values fall back to the built-in default. Negative values are
-    treated as 0 (disable history).
+    This is a genai-internal tunable (``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES``),
+    read off genai's own :class:`Config`, not per-LLM config. Invalid values fall
+    back to the built-in default; negative values are treated as 0 (disable history).
     """
     return max(Config().max_history_messages, 0)
 
 
 def default_api_key() -> str | None:
-    config = resolve_config()
-    return config.datarobot_api_token if config.datarobot_api_token else None
+    return resolve_datarobot_api_token()
 
 
 def default_model_name() -> str | None:
-    return resolve_config().llm_default_model
+    return resolve_llm_config().llm_default_model
 
 
 def default_response_model() -> str:
     """Return the configured model to report in OpenAI ``chat/completions`` responses.
 
     dragent agents ignore the request's ``model`` and run the LLM configured in
-    ``workflow.yaml`` / env, so the response should report that actual model — not
+    ``workflow.yaml`` / env, so the response should report that actual model, not
     echo the caller's string (which need not be sent at all) nor NAT's
     ``"unknown-model"`` placeholder. Resolves the same way the LLM client does
-    (:meth:`LLMConfig.to_litellm_params`): ``LLM_DEFAULT_MODEL`` env, else the
-    deployed-LLM default; always ``datarobot/``-prefixed and never ``None`` so the
-    response can never regress to ``"unknown-model"``. (A per-LLM ``model_name`` set
-    inline in ``workflow.yaml`` is not reflected here — env/global config only.)
+    (the default LLM's model), always ``datarobot/``-prefixed and never ``None`` so
+    the response can never regress to ``"unknown-model"``.
     """
     return _with_datarobot_prefix(default_model_name() or "datarobot-deployed-llm")
 
 
 def default_use_datarobot_llm_gateway() -> bool:
-    return resolve_config().llm_use_datarobot_llm_gateway
+    return resolve_llm_config().llm_use_datarobot_llm_gateway
 
 
 def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
@@ -217,13 +319,11 @@ def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
 
 
 def default_deployment_url(deployment_id: str | None = None) -> str:
-    config = resolve_config()
-    default_deployment_id = deployment_id or config.llm_deployment_id
-    if default_deployment_id is None:
+    resolved_id = deployment_id or resolve_llm_config().llm_deployment_id
+    if resolved_id is None:
         raise ValueError("Neither deployment ID nor default deployment ID is set")
 
-    endpoint = config.datarobot_endpoint or DEFAULT_DATAROBOT_ENDPOINT
-    return deployment_url(default_deployment_id, endpoint)
+    return deployment_url(resolved_id, resolve_datarobot_endpoint())
 
 
 def llm_gateway_url(datarobot_endpoint: str) -> str:
@@ -231,36 +331,12 @@ def llm_gateway_url(datarobot_endpoint: str) -> str:
 
 
 def default_datarobot_llm_gateway_url() -> str:
-    endpoint = resolve_config().datarobot_endpoint or DEFAULT_DATAROBOT_ENDPOINT
-    return llm_gateway_url(endpoint)
+    return llm_gateway_url(resolve_datarobot_endpoint())
 
 
 def default_llm_deployment_id() -> str | None:
-    return resolve_config().llm_deployment_id
+    return resolve_llm_config().llm_deployment_id
 
 
 def default_nim_deployment_id() -> str | None:
-    return resolve_config().llm_nim_deployment_id
-
-
-def resolve_llm(app_config: object, name: str = "llm") -> LLMConfig:
-    """Map an application config's instance-namespaced fields into an ``LLMConfig``.
-
-    The application owns the authoritative config (a
-    ``DataRobotAppFrameworkBaseSettings`` subclass). genai never reads that class
-    directly; the app registers a provider that hands genai a fully formed
-    ``LLMConfig`` built by this function. ``name`` is the LLM component instance
-    name (``"llm"`` by default); per-LLM values are read as ``{name}_*`` while the
-    two ecosystem-wide globals are shared across instances. Missing fields fall
-    back to the same defaults as a standalone ``LLMConfig``.
-    """
-    return LLMConfig(
-        datarobot_endpoint=getattr(app_config, "datarobot_endpoint", None),
-        datarobot_api_token=getattr(app_config, "datarobot_api_token", None),
-        llm_deployment_id=getattr(app_config, f"{name}_deployment_id", None),
-        llm_nim_deployment_id=getattr(app_config, f"{name}_nim_deployment_id", None),
-        llm_use_datarobot_llm_gateway=getattr(
-            app_config, f"{name}_use_datarobot_llm_gateway", True
-        ),
-        llm_default_model=getattr(app_config, f"{name}_default_model", None),
-    )
+    return resolve_llm_config().llm_nim_deployment_id

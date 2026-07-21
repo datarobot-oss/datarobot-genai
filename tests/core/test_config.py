@@ -70,31 +70,31 @@ def test_get_max_history_messages_default_env_positive(monkeypatch: pytest.Monke
     assert get_max_history_messages_default() == 7
 
 
-# --- Config.get_llm_type ---
+# --- LLMConfig.get_llm_type (routing lives on the per-LLM value object) ---
 
 
 def test_get_llm_type_returns_gateway_when_use_gateway_true() -> None:
-    cfg = _make_config(llm_use_datarobot_llm_gateway=True)
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=True)
     assert cfg.get_llm_type() == LLMType.GATEWAY
 
 
 def test_get_llm_type_returns_deployment_when_gateway_false_and_deployment_id_set() -> None:
-    cfg = _make_config(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-123")
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-123")
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
 
 def test_get_llm_type_returns_nim_when_gateway_false_and_nim_id_set() -> None:
-    cfg = _make_config(llm_use_datarobot_llm_gateway=False, llm_nim_deployment_id="nim-456")
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_nim_deployment_id="nim-456")
     assert cfg.get_llm_type() == LLMType.NIM
 
 
 def test_get_llm_type_returns_external_when_nothing_else_set() -> None:
-    cfg = _make_config(llm_use_datarobot_llm_gateway=False)
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False)
     assert cfg.get_llm_type() == LLMType.EXTERNAL
 
 
 def test_get_llm_type_deployment_takes_priority_over_nim() -> None:
-    cfg = _make_config(
+    cfg = LLMConfig(
         llm_use_datarobot_llm_gateway=False,
         llm_deployment_id="dep-123",
         llm_nim_deployment_id="nim-456",
