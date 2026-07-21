@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.25.5
+- Adding `nat eval` support and custom evaluators
+
 ## 0.25.4
 - `drtools/vdb`: `vdb_query` validates that the deployment is a vector database before calling the prediction server
 
