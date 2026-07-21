@@ -329,3 +329,26 @@ def test_provider_is_called_each_resolve_for_dynamic_values() -> None:
     with patch.object(config_mod, "Config", return_value=_make_config()):
         assert default_model_name() == "model-1"
         assert default_model_name() == "model-2"
+
+
+def test_injected_config_drives_endpoint_helpers() -> None:
+    """The endpoint (a true global) is authoritative from the app config too.
+
+    A provider supplies a custom endpoint and deployment id; genai's own env-only
+    Config would say the defaults. The URL builders must use the injected values.
+    """
+    app_config = LLMConfig(
+        datarobot_endpoint="https://custom.datarobot.example/api/v2",
+        llm_deployment_id="dep-injected",
+    )
+    register_config_provider(lambda: app_config)
+    env_only = _make_config(
+        datarobot_endpoint="https://app.datarobot.com/api/v2",
+        llm_deployment_id="dep-env",
+    )
+    with patch.object(config_mod, "Config", return_value=env_only):
+        assert default_deployment_url() == (
+            "https://custom.datarobot.example/api/v2"
+            "/deployments/dep-injected/chat/completions"
+        )
+        assert default_datarobot_llm_gateway_url() == "https://custom.datarobot.example"

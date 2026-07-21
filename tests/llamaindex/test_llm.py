@@ -204,7 +204,7 @@ def test_factory_does_not_add_extra_body_when_absent() -> None:
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         llm = llama_index_llm.get_llm()
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
@@ -215,7 +215,7 @@ def test_get_llm_routes_to_deployment() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.DEPLOYMENT
     config.llm_deployment_id = "dep-123"
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         llm = llama_index_llm.get_llm()
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
@@ -226,7 +226,7 @@ def test_get_llm_routes_to_nim() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.NIM
     config.nim_deployment_id = "nim-456"
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         llm = llama_index_llm.get_llm()
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
@@ -236,7 +236,7 @@ def test_get_llm_routes_to_nim() -> None:
 def test_get_llm_routes_to_external() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.EXTERNAL
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         llm = llama_index_llm.get_llm()
     assert isinstance(llm, LiteLLM)
     assert llm.model == "default-model"
@@ -245,7 +245,7 @@ def test_get_llm_routes_to_external() -> None:
 def test_get_llm_raises_on_unknown_type() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = "unknown"
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         with pytest.raises(ValueError, match="Invalid LLM type"):
             llama_index_llm.get_llm()
 
@@ -253,7 +253,7 @@ def test_get_llm_raises_on_unknown_type() -> None:
 def test_get_llm_forwards_model_name_and_parameters() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(llama_index_llm, "Config", return_value=config):
+    with patch.object(llama_index_llm, "resolve_config", return_value=config):
         llm = llama_index_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.temperature == 0.5

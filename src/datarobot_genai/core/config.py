@@ -23,6 +23,7 @@ from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
+DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 
 
 class LLMType(StrEnum):
@@ -119,7 +120,7 @@ class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
     Pulumi output variables.
     """
 
-    datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
+    datarobot_endpoint: str = DEFAULT_DATAROBOT_ENDPOINT
 
     max_history_messages: int = Field(
         default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
@@ -216,12 +217,13 @@ def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
 
 
 def default_deployment_url(deployment_id: str | None = None) -> str:
-    config = Config()
+    config = resolve_config()
     default_deployment_id = deployment_id or config.llm_deployment_id
     if default_deployment_id is None:
         raise ValueError("Neither deployment ID nor default deployment ID is set")
 
-    return deployment_url(default_deployment_id, config.datarobot_endpoint)
+    endpoint = config.datarobot_endpoint or DEFAULT_DATAROBOT_ENDPOINT
+    return deployment_url(default_deployment_id, endpoint)
 
 
 def llm_gateway_url(datarobot_endpoint: str) -> str:
@@ -229,8 +231,8 @@ def llm_gateway_url(datarobot_endpoint: str) -> str:
 
 
 def default_datarobot_llm_gateway_url() -> str:
-    config = Config()
-    return llm_gateway_url(config.datarobot_endpoint)
+    endpoint = resolve_config().datarobot_endpoint or DEFAULT_DATAROBOT_ENDPOINT
+    return llm_gateway_url(endpoint)
 
 
 def default_llm_deployment_id() -> str | None:
