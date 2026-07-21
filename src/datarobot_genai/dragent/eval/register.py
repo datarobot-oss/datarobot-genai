@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""NAT plugin entry: registers all ``dr_*`` evaluators on import."""
+"""NAT plugin entry: registers DataRobot moderation evaluators on import."""
 
 from datarobot_genai.dragent.eval import agent_goal_accuracy as _agent_goal_accuracy  # noqa: F401
 from datarobot_genai.dragent.eval import faithfulness as _faithfulness  # noqa: F401

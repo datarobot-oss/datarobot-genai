@@ -33,7 +33,9 @@ from datarobot_genai.dragent.eval.common import coerce_text
 from datarobot_genai.dragent.eval.scorer_factory import build_guideline_adherence_scorer
 
 
-class DataRobotGuidelineAdherenceEvaluatorConfig(EvaluatorLLMConfig, name="dr_guideline_adherence"):  # type: ignore[call-arg]
+class DataRobotGuidelineAdherenceEvaluatorConfig(
+    EvaluatorLLMConfig, name="agent_guideline_adherence"
+):  # type: ignore[call-arg]
     """Guideline adherence evaluator using the DataRobot moderations LlamaIndex judge."""
 
     agent_guideline: str = Field(
@@ -58,7 +60,7 @@ async def score_guideline_adherence_item(
         id=item.id,
         score=float(passing),
         reasoning={
-            "metric": "guideline_adherence",
+            "metric": "agent_guideline_adherence",
             "passing": passing,
         },
     )

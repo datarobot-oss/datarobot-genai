@@ -13,7 +13,7 @@
 # limitations under the License.
 """Build moderation OOTB scorers from NAT ``EvalBuilder`` judge LLMs.
 
-Each ``dr_*`` NAT evaluator plugin should stay thin (config + ``evaluate_item``).
+Each custom NAT evaluator plugin should stay thin (config + ``evaluate_item``).
 This module centralizes how a workflow ``llm_name`` is resolved and mapped onto the
 same scorer types used by ``moderation_config.yaml`` OOTB guards.
 """

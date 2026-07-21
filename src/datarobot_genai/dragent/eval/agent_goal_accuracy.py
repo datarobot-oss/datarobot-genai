@@ -32,7 +32,7 @@ from datarobot_genai.dragent.eval.common import interactions_json_from_eval_item
 from datarobot_genai.dragent.eval.scorer_factory import build_agent_goal_accuracy_scorer
 
 
-class DataRobotAgentGoalAccuracyEvaluatorConfig(EvaluatorLLMConfig, name="dr_agent_goal_accuracy"):  # type: ignore[call-arg]
+class DataRobotAgentGoalAccuracyEvaluatorConfig(EvaluatorLLMConfig, name="agent_goal_accuracy"):  # type: ignore[call-arg]
     """Agent goal accuracy evaluator using the DataRobot moderations LLM judge."""
 
 

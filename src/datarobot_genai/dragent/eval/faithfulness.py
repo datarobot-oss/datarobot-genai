@@ -33,7 +33,7 @@ from datarobot_genai.dragent.eval.common import coerce_text
 from datarobot_genai.dragent.eval.scorer_factory import build_faithfulness_evaluator
 
 
-class DataRobotFaithfulnessEvaluatorConfig(EvaluatorLLMConfig, name="dr_faithfulness"):  # type: ignore[call-arg]
+class DataRobotFaithfulnessEvaluatorConfig(EvaluatorLLMConfig, name="faithfulness"):  # type: ignore[call-arg]
     """Faithfulness evaluator using the DataRobot moderations LlamaIndex judge."""
 
 
