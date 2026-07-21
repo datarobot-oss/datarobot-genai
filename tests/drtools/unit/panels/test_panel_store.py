@@ -411,9 +411,11 @@ class TestScopedResolutionIsBounded:
         fake_blob_store.calls.clear()
         got = await store.get(created.id, source="staging")
 
-        # THEN the first probe is the exact manifest path (O(1))
+        # THEN the first probe lists only the hinted source's conversation
+        # directory (the Files API accepts directory prefixes only), so
+        # resolution is one bounded query
         assert got.id == created.id
-        assert fake_blob_store.calls[0] == ("list", f"staging/conv_a/{created.id}.json")
+        assert fake_blob_store.calls[0] == ("list", "staging/conv_a/")
 
     async def test_get_with_wrong_source_hint_still_resolves(
         self, fake_blob_store: FakeBlobStore

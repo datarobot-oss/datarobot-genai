@@ -173,8 +173,15 @@ class PanelStore:
     def _manifest_path(self, source: str, panel_id: str) -> str:
         return f"{source}/{self._scope_segment()}/{panel_id}{_MANIFEST_SUFFIX}"
 
-    async def _path_exists(self, path: str) -> bool:
-        refs = await self._blobs.list(prefix=path, limit=1)
+    async def _dir_contains(self, directory: str, path: str) -> bool:
+        """Report whether ``path`` exists under ``directory`` (one bounded prefix query).
+
+        The Files API only accepts *directory* prefixes (must end with ``/``;
+        an exact file path is rejected with a 400), so existence probes list
+        the parent directory — bounded by one scope of one source — and match
+        the exact path client-side.
+        """
+        refs = await self._blobs.list(prefix=directory, limit=0)
         return any(ref.path == path for ref in refs)
 
     async def _locate(self, panel_id: str, *, source: str | None = None) -> str | None:
@@ -182,11 +189,12 @@ class PanelStore:
 
         A scoped store resolves only against its own conversation and
         ``_shared`` — other conversations' panels are invisible. Resolution
-        probes exact manifest paths under the hinted + known sources (bounded,
-        O(1)); a container-wide listing runs only for exotic sources, filtered
-        to the readable scopes. ``source`` is a hint, not a filter: a stale
-        hint (e.g. after a promote) still resolves. An unscoped store keeps
-        the global view (prefix listing per source, full listing without one).
+        probes the ``<source>/<scope>/`` directories under the hinted + known
+        sources (each one bounded prefix listing); a container-wide listing
+        runs only for exotic sources, filtered to the readable scopes.
+        ``source`` is a hint, not a filter: a stale hint (e.g. after a
+        promote) still resolves. An unscoped store keeps the global view
+        (prefix listing per source, full listing without one).
 
         Returns ``None`` when the id is not in the shared container (unknown,
         other conversation, or a legacy panel).
@@ -197,8 +205,9 @@ class PanelStore:
             sources = dict.fromkeys((source, *_KNOWN_SOURCES) if source else _KNOWN_SOURCES)
             for src in sources:
                 for scope in scopes:
-                    path = f"{src}/{scope}/{panel_id}{_MANIFEST_SUFFIX}"
-                    if await self._path_exists(path):
+                    directory = f"{src}/{scope}/"
+                    path = f"{directory}{panel_id}{_MANIFEST_SUFFIX}"
+                    if await self._dir_contains(directory, path):
                         return path
             refs = await self._blobs.list(limit=0)
             return next(
