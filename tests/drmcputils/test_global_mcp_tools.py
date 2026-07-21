@@ -34,6 +34,8 @@ class TestEnabledPackages:
             "tavily",
             "dr_docs",
             "vdb",
+            "files_api",
+            "workload",
         }
 
 
@@ -57,7 +59,7 @@ class TestLeafCategories:
 class TestExcludedTools:
     def test_contains_file_upload(self) -> None:
         # file_upload needs local disk access → blocked from global-mcp here (the single
-        # source of truth for exclusions), even though files_api isn't enabled yet.
+        # source of truth for exclusions), even though files_api is enabled.
         assert "file_upload" in GLOBAL_MCP_EXCLUDED_TOOLS
 
     def test_excluded_tools_never_advertised_by_ard(self) -> None:

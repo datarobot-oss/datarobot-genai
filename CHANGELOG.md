@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.5
+- `drmcputils/global_mcp_tools`: register `files_api` and `workload` packages for global-mcp (`DR_FILE` and `DR_WORKLOAD` categories); `file_upload` remains excluded.
+
 ## 0.26.4
 - `drmcp/test_utils`: integration tests reuse one MCP stdio server subprocess per server configuration (env/command) instead of spawning a fresh server (~4s) for every test; tests passing an `elicitation_callback` or `shared=False` still get an isolated server. Integration tests now run on a single session-scoped event loop, and the suite runs under `pytest-xdist` (`-n auto --dist loadfile`).
 
