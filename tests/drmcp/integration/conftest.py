@@ -27,9 +27,13 @@ from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERS
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_WITHOUT_VERSION
 from tests.drmcp.integration.helper import get_or_create_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template_version
+from tests.drmcp.stub_credentials import configure_integration_stub_credentials
 
-# Integration tests must not pick up DATAROBOT_* from .env; acceptance tests load .env
+# Integration tests must not pick up DATAROBOT_* from .env; acceptance tests load .env.
+# Configure stub credentials at import time so session fixtures (e.g. dr_client) and
+# per-module fixtures (e.g. datarobot_endpoint) never cache an empty singleton first.
 os.environ["MCP_USE_CLIENT_STUBS"] = "true"
+configure_integration_stub_credentials()
 
 _INTEGRATION_DIR = Path(__file__).parent
 
