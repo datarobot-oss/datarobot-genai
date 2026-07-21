@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.3
+- `drmcputils/panels`: **fix** scoped panel id resolution against the live Files API — the exact-path existence probes introduced in 0.26.1 passed a file path as a listing `prefix`, which `list_contained_files` rejects with a 400 (`Prefix must end with a forward slash "/"`), breaking every scoped `get`/`delete`/`move` in production (panel routes returned 500). Probes now list the candidate `<source>/<scope>/` *directory* (one bounded prefix query) and match the exact path client-side; `DataRobotFilesBlobStore.list` fails fast with the API's own message on non-directory prefixes, the `BlobStore` protocol documents the constraint, and the test fakes enforce it so the mismatch can't reappear.
+
 ## 0.26.2
 - Revert `datarobot-moderations` to 11.2.33 due to a regression thread based in context switching.
 

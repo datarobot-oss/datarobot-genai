@@ -75,6 +75,10 @@ class FakeBlobStore:
         limit: int = 100,
         offset: int = 0,
     ) -> list[BlobRef]:
+        if prefix is not None and not prefix.endswith("/"):
+            # Mirror the live Files API: list_contained_files rejects
+            # non-directory prefixes with a 400.
+            raise ValueError('Prefix must end with a forward slash "/".')
         self.calls.append(("list", prefix))
         paths = sorted(p for p in self.container if prefix is None or p.startswith(prefix))
         page = paths[offset : offset + limit] if limit else paths[offset:]
