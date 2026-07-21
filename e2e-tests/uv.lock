@@ -1045,11 +1045,11 @@ requires-dist = [
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = "==11.2.38" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = "==11.2.38" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = "==11.2.38" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = "==11.2.38" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = "==11.2.38" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = "==11.2.33" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = "==11.2.33" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = "==11.2.33" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = "==11.2.33" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = "==11.2.33" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1296,7 +1296,7 @@ example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editab
 
 [[package]]
 name = "datarobot-moderations"
-version = "11.2.38"
+version = "11.2.33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1315,7 +1315,7 @@ dependencies = [
     { name = "tiktoken" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/43/613333a0247231c95ee9efd664d331b3df2e345d38d4fa746d7f817a0b7c/datarobot_moderations-11.2.38-py3-none-any.whl", hash = "sha256:f7be54df2c66c47c3a969a8637dadf5893bad569086958e4451f94581a6c3b69", size = 166062, upload-time = "2026-06-24T21:13:12.332Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/26/763042a9b2ae2f6bcf10aee14a019d3a52d36becb9bb6091f8f40492d660/datarobot_moderations-11.2.33-py3-none-any.whl", hash = "sha256:1b835a8e53306b41407ff30dbd90631cbe0084cdbe5bb0bdb2b79999dc1adcf8", size = 149461, upload-time = "2026-06-03T13:33:56.177Z" },
 ]
 
 [package.optional-dependencies]

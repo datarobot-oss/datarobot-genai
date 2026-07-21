@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.2
-- Revert `datarobot-moderations` to 11.2.38 due to uncovered regression in context switching.
+- Revert `datarobot-moderations` to 11.2.33 due to uncovered regression in context switching.
 
 ## 0.26.1
 - `drmcputils/files`: **shared-container blob storage** — `BlobStore` is now path-based: all blobs live in one shared Files container (created via `Files.create_empty_catalog_item_dir`, discovered by the `dr_panel_root` marker tag, oldest wins on create races) under `/`-separated paths uploaded with `upload_file(prefix=...)`. This is the Files API's sanctioned folder mechanism: a path embedded in an uploaded *filename* is stripped to its basename server-side as a disk-traversal defense, so the previous per-blob-container + folder-style-name design could never produce real folders in production. Listing is one server-side prefix query (`list_contained_files(prefix=...)`) instead of client-side AND-filtering over the whole catalog (catalog tag search matches with OR semantics), and the registry shows a single `panels` folder row instead of one row per blob.
