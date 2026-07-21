@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 from uuid import uuid4
@@ -36,14 +33,12 @@ from ag_ui.core import UserMessage
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from openai.types.chat import CompletionCreateParams
+from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents import InvokeReturn
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
-
-if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 

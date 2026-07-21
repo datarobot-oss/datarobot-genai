@@ -21,6 +21,7 @@ import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from ag_ui.core import EventType
 from ag_ui.core import ReasoningMessageChunkEvent
@@ -53,7 +54,7 @@ from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.llama_index.history import ag_ui_history_to_chat_messages
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+    from ragas import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 
@@ -493,12 +494,17 @@ class LlamaIndexAgent(BaseAgent[BaseTool], abc.ABC):
     ) -> MultiTurnSample | None:
         if not events:
             return None
-        # Lazy import so the moderations-backed primitives load only when a run
-        # actually records pipeline interactions.
-        from datarobot_genai.core.pipeline_interactions import MultiTurnSample
-        from datarobot_genai.llama_index.moderations_events import convert_to_moderations_messages
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
+        from ragas.integrations.llama_index import convert_to_ragas_messages
+        from ragas.messages import AIMessage
+        from ragas.messages import HumanMessage
+        from ragas.messages import ToolMessage
 
-        return MultiTurnSample(user_input=convert_to_moderations_messages(list(events)))
+        # convert_to_ragas_messages expects a list[Event]
+        ragas_trace = convert_to_ragas_messages(list(events))
+        ragas_messages = cast(list[HumanMessage | AIMessage | ToolMessage], ragas_trace)
+        return MultiTurnSample(user_input=ragas_messages)
 
 
 def datarobot_agent_class_from_llamaindex(

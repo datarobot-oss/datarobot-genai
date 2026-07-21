@@ -41,7 +41,7 @@ from datarobot_genai.core.utils.auth import prepare_identity_header
 from datarobot_genai.core.utils.urls import get_api_base
 
 if TYPE_CHECKING:
-    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+    from ragas import MultiTurnSample
 
 TTool = TypeVar("TTool")
 
@@ -215,9 +215,8 @@ class BaseAgent(Generic[TTool], abc.ABC):
         """Create a simple MultiTurnSample from a list of generic events/messages."""
         if not events:
             return None
-        # Lazy import so the moderations-backed primitives load only when a run
-        # actually records pipeline interactions.
-        from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas import MultiTurnSample
 
         return MultiTurnSample(user_input=events)
 

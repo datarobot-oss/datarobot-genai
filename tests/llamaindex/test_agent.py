@@ -50,9 +50,9 @@ from llama_index.core.llms import MessageRole
 from llama_index.core.llms.mock import MockLLM
 from llama_index.core.tools import ToolOutput
 from llama_index.core.tools import ToolSelection
+from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents.verify import validate_sequence
-from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 from datarobot_genai.llama_index.agent import DataRobotLiteLLM
 from datarobot_genai.llama_index.agent import LlamaIndexAgent
 from datarobot_genai.llama_index.agent import _thinking_delta_from_raw
