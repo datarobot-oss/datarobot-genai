@@ -306,15 +306,14 @@ class TestDataRobotMCPCatalogTransform:
         assert "execute" not in names
 
     @pytest.mark.asyncio
-    async def test_code_mode_collapses_catalog(self, mock_context: Mock) -> None:
+    async def test_code_mode_raises_not_implemented(self, mock_context: Mock) -> None:
         mock_context.return_value = MCPRequestContext(
             mode=MCPRequestMode.CODE, tool_allowlist=frozenset({"add"})
         )
         mcp = self.make_server()
 
-        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
-
-        assert names == {"search", "get_schema", "execute"}
+        with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+            await mcp.list_tools(run_middleware=False)
 
     @pytest.mark.asyncio
     async def test_tools_mode_filters_catalog_by_allowlist(self, mock_context: Mock) -> None:
@@ -358,8 +357,8 @@ class TestDataRobotMCPCatalogTransform:
         tools_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
 
         mock_context.return_value = MCPRequestContext(mode=MCPRequestMode.CODE, tool_allowlist=None)
-        code_view = {t.name for t in await mcp.list_tools(run_middleware=False)}
-        assert code_view == {"search", "get_schema", "execute"}
+        with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+            await mcp.list_tools(run_middleware=False)
 
         mock_context.return_value = MCPRequestContext(
             mode=MCPRequestMode.TOOLS, tool_allowlist=None
@@ -477,10 +476,8 @@ class TestCategoryGatesInTransform:
         )
         mcp = self.make_server()
 
-        # THEN the gated tool cannot be resolved even in code mode,
-        # while the synthetic discovery tools stay available (no category meta)
-        assert await mcp.get_tool("proxied_tool") is None
-        assert await mcp.get_tool("execute") is not None
+        with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+            await mcp.get_tool("proxied_tool")
 
     @pytest.mark.asyncio
     async def test_gate_off_then_on_between_requests(self, mock_context: Mock) -> None:
@@ -653,7 +650,7 @@ class TestSearchMode:
 
 
 class TestCodeModeAllowlistEnforcement:
-    """H5 regression: code mode must honor the tool allowlist."""
+    """Code mode is not implemented yet — requests raise NotImplementedError."""
 
     @staticmethod
     def make_server() -> FastMCP:
@@ -668,57 +665,18 @@ class TestCodeModeAllowlistEnforcement:
             yield m
 
     @pytest.mark.asyncio
-    async def test_get_tool_blocked_when_not_in_allowlist(self, mock_context: Mock) -> None:
-        # GIVEN code mode with an allowlist
+    async def test_list_tools_raises_not_implemented(self, mock_context: Mock) -> None:
         mcp = self.make_server()
 
-        # THEN a non-allowlisted tool is not resolvable — switching the mode
-        # header no longer escapes the allowlist (regression: it used to)
-        assert await mcp.get_tool("greet") is None
-        assert await mcp.get_tool("add") is not None
+        with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+            await mcp.list_tools(run_middleware=False)
 
     @pytest.mark.asyncio
-    async def test_synthetic_mode_tools_stay_resolvable(self, mock_context: Mock) -> None:
+    async def test_get_tool_raises_not_implemented(self, mock_context: Mock) -> None:
         mcp = self.make_server()
 
-        assert await mcp.get_tool("execute") is not None
-        assert await mcp.get_tool("search") is not None
-        assert await mcp.get_tool("get_schema") is not None
-
-    @pytest.mark.asyncio
-    async def test_execute_cannot_call_non_allowlisted_tool(self, mock_context: Mock) -> None:
-        mcp = self.make_server()
-
-        with pytest.raises(Exception, match="greet"):
-            await mcp.call_tool(
-                "execute",
-                {"code": 'return await call_tool("greet", {"name": "x"})'},
-            )
-
-    @pytest.mark.asyncio
-    async def test_discovery_search_does_not_leak_non_allowlisted_tools(
-        self, mock_context: Mock
-    ) -> None:
-        # GIVEN code-mode discovery reads the catalog through get_tool_catalog,
-        # which bypasses transform_tools (regression: gates/allowlist were skipped)
-        mcp = self.make_server()
-
-        result = await mcp.call_tool("search", {"query": "say hello greeting"})
-
-        assert "greet" not in result.content[0].text
-
-    @pytest.mark.asyncio
-    async def test_discovery_search_does_not_leak_gated_tools(self, mock_context: Mock) -> None:
-        mock_context.return_value = MCPRequestContext(
-            mode=MCPRequestMode.CODE,
-            tool_allowlist=None,
-            disabled_categories=frozenset({DataRobotMCPToolCategory.PROXIED_USER_MCP.name}),
-        )
-        mcp = self.make_server()
-
-        result = await mcp.call_tool("search", {"query": "canned proxied value"})
-
-        assert "proxied_tool" not in result.content[0].text
+        with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+            await mcp.get_tool("add")
 
 
 class _NamedTool:

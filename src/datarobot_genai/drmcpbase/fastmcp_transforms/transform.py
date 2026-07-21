@@ -36,6 +36,8 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allo
 
 logger = logging.getLogger(__name__)
 
+_CODE_MODE_NOT_IMPLEMENTED_MSG = "Code mode is not implemented yet"
+
 
 class DataRobotMCPCatalogTransform(CodeMode):
     """Per-request catalog shaping: category gates, tool allowlist, and modes.
@@ -71,11 +73,6 @@ class DataRobotMCPCatalogTransform(CodeMode):
             ]
         return self._built_search_mode_tools
 
-    def _is_code_mode_tool_name(self, name: str) -> bool:
-        if name == self.execute_tool_name:
-            return True
-        return any(tool.name == name for tool in self._build_discovery_tools())
-
     async def get_tool_catalog(
         self, ctx: Context, *, run_middleware: bool = True
     ) -> Sequence[Tool]:
@@ -99,7 +96,7 @@ class DataRobotMCPCatalogTransform(CodeMode):
         # in a disabled category stays hidden even when allowlisted.
         tools = filter_tools_by_category_gates(tools, ctx.disabled_categories)
         if ctx.mode is MCPRequestMode.CODE:
-            return await super().transform_tools(tools)
+            raise NotImplementedError(_CODE_MODE_NOT_IMPLEMENTED_MSG)
         if ctx.mode is MCPRequestMode.SEARCH:
             # Allowlisted tools stay pinned in the listing so a client that
             # re-lists with `x-datarobot-mcp-tools=<found names>` gets their
@@ -129,8 +126,8 @@ class DataRobotMCPCatalogTransform(CodeMode):
             for search_tool in self._build_search_mode_tools():
                 if search_tool.name == name:
                     return search_tool
-        elif ctx.mode is MCPRequestMode.CODE and self._is_code_mode_tool_name(name):
-            return await super().get_tool(name, call_next, version=version)
+        elif ctx.mode is MCPRequestMode.CODE:
+            raise NotImplementedError(_CODE_MODE_NOT_IMPLEMENTED_MSG)
         # Catalog tools: the allowlist is a hard cap in every mode.  (H5: the
         # code-mode path used to skip it, so switching the mode header made
         # every non-allowlisted tool resolvable and callable again.)

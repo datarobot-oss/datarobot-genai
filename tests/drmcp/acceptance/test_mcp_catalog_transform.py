@@ -18,7 +18,6 @@ import pytest
 
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import ete_test_mcp_session
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_mcp_server_url
-from tests.drmcp.helpers.mcp_catalog_transform import CODE_MODE_TOOL_NAMES
 from tests.drmcp.helpers.mcp_catalog_transform import catalog_transform_headers
 from tests.drmcp.helpers.mcp_catalog_transform import tool_names_from_list_tools_result
 
@@ -67,21 +66,21 @@ class TestMcpCatalogTransformAcceptance:
             names = tool_names_from_list_tools_result(await session.list_tools())
         assert names == set()
 
-    async def test_code_mode_lists_meta_tools_only(self) -> None:
+    async def test_code_mode_raises_not_implemented(self) -> None:
         headers = catalog_transform_headers(mode="code")
         async with ete_test_mcp_session(additional_headers=headers) as session:
-            names = tool_names_from_list_tools_result(await session.list_tools())
-        assert names == CODE_MODE_TOOL_NAMES
+            with pytest.raises(Exception, match="Code mode is not implemented yet"):
+                await session.list_tools()
 
-    async def test_code_mode_ignores_tools_allowlist_header(self) -> None:
+    async def test_code_mode_with_allowlist_raises_not_implemented(self) -> None:
         async with ete_test_mcp_session() as session:
             baseline = tool_names_from_list_tools_result(await session.list_tools())
         sample = sorted(baseline)[0]
 
         headers = catalog_transform_headers(mode="code", tools=sample)
         async with ete_test_mcp_session(additional_headers=headers) as session:
-            names = tool_names_from_list_tools_result(await session.list_tools())
-        assert names == CODE_MODE_TOOL_NAMES
+            with pytest.raises(Exception, match="Code mode is not implemented yet"):
+                await session.list_tools()
 
     async def test_call_tool_blocked_when_not_in_allowlist(self) -> None:
         async with ete_test_mcp_session() as session:

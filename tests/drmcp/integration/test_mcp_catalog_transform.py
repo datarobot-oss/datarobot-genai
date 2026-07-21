@@ -32,7 +32,6 @@ from datarobot_genai.drmcp import create_mcp_server
 from datarobot_genai.drmcp import integration_test_mcp_session
 from datarobot_genai.drmcpbase.fastmcp_transforms.transform import DataRobotMCPCatalogTransform
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import _request_context_cache
-from tests.drmcp.helpers.mcp_catalog_transform import CODE_MODE_TOOL_NAMES
 from tests.drmcp.helpers.mcp_catalog_transform import catalog_transform_headers
 from tests.drmcp.helpers.mcp_catalog_transform import tool_names_from_list_tools_result
 
@@ -113,11 +112,11 @@ class TestMcpCatalogTransformInProcess:
             listed = await minimal_catalog_mcp.list_tools(run_middleware=False)
         assert listed == []
 
-    async def test_code_mode_collapses_catalog(self, minimal_catalog_mcp: FastMCP) -> None:
+    async def test_code_mode_raises_not_implemented(self, minimal_catalog_mcp: FastMCP) -> None:
         headers = catalog_transform_headers(mode="code", tools="alpha")
         with patch(f"{UTILS_MODULE}.get_fast_mcp_http_headers", return_value=headers):
-            names = {t.name for t in await minimal_catalog_mcp.list_tools(run_middleware=False)}
-        assert names == CODE_MODE_TOOL_NAMES
+            with pytest.raises(NotImplementedError, match="Code mode is not implemented yet"):
+                await minimal_catalog_mcp.list_tools(run_middleware=False)
 
     async def test_drmcp_server_registers_transform(self, in_process_drmcp_mcp: FastMCP) -> None:
         headers = catalog_transform_headers(tools="get_auth_context_user_info")
