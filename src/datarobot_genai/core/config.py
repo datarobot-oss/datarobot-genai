@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Callable
 from enum import StrEnum
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
@@ -125,6 +127,69 @@ class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
     )
 
 
+# --- App config injection seam ---------------------------------------------
+#
+# The application (e.g. an af-component-* agent) owns the authoritative config:
+# a ``DataRobotAppFrameworkBaseSettings`` subclass in its ``config.py``. That is
+# the single source users edit and reason about, and it is the only place that
+# guarantees a value resolves across local dev, deployment, and dynamic env vars.
+#
+# genai is a library and cannot import the app's ``config.py`` directly, so the
+# app registers a provider (a zero-arg callable returning an ``LLMConfig``) at
+# import time. The app package is imported during NAT plugin discovery, which
+# runs before NAT validates the workflow config, so the provider is in place by
+# the time genai's defaults are read. When a provider is registered (and the
+# opt-in gate is enabled) genai reads the app's config instead of building its
+# own env-only ``Config()``; otherwise it falls back to the previous behavior so
+# nothing changes for callers that have not opted in.
+
+_CONFIG_INJECTION_ENV_VAR = "DATAROBOT_GENAI_CONFIG_INJECTION"
+
+# Module-level holder for the app config provider. A dict avoids the ``global``
+# statement (discouraged, and unused elsewhere in this package) while keeping the
+# registration mutable at runtime.
+_provider_registry: dict[str, Callable[[], LLMConfig] | None] = {"provider": None}
+
+
+def register_config_provider(provider: Callable[[], LLMConfig] | None) -> None:
+    """Register the app's authoritative config source, or clear it with ``None``.
+
+    ``provider`` is a zero-arg callable returning an ``LLMConfig`` (typically the
+    app's ``Config`` class itself, or ``lambda: Config()``). It is called each
+    time genai resolves config, so values re-resolve through the app's settings
+    sources (env / .env / secrets / Pulumi) on every read.
+    """
+    _provider_registry["provider"] = provider
+
+
+def config_injection_enabled() -> bool:
+    """Whether the app-config injection seam is active.
+
+    Opt-in for now via ``DATAROBOT_GENAI_CONFIG_INJECTION`` so the seam can ship
+    and be validated without changing behavior for anyone who has not enabled it.
+    """
+    return os.environ.get(_CONFIG_INJECTION_ENV_VAR, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def resolve_config() -> LLMConfig:
+    """Return the authoritative config genai should read from.
+
+    The app-injected config when a provider is registered and the gate is on,
+    otherwise genai's own env-reading ``Config()`` (the pre-injection behavior).
+    """
+    provider = _provider_registry["provider"]
+    if config_injection_enabled() and provider is not None:
+        provided = provider()
+        if provided is not None:
+            return provided
+    return Config()
+
+
 def get_max_history_messages_default() -> int:
     """Return the default maximum number of history messages.
 
@@ -137,13 +202,12 @@ def get_max_history_messages_default() -> int:
 
 
 def default_api_key() -> str | None:
-    config = Config()
+    config = resolve_config()
     return config.datarobot_api_token if config.datarobot_api_token else None
 
 
 def default_model_name() -> str | None:
-    config = Config()
-    return config.llm_default_model
+    return resolve_config().llm_default_model
 
 
 def default_response_model() -> str:
@@ -162,8 +226,7 @@ def default_response_model() -> str:
 
 
 def default_use_datarobot_llm_gateway() -> bool:
-    config = Config()
-    return config.use_datarobot_llm_gateway
+    return resolve_config().use_datarobot_llm_gateway
 
 
 def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
@@ -189,10 +252,8 @@ def default_datarobot_llm_gateway_url() -> str:
 
 
 def default_llm_deployment_id() -> str | None:
-    config = Config()
-    return config.llm_deployment_id
+    return resolve_config().llm_deployment_id
 
 
 def default_nim_deployment_id() -> str | None:
-    config = Config()
-    return config.nim_deployment_id
+    return resolve_config().nim_deployment_id
