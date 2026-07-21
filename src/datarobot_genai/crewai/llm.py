@@ -38,7 +38,7 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.config import resolve_config
+from datarobot_genai.core.config import resolve_llm_config
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.model_info import get_model_info
 
@@ -518,8 +518,9 @@ def get_llm(
     model_name: str | None = None,
     parameters: dict | None = None,
     reasoning: bool = False,
+    name: str | None = None,
 ) -> LLM:
-    config = resolve_config()
+    config = resolve_llm_config(name)
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, reasoning)
