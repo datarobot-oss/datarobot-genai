@@ -563,6 +563,7 @@ def test_create_dr_client() -> StubDRClient:
 
     # --- REST method stubs for dr_module.client.get_client() ---
     def _stub_get_non_workload(url: str, params: dict | None) -> StubRestResponse:
+        nonlocal _vdb_deploy_posted
         response = StubRestResponse({"data": [], "next": None})
         if "predictionResults" in url:
             limit = (params or {}).get("limit", 100)
@@ -611,6 +612,12 @@ def test_create_dr_client() -> StubDRClient:
                 },
             ]
             if _vdb_deploy_posted:
+                # Consume-once: vdb_deploy polls the deployments list exactly until a
+                # new VDB deployment id appears, so expose the launching record for a
+                # single listing and then drop it. This keeps stub state test-order
+                # independent (vdb_list results are unaffected by a prior vdb_deploy),
+                # which matters when tests share one long-lived stub server.
+                _vdb_deploy_posted = False
                 all_deployments.append(
                     {
                         "id": STUB_VDB_DEPLOY_RESULT_ID,

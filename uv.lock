@@ -1102,7 +1102,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.26.3"
+version = "0.26.4"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1334,6 +1334,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "pytest-xdist" },
     { name = "responses" },
     { name = "respx" },
     { name = "ruff" },
@@ -1558,6 +1559,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
+    { name = "pytest-xdist", specifier = ">=3.5.0" },
     { name = "responses", specifier = ">=0.25.8" },
     { name = "respx", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.6.0" },
