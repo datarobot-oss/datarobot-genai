@@ -21,12 +21,6 @@ import pytest
 
 pytest.importorskip("datarobot_dome")
 
-from datarobot_genai.dragent.eval.agent_goal_accuracy import (
-    DataRobotAgentGoalAccuracyEvaluatorConfig,
-)
-from datarobot_genai.dragent.eval.agent_goal_accuracy import (
-    register_dr_agent_goal_accuracy_evaluator,
-)
 from datarobot_genai.dragent.eval.faithfulness import DataRobotFaithfulnessEvaluatorConfig
 from datarobot_genai.dragent.eval.faithfulness import register_dr_faithfulness_evaluator
 from datarobot_genai.dragent.eval.guideline_adherence import (
@@ -49,7 +43,6 @@ async def _collect_registered_evaluator_infos(
 @pytest.mark.parametrize(
     ("config_cls", "expected_type"),
     [
-        (DataRobotAgentGoalAccuracyEvaluatorConfig, "agent_goal_accuracy"),
         (DataRobotFaithfulnessEvaluatorConfig, "faithfulness"),
         (DataRobotTaskAdherenceEvaluatorConfig, "task_adherence"),
         (DataRobotGuidelineAdherenceEvaluatorConfig, "agent_guideline_adherence"),
@@ -62,29 +55,6 @@ def test_evaluator_config_discriminator_tags(config_cls: type, expected_type: st
         config = config_cls(llm_name="judge")
 
     assert config.type == expected_type
-
-
-@pytest.mark.asyncio
-async def test_register_dr_agent_goal_accuracy_evaluator(
-    mock_eval_builder: mock.Mock,
-) -> None:
-    config = DataRobotAgentGoalAccuracyEvaluatorConfig(llm_name="judge")
-    scorer = mock.Mock()
-
-    with mock.patch(
-        "datarobot_genai.dragent.eval.agent_goal_accuracy.build_agent_goal_accuracy_scorer",
-        new=mock.AsyncMock(return_value=scorer),
-    ):
-        infos = await _collect_registered_evaluator_infos(
-            register_dr_agent_goal_accuracy_evaluator,
-            config,
-            mock_eval_builder,
-        )
-
-    assert len(infos) == 1
-    assert infos[0].config is config
-    assert "agent goal accuracy" in infos[0].description.lower()
-    assert callable(infos[0].evaluate_fn)
 
 
 @pytest.mark.asyncio

@@ -23,70 +23,12 @@ pytest.importorskip("datarobot_dome")
 
 from nat.data_models.evaluator import EvalInputItem
 
-from datarobot_genai.dragent.eval.agent_goal_accuracy import AgentGoalAccuracyNatEvaluator
-from datarobot_genai.dragent.eval.agent_goal_accuracy import score_agent_goal_accuracy_item
 from datarobot_genai.dragent.eval.faithfulness import FaithfulnessNatEvaluator
 from datarobot_genai.dragent.eval.faithfulness import score_faithfulness_item
 from datarobot_genai.dragent.eval.guideline_adherence import GuidelineAdherenceNatEvaluator
 from datarobot_genai.dragent.eval.guideline_adherence import score_guideline_adherence_item
 from datarobot_genai.dragent.eval.task_adherence import TaskAdherenceNatEvaluator
 from datarobot_genai.dragent.eval.task_adherence import score_task_adherence_item
-
-
-@pytest.mark.asyncio
-async def test_score_agent_goal_accuracy_item_delegates_to_guard_helper(
-    make_eval_item: Callable[..., EvalInputItem],
-) -> None:
-    item = make_eval_item(input_obj="task", output_obj="done")
-    scorer = mock.Mock()
-    with mock.patch(
-        "datarobot_genai.dragent.eval.agent_goal_accuracy.calculate_agent_goal_accuracy",
-        new=mock.AsyncMock(return_value=1.0),
-    ) as mock_calc:
-        result = await score_agent_goal_accuracy_item(scorer, item)
-
-    mock_calc.assert_awaited_once_with(scorer, "task", None, "done")
-    assert result.id == item.id
-    assert result.score == 1.0
-    assert result.reasoning["metric"] == "agent_goal_accuracy"
-    assert result.reasoning["used_pipeline_interactions"] is False
-
-
-@pytest.mark.asyncio
-async def test_score_agent_goal_accuracy_item_uses_pipeline_interactions(
-    make_eval_item: Callable[..., EvalInputItem],
-) -> None:
-    item = make_eval_item(
-        full_dataset_entry={"pipeline_interactions": '{"steps": []}'},
-    )
-    scorer = mock.Mock()
-    with mock.patch(
-        "datarobot_genai.dragent.eval.agent_goal_accuracy.calculate_agent_goal_accuracy",
-        new=mock.AsyncMock(return_value=0.5),
-    ) as mock_calc:
-        result = await score_agent_goal_accuracy_item(scorer, item)
-
-    mock_calc.assert_awaited_once_with(scorer, "question", '{"steps": []}', "answer")
-    assert result.reasoning["used_pipeline_interactions"] is True
-
-
-@pytest.mark.asyncio
-async def test_agent_goal_accuracy_nat_evaluator_delegates(
-    make_eval_item: Callable[..., EvalInputItem],
-) -> None:
-    item = make_eval_item()
-    scorer = mock.Mock()
-    evaluator = AgentGoalAccuracyNatEvaluator(scorer=scorer, max_concurrency=1)
-    expected = mock.Mock()
-
-    with mock.patch(
-        "datarobot_genai.dragent.eval.agent_goal_accuracy.score_agent_goal_accuracy_item",
-        new=mock.AsyncMock(return_value=expected),
-    ) as mock_score:
-        result = await evaluator.evaluate_item(item)
-
-    mock_score.assert_awaited_once_with(scorer, item)
-    assert result is expected
 
 
 @pytest.mark.asyncio

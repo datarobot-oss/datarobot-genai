@@ -14,76 +14,45 @@
 
 from __future__ import annotations
 
-import json
+from collections.abc import Callable
+from typing import Any
 from unittest import mock
 
 import pytest
 
 pytest.importorskip("datarobot_dome")
 
-from datarobot_dome.guards.agent_goal_accuracy import AgentGoalAccuracyEvaluator
 from nat.data_models.evaluator import EvalInputItem
 
+from datarobot_genai.dragent.eval.agent_goal_accuracy import AgentGoalAccuracyNatEvaluator
+from datarobot_genai.dragent.eval.agent_goal_accuracy import (
+    DataRobotAgentGoalAccuracyEvaluatorConfig,
+)
+from datarobot_genai.dragent.eval.agent_goal_accuracy import (
+    register_dr_agent_goal_accuracy_evaluator,
+)
 from datarobot_genai.dragent.eval.agent_goal_accuracy import score_agent_goal_accuracy_item
-from datarobot_genai.dragent.eval.common import citations_from_eval_item
-from datarobot_genai.dragent.eval.common import interactions_json_from_eval_item
-from datarobot_genai.dragent.eval.faithfulness import score_faithfulness_item
-from datarobot_genai.dragent.eval.guideline_adherence import score_guideline_adherence_item
-from datarobot_genai.dragent.eval.litellm_target import langchain_chat_model_to_litellm
-from datarobot_genai.dragent.eval.task_adherence import score_task_adherence_item
+from datarobot_genai.dragent.eval.scorer_factory import build_agent_goal_accuracy_scorer
 
 
-def test_interactions_json_from_eval_item_string_column() -> None:
-    item = EvalInputItem(
-        id="1",
-        input_obj="hello",
-        expected_output_obj="",
-        full_dataset_entry={"pipeline_interactions": '{"user_input": []}'},
-    )
-    assert interactions_json_from_eval_item(item) == '{"user_input": []}'
+async def _collect_registered_evaluator_infos(
+    register_fn: Any, config: Any, builder: Any
+) -> list[Any]:
+    async with register_fn(config, builder) as info:
+        return [info]
 
 
-def test_interactions_json_from_eval_item_dict_column() -> None:
-    payload = {"user_input": [{"type": "human", "content": "hi"}]}
-    item = EvalInputItem(
-        id="2",
-        input_obj="hello",
-        expected_output_obj="",
-        full_dataset_entry={"pipelineInteractions": payload},
-    )
-    assert json.loads(interactions_json_from_eval_item(item) or "") == payload
-
-
-def test_citations_from_eval_item_context_list() -> None:
-    item = EvalInputItem(
-        id="3",
-        input_obj="q",
-        expected_output_obj="",
-        full_dataset_entry={"context": ["a", "b"]},
-    )
-    assert citations_from_eval_item(item) == ["a", "b"]
-
-
-def test_citations_from_eval_item_citation_ctolumns() -> None:
-    item = EvalInputItem(
-        id="4",
-        input_obj="q",
-        expected_output_obj="",
-        full_dataset_entry={"CITATION_CONTENT_0": "ctx1"},
-    )
-    assert citations_from_eval_item(item) == ["ctx1"]
+def test_evaluator_config_discriminator_tag() -> None:
+    config = DataRobotAgentGoalAccuracyEvaluatorConfig(llm_name="judge")
+    assert config.type == "agent_goal_accuracy"
 
 
 @pytest.mark.asyncio
-async def test_score_agent_goal_accuracy_item_delegates_to_guard_helper() -> None:
-    item = EvalInputItem(
-        id="row-1",
-        input_obj="task",
-        expected_output_obj="",
-        output_obj="done",
-        full_dataset_entry={},
-    )
-    scorer = mock.Mock(spec=AgentGoalAccuracyEvaluator)
+async def test_score_agent_goal_accuracy_item_delegates_to_guard_helper(
+    make_eval_item: Callable[..., EvalInputItem],
+) -> None:
+    item = make_eval_item(input_obj="task", output_obj="done")
+    scorer = mock.Mock()
     with mock.patch(
         "datarobot_genai.dragent.eval.agent_goal_accuracy.calculate_agent_goal_accuracy",
         new=mock.AsyncMock(return_value=1.0),
@@ -91,92 +60,81 @@ async def test_score_agent_goal_accuracy_item_delegates_to_guard_helper() -> Non
         result = await score_agent_goal_accuracy_item(scorer, item)
 
     mock_calc.assert_awaited_once_with(scorer, "task", None, "done")
+    assert result.id == item.id
     assert result.score == 1.0
+    assert result.reasoning["metric"] == "agent_goal_accuracy"
+    assert result.reasoning["used_pipeline_interactions"] is False
 
 
 @pytest.mark.asyncio
-async def test_score_faithfulness_item_delegates_to_guard_helper() -> None:
-    item = EvalInputItem(
-        id="row-2",
-        input_obj="q",
-        expected_output_obj="",
-        output_obj="answer",
-        full_dataset_entry={"context": ["doc"]},
-    )
-    evaluator = mock.Mock()
-    with mock.patch(
-        "datarobot_genai.dragent.eval.faithfulness.calculate_faithfulness",
-        return_value=1.0,
-    ) as mock_calc:
-        result = await score_faithfulness_item(evaluator, item)
-
-    mock_calc.assert_called_once()
-    assert result.score == 1.0
-    assert result.reasoning["context_count"] == 1
-
-
-@pytest.mark.asyncio
-async def test_score_task_adherence_item_delegates_to_guard_helper() -> None:
-    item = EvalInputItem(
-        id="row-3",
-        input_obj="task",
-        expected_output_obj="",
-        output_obj="done",
-        full_dataset_entry={},
+async def test_score_agent_goal_accuracy_item_uses_pipeline_interactions(
+    make_eval_item: Callable[..., EvalInputItem],
+) -> None:
+    item = make_eval_item(
+        full_dataset_entry={"pipeline_interactions": '{"steps": []}'},
     )
     scorer = mock.Mock()
     with mock.patch(
-        "datarobot_genai.dragent.eval.task_adherence.calculate_task_adherence",
-        return_value=0.8,
+        "datarobot_genai.dragent.eval.agent_goal_accuracy.calculate_agent_goal_accuracy",
+        new=mock.AsyncMock(return_value=0.5),
     ) as mock_calc:
-        result = await score_task_adherence_item(scorer, item)
+        result = await score_agent_goal_accuracy_item(scorer, item)
 
-    mock_calc.assert_called_once()
-    assert result.score == 0.8
+    mock_calc.assert_awaited_once_with(scorer, "question", '{"steps": []}', "answer")
+    assert result.reasoning["used_pipeline_interactions"] is True
 
 
 @pytest.mark.asyncio
-async def test_score_guideline_adherence_item_delegates_to_guard_helper() -> None:
-    item = EvalInputItem(
-        id="row-4",
-        input_obj="task",
-        expected_output_obj="",
-        output_obj="done",
-        full_dataset_entry={},
-    )
+async def test_agent_goal_accuracy_nat_evaluator_delegates(
+    make_eval_item: Callable[..., EvalInputItem],
+) -> None:
+    item = make_eval_item()
     scorer = mock.Mock()
+    evaluator = AgentGoalAccuracyNatEvaluator(scorer=scorer, max_concurrency=1)
+    expected = mock.Mock()
+
     with mock.patch(
-        "datarobot_genai.dragent.eval.guideline_adherence.calculate_agent_guideline_adherence",
-        new=mock.AsyncMock(return_value=True),
-    ) as mock_calc:
-        result = await score_guideline_adherence_item(scorer, item)
+        "datarobot_genai.dragent.eval.agent_goal_accuracy.score_agent_goal_accuracy_item",
+        new=mock.AsyncMock(return_value=expected),
+    ) as mock_score:
+        result = await evaluator.evaluate_item(item)
 
-    mock_calc.assert_awaited_once()
-    assert result.score == 1.0
+    mock_score.assert_awaited_once_with(scorer, item)
+    assert result is expected
 
 
-def test_langchain_chat_model_to_litellm_openai() -> None:
+@pytest.mark.asyncio
+async def test_register_dr_agent_goal_accuracy_evaluator(mock_eval_builder: mock.Mock) -> None:
+    config = DataRobotAgentGoalAccuracyEvaluatorConfig(llm_name="judge")
+    scorer = mock.Mock()
+
+    with mock.patch(
+        "datarobot_genai.dragent.eval.agent_goal_accuracy.build_agent_goal_accuracy_scorer",
+        new=mock.AsyncMock(return_value=scorer),
+    ):
+        infos = await _collect_registered_evaluator_infos(
+            register_dr_agent_goal_accuracy_evaluator,
+            config,
+            mock_eval_builder,
+        )
+
+    assert len(infos) == 1
+    assert infos[0].config is config
+    assert "agent goal accuracy" in infos[0].description.lower()
+    assert callable(infos[0].evaluate_fn)
+
+
+@pytest.mark.asyncio
+async def test_build_agent_goal_accuracy_scorer(mock_eval_builder: mock.Mock) -> None:
+    pytest.importorskip(
+        "datarobot_dome.guards.agent_goal_accuracy",
+        reason="requires datarobot-moderations>=11.2.45",
+    )
     from langchain_openai import ChatOpenAI
 
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key="secret")
-    model, kwargs = langchain_chat_model_to_litellm(llm)
-    assert model == "openai/gpt-4o-mini"
-    assert kwargs["api_key"] == "secret"
+    mock_eval_builder.get_llm.return_value = ChatOpenAI(model="gpt-4o-mini", api_key="secret")
 
+    scorer = await build_agent_goal_accuracy_scorer(mock_eval_builder, "judge_llm")
 
-def test_langchain_chat_model_to_litellm_chat_litellm() -> None:
-    from langchain_litellm import ChatLiteLLM
-
-    llm = ChatLiteLLM(
-        model="datarobot/anthropic/claude-3",
-        api_key="token",
-        api_base="https://app.datarobot.com",
-        extra_headers={"X-Custom": "1"},
-        model_kwargs={"extra_body": {"reasoning": {"enabled": False}}},
-    )
-    model, kwargs = langchain_chat_model_to_litellm(llm)
-    assert model == "datarobot/anthropic/claude-3"
-    assert kwargs["api_key"] == "token"
-    assert kwargs["api_base"] == "https://app.datarobot.com"
-    assert kwargs["extra_headers"] == {"X-Custom": "1"}
-    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+    assert scorer.model == "openai/gpt-4o-mini"
+    assert scorer.completion_kwargs["api_key"] == "secret"

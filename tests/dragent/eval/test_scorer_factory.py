@@ -20,7 +20,6 @@ import pytest
 
 pytest.importorskip("datarobot_dome")
 
-from datarobot_genai.dragent.eval.scorer_factory import build_agent_goal_accuracy_scorer
 from datarobot_genai.dragent.eval.scorer_factory import build_faithfulness_evaluator
 from datarobot_genai.dragent.eval.scorer_factory import build_guideline_adherence_scorer
 from datarobot_genai.dragent.eval.scorer_factory import build_litellm_judge_target
@@ -49,22 +48,6 @@ async def test_build_litellm_judge_target(mock_eval_builder: mock.Mock) -> None:
 
     assert target.model == "openai/gpt-4o-mini"
     assert target.completion_kwargs["api_key"] == "secret"
-
-
-@pytest.mark.asyncio
-async def test_build_agent_goal_accuracy_scorer(mock_eval_builder: mock.Mock) -> None:
-    pytest.importorskip(
-        "datarobot_dome.guards.agent_goal_accuracy",
-        reason="requires datarobot-moderations>=11.2.45",
-    )
-    from langchain_openai import ChatOpenAI
-
-    mock_eval_builder.get_llm.return_value = ChatOpenAI(model="gpt-4o-mini", api_key="secret")
-
-    scorer = await build_agent_goal_accuracy_scorer(mock_eval_builder, "judge_llm")
-
-    assert scorer.model == "openai/gpt-4o-mini"
-    assert scorer.completion_kwargs["api_key"] == "secret"
 
 
 @pytest.mark.asyncio
