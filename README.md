@@ -94,6 +94,7 @@ These are explicitly excluded via `[tool.uv] exclude-dependencies` in `pyproject
 | Package | Pulled in by | Reason excluded |
 |---------|-------------|-----------------|
 | `build` | `crewai` | Python build system; runtime unnecessary |
+| `diskcache` | `ragas` | Optional disk caching backend; not used |
 | `flask` | `nvidia-nat 1.6.0` | Web framework; not used |
 | `kubernetes` | `crewai-tools` | K8s client; not used |
 | `lancedb` | `crewai` | Optional vector DB backend; not used |
@@ -104,6 +105,7 @@ These are explicitly excluded via `[tool.uv] exclude-dependencies` in `pyproject
 | `pymilvus` | `langchain-milvus` | Milvus client; not used |
 | `python-docx` | `crewai-tools` | Word doc parser; not used |
 | `pytube` | `crewai-tools` | YouTube downloader; not used |
+| `scikit-network` | `ragas` | Graph analysis library; not used |
 | `stagehand` | `crewai-tools` | Playwright web automation; not used |
 | `uv` | `crewai` | Package manager bundled as a runtime dep; not needed |
 | `youtube-transcript-api` | `crewai-tools` | YouTube transcripts; not used |

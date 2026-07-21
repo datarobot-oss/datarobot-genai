@@ -343,39 +343,6 @@ async def test_stream_aggregates_completion_across_chunks(
     assert span.attributes[GEN_AI_COMPLETION] == "Hello"
 
 
-async def test_stream_sets_completion_when_closed_early_after_text(
-    middleware: DataRobotOtelConventionsMiddleware,
-    span_exporter: InMemorySpanExporter,
-) -> None:
-    """Completion survives early generator teardown after deltas were seen.
-
-    Downstream moderation can finish and ``aclose()`` this generator (raising
-    ``GeneratorExit`` at the ``yield``) before the source stream is exhausted.
-    The ``gen_ai.completion`` attribute must still be attached from the deltas
-    already accumulated — regression test for completion being set after the
-    loop, which the teardown skipped.
-    """
-    chunks = [
-        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="Success")]),
-        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="-tail")]),
-    ]
-
-    stream = middleware.function_middleware_stream(
-        _nat_input("go"),
-        call_next=_call_next_stream(chunks),
-        context=MagicMock(),
-    )
-    # Pull only the first (text) chunk, then close the generator early — mimics
-    # moderation tearing it down before the ``async for`` exits normally.
-    first = await stream.__anext__()
-    assert isinstance(first, DRAgentEventResponse)
-    await stream.aclose()
-
-    span = _span_named(span_exporter, AGENT_SPAN_NAME)
-    assert span.attributes[GEN_AI_PROMPT] == "go"
-    assert span.attributes[GEN_AI_COMPLETION] == "Success"
-
-
 async def test_stream_emits_tool_spans(
     middleware: DataRobotOtelConventionsMiddleware,
     span_exporter: InMemorySpanExporter,

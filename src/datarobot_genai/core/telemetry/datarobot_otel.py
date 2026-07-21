@@ -238,10 +238,6 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
             provider = wrap_sdk_tracer_provider(current)
             provider.add_span_processor(processor)
             action = "attached"
-
-        # Route datarobot_dome (moderations) spans through this same wrapped provider
-        # so they join the request trace instead of exporting as disconnected roots.
-        _redirect_dome_tracer_provider(provider)
     except Exception:
         # Never let telemetry setup take down the agent. Log with traceback so
         # operators can diagnose without crashing user code.
@@ -256,28 +252,6 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         headers["X-DataRobot-Entity-Id"],
     )
     return True
-
-
-def _redirect_dome_tracer_provider(provider: object) -> None:
-    """Point datarobot_dome's tracer-provider singleton at our wrapped global provider.
-
-    dome (datarobot-moderations) emits ``datarobot.moderation.evaluate_*`` spans through its
-    own lazily-built ``TracerProvider`` (``dr_trace_provider()``), which our
-    ``NatWorkflowTracer`` wrapper never patches. Those spans therefore skip the workflow-trace
-    parenting every other span receives and export as disconnected root traces. Overwriting
-    dome's module-level ``_dr_trace_provider`` with our wrapped provider makes dome resolve
-    tracers through ``NatWorkflowTracer``, so its spans join the active request trace like
-    everything else.
-
-    Best-effort: dome may be absent (installs without the moderation extra) and there is no
-    public setter, so we assign the module global directly and swallow any failure.
-    """
-    try:
-        from datarobot_dome.otel import trace as dome_trace
-
-        dome_trace._dr_trace_provider = provider  # type: ignore[assignment]
-    except Exception:
-        logger.debug("Could not redirect datarobot_dome tracer provider", exc_info=True)
 
 
 def _get_opentelemetry_sdk_version() -> str:
