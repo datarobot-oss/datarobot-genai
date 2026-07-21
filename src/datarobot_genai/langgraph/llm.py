@@ -259,7 +259,7 @@ def get_llm(
         )
     elif llm_type == LLMType.NIM:
         return get_datarobot_nim_llm(
-            config.nim_deployment_id,  # type: ignore[arg-type]
+            config.llm_nim_deployment_id,  # type: ignore[arg-type]
             model_name,
             parameters,
             streaming,

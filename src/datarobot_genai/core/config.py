@@ -49,16 +49,16 @@ class LLMConfig(BaseModel):
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
     llm_deployment_id: str | None = None
-    nim_deployment_id: str | None = None
-    use_datarobot_llm_gateway: bool = True
+    llm_nim_deployment_id: str | None = None
+    llm_use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
 
     def get_llm_type(self) -> LLMType:
-        if self.use_datarobot_llm_gateway:
+        if self.llm_use_datarobot_llm_gateway:
             return LLMType.GATEWAY
         elif self.llm_deployment_id:
             return LLMType.DEPLOYMENT
-        elif self.nim_deployment_id:
+        elif self.llm_nim_deployment_id:
             return LLMType.NIM
         else:
             return LLMType.EXTERNAL
@@ -103,7 +103,7 @@ class LLMConfig(BaseModel):
         elif llm_type == LLMType.NIM:
             return {
                 "model": _with_datarobot_prefix(model_name),
-                "api_base": deployment_url(self.nim_deployment_id, endpoint),  # type: ignore[arg-type]
+                "api_base": deployment_url(self.llm_nim_deployment_id, endpoint),  # type: ignore[arg-type]
                 "api_key": api_key,
             }
         else:  # EXTERNAL
@@ -209,7 +209,7 @@ def default_response_model() -> str:
 
 
 def default_use_datarobot_llm_gateway() -> bool:
-    return resolve_config().use_datarobot_llm_gateway
+    return resolve_config().llm_use_datarobot_llm_gateway
 
 
 def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
@@ -240,4 +240,27 @@ def default_llm_deployment_id() -> str | None:
 
 
 def default_nim_deployment_id() -> str | None:
-    return resolve_config().nim_deployment_id
+    return resolve_config().llm_nim_deployment_id
+
+
+def resolve_llm(app_config: object, name: str = "llm") -> LLMConfig:
+    """Map an application config's instance-namespaced fields into an ``LLMConfig``.
+
+    The application owns the authoritative config (a
+    ``DataRobotAppFrameworkBaseSettings`` subclass). genai never reads that class
+    directly; the app registers a provider that hands genai a fully formed
+    ``LLMConfig`` built by this function. ``name`` is the LLM component instance
+    name (``"llm"`` by default); per-LLM values are read as ``{name}_*`` while the
+    two ecosystem-wide globals are shared across instances. Missing fields fall
+    back to the same defaults as a standalone ``LLMConfig``.
+    """
+    return LLMConfig(
+        datarobot_endpoint=getattr(app_config, "datarobot_endpoint", None),
+        datarobot_api_token=getattr(app_config, "datarobot_api_token", None),
+        llm_deployment_id=getattr(app_config, f"{name}_deployment_id", None),
+        llm_nim_deployment_id=getattr(app_config, f"{name}_nim_deployment_id", None),
+        llm_use_datarobot_llm_gateway=getattr(
+            app_config, f"{name}_use_datarobot_llm_gateway", True
+        ),
+        llm_default_model=getattr(app_config, f"{name}_default_model", None),
+    )

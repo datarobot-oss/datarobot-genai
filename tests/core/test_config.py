@@ -42,8 +42,8 @@ def _make_config(**overrides: object) -> Config:
         "datarobot_endpoint": "https://app.datarobot.com/api/v2",
         "datarobot_api_token": None,
         "llm_deployment_id": None,
-        "nim_deployment_id": None,
-        "use_datarobot_llm_gateway": True,
+        "llm_nim_deployment_id": None,
+        "llm_use_datarobot_llm_gateway": True,
         "llm_default_model": None,
     }
     defaults.update(overrides)
@@ -74,30 +74,30 @@ def test_get_max_history_messages_default_env_positive(monkeypatch: pytest.Monke
 
 
 def test_get_llm_type_returns_gateway_when_use_gateway_true() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=True)
+    cfg = _make_config(llm_use_datarobot_llm_gateway=True)
     assert cfg.get_llm_type() == LLMType.GATEWAY
 
 
 def test_get_llm_type_returns_deployment_when_gateway_false_and_deployment_id_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False, llm_deployment_id="dep-123")
+    cfg = _make_config(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-123")
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
 
 def test_get_llm_type_returns_nim_when_gateway_false_and_nim_id_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False, nim_deployment_id="nim-456")
+    cfg = _make_config(llm_use_datarobot_llm_gateway=False, llm_nim_deployment_id="nim-456")
     assert cfg.get_llm_type() == LLMType.NIM
 
 
 def test_get_llm_type_returns_external_when_nothing_else_set() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False)
+    cfg = _make_config(llm_use_datarobot_llm_gateway=False)
     assert cfg.get_llm_type() == LLMType.EXTERNAL
 
 
 def test_get_llm_type_deployment_takes_priority_over_nim() -> None:
     cfg = _make_config(
-        use_datarobot_llm_gateway=False,
+        llm_use_datarobot_llm_gateway=False,
         llm_deployment_id="dep-123",
-        nim_deployment_id="nim-456",
+        llm_nim_deployment_id="nim-456",
     )
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
@@ -159,13 +159,13 @@ def test_default_response_model_falls_back_to_deployed_llm_when_unset() -> None:
 
 
 def test_default_use_datarobot_llm_gateway_true_by_default() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=True)
+    cfg = _make_config(llm_use_datarobot_llm_gateway=True)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_use_datarobot_llm_gateway() is True
 
 
 def test_default_use_datarobot_llm_gateway_respects_config() -> None:
-    cfg = _make_config(use_datarobot_llm_gateway=False)
+    cfg = _make_config(llm_use_datarobot_llm_gateway=False)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_use_datarobot_llm_gateway() is False
 
@@ -248,13 +248,13 @@ def test_default_llm_deployment_id_returns_none_when_unset() -> None:
 
 
 def test_default_nim_deployment_id_returns_configured_value() -> None:
-    cfg = _make_config(nim_deployment_id="nim-999")
+    cfg = _make_config(llm_nim_deployment_id="nim-999")
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_nim_deployment_id() == "nim-999"
 
 
 def test_default_nim_deployment_id_returns_none_when_unset() -> None:
-    cfg = _make_config(nim_deployment_id=None)
+    cfg = _make_config(llm_nim_deployment_id=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_nim_deployment_id() is None
 
@@ -302,14 +302,14 @@ def test_injected_config_overrides_env_for_user_intent_fields() -> None:
     # App config: gateway off, a deployment target, and a specific model, all set
     # as plain values, exactly as a user would hardcode them in config.py.
     app_config = LLMConfig(
-        use_datarobot_llm_gateway=False,
+        llm_use_datarobot_llm_gateway=False,
         llm_deployment_id="dep-from-app",
         llm_default_model="anthropic/claude-sonnet-4-20250514",
     )
     register_config_provider(lambda: app_config)
 
     # genai's own env-only Config would say the opposite (gateway on, no model).
-    env_only = _make_config(use_datarobot_llm_gateway=True, llm_default_model=None)
+    env_only = _make_config(llm_use_datarobot_llm_gateway=True, llm_default_model=None)
     with patch.object(config_mod, "Config", return_value=env_only):
         assert default_use_datarobot_llm_gateway() is False
         assert default_llm_deployment_id() == "dep-from-app"

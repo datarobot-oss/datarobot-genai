@@ -90,9 +90,9 @@ async def datarobot_nim_llamaindex(
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LLAMA_INDEX)
 
     config = prepare_llm_parameters(llm_config)
-    if not llm_config.nim_deployment_id:
-        raise ValueError("nim_deployment_id is required")
-    client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)
+    if not llm_config.llm_nim_deployment_id:
+        raise ValueError("llm_nim_deployment_id is required")
+    client = get_datarobot_nim_llm(llm_config.llm_nim_deployment_id, llm_config.model_name, config)
     yield patch_llm_based_on_config(client, config)
 
 
@@ -126,7 +126,11 @@ async def datarobot_llm_component_llamaindex(
             config,
         )
     elif llm_type == LLMType.NIM:
-        client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)  # type: ignore[arg-type]
+        client = get_datarobot_nim_llm(
+            llm_config.llm_nim_deployment_id,  # type: ignore[arg-type]
+            llm_config.model_name,
+            config,
+        )
     elif llm_type == LLMType.EXTERNAL:
         client = get_external_llm(llm_config.model_name, config)
     else:
