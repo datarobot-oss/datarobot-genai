@@ -145,11 +145,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-<<<<<<< HEAD
-version = "0.26.0"
-=======
-version = "0.23.18"
->>>>>>> parent of e683e5bd ([MMM-24187] Bye, bye Ragas! (Bump datarobot-moderations and remove ragas from datarobot-genai) (#561))
+version = "0.26.2"
 source = { editable = "../" }
 
 [package.metadata]
