@@ -961,8 +961,8 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
 
 
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
-    # AIMessage with list-form content (thinking + text) would fail the string-only
-    # message schema with TypeError("AIMessage content must be a string, got list").
+    # AIMessage with list-form content (thinking + text) previously crashed ragas
+    # with TypeError("AIMessage content must be a string, got list").
     ai_with_thinking = AIMessage(
         content=[
             {"type": "thinking", "thinking": "let me think about it"},
@@ -977,7 +977,7 @@ def test_create_pipeline_interactions_handles_list_content_with_thinking() -> No
     sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
 
     assert sample is not None
-    # Thinking content is stripped before the message is built; only the text portion remains.
+    # Thinking content is stripped before ragas validates; only the text portion remains.
     serialized = " ".join(str(getattr(m, "content", "")) for m in sample.user_input)
     assert "let me think about it" not in serialized
     assert "here is the answer" in serialized

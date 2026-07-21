@@ -24,8 +24,8 @@ from ag_ui.core.events import TextMessageContentEvent
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from ag_ui.core.types import ToolMessage
-from datarobot_dome.guards.agent_goal_accuracy import AIMessage
-from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import default_usage_metrics

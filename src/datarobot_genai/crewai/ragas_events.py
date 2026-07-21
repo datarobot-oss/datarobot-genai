@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
-    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
-    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
-    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+    from ragas.messages import AIMessage
+    from ragas.messages import HumanMessage
+    from ragas.messages import ToolMessage
 
 from crewai.events.event_bus import CrewAIEventsBus
 from crewai.events.event_types import AgentExecutionCompletedEvent
@@ -38,19 +38,18 @@ from crewai.events.event_types import ToolUsageFinishedEvent
 from crewai.events.event_types import ToolUsageStartedEvent
 
 
-class CrewAIModerationsEventListener:
-    """Collects CrewAI events into moderations messages for pipeline interactions."""
+class CrewAIRagasEventListener:
+    """Collects CrewAI events into Ragas messages for pipeline interactions."""
 
     def __init__(self) -> None:
         self.messages: list[HumanMessage | AIMessage | ToolMessage] = []
 
     def setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None:
-        # Lazy import so the moderations-backed primitives load only when a run
-        # actually records pipeline interactions.
-        from datarobot_dome.guards.agent_goal_accuracy import AIMessage
-        from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
-        from datarobot_dome.guards.agent_goal_accuracy import ToolCall
-        from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+        # Lazy import to reduce memory overhead when ragas is not used
+        from ragas.messages import AIMessage
+        from ragas.messages import HumanMessage
+        from ragas.messages import ToolCall
+        from ragas.messages import ToolMessage
 
         @crewai_event_bus.on(CrewKickoffStartedEvent)
         def on_crew_execution_started(_: Any, event: Any) -> None:

@@ -39,9 +39,9 @@ from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import UserMessage
 from crewai import CrewOutput
-from datarobot_dome.guards.agent_goal_accuracy import AIMessage
-from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
-from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+from ragas import MultiTurnSample
+from ragas.messages import AIMessage
+from ragas.messages import HumanMessage
 
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.verify import validate_sequence
@@ -82,14 +82,14 @@ class ListenerForTest:
 
 
 @pytest.fixture
-def mock_moderations_event_listener() -> ListenerForTest:
+def mock_ragas_event_listener() -> ListenerForTest:
     event_listener = ListenerForTest(
         messages=[HumanMessage(content="hi"), AIMessage(content="there")]
     )
     with patch(
-        "datarobot_genai.crewai.agent.CrewAIModerationsEventListener"
-    ) as mock_moderations_event_listener:
-        mock_moderations_event_listener.return_value = event_listener
+        "datarobot_genai.crewai.agent.CrewAIRagasEventListener"
+    ) as mock_ragas_event_listener:
+        mock_ragas_event_listener.return_value = event_listener
         yield event_listener
 
 
@@ -161,7 +161,7 @@ def run_agent_input_with_structured_prompt() -> RunAgentInput:
     )
 
 
-async def test_invoke(run_agent_input, mock_moderations_event_listener) -> None:
+async def test_invoke(run_agent_input, mock_ragas_event_listener) -> None:
     # GIVEN agent with predefined crew output and forwarded headers
     out = CrewOutput(
         raw="agent result",
@@ -184,7 +184,7 @@ async def test_invoke(run_agent_input, mock_moderations_event_listener) -> None:
     events = [event async for event in gen]
 
     # THEN ragas event listener was setup
-    assert mock_moderations_event_listener.called_setup
+    assert mock_ragas_event_listener.called_setup
 
     # THEN events contain AG-UI lifecycle and text message chunk events
     # RunStarted, TextMessageChunk, RunFinished
@@ -216,7 +216,7 @@ async def test_invoke(run_agent_input, mock_moderations_event_listener) -> None:
 
 
 async def test_invoke_resets_agent_executors_per_request(
-    run_agent_input, mock_moderations_event_listener
+    run_agent_input, mock_ragas_event_listener
 ) -> None:
     """Each request must start with fresh agent executors. CrewAI caches each agent's executor
     and never clears its accumulated ``messages``/``iterations`` on reuse, so reusing the crew
@@ -234,7 +234,7 @@ async def test_invoke_resets_agent_executors_per_request(
 
 
 async def test_invoke_does_not_include_chat_history_by_default(
-    mock_moderations_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -255,7 +255,7 @@ async def test_invoke_does_not_include_chat_history_by_default(
 
 
 async def test_invoke_overwrites_blank_chat_history_placeholder(
-    mock_moderations_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -286,7 +286,7 @@ async def test_invoke_overwrites_blank_chat_history_placeholder(
 
 
 async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
-    mock_moderations_event_listener, run_agent_input_with_history
+    mock_ragas_event_listener, run_agent_input_with_history
 ) -> None:
     captured_inputs: dict[str, Any] = {}
 
@@ -310,7 +310,7 @@ async def test_invoke_does_not_overwrite_non_empty_chat_history_override(
 
 
 async def test_invoke_includes_tool_calls_in_history(
-    mock_moderations_event_listener, run_agent_input_with_tool_history
+    mock_ragas_event_listener, run_agent_input_with_tool_history
 ) -> None:
     """Tool calls appear in the injected chat_history text in both content cases."""
     captured_inputs: dict[str, Any] = {}
@@ -644,7 +644,7 @@ class _FakeStreamingOutput(CrewStreamingOutput):
 
 
 async def test_invoke_streaming_emits_separate_messages_per_agent_role(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew that emits chunks under two different agent roles
     chunks = [
@@ -707,7 +707,7 @@ async def test_invoke_streaming_emits_separate_messages_per_agent_role(
 
 
 async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a stream that opens a step + text message, then fails mid-run (dropped gateway
     # connection, bad chunk). The partial AG-UI stream must still close what it opened -- otherwise
@@ -754,7 +754,7 @@ async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
 
 
 async def test_invoke_streaming_skips_empty_text_chunks(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew that emits empty TEXT chunks alongside real content
     chunks = [
@@ -783,7 +783,7 @@ async def test_invoke_streaming_skips_empty_text_chunks(
 
 
 async def test_invoke_streaming_single_agent_role_uses_single_message(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew that only emits chunks for one agent role
     chunks = [
@@ -808,7 +808,7 @@ async def test_invoke_streaming_single_agent_role_uses_single_message(
 
 
 async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew where the first agent emits a reasoning chunk and
     # the second agent emits a normal text chunk. The agent_role transition
@@ -908,7 +908,7 @@ async def test_invoke_streaming_closes_reasoning_message_at_step_boundary(
 
 
 async def test_invoke_streaming_empty_agent_role_does_not_orphan_a_step(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew that emits a chunk with an empty agent_role between
     # two real roles. CrewAI does this at task boundaries (logged as
@@ -940,7 +940,7 @@ async def test_invoke_streaming_empty_agent_role_does_not_orphan_a_step(
 
 
 async def test_invoke_streaming_sources_step_role_from_bus_when_chunks_lack_role(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a real multi-agent crew: CrewAI hardcodes chunk.agent_role="" for Crew streams,
     # so the active agent is known only from the bus (listener.active_agent_role).
@@ -1002,7 +1002,7 @@ async def test_invoke_streaming_sources_step_role_from_bus_when_chunks_lack_role
 
 
 async def test_invoke_streaming_emits_tool_call_events(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a streaming crew where a tool fires between two text chunks: the streaming
     # listener queues the AG-UI ToolCall* sequence (as it does for CrewAI's bus events).
@@ -1108,7 +1108,7 @@ async def test_invoke_streaming_emits_tool_call_events(
 
 
 async def test_invoke_streaming_emits_tool_error_as_result(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a tool that errors: the listener queues a result record carrying the error text
     from ag_ui.core import ToolCallResultEvent
@@ -1161,7 +1161,7 @@ async def test_invoke_streaming_emits_tool_error_as_result(
 
 
 async def test_invoke_streaming_tool_call_across_agent_step_boundary(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a tool call queued during the Planner's turn, with a Writer chunk following: the
     # top-of-loop tool drain and the role-change step close must not double-close or orphan a
@@ -1230,7 +1230,7 @@ async def test_invoke_streaming_tool_call_across_agent_step_boundary(
 
 
 async def test_invoke_streaming_tool_call_before_any_text_has_empty_parent(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a tool that fires before any text/reasoning bubble is open: parent_message_id must be
     # "" (not a message_id that never got a TextMessageStart).
@@ -1280,7 +1280,7 @@ async def test_invoke_streaming_tool_call_before_any_text_has_empty_parent(
 
 
 async def test_invoke_streaming_tool_call_nests_under_its_own_agent_step(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN the native flow: each agent's tool is queued BEFORE that agent emits any text
     # chunk (native tool calls produce no content chunk). The record carries its owning agent's
@@ -1361,7 +1361,7 @@ async def test_invoke_streaming_tool_call_nests_under_its_own_agent_step(
 
 
 async def test_invoke_streaming_closes_reasoning_before_tool_call(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN reasoning is open when a tool fires: REASONING_END must precede TOOL_CALL_START.
 
@@ -1412,7 +1412,7 @@ async def test_invoke_streaming_closes_reasoning_before_tool_call(
 
 
 async def test_invoke_drains_the_real_listeners_queue(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN the REAL CrewAIStreamingEventListener instance (not the hand-mirrored stub): invoke
     # must drain ITS `tool_call_events` queue into AG-UI ToolCall* events. This closes the seam
@@ -1472,7 +1472,7 @@ async def test_invoke_drains_the_real_listeners_queue(
 
 
 async def test_invoke_streaming_post_loop_tool_drain_has_empty_parent(
-    mock_moderations_event_listener, run_agent_input
+    mock_ragas_event_listener, run_agent_input
 ) -> None:
     # GIVEN a tool whose events arrive after the final chunk with no bubble open: the after-loop
     # drain (site 3) must emit it with parent_message_id="" -- guards the post-loop occurrence of

@@ -23,6 +23,7 @@ from langchain_core.tools import StructuredTool
 from langchain_core.tools.base import ToolException
 from langchain_mcp_adapters.sessions import SSEConnection
 from langchain_mcp_adapters.sessions import StreamableHttpConnection
+from langchain_mcp_adapters.sessions import create_session
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
@@ -131,23 +132,12 @@ async def mcp_tools_context(
     # second yield, causing `RuntimeError: generator didn't stop after athrow()`.
     connected = False
     try:
-        # Load tools WITHOUT holding a persistent MCP session open across the stream.
-        # ``session=None`` + ``connection`` makes ``load_mcp_tools`` open a short-lived
-        # session -- entered and exited within this await, in one task, before any
-        # streaming yield -- to list the tools; each returned tool then opens its own
-        # per-call session. Holding a persistent session across the streaming response
-        # (the previous ``async with create_session(...)``) keeps the MCP streamable-http
-        # client's anyio task group open for the whole run. On the HITL interrupt path the
-        # response generator is finalized in a different task than it was entered, so that
-        # task group's cancel scope is exited in the wrong task ("Attempted to exit cancel
-        # scope in a different task than it was entered in"), which cancels the run and
-        # drops the buffered interrupt events. Per-call sessions have no long-lived task
-        # group spanning the stream, so the teardown stays task-local.
-        raw_tools = await load_mcp_tools(session=None, connection=connection)
-        tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
-        logger.info("Successfully loaded %d MCP tools", len(tools))
-        connected = True
-        yield tools
+        async with create_session(connection=connection) as session:
+            raw_tools = await load_mcp_tools(session=session)
+            tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
+            logger.info("Successfully loaded %d MCP tools", len(tools))
+            connected = True
+            yield tools
     except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
         if connected:
             raise
