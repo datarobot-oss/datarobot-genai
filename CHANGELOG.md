@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.9
+- `dragent`: cache Okta XAA exchanged access tokens (`AGENT_CARD_XAA_TOKEN_CACHE_ENABLED`, default `true`) with in-process or shared Redis backend to reduce Okta load and latency.
+
 ## 0.26.8
 - `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (`AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`, default `1800`; set `0` to disable).
 

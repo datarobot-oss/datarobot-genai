@@ -639,6 +639,10 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
         mock_auth_provider_config = Mock()
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(mock_auth_provider_config)
         mock_cross_app_params = Mock()
+        mock_cross_app_params.target_audience = "https://api.example.com/"
+        mock_cross_app_params.token_url = "https://okta/token"
+        mock_cross_app_params.id_jag_scopes = ["scope-a"]
+        mock_cross_app_params.exchange_audience = "https://okta/as"
         auth_provider.set_cross_app_flow_params(mock_cross_app_params)
 
         output = await auth_provider.get_exchanged_token()
@@ -651,6 +655,40 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
         )
         assert isinstance(output, BearerTokenCred)
         assert output.token == SecretStr(mock_exchange_token_impl.exchange_token.return_value)
+
+    @pytest.mark.asyncio
+    async def test_get_exchanged_token_cache_hit_skips_exchange(
+        self,
+        mock_extract_token: Mock,
+        mock_get_token_exchange: Mock,
+    ) -> None:
+        from datarobot_genai.dragent.xaa_token_cache import MemoryXAATokenCache
+        from datarobot_genai.dragent.xaa_token_cache import reset_xaa_token_cache
+
+        reset_xaa_token_cache()
+        mock_auth_provider_config = Mock()
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(mock_auth_provider_config)
+        mock_cross_app_params = Mock()
+        mock_cross_app_params.target_audience = _TARGET_AUDIENCE
+        mock_cross_app_params.token_url = _AGENT_TOKEN_URL
+        mock_cross_app_params.id_jag_scopes = ["read_data"]
+        mock_cross_app_params.exchange_audience = _EXCHANGE_AUDIENCE
+        auth_provider.set_cross_app_flow_params(mock_cross_app_params)
+        mock_extract_token.return_value = "incoming-user-token"
+
+        with patch(
+            f"{_MODULE}.get_xaa_token_cache",
+            return_value=MemoryXAATokenCache(skew_seconds=60),
+        ):
+            await auth_provider.get_exchanged_token()
+            mock_get_token_exchange.assert_called_once()
+            mock_get_token_exchange.reset_mock()
+            mock_get_token_exchange.return_value.exchange_token.reset_mock()
+
+            output = await auth_provider.get_exchanged_token()
+
+        mock_get_token_exchange.assert_not_called()
+        assert output.token.get_secret_value() == "TOKEN"
 
     @pytest.mark.asyncio
     async def test_get_exchanged_token_raises_error_if_flow_params_not_set(self) -> None:

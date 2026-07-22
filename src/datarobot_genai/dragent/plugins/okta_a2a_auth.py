@@ -78,6 +78,10 @@ Environment variables
 * ``IDP_AGENT_ID``              — Okta AI agent workload principal ID
 * ``IDP_AGENT_PRIVATE_KEY_JWK`` — base64-encoded or raw-JSON RSA private JWK
 * ``XAA_TOKEN_EXCHANGE_IMPL``   — ``okta_sdk`` (default) or ``http``
+* ``AGENT_CARD_XAA_TOKEN_CACHE_ENABLED`` — ``true`` (default) or ``false``
+* ``AGENT_CARD_XAA_TOKEN_CACHE_BACKEND`` — ``memory`` (default) or ``redis``
+* ``AGENT_CARD_XAA_TOKEN_SKEW_SECONDS`` — refresh before JWT ``exp`` (default ``60``)
+* ``AGENT_CARD_XAA_TOKEN_MAX_TTL_SECONDS`` — cap cache TTL (default ``3600``)
 """
 
 import base64
@@ -113,6 +117,10 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
+from datarobot_genai.dragent.xaa_token_cache import XAATokenCacheConfig
+from datarobot_genai.dragent.xaa_token_cache import build_xaa_cache_key
+from datarobot_genai.dragent.xaa_token_cache import compute_token_ttl_seconds
+from datarobot_genai.dragent.xaa_token_cache import get_xaa_token_cache
 
 try:
     from okta_client.authfoundation import LocalKeyProvider
@@ -677,8 +685,35 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             )
 
         subject_token = self._extract_token()
+        flow_params = self._flow_params
+        cache_key = build_xaa_cache_key(
+            subject_token=subject_token,
+            target_audience=flow_params.target_audience,
+            token_url=flow_params.token_url,
+            scopes=flow_params.id_jag_scopes,
+            exchange_audience=flow_params.exchange_audience,
+        )
+
+        cache = get_xaa_token_cache()
+        if cache is not None and (cached := await cache.get(cache_key)):
+            logger.debug(
+                "XAATokenCache hit for exchange_audience=%s",
+                flow_params.exchange_audience,
+            )
+            return BearerTokenCred(token=cached)
+
         impl = get_token_exchange(self.config)
-        exchanged_token = await impl.exchange_token(self._flow_params, subject_token)
+        exchanged_token = await impl.exchange_token(flow_params, subject_token)
+
+        if cache is not None:
+            cache_cfg = XAATokenCacheConfig()
+            ttl = compute_token_ttl_seconds(
+                exchanged_token,
+                skew_seconds=cache_cfg.agent_card_xaa_token_skew_seconds,
+                max_ttl_seconds=cache_cfg.agent_card_xaa_token_max_ttl_seconds,
+            )
+            await cache.set(cache_key, exchanged_token, ttl)
+
         return BearerTokenCred(token=exchanged_token)
 
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
