@@ -379,7 +379,7 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 |-------|-------|------|
 | **P0** | `AGENT_CARD_REGISTRY_CACHE_TTL=7200`, startup `prefetch()` (`registry_warmup.py`), readiness gate | Low — prefetch **implemented**; readiness pending |
 | **P1** | Stale-if-error in memory backend | Low — **implemented** |
-| **P2** | Redis L2 backend + shared cache | Medium — ops dependency |
+| **P2** | Redis L2 backend + shared cache | Medium — **implemented** |
 | **P3** | Background refresh loop | Low |
 | **P4** | XAA token cache | Medium — handle token revocation policy |
 | **P5** | Admin API: `POST /admin/registry/flush` (optional) | Low |
