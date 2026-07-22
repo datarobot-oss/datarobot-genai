@@ -214,25 +214,24 @@ def _gateway_cfg(model: str) -> LLMConfig:
 
 
 @pytest.mark.parametrize(
-    ("primary_model", "fallback_model", "expected_stripped"),
+    ("primary_model", "fallback_models", "expected_stripped"),
     [
-        ("azure/gpt-4o", "azure/o3", True),  # o-series fallback -> strip for the whole group
-        ("azure/o3", "azure/gpt-4o", True),  # o-series primary -> strip
-        ("azure/gpt-4o", "azure/gpt-5", False),  # no o-series anywhere -> keep
+        ("azure/gpt-4o", ["azure/o3"], True),  # o-series fallback -> strip for the whole group
+        ("azure/o3", ["azure/gpt-4o"], True),  # o-series primary -> strip
+        ("azure/gpt-4o", ["azure/gpt-4o", "azure/o3"], True),  # o-series later fallback -> strip
+        ("azure/gpt-4o", ["azure/gpt-5"], False),  # no o-series anywhere -> keep
     ],
 )
 def test_router_prepare_chat_with_tools_strips_parallel_for_o_series_group(
-    primary_model: str, fallback_model: str, expected_stripped: bool
+    primary_model: str, fallback_models: list[str], expected_stripped: bool
 ) -> None:
-    """parallel_tool_calls is stripped if ANY model in {primary, *fallbacks} is o-series.
-
-    litellm reuses the same kwargs on failover, so an o-series fallback would 400
-    unless the param is stripped up front.
-    """
+    """parallel_tool_calls is stripped when any model in {primary, *fallbacks} is o-series."""
     from datarobot_genai.llama_index.llm import get_router_llm
 
     with patch("litellm.Router", return_value=MagicMock()):
-        llm = get_router_llm(_gateway_cfg(primary_model), [_gateway_cfg(fallback_model)])
+        llm = get_router_llm(
+            _gateway_cfg(primary_model), [_gateway_cfg(m) for m in fallback_models]
+        )
 
     result = llm._prepare_chat_with_tools([_echo_tool()], allow_parallel_tool_calls=True)
     assert result["tools"]

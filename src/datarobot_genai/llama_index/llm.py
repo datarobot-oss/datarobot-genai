@@ -33,10 +33,8 @@ def _strip_unsupported_tool_params(
 ) -> dict[str, Any]:
     """Drop tool kwargs LlamaIndex always emits but some backends reject.
 
-    Some DR LLM gateway backends (e.g. Azure/GPT) reject ``tool_choice`` and
-    ``parallel_tool_calls`` when no tools are present. OpenAI o-series reasoning
-    models reject ``parallel_tool_calls`` even with tools present, so callers
-    pass ``supports_parallel=False`` when any target model is o-series.
+    DataRobot LLMGW (e.g. Azure/GPT) reject ``tool_choice``/``parallel_tool_calls``
+    with no tools; o-series reject ``parallel_tool_calls`` even with tools present.
     """
     if not result.get("tools"):
         result.pop("tool_choice", None)
@@ -209,10 +207,9 @@ def get_router_llm(
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
-    # The request is shaped once but litellm reuses the same kwargs when it fails
-    # over to a fallback, so parallel_tool_calls must be stripped if ANY model in
-    # the group is o-series (else the o-series fallback leg 400s). Safe for the
-    # rest: the param is optional and defaults to parallel-enabled.
+    # litellm reuses the same kwargs across the failover chain, so strip
+    # parallel_tool_calls if ANY model is o-series (else the o-series fallback
+    # leg 400s). Safe otherwise: the param is optional and defaults to enabled.
     supports_parallel = all(
         supports_parallel_tool_calls(c.to_litellm_params().get("model"))
         for c in [primary, *fallbacks]
