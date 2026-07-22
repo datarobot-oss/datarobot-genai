@@ -21,7 +21,7 @@ pip install "datarobot-genai[dragent]"
 | [a2a-auth.md](a2a-auth.md) | A2A authentication: DataRobot API key and Okta XAA |
 | [caveats.md](caveats.md) | Interface caveats |
 
-Shared env vars: [LLM configuration (shared)](../llm.md). Streaming behavior (NAT ≥ 1.6): [NAT 1.6 streaming in DRAgent](../design/nat-1.6-streaming.md).
+Shared env vars: [LLM configuration (shared)](../llm.md). Streaming behavior (NAT ≥ 1.6): [NAT 1.6 streaming in DRAgent](../design/nat-1.6-streaming.md). Multi-cluster outage resilience (registry + XAA caching): [Multi-cluster cache resilience](../design/multi-cluster-cache-resilience.md).
 
 ## Run the example
 
