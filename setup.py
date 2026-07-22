@@ -164,6 +164,10 @@ drmcp = drmcpbase + drtools + [
     "opentelemetry-exporter-otlp>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
     "async-lru>=2.3.0",
+    "motor>=3.7.0,<4.0.0",
+    "pymongo>=4.10.0,<5.0.0",
+    "dr-msf>=3.0.0,<4.0.0",
+    "dr-mongo-migrations>=0.2.3,<1.0.0",
 ]
 
 extras_require = {

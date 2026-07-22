@@ -44,8 +44,19 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       SESSION_SECRET_KEY: acceptance-test-secret
+      MONGO_URI: mongodb://localhost:27017
     steps:
       - name: Checkout
         uses: actions/checkout@v4
