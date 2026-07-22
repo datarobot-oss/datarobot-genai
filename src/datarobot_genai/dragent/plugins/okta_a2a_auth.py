@@ -625,13 +625,13 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
     def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
         super().__init__(config)
         self._flow_params: _CrossAppFlowParams | None = None
-        self._forward_inbound_http_headers: bool = False
+        self._forward_inbound_x_datarobot_http_headers: bool = False
 
     def set_cross_app_flow_params(self, cross_app_flow_params: _CrossAppFlowParams) -> None:
         self._flow_params = cross_app_flow_params
 
-    def set_forward_inbound_http_headers(self, enabled: bool) -> None:
-        self._forward_inbound_http_headers = enabled
+    def set_forward_inbound_x_datarobot_http_headers(self, enabled: bool) -> None:
+        self._forward_inbound_x_datarobot_http_headers = enabled
 
     async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
         token = self._extract_token()
@@ -660,13 +660,17 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         excluded_header_keys.update(header.lower() for header in self.config.fallback_token_headers)
         return excluded_header_keys
 
-    def get_forwardable_headers_from_inbound_request(self) -> list[HeaderCred]:
+    def get_forwardable_x_datarobot_headers_from_inbound_request(self) -> list[HeaderCred]:
         headers: dict[str, str] = Context.get().metadata.headers or {}
 
         return [
             HeaderCred(name=header_key, value=SecretStr(header_value))
             for header_key, header_value in headers.items()
-            if header_key not in self.get_non_forwardable_header_keys() and header_value is not None
+            if (
+                header_key.find("x-datarobot-") == 0
+                and header_key not in self.get_non_forwardable_header_keys()
+                and header_value is not None
+            )
         ]
 
     async def get_exchanged_token(self) -> BearerTokenCred:
@@ -689,8 +693,10 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         """
         auth_request_credentials: list[HeaderCred | BearerTokenCred] = []
 
-        if self._forward_inbound_http_headers:
-            forwardable_header_creds = self.get_forwardable_headers_from_inbound_request()
+        if self._forward_inbound_x_datarobot_http_headers:
+            forwardable_header_creds = (
+                self.get_forwardable_x_datarobot_headers_from_inbound_request()
+            )
             auth_request_credentials.extend(forwardable_header_creds)
         bearer_token_cred = await self.get_exchanged_token()
         auth_request_credentials.append(bearer_token_cred)
