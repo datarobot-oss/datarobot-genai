@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.4
+- `drtools/core/sandbox` (MODEL-24089): **fix** spurious `SandboxError: no result marker` on MCP sandbox runs that actually succeeded. The one-shot workload runner emits its `__DR_SANDBOX_RESULT__` marker from a `finally`, and it does land at `GET /otel/workload/{id}/logs/` — but staging OTEL ingestion latency for one-shot workloads can exceed the previous 30s log-flush poll budget, so `_fetch_logs` gave up before the marker flushed and the `sandbox.execute` span went ERROR despite correct output. Widened `_LOG_FLUSH_TIMEOUT_S` 30s → 180s; this only lengthens how long we wait for the log flush (the runner has already finished executing by then), so it never prolongs actual code execution.
+
 ## 0.26.2
 - `drmcputils/panels`: **fix** scoped panel id resolution against the live Files API — the exact-path existence probes introduced in 0.26.1 passed a file path as a listing `prefix`, which `list_contained_files` rejects with a 400 (`Prefix must end with a forward slash "/"`), breaking every scoped `get`/`delete`/`move` in production (panel routes returned 500). Probes now list the candidate `<source>/<scope>/` *directory* (one bounded prefix query) and match the exact path client-side; `DataRobotFilesBlobStore.list` fails fast with the API's own message on non-directory prefixes, the `BlobStore` protocol documents the constraint, and the test fakes enforce it so the mismatch can't reappear.
 

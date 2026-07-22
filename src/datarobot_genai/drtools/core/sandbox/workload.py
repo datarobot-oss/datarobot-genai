@@ -81,7 +81,17 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # workload-api flags the "service" errored) before the OTEL collector flushes
 # the container's stdout — including the result marker. Poll the logs endpoint
 # up to this budget for the marker rather than reading once and racing the flush.
-_LOG_FLUSH_TIMEOUT_S = 30.0
+#
+# This budget only gates how long we wait for the OTEL *log flush*: the one-shot
+# runner has already finished executing by the time we reach this loop, so a
+# longer wait here costs nothing but patience — it never prolongs actual code
+# execution. Staging OTEL ingestion latency for one-shot workloads has been
+# observed to exceed 30s, so the marker (which the runner emits from a finally
+# and which DOES eventually land at GET /otel/workload/{id}/logs/) was missed
+# within the old 30s window, yielding a spurious "no result marker" SandboxError
+# for runs that actually succeeded. Widen the budget so the poll outlasts the
+# flush latency. See MODEL-24089 / MCP sandbox marker-not-found.
+_LOG_FLUSH_TIMEOUT_S = 180.0
 
 # Port the sandbox runner image serves on. The workload-api requires a port on
 # primary (service) containers and enforces >= 1024.
