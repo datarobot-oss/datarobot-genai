@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.8
+## 0.26.9
 - `dragent`: NAT batch evaluation (`nat eval`) plugins for DataRobot moderation metrics — `agent_goal_accuracy`, `faithfulness`, `task_adherence`, and `agent_guideline_adherence` — scoring in-process via `datarobot-moderations` OOTB judges (no NeMo Evaluator microservice).
+
+## 0.26.8
+- `llama_index`: strip `parallel_tool_calls` from tool requests for OpenAI o-series reasoning models (o1/o3/o4-mini), which reject it. gpt-5/gpt-4o keep it. Fixes tool-using agents failing on o-series with `Unsupported parameter: 'parallel_tool_calls'`.
 
 ## 0.26.7
 - `dragent`: Improve forward header logic in `OAuth2CrossApplicationAccessOAuth2AuthProvider`.
