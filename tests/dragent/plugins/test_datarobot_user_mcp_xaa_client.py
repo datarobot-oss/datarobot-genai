@@ -252,7 +252,9 @@ class TestSetupAuthProvider:
         mock_auth_provider.set_cross_app_flow_params.assert_called_once_with(
             mock_get_xaa_params.return_value,
         )
-        mock_auth_provider.set_forward_inbound_http_headers.assert_called_once_with(True)
+        mock_auth_provider.set_forward_inbound_x_datarobot_http_headers.assert_called_once_with(
+            True
+        )
 
     @pytest.mark.asyncio
     async def test_setup_auth_provider_without_inbound_headers_forwarded(

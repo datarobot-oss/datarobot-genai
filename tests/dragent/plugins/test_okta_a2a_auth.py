@@ -412,10 +412,10 @@ class TestAuthenticate:
         return provider
 
     @pytest.fixture
-    def mock_get_forwardable_headers_from_inbound_request(self) -> Iterator[Mock]:
+    def mock_get_forwardable_x_datarobot_headers_from_inbound_request(self) -> Iterator[Mock]:
         with patch.object(
             OAuth2CrossApplicationAccessOAuth2AuthProvider,
-            "get_forwardable_headers_from_inbound_request",
+            "get_forwardable_x_datarobot_headers_from_inbound_request",
         ) as mock_func:
             mock_func.return_value = [HeaderCred(name="afda", value="sdafas")]
             yield mock_func
@@ -533,7 +533,7 @@ class TestAuthenticate:
     @pytest.mark.asyncio
     async def test_not_forward_inbound_headers_during_authenticate(
         self,
-        mock_get_forwardable_headers_from_inbound_request: Mock,
+        mock_get_forwardable_x_datarobot_headers_from_inbound_request: Mock,
         mock_get_exchanged_token: AsyncMock,
     ) -> None:
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
@@ -542,28 +542,28 @@ class TestAuthenticate:
         auth_provider.set_cross_app_flow_params(Mock())
         output = await auth_provider.authenticate()
 
-        mock_get_forwardable_headers_from_inbound_request.assert_not_called()
+        mock_get_forwardable_x_datarobot_headers_from_inbound_request.assert_not_called()
         mock_get_exchanged_token.assert_called_once_with()
         assert output == AuthResult(credentials=[mock_get_exchanged_token.return_value])
 
     @pytest.mark.asyncio
-    async def test_forward_inbound_headers_during_authenticate(
+    async def test_set_forward_inbound_x_datarobot_http_headers(
         self,
-        mock_get_forwardable_headers_from_inbound_request: Mock,
+        mock_get_forwardable_x_datarobot_headers_from_inbound_request: Mock,
         mock_get_exchanged_token: AsyncMock,
     ) -> None:
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
             OAuth2CrossApplicationAccessAuthProviderConfig()
         )
         auth_provider.set_cross_app_flow_params(Mock())
-        auth_provider.set_forward_inbound_http_headers(True)
+        auth_provider.set_forward_inbound_x_datarobot_http_headers(True)
         output = await auth_provider.authenticate()
 
-        mock_get_forwardable_headers_from_inbound_request.assert_called_once_with()
+        mock_get_forwardable_x_datarobot_headers_from_inbound_request.assert_called_once_with()
         mock_get_exchanged_token.assert_called_once_with()
         assert output == AuthResult(
             credentials=[
-                *mock_get_forwardable_headers_from_inbound_request.return_value,
+                *mock_get_forwardable_x_datarobot_headers_from_inbound_request.return_value,
                 mock_get_exchanged_token.return_value,
             ]
         )
@@ -607,12 +607,12 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
 
         assert auth_provider._flow_params == cross_app_params
 
-    def test_set_forward_inbound_http_headers(self) -> None:
+    def test_set_forward_inbound_x_datarobot_http_headers(self) -> None:
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(Mock())
         enabled = Mock()
-        auth_provider.set_forward_inbound_http_headers(enabled)
+        auth_provider.set_forward_inbound_x_datarobot_http_headers(enabled)
 
-        assert auth_provider._forward_inbound_http_headers == enabled
+        assert auth_provider._forward_inbound_x_datarobot_http_headers == enabled
 
     def test_get_non_forwardable_header_keys(self) -> None:
         auth_provider_config = OAuth2CrossApplicationAccessAuthProviderConfig()
@@ -621,14 +621,19 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
         output = auth_provider.get_non_forwardable_header_keys()
         assert output == {"x-datarobot-external-access-token", "authorization"}
 
-    def test_get_forwardable_headers_from_inbound_request(self, mock_nat_context_get: Mock) -> None:
+    def test_get_forwardable_x_datarobot_headers_from_inbound_request(
+        self,
+        mock_nat_context_get: Mock,
+    ) -> None:
         auth_provider_config = OAuth2CrossApplicationAccessAuthProviderConfig()
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(auth_provider_config)
-        headers = {"afda": "sdafas"}
+        headers = {"x-datarobot-adfsa": "sdafas", "non-forwarded-header": "0"}
         mock_nat_context_get.return_value.metadata.headers = headers
-        output = auth_provider.get_forwardable_headers_from_inbound_request()
+        output = auth_provider.get_forwardable_x_datarobot_headers_from_inbound_request()
 
-        assert output == [HeaderCred(name="afda", value=SecretStr(headers["afda"]))]
+        assert output == [
+            HeaderCred(name="x-datarobot-adfsa", value=SecretStr(headers["x-datarobot-adfsa"]))
+        ]
 
     @pytest.mark.asyncio
     async def test_get_exchanged_token(

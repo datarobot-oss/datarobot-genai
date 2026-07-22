@@ -74,9 +74,9 @@ class MCPClientWithXAASupportConfig(  # type: ignore[call-arg]
     )
 
     forward_inbound_headers: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "If set to True, all HTTP headers of inbound request are forwarded "
+            "If set to True, selected x-datarobot-* HTTP headers of inbound request are forwarded "
             "except for reserved headers configured in auth_provider."
         ),
     )
@@ -143,7 +143,7 @@ async def setup_auth_provider(
     auth_provider.set_cross_app_flow_params(xaa_params)
 
     if config.forward_inbound_headers:
-        auth_provider.set_forward_inbound_http_headers(True)
+        auth_provider.set_forward_inbound_x_datarobot_http_headers(True)
 
     return auth_provider
 
