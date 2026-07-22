@@ -102,6 +102,19 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
+    def test_stale_if_error_default(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_stale_if_error is True
+
+    def test_max_staleness_default(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_max_staleness_seconds == 24 * 3600
+
+    def test_stale_if_error_from_env(self):
+        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_STALE_IF_ERROR": "false"}):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_stale_if_error is False
+
 
 # ---------------------------------------------------------------------------
 # Tests: _CacheEntry
@@ -111,16 +124,29 @@ class TestAgentCardRegistryConfig:
 class TestCacheEntry:
     def test_not_expired_within_ttl(self):
         entry = _CacheEntry(MagicMock())
+        assert entry.is_fresh(3600)
         assert not entry.is_expired(3600)
 
     def test_expired_with_zero_ttl(self):
         entry = _CacheEntry(MagicMock())
+        assert not entry.is_fresh(0)
         assert entry.is_expired(0)
 
     def test_expired_after_ttl(self):
         entry = _CacheEntry(MagicMock())
         entry.fetched_at -= 100  # Simulate 100s ago
+        assert not entry.is_fresh(50)
         assert entry.is_expired(50)
+
+    def test_within_staleness(self):
+        entry = _CacheEntry(MagicMock())
+        entry.fetched_at -= 100
+        assert entry.is_within_staleness(3600)
+        assert not entry.is_within_staleness(50)
+
+    def test_zero_max_staleness_never_servable(self):
+        entry = _CacheEntry(MagicMock())
+        assert not entry.is_within_staleness(0)
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +363,102 @@ class TestAgentCardRegistry:
         mock_fetch.return_value = {"dep-1": MagicMock(name="card1-refreshed")}
         await registry.get(deployment_id="dep-1")
         assert mock_fetch.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: AgentCardRegistry — stale-if-error
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCardRegistryStaleIfError:
+    @pytest.fixture
+    def mock_fetch(self):
+        with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
+            yield m
+
+    async def test_serves_stale_when_refresh_fails(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=True,
+        )
+
+        card1 = await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120  # past soft TTL, within staleness
+
+        card2 = await registry.get(deployment_id="dep-1")
+
+        assert card1 is stale_card
+        assert card2 is stale_card
+        assert mock_fetch.await_count == 2
+
+    async def test_raises_when_stale_if_error_disabled(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=False,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+    async def test_raises_when_beyond_max_staleness(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=30,
+            stale_if_error=True,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120  # beyond max_staleness
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+    async def test_stale_if_error_on_flush_pending_failure(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=True,
+        )
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120
+
+        registry.register(deployment_id="dep-2")
+        card = await registry.get(deployment_id="dep-1")
+
+        assert card is stale_card
 
 
 # ---------------------------------------------------------------------------
