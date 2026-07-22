@@ -18,8 +18,6 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
-from a2a.types import InvalidParamsError
-from a2a.utils.errors import ServerError
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from fastapi import FastAPI
 from nat.data_models.user_info import UserInfo
@@ -38,63 +36,15 @@ from datarobot_genai.core.utils.logging import setup_logging
 
 from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
+from .a2a import create_dr_a2a_server
+from .a2a import resolve_identity_from_headers
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
-from .session import _auth_handler
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
 logger = logging.getLogger(__name__)
-
-
-_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
-_GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
-_INVALID_AUTH_CONTEXT_MSG = (
-    "X-DataRobot-Authorization-Context header is present but invalid or expired"
-)
-
-
-def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
-    """Extract gateway-validated user identity from A2A-forwarded headers.
-
-    Resolution order (first match wins):
-
-    1. ``X-DataRobot-Authorization-Context`` -- signed JWT forwarded by
-       components in the agent application template.  Decoded via
-       :data:`_auth_handler` and hashed through
-       ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
-       key as the AG-UI path.  When this header is present but validation
-       fails, raises :class:`~a2a.utils.errors.ServerError` with
-       :class:`~a2a.types.InvalidParamsError` (no fall-through to other headers
-       or ``context_id``).
-    2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
-       gateway, tied to the API-key owner.  Used only when the auth-context
-       header is absent.  Same ``_from_session_cookie`` transform is applied
-       for key-format consistency.
-    3. ``None`` -- no gateway-provided identity (local dev).
-
-    Returns ``None`` when *headers* are absent or contain no recognised
-    identity header.
-    """
-    if not headers:
-        return None
-
-    if _AUTH_CONTEXT_HEADER in headers:
-        try:
-            auth_ctx = _auth_handler.get_context(headers)
-        except Exception:
-            logger.warning("Failed to decode auth-context header", exc_info=True)
-            auth_ctx = None
-        if auth_ctx is None:
-            raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
-        return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
-
-    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
-    if raw_user_id:
-        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-    return None
 
 
 class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
@@ -146,7 +96,7 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         # execute() has a catch-all that re-wraps exceptions as InternalError.
         token = None
         try:
-            workflow_key = _resolve_identity_from_headers(normalised_headers)
+            workflow_key = resolve_identity_from_headers(normalised_headers)
             if workflow_key is None and context.context_id:
                 workflow_key = UserInfo._from_session_cookie(context.context_id).get_user_id()
                 logger.warning(
@@ -226,7 +176,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._session_managers.append(session_manager)
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
-        a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
+        a2a_server = create_dr_a2a_server(self._a2a_worker, agent_card, agent_executor)
         a2a_app = a2a_server.build()
 
         app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)

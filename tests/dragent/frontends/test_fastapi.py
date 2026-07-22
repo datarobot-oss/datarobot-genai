@@ -48,13 +48,14 @@ from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
+from datarobot_genai.dragent.frontends.a2a import redact_agent_card
+from datarobot_genai.dragent.frontends.a2a import resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
 from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
@@ -242,13 +243,17 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 return_value=mock_a2a_worker,
             ),
             patch(
+                "datarobot_genai.dragent.frontends.fastapi.create_dr_a2a_server",
+                return_value=MagicMock(build=MagicMock(return_value=FastAPI())),
+            ) as mock_create_dr_a2a_server,
+            patch(
                 "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
                 new_callable=AsyncMock,
                 return_value=MagicMock(),
             ),
         ):
             await dragent_worker.add_routes(app, mock_builder)
-        agent_card = mock_a2a_worker.create_a2a_server.call_args[0][0]
+        agent_card = mock_create_dr_a2a_server.call_args[0][1]
         assert agent_card.url == "http://localhost:8000/a2a/"
 
     @pytest.mark.asyncio
@@ -262,6 +267,10 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 return_value=mock_a2a_worker,
             ),
             patch(
+                "datarobot_genai.dragent.frontends.fastapi.create_dr_a2a_server",
+                return_value=MagicMock(build=MagicMock(return_value=FastAPI())),
+            ) as mock_create_dr_a2a_server,
+            patch(
                 "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
                 new_callable=AsyncMock,
                 return_value=MagicMock(),
@@ -269,7 +278,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         ):
             await dragent_worker.add_routes(app, mock_builder)
 
-        mock_a2a_worker.create_a2a_server.assert_called_once()
+        mock_create_dr_a2a_server.assert_called_once()
 
     async def test_add_routes_appends_session_manager(
         self, dragent_worker, mock_builder, mock_a2a_worker, patch_super_add_routes
@@ -316,11 +325,11 @@ def _make_auth_ctx(user_id: str) -> MagicMock:
     return ctx
 
 
-_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.fastapi._auth_handler.get_context"
+_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.a2a._auth_handler.get_context"
 
 
 class TestResolveIdentityFromHeaders:
-    """Tests for the _resolve_identity_from_headers helper."""
+    """Tests for the resolve_identity_from_headers helper."""
 
     @pytest.fixture(autouse=True)
     def _no_real_jwt_decode(self):
@@ -329,27 +338,27 @@ class TestResolveIdentityFromHeaders:
             yield
 
     def test_returns_none_for_none_headers(self):
-        assert _resolve_identity_from_headers(None) is None
+        assert resolve_identity_from_headers(None) is None
 
     def test_returns_none_for_empty_headers(self):
-        assert _resolve_identity_from_headers({}) is None
+        assert resolve_identity_from_headers({}) is None
 
     def test_returns_none_when_no_identity_headers(self):
-        result = _resolve_identity_from_headers(
+        result = resolve_identity_from_headers(
             {"authorization": "Bearer tok", "content-type": "application/json"}
         )
         assert result is None
 
     def test_returns_uuid5_for_valid_signed_jwt(self):
         with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("dr-uid-abc")):
-            result = _resolve_identity_from_headers(
+            result = resolve_identity_from_headers(
                 {"x-datarobot-authorization-context": "signed-jwt"}
             )
         assert result == _expected_key("dr-uid-abc")
 
     def test_raises_for_invalid_jwt(self):
         with pytest.raises(ServerError) as exc_info:
-            _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
+            resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
         assert isinstance(exc_info.value.error, InvalidParamsError)
         assert exc_info.value.error.code == -32602
         assert "invalid or expired" in exc_info.value.error.message
@@ -360,14 +369,14 @@ class TestResolveIdentityFromHeaders:
             patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
             pytest.raises(ServerError) as exc_info,
         ):
-            _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+            resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
         assert isinstance(exc_info.value.error, InvalidParamsError)
         assert exc_info.value.error.code == -32602
 
     def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
         """A present but invalid auth-context JWT must not fall back to gateway user ID."""
         with pytest.raises(ServerError) as exc_info:
-            _resolve_identity_from_headers(
+            resolve_identity_from_headers(
                 {
                     "x-datarobot-authorization-context": "garbage",
                     "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
@@ -377,12 +386,12 @@ class TestResolveIdentityFromHeaders:
         assert exc_info.value.error.code == -32602
 
     def test_falls_back_to_gateway_user_id_header(self):
-        result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        result = resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
         assert result == _expected_key("64baa56996fb36e3eeeefc44")
 
     def test_auth_context_takes_precedence_over_gateway_user_id(self):
         with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
-            result = _resolve_identity_from_headers(
+            result = resolve_identity_from_headers(
                 {
                     "x-datarobot-authorization-context": "signed-jwt",
                     "x-datarobot-user-id": "gateway-user",
@@ -393,8 +402,8 @@ class TestResolveIdentityFromHeaders:
 
     def test_deterministic_same_user(self):
         with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("user-xyz")):
-            r1 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-            r2 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+            r1 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+            r2 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
         assert r1 == r2
 
     def test_different_users_produce_different_keys(self):
@@ -402,7 +411,7 @@ class TestResolveIdentityFromHeaders:
         for uid in ("alice", "bob"):
             with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
                 results.append(
-                    _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+                    resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
                 )
         assert results[0] != results[1]
 
@@ -612,6 +621,56 @@ class TestPerUserCompatibleAgentExecutor:
         assert "falling back to context_id" in mock_logger.warning.call_args[0][0].lower()
 
 
+class TestRedactAgentCard:
+    async def test_strips_skills_and_identity_extensions(self, a2a_frontend_config):
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        external = DRAgentA2AExternalConfig(id="catalog-id-xyz")
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "dep-abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env):
+            card = await create_agent_card(
+                a2a_frontend_config,
+                cross_app_access=None,
+                skills=[skill],
+                external=external,
+            )
+
+        redacted = redact_agent_card(card)
+
+        assert redacted.skills == []
+        assert redacted.supports_authenticated_extended_card is True
+        assert card.capabilities.extensions is not None
+        uris = [ext.uri for ext in card.capabilities.extensions]
+        assert INTERNAL_IDENTITY_URI in uris
+        assert EXTERNAL_IDENTITY_URI in uris
+        redacted_uris = [ext.uri for ext in (redacted.capabilities.extensions or [])]
+        assert INTERNAL_IDENTITY_URI not in redacted_uris
+        assert EXTERNAL_IDENTITY_URI not in redacted_uris
+
+    async def test_preserves_non_identity_extensions(self, a2a_frontend_config):
+        cross_app_access = CrossApplicationAccessConfig(
+            token_endpoint_auth_method="private_key_jwt",
+            token_exchange=CrossAppTokenExchange(
+                trusted_issuer="https://your-org.oktapreview.com",
+                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
+            ),
+            token_request=CrossAppTokenRequest(
+                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
+                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
+            ),
+        )
+        card = await create_agent_card(
+            a2a_frontend_config, cross_app_access=cross_app_access, skills=[]
+        )
+
+        redacted = redact_agent_card(card)
+
+        assert redacted.capabilities.extensions is not None
+        assert any(ext.uri == JWT_BEARER_GRANT_TYPE_URI for ext in redacted.capabilities.extensions)
+
+
 class TestCreateAgentCard:
     async def test_default_skill_when_skills_empty(self, a2a_frontend_config):
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
@@ -619,6 +678,7 @@ class TestCreateAgentCard:
         assert card.skills[0].id == "call"
         assert card.skills[0].name == "My Agent"
         assert card.skills[0].description == "Does things"
+        assert card.supports_authenticated_extended_card is True
 
     async def test_configured_skills_used_when_present(self, a2a_frontend_config):
         skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
