@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.2
+- `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block (`AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`, default `true`).
+- `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when registry fetch fails, within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (`AGENT_CARD_REGISTRY_STALE_IF_ERROR`, default `true`).
+
 ## 0.29.1
 - `docs/` and `e2e-tests/`: **re-locked to match the root.** Both are separate resolution roots with their own `uv.lock`, and nothing re-locks them when the root's dependencies change, so they had been drifting since 0.28.0. `docs/uv.lock` still carried the `datarobot-early-access` pin that 0.28.3 gave up, and `e2e-tests/uv.lock` still resolved `datarobot` 3.17.0; both now take stable `datarobot>=3.18.0,<4.0.0` with the matching extra specifiers, and both pick up `pydantic-settings` for the `auth`, `drmcpbase`, `drmcputils`, and `drtools` extras. Neither lock ships in the wheel, so this changes no published dependency; it stops the docs build and the e2e suite from installing a resolution the package itself no longer describes.
 - Every root's lock now stamps the same `datarobot-genai` version. The satellites install the root as an editable path dependency and record its version, which the release bump does not update on its own, so `docs/` sat at 0.28.3 and `e2e-tests/` at 0.28.5 against a 0.29.0 root. Left alone this is the same drift the rest of this entry removes.
