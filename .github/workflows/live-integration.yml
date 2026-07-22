@@ -1,0 +1,58 @@
+name: Live Integration (Files API)
+
+# Runs the opt-in live integration suite (tests/drtools/integration/) against
+# a real DataRobot environment. These tests write to (and clean up in) the
+# account's shared `panels` Files container, so they are excluded from the
+# credential-less per-PR jobs and run here instead:
+#
+#   - nightly, to catch server-side API drift (e.g. listing-prefix semantics
+#     that the in-memory unit fakes can only model — the 0.26.1 escape)
+#   - on demand via workflow_dispatch, recommended before any release that
+#     touches drmcputils/files or drmcputils/panels
+#
+# No pull_request trigger by design: this job needs API credentials, and
+# secrets must never be exposed to fork PR code.
+
+on:
+  schedule:
+    - cron: '17 7 * * *'  # nightly, 07:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  files-live-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --extra drmcputils --dev
+
+      - name: Run live integration suite
+        env:
+          DR_FILES_LIVE_INTEGRATION: '1'
+          DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
+          DATAROBOT_ENDPOINT: ${{ secrets.E2E_DATAROBOT_ENDPOINT }}
+        run: |
+          mkdir -p test_results
+          uv run pytest tests/drtools/integration/ -m integration -v \
+            --junitxml=test_results/live-integration.xml --durations=0
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-integration-results
+          path: test_results/
