@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +35,7 @@ from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.config import llm_gateway_url
 from datarobot_genai.core.config import register_config_provider
 from datarobot_genai.core.config import resolve_config
+from datarobot_genai.core.config import resolve_llm_config
 
 
 def _make_config(**overrides: object) -> Config:
@@ -352,3 +354,175 @@ def test_injected_config_drives_endpoint_helpers() -> None:
             "/deployments/dep-injected/chat/completions"
         )
         assert default_datarobot_llm_gateway_url() == "https://custom.datarobot.example"
+
+
+# --- Deprecated LLM param bridge (REMOVE WITH THE BRIDGE IN A FUTURE RELEASE) --
+#
+# resolve_llm_config falls back to the pre-rename bare runtime-parameter names
+# (nim_deployment_id / use_datarobot_llm_gateway) when the namespaced field was
+# not explicitly provided, warning loudly. These tests pin the four cases per
+# param: new-only (silent), old-only (fallback + warning), both (new wins,
+# silent), and neither (default, silent).
+
+_NIM_BANNER = "DEPRECATED LLM CONFIG PARAMETER IN USE"
+
+
+def _config_fields_set(fields_set: set[str], **values: object) -> Config:
+    """Build a Config while controlling which fields count as explicitly set.
+
+    model_fields_set is the signal the deprecation bridge keys off. Config()
+    normally derives it from its settings sources; here we set it directly so a
+    test can model "the namespaced field was (not) provided" precisely.
+    """
+    base = {
+        "datarobot_endpoint": "https://app.datarobot.com/api/v2",
+        "datarobot_api_token": None,
+        "llm_deployment_id": None,
+        "llm_nim_deployment_id": None,
+        "llm_use_datarobot_llm_gateway": True,
+        "llm_default_model": None,
+    }
+    base.update(values)
+    return Config.model_construct(_fields_set=set(fields_set), **base)
+
+
+@pytest.fixture
+def clear_legacy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear both the runtime-param and bare forms of the deprecated names."""
+    for name in ("NIM_DEPLOYMENT_ID", "USE_DATAROBOT_LLM_GATEWAY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(f"MLOPS_RUNTIME_PARAM_{name}", raising=False)
+
+
+# nim_deployment_id
+
+
+def test_bridge_nim_new_only_is_used_silently(
+    clear_legacy_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    cfg = _config_fields_set({"llm_nim_deployment_id"}, llm_nim_deployment_id="new-nim")
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_nim_deployment_id == "new-nim"
+    assert _NIM_BANNER not in caplog.text
+
+
+def test_bridge_nim_falls_back_to_old_name_with_warning(
+    clear_legacy_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
+    cfg = _config_fields_set(set())  # new name not explicitly provided
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_nim_deployment_id == "legacy-nim"
+    assert _NIM_BANNER in caplog.text
+    assert "NIM_DEPLOYMENT_ID" in caplog.text
+    assert "LLM_NIM_DEPLOYMENT_ID" in caplog.text
+
+
+def test_bridge_nim_new_wins_over_old_silently(
+    clear_legacy_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
+    cfg = _config_fields_set({"llm_nim_deployment_id"}, llm_nim_deployment_id="new-nim")
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_nim_deployment_id == "new-nim"
+    assert _NIM_BANNER not in caplog.text
+
+
+def test_bridge_nim_neither_set_defaults_to_none_silently(
+    clear_legacy_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    cfg = _config_fields_set(set())
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_nim_deployment_id is None
+    assert _NIM_BANNER not in caplog.text
+
+
+# use_datarobot_llm_gateway (bool; default True, so model_fields_set is the signal)
+
+
+def test_bridge_gateway_new_only_is_used_silently(
+    clear_legacy_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    cfg = _config_fields_set(
+        {"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False
+    )
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_use_datarobot_llm_gateway is False
+    assert _NIM_BANNER not in caplog.text
+
+
+def test_bridge_gateway_falls_back_to_old_name_with_warning(
+    clear_legacy_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Old value "0" must override the truthy default AND be coerced to a real bool.
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_USE_DATAROBOT_LLM_GATEWAY", "0")
+    cfg = _config_fields_set(set())  # new name not explicitly provided (default True)
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_use_datarobot_llm_gateway is False
+    assert _NIM_BANNER in caplog.text
+    assert "USE_DATAROBOT_LLM_GATEWAY" in caplog.text
+
+
+def test_bridge_gateway_new_wins_over_old_silently(
+    clear_legacy_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_USE_DATAROBOT_LLM_GATEWAY", "1")
+    cfg = _config_fields_set(
+        {"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False
+    )
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_use_datarobot_llm_gateway is False
+    assert _NIM_BANNER not in caplog.text
+
+
+def test_bridge_gateway_neither_set_defaults_to_true_silently(
+    clear_legacy_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    cfg = _config_fields_set(set())
+    with patch.object(config_mod, "Config", return_value=cfg):
+        with caplog.at_level(logging.WARNING):
+            result = resolve_llm_config()
+    assert result.llm_use_datarobot_llm_gateway is True
+    assert _NIM_BANNER not in caplog.text
+
+
+def test_bridge_uses_instance_namespace_but_bare_legacy_name(
+    clear_legacy_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-default instance name still falls back to the bare legacy param.
+
+    The namespaced field is ``{instance}_...`` but the deprecated param was always
+    bare, so the fallback and the warning's target name reflect the instance.
+    """
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
+    # The provider takes precedence over Config(); its object has an empty
+    # model_fields_set, so the namespaced field reads as "not provided".
+    register_config_provider(LLMConfig, default_llm_name="myagent")
+    with caplog.at_level(logging.WARNING):
+        result = resolve_llm_config()
+    assert result.llm_nim_deployment_id == "legacy-nim"
+    assert "MYAGENT_NIM_DEPLOYMENT_ID" in caplog.text

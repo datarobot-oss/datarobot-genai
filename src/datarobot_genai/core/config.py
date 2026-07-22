@@ -14,14 +14,18 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
 from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from datarobot.core.config import getenv
 from pydantic import BaseModel
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
@@ -252,6 +256,53 @@ def resolve_datarobot_api_token() -> str | None:
     return token or None
 
 
+# --- Deprecated LLM config parameter bridge (REMOVE IN A FUTURE RELEASE) -------
+#
+# Two per-LLM params were renamed to the universal ``{instance}_`` namespace:
+#   nim_deployment_id          -> {instance}_nim_deployment_id
+#   use_datarobot_llm_gateway  -> {instance}_use_datarobot_llm_gateway
+#
+# Old deployments still carry the pre-rename bare runtime-parameter names. Those
+# bare names are no longer declared config fields, and the settings base class is
+# ``extra="ignore"``, so they never land on the resolved config object; they can
+# only be read straight from the environment. This bridge does exactly that, then
+# warns loudly. It WILL BE REMOVED IN A FUTURE RELEASE. New deployments set only
+# the namespaced params and never reach this path.
+
+
+def _coerce_bool(value: object) -> bool:
+    """Coerce a runtime-parameter value (a bool, or a ``"1"``/``"0"`` string) to bool."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _deprecated_param(old_name: str, new_name: str) -> object | None:
+    """Read a renamed LLM param from its pre-rename runtime-parameter name.
+
+    Returns ``None`` when the old param is absent. When present, emits a loud,
+    hard-to-miss deprecation warning and returns the old value. REMOVE IN A
+    FUTURE RELEASE together with the rest of this bridge.
+    """
+    old_value = getenv(old_name)
+    if old_value is None:
+        return None
+    banner = "!" * 88
+    logger.warning(
+        "\n%s\n"
+        "DEPRECATED LLM CONFIG PARAMETER IN USE\n"
+        "  Runtime parameter %r is DEPRECATED and WILL BE REMOVED IN A FUTURE RELEASE.\n"
+        "  Rename it to %r as soon as possible.\n"
+        "  Falling back to the deprecated value for now.\n"
+        "%s",
+        banner,
+        old_name,
+        new_name,
+        banner,
+    )
+    return old_value
+
+
 def resolve_llm_config(name: str | None = None) -> LLMConfig:
     """Resolve ONE LLM instance's config from the global config.
 
@@ -267,14 +318,34 @@ def resolve_llm_config(name: str | None = None) -> LLMConfig:
     # exactly once per resolution (values still re-resolve on the next call).
     endpoint: str | None = getattr(config, "datarobot_endpoint", None)
     api_token: str | None = getattr(config, "datarobot_api_token", None)
+
+    # --- deprecated-name backwards-compat bridge (REMOVE IN A FUTURE RELEASE) ---
+    # Fall back to the pre-rename bare param names only when the namespaced field
+    # was not explicitly provided. ``model_fields_set`` is what distinguishes an
+    # explicit value from a default (required for the bool, whose default is True).
+    set_fields = getattr(config, "model_fields_set", ())
+
+    llm_nim_deployment_id = getattr(config, f"{instance}_nim_deployment_id", None)
+    if f"{instance}_nim_deployment_id" not in set_fields:
+        old = _deprecated_param("NIM_DEPLOYMENT_ID", f"{instance.upper()}_NIM_DEPLOYMENT_ID")
+        if old is not None:
+            llm_nim_deployment_id = str(old)
+
+    llm_use_datarobot_llm_gateway = getattr(config, f"{instance}_use_datarobot_llm_gateway", True)
+    if f"{instance}_use_datarobot_llm_gateway" not in set_fields:
+        old = _deprecated_param(
+            "USE_DATAROBOT_LLM_GATEWAY", f"{instance.upper()}_USE_DATAROBOT_LLM_GATEWAY"
+        )
+        if old is not None:
+            llm_use_datarobot_llm_gateway = _coerce_bool(old)
+    # --- end bridge ---
+
     return LLMConfig(
         datarobot_endpoint=endpoint or DEFAULT_DATAROBOT_ENDPOINT,
         datarobot_api_token=api_token or None,
         llm_deployment_id=getattr(config, f"{instance}_deployment_id", None),
-        llm_nim_deployment_id=getattr(config, f"{instance}_nim_deployment_id", None),
-        llm_use_datarobot_llm_gateway=getattr(
-            config, f"{instance}_use_datarobot_llm_gateway", True
-        ),
+        llm_nim_deployment_id=llm_nim_deployment_id,
+        llm_use_datarobot_llm_gateway=llm_use_datarobot_llm_gateway,
         llm_default_model=getattr(config, f"{instance}_default_model", None),
     )
 
