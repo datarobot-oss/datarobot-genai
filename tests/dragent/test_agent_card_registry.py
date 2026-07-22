@@ -601,6 +601,7 @@ class TestAgentCardRegistryRegisterFlush:
         await registry.get(deployment_id="dep-1")
         assert len(registry._pending_deployment_ids) == 0
         assert len(registry._pending_external_ids) == 0
+        assert registry.has_registered_lookups() is True
 
 
 # ---------------------------------------------------------------------------

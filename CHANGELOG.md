@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block (`AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`, default `true`).
 - `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when registry fetch fails, within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (`AGENT_CARD_REGISTRY_STALE_IF_ERROR`, default `true`).
 - `dragent`: Redis L2 agent card registry cache (`AGENT_CARD_REGISTRY_BACKEND=redis`) with in-process L1 read-through/write-through; shared across dragent replicas via `AGENT_CARD_REGISTRY_REDIS_URL`.
+- `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (`AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`, default `1800`; set `0` to disable).
 
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
