@@ -24,7 +24,7 @@ middleware:
           type: nemo_guardrails
           stage: prompt
           llm_type: llmGateway
-          llm_gateway_model_id: vertex_ai/gemini-3.1-pro-preview
+          llm_gateway_model_id: anthropic/claude-opus-4-7
           intervention:
             action: block
             message: "This topic is outside the allowed scope."
@@ -35,7 +35,7 @@ middleware:
           type: nemo_guardrails
           stage: response
           llm_type: llmGateway
-          llm_gateway_model_id: vertex_ai/gemini-3.1-pro-preview
+          llm_gateway_model_id: anthropic/claude-opus-4-7
           intervention:
             action: block
             message: "This topic is outside the allowed scope."
