@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.28.4
 - `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block (`AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`, default `true`).
 - `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when registry fetch fails, within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (`AGENT_CARD_REGISTRY_STALE_IF_ERROR`, default `true`).
+- `dragent`: Redis L2 agent card registry cache (`AGENT_CARD_REGISTRY_BACKEND=redis`) with in-process L1 read-through/write-through; shared across dragent replicas via `AGENT_CARD_REGISTRY_REDIS_URL`.
 
 ## 0.28.3
 - **Back to stable `datarobot`** for the `core`, `auth`, and `fs` extras (`>=3.18.0,<4.0.0`), replacing the `datarobot-early-access` pin taken in 0.28.0. The config API that pin was waiting on has settled: stable 3.18.0 ships `datarobot.core.config`'s `LLMConfig`, `LLMType`, and `DataRobotAppFrameworkBaseSettings.resolve_llm_config`, which is everything `datarobot_genai.core.config` consumes. With only one `datarobot` distribution in play again, the `tool.uv.exclude-dependencies` entry that dropped stable `datarobot` in favor of early access is gone, and `datarobot-moderations` and `datarobot-predict` are satisfied by the same copy genai uses. Consumers no longer need to exclude or override one of the two packages to keep a single `datarobot` on the import path.
