@@ -201,3 +201,54 @@ async def test_get_router_llm_astream_chat_yields_chunks() -> None:
     gen = await llm._astream_chat([ChatMessage(role="user", content="hi")])
     results = [r async for r in gen]
     assert len(results) == 2
+
+
+def _echo_tool() -> Any:
+    from llama_index.core.tools import FunctionTool  # noqa: PLC0415
+
+    return FunctionTool.from_defaults(fn=lambda text: text, name="echo")
+
+
+def _gateway_cfg(model: str) -> LLMConfig:
+    return LLMConfig(use_datarobot_llm_gateway=True, llm_default_model=model)
+
+
+@pytest.mark.parametrize(
+    ("primary_model", "fallback_model", "expected_stripped"),
+    [
+        ("azure/gpt-4o", "azure/o3", True),  # o-series fallback -> strip for the whole group
+        ("azure/o3", "azure/gpt-4o", True),  # o-series primary -> strip
+        ("azure/gpt-4o", "azure/gpt-5", False),  # no o-series anywhere -> keep
+    ],
+)
+def test_router_prepare_chat_with_tools_strips_parallel_for_o_series_group(
+    primary_model: str, fallback_model: str, expected_stripped: bool
+) -> None:
+    """parallel_tool_calls is stripped if ANY model in {primary, *fallbacks} is o-series.
+
+    litellm reuses the same kwargs on failover, so an o-series fallback would 400
+    unless the param is stripped up front.
+    """
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        llm = get_router_llm(_gateway_cfg(primary_model), [_gateway_cfg(fallback_model)])
+
+    result = llm._prepare_chat_with_tools([_echo_tool()], allow_parallel_tool_calls=True)
+    assert result["tools"]
+    assert ("parallel_tool_calls" not in result) is expected_stripped
+    if not expected_stripped:
+        assert result["parallel_tool_calls"] is True
+
+
+def test_router_prepare_chat_with_tools_strips_both_params_when_no_tools() -> None:
+    """With no tools, both tool_choice and parallel_tool_calls are stripped for any model."""
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        llm = get_router_llm(_gateway_cfg("azure/gpt-4o"), [_gateway_cfg("azure/gpt-4o")])
+
+    result = llm._prepare_chat_with_tools([], allow_parallel_tool_calls=True)
+    assert not result.get("tools")
+    assert "parallel_tool_calls" not in result
+    assert "tool_choice" not in result

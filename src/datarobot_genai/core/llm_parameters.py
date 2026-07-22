@@ -31,7 +31,8 @@ _OPENAI_REASONING_MODEL_RE = re.compile(
 )
 
 # OpenAI o-series reasoning models (o1, o3, o4-mini, ...) reject the
-# ``parallel_tool_calls`` request parameter.
+# parallel_tool_calls request param. gpt-5 is a reasoning model but accepts it,
+# so it is intentionally excluded here (unlike _OPENAI_REASONING_MODEL_RE above).
 _OPENAI_NO_PARALLEL_TOOL_CALLS_RE = re.compile(r"(?:^|/)o[1-9]", re.IGNORECASE)
 
 _ANTHROPIC_SONNET_EXTRA_BODY = {

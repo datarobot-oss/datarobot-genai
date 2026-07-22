@@ -29,18 +29,19 @@ from datarobot_genai.core.llm_parameters import supports_parallel_tool_calls
 
 
 def _strip_unsupported_tool_params(
-    result: dict[str, Any], model_name: str | None
+    result: dict[str, Any], *, supports_parallel: bool
 ) -> dict[str, Any]:
     """Drop tool kwargs LlamaIndex always emits but some backends reject.
 
     Some DR LLM gateway backends (e.g. Azure/GPT) reject ``tool_choice`` and
     ``parallel_tool_calls`` when no tools are present. OpenAI o-series reasoning
-    models reject ``parallel_tool_calls`` even with tools present.
+    models reject ``parallel_tool_calls`` even with tools present, so callers
+    pass ``supports_parallel=False`` when any target model is o-series.
     """
     if not result.get("tools"):
         result.pop("tool_choice", None)
         result.pop("parallel_tool_calls", None)
-    elif not supports_parallel_tool_calls(model_name):
+    elif not supports_parallel:
         result.pop("parallel_tool_calls", None)
     return result
 
@@ -84,7 +85,8 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
 
         def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
             result = super()._prepare_chat_with_tools(tools, **kwargs)
-            return _strip_unsupported_tool_params(result, self.model)
+            supports_parallel = supports_parallel_tool_calls(self.model)
+            return _strip_unsupported_tool_params(result, supports_parallel=supports_parallel)
 
     extra_body = config.pop("extra_body", None)
     if extra_body is not None:
@@ -207,7 +209,14 @@ def get_router_llm(
     from datarobot_genai.core.router import build_litellm_router  # noqa: PLC0415
 
     router = build_litellm_router(primary, fallbacks, router_settings)
-    primary_model_name = primary.to_litellm_params().get("model")
+    # The request is shaped once but litellm reuses the same kwargs when it fails
+    # over to a fallback, so parallel_tool_calls must be stripped if ANY model in
+    # the group is o-series (else the o-series fallback leg 400s). Safe for the
+    # rest: the param is optional and defaults to parallel-enabled.
+    supports_parallel = all(
+        supports_parallel_tool_calls(c.to_litellm_params().get("model"))
+        for c in [primary, *fallbacks]
+    )
 
     def _tool_calls_kwargs(message: Any) -> dict:
         if not message.tool_calls:
@@ -238,7 +247,7 @@ def get_router_llm(
 
         def _prepare_chat_with_tools(self, tools: Any, **kwargs: Any) -> Any:
             result = super()._prepare_chat_with_tools(tools, **kwargs)
-            return _strip_unsupported_tool_params(result, primary_model_name)
+            return _strip_unsupported_tool_params(result, supports_parallel=supports_parallel)
 
         def _chat(self, messages: Any, **kwargs: Any) -> Any:
             from llama_index.core.base.llms.types import ChatMessage  # noqa: PLC0415
