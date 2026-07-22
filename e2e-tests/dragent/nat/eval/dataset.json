@@ -1,0 +1,11 @@
+[
+  {
+    "id": "faithfulness-1",
+    "question": "What is the capital of France?",
+    "answer": "Paris",
+    "generated_answer": "The capital of France is Paris.",
+    "context": [
+      "Paris is the capital and largest city of France."
+    ]
+  }
+]
