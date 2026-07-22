@@ -62,6 +62,9 @@ _DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 # Default hard staleness bound for stale-if-error (in seconds).
 _DEFAULT_MAX_STALENESS_SECONDS = 24 * 3600
 
+# Default background refresh interval (in seconds). 0 disables the refresh loop.
+_DEFAULT_REFRESH_INTERVAL_SECONDS = 30 * 60
+
 # Default HTTP timeout for registry requests (in seconds).
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -169,6 +172,15 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     agent_card_registry_redis_prefix: str = Field(
         default="dragent:",
         description="Key prefix for Redis agent card cache entries.",
+    )
+
+    agent_card_registry_refresh_interval_seconds: int = Field(
+        default=_DEFAULT_REFRESH_INTERVAL_SECONDS,
+        ge=0,
+        description=(
+            "Background refresh period in seconds for registered agent cards "
+            "past the soft cache TTL. Set to 0 to disable. Default: 1800 (30 min)."
+        ),
     )
 
 
@@ -301,6 +313,10 @@ class AgentCardRegistry:
         self._pending_deployment_ids: set[str] = set()
         self._pending_external_ids: set[str] = set()
 
+        # All IDs registered at config-parse time (used for background refresh)
+        self._registered_deployment_ids: set[str] = set()
+        self._registered_external_ids: set[str] = set()
+
         config = AgentCardRegistryConfig()
         self._timeout = timeout if timeout is not None else config.agent_card_registry_timeout
         self._cache_ttl = (
@@ -349,8 +365,14 @@ class AgentCardRegistry:
         """
         if deployment_id:
             self._pending_deployment_ids.add(deployment_id)
+            self._registered_deployment_ids.add(deployment_id)
         elif external_id:
             self._pending_external_ids.add(external_id)
+            self._registered_external_ids.add(external_id)
+
+    def has_registered_lookups(self) -> bool:
+        """Return whether any registry lookup IDs were registered."""
+        return bool(self._registered_deployment_ids or self._registered_external_ids)
 
     # ------------------------------------------------------------------
     # Internal HTTP
@@ -516,6 +538,34 @@ class AgentCardRegistry:
             if missing_ext:
                 parsed = await self._fetch({"externalIds": ",".join(missing_ext)})
                 await self._store_cards(parsed)
+
+    async def refresh_all_registered(self) -> None:
+        """Re-fetch registered IDs whose cache entries are past the soft TTL.
+
+        Failures are logged and existing cache entries are left in place so
+        stale-if-error can continue serving them during registry outages.
+        """
+        if not self._registered_deployment_ids and not self._registered_external_ids:
+            logger.debug("No registered agent card IDs; skipping background refresh.")
+            return
+
+        deployment_ids = sorted(self._registered_deployment_ids)
+        external_ids = sorted(self._registered_external_ids)
+        logger.debug(
+            "Refreshing registered agent cards (deployment_ids=%s, external_ids=%s)",
+            deployment_ids,
+            external_ids,
+        )
+        try:
+            await self.prefetch(
+                deployment_ids=deployment_ids or None,
+                external_ids=external_ids or None,
+            )
+        except AgentCardRegistryError:
+            logger.warning(
+                "Background agent card registry refresh failed; keeping cached entries.",
+                exc_info=True,
+            )
 
     async def get(
         self,

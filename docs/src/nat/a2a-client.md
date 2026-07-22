@@ -105,6 +105,8 @@ When a workflow has many registry-backed function groups, all cards are resolved
 
 On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in the same batch (enabled by default via `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`). Disable with `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP=false` if you need to defer registry access until the first tool call.
 
+While the server is running, registered cards are **refreshed in the background** on a fixed interval (default 30 min via `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`). Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained.
+
 #### Registry environment variables
 
 | Variable | Required | Description |
@@ -119,6 +121,7 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 | `AGENT_CARD_REGISTRY_BACKEND` | No | Cache backend: `memory` (default, in-process only) or `redis` (L1 + shared Redis L2). |
 | `AGENT_CARD_REGISTRY_REDIS_URL` | When `backend=redis` | Redis connection URL, e.g. `redis://cache.secondary.svc:6379/0`. |
 | `AGENT_CARD_REGISTRY_REDIS_PREFIX` | No | Key prefix for Redis entries. Default `dragent:`. |
+| `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | No | Background refresh period in seconds for registered cards past the soft cache TTL. Default `1800` (30 min). Set to `0` to disable. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`

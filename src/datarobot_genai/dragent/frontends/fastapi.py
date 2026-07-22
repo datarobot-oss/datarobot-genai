@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
+from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
 from .a2a import A2A_MOUNT_PATH
@@ -252,7 +253,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
             async with parent_lifespan(lifespan_app):
                 await warmup_registry_from_config(self._config)
-                yield
+                async with registry_refresh_lifespan(self._config):
+                    yield
             if self._a2a_worker is not None:
                 await self._a2a_worker.cleanup()
                 logger.info("A2A worker resources cleaned up")
