@@ -381,7 +381,7 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 | **P1** | Stale-if-error in memory backend | Low — **implemented** |
 | **P2** | Redis L2 backend + shared cache | Medium — **implemented** |
 | **P3** | Background refresh loop | Low — **implemented** |
-| **P4** | XAA token cache | Medium — handle token revocation policy |
+| **P4** | XAA token cache | Medium — **implemented** |
 | **P5** | Admin API: `POST /admin/registry/flush` (optional) | Low |
 
 ## Security considerations
