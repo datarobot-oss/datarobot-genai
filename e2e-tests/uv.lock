@@ -352,6 +352,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-timeout"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274, upload-time = "2024-11-06T16:41:39.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233, upload-time = "2024-11-06T16:41:37.9Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -898,7 +907,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.26.6"
+version = "0.26.7"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -953,6 +962,7 @@ dragent = [
     { name = "pyarrow" },
     { name = "pyjwt" },
     { name = "ragas" },
+    { name = "redis" },
     { name = "requests" },
     { name = "starlette" },
 ]
@@ -1196,6 +1206,7 @@ requires-dist = [
     { name = "ragas", marker = "extra == 'dragent'", specifier = ">=0.4.3,<0.5.0" },
     { name = "ragas", marker = "extra == 'langgraph'", specifier = ">=0.4.3,<0.5.0" },
     { name = "ragas", marker = "extra == 'llamaindex'", specifier = ">=0.4.3,<0.5.0" },
+    { name = "redis", marker = "extra == 'dragent'", specifier = ">=5.0.0,<6.0.0" },
     { name = "requests", marker = "extra == 'core'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'crewai'", specifier = ">=2.32.4,<3.0.0" },
     { name = "requests", marker = "extra == 'dragent'", specifier = ">=2.32.4,<3.0.0" },
@@ -1216,6 +1227,7 @@ dev = [
     { name = "aioresponses", specifier = ">=0.7.8" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "datarobot-predict", specifier = ">=1.13.2" },
+    { name = "fakeredis", extras = ["lua"], specifier = ">=2.26.0" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "perplexityai", specifier = ">=0.27" },
@@ -5994,6 +6006,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d2/bc/3234517692ac0ffae1ec2ec940992e4057844c49ee6c51c07ce385bb98f1/ragas-0.4.3.tar.gz", hash = "sha256:1eb1f61dbc8613ad014fdb8d630cbe9a1caec1ea01664a106993cb756128c001", size = 44029626, upload-time = "2026-01-13T17:48:01.043Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/e0/1fecd22c93d3ed66453cbbdefd05528331af4d33b2b76a370d751231912c/ragas-0.4.3-py3-none-any.whl", hash = "sha256:ef1d75f674c294e9a6e7d8e9ad261b6bf4697dad1c9cbd1a756ba7a6b4849a38", size = 466452, upload-time = "2026-01-13T17:47:59.2Z" },
+]
+
+[[package]]
+name = "redis"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
+    { name = "pyjwt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6a/cf/128b1b6d7086200c9f387bd4be9b2572a30b90745ef078bd8b235042dc9f/redis-5.3.1.tar.gz", hash = "sha256:ca49577a531ea64039b5a36db3d6cd1a0c7a60c34124d46924a45b956e8cf14c", size = 4626200, upload-time = "2025-07-25T08:06:27.778Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/26/5c5fa0e83c3621db835cfc1f1d789b37e7fa99ed54423b5f519beb931aa7/redis-5.3.1-py3-none-any.whl", hash = "sha256:dc1909bd24669cc31b5f67a039700b16ec30571096c5f1f0d9d2324bff31af97", size = 272833, upload-time = "2025-07-25T08:06:26.317Z" },
 ]
 
 [[package]]

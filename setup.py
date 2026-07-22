@@ -86,6 +86,7 @@ dragent = core + [
     "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
     "mem0ai>=1.0.4,<2.0.0",
+    "redis>=5.0.0,<6.0.0",
     "starlette>=1.0.1",  # CVE fix
 ]
 

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.7
+- `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block (`AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`, default `true`).
+- `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when registry fetch fails, within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (`AGENT_CARD_REGISTRY_STALE_IF_ERROR`, default `true`).
+- `dragent`: Redis L2 agent card registry cache (`AGENT_CARD_REGISTRY_BACKEND=redis`) with in-process L1 read-through/write-through; shared across dragent replicas via `AGENT_CARD_REGISTRY_REDIS_URL`.
+- `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (`AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`, default `1800`; set `0` to disable).
+- `dragent`: cache Okta XAA exchanged access tokens (`AGENT_CARD_XAA_TOKEN_CACHE_ENABLED`, default `true`) with in-process or shared Redis backend to reduce Okta load and latency.
+
 ## 0.26.6
 - `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
 - `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
