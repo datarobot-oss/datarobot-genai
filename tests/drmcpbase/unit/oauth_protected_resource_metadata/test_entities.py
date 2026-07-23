@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
+import yaml
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import BaseDataClass
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
@@ -76,7 +76,7 @@ def mock_token_request_scopes() -> list[str]:
 
 
 @pytest.fixture
-def xaa_metadata_in_json(
+def xaa_metadata_in_dict(
     mock_token_endpoint_auth_method: str,
     mock_token_exchange_trusted_issuer: str,
     mock_token_exchange_audience: str,
@@ -99,17 +99,17 @@ def xaa_metadata_in_json(
 
 
 @pytest.fixture
-def metadata_in_json(
+def metadata_in_dict(
     mock_mcp_as_resource_server_url: str,
     mock_authorization_server_urls: list[str],
     mock_scopes_supported: list[str],
-    xaa_metadata_in_json: dict[str, Any],
+    xaa_metadata_in_dict: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "resource": mock_mcp_as_resource_server_url,
         "authorization_servers": mock_authorization_server_urls,
         "scopes_supported": mock_scopes_supported,
-        "xaa_metadata": xaa_metadata_in_json,
+        "xaa_metadata": xaa_metadata_in_dict,
     }
 
 
@@ -120,27 +120,27 @@ class DummyDataClassInheritingBaseDataClass(BaseDataClass):
 
 
 class TestBaseDataClass:
-    def test_to_json_without_null_attribute(self) -> None:
+    def test_to_dict_without_null_attribute(self) -> None:
         dataclass_object = DummyDataClassInheritingBaseDataClass(1, None)
-        assert dataclass_object.to_json_without_null_attribute() == {"attribute": 1}
+        assert dataclass_object.to_dict_without_null_attribute() == {"attribute": 1}
 
-    def test_to_json_string(self) -> None:
+    def test_to_yaml_string(self) -> None:
         dataclass_object = DummyDataClassInheritingBaseDataClass(1, None)
-        assert dataclass_object.to_json_string() == '{"attribute": 1}'
+        assert dataclass_object.to_yaml_string() == "attribute: 1\n"
 
 
 class TestXAAMetadata:
     @pytest.fixture
     def metadata_without_token_request_audience(
         self,
-        xaa_metadata_in_json: dict[str, Any],
+        xaa_metadata_in_dict: dict[str, Any],
     ) -> dict[str, Any]:
-        xaa_metadata_in_json["token_request"].pop("audience")
-        return xaa_metadata_in_json
+        xaa_metadata_in_dict["token_request"].pop("audience")
+        return xaa_metadata_in_dict
 
-    def test_load_from_json(
+    def test_load_from_dict(
         self,
-        xaa_metadata_in_json: dict[str, Any],
+        xaa_metadata_in_dict: dict[str, Any],
         mock_token_endpoint_auth_method: str,
         mock_token_exchange_trusted_issuer: str,
         mock_token_exchange_audience: str,
@@ -148,7 +148,7 @@ class TestXAAMetadata:
         mock_token_request_audience: str,
         mock_token_request_scopes: list[str],
     ) -> None:
-        metadata = XAAMetadata.from_json(xaa_metadata_in_json)
+        metadata = XAAMetadata.from_dict(xaa_metadata_in_dict)
 
         assert isinstance(metadata, XAAMetadata)
         assert metadata.token_endpoint_auth_method == mock_token_endpoint_auth_method
@@ -162,36 +162,36 @@ class TestXAAMetadata:
         assert token_request_params.audience == mock_token_request_audience
         assert token_request_params.scopes == mock_token_request_scopes
 
-    def test_load_from_json_without_token_request_audience(
+    def test_load_from_dict_without_token_request_audience(
         self,
         metadata_without_token_request_audience: dict[str, Any],
     ) -> None:
-        metadata = XAAMetadata.from_json(metadata_without_token_request_audience)
+        metadata = XAAMetadata.from_dict(metadata_without_token_request_audience)
 
         assert isinstance(metadata, XAAMetadata)
         assert metadata.token_request.audience is None
 
-    def test_to_json_string(self, xaa_metadata_in_json: dict[str, Any]) -> None:
-        metadata = XAAMetadata.from_json(xaa_metadata_in_json)
-        assert metadata.to_json_string() == json.dumps(xaa_metadata_in_json)
+    def test_to_yaml_string(self, xaa_metadata_in_dict: dict[str, Any]) -> None:
+        metadata = XAAMetadata.from_dict(xaa_metadata_in_dict)
+        assert metadata.to_yaml_string() == yaml.safe_dump(xaa_metadata_in_dict)
 
 
 class TestMCPOAuthProtectedResourceMetadataConfig:
-    def test_load_from_json(
+    def test_load_from_dict(
         self,
-        metadata_in_json: dict[str, Any],
+        metadata_in_dict: dict[str, Any],
         mock_mcp_as_resource_server_url: str,
         mock_authorization_server_urls: list[str],
         mock_scopes_supported: list[str],
-        xaa_metadata_in_json: dict[str, Any],
+        xaa_metadata_in_dict: dict[str, Any],
     ) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_json(metadata_in_json)
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
 
         assert metadata.resource == mock_mcp_as_resource_server_url
         assert metadata.authorization_servers == mock_authorization_server_urls
         assert metadata.scopes_supported == mock_scopes_supported
         assert isinstance(metadata.xaa_metadata, XAAMetadata)
 
-    def test_to_json_string(self, metadata_in_json: dict[str, Any]) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_json(metadata_in_json)
-        assert metadata.to_json_string() == json.dumps(metadata_in_json)
+    def test_to_yaml_string(self, metadata_in_dict: dict[str, Any]) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
+        assert metadata.to_yaml_string() == yaml.safe_dump(metadata_in_dict)
