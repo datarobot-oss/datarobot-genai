@@ -78,7 +78,7 @@ async def test_datarobot_llm_deployment_llamaindex_with_identity_token():
 
 async def test_datarobot_nim_llamaindex():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123",
+        llm_nim_deployment_id="123",
         model_name="azure/gpt-4o-2024-11-20",
         temperature=0.0,
         api_key="some_token",
@@ -112,9 +112,9 @@ async def test_datarobot_llm_component_llamaindex(
     ):
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="azure/gpt-5-mini",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+            llm_use_datarobot_llm_gateway=use_datarobot_llm_gateway,
             llm_deployment_id=llm_deployment_id,
-            nim_deployment_id=nim_deployment_id,
+            llm_nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
         identity_patch = patch(

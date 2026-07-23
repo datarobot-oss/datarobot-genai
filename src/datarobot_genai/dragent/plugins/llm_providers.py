@@ -57,7 +57,7 @@ class DataRobotLLMComponentModelConfig(
         ),
         default=None,
     )
-    use_datarobot_llm_gateway: bool = Field(
+    llm_use_datarobot_llm_gateway: bool = Field(
         default_factory=default_use_datarobot_llm_gateway,
         description="Whether to use the DataRobot LLM gateway.",
     )
@@ -65,7 +65,7 @@ class DataRobotLLMComponentModelConfig(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
-    nim_deployment_id: str | None = Field(
+    llm_nim_deployment_id: str | None = Field(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
@@ -130,7 +130,7 @@ class DataRobotNIMModelConfig(DataRobotReasoningMixin, NIMModelConfig, name="dat
         description="The model name to pass through to the NIM deployment.",
         default=None,
     )
-    nim_deployment_id: str = Field(
+    llm_nim_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
@@ -170,10 +170,10 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
           _type: datarobot-llm-router
           primary:
             llm_deployment_id: "abc123"
-            use_datarobot_llm_gateway: false
+            llm_use_datarobot_llm_gateway: false
           fallbacks:
             - llm_deployment_id: "def456"
-              use_datarobot_llm_gateway: false
+              llm_use_datarobot_llm_gateway: false
           num_retries: 3
     """
 
