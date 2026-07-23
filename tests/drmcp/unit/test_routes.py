@@ -13,6 +13,7 @@
 # limitations under the License.
 import json
 from collections.abc import Callable
+from collections.abc import Iterator
 from http import HTTPStatus
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
@@ -24,6 +25,9 @@ from fastmcp.prompts import Prompt
 from datarobot_genai import __version__ as drmcp_genai_version
 from datarobot_genai.drmcp.core.routes import _tools_gallery_enabled
 from datarobot_genai.drmcp.core.routes import register_routes
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
+    MCPOAuthProtectedResourceMetadataManager,
+)
 
 
 class TestRoutesCoverage:
@@ -883,3 +887,64 @@ class TestToolsGalleryGate:
         with patch(GATE_FLAG, new=AsyncMock(return_value=enabled)) as mock_flag:
             assert await _tools_gallery_enabled(Mock()) is enabled
         mock_flag.assert_awaited_once_with()
+
+
+class TestOAuthProtectedResourceMetadataRoute:
+    @pytest.fixture
+    def mock_mcp(self) -> Mock:
+        mock_mcp_object = Mock()
+        mock_mcp_object.registered_routes = {}
+
+        def mock_custom_route(route_path: str, methods: list[str]):
+            def decorator(handler: Callable):
+                for method in methods:
+                    mock_mcp_object.registered_routes[(method, route_path)] = handler
+                return handler
+
+            return decorator
+
+        mock_mcp_object.custom_route = mock_custom_route
+        return mock_mcp_object
+
+    @pytest.fixture(autouse=True)
+    def mock_mcp_register_routes(self, mock_mcp: Mock) -> Iterator[None]:
+        register_routes(mock_mcp)
+        yield
+
+    @pytest.fixture
+    def mock_get_protected_resource_metadata_api_response(self) -> Iterator[Mock]:
+        with patch.object(
+            MCPOAuthProtectedResourceMetadataManager,
+            "get_protected_resource_metadata_api_response",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.mark.asyncio
+    async def test_get_return_metadata(
+        self,
+        mock_get_protected_resource_metadata_api_response: Mock,
+        mock_mcp: Mock,
+    ) -> None:
+        mock_get_protected_resource_metadata_api_response.return_value = {"mock": "mock"}
+
+        metadata_handler = mock_mcp.registered_routes["GET", "/oauthProtectedResourceMetadata"]
+        response = await metadata_handler(Mock())
+
+        assert response.status_code == HTTPStatus.OK
+        response_data = json.loads(response.body.decode("utf-8"))
+        assert response_data == {"mock": "mock"}
+
+    @pytest.mark.asyncio
+    async def test_get_return_not_implemented_error(
+        self,
+        mock_get_protected_resource_metadata_api_response: Mock,
+        mock_mcp: Mock,
+    ) -> None:
+        mock_get_protected_resource_metadata_api_response.return_value = None
+
+        metadata_handler = mock_mcp.registered_routes["GET", "/oauthProtectedResourceMetadata"]
+        response = await metadata_handler(Mock())
+
+        assert response.status_code == HTTPStatus.NOT_IMPLEMENTED
+        response_data = json.loads(response.body.decode("utf-8"))
+        assert response_data == {"error": "OAuth Protected Resource Metadata Not Implemented"}

@@ -18,6 +18,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
+    MCPOAuthProtectedResourceMetadataManager,
+)
 from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
@@ -333,4 +336,19 @@ def register_routes(mcp: DataRobotMCP) -> None:
             return JSONResponse(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to refresh prompt templates: {str(e)}"},
+            )
+
+    @mcp.custom_route(prefix_mount_path("/oauthProtectedResourceMetadata"), methods=["GET"])
+    async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
+        manager = MCPOAuthProtectedResourceMetadataManager()
+        api_response = manager.get_protected_resource_metadata_api_response()
+        if api_response:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content=api_response,
+            )
+        else:
+            return JSONResponse(
+                status_code=HTTPStatus.NOT_IMPLEMENTED,
+                content={"error": "OAuth Protected Resource Metadata Not Implemented"},
             )

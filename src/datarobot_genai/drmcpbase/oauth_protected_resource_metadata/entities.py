@@ -11,24 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import logging
 from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Any
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
 
 class BaseDataClass:
-    def to_json_without_null_attribute(self) -> dict[str, Any]:
+    def to_dict_without_null_attribute(self) -> dict[str, Any]:
         return asdict(
             self,  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
             dict_factory=lambda x: {k: v for k, v in x if v is not None},
         )
 
-    def to_json_string(self) -> str:
-        return json.dumps(self.to_json_without_null_attribute())
+    def to_yaml_string(self) -> str:
+        return yaml.safe_dump(self.to_dict_without_null_attribute())
 
 
 @dataclass
@@ -37,8 +38,8 @@ class XAATokenExchangeParams(BaseDataClass):
     audience: str
 
     @classmethod
-    def from_json(cls, json_dict: dict[str, str]) -> "XAATokenExchangeParams":
-        return cls(json_dict["trusted_issuer"], json_dict["audience"])
+    def from_dict(cls, dict_input: dict[str, str]) -> "XAATokenExchangeParams":
+        return cls(dict_input["trusted_issuer"], dict_input["audience"])
 
 
 @dataclass
@@ -49,8 +50,8 @@ class XAATokenRequestParams(BaseDataClass):
     scopes: list[str]
 
     @classmethod
-    def from_json(cls, json_dict: dict[str, Any]) -> "XAATokenRequestParams":
-        return cls(json_dict["token_url"], json_dict.get("audience"), json_dict["scopes"])
+    def from_dict(cls, dict_input: dict[str, Any]) -> "XAATokenRequestParams":
+        return cls(dict_input["token_url"], dict_input.get("audience"), dict_input["scopes"])
 
 
 @dataclass
@@ -60,11 +61,11 @@ class XAAMetadata(BaseDataClass):
     token_request: XAATokenRequestParams
 
     @classmethod
-    def from_json(cls, metadata_in_json: dict[str, Any]) -> "XAAMetadata":
+    def from_dict(cls, metadata_in_dict: dict[str, Any]) -> "XAAMetadata":
         return cls(
-            metadata_in_json["token_endpoint_auth_method"],
-            XAATokenExchangeParams.from_json(metadata_in_json["token_exchange"]),
-            XAATokenRequestParams.from_json(metadata_in_json["token_request"]),
+            metadata_in_dict["token_endpoint_auth_method"],
+            XAATokenExchangeParams.from_dict(metadata_in_dict["token_exchange"]),
+            XAATokenRequestParams.from_dict(metadata_in_dict["token_request"]),
         )
 
 
@@ -76,18 +77,18 @@ class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
     xaa_metadata: XAAMetadata | None
 
     @classmethod
-    def from_json(
-        cls, metadata_in_json: dict[str, Any]
+    def from_dict(
+        cls, metadata_in_dict: dict[str, Any]
     ) -> "MCPOAuthProtectedResourceMetadataConfig":
         xaa_metadata = (
-            XAAMetadata.from_json(metadata_in_json["xaa_metadata"])
-            if metadata_in_json.get("xaa_metadata")
+            XAAMetadata.from_dict(metadata_in_dict["xaa_metadata"])
+            if metadata_in_dict.get("xaa_metadata")
             else None
         )
         return cls(
-            metadata_in_json["resource"],
-            metadata_in_json["authorization_servers"],
-            metadata_in_json["scopes_supported"],
+            metadata_in_dict["resource"],
+            metadata_in_dict["authorization_servers"],
+            metadata_in_dict["scopes_supported"],
             xaa_metadata,
         )
 

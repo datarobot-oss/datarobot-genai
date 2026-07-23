@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import os
 from collections.abc import Iterator
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
@@ -70,8 +70,8 @@ class TestSupportedMethodsToSendBearerToken:
 
 class TestMCPOAuthProtectedResourceMetadataManager:
     @pytest.fixture
-    def mock_json_loads(self) -> Iterator[Mock]:
-        with patch.object(json, "loads") as mock_func:
+    def mock_yaml_safe_load(self) -> Iterator[Mock]:
+        with patch.object(yaml, "safe_load") as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -83,8 +83,8 @@ class TestMCPOAuthProtectedResourceMetadataManager:
             yield mock_func
 
     @pytest.fixture
-    def mock_mcp_oauth_protected_resource_metadata_user_config_from_json(self) -> Iterator[Mock]:
-        with patch.object(MCPOAuthProtectedResourceMetadataConfig, "from_json") as mock_func:
+    def mock_mcp_oauth_protected_resource_metadata_user_config_from_dict(self) -> Iterator[Mock]:
+        with patch.object(MCPOAuthProtectedResourceMetadataConfig, "from_dict") as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -114,9 +114,9 @@ class TestMCPOAuthProtectedResourceMetadataManager:
 
     def test_load_config(
         self,
-        mock_json_loads: Mock,
+        mock_yaml_safe_load: Mock,
         mock_load_mcp_oauth_protected_resource_metadata_from_env_var: Mock,
-        mock_mcp_oauth_protected_resource_metadata_user_config_from_json: Mock,
+        mock_mcp_oauth_protected_resource_metadata_user_config_from_dict: Mock,
     ) -> None:
         manager = MCPOAuthProtectedResourceMetadataManager()
         output = manager.load_config()
@@ -125,12 +125,12 @@ class TestMCPOAuthProtectedResourceMetadataManager:
         mock_metadata_json_string = (
             mock_load_mcp_oauth_protected_resource_metadata_from_env_var.return_value
         )
-        mock_json_loads.assert_called_once_with(mock_metadata_json_string)
-        mock_mcp_oauth_protected_resource_metadata_user_config_from_json.assert_called_once_with(
-            mock_json_loads.return_value
+        mock_yaml_safe_load.assert_called_once_with(mock_metadata_json_string)
+        mock_mcp_oauth_protected_resource_metadata_user_config_from_dict.assert_called_once_with(
+            mock_yaml_safe_load.return_value
         )
         assert (
-            output == mock_mcp_oauth_protected_resource_metadata_user_config_from_json.return_value
+            output == mock_mcp_oauth_protected_resource_metadata_user_config_from_dict.return_value
         )
 
     def test_get_admin_config(self) -> None:
@@ -180,8 +180,8 @@ class TestMCPOAuthProtectedResourceMetadataManager:
         output = manager.get_protected_resource_metadata_api_response()
 
         mock_metadata = mock_get_protected_resource_metadata.return_value
-        mock_metadata.to_json_without_null_attribute.assert_called_once_with()
-        assert output == mock_metadata.to_json_without_null_attribute.return_value
+        mock_metadata.to_dict_without_null_attribute.assert_called_once_with()
+        assert output == mock_metadata.to_dict_without_null_attribute.return_value
 
     def test_get_protected_resource_metadata_api_response_return_none(
         self,
