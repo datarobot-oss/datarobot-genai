@@ -31,6 +31,27 @@ from datarobot_genai.drtools.vdb import tools
 VDB_ID = "69cbb73789723b6936c6c9e1"
 
 
+def _vdb_sdk_deployment(
+    deployment_id: str,
+    *,
+    label: str = "My VDB Deployment",
+    status: str = "launching",
+) -> SimpleNamespace:
+    """Deployment object shape returned by dr.Deployment.get() (snake_case keys)."""
+    return SimpleNamespace(
+        id=deployment_id,
+        label=label,
+        status=status,
+        model={"target_type": "VectorDatabase"},
+        default_prediction_server={
+            "id": "srv1",
+            "url": "https://pred.example.com",
+            "datarobot-key": "key1",
+        },
+        prediction_environment=None,
+    )
+
+
 def _vdb_deployment_record(
     deployment_id: str,
     *,
@@ -43,6 +64,24 @@ def _vdb_deployment_record(
         "status": status,
         "model": {"targetType": "VectorDatabase"},
     }
+
+
+@pytest.mark.parametrize(
+    ("deployment", "expected"),
+    [
+        ({"model": {"targetType": "VectorDatabase"}}, True),
+        ({"model": {"target_type": "VectorDatabase"}}, True),
+        ({"capabilities": {"supportsVectorDatabaseQuerying": True}}, True),
+        ({"capabilities": {"supports_vector_database_querying": True}}, True),
+        ({"model": {"targetType": "Binary"}}, False),
+        ({"model": {"target_type": "Binary"}}, False),
+        (SimpleNamespace(model={"target_type": "VectorDatabase"}), True),
+        (SimpleNamespace(model={"targetType": "VectorDatabase"}), True),
+        (SimpleNamespace(model={"target_type": "Binary"}), False),
+    ],
+)
+def test_is_vector_database_deployment(deployment: object, expected: bool) -> None:
+    assert tools._is_vector_database_deployment(deployment) is expected
 
 
 @pytest.fixture
@@ -146,16 +185,7 @@ async def test_vdb_list_empty() -> None:
 async def test_vdb_query_success(
     mock_get_client_context_with_token_from_request_header: Mock,
 ) -> None:
-    mock_deployment = SimpleNamespace(
-        id="dep1",
-        model={"targetType": "VectorDatabase"},
-        default_prediction_server={
-            "id": "srv1",
-            "url": "https://pred.example.com",
-            "datarobot-key": "key1",
-        },
-        prediction_environment=None,
-    )
+    mock_deployment = _vdb_sdk_deployment("dep1")
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "data": [
@@ -201,16 +231,7 @@ async def test_vdb_query_success(
 async def test_vdb_query_parses_prediction_server_response(
     mock_get_client_context_with_token_from_request_header: Mock,
 ) -> None:
-    mock_deployment = SimpleNamespace(
-        id="dep1",
-        model={"targetType": "VectorDatabase"},
-        default_prediction_server={
-            "id": "srv1",
-            "url": "https://pred.example.com",
-            "datarobot-key": "key1",
-        },
-        prediction_environment=None,
-    )
+    mock_deployment = _vdb_sdk_deployment("dep1")
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "data": [
@@ -268,7 +289,7 @@ async def test_vdb_query_client_error_404(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="missing-dep",
-        model={"targetType": "VectorDatabase"},
+        model={"target_type": "VectorDatabase"},
         default_prediction_server={
             "id": "srv1",
             "url": "https://pred.example.com",
@@ -305,8 +326,8 @@ async def test_vdb_query_rejects_non_vdb_deployment(
 ) -> None:
     mock_deployment = SimpleNamespace(
         id="pred-dep",
-        model={"targetType": "Binary"},
-        capabilities={"supportsVectorDatabaseQuerying": False},
+        model={"target_type": "Binary"},
+        capabilities={"supports_vector_database_querying": False},
     )
     mock_rest_client = MagicMock()
     mock_get_client_context_with_token_from_request_header.return_value.__enter__.return_value = (
