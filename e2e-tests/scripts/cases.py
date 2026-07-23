@@ -58,6 +58,7 @@ DEFAULT_PYTEST_ARGS: tuple[str, ...] = (
     "-vv",
     "-s",
     "--timeout=60",
+    "--durations=0",
     "--tb=short",
     "--reruns=1",
     "--reruns-delay=5",
@@ -83,6 +84,7 @@ def _sanitize(value: str) -> str:
 # ``e2e-tests/cases/``) or any explicit path (relative or absolute). The
 # convention is "no slash → look in cases/".
 DEFAULT_CASES_DIR = Path(__file__).resolve().parent.parent / "cases"
+
 
 
 def resolve_case_file(arg: str) -> Path:
