@@ -4,10 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.7
+## 0.26.10
 - `dragent`: unhandled streaming workflow errors now surface as a framed terminal error instead of NAT's bare (unframed) `workflow_error` JSON that `data:`-only clients silently drop: an AG-UI `RUN_ERROR` event on `/generate/stream` (and other AG-UI streaming routes) and an OpenAI-shaped error on `/chat/completions`.
 - `dragent`: the agent OpenTelemetry span is marked `ERROR` on an agent-originated `RUN_ERROR` event or raised agent exception, so those failed runs are no longer reported as successful in tracing.
 - `dragent`: moderation guard errors (prescore, postscore, streaming) now raise a sanitized error instead of leaking guard internals, so the framing above turns them into a terminal `RUN_ERROR` / OpenAI error (or an HTTP error off-stream). Also fixes a `ContextVar` teardown crash during streaming when the invoke-state token is reset from a different context.
+
+## 0.26.9
+- `drtools/vdb`: fixed `vdb_query` falsely rejecting valid vector database deployments when validating via `dr.Deployment.get()`
+
+## 0.26.8
+- `llama_index`: strip `parallel_tool_calls` from tool requests for OpenAI o-series reasoning models (o1/o3/o4-mini), which reject it. gpt-5/gpt-4o keep it. Fixes tool-using agents failing on o-series with `Unsupported parameter: 'parallel_tool_calls'`.
+
+## 0.26.7
+- `dragent`: Improve forward header logic in `OAuth2CrossApplicationAccessOAuth2AuthProvider`.
 
 ## 0.26.6
 - `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.

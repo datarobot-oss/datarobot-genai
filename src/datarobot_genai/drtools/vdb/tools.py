@@ -172,17 +172,21 @@ def _is_vector_database_deployment(deployment: dict[str, Any] | Any) -> bool:
         if isinstance(deployment, dict)
         else getattr(deployment, "model", None)
     )
-    if isinstance(model, dict) and model.get("targetType") == "VectorDatabase":
-        return True
+    if isinstance(model, dict):
+        target_type = model.get("targetType") or model.get("target_type")
+        if target_type == "VectorDatabase":
+            return True
     capabilities = (
         deployment.get("capabilities")
         if isinstance(deployment, dict)
         else getattr(deployment, "capabilities", None)
     )
-    return (
-        isinstance(capabilities, dict)
-        and capabilities.get("supportsVectorDatabaseQuerying") is True
-    )
+    if isinstance(capabilities, dict):
+        return (
+            capabilities.get("supportsVectorDatabaseQuerying") is True
+            or capabilities.get("supports_vector_database_querying") is True
+        )
+    return False
 
 
 def _list_vdb_deployments(rest_client: Any) -> list[dict[str, Any]]:

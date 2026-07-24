@@ -18,7 +18,28 @@ import pytest
 
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.llm_parameters import default_reasoning_extra_body
+from datarobot_genai.core.llm_parameters import supports_parallel_tool_calls
 from datarobot_genai.langgraph.llm import get_datarobot_gateway_llm
+
+
+@pytest.mark.parametrize(
+    ("model_name", "expected"),
+    [
+        ("azure/o3", False),
+        ("openai/o1", False),
+        ("o1-mini", False),
+        ("datarobot/azure/o4-mini", False),
+        ("azure/gpt-5", True),
+        ("azure/gpt-4o", True),
+        ("gpt-4o-mini", True),
+        ("anthropic/claude-sonnet-4-6", True),
+        ("vertex_ai/gemini-2.5-pro", True),
+        ("some-custom-deployment", True),
+        (None, True),
+    ],
+)
+def test_supports_parallel_tool_calls(model_name: str | None, expected: bool) -> None:
+    assert supports_parallel_tool_calls(model_name) is expected
 
 
 @pytest.mark.parametrize(
