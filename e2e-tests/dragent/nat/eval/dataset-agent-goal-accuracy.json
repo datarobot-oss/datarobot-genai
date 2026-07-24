@@ -1,0 +1,8 @@
+[
+  {
+    "id": "agent-goal-accuracy-1",
+    "question": "What is the capital of France? Reply with one word only.",
+    "answer": "Paris",
+    "generated_answer": "Paris"
+  }
+]
