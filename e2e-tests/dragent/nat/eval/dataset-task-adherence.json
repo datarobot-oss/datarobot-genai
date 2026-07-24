@@ -1,8 +1,6 @@
 [
   {
     "id": "task-adherence-1",
-    "question": "Summarize the capital of France in one sentence.",
-    "answer": "",
-    "generated_answer": "Paris is the capital of France."
+    "question": "Summarize the capital of France in one sentence."
   }
 ]

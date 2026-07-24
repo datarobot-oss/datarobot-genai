@@ -52,8 +52,7 @@ NAT_EVAL_CASES: list = [
 
 
 pytestmark = [
-    # pytest.mark.skipif(AGENT != "nat", reason="nat eval is NAT-only"),
-    # cases.py passes --timeout=60; ``nat eval`` cold start + LLM judge takes ~80s.
+    # cases.py passes --timeout=60; workflow + LLM judge can take ~2 minutes.
     pytest.mark.timeout(120),
 ]
 
@@ -67,7 +66,6 @@ def _run_nat_eval(config_file: Path, output_dir: Path) -> subprocess.CompletedPr
             "eval",
             "--config_file",
             str(config_file),
-            "--skip_workflow",
             "--override",
             "eval.general.output.dir",
             str(output_dir),
@@ -82,12 +80,12 @@ def _run_nat_eval(config_file: Path, output_dir: Path) -> subprocess.CompletedPr
 
 
 @pytest.mark.parametrize(("config_name", "evaluator_name"), NAT_EVAL_CASES)
-def test_nat_eval_skip_workflow_scores_evaluator(
+def test_nat_eval_runs_workflow_and_scores_evaluator(
     tmp_path: Path,
     config_name: str,
     evaluator_name: str,
 ) -> None:
-    """``nat eval --skip_workflow`` runs each DataRobot moderation evaluator end-to-end."""
+    """``nat eval`` runs the workflow on each dataset row, then scores with the evaluator."""
     config_file = NAT_EVAL_DIR / config_name
     output_dir = tmp_path / evaluator_name
     result = _run_nat_eval(config_file, output_dir)
@@ -95,13 +93,11 @@ def test_nat_eval_skip_workflow_scores_evaluator(
 
     try:
         assert result.returncode == 0, (
-            f"nat eval --skip_workflow failed for {evaluator_name} "
-            f"(exit {result.returncode}).\n"
+            f"nat eval failed for {evaluator_name} (exit {result.returncode}).\n"
             f"stdout: {result.stdout[:1000]}\n"
             f"stderr: {result.stderr[:1000]}"
         )
         assert "EVALUATION SUMMARY" in output
         assert evaluator_name in output.lower()
     finally:
-        # ``--skip_workflow`` disables NAT's pre-run cleanup; remove any prior manual-run dir.
         shutil.rmtree(LEGACY_EVAL_OUTPUT_DIR, ignore_errors=True)

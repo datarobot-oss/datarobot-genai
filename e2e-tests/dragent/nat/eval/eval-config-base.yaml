@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Shared NAT eval config for e2e tests (``nat eval --skip_workflow``).
+# Shared NAT eval config for e2e tests. NAT runs the workflow on each dataset
+# question, then scores the generated response with the configured evaluators.
 functions:
   judge:
     _type: chat_completion
