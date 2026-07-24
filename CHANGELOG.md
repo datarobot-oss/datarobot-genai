@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.7
+- `dragent`: unhandled streaming workflow errors now surface as a framed terminal error instead of NAT's bare (unframed) `workflow_error` JSON that `data:`-only clients silently drop: an AG-UI `RUN_ERROR` event on `/generate/stream` (and other AG-UI streaming routes) and an OpenAI-shaped error on `/chat/completions`.
+- `dragent`: the agent OpenTelemetry span is marked `ERROR` on an agent-originated `RUN_ERROR` event or raised agent exception, so those failed runs are no longer reported as successful in tracing (moderation-origin failures, raised by the outer middleware, are out of scope).
+- `dragent`: moderation now fails closed: a prescore, postscore, or streaming guard error raises instead of releasing an un-moderated response, so the framing above turns it into a terminal `RUN_ERROR` / OpenAI error on streaming routes and an HTTP error otherwise, rather than leaking a bare NAT error. Also fixes the cross-context `ContextVar` teardown crash behind the original report.
+
 ## 0.26.6
 - `drmcpbase`: added `x-datarobot-mcp-mode: search` — the catalog collapses to a synthetic `tool_search` (BM25 lexical ranking over the catalog, no new dependencies) plus a `call_tool` proxy that executes discovered tools, so generic MCP clients need no re-listing loop. Allowlisted tools stay pinned in the listing. Ranking is pluggable via `ToolSearchBackend` (`register_mcp_catalog_transform(mcp, tool_search_backend=...)`) so a semantic backend can replace the lexical default later.
 - `drmcpbase`: the tool allowlist (`x-datarobot-mcp-tools`) is now a hard cap in every mode. Security fix: code mode used to skip it, so switching the mode header made every non-allowlisted tool resolvable and callable again; the synthetic discovery tools also read the catalog through a bypass that skipped both the allowlist and the category gates. Gates and the allowlist now apply to listing, resolution/calling, and the catalog the synthetic discovery/search/execute tools read; the synthetic mode-interface tools themselves stay exempt.
