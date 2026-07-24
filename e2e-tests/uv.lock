@@ -889,11 +889,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-<<<<<<< HEAD
-version = "0.26.9"
-=======
-version = "0.26.10"
->>>>>>> ae7745b8 (Squash and merge)
+version = "0.26.11"
 source = { editable = "../" }
 
 [package.optional-dependencies]
