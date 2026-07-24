@@ -30,6 +30,8 @@ from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
 from opentelemetry import trace
+from opentelemetry.trace import Status
+from opentelemetry.trace import StatusCode
 
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -46,6 +48,7 @@ AGENT_SPAN_NAME = "datarobot_agent"
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
 TOOL_NAME = "tool_name"  # Tools column
+ERROR_TYPE = "error.type"  # Error classification on a failed span
 
 # AG-UI event types that carry assistant text deltas.
 _TEXT_EVENT_TYPES = (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK)
@@ -83,6 +86,18 @@ def _ag_ui_last_user_message_content(run_agent_input: RunAgentInput) -> str | No
 def _response_text(response: DRAgentEventResponse) -> str:
     """Join assistant text deltas from a DRAgentEventResponse's AG-UI events."""
     return "".join(event.delta for event in response.events if event.type in _TEXT_EVENT_TYPES)
+
+
+def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventResponse) -> None:
+    """Mark the span ERROR when a chunk carries a ``RUN_ERROR`` event.
+
+    Errors reach us as events (not exceptions), so otherwise the span closes OK.
+    """
+    for event in response.events:
+        if event.type == EventType.RUN_ERROR:
+            span.set_attribute(ERROR_TYPE, event.code or "RUN_ERROR")
+            span.set_status(Status(StatusCode.ERROR, event.message or "workflow run error"))
+            return
 
 
 def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
@@ -157,6 +172,7 @@ class DataRobotOtelConventionsMiddleware(
             output = await call_next(*args, **kwargs)
             if isinstance(output, DRAgentEventResponse):
                 _emit_tool_call_spans(output)
+                _mark_span_error_on_run_error(span, output)
             completion = self._completion_from_output(output)
             if completion is not None:
                 span.set_attribute(GEN_AI_COMPLETION, completion)
@@ -182,6 +198,7 @@ class DataRobotOtelConventionsMiddleware(
                 async for chunk in call_next(*args, **kwargs):
                     if isinstance(chunk, DRAgentEventResponse):
                         _emit_tool_call_spans(chunk)
+                        _mark_span_error_on_run_error(span, chunk)
                         text = _response_text(chunk)
                         if text:
                             parts.append(text)
