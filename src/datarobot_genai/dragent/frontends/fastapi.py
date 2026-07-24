@@ -187,8 +187,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         return sm
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
-        # Reframe unhandled streaming errors as terminal events. Handlers resolve the
-        # helper at request time, so this only needs to run before the first request.
+        # Patch stream error framing before route handlers capture it.
         patch_stream_error_framing()
         await super().add_routes(app, builder)
         if self.front_end_config.a2a:

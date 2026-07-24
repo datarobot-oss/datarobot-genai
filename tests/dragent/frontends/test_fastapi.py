@@ -65,9 +65,7 @@ from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasonin
 
 @pytest.fixture(autouse=True)
 def _restore_stream_symbols(monkeypatch):
-    """add_routes runs the real patch_stream_error_framing, which rebinds NAT module
-    globals process-wide; snapshot them so the patch does not leak across tests.
-    """
+    """Restore NAT stream helpers after ``add_routes`` patches them."""
     monkeypatch.setattr(
         common_utils,
         "generate_streaming_response_as_str",

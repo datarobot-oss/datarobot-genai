@@ -585,16 +585,13 @@ async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: Magic
 
 
 def test_clear_moderation_invoke_state_survives_foreign_context_token() -> None:
-    """A ContextVar token created in one context cannot be reset in another; streaming teardown
-    runs in a different task than the ``set``, so the hardened cleanup must swallow the resulting
-    'created in a different Context' error instead of crashing the run.
-    """
+    """Foreign-context ``ContextVar`` reset errors are swallowed."""
     _set_moderation_invoke_state(prompt="hi", prescore_df=pd.DataFrame(), latency_so_far=0.0)
     try:
-        # Resetting the token from a *copied* context raises ValueError; this must not propagate.
+        # Copied-context reset raises ValueError; cleanup swallows it.
         contextvars.copy_context().run(_clear_moderation_invoke_state_if_set)
     finally:
-        _clear_moderation_invoke_state_if_set()  # clean reset in the original context
+        _clear_moderation_invoke_state_if_set()
     assert _moderation_invoke_state_ctx.get() is None
 
 
@@ -2762,9 +2759,7 @@ def test_streaming_text_events_from_openai_chunk_ignores_non_text_source_event()
 async def test_function_middleware_invoke_prescore_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """A dome prescore failure raises a sanitized ModerationError (NAT frames it as an HTTP
-    error). A yielded RUN_ERROR would convert to an empty 200 on non-streaming routes.
-    """
+    """Prescore failures raise before ``call_next``."""
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
@@ -2783,7 +2778,7 @@ async def test_function_middleware_invoke_prescore_failure_raises(
                 context=_fn_context(),
             )
 
-    assert "boom" not in str(excinfo.value)  # dome internals stay out of the client-facing message
+    assert "boom" not in str(excinfo.value)  # sanitized
     assert isinstance(excinfo.value.__cause__, RuntimeError)
     call_next.assert_not_awaited()
     assert _moderation_invoke_state_ctx.get() is None
@@ -2792,9 +2787,7 @@ async def test_function_middleware_invoke_prescore_failure_raises(
 async def test_function_middleware_invoke_postscore_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """A dome postscore failure raises a sanitized ModerationError; the un-moderated agent
-    response is never returned.
-    """
+    """Postscore failures raise sanitized ``ModerationError``."""
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     pipeline.get_postscore_guards.return_value = [MagicMock()]
@@ -2825,9 +2818,7 @@ async def test_function_middleware_invoke_postscore_failure_raises(
 async def test_function_middleware_stream_prescore_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """A dome prescore failure on the streaming path raises a sanitized ModerationError before
-    the agent starts; the streaming framing (stream_errors) turns it into a terminal error.
-    """
+    """Streaming prescore failures raise before the agent starts."""
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
@@ -2856,9 +2847,7 @@ async def test_function_middleware_stream_prescore_failure_raises(
 async def test_function_middleware_stream_moderation_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """A dome failure mid-stream closes open text segments, then re-raises the original error so
-    the streaming framing turns it into a terminal error per route (not relabeled as moderation).
-    """
+    """Mid-stream moderation failures raise sanitized ``ModerationError``."""
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
@@ -2887,11 +2876,13 @@ async def test_function_middleware_stream_moderation_failure_raises(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        # The original error propagates (not wrapped): agent-origin errors also surface here.
-        with pytest.raises(RuntimeError, match="dome streaming boom"):
+        with pytest.raises(ModerationError) as excinfo:
             async for _ in mw.function_middleware_stream(
                 _make_run_input("hello"),
                 call_next=stream_next,
                 context=_fn_context(),
             ):
                 pass
+
+    assert "boom" not in str(excinfo.value)  # sanitized
+    assert isinstance(excinfo.value.__cause__, RuntimeError)

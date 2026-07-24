@@ -33,7 +33,7 @@ _ERROR_MESSAGE = "Token was created in a different Context"
 
 @pytest.fixture(autouse=True)
 def _restore_stream_symbols(monkeypatch):
-    """patch_stream_error_framing rebinds module globals; snapshot them for auto-restore."""
+    """Restore patched NAT stream helpers after each test."""
     monkeypatch.setattr(
         common_utils,
         "generate_streaming_response_as_str",
@@ -48,12 +48,10 @@ def _restore_stream_symbols(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_workflow_error_during_generate_stream_is_framed_as_run_error(monkeypatch):
-    """A /generate/stream workflow error surfaces as a framed AG-UI RUN_ERROR, not
-    NAT's bare workflow_error JSON that ``data:``-only clients drop.
-    """
+    """/generate/stream errors become framed AG-UI ``RUN_ERROR`` chunks."""
 
     async def failing_stream(payload: Any, **kwargs: Any):
-        yield DRAgentEventResponse(events=[])  # one good chunk, then failure
+        yield DRAgentEventResponse(events=[])  # good chunk, then failure
         raise ValueError(_ERROR_MESSAGE)
 
     monkeypatch.setattr(response_helpers, "generate_streaming_response", failing_stream)
@@ -70,11 +68,9 @@ async def test_workflow_error_during_generate_stream_is_framed_as_run_error(monk
         )
     ]
 
-    # Every emitted line is SSE-framed; no bare JSON the data:-only parser would drop.
     assert chunks, "expected at least one streamed chunk"
     assert all(chunk.startswith("data:") for chunk in chunks), chunks
 
-    # The terminal chunk is a framed AG-UI RUN_ERROR carrying the exception message.
     terminal = DRAgentEventResponse.model_validate_json(chunks[-1][len("data: ") :])
     assert len(terminal.events) == 1
     error_event = terminal.events[0]
@@ -84,7 +80,7 @@ async def test_workflow_error_during_generate_stream_is_framed_as_run_error(monk
 
 
 def test_patch_stream_error_framing_is_idempotent():
-    """A second install must not re-wrap the helper (e.g. a repeated add_routes call)."""
+    """Repeated patching does not wrap twice."""
     patch_stream_error_framing()
     after_first = common_utils.generate_streaming_response_as_str
     patch_stream_error_framing()
@@ -95,9 +91,7 @@ def test_patch_stream_error_framing_is_idempotent():
 
 @pytest.mark.asyncio
 async def test_non_data_success_frames_pass_through_untouched(monkeypatch):
-    """Only NAT's bare Error JSON is reframed; other SSE frames (``intermediate_data:``,
-    ``observability_trace:``) must pass through unchanged, not be mistaken for errors.
-    """
+    """Framed non-data SSE chunks pass through unchanged."""
     frames = [
         'intermediate_data: {"foo": 1}\n\n',
         'observability_trace: {"bar": 2}\n\n',
@@ -123,9 +117,7 @@ async def test_non_data_success_frames_pass_through_untouched(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_raw_json_non_error_chunk_is_not_reframed(monkeypatch):
-    """Detection is a positive parse of NAT's ``Error`` model, not a framing heuristic: a raw-JSON
-    chunk that is not an ``Error`` (extra fields, forbidden by the model) passes through untouched.
-    """
+    """Raw JSON that is not NAT ``Error`` passes through unchanged."""
     passthrough = '{"id": "x", "object": "chat.completion.chunk"}'
 
     async def fake_as_str(*args: Any, **kwargs: Any):
@@ -146,9 +138,7 @@ async def test_raw_json_non_error_chunk_is_not_reframed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_chat_completions_stream_error_is_openai_shaped(monkeypatch):
-    """On /chat/completions the error must be an OpenAI-shaped ``data: {"error":...}`` frame,
-    not an AG-UI RUN_ERROR (which is foreign to the OpenAI chunk contract).
-    """
+    """/chat/completions errors use the OpenAI error shape."""
 
     async def failing_stream(payload: Any, **kwargs: Any):
         yield DRAgentEventResponse(events=[])
@@ -178,10 +168,7 @@ async def test_chat_completions_stream_error_is_openai_shaped(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_error_frame_follows_output_type_not_module(monkeypatch):
-    """Framing keys on output_type, not the NAT module: the common_utils helper (which also backs
-    the OpenAI-shaped /chat/stream) must emit an OpenAI error frame when output_type is
-    ChatResponseChunk, not an AG-UI RUN_ERROR.
-    """
+    """Error shape follows ``output_type``, not the NAT module."""
 
     async def failing_stream(payload: Any, **kwargs: Any):
         yield DRAgentEventResponse(events=[])
@@ -207,9 +194,7 @@ async def test_error_frame_follows_output_type_not_module(monkeypatch):
 
 
 def test_generate_stream_http_endpoint_emits_framed_run_error(monkeypatch):
-    """End-to-end /generate/stream over a real TestClient (only the workflow faked):
-    a workflow error streams as a framed AG-UI RUN_ERROR the e2e parser accepts.
-    """
+    """/generate/stream emits parseable AG-UI ``RUN_ERROR`` SSE."""
 
     async def failing_stream(payload: Any, **kwargs: Any):
         yield DRAgentEventResponse(events=[])
@@ -249,10 +234,10 @@ def test_generate_stream_http_endpoint_emits_framed_run_error(monkeypatch):
 
     body = response.text
     assert response.status_code == 200
-    assert "workflow_error" not in body  # NAT's bare error must not leak
+    assert "workflow_error" not in body  # no bare NAT error
     assert '"type":"RUN_ERROR"' in body
     assert _ERROR_MESSAGE in body
-    # Every SSE payload line is framed AG-UI (parseable into DRAgentEventResponse).
+    # Data frames remain parseable AG-UI.
     for line in body.splitlines():
         if line.startswith("data: "):
             DRAgentEventResponse.model_validate_json(line[len("data: ") :])

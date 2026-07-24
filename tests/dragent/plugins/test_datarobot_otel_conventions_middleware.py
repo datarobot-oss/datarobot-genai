@@ -350,7 +350,7 @@ async def test_stream_marks_span_error_on_run_error_event(
     middleware: DataRobotOtelConventionsMiddleware,
     span_exporter: InMemorySpanExporter,
 ) -> None:
-    """A RUN_ERROR chunk must mark the span ERROR so a failed run is not traced as OK."""
+    """``RUN_ERROR`` chunks mark the span ERROR."""
     chunks = [
         DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="partial")]),
         DRAgentEventResponse(events=[RunErrorEvent(message="boom", code="STREAM_ERROR")]),
@@ -375,7 +375,7 @@ async def test_invoke_marks_span_error_on_run_error_event(
     middleware: DataRobotOtelConventionsMiddleware,
     span_exporter: InMemorySpanExporter,
 ) -> None:
-    """A RUN_ERROR in the aggregated non-streaming output must also mark the span ERROR."""
+    """Aggregated ``RUN_ERROR`` output marks the span ERROR."""
     response = DRAgentEventResponse(events=[RunErrorEvent(message="kaboom", code="STREAM_ERROR")])
 
     await middleware.function_middleware_invoke(

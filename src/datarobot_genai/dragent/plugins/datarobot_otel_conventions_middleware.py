@@ -48,7 +48,7 @@ AGENT_SPAN_NAME = "datarobot_agent"
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
 TOOL_NAME = "tool_name"  # Tools column
-ERROR_TYPE = "error.type"  # Error classification on a failed span
+ERROR_TYPE = "error.type"  # Failed span classification
 
 # AG-UI event types that carry assistant text deltas.
 _TEXT_EVENT_TYPES = (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK)
@@ -89,10 +89,7 @@ def _response_text(response: DRAgentEventResponse) -> str:
 
 
 def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventResponse) -> None:
-    """Mark the span ERROR when a chunk carries a ``RUN_ERROR`` event.
-
-    Errors reach us as events (not exceptions), so otherwise the span closes OK.
-    """
+    """Mark spans failed when output carries ``RUN_ERROR``."""
     for event in response.events:
         if event.type == EventType.RUN_ERROR:
             span.set_attribute(ERROR_TYPE, event.code or "RUN_ERROR")

@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Frame NAT streaming workflow errors as a recognized terminal error.
-
-On error NAT yields a bare, unframed ``Error`` JSON that ``data:``-only clients drop. With no NAT
-hook, we rebind ``generate_streaming_response_as_str`` and reframe that error to match the route's
-output: an OpenAI-shaped error when it streams ``ChatResponseChunk`` (``/chat/completions``), else
-an AG-UI ``RUN_ERROR`` (``/generate/stream``).
-"""
+"""Frame bare NAT stream errors as route-specific terminal SSE events."""
 
 import json
 from collections.abc import AsyncIterator
@@ -37,11 +31,7 @@ _FRAMING_APPLIED_ATTR = "_dragent_stream_error_framing"
 
 
 def _nat_error(chunk: str) -> Error | None:
-    """Return NAT's ``Error`` if ``chunk`` is its bare unframed error payload, else ``None``.
-
-    NAT frames every normal chunk (``data:``/``event:``/...); only the error path is bare JSON.
-    ``startswith`` skips framed chunks without parsing; ``extra="forbid"`` rejects any other JSON.
-    """
+    """Return NAT's bare unframed ``Error`` payload, if present."""
     if not chunk.startswith("{"):
         return None
     try:
@@ -66,7 +56,7 @@ def _openai_error_frame(message: str) -> str:
 
 
 def _framed(original: Any) -> Any:
-    """Wrap a NAT ``*_as_str`` helper to reframe its bare ``Error`` line, shaped to the route."""
+    """Wrap a NAT streaming helper with route-specific error framing."""
 
     async def generate_streaming_response_as_str(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
         openai = kwargs.get("output_type") is ChatResponseChunk
@@ -80,10 +70,7 @@ def _framed(original: Any) -> Any:
 
 
 def patch_stream_error_framing() -> None:
-    """Reframe unhandled streaming errors as terminal events (see ``_framed``) by rebinding the
-    helper on the NAT route modules that import it. Covers ``/generate/stream`` and
-    ``/chat/completions``; idempotent.
-    """
+    """Patch NAT stream helpers used by ``/generate/stream`` and ``/chat/completions``."""
     from nat.front_ends.fastapi.routes import common_utils
     from nat.front_ends.fastapi.routes import v1_chat_completions
 
