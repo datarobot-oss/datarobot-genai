@@ -135,13 +135,9 @@ _logger = logging.getLogger(__name__)
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
 
-class ModerationError(Exception):
-    """Guard failure that fails closed with a sanitized client message."""
-
-
-def _moderation_failed(exc: Exception) -> ModerationError:
+def _moderation_failed(exc: Exception) -> RuntimeError:
     """Return a sanitized guard failure without exception details."""
-    return ModerationError(f"Moderation failed ({type(exc).__name__})")
+    return RuntimeError(f"Moderation failed ({type(exc).__name__})")
 
 
 def _require_workflow_input(args: tuple[Any, ...]) -> WorkflowInput | None:

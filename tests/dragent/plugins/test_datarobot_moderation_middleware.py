@@ -93,7 +93,6 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     DataRobotModerationMiddleware,
 )
-from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import ModerationError
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
@@ -2771,7 +2770,7 @@ async def test_function_middleware_invoke_prescore_failure_raises(
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        with pytest.raises(ModerationError) as excinfo:
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
             await mw.function_middleware_invoke(
                 _make_run_input("hello"),
                 call_next=call_next,
@@ -2787,7 +2786,7 @@ async def test_function_middleware_invoke_prescore_failure_raises(
 async def test_function_middleware_invoke_postscore_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """Postscore failures raise sanitized ``ModerationError``."""
+    """Postscore failures raise a sanitized ``RuntimeError``."""
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     pipeline.get_postscore_guards.return_value = [MagicMock()]
@@ -2802,7 +2801,7 @@ async def test_function_middleware_invoke_postscore_failure_raises(
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        with pytest.raises(ModerationError) as excinfo:
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
             await mw.function_middleware_invoke(
                 _make_run_input("hello"),
                 call_next=call_next,
@@ -2830,7 +2829,7 @@ async def test_function_middleware_stream_prescore_failure_raises(
         return_value=moderation,
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        with pytest.raises(ModerationError) as excinfo:
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
             async for _ in mw.function_middleware_stream(
                 _make_run_input("hello"),
                 call_next=stream_next,
@@ -2847,7 +2846,7 @@ async def test_function_middleware_stream_prescore_failure_raises(
 async def test_function_middleware_stream_moderation_failure_raises(
     builder_mock: MagicMock,
 ) -> None:
-    """Mid-stream moderation failures raise sanitized ``ModerationError``."""
+    """Mid-stream moderation failures raise a sanitized ``RuntimeError``."""
     pipeline = _pipeline_mock()
     moderation = _moderation_mock(pipeline)
     _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
@@ -2876,7 +2875,7 @@ async def test_function_middleware_stream_moderation_failure_raises(
         ),
     ):
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        with pytest.raises(ModerationError) as excinfo:
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
             async for _ in mw.function_middleware_stream(
                 _make_run_input("hello"),
                 call_next=stream_next,

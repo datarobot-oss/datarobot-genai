@@ -13,22 +13,36 @@
 # limitations under the License.
 
 import json
+from collections.abc import AsyncIterator
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from typing import Any
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from ag_ui.core import EventType
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import UserMessage
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.data_models.api_server import ChatResponseChunk
 from nat.front_ends.fastapi import response_helpers
 from nat.front_ends.fastapi.routes import common_utils
 from nat.front_ends.fastapi.routes import v1_chat_completions
+from nat.middleware.middleware import FunctionMiddlewareContext
 
+from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.stream_errors import patch_stream_error_framing
 
 _ERROR_MESSAGE = "Token was created in a different Context"
+_MODERATION_FAILURE = "Moderation failed (RuntimeError)"
+_PROMPT_COL = "prompt_col"
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +58,169 @@ def _restore_stream_symbols(monkeypatch):
         "generate_streaming_response_as_str",
         v1_chat_completions.generate_streaming_response_as_str,
     )
+
+
+@contextmanager
+def _moderation_stream_failure_patches() -> Iterator[tuple[Any, MagicMock]]:
+    """Real moderation middleware that fails mid-stream after one upstream text chunk."""
+    pytest.importorskip("datarobot_dome")
+
+    from datarobot_dome.api import _from_dataframe
+    from datarobot_dome.constants import GuardStage
+
+    from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+        DataRobotModerationConfig,
+    )
+    from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+        DataRobotModerationMiddleware,
+    )
+
+    pipeline = MagicMock()
+    pipeline.get_input_column.side_effect = lambda stage: (
+        _PROMPT_COL if stage == GuardStage.PROMPT else "response_col"
+    )
+    pipeline.get_association_id_column_name.return_value = ""
+    pipeline.get_new_metrics_payload.return_value = None
+    pipeline.extra_model_output_for_chat_enabled = False
+
+    moderation = MagicMock()
+    moderation._pipeline = pipeline
+    moderation._executor = MagicMock()
+    moderation.evaluate_prompt_async = AsyncMock()
+    moderation.evaluate_response_async = AsyncMock()
+
+    prescore_df = pd.DataFrame(
+        {
+            _PROMPT_COL: ["hello"],
+            f"blocked_{_PROMPT_COL}": [False],
+            f"replaced_{_PROMPT_COL}": [False],
+        }
+    )
+    prompt_eval = _from_dataframe(prescore_df, _PROMPT_COL)
+    moderation.evaluate_prompt_async.return_value = (prompt_eval, 0.0, prescore_df)
+
+    async def _raising_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        if False:  # pragma: no cover - marks this an async generator
+            yield
+        raise RuntimeError("dome streaming boom")
+
+    moderation.stream_response_async = _raising_stream_response_async
+
+    async def upstream() -> AsyncIterator[DRAgentEventResponse]:
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="msg-1", delta="partial answer")],
+            usage_metrics=default_usage_metrics(),
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+    run_input = DRAgentRunAgentInput(
+        thread_id="t1",
+        run_id="r1",
+        messages=[UserMessage(id="u1", content="hello")],
+        tools=[],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
+    fn_context = FunctionMiddlewareContext(
+        name="test_fn",
+        config={},
+        description=None,
+        input_schema=None,
+        single_output_schema=DRAgentEventResponse,
+        stream_output_schema=DRAgentEventResponse,
+    )
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), MagicMock())
+
+        async def moderation_workflow_stream(payload: Any, **kwargs: Any) -> Any:
+            async for chunk in mw.function_middleware_stream(
+                run_input,
+                call_next=stream_next,
+                context=fn_context,
+            ):
+                yield chunk
+
+        yield moderation_workflow_stream, stream_next
+
+
+@pytest.mark.asyncio
+async def test_moderation_stream_failure_is_framed_as_run_error(monkeypatch):
+    """Moderation raise → NAT bare Error → ``RUN_ERROR`` on ``/generate/stream``."""
+    with _moderation_stream_failure_patches() as (moderation_workflow_stream, stream_next):
+        monkeypatch.setattr(
+            response_helpers,
+            "generate_streaming_response",
+            moderation_workflow_stream,
+        )
+        patch_stream_error_framing()
+
+        chunks = [
+            chunk
+            async for chunk in common_utils.generate_streaming_response_as_str(
+                {"messages": []},
+                session=None,
+                streaming=True,
+                result_type=None,
+                output_type=DRAgentEventResponse,
+            )
+        ]
+
+    assert chunks, "expected at least one streamed chunk"
+    assert all(chunk.startswith("data:") for chunk in chunks), chunks
+    assert "dome streaming boom" not in "".join(chunks)
+
+    terminal = DRAgentEventResponse.model_validate_json(chunks[-1][len("data: ") :])
+    assert len(terminal.events) == 1
+    error_event = terminal.events[0]
+    assert error_event.type == EventType.RUN_ERROR
+    assert error_event.message == _MODERATION_FAILURE
+    assert error_event.code == "STREAM_ERROR"
+    stream_next.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_moderation_stream_failure_is_openai_shaped_on_chat_completions(monkeypatch):
+    """Moderation raise → NAT bare Error → OpenAI error on ``/chat/completions``."""
+    with _moderation_stream_failure_patches() as (moderation_workflow_stream, _stream_next):
+        monkeypatch.setattr(
+            response_helpers,
+            "generate_streaming_response",
+            moderation_workflow_stream,
+        )
+        patch_stream_error_framing()
+
+        chunks = [
+            chunk
+            async for chunk in v1_chat_completions.generate_streaming_response_as_str(
+                {"messages": []},
+                session=None,
+                streaming=True,
+                result_type=ChatResponseChunk,
+                output_type=ChatResponseChunk,
+            )
+        ]
+
+    assert chunks, "expected at least one streamed chunk"
+    assert all(chunk.startswith("data:") for chunk in chunks), chunks
+    assert "dome streaming boom" not in "".join(chunks)
+    assert "RUN_ERROR" not in chunks[-1]
+
+    error = json.loads(chunks[-1][len("data: ") :])
+    assert error["error"]["message"] == _MODERATION_FAILURE
+    assert error["error"]["type"] == "workflow_error"
 
 
 @pytest.mark.asyncio
