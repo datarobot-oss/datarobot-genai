@@ -4,8 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.9
+## 0.26.11
+- Bumped the `datarobot-moderations` floor to `>=11.2.47`. The `11.2.46` build (the previous floor) crashed at import whenever a NAT tracer provider was active: `datarobot_dome.api` decorated its `ModerationPipeline` methods with `@_tracer.start_as_current_span(...)` evaluated at class-definition time, and NAT's `start_as_current_span` returns a `_NatWorkflowSpanContextManager` that is not callable, so using it as a decorator raised `TypeError` and took the whole module down. The result was the `datarobot_moderation` dragent middleware failing to register, so dragent runs errored with `middleware type 'datarobot_moderation' not found`. `11.2.47` defers the span to call time, which fixes the crash.
+
+## 0.26.10
 - `drtools/vdb`: fixed `vdb_query` falsely rejecting valid vector database deployments when validating via `dr.Deployment.get()`
+
+## 0.26.9
+- Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`. Bumped the `datarobot-moderations` floor to `>=11.2.46`, which fixes the regression that forced the 0.26.2 downgrade.
 
 ## 0.26.8
 - `llama_index`: strip `parallel_tool_calls` from tool requests for OpenAI o-series reasoning models (o1/o3/o4-mini), which reject it. gpt-5/gpt-4o keep it. Fixes tool-using agents failing on o-series with `Unsupported parameter: 'parallel_tool_calls'`.
@@ -26,9 +32,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.3
 - `drmcputils/panels`: **fix** scoped panel id resolution against the live Files API — the exact-path existence probes introduced in 0.26.1 passed a file path as a listing `prefix`, which `list_contained_files` rejects with a 400 (`Prefix must end with a forward slash "/"`), breaking every scoped `get`/`delete`/`move` in production (panel routes returned 500). Probes now list the candidate `<source>/<scope>/` *directory* (one bounded prefix query) and match the exact path client-side; `DataRobotFilesBlobStore.list` fails fast with the API's own message on non-directory prefixes, the `BlobStore` protocol documents the constraint, and the test fakes enforce it so the mismatch can't reappear.
-
-## 0.26.2
-- Revert `datarobot-moderations` to 11.2.33 due to a regression thread based in context switching.
 
 ## 0.26.1
 - `drmcputils/files`: **shared-container blob storage** — `BlobStore` is now path-based: all blobs live in one shared Files container (created via `Files.create_empty_catalog_item_dir`, discovered by the `dr_panel_root` marker tag, oldest wins on create races) under `/`-separated paths uploaded with `upload_file(prefix=...)`. This is the Files API's sanctioned folder mechanism: a path embedded in an uploaded *filename* is stripped to its basename server-side as a disk-traversal defense, so the previous per-blob-container + folder-style-name design could never produce real folders in production. Listing is one server-side prefix query (`list_contained_files(prefix=...)`) instead of client-side AND-filtering over the whole catalog (catalog tag search matches with OR semantics), and the registry shows a single `panels` folder row instead of one row per blob.
