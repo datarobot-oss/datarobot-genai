@@ -46,6 +46,12 @@ from .otel_helpers import OTEL_ENTITY_ID
 from .otel_helpers import OTEL_EXPORTER_OTLP_ENDPOINT
 from .otel_helpers import OTLP_METRICS_PATH
 from .otel_helpers import MockOtelCollector
+from .otel_helpers import otel_tracing_checks_enabled
+
+pytestmark = pytest.mark.skipif(
+    not otel_tracing_checks_enabled(),
+    reason="OTel checks disabled via E2E_SKIP_OTEL_TRACING",
+)
 
 
 class _StubSandbox:

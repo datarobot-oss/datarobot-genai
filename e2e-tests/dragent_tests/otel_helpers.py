@@ -71,6 +71,17 @@ OTEL_EXPORTER_OTLP_HEADERS = (
     f"X-DataRobot-Api-Key={OTEL_API_KEY},X-DataRobot-Entity-Id={OTEL_ENTITY_ID}"
 )
 
+# Set to 1/true/yes to skip ``assert_tracing_conventions`` and the dedicated OTel
+# metrics e2e when the dragent server is not exporting spans (e.g. local runs
+# without MLOPS_DEPLOYMENT_ID / OTEL_EXPORTER_OTLP_* in the server env).
+_SKIP_OTEL_TRACING_VALUES = frozenset({"1", "true", "yes"})
+
+
+def otel_tracing_checks_enabled() -> bool:
+    """Whether e2e tests should assert on exported OTel traces/metrics."""
+    return os.environ.get("E2E_SKIP_OTEL_TRACING", "").lower() not in _SKIP_OTEL_TRACING_VALUES
+
+
 # Span attributes that map to the deployment Tracing table columns, per
 # https://docs.datarobot.com/en/docs/agentic-ai/agentic-develop/agentic-tracing-code.html#map-spans-and-attributes-to-the-tracing-table
 # Mirrors the constants in
@@ -626,7 +637,13 @@ def assert_tracing_conventions(
 
     *ignore_span_urls* excludes import-time HTTP client spans (matched by URL
     fragment) from the single-trace check — see ``_assert_single_trace_id``.
+
+  Set ``E2E_SKIP_OTEL_TRACING=1`` to disable these assertions (the mock
+  collector still starts so other tests can use it).
     """
+    if not otel_tracing_checks_enabled():
+        return
+
     agent_spans = collector.wait_for_spans(
         lambda span: span.attributes.get(GEN_AI_PROMPT) == prompt
         and GEN_AI_COMPLETION in span.attributes,

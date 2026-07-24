@@ -39,6 +39,7 @@ from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_ENDPOINT
 from dragent_tests.otel_helpers import OTEL_EXPORTER_OTLP_HEADERS
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
+from dragent_tests.otel_helpers import otel_tracing_checks_enabled
 
 RUNNER_SCRIPT = E2E_ROOT / "dragent" / "run_agent.py"
 
@@ -121,6 +122,9 @@ def test_run_agent_inline(tmp_path: Path, otel_collector: MockOtelCollector) -> 
     assert_tracing_conventions(
         otel_collector, prompt, framework=AGENT, ignore_span_urls=SETUP_HTTP_SPAN_URLS
     )
+
+    if not otel_tracing_checks_enabled():
+        return
 
     # THEN: the ``run_agent`` span the runner opened around the inline call was
     # exported and shares the agent's trace. The inline path seeds NAT's

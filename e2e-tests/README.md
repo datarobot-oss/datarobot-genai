@@ -78,9 +78,15 @@ AGENT=llamaindex LLM=external WORKFLOW_FILE=workflow.yaml task run-dragent
 
 # Shell 2: run tests against it.
 AGENT=llamaindex LLM=external task test-dragent
+
+# Shell 2 (no OTel): skip tracing assertions when the server was not started
+# with MLOPS_DEPLOYMENT_ID / OTEL_EXPORTER_OTLP_* (functional checks only).
+E2E_SKIP_OTEL_TRACING=1 AGENT=crewai task test-dragent
 ```
 
 Tests vary by agent and LLM context; some cases are skipped or interpreted differently depending on configuration.
+
+Set `E2E_SKIP_OTEL_TRACING=1` (or `true`/`yes`) to disable OTel trace/metrics assertions while keeping the rest of the dragent e2e suite.
 
 ## DataRobot Memory Service
 
