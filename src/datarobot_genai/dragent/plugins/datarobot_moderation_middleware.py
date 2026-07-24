@@ -135,6 +135,14 @@ _logger = logging.getLogger(__name__)
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
 
+class ModerationError(Exception):
+    """A guard operation failed, so the run fails closed. It propagates instead of releasing an
+    un-moderated response: the streaming framing (``stream_errors``) turns it into a terminal
+    RUN_ERROR / OpenAI error and the non-streaming path into an HTTP error. The message carries only
+    the exception type (no ``str(exc)``) so dome internals are not leaked; the traceback is logged.
+    """
+
+
 def _require_workflow_input(args: tuple[Any, ...]) -> WorkflowInput | None:
     if not args:
         raise TypeError("Moderation middleware expected a workflow input, but got an empty tuple")
@@ -1203,12 +1211,6 @@ async def _moderated_dragent_stream(
     moderation_source_responses: list[DRAgentEventResponse] = []
     last_source_response: DRAgentEventResponse | None = None
     stopped_for_content_filter = False
-    prescore_state = _StreamingPrescoreModerationState(
-        prescore_moderations=_prescore_datarobot_moderations_from_df(
-            moderation._pipeline,
-            stream_state.prescore_df,
-        ),
-    )
 
     def buffer_passthrough(response: DRAgentEventResponse) -> None:
         if response.events and _defer_until_after_moderated_chunk(response.events[0]):
@@ -1234,7 +1236,16 @@ async def _moderated_dragent_stream(
             current = await next_text_response()
 
     first_text: DRAgentEventResponse | None = None
+    # Fail closed: any failure while moderating the stream (guard infra down, dome error, or an
+    # upstream error surfacing through dome) closes open text segments and emits a terminal
+    # RUN_ERROR instead of a bare NAT error.
     try:
+        prescore_state = _StreamingPrescoreModerationState(
+            prescore_moderations=_prescore_datarobot_moderations_from_df(
+                moderation._pipeline,
+                stream_state.prescore_df,
+            ),
+        )
         async for response in upstream:
             if response.events and not skip_event_type(response.events[0]):
                 first_text = response
@@ -1297,6 +1308,14 @@ async def _moderated_dragent_stream(
                 yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
+    except Exception:
+        # Close open text segments, then re-raise so the streaming framing turns it into a
+        # terminal error per route. Agent-origin errors also surface here (through dome's
+        # iterator), so we re-raise the original rather than relabel everything as moderation.
+        _logger.exception("Moderated stream failed; ending the run")
+        for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+            yield end_response
+        raise
     finally:
         await _aclose_async_iterator(upstream)
 
@@ -1335,7 +1354,12 @@ def _clear_moderation_invoke_state_if_set() -> None:
     state = _moderation_invoke_state_ctx.get()
     if state is None or state.ctx_token is None:
         return
-    _moderation_invoke_state_ctx.reset(state.ctx_token)
+    try:
+        _moderation_invoke_state_ctx.reset(state.ctx_token)
+    except ValueError:
+        # Streaming teardown can run in a different task than the ``set`` (the token is then
+        # "created in a different Context"); the ContextVar dies with its context, so skip.
+        _logger.debug("Moderation invoke-state reset skipped (token from a different context)")
 
 
 class DataRobotModerationMiddleware(
@@ -1383,6 +1407,11 @@ class DataRobotModerationMiddleware(
         ``call_next`` after ``pre_invoke``. When prescore blocks, ``pre_invoke`` sets
         ``ctx.output`` to the guard response; we return it immediately so ``call_next``
         (and thus the LLM) is never invoked.
+
+        Moderation failures propagate as exceptions rather than a RUN_ERROR output: RUN_ERROR is
+        an SSE concept and would convert to an empty success on non-streaming routes. Here NAT
+        turns the exception into an HTTP error; on streaming routes the framing in
+        ``stream_errors`` turns the same exception into a terminal event.
         """
         ctx = InvocationContext(
             function_context=context,
@@ -1422,42 +1451,49 @@ class DataRobotModerationMiddleware(
         if moderation is None:
             return None
 
-        pipeline = moderation._pipeline
+        # Fail closed: a prescore failure must not let the agent run unguarded. Raising a
+        # ModerationError (framed downstream) beats releasing the run or leaking a bare NAT error.
+        try:
+            pipeline = moderation._pipeline
 
-        prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt = moderation_prompt_from_workflow_input(workflow_input)
+            prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
+            prompt = moderation_prompt_from_workflow_input(workflow_input)
 
-        # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
-        # Wrap in the NAT workflow trace context: dome emits its ``evaluate_prompt`` span via
-        # its own tracer provider, which our ``NatWorkflowTracer`` wrapper never patches. Without
-        # an active workflow parent in context here (moderation is the outer middleware, so this
-        # runs before the ``datarobot_agent`` span exists) that span would start a disconnected
-        # trace.
-        with use_nat_workflow_trace_context():
-            prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
-                prompt
+            # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
+            # Wrap in the NAT workflow trace context: dome emits its ``evaluate_prompt`` span via
+            # its own tracer provider, which our ``NatWorkflowTracer`` wrapper never patches.
+            # Without an active workflow parent in context here (moderation is the outer
+            # middleware, so this runs before the ``datarobot_agent`` span exists) that span would
+            # start a disconnected trace.
+            with use_nat_workflow_trace_context():
+                prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
+                    prompt
+                )
+
+            if prompt_eval.blocked:
+                # If all prompts in the input are blocked, means history as well as the prompt
+                # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never
+                # run.
+                context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
+                return context
+
+            prompt_sent, workflow_rewritten = _prompt_sent_after_prescore_replacement(
+                workflow_input,
+                original_prompt=prompt,
+                prompt_eval=prompt_eval,
+                prescore_df=prescore_df,
+                prompt_column=prompt_column_name,
             )
-
-        if prompt_eval.blocked:
-            # If all prompts in the input are blocked, means history as well as the prompt
-            # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never run.
-            context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
-            return context
-
-        prompt_sent, workflow_rewritten = _prompt_sent_after_prescore_replacement(
-            workflow_input,
-            original_prompt=prompt,
-            prompt_eval=prompt_eval,
-            prescore_df=prescore_df,
-            prompt_column=prompt_column_name,
-        )
-        _set_moderation_invoke_state(
-            prompt=prompt_sent,
-            prescore_df=prescore_df,
-            latency_so_far=prescore_latency,
-        )
-        # Return context only when workflow input was rewritten (signals modified_args to NAT).
-        return context if workflow_rewritten else None
+            _set_moderation_invoke_state(
+                prompt=prompt_sent,
+                prescore_df=prescore_df,
+                latency_so_far=prescore_latency,
+            )
+            # Return context only when workflow input was rewritten (signals modified_args to NAT).
+            return context if workflow_rewritten else None
+        except Exception as exc:
+            _logger.exception("Moderation prescore failed; failing closed")
+            raise ModerationError(f"Moderation failed ({type(exc).__name__})") from exc
 
     async def post_invoke(self, context: InvocationContext) -> InvocationContext | None:
         """Post-invocation hook called after the function returns.
@@ -1493,52 +1529,58 @@ class DataRobotModerationMiddleware(
         if state is None:
             return None
 
-        # ==================================================================
-        # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
-        # ``_run_stage`` in dome) when response text is present.
-        prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
-        # request trace (see the pre_invoke prescore call for the full rationale).
-        with use_nat_workflow_trace_context():
-            response_eval, _, _postscore_df = await moderation.evaluate_response_async(
-                response_text,
-                prompt=state.prompt,
+        # Fail closed: a postscore failure must not release the un-moderated agent response, so
+        # raise a ModerationError (framed downstream) rather than leak it or a bare NAT error.
+        try:
+            # ==================================================================
+            # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
+            # ``_run_stage`` in dome) when response text is present.
+            prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
+            # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
+            # request trace (see the pre_invoke prescore call for the full rationale).
+            with use_nat_workflow_trace_context():
+                response_eval, _, _postscore_df = await moderation.evaluate_response_async(
+                    response_text,
+                    prompt=state.prompt,
+                )
+
+            prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
+
+            if response_eval.blocked:
+                response_message = response_eval.blocked_message or ""
+                finish_reason = "content_filter"
+            elif response_eval.replaced:
+                response_message = response_eval.replacement or ""
+                finish_reason = "content_filter"
+            else:
+                response_message = response_text
+                finish_reason = "stop"
+
+            moderated_dr = _dragent_event_response_from_postscore_assistant_text(
+                response_message,
+                finish_reason,
+                response_eval,
+                upstream_model=_upstream_model_from_dragent_response(original_output),
+                prompt_eval=prompt_eval,
             )
-
-        prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
-
-        if response_eval.blocked:
-            response_message = response_eval.blocked_message or ""
-            finish_reason = "content_filter"
-        elif response_eval.replaced:
-            response_message = response_eval.replacement or ""
-            finish_reason = "content_filter"
-        else:
-            response_message = response_text
-            finish_reason = "stop"
-
-        moderated_dr = _dragent_event_response_from_postscore_assistant_text(
-            response_message,
-            finish_reason,
-            response_eval,
-            upstream_model=_upstream_model_from_dragent_response(original_output),
-            prompt_eval=prompt_eval,
-        )
-        preserve_ag_ui_envelope = (
-            len(original_output.events) > 1
-            and finish_reason == "stop"
-            and not response_eval.blocked
-            and not response_eval.replaced
-            and response_message == response_text
-        )
-        if preserve_ag_ui_envelope:
-            context.output = _merge_moderations_into_multi_event_response(
-                original_output, moderated_dr
+            preserve_ag_ui_envelope = (
+                len(original_output.events) > 1
+                and finish_reason == "stop"
+                and not response_eval.blocked
+                and not response_eval.replaced
+                and response_message == response_text
             )
-        else:
-            context.output = moderated_dr
+            if preserve_ag_ui_envelope:
+                context.output = _merge_moderations_into_multi_event_response(
+                    original_output, moderated_dr
+                )
+            else:
+                context.output = moderated_dr
 
-        return context
+            return context
+        except Exception as exc:
+            _logger.exception("Moderation postscore failed; failing closed")
+            raise ModerationError(f"Moderation failed ({type(exc).__name__})") from exc
 
     async def function_middleware_stream(
         self,
