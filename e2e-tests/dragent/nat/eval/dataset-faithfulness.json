@@ -1,0 +1,9 @@
+[
+  {
+    "id": "faithfulness-1",
+    "question": "What is the capital of France?",
+    "context": [
+      "Paris is the capital and largest city of France."
+    ]
+  }
+]
