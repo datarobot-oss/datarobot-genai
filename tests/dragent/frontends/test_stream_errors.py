@@ -41,7 +41,7 @@ from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.stream_errors import patch_stream_error_framing
 
 _ERROR_MESSAGE = "Token was created in a different Context"
-_MODERATION_FAILURE = "Moderation failed (RuntimeError)"
+_STREAMING_FAILURE = "dome streaming boom"
 _PROMPT_COL = "prompt_col"
 
 
@@ -180,13 +180,12 @@ async def test_moderation_stream_failure_is_framed_as_run_error(monkeypatch):
 
     assert chunks, "expected at least one streamed chunk"
     assert all(chunk.startswith("data:") for chunk in chunks), chunks
-    assert "dome streaming boom" not in "".join(chunks)
 
     terminal = DRAgentEventResponse.model_validate_json(chunks[-1][len("data: ") :])
     assert len(terminal.events) == 1
     error_event = terminal.events[0]
     assert error_event.type == EventType.RUN_ERROR
-    assert error_event.message == _MODERATION_FAILURE
+    assert error_event.message == _STREAMING_FAILURE
     assert error_event.code == "STREAM_ERROR"
     stream_next.assert_called_once()
 
@@ -215,11 +214,10 @@ async def test_moderation_stream_failure_is_openai_shaped_on_chat_completions(mo
 
     assert chunks, "expected at least one streamed chunk"
     assert all(chunk.startswith("data:") for chunk in chunks), chunks
-    assert "dome streaming boom" not in "".join(chunks)
     assert "RUN_ERROR" not in chunks[-1]
 
     error = json.loads(chunks[-1][len("data: ") :])
-    assert error["error"]["message"] == _MODERATION_FAILURE
+    assert error["error"]["message"] == _STREAMING_FAILURE
     assert error["error"]["type"] == "workflow_error"
 
 

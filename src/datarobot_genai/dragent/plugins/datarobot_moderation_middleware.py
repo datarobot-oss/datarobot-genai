@@ -1303,12 +1303,12 @@ async def _moderated_dragent_stream(
                 yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
-    except Exception as exc:
-        # Close text segments, then raise a sanitized moderation error.
-        _logger.exception("Moderated stream failed; failing closed")
+    except Exception:
+        # Close text segments without replacing the original stream error.
+        _logger.exception("Error while producing moderated stream")
         for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
             yield end_response
-        raise _moderation_failed(exc) from exc
+        raise
     finally:
         await _aclose_async_iterator(upstream)
 
