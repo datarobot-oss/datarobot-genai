@@ -79,6 +79,26 @@ GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
 TOOL_NAME = "tool_name"  # Tools column
 
+# HTTP client spans that fire during import / runtime bootstrap -- before any
+# workflow trace exists -- so they legitimately root their own trace rather than
+# joining the agent trace. Matched by URL fragment and excluded from the
+# single-trace assertion (see ``_assert_single_trace_id`` / ``ignore_span_urls``).
+#   * LiteLLM lazily fetches its model-cost map from GitHub.
+#   * The DataRobot python client (used by moderation) checks the API version.
+#   * NAT probes the MCP deployment while loading tools (directAccess/mcp).
+# The inline runner captures all three because it bootstraps the whole runtime
+# inside the test window. The server-based tests normally only risk the LiteLLM
+# fetch (the others fire at server startup, before the per-test collector reset),
+# but that fetch is *lazy* and occasionally lands mid-request, orphaning the
+# trace -- so every tracing test shares this ignore list as defense in depth.
+# The server env also sets ``LITELLM_LOCAL_MODEL_COST_MAP=True`` to stop that
+# fetch at the source; this list keeps the assertion honest if it ever fires.
+SETUP_HTTP_SPAN_URLS = (
+    "model_prices_and_context_window",
+    "/api/v2/version",
+    "/directAccess/mcp",
+)
+
 
 @dataclass(frozen=True)
 class CapturedRequest:

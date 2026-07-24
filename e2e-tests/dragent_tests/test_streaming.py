@@ -24,6 +24,7 @@ from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import raise_if_nat_workflow_error_payload
 from dragent_tests.helpers import stream_sse_responses
+from dragent_tests.otel_helpers import SETUP_HTTP_SPAN_URLS
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
 
@@ -62,4 +63,6 @@ def test_generate_streaming(
 
     # THEN: the streaming run exported DataRobot Tracing-table spans
     # (gen_ai.prompt / gen_ai.completion) to the OTel ingest with DR auth headers.
-    assert_tracing_conventions(otel_collector, prompt, framework=AGENT)
+    assert_tracing_conventions(
+        otel_collector, prompt, framework=AGENT, ignore_span_urls=SETUP_HTTP_SPAN_URLS
+    )

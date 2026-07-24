@@ -29,6 +29,7 @@ from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
 from dragent_tests.helpers import stream_sse_responses
+from dragent_tests.otel_helpers import SETUP_HTTP_SPAN_URLS
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
 
@@ -108,6 +109,7 @@ def test_generate_objectid_tool_is_called(
         GENERATE_OBJECTID_PROMPT,
         expect_tool_name=AGENT_SUPPORTS_TOOL_CALLS_STREAMING,
         framework=AGENT,
+        ignore_span_urls=SETUP_HTTP_SPAN_URLS,
     )
 
 
