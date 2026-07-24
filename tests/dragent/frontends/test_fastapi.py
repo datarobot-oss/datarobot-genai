@@ -31,6 +31,8 @@ from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
+from nat.front_ends.fastapi.routes import common_utils
+from nat.front_ends.fastapi.routes import v1_chat_completions
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
@@ -59,6 +61,21 @@ from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+
+
+@pytest.fixture(autouse=True)
+def _restore_stream_symbols(monkeypatch):
+    """Restore NAT stream helpers after ``add_routes`` patches them."""
+    monkeypatch.setattr(
+        common_utils,
+        "generate_streaming_response_as_str",
+        common_utils.generate_streaming_response_as_str,
+    )
+    monkeypatch.setattr(
+        v1_chat_completions,
+        "generate_streaming_response_as_str",
+        v1_chat_completions.generate_streaming_response_as_str,
+    )
 
 
 @pytest.fixture
@@ -230,6 +247,21 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         a2a_config_used = mock_a2a_worker_cls.call_args[0][0].general.front_end
         assert a2a_config_used.host == dragent_worker.front_end_config.host
         assert a2a_config_used.port == dragent_worker.front_end_config.port
+
+    @pytest.mark.asyncio
+    async def test_add_routes_installs_stream_error_framing(
+        self, mock_builder, patch_super_add_routes
+    ):
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+
+        with patch(
+            "datarobot_genai.dragent.frontends.fastapi.patch_stream_error_framing"
+        ) as mock_install:
+            await worker.add_routes(FastAPI(), mock_builder)
+
+        mock_install.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_add_routes_patches_agent_card_url(

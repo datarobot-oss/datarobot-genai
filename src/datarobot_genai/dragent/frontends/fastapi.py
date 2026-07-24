@@ -42,6 +42,7 @@ from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
 from .session import _auth_handler
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
+from .stream_errors import patch_stream_error_framing
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
@@ -186,6 +187,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         return sm
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
+        # Patch stream error framing before route handlers capture it.
+        patch_stream_error_framing()
         await super().add_routes(app, builder)
         if self.front_end_config.a2a:
             await self._add_a2a_routes(app, builder, self.front_end_config.a2a)

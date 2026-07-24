@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 from collections.abc import Iterator
 from datetime import UTC
@@ -580,6 +581,17 @@ async def test_pre_invoke_unrecognized_workflow_input_raises(builder_mock: Magic
         mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
         with pytest.raises(TypeError, match="Unsupported workflow input type for moderation"):
             await mw.pre_invoke(ctx)
+
+
+def test_clear_moderation_invoke_state_survives_foreign_context_token() -> None:
+    """Foreign-context ``ContextVar`` reset errors are swallowed."""
+    _set_moderation_invoke_state(prompt="hi", prescore_df=pd.DataFrame(), latency_so_far=0.0)
+    try:
+        # Copied-context reset raises ValueError; cleanup swallows it.
+        contextvars.copy_context().run(_clear_moderation_invoke_state_if_set)
+    finally:
+        _clear_moderation_invoke_state_if_set()
+    assert _moderation_invoke_state_ctx.get() is None
 
 
 def test_moderation_config_has_guards() -> None:
@@ -2741,3 +2753,182 @@ def test_streaming_text_events_from_openai_chunk_ignores_non_text_source_event()
 
     assert len(events) == 1
     assert events[0].message_id != "start-msg"
+
+
+async def test_function_middleware_invoke_prescore_failure_raises(
+    builder_mock: MagicMock,
+) -> None:
+    """Prescore failures raise before ``call_next``."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
+
+    call_next = AsyncMock()
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
+            await mw.function_middleware_invoke(
+                _make_run_input("hello"),
+                call_next=call_next,
+                context=_fn_context(),
+            )
+
+    assert "boom" not in str(excinfo.value)  # sanitized
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    call_next.assert_not_awaited()
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_invoke_postscore_failure_raises(
+    builder_mock: MagicMock,
+) -> None:
+    """Postscore failures raise a sanitized ``RuntimeError``."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+    moderation.evaluate_response_async.side_effect = RuntimeError("dome postscore boom")
+
+    call_next = AsyncMock(return_value=_text_response("un-moderated agent text"))
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
+            await mw.function_middleware_invoke(
+                _make_run_input("hello"),
+                call_next=call_next,
+                context=_fn_context(),
+            )
+
+    assert "boom" not in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    call_next.assert_awaited_once()
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_stream_prescore_failure_raises(
+    builder_mock: MagicMock,
+) -> None:
+    """Streaming prescore failures raise before the agent starts."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
+
+    stream_next = MagicMock()
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(RuntimeError, match=r"Moderation failed \(RuntimeError\)") as excinfo:
+            async for _ in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            ):
+                pass
+
+    assert "boom" not in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    stream_next.assert_not_called()  # agent never starts when prescore fails
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_stream_moderation_failure_raises(
+    builder_mock: MagicMock,
+) -> None:
+    """Mid-stream moderation failures preserve the original exception."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _raising_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        if False:  # pragma: no cover - marks this an async generator
+            yield
+        raise RuntimeError("dome streaming boom")
+
+    moderation.stream_response_async = _raising_stream_response_async
+
+    async def upstream() -> Any:
+        yield _text_response("partial answer")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(RuntimeError, match="dome streaming boom") as excinfo:
+            async for _ in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            ):
+                pass
+
+    assert str(excinfo.value) == "dome streaming boom"
+    assert excinfo.value.__cause__ is None
+
+
+async def test_function_middleware_stream_agent_failure_preserves_original_error(
+    builder_mock: MagicMock,
+) -> None:
+    """Agent failures consumed through moderation retain their original error."""
+    # GIVEN moderation passes through chunks from an agent that fails mid-stream.
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _passthrough_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        async for chunk in completion:
+            yield chunk
+
+    moderation.stream_response_async = _passthrough_stream_response_async
+
+    async def upstream() -> Any:
+        yield _text_response("partial answer")
+        raise ValueError("tool timed out")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    # WHEN the agent error propagates while moderation consumes its stream.
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        with pytest.raises(ValueError, match="tool timed out") as excinfo:
+            async for _ in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            ):
+                pass
+
+    # THEN the middleware does not replace it with a moderation failure.
+    assert str(excinfo.value) == "tool timed out"
+    assert excinfo.value.__cause__ is None

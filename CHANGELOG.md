@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.10
+- `dragent`: unhandled streaming workflow errors now surface as a framed terminal error instead of NAT's bare (unframed) `workflow_error` JSON that `data:`-only clients silently drop: an AG-UI `RUN_ERROR` event on `/generate/stream` (and other AG-UI streaming routes) and an OpenAI-shaped error on `/chat/completions`.
+- `dragent`: the agent OpenTelemetry span is marked `ERROR` on an agent-originated `RUN_ERROR` event or raised agent exception, so those failed runs are no longer reported as successful in tracing.
+- `dragent`: moderation now fails closed instead of releasing unmoderated output. Prescore and postscore guard errors raise a sanitized error; streaming errors close open text segments and re-raise the original exception so agent failures are not mislabeled as moderation failures. The framing above turns streaming exceptions into a terminal `RUN_ERROR` / OpenAI error. Also fixes a `ContextVar` teardown crash when the invoke-state token is reset from a different context.
+
 ## 0.26.9
 - `drtools/vdb`: fixed `vdb_query` falsely rejecting valid vector database deployments when validating via `dr.Deployment.get()`
 
