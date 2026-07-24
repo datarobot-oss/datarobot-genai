@@ -34,6 +34,7 @@ import logging
 import os
 import urllib.parse
 
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
 
@@ -55,6 +56,18 @@ DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
 WORKLOAD_ENTITY_ID_PREFIX = "workload-"
 
 
+class _OtelSettings(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+    """Minimal settings for assembling OTel auth headers locally.
+
+    Mirrors the ``otel_entity_id`` field in the agent template's ``Config``.
+    Inheriting ``DataRobotAppFrameworkBaseSettings`` means the value is loaded
+    from env vars, ``.env`` files, Pulumi outputs, and DataRobot runtime
+    parameters — not just raw ``os.environ``.
+    """
+
+    otel_entity_id: str = ""
+
+
 def resolve_api_key_from_env() -> str:
     return os.getenv("DATAROBOT_API_TOKEN", "")
 
@@ -63,17 +76,20 @@ def resolve_entity_id_from_env() -> str:
     # MLOPS_DEPLOYMENT_ID / WORKLOAD_ID hold the bare ID inside a DR container;
     # auto-prepend the 'deployment-' or 'workload-' prefix required by the OTel
     # ingest path. Deployment takes precedence when both are present.
+    # Fall back to _OtelSettings for local / dr-xp workflows where neither env
+    # var is set (e.g. Pulumi-exported otel_entity_id).
     if deployment_id := get_deployment_id():
         return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
     if workload_id := get_workload_id():
         return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
-    return ""
+    settings = _OtelSettings()
+    return settings.otel_entity_id
 
 
 def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
-    # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
-    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-        headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
+    otlp_headers_env = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+    if otlp_headers_env:
+        headers_list = otlp_headers_env.split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
             key, value = header.split("=", 1)
