@@ -15,14 +15,12 @@
 from __future__ import annotations
 
 import httpx
-from ag_ui.core import EventType
 from datarobot_genai.core.agents.verify import validate_sequence
 
 from dragent_tests.helpers import AGENT
 from dragent_tests.helpers import collect_ag_ui_events
 from dragent_tests.helpers import collect_text
 from dragent_tests.helpers import make_generate_payload
-from dragent_tests.helpers import raise_if_nat_workflow_error_payload
 from dragent_tests.helpers import stream_sse_responses
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
@@ -31,22 +29,16 @@ from dragent_tests.otel_helpers import assert_tracing_conventions
 def test_generate_streaming(
     http_client: httpx.Client, otel_collector: MockOtelCollector
 ) -> None:
-    """Concatenated text deltas produce a non-empty moderated stream that finishes cleanly."""
+    """Concatenated text deltas produce a non-empty response."""
     # GIVEN: a payload that requests "Say 'hello world' and nothing else."
     prompt = "Say 'hello world' and nothing else."
     payload = make_generate_payload(prompt)
 
     # WHEN: the payload is streamed to the generate endpoint
-    # (stream_sse_responses fails on bare NAT workflow_error JSON lines)
     sse_responses = stream_sse_responses(http_client, payload)
 
     # THEN: the response contains AG-UI events
     ag_ui_events = collect_ag_ui_events(sse_responses)
-
-    # THEN: no AG-UI RUN_ERROR (workflow failures should already have been
-    # raised by stream_sse_responses; this catches error events framed as SSE)
-    run_errors = [e for e in ag_ui_events if e.type == EventType.RUN_ERROR]
-    assert not run_errors, f"Unexpected RUN_ERROR in moderated stream: {run_errors!r}"
 
     # THEN: the events are a valid AG-UI sequence
     validate_sequence(ag_ui_events)

@@ -29,7 +29,6 @@ from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents import BaseAgent
 from datarobot_genai.core.agents import InvokeReturn
@@ -38,6 +37,7 @@ from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
 from datarobot_genai.core.chat.completions import backfill_model
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.completions import is_streaming
+from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 
 def noop_mcp_tools_factory() -> Any:

@@ -53,14 +53,15 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.crewai.agui_stream import AGUIStreamEmitter
 from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.logging_events import CrewAILoggingEventListener
-from datarobot_genai.crewai.ragas_events import CrewAIRagasEventListener
+from datarobot_genai.crewai.moderations_events import CrewAIModerationsEventListener
 from datarobot_genai.crewai.streaming_events import CrewAIStreamingEventListener
 
 if TYPE_CHECKING:
-    from ragas import MultiTurnSample
-    from ragas.messages import AIMessage
-    from ragas.messages import HumanMessage
-    from ragas.messages import ToolMessage
+    from datarobot_dome.guards.agent_goal_accuracy import AIMessage
+    from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
+    from datarobot_dome.guards.agent_goal_accuracy import ToolMessage
+
+    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 
@@ -379,8 +380,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
     ) -> MultiTurnSample | None:
         if not messages:
             return None
-        # Lazy import to reduce memory overhead when ragas is not used
-        from ragas import MultiTurnSample
+        # Lazy import so the moderations-backed primitives load only when a run
+        # actually records pipeline interactions.
+        from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
         return MultiTurnSample(user_input=messages)
 
@@ -421,8 +423,8 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         usage_metrics = default_usage_metrics()
 
         with crewai_event_bus.scoped_handlers():
-            ragas_event_listener = CrewAIRagasEventListener()
-            ragas_event_listener.setup_listeners(crewai_event_bus)
+            moderations_event_listener = CrewAIModerationsEventListener()
+            moderations_event_listener.setup_listeners(crewai_event_bus)
             streaming_event_listener = CrewAIStreamingEventListener()
             streaming_event_listener.setup_listeners(crewai_event_bus)
             logging_event_listener = CrewAILoggingEventListener()
@@ -480,7 +482,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                             yield item
 
                     pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                        ragas_event_listener.messages
+                        moderations_event_listener.messages
                     )
                     usage_metrics = self._extract_usage_metrics(crew_output.result)
                     # Stream done: close the open message, flush tool calls that fired after the
@@ -502,7 +504,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                 message_id = str(uuid.uuid4())
                 response_text = str(crew_output.raw)
                 pipeline_interactions = self.create_pipeline_interactions_from_messages(
-                    ragas_event_listener.messages
+                    moderations_event_listener.messages
                 )
                 usage_metrics = self._extract_usage_metrics(crew_output)
 
