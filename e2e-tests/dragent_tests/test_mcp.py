@@ -51,7 +51,7 @@ EXPECTED_TOOL_CALL_NAMES = {
 # trace (the NAT ``mcp_tools__*`` tool span itself still joins). A shared
 # persistent connection's I/O cannot be attributed to a single request, so we
 # exclude it from the single-trace check. Matches ``SETUP_HTTP_SPAN_URLS`` in
-# test_run_agent_inline, which already lists this same fragment.
+# otel_helpers, which already lists this same fragment.
 MCP_TRANSPORT_SPAN_URLS = ("/directAccess/mcp",)
 
 def test_mcp_tool_is_called(

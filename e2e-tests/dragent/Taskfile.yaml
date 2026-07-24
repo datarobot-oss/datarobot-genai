@@ -4,6 +4,12 @@ version: '3'
 
 env:
   WORKFLOW_FILE: '{{.WORKFLOW_FILE | default "workflow.yaml"}}'
+  # Use LiteLLM's bundled model-cost map instead of fetching it from GitHub at
+  # runtime. The fetch is lazy and occasionally fires mid-request, exporting a
+  # GET span that roots its own trace and flakes the single-trace assertion in
+  # the tracing tests. Pinning to the local map removes the network call (and
+  # the external GitHub dependency) entirely. See otel_helpers.SETUP_HTTP_SPAN_URLS.
+  LITELLM_LOCAL_MODEL_COST_MAP: 'True'
 
 vars:
   AGENT_PORT: 8080
