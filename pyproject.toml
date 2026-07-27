@@ -71,6 +71,11 @@ override-dependencies = [
   "PyJWT>=2.13.0",
   "litellm>=1.91.1,<2.0.0",
   "ragas>=0.4.3,<0.5.0",
+  # dr-msf (all stable releases) pins uvicorn<0.30.0 and rich<13.0.0.
+  # These overrides force the versions the rest of the stack requires.
+  # Remove once dr-msf relaxes its upper bounds.
+  "uvicorn>=0.38,<1.0.0",
+  "rich>=13.0.0,<16.0.0",
   # Align the whole OpenTelemetry stack at the latest release train (core 1.43.x /
   # instrumentation 0.64b0) so the traceloop instrumentors (crewai/langchain/llamaindex
   # 0.62.1) resolve. These overrides force the family to stay version-synchronized
@@ -103,6 +108,20 @@ exclude-dependencies = [
   # nemo-evaluator-launcher bloat
   "leptonai",                 # Lepton AI cloud backend pulled in by nemo-evaluator-launcher; not used, pins httpx==0.27.2 which conflicts with auth extra
 ]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
+[[tool.uv.index]]
+name = "dr-artifactory"
+url = "https://artifactory.devinfra.drdev.io/artifactory/api/pypi/python-all/simple"
+explicit = true
+
+[tool.uv.sources]
+dr-msf = { index = "dr-artifactory" }
+dr-mongo-migrations = { index = "dr-artifactory" }
 
 [dependency-groups]
 dev = [
