@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.12
+- Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
+- `dragent`: fixed moderated streaming failing with `ValueError: <Token ...> was created in a different Context`, which reached clients as a bare NAT `workflow_error` frame instead of a response. `ModerationPipeline.stream_response_async` drains the chunk iterator we hand it from inside its own feed task, while the moderation middleware's peek-ahead loop pulls the leading non-text events in the request task. NAT's `Function.astream` holds a `function_path_stack` token open across every `yield`, so splitting consumption across the two contexts made the token reset raise. The upstream stream is now pinned to a single `contextvars.Context` for the whole of its life, including teardown.
+- Bumped the `datarobot-moderations` floor to `>=11.2.47`. The `11.2.46` build (the previous floor) crashed at import whenever a NAT tracer provider was active: `datarobot_dome.api` decorated its `ModerationPipeline` methods with `@_tracer.start_as_current_span(...)` evaluated at class-definition time, and NAT's `start_as_current_span` returns a `_NatWorkflowSpanContextManager` that is not callable, so using it as a decorator raised `TypeError` and took the whole module down. The result was the `datarobot_moderation` dragent middleware failing to register, so dragent runs errored with `middleware type 'datarobot_moderation' not found`. `11.2.47` defers the span to call time, which fixes the crash.
+
 ## 0.26.11
 - Disable litellm local cost map fetching to fix flakes in e2e tests
 

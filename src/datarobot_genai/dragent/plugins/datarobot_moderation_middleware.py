@@ -41,6 +41,7 @@ boundary, then reverses to AG-UI on the way out.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import contextvars
 import logging
@@ -49,12 +50,14 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from typing import TypeAlias
+from typing import TypeVar
 from typing import cast
 
 import numpy as np
@@ -133,6 +136,8 @@ from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_e
 _logger = logging.getLogger(__name__)
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
+
+_T = TypeVar("_T")
 
 
 def _require_workflow_input(args: tuple[Any, ...]) -> WorkflowInput | None:
@@ -1184,6 +1189,56 @@ async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
         _logger.debug("Error closing async iterator during stream teardown", exc_info=True)
 
 
+async def _advance_in_context(
+    coro: Coroutine[Any, Any, _T],
+    context: contextvars.Context,
+) -> _T:
+    """Await *coro* inside *context* by running it as a task pinned to that context."""
+    loop = asyncio.get_running_loop()
+    # ``create_task(..., context=...)`` (Python 3.11+) is the only way to run an awaitable
+    # in a caller-chosen Context: ``Context.run`` cannot drive a coroutine. Cancelling the
+    # awaiting side cancels this task too, so ``coro`` still unwinds inside ``context``.
+    task = loop.create_task(coro, context=context)
+    return await task
+
+
+async def _context_pinned_stream(
+    source: AsyncGenerator[DRAgentEventResponse],
+) -> AsyncGenerator[DRAgentEventResponse]:
+    """Advance and tear down *source* from a single fixed :class:`~contextvars.Context`.
+
+    ``ModerationPipeline.stream_response_async`` drains the chunk iterator we hand it from
+    inside its own ``loop.create_task(_feed())``, which runs in a *copy* of our Context. We
+    consume ``source`` on both sides of that boundary: the peek-ahead loop in
+    ``_moderated_dragent_stream`` pulls the leading non-text events in the request task's
+    Context, then dome's feed task drains the rest in its own.
+
+    That split corrupts context-manager tokens held open across ``yield``. NAT's
+    ``Function.astream`` wraps its whole body in the *synchronous*
+    ``Context.push_active_function`` context manager, so its ``function_path_stack`` token is
+    set on the first ``__anext__`` and reset only when the generator finalizes. Enter in one
+    Context and finalize in another and the reset raises
+    ``ValueError: <Token ...> was created in a different Context``, which surfaces as a bare
+    NAT ``workflow_error`` frame instead of a response. The same applies to OTel spans held
+    across a ``yield``, which detach via the same token mechanism.
+
+    Pinning every ``__anext__`` and the final ``aclose`` to one Context makes entry and
+    teardown pair up no matter which task drives the stream.
+    """
+    context = contextvars.copy_context()
+    try:
+        while True:
+            try:
+                item = await _advance_in_context(source.__anext__(), context)
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        # Unwind ``source`` in the Context that entered it, even when the caller closes us
+        # from somewhere else (dome cancels its feed task on an early BLOCK).
+        await _advance_in_context(_aclose_async_iterator(source), context)
+
+
 async def _moderated_dragent_stream(
     upstream: AsyncGenerator[DRAgentEventResponse],
     *,
@@ -1606,10 +1661,15 @@ class DataRobotModerationMiddleware(
 
             async with contextlib.aclosing(
                 _moderated_dragent_stream(
-                    _validated_dragent_stream(
-                        cast(
-                            AsyncGenerator[Any, None],
-                            call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    # Pin the upstream stream to one Context: dome drains part of it from its
+                    # own feed task, and NAT's ``push_active_function`` token cannot be reset
+                    # across Contexts. See ``_context_pinned_stream``.
+                    _context_pinned_stream(
+                        _validated_dragent_stream(
+                            cast(
+                                AsyncGenerator[Any, None],
+                                call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                            ),
                         ),
                     ),
                     moderation=moderation,

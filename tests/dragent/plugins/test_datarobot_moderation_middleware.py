@@ -58,6 +58,7 @@ from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
+from nat.builder.context import Context as NatContext
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChoice
@@ -426,6 +427,43 @@ async def _stream_response_with_merged_moderation_metrics(
         setattr(current, DATAROBOT_MODERATIONS_ATTR, merged)
         yield current
         current = peek
+
+
+async def _cross_context_stream_response_async(
+    completion: Any,
+    **kwargs: Any,
+) -> Any:
+    """Echo streamed chunks, draining ``completion`` from a separate task Context.
+
+    Mirrors the structure of the real ``ModerationPipeline.stream_response_async``, which
+    feeds the caller's chunk iterator from inside its own ``loop.create_task(_feed())``. The
+    plain echo fakes above consume ``completion`` inline, so they share the caller's Context
+    and cannot catch context-token corruption in the middleware's peek-ahead handoff.
+    """
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    done = object()
+
+    async def _feed() -> None:
+        try:
+            async for chunk in completion:
+                await queue.put(chunk)
+        finally:
+            # Real dome closes the caller's iterator from the feed task, which entered it.
+            aclose = getattr(completion, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            await queue.put(done)
+
+    feed_task = asyncio.get_running_loop().create_task(_feed())
+    try:
+        while True:
+            item = await queue.get()
+            if item is done:
+                break
+            yield item
+        await feed_task
+    finally:
+        feed_task.cancel()
 
 
 def _prescore_df_blocked(prompt: str, blocked_message: str) -> pd.DataFrame:
@@ -2366,6 +2404,122 @@ async def test_function_middleware_stream_closes_generators_on_early_consumer_ex
         await agen.aclose()
 
     aclose_mock.assert_awaited()
+
+
+async def test_function_middleware_stream_survives_nat_function_scope_across_contexts(
+    builder_mock: MagicMock,
+) -> None:
+    """Upstream NAT function scope must unwind cleanly when dome drains from its own task.
+
+    ``ModerationPipeline.stream_response_async`` drains our chunk iterator inside
+    ``loop.create_task(_feed())``, while the middleware's peek-ahead loop pulls the leading
+    non-text events in the request task's Context. NAT's ``Function.astream`` holds a
+    ``function_path_stack`` token open across every ``yield`` (a synchronous
+    ``push_active_function`` context manager wrapping the generator body), so splitting the
+    consumption across Contexts made the token reset raise ``ValueError: <Token ...> was
+    created in a different Context``, which reached the client as a bare NAT
+    ``workflow_error`` frame instead of a response.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _cross_context_stream_response_async
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    msg_id = "msg-ctx"
+    zero = default_usage_metrics()
+
+    async def upstream():
+        # Real NAT function scope, not a stand-in: this is the context manager whose token
+        # reset used to explode.
+        with NatContext.get().push_active_function("dragent", input_data=None):
+            yield DRAgentEventResponse(
+                events=[RunStartedEvent(thread_id="t", run_id="r")],
+                usage_metrics=zero,
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageStartEvent(message_id=msg_id, role="assistant")],
+                usage_metrics=zero,
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageContentEvent(message_id=msg_id, delta="hello ")],
+                usage_metrics=zero,
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageContentEvent(message_id=msg_id, delta="world")],
+                usage_metrics=zero,
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageEndEvent(message_id=msg_id)],
+                usage_metrics=zero,
+            )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    deltas = "".join(
+        ev.delta for resp in chunks for ev in resp.events if isinstance(ev, TextMessageContentEvent)
+    )
+    assert deltas == "hello world"
+    assert any(ev.type == EventType.TEXT_MESSAGE_END for resp in chunks for ev in resp.events)
+
+
+async def test_function_middleware_stream_unwinds_nat_scope_on_early_consumer_exit(
+    builder_mock: MagicMock,
+) -> None:
+    """A consumer abandoning the stream mid-flight must not corrupt the NAT function scope."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _cross_context_stream_response_async
+    prescore_df = _prescore_df_ok("hi")
+    _set_evaluate_prompt_async_return(moderation, prescore_df)
+    zero = default_usage_metrics()
+    depth_inside: list[int] = []
+
+    async def upstream():
+        with NatContext.get().push_active_function("dragent", input_data=None):
+            depth_inside.append(len(NatContext.get().function_path))
+            for delta in ("one", "two", "three"):
+                yield DRAgentEventResponse(
+                    events=[TextMessageContentEvent(message_id="m", delta=delta)],
+                    usage_metrics=zero,
+                )
+
+    stream_next = MagicMock(return_value=upstream())
+    depth_before = len(NatContext.get().function_path)
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        stream = mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=stream_next,
+            context=_fn_context(),
+        )
+        agen = stream.__aiter__()
+        first = await agen.__anext__()
+        assert isinstance(first, DRAgentEventResponse)
+        await agen.aclose()
+
+    # The scope was entered, and tearing down early left the caller's path stack as it was.
+    assert depth_inside == [depth_before + 1]
+    assert len(NatContext.get().function_path) == depth_before
 
 
 async def test_function_middleware_stream_raises_when_no_workflow_input(
