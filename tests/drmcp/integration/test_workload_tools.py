@@ -53,6 +53,7 @@ _EXPECTED_TOOLS = frozenset(
         "workload_logs_get",
         "workload_activity_get",
         "workload_proton_get",
+        "read_openapi_spec",
     }
 )
 
@@ -496,3 +497,25 @@ class TestMCPWorkloadObservabilityToolsIntegration:
             assert data["id"] == STUB_PROTON_ID
             assert "status_details" in data
             assert data["status_details"]["replicas"][0]["phase"] == "Running"
+
+
+@pytest.mark.asyncio
+class TestMCPOpenApiSpecIntegration:
+    """Integration tests for read_openapi_spec."""
+
+    async def test_read_openapi_spec_overview(self) -> None:
+        async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
+            data = _parse_result(await session.call_tool("read_openapi_spec", {}))
+            assert data["title"] == "Stub Workload API"
+            assert data["endpoint_count"] == 1
+            assert data["schema_count"] == 1
+
+    async def test_read_openapi_spec_schema_lookup(self) -> None:
+        async with integration_test_mcp_session(server_params=_workload_server_params()) as session:
+            data = _parse_result(
+                await session.call_tool(
+                    "read_openapi_spec", {"schema_name": "CreateWorkloadRequest"}
+                )
+            )
+            assert data["schema_name"] == "CreateWorkloadRequest"
+            assert "replicaCount" in data["definition"]
