@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.11
+- Disable litellm local cost map fetching to fix flakes in e2e tests
+
 ## 0.26.10
 - `dragent`: NAT batch evaluation (`nat eval`) plugins for DataRobot moderation metrics — `agent_goal_accuracy`, `faithfulness`, `task_adherence`, and `agent_guideline_adherence` — scoring in-process via `datarobot-moderations` OOTB judges (no NeMo Evaluator microservice).
 
