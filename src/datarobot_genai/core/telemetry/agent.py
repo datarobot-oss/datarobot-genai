@@ -84,7 +84,6 @@ def instrument() -> None:
     Also disables telemetry for some third-party libraries to avoid duplicate/undesired tracking.
     """
     # Some libraries collect telemetry data by default. Disable that.
-    os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 
     # Install a global OTel TracerProvider pointed at the DataRobot OTel
