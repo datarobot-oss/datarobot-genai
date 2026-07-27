@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.12
+- Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
 - Bumped the `datarobot-moderations` floor to `>=11.2.47`. The `11.2.46` build (the previous floor) crashed at import whenever a NAT tracer provider was active: `datarobot_dome.api` decorated its `ModerationPipeline` methods with `@_tracer.start_as_current_span(...)` evaluated at class-definition time, and NAT's `start_as_current_span` returns a `_NatWorkflowSpanContextManager` that is not callable, so using it as a decorator raised `TypeError` and took the whole module down. The result was the `datarobot_moderation` dragent middleware failing to register, so dragent runs errored with `middleware type 'datarobot_moderation' not found`. `11.2.47` defers the span to call time, which fixes the crash.
 
 ## 0.26.11
@@ -13,11 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.26.10
 - `dragent`: NAT batch evaluation (`nat eval`) plugins for DataRobot moderation metrics — `agent_goal_accuracy`, `faithfulness`, `task_adherence`, and `agent_guideline_adherence` — scoring in-process via `datarobot-moderations` OOTB judges (no NeMo Evaluator microservice).
 
-## 0.26.10
-- `drtools/vdb`: fixed `vdb_query` falsely rejecting valid vector database deployments when validating via `dr.Deployment.get()`
-
 ## 0.26.9
-- Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`. Bumped the `datarobot-moderations` floor to `>=11.2.46`, which fixes the regression that forced the 0.26.2 downgrade.
+- `drtools/vdb`: fixed `vdb_query` falsely rejecting valid vector database deployments when validating via `dr.Deployment.get()`
 
 ## 0.26.8
 - `llama_index`: strip `parallel_tool_calls` from tool requests for OpenAI o-series reasoning models (o1/o3/o4-mini), which reject it. gpt-5/gpt-4o keep it. Fixes tool-using agents failing on o-series with `Unsupported parameter: 'parallel_tool_calls'`.
