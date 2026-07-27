@@ -79,6 +79,7 @@ dist/
 
 # Test environment
 .venv-ci-test
+e2e-tests/dragent/nat/.tmp/
 
 # Profile results
 prof/
