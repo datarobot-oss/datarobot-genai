@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from enum import StrEnum
 from typing import Any
 from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from datarobot.core.config import LLMConfig as CoreLLMConfig
+from datarobot.core.config import LLMType
+from datarobot.core.config import deployment_url
 from datarobot.core.config import getenv
-from pydantic import BaseModel
+from datarobot.core.config import llm_gateway_url
 from pydantic import Field
 
 logger = logging.getLogger(__name__)
@@ -33,26 +35,22 @@ DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 DEFAULT_LLM_NAME = "llm"
 
 
-class LLMType(StrEnum):
-    GATEWAY = "gateway"
-    DEPLOYMENT = "deployment"
-    NIM = "nim"
-    EXTERNAL = "external"
-
-
 def _with_datarobot_prefix(model_name: str) -> str:
     return model_name if model_name.startswith("datarobot/") else "datarobot/" + model_name
 
 
-class LLMConfig(BaseModel):
+class LLMConfig(CoreLLMConfig):
     """One LLM instance's resolved connection parameters. A value object.
+
+    The fields, the :class:`LLMType` routing enum, and :meth:`get_llm_type` all
+    come from :class:`datarobot.core.config.LLMConfig`; there is one canonical LLM
+    value object for the whole ecosystem and genai consumes it rather than
+    redefining it. genai extends it only to override :meth:`to_litellm_params`.
 
     There can be MANY of these, one per configured LLM instance. It carries only
     per-LLM routing fields (which LLM, how to reach it), never app-wide settings.
     Produce one with :func:`resolve_llm_config` (mapped from the global
-    :class:`Config`), or accept one directly (the router does this). The two
-    ``datarobot_*`` globals are copied in for self-containment so the client
-    builder does not have to reach back to the global config.
+    :class:`Config`), or accept one directly (the router does this).
 
     This is deliberately NOT the same object as :class:`Config`. ``Config`` is the
     one global; ``LLMConfig`` is one-of-many. Keeping them separate is what lets
@@ -60,29 +58,15 @@ class LLMConfig(BaseModel):
     genuinely different things.
     """
 
-    datarobot_endpoint: str | None = None
-    datarobot_api_token: str | None = None
-    llm_deployment_id: str | None = None
-    llm_nim_deployment_id: str | None = None
-    llm_use_datarobot_llm_gateway: bool = True
-    llm_default_model: str | None = None
-
-    def get_llm_type(self) -> LLMType:
-        if self.llm_use_datarobot_llm_gateway:
-            return LLMType.GATEWAY
-        elif self.llm_deployment_id:
-            return LLMType.DEPLOYMENT
-        elif self.llm_nim_deployment_id:
-            return LLMType.NIM
-        else:
-            return LLMType.EXTERNAL
-
     def to_litellm_params(self) -> dict:
         """Return a litellm_params dict suitable for ``litellm.Router``'s model_list.
 
-        Endpoint and api_key fall back to the resolved globals
-        (:func:`resolve_datarobot_endpoint` / :func:`resolve_datarobot_api_token`)
-        when they are not set on this instance directly.
+        This overrides core's self-contained implementation because the router
+        path builds ``LLMConfig`` objects straight from ``workflow.yaml`` without
+        the two globals set. Endpoint and api_key therefore fall back to the
+        resolved globals (:func:`resolve_datarobot_endpoint` /
+        :func:`resolve_datarobot_api_token`), and the model name falls back to the
+        default LLM's model, when they are not set on this instance directly.
         """
         api_key = (
             self.datarobot_api_token
@@ -385,20 +369,12 @@ def default_use_datarobot_llm_gateway() -> bool:
     return resolve_llm_config().llm_use_datarobot_llm_gateway
 
 
-def deployment_url(deployment_id: str, datarobot_endpoint: str) -> str:
-    return f"{datarobot_endpoint}/deployments/{deployment_id}/chat/completions"
-
-
 def default_deployment_url(deployment_id: str | None = None) -> str:
     resolved_id = deployment_id or resolve_llm_config().llm_deployment_id
     if resolved_id is None:
         raise ValueError("Neither deployment ID nor default deployment ID is set")
 
     return deployment_url(resolved_id, resolve_datarobot_endpoint())
-
-
-def llm_gateway_url(datarobot_endpoint: str) -> str:
-    return datarobot_endpoint.removesuffix("/api/v2")
 
 
 def default_datarobot_llm_gateway_url() -> str:
