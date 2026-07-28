@@ -55,6 +55,40 @@ _INVALID_AUTH_CONTEXT_MSG = (
 )
 
 
+def _instrument_fastapi_app(app: FastAPI) -> None:
+    """Attach OTel ASGI instrumentation so incoming requests open a server span.
+
+    NAT does not open an OpenTelemetry parent span for the request, so without
+    this there is no server span for downstream spans (the conventions
+    ``datarobot_agent`` span and framework instrumentors) to nest under, and the
+    trace fragments into disconnected roots. The server span also continues the
+    caller's W3C trace context (the injected ``traceparent``), so agent spans
+    parent under the caller rather than starting a fresh trace.
+
+    Streaming (SSE) responses emit one ASGI ``send`` span per chunk and health
+    probes carry no useful trace, so both are excluded. The instrumentor uses
+    the global SDK ``TracerProvider``; when none is bootstrapped the spans are
+    no-ops. The import is guarded so a missing package never breaks startup.
+    """
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError:
+        logger.debug("opentelemetry-instrumentation-fastapi not installed; skipping")
+        return
+
+    try:
+        FastAPIInstrumentor.instrument_app(
+            app,
+            # Root ("//host/"), /health and /ping probes carry no useful trace.
+            excluded_urls=r"//[^/]+/$,/health/?$,/ping/?$",
+            # Streaming (SSE) responses emit one ASGI "send" span per chunk,
+            # which floods traces with thousands of low-value spans.
+            exclude_spans=["receive", "send"],
+        )
+    except Exception:
+        logger.exception("Failed to instrument FastAPI app for OpenTelemetry")
+
+
 def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
     """Extract gateway-validated user identity from A2A-forwarded headers.
 
@@ -256,6 +290,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 logger.info("A2A worker resources cleaned up")
 
         app.router.lifespan_context = lifespan
+
+        _instrument_fastapi_app(app)
 
         setup_logging()
         return app

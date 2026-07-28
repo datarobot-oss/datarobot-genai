@@ -149,6 +149,40 @@ def patch_super_add_routes():
         yield
 
 
+def test_build_app_instruments_fastapi(worker):
+    """build_app wires OTel FastAPI instrumentation onto the served app."""
+
+    @asynccontextmanager
+    async def mock_from_config(_config):
+        yield MagicMock()
+
+    with (
+        patch.object(worker, "configure", new_callable=AsyncMock),
+        patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        patch(
+            "datarobot_genai.dragent.frontends.fastapi._instrument_fastapi_app"
+        ) as mock_instrument,
+    ):
+        app = worker.build_app()
+    mock_instrument.assert_called_once_with(app)
+
+
+def test_instrument_fastapi_app_excludes_streaming_and_probe_spans():
+    """_instrument_fastapi_app drops per-SSE-chunk send spans and health probes."""
+    pytest.importorskip("opentelemetry.instrumentation.fastapi")
+    from datarobot_genai.dragent.frontends.fastapi import _instrument_fastapi_app
+
+    app = FastAPI()
+    with patch(
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor.instrument_app"
+    ) as mock_instr:
+        _instrument_fastapi_app(app)
+    mock_instr.assert_called_once()
+    kwargs = mock_instr.call_args.kwargs
+    assert kwargs["exclude_spans"] == ["receive", "send"]
+    assert "health" in kwargs["excluded_urls"]
+
+
 class TestDRAgentFastApiFrontEndPluginWorker:
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
     def test_health_routes_return_healthy_status(self, app_with_health, path):
