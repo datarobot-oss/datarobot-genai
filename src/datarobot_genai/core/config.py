@@ -190,20 +190,19 @@ def register_config_provider(
 
 
 def _validate_global_config(config: object) -> None:
-    """Fail loud if an injected global config is missing the required globals.
+    """Fail loud if an injected global config is not a settings object.
 
-    genai cannot ``isinstance``-check the app's ``Config`` (a different class it
-    cannot import), so this is a structural (duck-typed) check that the injected
-    object at least exposes the two globals every consumer relies on.
+    The app's global config must be a :class:`DataRobotAppFrameworkBaseSettings`
+    subclass: genai resolves the endpoint, API token, and per-LLM config off it
+    through that base class's ``resolve_*`` methods. genai can now import the base
+    class from ``datarobot.core``, so this is a real ``isinstance`` check rather
+    than the duck-typed field check it used to be.
     """
-    missing = [
-        name for name in ("datarobot_endpoint", "datarobot_api_token") if not hasattr(config, name)
-    ]
-    if missing:
+    if not isinstance(config, DataRobotAppFrameworkBaseSettings):
         raise TypeError(
-            f"Registered config provider returned {type(config).__name__}, which is "
-            f"missing required global field(s): {', '.join(missing)}. The app config "
-            "must expose datarobot_endpoint and datarobot_api_token."
+            f"Registered config provider returned {type(config).__name__}, which is not a "
+            "DataRobotAppFrameworkBaseSettings. The app config must subclass it so genai can "
+            "resolve the DataRobot endpoint, API token, and LLM config off it."
         )
 
 
@@ -221,23 +220,29 @@ def resolve_config() -> Config:
         provided = provider()
         if provided is not None:
             _validate_global_config(provided)
-            # The app's Config is a structurally-compatible settings object; genai
-            # only reads it through the resolver helpers (getattr), so treat it as
-            # a Config for typing purposes.
+            # provided is a DataRobotAppFrameworkBaseSettings subclass (validated
+            # above); genai resolves everything off it through its resolve_* methods.
+            # Cast to Config for typing since genai cannot import the app's class.
             return cast(Config, provided)
     return Config()
 
 
 def resolve_datarobot_endpoint() -> str:
-    """Resolve the DataRobot endpoint global. The only place it is read off config."""
-    endpoint: str | None = getattr(resolve_config(), "datarobot_endpoint", None)
-    return endpoint or DEFAULT_DATAROBOT_ENDPOINT
+    """Resolve the DataRobot endpoint global. The only place it is read off config.
+
+    Delegates to :meth:`DataRobotAppFrameworkBaseSettings.resolve_datarobot_endpoint`,
+    the canonical resolver that now lives on the settings base class in
+    ``datarobot.core``.
+    """
+    return resolve_config().resolve_datarobot_endpoint()
 
 
 def resolve_datarobot_api_token() -> str | None:
-    """Resolve the DataRobot API token global. The only place it is read off config."""
-    token: str | None = getattr(resolve_config(), "datarobot_api_token", None)
-    return token or None
+    """Resolve the DataRobot API token global. The only place it is read off config.
+
+    Delegates to :meth:`DataRobotAppFrameworkBaseSettings.resolve_datarobot_api_token`.
+    """
+    return resolve_config().resolve_datarobot_api_token()
 
 
 # --- Deprecated LLM config parameter bridge (REMOVE IN A FUTURE RELEASE) -------
@@ -291,17 +296,18 @@ def resolve_llm_config(name: str | None = None) -> LLMConfig:
     """Resolve ONE LLM instance's config from the global config.
 
     ``name`` is the LLM component instance name; when omitted it is the app's
-    registered default (``"llm"`` for a standalone genai). Reads the instance's
-    ``{name}_*`` fields off :func:`resolve_config` and folds in the two globals,
-    producing a self-contained :class:`LLMConfig`. This is the one machine that
-    turns app config into an LLM config, and it is what ``get_llm`` runs on.
+    registered default (``"llm"`` for a standalone genai). The mapping itself, the
+    instance's ``{name}_*`` fields folded together with the two globals, is done by
+    :meth:`DataRobotAppFrameworkBaseSettings.resolve_llm_config` in ``datarobot.core``;
+    genai layers only the deprecated-name backwards-compat bridge on top. This is
+    the one machine that turns app config into an LLM config, and it is what
+    ``get_llm`` runs on.
     """
     config = resolve_config()
     instance = name if name is not None else cast(str, _provider_registry["default_llm_name"])
-    # Read everything off a single resolve_config() so the provider is invoked
-    # exactly once per resolution (values still re-resolve on the next call).
-    endpoint: str | None = getattr(config, "datarobot_endpoint", None)
-    api_token: str | None = getattr(config, "datarobot_api_token", None)
+    # Delegate the base mapping (globals + {instance}_* fields) to the settings
+    # base class, invoking the provider exactly once per resolution.
+    resolved = config.resolve_llm_config(instance)
 
     # --- deprecated-name backwards-compat bridge (REMOVE IN A FUTURE RELEASE) ---
     # Fall back to the pre-rename bare param names only when the namespaced field
@@ -309,13 +315,13 @@ def resolve_llm_config(name: str | None = None) -> LLMConfig:
     # explicit value from a default (required for the bool, whose default is True).
     set_fields = getattr(config, "model_fields_set", ())
 
-    llm_nim_deployment_id = getattr(config, f"{instance}_nim_deployment_id", None)
+    llm_nim_deployment_id = resolved.llm_nim_deployment_id
     if f"{instance}_nim_deployment_id" not in set_fields:
         old = _deprecated_param("NIM_DEPLOYMENT_ID", f"{instance.upper()}_NIM_DEPLOYMENT_ID")
         if old is not None:
             llm_nim_deployment_id = str(old)
 
-    llm_use_datarobot_llm_gateway = getattr(config, f"{instance}_use_datarobot_llm_gateway", True)
+    llm_use_datarobot_llm_gateway = resolved.llm_use_datarobot_llm_gateway
     if f"{instance}_use_datarobot_llm_gateway" not in set_fields:
         old = _deprecated_param(
             "USE_DATAROBOT_LLM_GATEWAY", f"{instance.upper()}_USE_DATAROBOT_LLM_GATEWAY"
@@ -324,13 +330,15 @@ def resolve_llm_config(name: str | None = None) -> LLMConfig:
             llm_use_datarobot_llm_gateway = _coerce_bool(old)
     # --- end bridge ---
 
+    # Rebuild as genai's LLMConfig (not core's) so the router's ambient
+    # to_litellm_params travels with the result, applying any bridge overrides.
     return LLMConfig(
-        datarobot_endpoint=endpoint or DEFAULT_DATAROBOT_ENDPOINT,
-        datarobot_api_token=api_token or None,
-        llm_deployment_id=getattr(config, f"{instance}_deployment_id", None),
+        datarobot_endpoint=resolved.datarobot_endpoint,
+        datarobot_api_token=resolved.datarobot_api_token,
+        llm_deployment_id=resolved.llm_deployment_id,
         llm_nim_deployment_id=llm_nim_deployment_id,
         llm_use_datarobot_llm_gateway=llm_use_datarobot_llm_gateway,
-        llm_default_model=getattr(config, f"{instance}_default_model", None),
+        llm_default_model=resolved.llm_default_model,
     )
 
 

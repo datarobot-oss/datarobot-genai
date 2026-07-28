@@ -303,7 +303,7 @@ def test_injected_config_overrides_env_for_user_intent_fields() -> None:
     """
     # App config: gateway off, a deployment target, and a specific model, all set
     # as plain values, exactly as a user would hardcode them in config.py.
-    app_config = LLMConfig(
+    app_config = _make_config(
         llm_use_datarobot_llm_gateway=False,
         llm_deployment_id="dep-from-app",
         llm_default_model="anthropic/claude-sonnet-4-20250514",
@@ -316,7 +316,7 @@ def test_injected_config_overrides_env_for_user_intent_fields() -> None:
         assert default_use_datarobot_llm_gateway() is False
         assert default_llm_deployment_id() == "dep-from-app"
         assert default_model_name() == "anthropic/claude-sonnet-4-20250514"
-        assert resolve_config().get_llm_type() == LLMType.DEPLOYMENT
+        assert resolve_llm_config().get_llm_type() == LLMType.DEPLOYMENT
 
 
 def test_provider_is_called_each_resolve_for_dynamic_values() -> None:
@@ -339,7 +339,7 @@ def test_injected_config_drives_endpoint_helpers() -> None:
     A provider supplies a custom endpoint and deployment id; genai's own env-only
     Config would say the defaults. The URL builders must use the injected values.
     """
-    app_config = LLMConfig(
+    app_config = _make_config(
         datarobot_endpoint="https://custom.datarobot.example/api/v2",
         llm_deployment_id="dep-injected",
     )
@@ -350,8 +350,7 @@ def test_injected_config_drives_endpoint_helpers() -> None:
     )
     with patch.object(config_mod, "Config", return_value=env_only):
         assert default_deployment_url() == (
-            "https://custom.datarobot.example/api/v2"
-            "/deployments/dep-injected/chat/completions"
+            "https://custom.datarobot.example/api/v2/deployments/dep-injected/chat/completions"
         )
         assert default_datarobot_llm_gateway_url() == "https://custom.datarobot.example"
 
@@ -455,9 +454,7 @@ def test_bridge_nim_neither_set_defaults_to_none_silently(
 def test_bridge_gateway_new_only_is_used_silently(
     clear_legacy_env: None, caplog: pytest.LogCaptureFixture
 ) -> None:
-    cfg = _config_fields_set(
-        {"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False
-    )
+    cfg = _config_fields_set({"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False)
     with patch.object(config_mod, "Config", return_value=cfg):
         with caplog.at_level(logging.WARNING):
             result = resolve_llm_config()
@@ -487,9 +484,7 @@ def test_bridge_gateway_new_wins_over_old_silently(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_USE_DATAROBOT_LLM_GATEWAY", "1")
-    cfg = _config_fields_set(
-        {"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False
-    )
+    cfg = _config_fields_set({"llm_use_datarobot_llm_gateway"}, llm_use_datarobot_llm_gateway=False)
     with patch.object(config_mod, "Config", return_value=cfg):
         with caplog.at_level(logging.WARNING):
             result = resolve_llm_config()
@@ -519,9 +514,10 @@ def test_bridge_uses_instance_namespace_but_bare_legacy_name(
     bare, so the fallback and the warning's target name reflect the instance.
     """
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
-    # The provider takes precedence over Config(); its object has an empty
-    # model_fields_set, so the namespaced field reads as "not provided".
-    register_config_provider(LLMConfig, default_llm_name="myagent")
+    # The provider takes precedence over Config(). Its Config has an empty
+    # model_fields_set and no myagent_* fields, so the namespaced field reads as
+    # "not provided" and the bridge falls back to the bare legacy param.
+    register_config_provider(lambda: _config_fields_set(set()), default_llm_name="myagent")
     with caplog.at_level(logging.WARNING):
         result = resolve_llm_config()
     assert result.llm_nim_deployment_id == "legacy-nim"
