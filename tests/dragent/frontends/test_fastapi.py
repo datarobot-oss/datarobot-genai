@@ -129,9 +129,6 @@ def mock_a2a_worker():
         name="Test Agent", description="A test agent", host="localhost", port=8000
     )
     worker._generate_security_schemes = AsyncMock(return_value=(None, None))
-    worker.create_a2a_server = MagicMock(
-        return_value=MagicMock(build=MagicMock(return_value=FastAPI()))
-    )
     worker.cleanup = AsyncMock()
     return worker
 
@@ -270,6 +267,10 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 return_value=mock_a2a_worker,
             ) as mock_a2a_worker_cls,
             patch(
+                "datarobot_genai.dragent.frontends.fastapi.create_dr_a2a_server",
+                return_value=MagicMock(build=MagicMock(return_value=FastAPI())),
+            ),
+            patch(
                 "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
                 new_callable=AsyncMock,
                 return_value=MagicMock(),
@@ -338,6 +339,10 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             patch(
                 "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.create_dr_a2a_server",
+                return_value=MagicMock(build=MagicMock(return_value=FastAPI())),
             ),
             patch(
                 "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
