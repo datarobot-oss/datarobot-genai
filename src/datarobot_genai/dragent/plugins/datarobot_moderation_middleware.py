@@ -1131,28 +1131,29 @@ def _pending_after_moderated_chunk(
     pending_deferred: list[DRAgentEventResponse],
     pending_pass_through: list[DRAgentEventResponse],
 ) -> list[DRAgentEventResponse]:
-    """Order buffered events after a moderated text chunk.
-
-    Deferred ``TEXT_MESSAGE_END`` closes the prior segment first. Pass-through events (for example
-    ``STEP_FINISHED`` / ``STEP_STARTED``) keep upstream order. Deferred ``TEXT_MESSAGE_START`` for
-    the next segment follows so step boundaries stay valid for AG-UI verification.
+    """Order buffered events after a moderated chunk: a prior-segment ``TEXT_MESSAGE_END`` first
+    (keeps its id for late moderated deltas), then pass-through, then this batch's own segments in
+    upstream order so a content-less one isn't split into an ``END`` before its ``START``.
     """
-    deferred_ends = [
-        item
-        for item in pending_deferred
-        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_END
-    ]
-    deferred_starts = [
-        item
+    started_in_batch = {
+        item.events[0].message_id
         for item in pending_deferred
         if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START
-    ]
-    deferred_other = [
-        item
-        for item in pending_deferred
-        if item not in deferred_ends and item not in deferred_starts
-    ]
-    return deferred_ends + list(pending_pass_through) + deferred_starts + deferred_other
+    }
+    prior_segment_ends: list[DRAgentEventResponse] = []
+    rest: list[DRAgentEventResponse] = []
+    for item in pending_deferred:
+        first = item.events[0] if item.events else None
+        # Only an END whose START was in an earlier batch closes a prior segment and may lead.
+        if (
+            first is not None
+            and first.type == EventType.TEXT_MESSAGE_END
+            and first.message_id not in started_in_batch
+        ):
+            prior_segment_ends.append(item)
+        else:
+            rest.append(item)
+    return prior_segment_ends + list(pending_pass_through) + rest
 
 
 def _drain_pending_after_moderated_chunk(

@@ -3239,6 +3239,22 @@ async def test_function_middleware_stream_run_error_terminal_with_second_open_me
     assert all(t != EventType.RUN_ERROR for t in event_types[:run_error_idx])
     second_starts = [i for i, ev in enumerate(flat) if getattr(ev, "message_id", None) == "msg-2"]
     assert second_starts and max(second_starts) < run_error_idx, event_types
+    # The second segment's own lifecycle must be well-formed: exactly one START before exactly one
+    # END (the reorder must not hoist its END ahead of its START or synthesize a duplicate END).
+    m2_starts = [
+        i
+        for i, ev in enumerate(flat)
+        if ev.type == EventType.TEXT_MESSAGE_START and getattr(ev, "message_id", None) == "msg-2"
+    ]
+    m2_ends = [
+        i
+        for i, ev in enumerate(flat)
+        if ev.type == EventType.TEXT_MESSAGE_END and getattr(ev, "message_id", None) == "msg-2"
+    ]
+    assert len(m2_starts) == 1 and len(m2_ends) == 1, event_types
+    assert m2_starts[0] < m2_ends[0], event_types
+    # Whole AG-UI lifecycle stays valid (RUN_STARTED prepended to mirror the real stream framing).
+    validate_sequence([RunStartedEvent(thread_id="t", run_id="r"), *flat])
 
 
 async def test_real_chain_moderation_over_otel_failing_agent_run_error_terminal(
