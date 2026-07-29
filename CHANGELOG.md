@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## 0.26.13
+- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
 
 ## 0.26.13
 - `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
