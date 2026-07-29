@@ -3,14 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-## 0.26.13
-- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
 
-## 0.26.13
+## 0.26.14
 - `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
 - `dragent`: streaming agent/workflow errors now end the run with a terminal AG-UI `RUN_ERROR` (adapted to an OpenAI-shaped error chunk on `/chat/completions`) instead of NAT's bare `workflow_error` JSON that `data:`-only clients silently drop.
 - `dragent`: the agent OpenTelemetry span is now marked `ERROR` on a `RUN_ERROR` event or raised agent exception, so failed runs are no longer traced as successful.
 - `dragent`: moderation now fails closed on guard errors by emitting a terminal `RUN_ERROR` that the frontend converters adapt per route (non-streaming surfaces as HTTP 422, streaming as a framed `RUN_ERROR`), for prescore, postscore, and mid-stream failures.
+
+## 0.26.13
+- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
 
 ## 0.26.12
 - Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
