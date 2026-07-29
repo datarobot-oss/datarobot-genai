@@ -18,7 +18,6 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from datarobot_genai.core.mcp.config import MCPConfig
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
 )
@@ -61,10 +60,6 @@ class TestMCPOAuthProtectedResourceMetadataManager:
             yield mock_func
 
     @pytest.fixture
-    def mock_mcp_config(self) -> Mock:
-        return Mock(spec=MCPConfig)
-
-    @pytest.fixture
     def mock_mcp_oauth_protected_resource_metadata_user_config_from_dict(self) -> Iterator[Mock]:
         with patch.object(MCPOAuthProtectedResourceMetadataConfig, "from_dict") as mock_func:
             yield mock_func
@@ -97,11 +92,9 @@ class TestMCPOAuthProtectedResourceMetadataManager:
     def test_load_config(
         self,
         mock_yaml_safe_load: Mock,
-        mock_mcp_config: Mock,
         mock_mcp_oauth_protected_resource_metadata_user_config_from_dict: Mock,
     ) -> None:
-        mock_mcp_config.mcp_oauth_metadata = "mock-metadata"
-        manager = MCPOAuthProtectedResourceMetadataManager(mcp_config=mock_mcp_config)
+        manager = MCPOAuthProtectedResourceMetadataManager(mcp_oauth_metadata="mock-metadata")
         output = manager.load_config()
 
         mock_yaml_safe_load.assert_called_once_with("mock-metadata")

@@ -18,7 +18,6 @@ from typing import Any
 
 import yaml
 
-from datarobot_genai.core.mcp.config import MCPConfig
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
 )
@@ -44,18 +43,12 @@ class SupportedMethodsToSendBearerToken(Enum):
 
 
 class MCPOAuthProtectedResourceMetadataManager:
-    def __init__(self, mcp_config: MCPConfig | None = None) -> None:
-        self._mcp_config = mcp_config
-
-    def _get_mcp_config(self) -> MCPConfig:
-        if self._mcp_config is None:
-            self._mcp_config = MCPConfig()
-        return self._mcp_config
+    def __init__(self, mcp_oauth_metadata: str | None = None) -> None:
+        self._mcp_oauth_metadata = mcp_oauth_metadata
 
     def load_config(self) -> MCPOAuthProtectedResourceMetadataConfig | None:
-        metadata_in_json_str = self._get_mcp_config().mcp_oauth_metadata
-        if metadata_in_json_str:
-            metadata_in_json = yaml.safe_load(metadata_in_json_str)
+        if self._mcp_oauth_metadata:
+            metadata_in_json = yaml.safe_load(self._mcp_oauth_metadata)
             return MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_json)
         return None
 
