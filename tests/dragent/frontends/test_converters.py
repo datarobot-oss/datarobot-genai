@@ -16,6 +16,7 @@ import datetime
 from unittest.mock import patch
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -558,6 +559,28 @@ def test_convert_dragent_event_response_to_chat_response_chunk_empty_events() ->
 
     # THEN content is empty but structure is still valid
     assert result.choices[0].delta.content == ""
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_surfaces_run_error() -> None:
+    # GIVEN a response whose events carry a terminal RunErrorEvent
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[RunErrorEvent(message="workflow blew up", code="ValueError")],
+    )
+
+    # WHEN converting to ChatResponseChunk
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk carries the OpenAI-shaped error extra and no content choices
+    assert isinstance(result, ChatResponseChunk)
+    assert result.choices == []
+    assert getattr(result, "error", None) == {
+        "message": "workflow blew up",
+        "type": "workflow_error",
+        "code": "ValueError",
+    }
+    # AND the model is backfilled to the configured model, not NAT's "unknown-model" placeholder
+    assert result.model not in (None, "unknown-model")
 
 
 def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_chunk() -> None:

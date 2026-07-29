@@ -4,10 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.13
+## 0.26.15
 - `dragent`: restored FastAPI ASGI instrumentation on the served app (removed in 0.26.x) so each request opens a server span that continues the caller's W3C trace context. The `datarobot_agent` conventions span and framework instrumentor spans now nest under it instead of fragmenting into disconnected trace roots. ASGI `receive`/`send` spans (one per SSE chunk) and health probes are excluded to avoid span floods - including the k8s probe that hits the deployment's mount-prefixed root (e.g. `/<dep>/<model>/`), not just a bare `/`. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
 - `core.telemetry`: `instrument()` now bootstraps the OTel SDK provider whenever `OTEL_EXPORTER_OTLP_HEADERS` is set (e.g. local experimentation, where `_bridge_pulumi_otel_env` derives it from `pulumi_config.json`), not only in a hosted runtime. Previously the SDK-channel spans (the `datarobot_agent` span, the FastAPI server span, framework instrumentors) were dropped to a no-op provider outside deployments, so local/experimentation traces showed the NAT tree without input/output.
 - `core.telemetry`: fixed deployed-agent chats after the first one showing no agent spans in the Agentic Playground on a warm server. NAT's `Workflow` snapshots `contextvars.copy_context()` at its (lazy, first-request) build and `Runner.__aenter__` re-applies that snapshot on every run — overwriting each request's own `workflow_trace_id` with the first request's (so later chats joined the first chat's trace) and leaving the NAT lifecycle root span parentless (so the agent subtree floated off the caller's bridge span). `instrument()` now wraps `Runner.__aenter__` to restore the per-request trace vars and seed `_root_span_id` from the request's server span, so each chat's full agent trace nests under its own bridge span.
+
+## 0.26.14
+- `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
+- `dragent`: streaming agent/workflow errors now end the run with a terminal AG-UI `RUN_ERROR` (adapted to an OpenAI-shaped error chunk on `/chat/completions`) instead of NAT's bare `workflow_error` JSON that `data:`-only clients silently drop.
+- `dragent`: the agent OpenTelemetry span is now marked `ERROR` on a `RUN_ERROR` event or raised agent exception, so failed runs are no longer traced as successful.
+- `dragent`: moderation now fails closed on guard errors by emitting a terminal `RUN_ERROR` that the frontend converters adapt per route (non-streaming surfaces as HTTP 422, streaming as a framed `RUN_ERROR`), for prescore, postscore, and mid-stream failures.
+
+## 0.26.13
+- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
 
 ## 0.26.12
 - Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
