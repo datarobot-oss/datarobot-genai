@@ -470,3 +470,65 @@ async def test_invoke_single_message_builds_run_input_with_user_message() -> Non
     assert agent.last_input.messages[0].content == "hello world"
     assert agent.last_input.state == []
     assert agent.last_input.tools == []
+
+
+def _single_user_run_input() -> RunAgentInput:
+    return RunAgentInput(
+        thread_id="t",
+        run_id="r",
+        messages=[UserMessage(id="u", role="user", content="hi")],
+        state=[],
+        tools=[],
+        context=[],
+        forwardedProps=None,
+    )
+
+
+async def test_frame_agent_errors_emits_terminal_run_error() -> None:
+    from ag_ui.core import RunErrorEvent
+    from ag_ui.core import RunStartedEvent
+    from ag_ui.core import TextMessageEndEvent
+    from ag_ui.core import TextMessageStartEvent
+
+    from datarobot_genai.core.agents.base import frame_agent_errors
+
+    # GIVEN an invoke that opens a text segment then raises mid-run
+    @frame_agent_errors
+    async def invoke(self: Any, run_agent_input: RunAgentInput) -> Any:
+        yield RunStartedEvent(thread_id="t", run_id="r"), None, default_usage_metrics()
+        yield (
+            TextMessageStartEvent(message_id="m1", role="assistant"),
+            None,
+            default_usage_metrics(),
+        )
+        raise ValueError("boom")
+
+    # WHEN it is consumed
+    events = [ev async for ev, _, _ in invoke(object(), _single_user_run_input())]
+
+    # THEN the open segment is closed and the stream ends with a terminal RUN_ERROR
+    assert [type(ev).__name__ for ev in events] == [
+        "RunStartedEvent",
+        "TextMessageStartEvent",
+        "TextMessageEndEvent",
+        "RunErrorEvent",
+    ]
+    assert isinstance(events[-2], TextMessageEndEvent) and events[-2].message_id == "m1"
+    assert isinstance(events[-1], RunErrorEvent) and events[-1].message == "boom"
+
+
+async def test_frame_agent_errors_passthrough_without_exception() -> None:
+    from ag_ui.core import RunFinishedEvent
+    from ag_ui.core import RunStartedEvent
+
+    from datarobot_genai.core.agents.base import frame_agent_errors
+
+    # GIVEN an invoke that completes normally
+    @frame_agent_errors
+    async def invoke(self: Any, run_agent_input: RunAgentInput) -> Any:
+        yield RunStartedEvent(thread_id="t", run_id="r"), None, default_usage_metrics()
+        yield RunFinishedEvent(thread_id="t", run_id="r"), None, default_usage_metrics()
+
+    # WHEN consumed THEN events pass through unchanged and no RUN_ERROR is appended
+    kinds = [type(ev).__name__ async for ev, _, _ in invoke(object(), _single_user_run_input())]
+    assert kinds == ["RunStartedEvent", "RunFinishedEvent"]
