@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 from collections.abc import Iterator
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -19,6 +18,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+from datarobot_genai.core.mcp.config import MCPConfig
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
 )
@@ -28,26 +28,12 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadataConfig,
 )
-from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import ContainerEnvVar
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     SupportedMethodsToSendBearerToken,
 )
-
-
-class TestContainerEnvVar:
-    @pytest.fixture
-    def mock_os_getenv(self) -> Iterator[Mock]:
-        with patch.object(os, "getenv") as mock_func:
-            yield mock_func
-
-    @pytest.mark.parametrize("env_var_enum", ContainerEnvVar, ids=str)
-    def test_get_env_var_value(self, env_var_enum: ContainerEnvVar, mock_os_getenv: Mock) -> None:
-        env_var_enum.get_env_var_value()
-
-        mock_os_getenv.assert_called_once_with(env_var_enum.name)
 
 
 class TestSupportedMethodsToSendBearerToken:
@@ -75,12 +61,8 @@ class TestMCPOAuthProtectedResourceMetadataManager:
             yield mock_func
 
     @pytest.fixture
-    def mock_load_mcp_oauth_protected_resource_metadata_from_env_var(self) -> Iterator[Mock]:
-        with patch.object(
-            ContainerEnvVar.MCP_OAUTH_PROTECTED_RESOURCE_METADATA,
-            "get_env_var_value",
-        ) as mock_func:
-            yield mock_func
+    def mock_mcp_config(self) -> Mock:
+        return Mock(spec=MCPConfig)
 
     @pytest.fixture
     def mock_mcp_oauth_protected_resource_metadata_user_config_from_dict(self) -> Iterator[Mock]:
@@ -115,17 +97,14 @@ class TestMCPOAuthProtectedResourceMetadataManager:
     def test_load_config(
         self,
         mock_yaml_safe_load: Mock,
-        mock_load_mcp_oauth_protected_resource_metadata_from_env_var: Mock,
+        mock_mcp_config: Mock,
         mock_mcp_oauth_protected_resource_metadata_user_config_from_dict: Mock,
     ) -> None:
-        manager = MCPOAuthProtectedResourceMetadataManager()
+        mock_mcp_config.mcp_oauth_metadata = "mock-metadata"
+        manager = MCPOAuthProtectedResourceMetadataManager(mcp_config=mock_mcp_config)
         output = manager.load_config()
 
-        mock_load_mcp_oauth_protected_resource_metadata_from_env_var.assert_called_once_with()
-        mock_metadata_json_string = (
-            mock_load_mcp_oauth_protected_resource_metadata_from_env_var.return_value
-        )
-        mock_yaml_safe_load.assert_called_once_with(mock_metadata_json_string)
+        mock_yaml_safe_load.assert_called_once_with("mock-metadata")
         mock_mcp_oauth_protected_resource_metadata_user_config_from_dict.assert_called_once_with(
             mock_yaml_safe_load.return_value
         )
