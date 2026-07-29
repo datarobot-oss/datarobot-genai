@@ -50,6 +50,7 @@ from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import default_usage_metrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import frame_agent_errors
 from datarobot_genai.crewai.agui_stream import AGUIStreamEmitter
 from datarobot_genai.crewai.kickoff_storage import neutralize_kickoff_storage
 from datarobot_genai.crewai.logging_events import CrewAILoggingEventListener
@@ -397,6 +398,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
             }
         return default_usage_metrics()
 
+    @frame_agent_errors
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)

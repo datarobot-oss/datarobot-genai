@@ -56,12 +56,15 @@ from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
 
+from datarobot_genai.core.agents import RUN_ERROR_CODE
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents import track_open_text_in_events
 from datarobot_genai.dragent.frontends.converters import (
     convert_chat_response_to_dragent_event_response,
 )
 from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_text_response
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.response import run_error_response
 from datarobot_genai.dragent.frontends.tool_call_registry import mark_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 
@@ -187,7 +190,7 @@ async def convert_chunks_to_agui_events(
     if active_message_id is not None:
         end.append(TextMessageEndEvent(message_id=active_message_id))
     if error is not None:
-        end.append(RunErrorEvent(message=str(error), code="STREAM_ERROR"))
+        end.append(RunErrorEvent(message=str(error), code=RUN_ERROR_CODE))
     if end:
         yield DRAgentEventResponse(events=end, usage_metrics=zero)
 
@@ -257,11 +260,24 @@ class DataRobotDRAgentNormalizationMiddleware(FunctionMiddleware):
             except StopAsyncIteration:
                 return
 
-            # dragent-native agents already emit DRAgentEventResponse -> passthrough.
+            # dragent-native agents already emit DRAgentEventResponse -> passthrough. Frame a
+            # mid-run failure as a terminal RUN_ERROR
             if isinstance(first, DRAgentEventResponse):
-                yield first
-                async for chunk in iterator:
-                    yield chunk
+                open_text_ids: set[str] = set()
+                try:
+                    track_open_text_in_events(open_text_ids, first.events)
+                    yield first
+                    async for chunk in iterator:
+                        track_open_text_in_events(open_text_ids, chunk.events)
+                        yield chunk
+                except Exception as exc:
+                    logger.exception("Agent stream failed; ending with RUN_ERROR")
+                    for message_id in open_text_ids:
+                        yield DRAgentEventResponse(
+                            events=[TextMessageEndEvent(message_id=message_id)],
+                            usage_metrics=default_usage_metrics(),
+                        )
+                    yield run_error_response(str(exc))
                 return
 
             # Native NAT agents emit ChatResponseChunk -> convert to AG-UI events. Reuse

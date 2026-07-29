@@ -30,9 +30,11 @@ from unittest.mock import MagicMock
 import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -41,10 +43,12 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 import datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware as mod
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import AGENT_SPAN_NAME
+from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import ERROR_TYPE
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import GEN_AI_COMPLETION
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import GEN_AI_PROMPT
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import TOOL_NAME
@@ -341,6 +345,89 @@ async def test_stream_aggregates_completion_across_chunks(
     span = _span_named(span_exporter, AGENT_SPAN_NAME)
     assert span.attributes[GEN_AI_PROMPT] == "greet me"
     assert span.attributes[GEN_AI_COMPLETION] == "Hello"
+
+
+async def test_stream_marks_span_error_on_run_error_event(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    """``RUN_ERROR`` chunks mark the span ERROR."""
+    chunks = [
+        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="partial")]),
+        DRAgentEventResponse(events=[RunErrorEvent(message="boom", code="RUN_ERROR")]),
+    ]
+
+    yielded = await _drain(
+        middleware.function_middleware_stream(
+            _nat_input("hi"),
+            call_next=_call_next_stream(chunks),
+            context=MagicMock(),
+        )
+    )
+
+    assert yielded == chunks
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.status.status_code == StatusCode.ERROR
+    assert "boom" in (span.status.description or "")
+    assert span.attributes[ERROR_TYPE] == "RUN_ERROR"
+
+
+async def test_stream_failure_yields_terminal_run_error(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    """A mid-stream agent failure ends the run with a terminal RUN_ERROR, not a raised exception."""
+
+    async def _failing_call_next(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m1", delta="partial")]
+        )
+        raise RuntimeError("tool timed out")
+
+    yielded = await _drain(
+        middleware.function_middleware_stream(
+            _nat_input("hi"),
+            call_next=_failing_call_next,
+            context=MagicMock(),
+        )
+    )
+
+    terminal = yielded[-1]
+    assert isinstance(terminal, DRAgentEventResponse)
+    assert len(terminal.events) == 1
+    assert isinstance(terminal.events[0], RunErrorEvent)
+    assert terminal.events[0].message == "tool timed out"
+    assert terminal.events[0].code == "RUN_ERROR"
+
+    # The open text segment (m1) is closed before the terminal RUN_ERROR so it stays last.
+    kinds = [type(ev) for resp in yielded for ev in resp.events]
+    assert kinds[-1] is RunErrorEvent
+    assert TextMessageEndEvent in kinds
+    assert kinds.index(TextMessageEndEvent) < kinds.index(RunErrorEvent)
+
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.status.status_code == StatusCode.ERROR
+    assert "tool timed out" in (span.status.description or "")
+    assert span.attributes[ERROR_TYPE] == "RUN_ERROR"
+
+
+async def test_invoke_marks_span_error_on_run_error_event(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    """Aggregated ``RUN_ERROR`` output marks the span ERROR."""
+    response = DRAgentEventResponse(events=[RunErrorEvent(message="kaboom", code="RUN_ERROR")])
+
+    await middleware.function_middleware_invoke(
+        _nat_input("hi"),
+        call_next=_call_next(response),
+        context=MagicMock(),
+    )
+
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.status.status_code == StatusCode.ERROR
+    assert "kaboom" in (span.status.description or "")
+    assert span.attributes[ERROR_TYPE] == "RUN_ERROR"
 
 
 async def test_stream_sets_completion_when_closed_early_after_text(
