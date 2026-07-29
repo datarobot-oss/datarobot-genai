@@ -79,8 +79,11 @@ def _instrument_fastapi_app(app: FastAPI) -> None:
     try:
         FastAPIInstrumentor.instrument_app(
             app,
-            # Root ("//host/"), /health and /ping probes carry no useful trace.
-            excluded_urls=r"//[^/]+/$,/health/?$,/ping/?$",
+            # Root, /health and /ping probes carry no useful trace. The root pattern matches the
+            # mount-prefixed root a deployment's k8s probe hits (e.g. //host/<dep>/<model>/), not
+            # just //host/ - any host + path segments ending in a trailing slash, which real
+            # endpoints (/chat/completions, /generate/stream, ...) never do.
+            excluded_urls=r"//[^/]+(/[^/]+)*/$,/health/?$,/ping/?$",
             # Streaming (SSE) responses emit one ASGI "send" span per chunk,
             # which floods traces with thousands of low-value spans.
             exclude_spans=["receive", "send"],
@@ -292,6 +295,12 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.router.lifespan_context = lifespan
 
         _instrument_fastapi_app(app)
+
+        # Link the agent trace into the Agentic Playground (no-op unless DATAROBOT_USE_CASE_ID
+        # is set). See playground_link.PlaygroundTraceLinkMiddleware.
+        from .playground_link import PlaygroundTraceLinkMiddleware
+
+        app.add_middleware(PlaygroundTraceLinkMiddleware)
 
         setup_logging()
         return app
