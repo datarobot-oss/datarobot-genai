@@ -32,10 +32,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
 
     Derived values are exposed as properties rather than stored, avoiding
     Pydantic field validation/serialization concerns for internal helpers.
-
-    Fields resolve from env vars (including ``MLOPS_RUNTIME_PARAM_`` runtime
-    parameters), ``.env``, file secrets, and ``pulumi_config.json``. For example,
-    ``mcp_oauth_metadata`` reads ``MCP_OAUTH_METADATA``.
     """
 
     external_mcp_url: str | None = None
@@ -47,7 +43,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     authorization_context: dict[str, Any] | None = None
     forwarded_headers: dict[str, str] | None = None
     mcp_server_port: int | None = None
-    mcp_oauth_metadata: str | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
