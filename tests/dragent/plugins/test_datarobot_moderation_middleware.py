@@ -36,6 +36,7 @@ from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
 from ag_ui.core import FunctionCall
 from ag_ui.core import ReasoningMessage
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -79,6 +80,9 @@ from openai.types.chat.chat_completion_chunk import (
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_event_response_to_chat_response_chunk,
+)
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
@@ -129,6 +133,9 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     workflow_input_to_completion_dict,
+)
+from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import (
+    DataRobotOtelConventionsMiddleware,
 )
 
 
@@ -2314,6 +2321,44 @@ async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock:
     assert any(ev.type == EventType.TEXT_MESSAGE_END for resp in chunks for ev in resp.events)
 
 
+async def test_function_middleware_stream_clears_invoke_state_in_setting_context(
+    builder_mock: MagicMock,
+) -> None:
+    """Invoke state is cleared at read time, in the context that set it, not at teardown.
+
+    The reset token is only valid in the context that ran ``.set()`` (pre_invoke). Deferring the
+    reset to the async-generator ``finally`` runs it in a different context and raises
+    ``Token created in a different Context``; clearing here keeps set and reset colocated.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+
+    async def upstream():
+        yield _text_response("delta-one")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        gen = mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=stream_next,
+            context=_fn_context(),
+        )
+        try:
+            # Drive one step: prescore sets the invoke state, then it is read + cleared in-context.
+            # The set leaks into this caller context, so we can observe the clear directly.
+            await gen.__anext__()
+            assert _moderation_invoke_state_ctx.get() is None
+        finally:
+            await gen.aclose()
+
+
 async def test_function_middleware_stream_synthesizes_text_message_end_on_content_filter(
     builder_mock: MagicMock,
 ) -> None:
@@ -2363,6 +2408,77 @@ async def test_function_middleware_stream_synthesizes_text_message_end_on_conten
             DRAgentEventResponse(events=flat, usage_metrics=zero)
         )
         == blocked_text
+    )
+
+
+async def _content_filter_empty_block_stream(completion: Any, **kwargs: Any) -> Any:
+    """Drain the source (drives peek-ahead buffering), then block with an empty message.
+
+    Mirrors a block whose message is empty (the schema default): the terminal content_filter
+    chunk carries no delta, so it converts to no AG-UI events and the in-loop drain is skipped.
+    """
+    async for _ in completion:
+        pass
+    yield ChatCompletionChunk(
+        id="blocked",
+        choices=[
+            OpenAIChunkChoice(index=0, delta=OpenAIChoiceDelta(), finish_reason="content_filter")
+        ],
+        created=1,
+        model="m",
+        object="chat.completion.chunk",
+    )
+
+
+async def test_function_middleware_stream_content_filter_does_not_mask_run_error(
+    builder_mock: MagicMock,
+) -> None:
+    """An empty content_filter block must not silently drop an agent RUN_ERROR buffered mid-stream.
+
+    The block's early break skips the final drain; without surfacing the buffered RUN_ERROR the
+    real failure would be masked as an (empty) block.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.stream_response_async = _content_filter_empty_block_stream
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    zero = default_usage_metrics()
+
+    async def upstream():
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id="m", role="assistant")],
+            usage_metrics=zero,
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m", delta="partial")],
+            usage_metrics=zero,
+        )
+        # Agent errors after producing text; framing emits a terminal RUN_ERROR (buffered).
+        yield DRAgentEventResponse(
+            events=[RunErrorEvent(message="tool timed out", code="RUN_ERROR")],
+            usage_metrics=zero,
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        chunks = [
+            item
+            async for item in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in chunks for ev in resp.events]
+    assert any(isinstance(ev, RunErrorEvent) and ev.message == "tool timed out" for ev in flat), (
+        f"content_filter break dropped the buffered RUN_ERROR: {[e.type for e in flat]}"
     )
 
 
@@ -2895,3 +3011,365 @@ def test_streaming_text_events_from_openai_chunk_ignores_non_text_source_event()
 
     assert len(events) == 1
     assert events[0].message_id != "start-msg"
+
+
+async def test_function_middleware_invoke_prescore_failure_returns_run_error(
+    builder_mock: MagicMock,
+) -> None:
+    """Prescore failures return a terminal RUN_ERROR before ``call_next`` (converters adapt it)."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
+
+    call_next = AsyncMock()
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        output = await mw.function_middleware_invoke(
+            _make_run_input("hello"),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    assert len(output.events) == 1
+    assert output.events[0].type == EventType.RUN_ERROR
+    assert output.events[0].code == "RUN_ERROR"
+    assert "Moderation failed:" in output.events[0].message
+    assert "boom" in output.events[0].message
+    call_next.assert_not_awaited()
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_invoke_postscore_failure_returns_run_error(
+    builder_mock: MagicMock,
+) -> None:
+    """Postscore failures return a terminal RUN_ERROR (converters adapt it)."""
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+    moderation.evaluate_response_async.side_effect = RuntimeError("dome postscore boom")
+
+    call_next = AsyncMock(return_value=_text_response("un-moderated agent text"))
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        output = await mw.function_middleware_invoke(
+            _make_run_input("hello"),
+            call_next=call_next,
+            context=_fn_context(),
+        )
+
+    assert len(output.events) == 1
+    assert output.events[0].type == EventType.RUN_ERROR
+    assert output.events[0].code == "RUN_ERROR"
+    assert "Moderation failed:" in output.events[0].message
+    assert "boom" in output.events[0].message
+    call_next.assert_awaited_once()
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_stream_prescore_failure_yields_run_error(
+    builder_mock: MagicMock,
+) -> None:
+    """Streaming prescore failures end the stream with a terminal RUN_ERROR, not an exception.
+
+    Prescore runs before the agent starts; raising here would reach clients as NAT's unframed
+    error, so the streaming path ends in-band with a RUN_ERROR (symmetric with mid-stream).
+    """
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_prompt_async.side_effect = RuntimeError("dome prescore boom")
+
+    stream_next = MagicMock()
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    assert len(responses) == 1
+    terminal = responses[-1]
+    assert len(terminal.events) == 1
+    assert terminal.events[0].type == EventType.RUN_ERROR
+    assert terminal.events[0].code == "RUN_ERROR"
+    assert "Moderation failed:" in terminal.events[0].message
+    assert "boom" in terminal.events[0].message
+    stream_next.assert_not_called()  # agent never starts when prescore fails
+    assert _moderation_invoke_state_ctx.get() is None
+
+
+async def test_function_middleware_stream_moderation_failure_yields_run_error(
+    builder_mock: MagicMock,
+) -> None:
+    """Mid-stream moderation failures end the stream with a terminal RUN_ERROR, not an exception."""
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _raising_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        if False:  # pragma: no cover - marks this an async generator
+            yield
+        raise RuntimeError("dome streaming boom")
+
+    moderation.stream_response_async = _raising_stream_response_async
+
+    async def upstream() -> Any:
+        yield _text_response("partial answer")
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    terminal = responses[-1]
+    assert len(terminal.events) == 1
+    assert terminal.events[0].type == EventType.RUN_ERROR
+    assert terminal.events[0].message == "dome streaming boom"
+    assert terminal.events[0].code == "RUN_ERROR"
+
+
+async def test_function_middleware_stream_run_error_terminal_with_second_open_message(
+    builder_mock: MagicMock,
+) -> None:
+    """RUN_ERROR stays terminal when a second text message is opened, then the run fails.
+
+    The failure tail (a bare TEXT_MESSAGE_START for the next segment, its close, and the
+    RUN_ERROR) is buffered in one drain batch. The reorder must not place the deferred START
+    after the terminal RUN_ERROR.
+    """
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _passthrough_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        async for chunk in completion:
+            yield chunk
+
+    moderation.stream_response_async = _passthrough_stream_response_async
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id="msg-1")],
+            usage_metrics=default_usage_metrics(),
+        )
+        yield _text_response("partial answer")
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id="msg-1")],
+            usage_metrics=default_usage_metrics(),
+        )
+        # A second segment is opened then closed by the framing layer as it fails.
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id="msg-2")],
+            usage_metrics=default_usage_metrics(),
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id="msg-2")],
+            usage_metrics=default_usage_metrics(),
+        )
+        yield DRAgentEventResponse(
+            events=[RunErrorEvent(message="tool timed out", code="RUN_ERROR")],
+            usage_metrics=default_usage_metrics(),
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    event_types = [ev.type for ev in flat]
+    # RUN_ERROR is terminal: last event, and the second segment's START/END land before it
+    # (the reorder must not push a deferred START past the terminal error).
+    assert event_types[-1] == EventType.RUN_ERROR, event_types
+    assert event_types.count(EventType.RUN_ERROR) == 1, event_types
+    run_error_idx = event_types.index(EventType.RUN_ERROR)
+    assert all(t != EventType.RUN_ERROR for t in event_types[:run_error_idx])
+    second_starts = [i for i, ev in enumerate(flat) if getattr(ev, "message_id", None) == "msg-2"]
+    assert second_starts and max(second_starts) < run_error_idx, event_types
+
+
+async def test_real_chain_moderation_over_otel_failing_agent_run_error_terminal(
+    builder_mock: MagicMock,
+) -> None:
+    """Stacked real chain: moderation (prescore active) -> real otel -> a failing agent.
+
+    Uses the real otel middleware as moderation's ``call_next`` (not a mocked upstream), so the
+    production order (moderation outer, otel inner) is exercised end to end. Asserts RUN_ERROR stays
+    terminal on both routes: AG-UI event order for ``/generate/stream`` and the OpenAI error chunk
+    for ``/chat/completions``. Only dome is mocked.
+    """
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _passthrough_stream_response_async(completion: Any, **kwargs: Any) -> Any:
+        async for chunk in completion:
+            yield chunk
+
+    moderation.stream_response_async = _passthrough_stream_response_async
+
+    async def failing_agent(*args: Any, **kwargs: Any) -> Any:
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id="m1")],
+            usage_metrics=default_usage_metrics(),
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m1", delta="partial")],
+            usage_metrics=default_usage_metrics(),
+        )
+        raise RuntimeError("tool timed out")
+
+    otel = DataRobotOtelConventionsMiddleware(MagicMock(), MagicMock())
+
+    def otel_call_next(*args: Any, **kwargs: Any) -> Any:
+        return otel.function_middleware_stream(
+            *args, call_next=failing_agent, context=_fn_context()
+        )
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=otel_call_next,
+                context=_fn_context(),
+            )
+        ]
+
+    # /generate/stream (AG-UI): the open text segment is closed before a terminal RUN_ERROR.
+    kinds = [type(ev) for resp in responses for ev in resp.events]
+    assert kinds[-1] is RunErrorEvent, kinds
+    assert TextMessageEndEvent in kinds
+    assert kinds.index(TextMessageEndEvent) < kinds.index(RunErrorEvent)
+
+    # /chat/completions (OpenAI): the terminal chunk is the error chunk with empty choices.
+    chunks = [convert_dragent_event_response_to_chat_response_chunk(r) for r in responses]
+    assert chunks[-1].choices == []
+    assert getattr(chunks[-1], "error", None) == {
+        "message": "tool timed out",
+        "type": "workflow_error",
+        "code": "RUN_ERROR",
+    }
+
+
+async def test_function_middleware_stream_run_error_terminal_when_dome_buffers_multichunk(
+    builder_mock: MagicMock,
+) -> None:
+    """A buffered terminal RUN_ERROR stays last even when dome releases >=2 moderated chunks.
+
+    Real dome drains the caller's chunk iterator from its own feed task, so a BLOCK/REPLACE or
+    threshold guard buffers the whole input to EOF (the terminal RUN_ERROR lands in the pending
+    buffer) before releasing the moderated deltas as separate chunks. Regression: the RUN_ERROR
+    must not be emitted mid-stream ahead of the trailing moderated chunks.
+    """
+    pipeline = _pipeline_mock()
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+
+    async def _buffer_all_then_emit(completion: Any, **kwargs: Any) -> Any:
+        chunks = [chunk async for chunk in completion]
+        for chunk in chunks:
+            yield chunk
+
+    moderation.stream_response_async = _buffer_all_then_emit
+
+    async def upstream() -> Any:
+        yield _text_response("A")
+        yield _text_response("B")
+        yield DRAgentEventResponse(
+            events=[RunErrorEvent(message="tool timed out", code="RUN_ERROR")],
+            usage_metrics=default_usage_metrics(),
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with (
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+            return_value=moderation,
+        ),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_moderation_middleware."
+            "build_moderations_attribute_for_completion",
+            return_value={},
+        ),
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hello"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    event_types = [ev.type for resp in responses for ev in resp.events]
+    # Both moderated text chunks are delivered, and the RUN_ERROR is the single terminal event.
+    assert event_types.count(EventType.TEXT_MESSAGE_CONTENT) == 2, event_types
+    assert event_types.count(EventType.RUN_ERROR) == 1, event_types
+    assert event_types[-1] == EventType.RUN_ERROR, event_types

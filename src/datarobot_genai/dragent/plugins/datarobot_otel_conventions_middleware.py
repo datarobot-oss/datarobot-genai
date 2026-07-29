@@ -18,6 +18,7 @@ from typing import Any
 
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
+from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 from nat.builder.builder import Builder
@@ -30,9 +31,15 @@ from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
 from opentelemetry import trace
+from opentelemetry.trace import Status
+from opentelemetry.trace import StatusCode
 
+from datarobot_genai.core.agents import RUN_ERROR_CODE
+from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents import track_open_text_in_events
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.response import run_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +53,7 @@ AGENT_SPAN_NAME = "datarobot_agent"
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
 TOOL_NAME = "tool_name"  # Tools column
+ERROR_TYPE = "error.type"  # Failed span classification
 
 # AG-UI event types that carry assistant text deltas.
 _TEXT_EVENT_TYPES = (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK)
@@ -83,6 +91,15 @@ def _ag_ui_last_user_message_content(run_agent_input: RunAgentInput) -> str | No
 def _response_text(response: DRAgentEventResponse) -> str:
     """Join assistant text deltas from a DRAgentEventResponse's AG-UI events."""
     return "".join(event.delta for event in response.events if event.type in _TEXT_EVENT_TYPES)
+
+
+def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventResponse) -> None:
+    """Mark the span failed when the response carries a ``RUN_ERROR`` event."""
+    for event in response.events:
+        if event.type == EventType.RUN_ERROR:
+            span.set_attribute(ERROR_TYPE, event.code or RUN_ERROR_CODE)
+            span.set_status(Status(StatusCode.ERROR, event.message or "workflow run error"))
+            return
 
 
 def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
@@ -157,6 +174,7 @@ class DataRobotOtelConventionsMiddleware(
             output = await call_next(*args, **kwargs)
             if isinstance(output, DRAgentEventResponse):
                 _emit_tool_call_spans(output)
+                _mark_span_error_on_run_error(span, output)
             completion = self._completion_from_output(output)
             if completion is not None:
                 span.set_attribute(GEN_AI_COMPLETION, completion)
@@ -178,14 +196,29 @@ class DataRobotOtelConventionsMiddleware(
                 span.set_attribute(GEN_AI_PROMPT, prompt)
             # Per-invocation accumulator; no cross-session state to manage.
             parts: list[str] = []
+            open_text_ids: set[str] = set()
             try:
                 async for chunk in call_next(*args, **kwargs):
                     if isinstance(chunk, DRAgentEventResponse):
                         _emit_tool_call_spans(chunk)
+                        _mark_span_error_on_run_error(span, chunk)
+                        track_open_text_in_events(open_text_ids, chunk.events)
                         text = _response_text(chunk)
                         if text:
                             parts.append(text)
                     yield chunk
+            except Exception as exc:
+                # Close open text segments, then end the run with a terminal RUN_ERROR instead of
+                # propagating (matches the moderation middleware's failure path).
+                logger.exception("Agent stream failed")
+                for message_id in open_text_ids:
+                    yield DRAgentEventResponse(
+                        events=[TextMessageEndEvent(message_id=message_id)],
+                        usage_metrics=default_usage_metrics(),
+                    )
+                error_response = run_error_response(str(exc))
+                _mark_span_error_on_run_error(span, error_response)
+                yield error_response
             finally:
                 # Attach the completion in ``finally`` so it survives early teardown.
                 # Downstream moderation may stop consuming and ``aclose()`` this generator
