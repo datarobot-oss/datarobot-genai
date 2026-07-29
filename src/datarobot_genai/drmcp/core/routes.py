@@ -338,7 +338,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
                 content={"error": f"Failed to refresh prompt templates: {str(e)}"},
             )
 
-    @mcp.custom_route(prefix_mount_path("/oauthProtectedResourceMetadata"), methods=["GET"])
+    @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
     async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
         manager = MCPOAuthProtectedResourceMetadataManager()
         api_response = manager.get_protected_resource_metadata_api_response()
