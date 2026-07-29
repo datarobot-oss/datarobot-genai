@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.15
+- `drtools/workload`: synced the workload tools with the Workload API MCP server's `datarobot-workload-api` skill alignment:
+  - `artifact_get_build` now normalizes build-status variants (`completed`, `in-progress`, …) and annotates single-build responses with `deployable` and `status_guidance` — `BUILT` means built but **not yet pushed** to the registry and is not deployable; only `COMPLETED` is. `artifact_build_run_action(action='trigger')` responses now tell callers to wait for `COMPLETED`.
+  - `workload_create` and `workload_artifact_replace` 422 errors mentioning `runtime_image_uri` include a hint naming the BUILT-not-pushed cause and how to recover.
+  - new `read_openapi_spec` tool: queries the Workload API OpenAPI spec
+
 ## 0.26.14
 - `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
 - `dragent`: streaming agent/workflow errors now end the run with a terminal AG-UI `RUN_ERROR` (adapted to an OpenAI-shaped error chunk on `/chat/completions`) instead of NAT's bare `workflow_error` JSON that `data:`-only clients silently drop.

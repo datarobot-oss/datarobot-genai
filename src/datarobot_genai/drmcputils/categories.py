@@ -235,6 +235,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "artifact_repository_delete",
             "artifact_get_build",
             "artifact_build_run_action",
+            "read_openapi_spec",
         }
     ),
     MCPToolCategory.DR_FILE: frozenset(

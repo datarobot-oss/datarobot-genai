@@ -36,6 +36,7 @@ from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiC
 from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
+from datarobot_genai.drtools.workload.build_status import raise_tool_error_for_workload_client_error
 
 # ------------------------------------------------------------------ #
 # workload_list                                                        #
@@ -354,7 +355,7 @@ async def workload_create(
     try:
         return WorkloadApiClient().create_workload(payload)
     except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
+        raise_tool_error_for_workload_client_error(exc)
 
 
 # ------------------------------------------------------------------ #
