@@ -296,12 +296,6 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         _instrument_fastapi_app(app)
 
-        # Link the agent trace into the Agentic Playground (no-op unless DATAROBOT_USE_CASE_ID
-        # is set). See playground_link.PlaygroundTraceLinkMiddleware.
-        from .playground_link import PlaygroundTraceLinkMiddleware
-
-        app.add_middleware(PlaygroundTraceLinkMiddleware)
-
         setup_logging()
         return app
 
