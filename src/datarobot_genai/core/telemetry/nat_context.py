@@ -46,18 +46,11 @@ _RUNNER_PATCH_STATE: dict[str, bool] = {"patched": False}
 
 
 def _seed_nat_root_span_id(context_state: Any, request_span_context: SpanContext) -> None:
-    """Link the NAT lifecycle root span under the incoming request span.
+    """Pre-set ``_root_span_id`` to the request span so NAT's lifecycle root nests under it.
 
-    NAT's span exporter creates the workflow root span with no parent unless ``_root_span_id``
-    is pre-set (its eager-trace-linking hook). Seeding it with the request span's id (the
-    FastAPI server span, itself a child of the caller's bridge span) makes the NAT span tree —
-    and the SDK spans that nest under it — join the request trace instead of floating as a
-    disconnected root, so the caller (playground/deployment) sees the full agent trace.
-
-    ``request_span_context`` is captured before ``Runner.__aenter__`` restores the workflow
-    build-phase context (which would otherwise replace the ambient span with the first
-    request's). Only applied when it belongs to this request's trace, and never overrides an id
-    already set (e.g. the eval loop's eager linking).
+    NAT's exporter leaves the workflow root span parentless unless ``_root_span_id`` is set (its
+    eager-linking hook). ``request_span_context`` is captured before the build-phase restore.
+    Applied only when it matches this request's trace, never over an already-set id (e.g. eval).
     """
     try:
         if context_state._root_span_id.get() is not None:
@@ -76,18 +69,12 @@ def _seed_nat_root_span_id(context_state: Any, request_span_context: SpanContext
 def patch_nat_runner_context_isolation() -> None:
     """Make NAT's ``Runner`` respect the incoming request's trace context.
 
-    ``Workflow.__init__`` snapshots ``contextvars.copy_context()`` at (lazy, first-request)
-    build time and ``Runner.__aenter__`` re-applies that whole snapshot on every run. That
-    causes two tracing defects on a warm server:
-
-    * it overwrites each request's own ``workflow_trace_id`` / ``workflow_run_id`` with the
-      first request's, so every later request joins the first request's trace;
-    * the NAT lifecycle root span is left with no parent, so the agent span subtree floats
-      instead of nesting under the caller's (bridge) span.
-
-    We wrap ``__aenter__`` to (1) restore the per-request trace vars after the snapshot is
-    applied and (2) seed ``_root_span_id`` from the request span so the NAT tree links under
-    the caller. Idempotent, and a no-op when NAT is unavailable.
+    ``Workflow`` snapshots ``copy_context()`` at (lazy, first-request) build and
+    ``Runner.__aenter__`` re-applies it every run - overwriting each request's
+    ``workflow_trace_id`` / ``workflow_run_id`` with the first request's (so later requests join
+    the first request's trace) and leaving the NAT root parentless. We wrap ``__aenter__`` to
+    restore the per-request vars and seed ``_root_span_id`` from the request span. Idempotent;
+    no-op when NAT is unavailable.
     """
     if _RUNNER_PATCH_STATE["patched"]:
         return
