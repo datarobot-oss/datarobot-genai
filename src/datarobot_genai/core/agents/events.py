@@ -37,6 +37,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from ag_ui.core import AssistantMessage
+from ag_ui.core import Event
 from ag_ui.core import EventType
 from ag_ui.core import FunctionCall
 from ag_ui.core import Message
@@ -53,6 +54,23 @@ _REASONING_DELTA_TYPES = frozenset(
     }
 )
 _TOOL_START_TYPES = frozenset({EventType.TOOL_CALL_START, EventType.TOOL_CALL_CHUNK})
+
+
+def track_open_text(open_ids: set[str], event: Event) -> None:
+    """Track text segments started but not yet ended, so they can be closed on failure."""
+    if event.type == EventType.TEXT_MESSAGE_START:
+        open_ids.add(event.message_id)
+    elif event.type == EventType.TEXT_MESSAGE_END:
+        open_ids.discard(event.message_id)
+    elif event.type in _TEXT_DELTA_TYPES and getattr(event, "message_id", None):
+        open_ids.add(event.message_id)
+
+
+def track_open_text_in_events(open_ids: set[str], events: Iterable[Event]) -> None:
+    """Apply :func:`track_open_text` to every event in a response's event list."""
+    for event in events:
+        track_open_text(open_ids, event)
+
 
 # Keyless buckets for id-less text/reasoning turns (a provider whose chunks carry no
 # message_id keys into these). They are dropped on a tool result so a following id-less

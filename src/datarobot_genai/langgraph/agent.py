@@ -54,6 +54,7 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import frame_agent_errors
 from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
@@ -309,6 +310,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         )
         return current_messages[:insert_at] + history + current_messages[insert_at:]
 
+    @frame_agent_errors
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.
 
