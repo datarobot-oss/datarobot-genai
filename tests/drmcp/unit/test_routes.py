@@ -927,7 +927,9 @@ class TestOAuthProtectedResourceMetadataRoute:
     ) -> None:
         mock_get_protected_resource_metadata_api_response.return_value = {"mock": "mock"}
 
-        metadata_handler = mock_mcp.registered_routes["GET", "/.well-known/oauth-protected-resource"]
+        metadata_handler = mock_mcp.registered_routes[
+            "GET", "/.well-known/oauth-protected-resource"
+        ]
         response = await metadata_handler(Mock())
 
         assert response.status_code == HTTPStatus.OK
@@ -942,7 +944,9 @@ class TestOAuthProtectedResourceMetadataRoute:
     ) -> None:
         mock_get_protected_resource_metadata_api_response.return_value = None
 
-        metadata_handler = mock_mcp.registered_routes["GET", "/.well-known/oauth-protected-resource"]
+        metadata_handler = mock_mcp.registered_routes[
+            "GET", "/.well-known/oauth-protected-resource"
+        ]
         response = await metadata_handler(Mock())
 
         assert response.status_code == HTTPStatus.NOT_IMPLEMENTED
