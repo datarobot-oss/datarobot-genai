@@ -109,6 +109,7 @@ constraint-dependencies = [
     "pyasn1>=0.6.4",
     "pygments>=2.20.0",
     "pytest>=9.0.3",
+    "requests>=2.33.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
