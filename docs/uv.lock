@@ -35,6 +35,7 @@ constraints = [
     { name = "soupsieve", specifier = ">=2.8.4" },
     { name = "starlette", specifier = ">=1.3.1" },
     { name = "tornado", specifier = ">=6.5.7" },
+    { name = "transformers", specifier = ">=5.5.0" },
 ]
 overrides = [
     { name = "click", specifier = ">=8.3.3" },
