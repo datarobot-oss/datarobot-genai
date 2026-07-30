@@ -30,6 +30,9 @@ from pydantic import Field
 
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
+from datarobot_genai.dragent.redis_cache_signing import open_redis_model
+from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
+from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
 
 if TYPE_CHECKING:
     from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -49,6 +52,7 @@ class AgentCardCacheRecord(BaseModel):
     source: str = "registry"
     deployment_id: str | None = None
     external_id: str | None = None
+    signature: str | None = Field(default=None, repr=False)
 
     def age_seconds(self) -> float:
         """Return the entry age in seconds (wall clock, safe across processes)."""
@@ -164,6 +168,7 @@ class RedisAgentCardCacheBackend:
         redis_url: str,
         key_prefix: str = _DEFAULT_REDIS_PREFIX,
         max_staleness_seconds: int,
+        signing_key: bytes,
     ) -> None:
         try:
             import redis.asyncio as redis
@@ -176,6 +181,7 @@ class RedisAgentCardCacheBackend:
         self._redis = redis.from_url(redis_url, decode_responses=True)
         self._key_prefix = key_prefix
         self._max_staleness_seconds = max_staleness_seconds
+        self._signing_key = signing_key
 
     def _redis_keys_for_record(self, record: AgentCardCacheRecord) -> list[str]:
         keys: list[str] = []
@@ -204,7 +210,11 @@ class RedisAgentCardCacheBackend:
         payload = await self._redis.get(redis_key)
         if payload is None:
             return None
-        return AgentCardCacheRecord.model_validate_json(payload)
+        return open_redis_model(
+            AgentCardCacheRecord,
+            payload,
+            signing_key=self._signing_key,
+        )
 
     async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
         for redis_key in self._redis_keys_for_lookup(lookup_key):
@@ -238,7 +248,7 @@ class RedisAgentCardCacheBackend:
         for lookup_key, card in cards.items():
             key_type = key_types.get(lookup_key, "dep")
             record = build_cache_record(card, lookup_key=lookup_key, key_type=key_type)
-            payload = record.model_dump_json()
+            payload = seal_redis_model(record, signing_key=self._signing_key)
             for redis_key in self._redis_keys_for_record(record):
                 await self._redis.set(redis_key, payload, ex=ttl)
 
@@ -320,16 +330,18 @@ def create_agent_card_cache_backend(
             raise ValueError(
                 "AGENT_CARD_REGISTRY_REDIS_URL is required when AGENT_CARD_REGISTRY_BACKEND=redis."
             )
-        namespace = require_cache_namespace(config.agent_card_registry_cache_namespace)
+        resolved = require_cache_namespace(config.agent_card_registry_cache_namespace)
         key_prefix = build_namespaced_redis_prefix(
             config.agent_card_registry_redis_prefix,
-            namespace,
+            resolved,
         )
+        signing_key = resolve_redis_signing_key(config.agent_card_registry_redis_signing_key)
         l1 = MemoryAgentCardCacheBackend()
         l2 = RedisAgentCardCacheBackend(
             redis_url=redis_url,
             key_prefix=key_prefix,
             max_staleness_seconds=config.agent_card_registry_max_staleness_seconds,
+            signing_key=signing_key,
         )
         return LayeredAgentCardCacheBackend(l1, l2)
 

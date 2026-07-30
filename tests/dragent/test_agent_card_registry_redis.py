@@ -29,6 +29,7 @@ from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCar
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import RedisAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
+from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 
 _SAMPLE_AGENT_CARD = AgentCard.model_validate(
     {
@@ -56,12 +57,17 @@ def fake_redis_client():
     return fakeredis.FakeAsyncRedis(server=server, decode_responses=True)
 
 
+_TEST_SIGNING_KEY = "unit-test-signing-secret"
+_TEST_KEY_PREFIX = "test:dev:dep-shared:"
+
+
 @pytest.fixture
 def redis_backend(fake_redis_client):
     backend = RedisAgentCardCacheBackend(
         redis_url="redis://fake",
-        key_prefix="test:",
+        key_prefix=_TEST_KEY_PREFIX,
         max_staleness_seconds=3600,
+        signing_key=resolve_redis_signing_key(_TEST_SIGNING_KEY),
     )
     backend._redis = fake_redis_client
     return backend
@@ -95,11 +101,14 @@ class TestRedisAgentCardCacheBackend:
             key_types={"dep-1": "dep"},
         )
 
-        redis_key = "test:agent_card:dep:dep-1"
+        redis_key = f"{_TEST_KEY_PREFIX}agent_card:dep:dep-1"
         payload = await redis_backend._redis.get(redis_key)
         record = AgentCardCacheRecord.model_validate_json(payload)
         record.fetched_at = datetime.now(UTC) - timedelta(seconds=120)
-        await redis_backend._redis.set(redis_key, record.model_dump_json(), ex=3600)
+        from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
+
+        resealed = seal_redis_model(record, signing_key=redis_backend._signing_key)
+        await redis_backend._redis.set(redis_key, resealed, ex=3600)
 
         assert await redis_backend.get_fresh("dep-1", cache_ttl=60) is None
         stale = await redis_backend.get_stale("dep-1", max_staleness_seconds=3600)
@@ -137,10 +146,12 @@ class TestAgentCardRegistryRedisBackend:
             agent_card_registry_redis_url="redis://fake",
             agent_card_registry_redis_prefix="test:",
             agent_card_registry_cache_namespace=namespace,
+            agent_card_registry_redis_signing_key=_TEST_SIGNING_KEY,
             agent_card_registry_max_staleness_seconds=3600,
         )
         backend = create_agent_card_cache_backend(config)
         assert isinstance(backend, LayeredAgentCardCacheBackend)
+        assert backend._l2._key_prefix == f"test:dev:{namespace}:"
         backend._l2._redis = fake_redis_client
         return backend
 
@@ -200,6 +211,7 @@ class TestAgentCardRegistryRedisBackend:
         config = AgentCardRegistryConfig(
             agent_card_registry_backend="redis",
             agent_card_registry_cache_namespace="dep-1",
+            agent_card_registry_redis_signing_key=_TEST_SIGNING_KEY,
         )
         with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_REDIS_URL"):
             create_agent_card_cache_backend(config)
@@ -208,7 +220,18 @@ class TestAgentCardRegistryRedisBackend:
         config = AgentCardRegistryConfig(
             agent_card_registry_backend="redis",
             agent_card_registry_redis_url="redis://fake",
+            agent_card_registry_redis_signing_key=_TEST_SIGNING_KEY,
         )
         with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_CACHE_NAMESPACE"):
+            with pytest.raises(ValueError, match="MLOPS_DEPLOYMENT_ID"):
+                create_agent_card_cache_backend(config)
+
+    def test_create_backend_requires_signing_key(self):
+        config = AgentCardRegistryConfig(
+            agent_card_registry_backend="redis",
+            agent_card_registry_redis_url="redis://fake",
+            agent_card_registry_cache_namespace="dep-1",
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY"):
                 create_agent_card_cache_backend(config)

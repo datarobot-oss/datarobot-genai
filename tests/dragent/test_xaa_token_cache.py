@@ -18,6 +18,7 @@ from unittest.mock import patch
 import jwt
 import pytest
 
+from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 from datarobot_genai.dragent.xaa_token_cache import MemoryXAATokenCache
 from datarobot_genai.dragent.xaa_token_cache import RedisXAATokenCache
 from datarobot_genai.dragent.xaa_token_cache import XAATokenCacheConfig
@@ -125,20 +126,22 @@ class TestXAATokenCacheFactory:
 
     def test_redis_backend_requires_registry_url(self):
         config = XAATokenCacheConfig(agent_card_xaa_token_cache_backend="redis")
-        with patch.dict(
-            "os.environ", {"AGENT_CARD_REGISTRY_CACHE_NAMESPACE": "dep-1"}, clear=False
-        ):
+        env = {
+            "AGENT_CARD_REGISTRY_CACHE_NAMESPACE": "dep-1",
+            "AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY": "unit-test-signing-secret",
+        }
+        with patch.dict("os.environ", env, clear=False):
             with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_REDIS_URL"):
                 create_xaa_token_cache(config)
 
     def test_redis_backend_requires_namespace(self):
         config = XAATokenCacheConfig(agent_card_xaa_token_cache_backend="redis")
-        with patch.dict(
-            "os.environ",
-            {"AGENT_CARD_REGISTRY_REDIS_URL": "redis://localhost:6379/0"},
-            clear=True,
-        ):
-            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_CACHE_NAMESPACE"):
+        env = {
+            "AGENT_CARD_REGISTRY_REDIS_URL": "redis://localhost:6379/0",
+            "AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY": "unit-test-signing-secret",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with pytest.raises(ValueError, match="MLOPS_DEPLOYMENT_ID"):
                 create_xaa_token_cache(config)
 
 
@@ -146,8 +149,9 @@ class TestRedisXAATokenCache:
     async def test_store_and_get(self, fake_redis_client):
         backend = RedisXAATokenCache(
             redis_url="redis://fake",
-            key_prefix="test:",
+            key_prefix="test:dev:dep-1:",
             skew_seconds=60,
+            signing_key=resolve_redis_signing_key("unit-test-signing-secret"),
         )
         backend._redis = fake_redis_client
         token = _jwt_with_exp(int(time.time()) + 600)

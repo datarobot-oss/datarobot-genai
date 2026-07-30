@@ -16,30 +16,42 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.dragent.cache_namespace import ResolvedCacheNamespace
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
 from datarobot_genai.dragent.cache_namespace import resolve_cache_namespace
 
 
 class TestResolveCacheNamespace:
-    def test_explicit_namespace(self):
-        assert resolve_cache_namespace("my-agent-1") == "my-agent-1"
+    def test_explicit_namespace_for_local_dev(self):
+        with patch.dict("os.environ", {}, clear=True):
+            resolved = resolve_cache_namespace("my-agent-1")
+        assert resolved == ResolvedCacheNamespace("my-agent-1", "explicit")
 
     def test_deployment_id_from_env(self):
-        with patch.dict("os.environ", {"MLOPS_DEPLOYMENT_ID": "dep-abc"}, clear=False):
-            assert resolve_cache_namespace() == "dep-abc"
+        with patch.dict("os.environ", {"MLOPS_DEPLOYMENT_ID": "dep-abc"}, clear=True):
+            resolved = resolve_cache_namespace()
+        assert resolved == ResolvedCacheNamespace("dep-abc", "deployment")
 
     def test_workload_id_from_env(self):
-        with patch.dict(
-            "os.environ",
-            {"WORKLOAD_ID": "wl-xyz"},
-            clear=True,
-        ):
-            assert resolve_cache_namespace() == "wl-xyz"
+        with patch.dict("os.environ", {"WORKLOAD_ID": "wl-xyz"}, clear=True):
+            resolved = resolve_cache_namespace()
+        assert resolved == ResolvedCacheNamespace("wl-xyz", "workload")
 
-    def test_explicit_overrides_deployment_id(self):
-        with patch.dict("os.environ", {"MLOPS_DEPLOYMENT_ID": "dep-abc"}, clear=False):
-            assert resolve_cache_namespace("custom-ns") == "custom-ns"
+    def test_deployment_id_wins_over_explicit_on_hosted_runtime(self):
+        with patch.dict("os.environ", {"MLOPS_DEPLOYMENT_ID": "dep-abc"}, clear=True):
+            resolved = resolve_cache_namespace("custom-ns")
+        assert resolved == ResolvedCacheNamespace("dep-abc", "deployment")
+
+    def test_rejects_conflicting_explicit_on_hosted_deployment(self):
+        with patch.dict("os.environ", {"MLOPS_DEPLOYMENT_ID": "dep-abc"}, clear=True):
+            with pytest.raises(ValueError, match="cannot override MLOPS_DEPLOYMENT_ID"):
+                resolve_cache_namespace("other-ns")
+
+    def test_rejects_conflicting_explicit_on_hosted_workload(self):
+        with patch.dict("os.environ", {"WORKLOAD_ID": "wl-xyz"}, clear=True):
+            with pytest.raises(ValueError, match="cannot override WORKLOAD_ID"):
+                resolve_cache_namespace("other-ns")
 
     def test_returns_none_without_sources(self):
         with patch.dict("os.environ", {}, clear=True):
@@ -51,15 +63,21 @@ class TestResolveCacheNamespace:
 
 
 class TestBuildNamespacedRedisPrefix:
-    def test_appends_namespace_segment(self):
-        assert build_namespaced_redis_prefix("dragent:", "dep-1") == "dragent:dep-1:"
+    def test_deployment_prefix(self):
+        resolved = ResolvedCacheNamespace("dep-1", "deployment")
+        assert build_namespaced_redis_prefix("dragent:", resolved) == "dragent:dep:dep-1:"
 
-    def test_normalizes_base_without_trailing_colon(self):
-        assert build_namespaced_redis_prefix("dragent", "dep-1") == "dragent:dep-1:"
+    def test_workload_prefix(self):
+        resolved = ResolvedCacheNamespace("wl-1", "workload")
+        assert build_namespaced_redis_prefix("dragent:", resolved) == "dragent:wl:wl-1:"
+
+    def test_explicit_dev_prefix(self):
+        resolved = ResolvedCacheNamespace("local-1", "explicit")
+        assert build_namespaced_redis_prefix("dragent", resolved) == "dragent:dev:local-1:"
 
 
 class TestRequireCacheNamespace:
     def test_raises_when_unset(self):
         with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_CACHE_NAMESPACE"):
+            with pytest.raises(ValueError, match="MLOPS_DEPLOYMENT_ID"):
                 require_cache_namespace()

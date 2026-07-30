@@ -32,6 +32,9 @@ from pydantic import Field
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
+from datarobot_genai.dragent.redis_cache_signing import open_redis_model
+from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
+from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,7 @@ class XAATokenCacheRecord(BaseModel):
     access_token: str
     expires_at: datetime
     token_type: str = "Bearer"
+    signature: str | None = Field(default=None, repr=False)
 
     def is_valid(self, *, skew_seconds: int) -> bool:
         """Return *True* if the token is still within its usable window."""
@@ -185,6 +189,7 @@ class RedisXAATokenCache:
         redis_url: str,
         key_prefix: str,
         skew_seconds: int,
+        signing_key: bytes,
     ) -> None:
         try:
             import redis.asyncio as redis
@@ -197,6 +202,7 @@ class RedisXAATokenCache:
         self._redis = redis.from_url(redis_url, decode_responses=True)
         self._key_prefix = key_prefix
         self._skew_seconds = skew_seconds
+        self._signing_key = signing_key
 
     def _redis_key(self, cache_key: str) -> str:
         return f"{self._key_prefix}xaa_token:{_hash_cache_key(cache_key)}"
@@ -205,8 +211,12 @@ class RedisXAATokenCache:
         payload = await self._redis.get(self._redis_key(cache_key))
         if payload is None:
             return None
-        record = XAATokenCacheRecord.model_validate_json(payload)
-        if not record.is_valid(skew_seconds=self._skew_seconds):
+        record = open_redis_model(
+            XAATokenCacheRecord,
+            payload,
+            signing_key=self._signing_key,
+        )
+        if record is None or not record.is_valid(skew_seconds=self._skew_seconds):
             return None
         return record.access_token
 
@@ -215,9 +225,10 @@ class RedisXAATokenCache:
             return
         expires_at = datetime.fromtimestamp(time.time() + ttl_seconds, tz=UTC)
         record = XAATokenCacheRecord(access_token=access_token, expires_at=expires_at)
+        payload = seal_redis_model(record, signing_key=self._signing_key)
         await self._redis.set(
             self._redis_key(cache_key),
-            record.model_dump_json(),
+            payload,
             ex=ttl_seconds,
         )
 
@@ -276,15 +287,17 @@ def create_xaa_token_cache(config: XAATokenCacheConfig | None = None) -> XAAToke
                 "AGENT_CARD_REGISTRY_REDIS_URL is required when "
                 "AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redis."
             )
-        namespace = require_cache_namespace(registry_cfg.agent_card_registry_cache_namespace)
+        resolved = require_cache_namespace(registry_cfg.agent_card_registry_cache_namespace)
         key_prefix = build_namespaced_redis_prefix(
             registry_cfg.agent_card_registry_redis_prefix,
-            namespace,
+            resolved,
         )
+        signing_key = resolve_redis_signing_key(registry_cfg.agent_card_registry_redis_signing_key)
         redis_backend = RedisXAATokenCache(
             redis_url=redis_url,
             key_prefix=key_prefix,
             skew_seconds=cfg.agent_card_xaa_token_skew_seconds,
+            signing_key=signing_key,
         )
         return LayeredXAATokenCache(
             memory,
