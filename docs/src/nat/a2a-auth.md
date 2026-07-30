@@ -95,10 +95,10 @@ This is the simplest setup — no agent card extensions or multi-step flows
 involved.
 
 > **Important:** `datarobot_api_key` is the default authentication mechanism
-> for DataRobot-hosted agents. However, when the remote agent card declares a 
-> specific mechanism (e.g. OAuth2 via `cross_application_access`), security-scheme 
-> negotiation validates and requires a matching auth provider on the client side. 
-> Use `okta_cross_app_access` (Option 2) for OAuth2-protected agents. 
+> for DataRobot-hosted agents. However, when the remote agent card declares a
+> specific mechanism (e.g. OAuth2 via `cross_application_access`), security-scheme
+> negotiation validates and requires a matching auth provider on the client side.
+> Use `okta_cross_app_access` (Option 2) for OAuth2-protected agents.
 
 ## Option 2: Okta cross-application access (XAA)
 
@@ -241,6 +241,16 @@ remote XAA-protected agent.
 | `okta_token_header` | `x-datarobot-external-access-token` | Incoming request header carrying the caller's Okta access token. |
 | `principal_id` | `IDP_AGENT_ID` env var | Okta AI agent principal ID. |
 | `private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` env var | Base64-encoded or raw-JSON private JWK. |
+
+Exchanged access tokens are cached by default to avoid repeating the two-step
+Okta flow on every A2A call. Configure via:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_CARD_XAA_TOKEN_CACHE_ENABLED` | `true` | Enable exchanged-token cache. |
+| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory`, `redis` (uses registry Redis URL/prefix + namespace), or `memory_space` (uses `AGENT_MEMORY_SPACE_ID`). Prefer `memory_space` on user-deployed agents; use `memory` on shared multi-tenant Redis; see [platform requirements](../design/multi-cluster-cache-resilience.md#platform-requirements-shared-redis) and [MemorySpace backend](../design/multi-cluster-cache-resilience.md#datarobot-memoryspace-backend-recommended-for-user-deployed-agents). |
+| `AGENT_CARD_XAA_TOKEN_SKEW_SECONDS` | `60` | Evict cached tokens this many seconds before JWT `exp`. |
+| `AGENT_CARD_XAA_TOKEN_MAX_TTL_SECONDS` | `3600` | Cap cache TTL regardless of token `exp`. |
 
 ### Agent card mapping
 

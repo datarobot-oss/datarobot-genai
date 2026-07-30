@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.17
+- `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block (`AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`, default `true`).
+- `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when registry fetch fails, within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (`AGENT_CARD_REGISTRY_STALE_IF_ERROR`, default `true`).
+- `dragent`: Redis L2 agent card registry cache (`AGENT_CARD_REGISTRY_BACKEND=redis`) with in-process L1 read-through/write-through; shared across dragent replicas via `AGENT_CARD_REGISTRY_REDIS_URL`.
+- `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (`AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`, default `1800`; set `0` to disable).
+- `dragent`: cache Okta XAA exchanged access tokens (`AGENT_CARD_XAA_TOKEN_CACHE_ENABLED`, default `true`) with in-process or shared Redis backend to reduce Okta load and latency.
+- `dragent`: require per-deployment/workload Redis namespace (platform `MLOPS_DEPLOYMENT_ID` / `WORKLOAD_ID` always wins on hosted runtimes; `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` is local-dev only) and HMAC-sign Redis cache entries with a deployment-specific secret to block cross-deployment cache poisoning.
+- `dragent`: optional DataRobot MemorySpace L2 cache (`AGENT_CARD_REGISTRY_BACKEND=memory_space`) for agent cards and XAA tokens — uses the agentic memory Session API (`datarobot.models.memory.Session`) with platform-provisioned `AGENT_MEMORY_SPACE_ID` (or `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID`) and per-deployment access control instead of shared Redis.
+- `dragent`: document platform requirements for shared Redis when user-modifiable agents co-locate on one cluster (per-deployment ACLs, unique signing keys, XAA token cache defaults).
+
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
 
