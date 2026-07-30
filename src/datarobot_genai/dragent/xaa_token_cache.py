@@ -30,6 +30,8 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
+from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
+from datarobot_genai.dragent.cache_namespace import require_cache_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +102,7 @@ class XAATokenCache(Protocol):
 def build_xaa_cache_key(
     *,
     subject_token: str,
+    principal_id: str | None,
     target_audience: str | None,
     token_url: str,
     scopes: list[str],
@@ -108,12 +111,16 @@ def build_xaa_cache_key(
     """Build deterministic cache-key material for an XAA exchange.
 
     The subject token is never stored verbatim — a SHA-256 fingerprint is used
-    so cache entries are scoped per caller session.
+    so cache entries are scoped per caller session. *principal_id* (the local
+    agent's ``IDP_AGENT_ID``) scopes entries per calling deployment.
     """
     token_fingerprint = hashlib.sha256(subject_token.encode()).hexdigest()
     scopes_joined = ",".join(sorted(scopes))
     target = target_audience or ""
-    return f"{token_fingerprint}|{target}|{token_url}|{scopes_joined}|{exchange_audience}"
+    principal = principal_id or ""
+    return (
+        f"{token_fingerprint}|{principal}|{target}|{token_url}|{scopes_joined}|{exchange_audience}"
+    )
 
 
 def _hash_cache_key(cache_key: str) -> str:
@@ -269,9 +276,14 @@ def create_xaa_token_cache(config: XAATokenCacheConfig | None = None) -> XAAToke
                 "AGENT_CARD_REGISTRY_REDIS_URL is required when "
                 "AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redis."
             )
+        namespace = require_cache_namespace(registry_cfg.agent_card_registry_cache_namespace)
+        key_prefix = build_namespaced_redis_prefix(
+            registry_cfg.agent_card_registry_redis_prefix,
+            namespace,
+        )
         redis_backend = RedisXAATokenCache(
             redis_url=redis_url,
-            key_prefix=registry_cfg.agent_card_registry_redis_prefix,
+            key_prefix=key_prefix,
             skew_seconds=cfg.agent_card_xaa_token_skew_seconds,
         )
         return LayeredXAATokenCache(

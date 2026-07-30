@@ -692,6 +692,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         flow_params = self._flow_params
         cache_key = build_xaa_cache_key(
             subject_token=subject_token,
+            principal_id=self.config.principal_id,
             target_audience=flow_params.target_audience,
             token_url=flow_params.token_url,
             scopes=flow_params.id_jag_scopes,

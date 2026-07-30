@@ -272,7 +272,7 @@ Okta flow on every A2A call. Configure via:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_CARD_XAA_TOKEN_CACHE_ENABLED` | `true` | Enable exchanged-token cache. |
-| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory` or `redis` (uses registry Redis URL/prefix). |
+| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory` or `redis` (uses registry Redis URL/prefix + namespace). Prefer `memory` when Redis is shared across unrelated deployments. |
 | `AGENT_CARD_XAA_TOKEN_SKEW_SECONDS` | `60` | Evict cached tokens this many seconds before JWT `exp`. |
 | `AGENT_CARD_XAA_TOKEN_MAX_TTL_SECONDS` | `3600` | Cap cache TTL regardless of token `exp`. |
 
