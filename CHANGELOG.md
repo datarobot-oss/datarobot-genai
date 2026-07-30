@@ -3,9 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
+## 0.26.17
+- `drmcp`: Added `MCPOAuthResourceServerMiddleware` for streamable HTTP MCP servers. Unauthenticated requests to the MCP endpoint now return `401 Unauthorized` with a `WWW-Authenticate` header that includes `resource_metadata` pointing at the mounted OAuth protected resource metadata URL.
+- `drmcp`: Wired the OAuth resource-server middleware into the streamable HTTP server stack (between `RequestHeadersMiddleware` and `OtelASGIMiddleware`).
+- `drmcp`: OAuth handshake is enabled only when `mcp_enable_unauthenticated_well_known_route` is `true` and `mcp_oauth_metadata` is configured; otherwise the middleware is not registered.
+- `drmcp`: Added route helpers to build the mounted PRM path and absolute metadata URL via `prefix_mount_path` (`oauth_protected_resource_metadata_path`, `build_oauth_protected_resource_metadata_url`).
 ## 0.26.16
-- Added `mcp_enable_unauthenticated_well_known_route` MCP config.
+- Added `mcp_enable_unauthenticated_well_known_route` MCP config (default `true`).
+- `drmcp`: MCP OAuth `401`/`WWW-Authenticate` handshake is enabled only when `mcp_enable_unauthenticated_well_known_route` is true and OAuth metadata is configured.
 
 ## 0.26.15
 - `drmcpbase/mcp_oauth_metadata`: Renamed mcp_oauth_protected_resource_metadata into mcp_oauth_metadata.

@@ -16,6 +16,12 @@
 # Streamable-HTTP MCP endpoint path (used with prefix_mount_path for full path).
 MCP_PATH_ENDPOINT = "/mcp"
 
+# OAuth protected resource metadata path (used with prefix_mount_path for full path).
+OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT = "/.well-known/oauth-protected-resource"
+
+# Realm value for MCP OAuth WWW-Authenticate challenges.
+MCP_OAUTH_REALM = "mcp"
+
 # mcp_opt, root_attr, tool_attr. Used by config to apply MCP_CLI_CONFIGS overrides.
 MCP_CLI_OPTS: list[tuple[str, str | None, str | None]] = [
     ("dynamic_tools", "mcp_server_register_dynamic_tools_on_startup", None),

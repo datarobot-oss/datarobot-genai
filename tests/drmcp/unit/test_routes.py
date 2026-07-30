@@ -25,6 +25,7 @@ from fastmcp.prompts import Prompt
 from datarobot_genai import __version__ as drmcp_genai_version
 from datarobot_genai.drmcp.core.routes import _tools_gallery_enabled
 from datarobot_genai.drmcp.core.routes import register_routes
+from datarobot_genai.drmcp.core.routes_utils import oauth_protected_resource_metadata_path
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
@@ -906,10 +907,29 @@ class TestOAuthProtectedResourceMetadataRoute:
         mock_mcp_object.custom_route = mock_custom_route
         return mock_mcp_object
 
+    @pytest.fixture
+    def mock_config(self) -> Mock:
+        mock_config_object = Mock()
+        mock_config_object.mount_path = "/"
+        mock_config_object.mcp_enable_unauthenticated_well_known_route = True
+        mock_config_object.mcp_oauth_metadata = None
+        return mock_config_object
+
     @pytest.fixture(autouse=True)
-    def mock_mcp_register_routes(self, mock_mcp: Mock) -> Iterator[None]:
-        register_routes(mock_mcp)
-        yield
+    def mock_mcp_register_routes(
+        self,
+        mock_mcp: Mock,
+        mock_config: Mock,
+    ) -> Iterator[None]:
+        with (
+            patch("datarobot_genai.drmcp.core.routes.get_config", return_value=mock_config),
+            patch(
+                "datarobot_genai.drmcp.core.routes_utils.get_config",
+                return_value=mock_config,
+            ),
+        ):
+            register_routes(mock_mcp)
+            yield
 
     @pytest.fixture
     def mock_get_protected_resource_metadata_api_response(self) -> Iterator[Mock]:
@@ -928,7 +948,7 @@ class TestOAuthProtectedResourceMetadataRoute:
         mock_get_protected_resource_metadata_api_response.return_value = {"mock": "mock"}
 
         metadata_handler = mock_mcp.registered_routes[
-            "GET", "/.well-known/oauth-protected-resource"
+            "GET", oauth_protected_resource_metadata_path()
         ]
         response = await metadata_handler(Mock())
 
@@ -945,10 +965,29 @@ class TestOAuthProtectedResourceMetadataRoute:
         mock_get_protected_resource_metadata_api_response.return_value = None
 
         metadata_handler = mock_mcp.registered_routes[
-            "GET", "/.well-known/oauth-protected-resource"
+            "GET", oauth_protected_resource_metadata_path()
         ]
         response = await metadata_handler(Mock())
 
         assert response.status_code == HTTPStatus.NOT_IMPLEMENTED
         response_data = json.loads(response.body.decode("utf-8"))
         assert response_data == {"error": "OAuth Protected Resource Metadata Not Implemented"}
+
+    def test_route_not_registered_when_flag_disabled(self, mock_mcp: Mock) -> None:
+        disabled_config = Mock()
+        disabled_config.mount_path = "/"
+        disabled_config.mcp_enable_unauthenticated_well_known_route = False
+        disabled_config.mcp_oauth_metadata = None
+        mock_mcp.registered_routes = {}
+
+        with (
+            patch("datarobot_genai.drmcp.core.routes.get_config", return_value=disabled_config),
+            patch(
+                "datarobot_genai.drmcp.core.routes_utils.get_config",
+                return_value=disabled_config,
+            ),
+        ):
+            register_routes(mock_mcp)
+            metadata_path = oauth_protected_resource_metadata_path()
+
+        assert ("GET", metadata_path) not in mock_mcp.registered_routes

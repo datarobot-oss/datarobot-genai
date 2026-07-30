@@ -33,6 +33,7 @@ from .dynamic_tools.deployment.controllers import get_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
 from .feature_flags import FeatureFlag
 from .mcp_instance import DataRobotMCP
+from .routes_utils import oauth_protected_resource_metadata_path
 from .routes_utils import prefix_mount_path
 from .tool_config import TOOL_CONFIGS
 from .tool_config import ToolType
@@ -338,18 +339,19 @@ def register_routes(mcp: DataRobotMCP) -> None:
                 content={"error": f"Failed to refresh prompt templates: {str(e)}"},
             )
 
-    @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
-    async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
-        manager = MCPOAuthProtectedResourceMetadataManager(
-            mcp_oauth_metadata=get_config().mcp_oauth_metadata,
-        )
-        api_response = manager.get_protected_resource_metadata_api_response()
-        if api_response:
-            return JSONResponse(
-                status_code=HTTPStatus.OK,
-                content=api_response,
+    if get_config().mcp_enable_unauthenticated_well_known_route:
+
+        @mcp.custom_route(oauth_protected_resource_metadata_path(), methods=["GET"])
+        async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
+            manager = MCPOAuthProtectedResourceMetadataManager(
+                mcp_oauth_metadata=get_config().mcp_oauth_metadata,
             )
-        else:
+            api_response = manager.get_protected_resource_metadata_api_response()
+            if api_response:
+                return JSONResponse(
+                    status_code=HTTPStatus.OK,
+                    content=api_response,
+                )
             return JSONResponse(
                 status_code=HTTPStatus.NOT_IMPLEMENTED,
                 content={"error": "OAuth Protected Resource Metadata Not Implemented"},
