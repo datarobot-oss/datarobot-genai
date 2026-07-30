@@ -98,6 +98,7 @@ constraint-dependencies = [
     "pillow>=12.2.0",
     "banks>=2.4.2",
     "bleach>=6.4.0",
+    "idna>=3.15",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
