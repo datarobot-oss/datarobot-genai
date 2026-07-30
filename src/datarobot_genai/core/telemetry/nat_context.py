@@ -84,15 +84,23 @@ def patch_nat_runner_context_isolation() -> None:
     original_aenter = Runner.__aenter__
 
     async def _aenter_preserving_request_context(self: Any) -> Any:
-        context_state = self._context_state
-        per_request_vars = (context_state.workflow_trace_id, context_state.workflow_run_id)
-        preserved = [(var, var.get()) for var in per_request_vars]
-        # Capture the request span before the build-phase context is restored over it.
-        request_span_context = trace.get_current_span().get_span_context()
+        # Telemetry only: never let capture/restore break the workflow run.
+        try:
+            context_state = self._context_state
+            trace_id = context_state.workflow_trace_id.get()
+            run_id = context_state.workflow_run_id.get()
+            # Capture the request span before the build-phase context is restored over it.
+            request_span_context = trace.get_current_span().get_span_context()
+        except Exception:
+            logger.debug("NAT trace-context capture failed", exc_info=True)
+            return await original_aenter(self)
         result = await original_aenter(self)
-        for var, value in preserved:
-            var.set(value)
-        _seed_nat_root_span_id(context_state, request_span_context)
+        try:
+            context_state.workflow_trace_id.set(trace_id)
+            context_state.workflow_run_id.set(run_id)
+            _seed_nat_root_span_id(context_state, request_span_context)
+        except Exception:
+            logger.debug("NAT trace-context restore failed", exc_info=True)
         return result
 
     Runner.__aenter__ = _aenter_preserving_request_context  # type: ignore[method-assign]

@@ -180,7 +180,22 @@ def test_instrument_fastapi_app_excludes_streaming_and_probe_spans():
     mock_instr.assert_called_once()
     kwargs = mock_instr.call_args.kwargs
     assert kwargs["exclude_spans"] == ["receive", "send"]
-    assert "health" in kwargs["excluded_urls"]
+
+    from opentelemetry.util.http import parse_excluded_urls
+
+    excluded = parse_excluded_urls(kwargs["excluded_urls"])
+    dep, model = "6a6a20b7fb870c8f3ea97011", "6a6a207a102de64dbe013214"
+    # probes are dropped: bare root, mount-prefixed root, health, ping
+    for url in ("http://h/", f"http://h/{dep}/{model}/", "http://h/health", "http://h/ping"):
+        assert excluded.url_disabled(url), url
+    # named endpoints keep their server span
+    for url in (
+        "http://h/a2a/",
+        f"http://h/{dep}/{model}/a2a/",
+        "http://h/v1/chat/completions",
+        f"http://h/{dep}/{model}/chat/completions",
+    ):
+        assert not excluded.url_disabled(url), url
 
 
 class TestDRAgentFastApiFrontEndPluginWorker:

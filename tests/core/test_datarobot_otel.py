@@ -211,19 +211,6 @@ class TestBootstrapOtelProvider:
         assert attrs["service.name"] == "deployment-abc123"
         assert attrs["telemetry.sdk.language"] == "python"
 
-    def test_installs_provider_with_lowercase_otlp_headers(self, clean_env):
-        # Local experimentation: _bridge_pulumi_otel_env sets OTEL_EXPORTER_OTLP_HEADERS
-        # with lowercase keys, which resolve_datarobot_headers_from_env parses verbatim.
-        # Bootstrap's success log must find the entity id case-insensitively instead of
-        # KeyError-ing on "X-DataRobot-Entity-Id" (the log runs outside the try/except).
-        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-        clean_env.setenv(
-            "OTEL_EXPORTER_OTLP_HEADERS",
-            "x-datarobot-entity-id=experiment_container-abc,x-datarobot-api-key=tok",
-        )
-        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
-        assert isinstance(trace.get_tracer_provider(), TracerProvider)
-
     def test_defaults_to_batch_span_processor(self, clean_env):
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True

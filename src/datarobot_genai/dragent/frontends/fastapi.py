@@ -45,6 +45,10 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
+# Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
+# named endpoints (/chat/completions, /a2a/, ...) keep a path segment and their server span.
+_PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?$,/ping/?$"
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,9 +74,7 @@ def _instrument_fastapi_app(app: FastAPI) -> None:
     try:
         FastAPIInstrumentor.instrument_app(
             app,
-            # Drop health/ping and the mount-prefixed root the k8s probe hits
-            # (trailing-slash paths); real endpoints never end in a slash.
-            excluded_urls=r"//[^/]+(/[^/]+)*/$,/health/?$,/ping/?$",
+            excluded_urls=_PROBE_EXCLUDED_URLS,
             # SSE emits one ASGI "send" span per chunk - drop them.
             exclude_spans=["receive", "send"],
         )
