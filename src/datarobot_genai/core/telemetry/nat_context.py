@@ -46,11 +46,9 @@ _RUNNER_PATCH_STATE: dict[str, bool] = {"patched": False}
 
 
 def _seed_nat_root_span_id(context_state: Any, request_span_context: SpanContext) -> None:
-    """Pre-set ``_root_span_id`` to the request span so NAT's lifecycle root nests under it.
+    """Point NAT's parentless workflow root at the request span so it nests under it.
 
-    NAT's exporter leaves the workflow root span parentless unless ``_root_span_id`` is set (its
-    eager-linking hook). ``request_span_context`` is captured before the build-phase restore.
-    Applied only when it matches this request's trace, never over an already-set id (e.g. eval).
+    Only when the span is on this request's trace and ``_root_span_id`` isn't already set.
     """
     try:
         if context_state._root_span_id.get() is not None:
@@ -67,14 +65,11 @@ def _seed_nat_root_span_id(context_state: Any, request_span_context: SpanContext
 
 
 def patch_nat_runner_context_isolation() -> None:
-    """Make NAT's ``Runner`` respect the incoming request's trace context.
+    """Keep NAT's ``Runner`` on each request's own trace context.
 
-    ``Workflow`` snapshots ``copy_context()`` at (lazy, first-request) build and
-    ``Runner.__aenter__`` re-applies it every run - overwriting each request's
-    ``workflow_trace_id`` / ``workflow_run_id`` with the first request's (so later requests join
-    the first request's trace) and leaving the NAT root parentless. We wrap ``__aenter__`` to
-    restore the per-request vars and seed ``_root_span_id`` from the request span. Idempotent;
-    no-op when NAT is unavailable.
+    ``Runner.__aenter__`` re-applies the first-request build snapshot every run, leaking that
+    trace into later requests and leaving the NAT root parentless. Wrap it to restore the
+    per-request vars and seed ``_root_span_id`` from the request span. Idempotent.
     """
     if _RUNNER_PATCH_STATE["patched"]:
         return

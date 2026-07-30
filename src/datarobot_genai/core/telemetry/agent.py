@@ -86,9 +86,8 @@ def instrument() -> None:
     # Some libraries collect telemetry data by default. Disable that.
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 
-    # Stop NAT's Runner from restoring the workflow build-phase context snapshot over each
-    # request's own trace vars (otherwise a warm server leaks the first request's trace id
-    # into every later request). See patch_nat_runner_context_isolation.
+    # Keep each request on its own trace: NAT's Runner otherwise leaks the first
+    # request's trace into later ones. See patch_nat_runner_context_isolation.
     from .nat_context import patch_nat_runner_context_isolation
 
     patch_nat_runner_context_isolation()

@@ -56,19 +56,10 @@ _INVALID_AUTH_CONTEXT_MSG = (
 
 
 def _instrument_fastapi_app(app: FastAPI) -> None:
-    """Attach OTel ASGI instrumentation so incoming requests open a server span.
+    """Open a server span per request that continues the caller's ``traceparent``.
 
-    NAT does not open an OpenTelemetry parent span for the request, so without
-    this there is no server span for downstream spans (the conventions
-    ``datarobot_agent`` span and framework instrumentors) to nest under, and the
-    trace fragments into disconnected roots. The server span also continues the
-    caller's W3C trace context (the injected ``traceparent``), so agent spans
-    parent under the caller rather than starting a fresh trace.
-
-    Streaming (SSE) responses emit one ASGI ``send`` span per chunk and health
-    probes carry no useful trace, so both are excluded. The instrumentor uses
-    the global SDK ``TracerProvider``; when none is bootstrapped the spans are
-    no-ops. The import is guarded so a missing package never breaks startup.
+    Without it the agent spans have no parent and fragment into disconnected roots.
+    SSE ``send`` spans and health probes are excluded; a missing package is a no-op.
     """
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -79,13 +70,10 @@ def _instrument_fastapi_app(app: FastAPI) -> None:
     try:
         FastAPIInstrumentor.instrument_app(
             app,
-            # Root, /health and /ping probes carry no useful trace. The root pattern matches the
-            # mount-prefixed root a deployment's k8s probe hits (e.g. //host/<dep>/<model>/), not
-            # just //host/ - any host + path segments ending in a trailing slash, which real
-            # endpoints (/chat/completions, /generate/stream, ...) never do.
+            # Drop health/ping and the mount-prefixed root the k8s probe hits
+            # (trailing-slash paths); real endpoints never end in a slash.
             excluded_urls=r"//[^/]+(/[^/]+)*/$,/health/?$,/ping/?$",
-            # Streaming (SSE) responses emit one ASGI "send" span per chunk,
-            # which floods traces with thousands of low-value spans.
+            # SSE emits one ASGI "send" span per chunk - drop them.
             exclude_spans=["receive", "send"],
         )
     except Exception:
