@@ -404,20 +404,159 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 | **P4** | XAA token cache | Medium — **implemented** |
 | **P5** | Admin API: `POST /admin/registry/flush` (optional) | Low |
 
+## Platform requirements (shared Redis)
+
+Agent code and `datarobot_genai` are **user-modifiable before deployment**. Library-side
+namespace isolation and HMAC signing are **defense in depth for stock, cooperative
+deployments** (replicas of the same agent). They are **not** a security boundary against a
+malicious deployer who patches the library or talks to Redis directly.
+
+The platform **must** enforce the controls below whenever multiple independent agent
+deployments share one Redis instance.
+
+### Threat model
+
+| Actor | Capability |
+|-------|------------|
+| **Benign deployment** | Runs stock dragent; benefits from namespace + signing |
+| **Misconfigured deployment** | Accidentally uses wrong prefix — library + platform ID injection mitigates |
+| **Malicious deployment** | Edits Python before deploy; reads env vars; can import `redis` and `SCAN`/`GET`/`SET` directly |
+
+Assume a malicious deployment can **bypass every check implemented in this library**.
+
+### What the library provides (not sufficient alone)
+
+| Feature | Purpose | Limit when code is user-editable |
+|---------|---------|-----------------------------------|
+| `MLOPS_DEPLOYMENT_ID` / `WORKLOAD_ID` namespace | Per-deployment/workload key prefix (`dragent:dep:{id}:`) | Ignored if user patches `cache_namespace.py` |
+| Reject `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` override on hosted runtimes | Blocks shared tenant namespace env var | Irrelevant if user edits code |
+| HMAC-SHA256 on Redis payloads | Stock dragent rejects forged/tampered entries | Does not encrypt; raw `GET` still returns plaintext JSON including `access_token` |
+| XAA cache key includes `IDP_AGENT_ID` | Per-agent principal scoping in stock code | Bypassed if user edits `build_xaa_cache_key` |
+
+### Required platform controls
+
+#### 1. Per-deployment/workload Redis credentials (mandatory)
+
+Do **not** inject one cluster-wide `AGENT_CARD_REGISTRY_REDIS_URL` + password into every
+agent deployment. Each deployment or workload must receive credentials scoped to **its own**
+key prefix only.
+
+Example ACL pattern (Redis 6+):
+
+```text
+# User/role for deployment 64a1b2c3...
++@read +@write +@string +@keyspace ~dragent:dep:64a1b2c3:* &* -@all
+```
+
+For workloads, use `dragent:wl:{WORKLOAD_ID}:*` instead of `dep:`.
+
+The agent process must **not** be able to `SCAN`, `KEYS`, `GET`, or `SET` outside its prefix.
+
+#### 2. Platform-injected identity (mandatory on hosted runtimes)
+
+| Variable | Platform responsibility |
+|----------|-------------------------|
+| `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` | Inject exactly one per deployment/workload; immutable from user config |
+| `AGENT_CARD_REGISTRY_REDIS_URL` | Per-deployment URL **or** shared URL with per-deployment ACL user |
+| `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | **Unique per deployment/workload** — do not reuse tenant-wide values |
+
+Do **not** rely on users setting `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` in production.
+
+#### 3. Per-deployment signing secret (mandatory for Redis backends)
+
+Inject `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` unique to each deployment/workload.
+
+**Do not** fall back to tenant-wide `SESSION_SECRET_KEY` for signing in multi-tenant shared
+Redis — if every deployment in a tenant shares that secret, one malicious deployment can
+forge valid HMACs for another deployment's key prefix (when Redis ACLs are misconfigured or
+too broad).
+
+Preferred order for the platform:
+
+1. Dedicated `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` per deployment (best)
+2. `IDP_AGENT_PRIVATE_KEY_JWK` when it is already unique per agent deployment
+3. Avoid `SESSION_SECRET_KEY` as the signing source unless it is guaranteed unique per deployment
+
+#### 4. Network isolation (mandatory)
+
+- Redis reachable only from agent pods (network policy), not from user-controlled egress paths outside the cluster.
+- TLS in transit; restrict Redis admin interfaces.
+
+#### 5. Sensitive data in Redis (policy)
+
+| Data | Confidentiality | Recommendation |
+|------|-----------------|----------------|
+| Agent cards | Low–medium (metadata) | Redis L2 acceptable with ACLs |
+| XAA exchanged tokens | **High** (bearer secrets, plaintext in JSON) | Default `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory`; use Redis L2 only between replicas of the **same** deployment with ACLs |
+
+HMAC provides **integrity** for stock readers, not **confidentiality**. Anyone with read
+access to a key can read the `access_token` field from the stored JSON.
+
+#### 6. Assume deployer is root in the container
+
+User-modifiable agent images can:
+
+- Remove HMAC verification
+- Exfiltrate tokens over HTTP instead of Redis
+- Read any secret injected into that deployment's environment
+
+Platform controls limit **cross-deployment** blast radius. They cannot stop a deployment
+from exfiltrating **its own** session data.
+
+### Platform configuration checklist
+
+Use this when enabling `AGENT_CARD_REGISTRY_BACKEND=redis` for user-deployed agents on a
+shared cluster:
+
+- [ ] `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` injected by platform (not user-editable)
+- [ ] Redis ACL (or equivalent) limits each deployment to `dragent:dep:{id}:*` or `dragent:wl:{id}:*`
+- [ ] Unique `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` per deployment/workload
+- [ ] `SESSION_SECRET_KEY` is **not** shared as the Redis signing secret across deployments
+- [ ] `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory` unless Redis ACLs and token risk are explicitly accepted
+- [ ] Redis not reachable with cluster-wide credentials from agent containers
+- [ ] Document that library namespace/signing does **not** protect against malicious code — ACLs do
+
+### Recommended platform defaults (shared multi-tenant cluster)
+
+```bash
+# Injected by platform per deployment — not user-overridable
+MLOPS_DEPLOYMENT_ID=<platform-assigned>
+AGENT_CARD_REGISTRY_BACKEND=redis
+AGENT_CARD_REGISTRY_REDIS_URL=redis://<acl-user>:<password>@cache.shared.svc:6379/0
+AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY=<unique-per-deployment-secret>
+
+# Safer default for bearer tokens
+AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory
+```
+
+Replicas of the **same** deployment share the same injected IDs and signing key, so L2 cache
+warming works. **Different** deployments get different ACL users, prefixes, and signing keys.
+
+### What application controls cannot prevent
+
+Even with this branch's changes, a malicious user **can** (if platform ACLs fail):
+
+| Attack | Why library cannot stop it |
+|--------|----------------------------|
+| Read another deployment's Redis keys | Direct `redis` client + `GET` on plaintext JSON |
+| Write garbage to another prefix | Direct `SET` if ACLs allow it |
+| Forge signed entries for another deployment | Valid HMAC if signing secret is shared across deployments |
+| Skip all caching/security code | Full control of deployed Python |
+
+**Conclusion:** treat shared Redis as **untrusted across deployments** unless the platform
+enforces per-deployment ACLs and unique signing material. The library optimizations target
+**replica coordination and outage resilience**, not isolation from hostile co-tenants.
+
 ## Security considerations
 
-- Redis must be **cluster-private** (network policy, TLS, AUTH). Each deployment or workload
-  uses a distinct key prefix (`dep:` / `wl:` + platform ID). Manual
-  `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` cannot override hosted IDs. Prefer Redis ACLs scoped
-  to each deployment/workload prefix.
+- Redis must be **cluster-private** (network policy, TLS, AUTH). See [Platform requirements](#platform-requirements-shared-redis) for mandatory ACL and signing-key guidance when user-modifiable agents share one Redis instance.
+- Each deployment or workload uses a distinct key prefix (`dep:` / `wl:` + platform ID). Manual `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` cannot override hosted IDs.
 - Agent cards may contain OAuth endpoints and audiences — not highly sensitive, but tenant-scoped.
-- **Never** store user Okta tokens or agent private keys in Redis (the signing key may be derived from `IDP_AGENT_PRIVATE_KEY_JWK` but the key material itself is not stored).
-- XAA cached tokens are bearer secrets — treat Redis as a secrets store (TLS + restricted ACL).
-  Prefer `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory` when Redis is shared across untrusted
-  co-tenants; Redis XAA caching is intended for replicas of the **same** deployment/workload.
+- **Never** store user Okta tokens or agent private keys in Redis (the signing key may be derived from deployment-specific material but the key material itself is not stored in Redis).
+- XAA cached tokens are bearer secrets stored as **plaintext JSON** in Redis — ACLs are required for confidentiality; HMAC only protects integrity for stock dragent readers.
+- Prefer `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory` on shared multi-tenant Redis unless per-deployment ACLs and token-cache risk are explicitly accepted.
 - Stale-if-error extends trust in old card metadata; cap `MAX_STALENESS_SECONDS` per compliance needs.
-- HMAC signing prevents cross-deployment cache poisoning when an attacker can write to Redis but
-  does not hold the victim deployment's signing secret.
+- HMAC signing helps stock dragent reject poisoned entries when the attacker lacks the victim deployment's signing secret; it does not replace Redis ACLs.
 
 ## Testing plan
 
