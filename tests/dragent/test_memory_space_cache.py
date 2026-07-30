@@ -15,78 +15,60 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_USER_ID
-from datarobot_genai.dragent.memory_space_cache import METADATA_CACHE_KEY
-from datarobot_genai.dragent.memory_space_cache import METADATA_CACHE_KIND
-from datarobot_genai.dragent.memory_space_cache import METADATA_DRAGENT_CACHE
+from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
+from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
 
 
-class _FakeMemoryBackend:
-    def __init__(self) -> None:
-        self._entries: dict[str, dict[str, Any]] = {}
-        self._next_id = 1
-
-    async def get_all(self, **kwargs: Any) -> dict[str, Any]:
-        filters = kwargs.get("filters", {})
-        metadata_filter = None
-        for condition in filters.get("AND", []):
-            if "metadata" in condition:
-                metadata_filter = condition["metadata"]
-                break
-
-        results = []
-        for entry in self._entries.values():
-            meta = entry.get("metadata") or {}
-            if metadata_filter and all(meta.get(k) == v for k, v in metadata_filter.items()):
-                results.append(entry)
-        return {"results": results}
-
-    async def add(self, messages: Any, **kwargs: Any) -> dict[str, Any]:
-        metadata = kwargs.get("metadata") or {}
-        memory_id = f"mem-{self._next_id}"
-        self._next_id += 1
-        payload = messages[0]["content"] if messages else ""
-        self._entries[memory_id] = {
-            "id": memory_id,
-            "memory": payload,
-            "metadata": metadata,
-            "user_id": kwargs.get("user_id"),
-        }
-        return {"results": [{"id": memory_id}]}
-
-    async def update(
-        self, memory_id: str, text: str | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
-        entry = self._entries.get(memory_id)
-        if entry is None:
-            raise KeyError(memory_id)
-        if text is not None:
-            entry["memory"] = text
-        if kwargs.get("metadata"):
-            entry["metadata"] = kwargs["metadata"]
-        return {"id": memory_id}
+class _FakeEvent:
+    def __init__(self, *, sequence_id: int, body: dict[str, Any] | None) -> None:
+        self.sequence_id = sequence_id
+        self.body = body
 
 
-class _FakeMem0Client:
-    def __init__(self) -> None:
-        self._memory = _FakeMemoryBackend()
+class _FakeSession:
+    def __init__(self, session_id: str = "sess-1") -> None:
+        self.id = session_id
+        self.metadata: dict[str, Any] = {}
+        self._events: list[_FakeEvent] = []
+        self.post_event = MagicMock(side_effect=self._post_event)
+        self.update_event = MagicMock(side_effect=self._update_event)
+
+    def events(self, **kwargs: Any) -> list[_FakeEvent]:
+        if "last_n" in kwargs:
+            return self._events[-kwargs["last_n"] :]
+        return list(self._events)
+
+    def _post_event(self, **kwargs: Any) -> _FakeEvent:
+        event = _FakeEvent(sequence_id=len(self._events) + 1, body=kwargs.get("body"))
+        self._events.append(event)
+        return event
+
+    def _update_event(self, sequence_id: int, **kwargs: Any) -> None:
+        for event in self._events:
+            if event.sequence_id == sequence_id:
+                if "body" in kwargs:
+                    event.body = kwargs["body"]
+                return
+        raise KeyError(sequence_id)
 
 
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
-    return MemorySpaceKVCache(_FakeMem0Client(), key_prefix="dragent:")
+    return MemorySpaceKVCache(memory_space_id="space-1", key_prefix="dragent:")
 
 
 class TestResolveMemorySpaceId:
-    def test_explicit_id(self):
+    def test_explicit_id(self) -> None:
         assert resolve_memory_space_id("space-explicit") == "space-explicit"
 
-    def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch):
+    def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AGENT_MEMORY_SPACE_ID", raising=False)
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         with pytest.raises(ValueError, match="MemorySpace ID"):
@@ -94,28 +76,83 @@ class TestResolveMemorySpaceId:
 
 
 class TestMemorySpaceKVCache:
-    async def test_set_and_get_round_trip(self, kv_cache: MemorySpaceKVCache):
-        await kv_cache.set_value("dep-1", '{"version": 1}', kind="agent_card")
-        assert await kv_cache.get_value("dep-1", kind="agent_card") == '{"version": 1}'
+    async def test_set_and_get_round_trip(self, kv_cache: MemorySpaceKVCache) -> None:
+        session = _FakeSession()
 
-    async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache):
-        await kv_cache.set_value("dep-1", "v1", kind="agent_card")
-        await kv_cache.set_value("dep-1", "v2", kind="agent_card")
-        assert await kv_cache.get_value("dep-1", kind="agent_card") == "v2"
-        backend: _FakeMemoryBackend = kv_cache._client
-        assert len(backend._entries) == 1
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                return_value=None,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
+                return_value=session,
+            ),
+        ):
+            await kv_cache.set_value("dep-1", '{"version": 1}', kind="agent_card")
 
-    async def test_different_kinds_are_isolated(self, kv_cache: MemorySpaceKVCache):
-        await kv_cache.set_value("same-key", "agent", kind="agent_card")
-        await kv_cache.set_value("same-key", "xaa", kind="xaa_token")
-        assert await kv_cache.get_value("same-key", kind="agent_card") == "agent"
-        assert await kv_cache.get_value("same-key", kind="xaa_token") == "xaa"
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+            return_value=session,
+        ):
+            assert await kv_cache.get_value("dep-1", kind="agent_card") == '{"version": 1}'
 
-    async def test_uses_dedicated_cache_user(self, kv_cache: MemorySpaceKVCache):
-        await kv_cache.set_value("dep-1", "payload", kind="agent_card")
-        backend: _FakeMemoryBackend = kv_cache._client
-        entry = next(iter(backend._entries.values()))
-        assert entry["user_id"] == DRAGENT_CACHE_USER_ID
-        assert entry["metadata"][METADATA_DRAGENT_CACHE] is True
-        assert entry["metadata"][METADATA_CACHE_KIND] == "agent_card"
-        assert entry["metadata"][METADATA_CACHE_KEY] == "dragent:agent_card:dep-1"
+        session.post_event.assert_called_once()
+        kwargs = session.post_event.call_args.kwargs
+        assert kwargs["event_type"] == CACHE_EVENT_TYPE
+        assert kwargs["body"]["payload"] == '{"version": 1}'
+
+    async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache) -> None:
+        session = _FakeSession()
+        session._post_event(body={"v": 1, "payload": "v1"})
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+            return_value=session,
+        ):
+            await kv_cache.set_value("dep-1", "v2", kind="agent_card")
+
+        session.update_event.assert_called_once_with(1, body={"v": 1, "payload": "v2"})
+        assert session.post_event.call_count == 1
+
+    async def test_different_kinds_are_isolated(self, kv_cache: MemorySpaceKVCache) -> None:
+        agent_session = _FakeSession("sess-agent")
+        xaa_session = _FakeSession("sess-xaa")
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                side_effect=[None, None],
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
+                side_effect=[agent_session, xaa_session],
+            ),
+        ):
+            await kv_cache.set_value("same-key", "agent", kind="agent_card")
+            await kv_cache.set_value("same-key", "xaa", kind="xaa_token")
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+            side_effect=[agent_session, xaa_session],
+        ):
+            assert await kv_cache.get_value("same-key", kind="agent_card") == "agent"
+            assert await kv_cache.get_value("same-key", kind="xaa_token") == "xaa"
+
+    async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:
+        session = _FakeSession()
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                return_value=None,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.Session.create",
+                return_value=session,
+            ) as create_mock,
+        ):
+            await kv_cache.set_value("dep-1", "payload", kind="agent_card")
+
+        create_mock.assert_called_once()
+        assert create_mock.call_args.args[1] == [DRAGENT_CACHE_PARTICIPANT_ID]
