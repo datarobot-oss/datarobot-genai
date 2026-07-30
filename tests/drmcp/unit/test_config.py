@@ -63,7 +63,7 @@ def test_config_defaults() -> None:
         assert config.tool_config.enable_vdb_tools is False
         assert config.tool_config.enable_code_execution_tools is False
         assert config.tool_config.enable_optimization_tools is False
-        assert config.mcp_enable_unauthenticated_well_known_route is True
+        assert config.mcp_enable_unauthenticated_well_known_route is False
         # Clean up the cached config after the test
         config_module._config = None
 
@@ -71,11 +71,11 @@ def test_config_defaults() -> None:
 class TestUnauthenticatedWellKnownRouteConfig:
     """Test mcp_enable_unauthenticated_well_known_route configuration."""
 
-    def test_default_is_true(self) -> None:
+    def test_default_is_false(self) -> None:
         with patch.dict(os.environ, clear=True):
             config_module._config = None
             config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
-            assert config.mcp_enable_unauthenticated_well_known_route is True
+            assert config.mcp_enable_unauthenticated_well_known_route is False
             config_module._config = None
 
     @pytest.mark.parametrize("env_value,expected", [("true", True), ("false", False)])

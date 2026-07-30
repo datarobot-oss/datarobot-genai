@@ -40,6 +40,8 @@ from .utils import get_prompt_tags
 from .utils import get_resource_tags
 from .utils import get_tool_tags
 
+from .constants import OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT
+
 logger = getLogger(__name__)
 
 
@@ -338,7 +340,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
                 content={"error": f"Failed to refresh prompt templates: {str(e)}"},
             )
 
-    @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
+    @mcp.custom_route(prefix_mount_path(OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT), methods=["GET"])
     async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
         manager = MCPOAuthProtectedResourceMetadataManager(
             mcp_oauth_metadata=get_config().mcp_oauth_metadata,
