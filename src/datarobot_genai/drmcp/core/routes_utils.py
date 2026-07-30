@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from starlette.requests import Request
+
 from .config import get_config
+from .constants import OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT
 
 
 def prefix_mount_path(endpoint: str) -> str:
@@ -28,3 +31,13 @@ def prefix_mount_path(endpoint: str) -> str:
     if not endpoint.startswith("/"):
         endpoint = "/" + endpoint
     return mount_path + endpoint
+
+
+def oauth_protected_resource_metadata_path() -> str:
+    """Return the mounted path for the OAuth protected resource metadata document."""
+    return prefix_mount_path(OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT)
+
+
+def build_oauth_protected_resource_metadata_url(request: Request) -> str:
+    """Build the absolute URL for the OAuth protected resource metadata document."""
+    return str(request.url.replace(path=oauth_protected_resource_metadata_path(), query="", fragment=""))

@@ -38,6 +38,7 @@ from .clients import RequestHeadersMiddleware
 from .config import get_config
 from .constants import MCP_PATH_ENDPOINT
 from .dr_mcp_server_logo import log_server_custom_banner
+from .oauth_resource_server_middleware import create_oauth_resource_server_middleware
 from .drtools_registry import load_drtools_registry
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
@@ -284,14 +285,19 @@ class DataRobotMCPServer:
                 if self._mcp_transport == "stdio":
                     server_task = asyncio.create_task(self._mcp.run_stdio_async(show_banner=False))
                 elif self._mcp_transport == "streamable-http":
+                    http_middleware: list[Middleware] = [
+                        # Request headers in context for REST routes only (skips MCP path).
+                        Middleware(RequestHeadersMiddleware),
+                    ]
+                    oauth_resource_server_middleware = create_oauth_resource_server_middleware()
+                    if oauth_resource_server_middleware is not None:
+                        http_middleware.append(Middleware(oauth_resource_server_middleware))
+                    http_middleware.append(Middleware(OtelASGIMiddleware))
+
                     server_task = asyncio.create_task(
                         self._mcp.run_http_async(
                             transport="http",
-                            middleware=[
-                                # Request headers in context for REST routes only (skips MCP path).
-                                Middleware(RequestHeadersMiddleware),
-                                Middleware(OtelASGIMiddleware),
-                            ],
+                            middleware=http_middleware,
                             show_banner=False,
                             port=self._config.mcp_server_port,
                             log_level=self._config.mcp_server_log_level,
