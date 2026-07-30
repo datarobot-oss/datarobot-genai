@@ -116,6 +116,7 @@ constraint-dependencies = [
     "setuptools>=83.0.0",
     "tornado>=6.5.7",
     "transformers>=5.5.0",
+    "urllib3>=2.7.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
