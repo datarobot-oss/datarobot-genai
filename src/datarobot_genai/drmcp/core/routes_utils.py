@@ -40,4 +40,6 @@ def oauth_protected_resource_metadata_path() -> str:
 
 def build_oauth_protected_resource_metadata_url(request: Request) -> str:
     """Build the absolute URL for the OAuth protected resource metadata document."""
-    return str(request.url.replace(path=oauth_protected_resource_metadata_path(), query="", fragment=""))
+    return str(
+        request.url.replace(path=oauth_protected_resource_metadata_path(), query="", fragment="")
+    )

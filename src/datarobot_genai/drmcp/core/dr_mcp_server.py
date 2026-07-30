@@ -38,12 +38,12 @@ from .clients import RequestHeadersMiddleware
 from .config import get_config
 from .constants import MCP_PATH_ENDPOINT
 from .dr_mcp_server_logo import log_server_custom_banner
-from .oauth_resource_server_middleware import create_oauth_resource_server_middleware
 from .drtools_registry import load_drtools_registry
 from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_management
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
+from .oauth_resource_server_middleware import create_oauth_resource_server_middleware
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle

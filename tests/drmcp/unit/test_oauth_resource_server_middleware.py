@@ -30,9 +30,7 @@ from datarobot_genai.drmcp.core.constants import OAUTH_PROTECTED_RESOURCE_METADA
 from datarobot_genai.drmcp.core.oauth_resource_server_middleware import (
     MCPOAuthResourceServerMiddleware,
 )
-from datarobot_genai.drmcp.core.oauth_resource_server_middleware import (
-    _extract_bearer_token,
-)
+from datarobot_genai.drmcp.core.oauth_resource_server_middleware import _extract_bearer_token
 from datarobot_genai.drmcp.core.oauth_resource_server_middleware import (
     create_oauth_resource_server_middleware,
 )
