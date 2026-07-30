@@ -113,6 +113,7 @@ override-dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.43.0,<2.0.0",
     "opentelemetry-instrumentation>=0.64b0,<0.65",
     "click>=8.3.3",
+    "json-repair>=0.60.1",
 ]
 # cve-sync:end
 
