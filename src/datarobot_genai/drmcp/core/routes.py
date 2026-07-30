@@ -340,7 +340,9 @@ def register_routes(mcp: DataRobotMCP) -> None:
 
     @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
     async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
-        manager = MCPOAuthProtectedResourceMetadataManager()
+        manager = MCPOAuthProtectedResourceMetadataManager(
+            mcp_oauth_metadata=get_config().mcp_oauth_metadata,
+        )
         api_response = manager.get_protected_resource_metadata_api_response()
         if api_response:
             return JSONResponse(

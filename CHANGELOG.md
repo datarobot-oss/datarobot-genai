@@ -4,9 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.15
+## 0.26.17
 - `dragent`: restored FastAPI ASGI instrumentation (removed in 0.26.x) so each request opens a server span continuing the caller's `traceparent`; agent spans nest under it instead of fragmenting into disconnected roots. Per-chunk SSE `send` spans and health probes (incl. the mount-prefixed k8s probe) are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
 - `core.telemetry`: fixed later chats on a warm server showing no agent spans in the playground. NAT's `Runner.__aenter__` re-applied the first-request context every run (leaking its trace into later chats) and left the NAT root parentless; `instrument()` now wraps it to restore per-request trace vars and nest the NAT tree under the request's server span.
+
+## 0.26.16
+- Added `mcp_enable_unauthenticated_well_known_route` MCP config.
+
+## 0.26.15
+- `drmcpbase/mcp_oauth_metadata`: Renamed mcp_oauth_protected_resource_metadata into mcp_oauth_metadata.
 
 ## 0.26.14
 - `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.

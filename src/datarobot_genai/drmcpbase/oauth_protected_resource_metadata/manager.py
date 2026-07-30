@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
 from enum import Enum
 from enum import auto
 from typing import Any
@@ -43,24 +42,15 @@ class SupportedMethodsToSendBearerToken(Enum):
         return [supported_method.get_name_in_lower_case() for supported_method in cls]
 
 
-class ContainerEnvVar(Enum):
-    MCP_OAUTH_PROTECTED_RESOURCE_METADATA = auto()
-
-    def get_env_var_value(self) -> str | None:
-        return os.getenv(self.name)
-
-
 class MCPOAuthProtectedResourceMetadataManager:
-    @staticmethod
-    def load_config() -> MCPOAuthProtectedResourceMetadataConfig | None:
-        metadata_in_json_str = (
-            ContainerEnvVar.MCP_OAUTH_PROTECTED_RESOURCE_METADATA.get_env_var_value()
-        )
-        if metadata_in_json_str:
-            metadata_in_json = yaml.safe_load(metadata_in_json_str)
+    def __init__(self, mcp_oauth_metadata: str | None = None) -> None:
+        self._mcp_oauth_metadata = mcp_oauth_metadata
+
+    def load_config(self) -> MCPOAuthProtectedResourceMetadataConfig | None:
+        if self._mcp_oauth_metadata:
+            metadata_in_json = yaml.safe_load(self._mcp_oauth_metadata)
             return MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_json)
-        else:
-            return None
+        return None
 
     @staticmethod
     def get_admin_config() -> MCPOAuthProtectedResourceMetadataAdminConfig:
