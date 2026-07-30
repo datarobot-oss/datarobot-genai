@@ -100,6 +100,7 @@ constraint-dependencies = [
     "bleach>=6.4.0",
     "idna>=3.15",
     "jupyter-server>=2.20.0",
+    "jupyterlab>=4.5.10",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
