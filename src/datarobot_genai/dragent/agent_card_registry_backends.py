@@ -30,6 +30,8 @@ from pydantic import Field
 
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
+from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import create_memory_space_client
 from datarobot_genai.dragent.redis_cache_signing import open_redis_model
 from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
@@ -253,6 +255,79 @@ class RedisAgentCardCacheBackend:
                 await self._redis.set(redis_key, payload, ex=ttl)
 
 
+class MemorySpaceAgentCardCacheBackend:
+    """Shared DataRobot MemorySpace L2 cache using JSON payloads."""
+
+    def __init__(
+        self,
+        *,
+        kv_cache: MemorySpaceKVCache,
+    ) -> None:
+        self._kv = kv_cache
+
+    def _storage_keys_for_record(self, record: AgentCardCacheRecord) -> list[str]:
+        keys: list[str] = []
+        if record.deployment_id:
+            keys.append(f"dep:{record.deployment_id}")
+        if record.external_id:
+            keys.append(f"ext:{record.external_id}")
+        return keys
+
+    def _storage_keys_for_lookup(
+        self,
+        lookup_key: str,
+        *,
+        key_type: LookupKeyType | None = None,
+    ) -> list[str]:
+        if key_type == "dep":
+            return [f"dep:{lookup_key}"]
+        if key_type == "ext":
+            return [f"ext:{lookup_key}"]
+        return [f"dep:{lookup_key}", f"ext:{lookup_key}"]
+
+    async def _get_record(self, storage_key: str) -> AgentCardCacheRecord | None:
+        payload = await self._kv.get_value(storage_key, kind="agent_card")
+        if payload is None:
+            return None
+        try:
+            return AgentCardCacheRecord.model_validate_json(payload)
+        except Exception:
+            logger.warning("Ignoring invalid MemorySpace agent card payload for %s", storage_key)
+            return None
+
+    async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
+        for storage_key in self._storage_keys_for_lookup(lookup_key):
+            record = await self._get_record(storage_key)
+            if record is not None and record.is_fresh(cache_ttl):
+                return record
+        return None
+
+    async def get_stale(
+        self,
+        lookup_key: str,
+        *,
+        max_staleness_seconds: int,
+    ) -> AgentCardCacheRecord | None:
+        for storage_key in self._storage_keys_for_lookup(lookup_key):
+            record = await self._get_record(storage_key)
+            if record is not None and record.is_within_staleness(max_staleness_seconds):
+                return record
+        return None
+
+    async def store(
+        self,
+        cards: dict[str, AgentCard],
+        *,
+        key_types: dict[str, LookupKeyType],
+    ) -> None:
+        for lookup_key, card in cards.items():
+            key_type = key_types.get(lookup_key, "dep")
+            record = build_cache_record(card, lookup_key=lookup_key, key_type=key_type)
+            payload = record.model_dump_json()
+            for storage_key in self._storage_keys_for_record(record):
+                await self._kv.set_value(storage_key, payload, kind="agent_card")
+
+
 class LayeredAgentCardCacheBackend:
     """L1 memory read-through / write-through over an L2 backend."""
 
@@ -336,15 +411,26 @@ def create_agent_card_cache_backend(
             resolved,
         )
         signing_key = resolve_redis_signing_key(config.agent_card_registry_redis_signing_key)
-        l1 = MemoryAgentCardCacheBackend()
-        l2 = RedisAgentCardCacheBackend(
-            redis_url=redis_url,
-            key_prefix=key_prefix,
-            max_staleness_seconds=config.agent_card_registry_max_staleness_seconds,
-            signing_key=signing_key,
+        return LayeredAgentCardCacheBackend(
+            MemoryAgentCardCacheBackend(),
+            RedisAgentCardCacheBackend(
+                redis_url=redis_url,
+                key_prefix=key_prefix,
+                max_staleness_seconds=config.agent_card_registry_max_staleness_seconds,
+                signing_key=signing_key,
+            ),
         )
-        return LayeredAgentCardCacheBackend(l1, l2)
+
+    if backend == "memory_space":
+        memory_space_id = config.agent_card_registry_memory_space_id
+        client = create_memory_space_client(memory_space_id=memory_space_id)
+        kv_cache = MemorySpaceKVCache(client, key_prefix=config.agent_card_registry_redis_prefix)
+        return LayeredAgentCardCacheBackend(
+            MemoryAgentCardCacheBackend(),
+            MemorySpaceAgentCardCacheBackend(kv_cache=kv_cache),
+        )
 
     raise ValueError(
-        f"Unsupported agent card registry cache backend: {backend!r}. Expected 'memory' or 'redis'."
+        f"Unsupported agent card registry cache backend: {backend!r}. "
+        "Expected 'memory', 'redis', or 'memory_space'."
     )
