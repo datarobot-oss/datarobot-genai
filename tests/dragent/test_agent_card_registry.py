@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -156,12 +159,12 @@ class TestAgentCardCacheRecord:
 
     def test_not_fresh_after_ttl(self):
         entry = AgentCardCacheRecord(card=MagicMock())
-        entry.fetched_at_mono -= 100
+        entry.fetched_at = datetime.now(UTC) - timedelta(seconds=100)
         assert not entry.is_fresh(50)
 
     def test_within_staleness(self):
         entry = AgentCardCacheRecord(card=MagicMock())
-        entry.fetched_at_mono -= 100
+        entry.fetched_at = datetime.now(UTC) - timedelta(seconds=100)
         assert entry.is_within_staleness(3600)
         assert not entry.is_within_staleness(50)
 

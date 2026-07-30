@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -95,7 +98,7 @@ class TestRedisAgentCardCacheBackend:
         redis_key = "test:agent_card:dep:dep-1"
         payload = await redis_backend._redis.get(redis_key)
         record = AgentCardCacheRecord.model_validate_json(payload)
-        record.fetched_at_mono -= 120
+        record.fetched_at = datetime.now(UTC) - timedelta(seconds=120)
         await redis_backend._redis.set(redis_key, record.model_dump_json(), ex=3600)
 
         assert await redis_backend.get_fresh("dep-1", cache_ttl=60) is None
@@ -123,11 +126,17 @@ class TestAgentCardRegistryRedisBackend:
         with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
             yield m
 
-    def _make_redis_backend(self, fake_redis_client) -> LayeredAgentCardCacheBackend:
+    def _make_redis_backend(
+        self,
+        fake_redis_client,
+        *,
+        namespace: str = "dep-shared",
+    ) -> LayeredAgentCardCacheBackend:
         config = AgentCardRegistryConfig(
             agent_card_registry_backend="redis",
             agent_card_registry_redis_url="redis://fake",
             agent_card_registry_redis_prefix="test:",
+            agent_card_registry_cache_namespace=namespace,
             agent_card_registry_max_staleness_seconds=3600,
         )
         backend = create_agent_card_cache_backend(config)
@@ -162,7 +171,44 @@ class TestAgentCardRegistryRedisBackend:
         mock_fetch.assert_not_awaited()
         assert card_b.name == card_mock.name
 
+    async def test_different_namespaces_do_not_share_cache(self, mock_fetch, fake_redis_client):
+        card_mock = _SAMPLE_AGENT_CARD.model_copy()
+        mock_fetch.return_value = _parsed({"dep-1": card_mock})
+
+        backend_a = self._make_redis_backend(fake_redis_client, namespace="dep-a")
+        registry_a = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            cache_backend=backend_a,
+        )
+        await registry_a.get(deployment_id="dep-1")
+        mock_fetch.assert_awaited_once()
+
+        backend_b = self._make_redis_backend(fake_redis_client, namespace="dep-b")
+        registry_b = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            cache_backend=backend_b,
+        )
+        mock_fetch.reset_mock()
+        await registry_b.get(deployment_id="dep-1")
+        mock_fetch.assert_awaited_once()
+
     def test_create_backend_requires_redis_url(self):
-        config = AgentCardRegistryConfig(agent_card_registry_backend="redis")
+        config = AgentCardRegistryConfig(
+            agent_card_registry_backend="redis",
+            agent_card_registry_cache_namespace="dep-1",
+        )
         with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_REDIS_URL"):
             create_agent_card_cache_backend(config)
+
+    def test_create_backend_requires_namespace(self):
+        config = AgentCardRegistryConfig(
+            agent_card_registry_backend="redis",
+            agent_card_registry_redis_url="redis://fake",
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_CACHE_NAMESPACE"):
+                create_agent_card_cache_backend(config)
