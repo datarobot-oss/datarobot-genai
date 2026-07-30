@@ -44,6 +44,7 @@ constraint-dependencies = [
     "pygments>=2.20.0",
     "pytest>=9.0.3",
     "requests>=2.33.0",
+    "setuptools>=83.0.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
@@ -64,6 +65,8 @@ override-dependencies = [
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
+# cve-sync:begin
+# cve-sync:end
 # cve-sync:begin
 # cve-sync:end
 # cve-sync:begin
