@@ -53,10 +53,13 @@ override-dependencies = [
     "opentelemetry-instrumentation>=0.64b0,<0.65",
     "click>=8.3.3",
     "json-repair>=0.60.1",
+    "mcp>=1.28.1",
 ]
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
+# cve-sync:begin
+# cve-sync:end
 # cve-sync:begin
 # cve-sync:end
 # cve-sync:begin

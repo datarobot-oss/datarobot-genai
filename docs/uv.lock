@@ -34,6 +34,7 @@ overrides = [
     { name = "cryptography", specifier = ">=48.0.1" },
     { name = "json-repair", specifier = ">=0.60.1" },
     { name = "litellm", specifier = ">=1.91.1,<2.0.0" },
+    { name = "mcp", specifier = ">=1.28.1" },
     { name = "opentelemetry-api", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.43.0,<2.0.0" },
