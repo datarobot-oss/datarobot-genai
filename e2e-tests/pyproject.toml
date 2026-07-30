@@ -111,6 +111,7 @@ constraint-dependencies = [
     "notebook>=7.5.6",
     "pyasn1>=0.6.4",
     "pygments>=2.20.0",
+    "pytest>=9.0.3",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
