@@ -107,6 +107,12 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 
 While the server is running, registered cards are **refreshed in the background** on a fixed interval (default 30 min via `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`). Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained.
 
+> [!WARNING]
+> **Shared Redis on user-deployed agents:** When many independent agent deployments share one
+> Redis instance, library namespace and HMAC signing are **not** a security boundary against
+> malicious or modified code. The platform must inject per-deployment/workload Redis ACLs,
+> unique signing keys, and platform IDs. See [Platform requirements (shared Redis)](../design/multi-cluster-cache-resilience.md#platform-requirements-shared-redis).
+
 #### Registry environment variables
 
 | Variable | Required | Description |
@@ -122,7 +128,7 @@ While the server is running, registered cards are **refreshed in the background*
 | `AGENT_CARD_REGISTRY_REDIS_URL` | When `backend=redis` | Redis connection URL, e.g. `redis://cache.secondary.svc:6379/0`. |
 | `AGENT_CARD_REGISTRY_REDIS_PREFIX` | No | Base key prefix for Redis entries. Default `dragent:`. Platform deployment/workload ID is appended as `dep:{id}:` or `wl:{id}:`. |
 | `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | Local dev only | Explicit namespace when `MLOPS_DEPLOYMENT_ID` and `WORKLOAD_ID` are unset. Cannot override platform IDs on hosted runtimes. |
-| `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | When `backend=redis` | HMAC signing secret for Redis cache entries. Falls back to `IDP_AGENT_PRIVATE_KEY_JWK` or `SESSION_SECRET_KEY`. |
+| `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | When `backend=redis` | HMAC signing secret for Redis cache entries. **Platform must inject a unique value per deployment/workload** on shared Redis; falls back to `IDP_AGENT_PRIVATE_KEY_JWK` then `SESSION_SECRET_KEY` only when appropriate. |
 | `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | No | Background refresh period in seconds for registered cards past the soft cache TTL. Default `1800` (30 min). Set to `0` to disable. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
