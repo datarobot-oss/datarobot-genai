@@ -83,7 +83,18 @@ flowchart TB
 
 ## Redis schema
 
-All keys use a configurable prefix (default `dragent:`) and optional cluster/tenant suffix for isolation.
+All keys use a configurable prefix (default `dragent:`) plus a **required per-deployment
+namespace** so co-located agent deployments sharing one Redis instance cannot read or
+overwrite each other's entries. The effective key prefix is
+`{AGENT_CARD_REGISTRY_REDIS_PREFIX}{namespace}:` (e.g. `dragent:64a1b2c3...:`).
+
+Resolve the namespace in priority order:
+
+1. `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` (explicit override)
+2. `MLOPS_DEPLOYMENT_ID` (DataRobot custom-model deployment)
+3. `WORKLOAD_ID` (DataRobot workload runtime)
+
+Redis backends fail at startup when no namespace can be resolved.
 
 ### Agent card entries
 
@@ -98,13 +109,15 @@ All keys use a configurable prefix (default `dragent:`) and optional cluster/ten
 {
   "version": 1,
   "fetched_at": "2026-07-21T20:00:00Z",
-  "fetched_at_mono": 1234567890.123,
   "card": { "...": "AgentCard JSON as returned by registry API" },
   "source": "registry",
   "deployment_id": "64a1b2c3...",
   "external_id": "my-remote-agent"
 }
 ```
+
+Freshness and stale-if-error age use wall-clock `fetched_at` so TTL is meaningful
+across processes (not `time.monotonic()`, which is per-process).
 
 **Redis TTL:** `EXPIRE` = `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` (default `86400`). This is the **hard eviction** bound, not the soft refresh TTL.
 
@@ -128,7 +141,7 @@ Used by a startup sidecar or init container to know the union of IDs to warm. Al
 **Cache key material** (hashed before use in Redis key):
 
 ```
-{user_id}|{target_audience}|{token_url}|{sorted_scopes_joined}|{exchange_audience}
+{sha256(subject_token)}|{IDP_AGENT_ID}|{target_audience}|{token_url}|{sorted_scopes_joined}|{exchange_audience}
 ```
 
 **Token record:**
@@ -167,7 +180,8 @@ Prevents thundering herd on background refresh.
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | `first` | Duplicate `external_id` strategy. |
 | `AGENT_CARD_REGISTRY_BACKEND` | `memory` | `memory` (today) or `redis`. |
 | `AGENT_CARD_REGISTRY_REDIS_URL` | — | Required when `backend=redis`. |
-| `AGENT_CARD_REGISTRY_REDIS_PREFIX` | `dragent:` | Key prefix. |
+| `AGENT_CARD_REGISTRY_REDIS_PREFIX` | `dragent:` | Base key prefix (namespace is appended automatically). |
+| `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | — | Per-deployment Redis namespace. Required for Redis when `MLOPS_DEPLOYMENT_ID` and `WORKLOAD_ID` are unset. |
 | `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` | `86400` | **Hard bound**: serve stale on fetch error up to this age. |
 | `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | `1800` | Background refresh period (0 = disabled). |
 | `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP` | `true` | Call `prefetch()` for all registered IDs before ready. |
@@ -386,11 +400,18 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 
 ## Security considerations
 
-- Redis must be **secondary-cluster private** (network policy, TLS, AUTH).
+- Redis must be **cluster-private** (network policy, TLS, AUTH). When many user-modifiable
+  agent deployments share one Redis instance, **each deployment must use a distinct cache
+  namespace** — enforced via `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` or platform-injected
+  deployment/workload IDs. Prefer Redis ACLs scoped to each namespace prefix.
 - Agent cards may contain OAuth endpoints and audiences — not highly sensitive, but tenant-scoped.
 - **Never** store user Okta tokens or agent private keys in Redis.
-- XAA cached tokens are bearer secrets — encrypt at rest if platform requires (Redis TLS + restricted ACL).
+- XAA cached tokens are bearer secrets — treat Redis as a secrets store (TLS + restricted ACL).
+  Prefer `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory` when Redis is shared across untrusted
+  co-tenants; Redis XAA caching is intended for replicas of the **same** deployment.
 - Stale-if-error extends trust in old card metadata; cap `MAX_STALENESS_SECONDS` per compliance needs.
+- Shared Redis entries are trusted on L2 hit without re-validating against the registry until soft TTL
+  expires; namespace isolation prevents cross-deployment cache poisoning.
 
 ## Testing plan
 

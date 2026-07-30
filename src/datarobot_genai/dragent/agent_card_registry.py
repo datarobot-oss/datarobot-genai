@@ -174,6 +174,16 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         description="Key prefix for Redis agent card cache entries.",
     )
 
+    agent_card_registry_cache_namespace: str | None = Field(
+        default=None,
+        description=(
+            "Per-deployment Redis key namespace. Required for Redis backends when "
+            "MLOPS_DEPLOYMENT_ID and WORKLOAD_ID are unset. Set "
+            "AGENT_CARD_REGISTRY_CACHE_NAMESPACE to isolate cache entries when "
+            "multiple agent deployments share one Redis instance."
+        ),
+    )
+
     agent_card_registry_refresh_interval_seconds: int = Field(
         default=_DEFAULT_REFRESH_INTERVAL_SECONDS,
         ge=0,

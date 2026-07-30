@@ -42,6 +42,7 @@ class TestBuildXAACacheKey:
     def test_same_inputs_produce_same_key(self):
         key_a = build_xaa_cache_key(
             subject_token="user-token",
+            principal_id="agent-principal-a",
             target_audience="https://api.example.com/",
             token_url="https://okta/token",
             scopes=["b", "a"],
@@ -49,6 +50,7 @@ class TestBuildXAACacheKey:
         )
         key_b = build_xaa_cache_key(
             subject_token="user-token",
+            principal_id="agent-principal-a",
             target_audience="https://api.example.com/",
             token_url="https://okta/token",
             scopes=["a", "b"],
@@ -58,6 +60,7 @@ class TestBuildXAACacheKey:
 
     def test_different_subject_tokens_produce_different_keys(self):
         base = dict(
+            principal_id="agent-principal",
             target_audience="https://api.example.com/",
             token_url="https://okta/token",
             scopes=["scope"],
@@ -65,6 +68,18 @@ class TestBuildXAACacheKey:
         )
         assert build_xaa_cache_key(subject_token="a", **base) != build_xaa_cache_key(
             subject_token="b", **base
+        )
+
+    def test_different_principal_ids_produce_different_keys(self):
+        base = dict(
+            subject_token="user-token",
+            target_audience="https://api.example.com/",
+            token_url="https://okta/token",
+            scopes=["scope"],
+            exchange_audience="https://okta/as",
+        )
+        assert build_xaa_cache_key(principal_id="agent-a", **base) != build_xaa_cache_key(
+            principal_id="agent-b", **base
         )
 
 
@@ -110,8 +125,20 @@ class TestXAATokenCacheFactory:
 
     def test_redis_backend_requires_registry_url(self):
         config = XAATokenCacheConfig(agent_card_xaa_token_cache_backend="redis")
-        with patch.dict("os.environ", {}, clear=False):
+        with patch.dict(
+            "os.environ", {"AGENT_CARD_REGISTRY_CACHE_NAMESPACE": "dep-1"}, clear=False
+        ):
             with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_REDIS_URL"):
+                create_xaa_token_cache(config)
+
+    def test_redis_backend_requires_namespace(self):
+        config = XAATokenCacheConfig(agent_card_xaa_token_cache_backend="redis")
+        with patch.dict(
+            "os.environ",
+            {"AGENT_CARD_REGISTRY_REDIS_URL": "redis://localhost:6379/0"},
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="AGENT_CARD_REGISTRY_CACHE_NAMESPACE"):
                 create_xaa_token_cache(config)
 
 

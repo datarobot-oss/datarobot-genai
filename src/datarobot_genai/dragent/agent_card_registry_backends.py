@@ -17,9 +17,9 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Literal
 from typing import Protocol
@@ -27,6 +27,9 @@ from typing import Protocol
 from a2a.types import AgentCard
 from pydantic import BaseModel
 from pydantic import Field
+
+from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
+from datarobot_genai.dragent.cache_namespace import require_cache_namespace
 
 if TYPE_CHECKING:
     from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -42,15 +45,14 @@ class AgentCardCacheRecord(BaseModel):
 
     version: int = 1
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    fetched_at_mono: float = Field(default_factory=time.monotonic)
     card: AgentCard
     source: str = "registry"
     deployment_id: str | None = None
     external_id: str | None = None
 
     def age_seconds(self) -> float:
-        """Return the entry age in seconds (monotonic clock)."""
-        return time.monotonic() - self.fetched_at_mono
+        """Return the entry age in seconds (wall clock, safe across processes)."""
+        return max(0.0, (datetime.now(UTC) - self.fetched_at).total_seconds())
 
     def is_fresh(self, cache_ttl: int) -> bool:
         """Return *True* if this entry is within the soft TTL."""
@@ -150,7 +152,7 @@ class MemoryAgentCardCacheBackend:
         record = self._entries.get(lookup_key)
         if record is None:
             return
-        record.fetched_at_mono -= seconds
+        record.fetched_at -= timedelta(seconds=seconds)
 
 
 class RedisAgentCardCacheBackend:
@@ -318,10 +320,15 @@ def create_agent_card_cache_backend(
             raise ValueError(
                 "AGENT_CARD_REGISTRY_REDIS_URL is required when AGENT_CARD_REGISTRY_BACKEND=redis."
             )
+        namespace = require_cache_namespace(config.agent_card_registry_cache_namespace)
+        key_prefix = build_namespaced_redis_prefix(
+            config.agent_card_registry_redis_prefix,
+            namespace,
+        )
         l1 = MemoryAgentCardCacheBackend()
         l2 = RedisAgentCardCacheBackend(
             redis_url=redis_url,
-            key_prefix=config.agent_card_registry_redis_prefix,
+            key_prefix=key_prefix,
             max_staleness_seconds=config.agent_card_registry_max_staleness_seconds,
         )
         return LayeredAgentCardCacheBackend(l1, l2)

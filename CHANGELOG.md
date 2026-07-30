@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent`: Redis L2 agent card registry cache (`AGENT_CARD_REGISTRY_BACKEND=redis`) with in-process L1 read-through/write-through; shared across dragent replicas via `AGENT_CARD_REGISTRY_REDIS_URL`.
 - `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (`AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`, default `1800`; set `0` to disable).
 - `dragent`: cache Okta XAA exchanged access tokens (`AGENT_CARD_XAA_TOKEN_CACHE_ENABLED`, default `true`) with in-process or shared Redis backend to reduce Okta load and latency.
+- `dragent`: require a per-deployment Redis cache namespace (`AGENT_CARD_REGISTRY_CACHE_NAMESPACE`, or auto-derived from `MLOPS_DEPLOYMENT_ID` / `WORKLOAD_ID`) when using Redis backends so co-located agent deployments cannot share or poison each other's cache entries.
+- `dragent`: scope XAA exchanged-token cache keys by local `IDP_AGENT_ID` and use wall-clock TTL for shared Redis agent card entries.
 
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
