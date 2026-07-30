@@ -83,18 +83,23 @@ flowchart TB
 
 ## Redis schema
 
-All keys use a configurable prefix (default `dragent:`) plus a **required per-deployment
-namespace** so co-located agent deployments sharing one Redis instance cannot read or
-overwrite each other's entries. The effective key prefix is
-`{AGENT_CARD_REGISTRY_REDIS_PREFIX}{namespace}:` (e.g. `dragent:64a1b2c3...:`).
+All keys use a configurable prefix (default `dragent:`) plus a **required per-deployment or
+per-workload namespace** so co-located agent deployments sharing one Redis instance cannot
+read or overwrite each other's entries. The effective key prefix is
+`{AGENT_CARD_REGISTRY_REDIS_PREFIX}{kind}:{namespace}:` where `kind` is `dep`, `wl`, or
+`dev` (local development only), e.g. `dragent:dep:64a1b2c3...:`.
 
 Resolve the namespace in priority order:
 
-1. `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` (explicit override)
-2. `MLOPS_DEPLOYMENT_ID` (DataRobot custom-model deployment)
-3. `WORKLOAD_ID` (DataRobot workload runtime)
+1. `MLOPS_DEPLOYMENT_ID` (DataRobot custom-model deployment) — **cannot be overridden**
+2. `WORKLOAD_ID` (DataRobot workload runtime) — **cannot be overridden**
+3. `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` (explicit; **local development only** when no platform IDs are set)
 
 Redis backends fail at startup when no namespace can be resolved.
+
+Redis payloads are **HMAC-SHA256 signed** with a deployment-specific secret
+(`AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY`, or `IDP_AGENT_PRIVATE_KEY_JWK`, or
+`SESSION_SECRET_KEY`). Unsigned or tampered entries are ignored on read.
 
 ### Agent card entries
 
@@ -180,8 +185,9 @@ Prevents thundering herd on background refresh.
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | `first` | Duplicate `external_id` strategy. |
 | `AGENT_CARD_REGISTRY_BACKEND` | `memory` | `memory` (today) or `redis`. |
 | `AGENT_CARD_REGISTRY_REDIS_URL` | — | Required when `backend=redis`. |
-| `AGENT_CARD_REGISTRY_REDIS_PREFIX` | `dragent:` | Base key prefix (namespace is appended automatically). |
-| `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | — | Per-deployment Redis namespace. Required for Redis when `MLOPS_DEPLOYMENT_ID` and `WORKLOAD_ID` are unset. |
+| `AGENT_CARD_REGISTRY_REDIS_PREFIX` | `dragent:` | Base key prefix (`dep`/`wl`/`dev` kind and namespace are appended). |
+| `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | — | Local-dev-only namespace when platform IDs are unset. Ignored on hosted deployments. |
+| `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | — | HMAC secret for Redis cache entries; falls back to `IDP_AGENT_PRIVATE_KEY_JWK` then `SESSION_SECRET_KEY`. |
 | `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` | `86400` | **Hard bound**: serve stale on fetch error up to this age. |
 | `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | `1800` | Background refresh period (0 = disabled). |
 | `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP` | `true` | Call `prefetch()` for all registered IDs before ready. |
@@ -400,18 +406,18 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 
 ## Security considerations
 
-- Redis must be **cluster-private** (network policy, TLS, AUTH). When many user-modifiable
-  agent deployments share one Redis instance, **each deployment must use a distinct cache
-  namespace** — enforced via `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` or platform-injected
-  deployment/workload IDs. Prefer Redis ACLs scoped to each namespace prefix.
+- Redis must be **cluster-private** (network policy, TLS, AUTH). Each deployment or workload
+  uses a distinct key prefix (`dep:` / `wl:` + platform ID). Manual
+  `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` cannot override hosted IDs. Prefer Redis ACLs scoped
+  to each deployment/workload prefix.
 - Agent cards may contain OAuth endpoints and audiences — not highly sensitive, but tenant-scoped.
-- **Never** store user Okta tokens or agent private keys in Redis.
+- **Never** store user Okta tokens or agent private keys in Redis (the signing key may be derived from `IDP_AGENT_PRIVATE_KEY_JWK` but the key material itself is not stored).
 - XAA cached tokens are bearer secrets — treat Redis as a secrets store (TLS + restricted ACL).
   Prefer `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory` when Redis is shared across untrusted
-  co-tenants; Redis XAA caching is intended for replicas of the **same** deployment.
+  co-tenants; Redis XAA caching is intended for replicas of the **same** deployment/workload.
 - Stale-if-error extends trust in old card metadata; cap `MAX_STALENESS_SECONDS` per compliance needs.
-- Shared Redis entries are trusted on L2 hit without re-validating against the registry until soft TTL
-  expires; namespace isolation prevents cross-deployment cache poisoning.
+- HMAC signing prevents cross-deployment cache poisoning when an attacker can write to Redis but
+  does not hold the victim deployment's signing secret.
 
 ## Testing plan
 

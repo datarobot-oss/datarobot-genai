@@ -177,10 +177,17 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     agent_card_registry_cache_namespace: str | None = Field(
         default=None,
         description=(
-            "Per-deployment Redis key namespace. Required for Redis backends when "
-            "MLOPS_DEPLOYMENT_ID and WORKLOAD_ID are unset. Set "
-            "AGENT_CARD_REGISTRY_CACHE_NAMESPACE to isolate cache entries when "
-            "multiple agent deployments share one Redis instance."
+            "Local-dev-only Redis namespace when MLOPS_DEPLOYMENT_ID and WORKLOAD_ID "
+            "are unset. On hosted runtimes the platform-injected deployment or workload "
+            "ID is always used and this value cannot override it."
+        ),
+    )
+
+    agent_card_registry_redis_signing_key: str | None = Field(
+        default=None,
+        description=(
+            "HMAC signing secret for Redis cache entries. When unset, falls back to "
+            "IDP_AGENT_PRIVATE_KEY_JWK then SESSION_SECRET_KEY. Required for Redis backends."
         ),
     )
 
