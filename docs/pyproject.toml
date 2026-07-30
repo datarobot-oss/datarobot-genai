@@ -38,6 +38,7 @@ constraint-dependencies = [
     "langchain-classic>=1.0.7",
     "langchain-openai>=1.1.14",
     "langchain-text-splitters>=1.1.2",
+    "mistune>=3.3.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
@@ -58,6 +59,8 @@ override-dependencies = [
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
+# cve-sync:begin
+# cve-sync:end
 # cve-sync:begin
 # cve-sync:end
 # cve-sync:begin
