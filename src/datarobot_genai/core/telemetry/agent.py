@@ -105,12 +105,7 @@ def instrument() -> None:
     # here so notebook hosts that already install their own TracerProvider
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
-    # Bootstrap in a hosted runtime, or whenever an explicit OTLP export target
-    # is configured (e.g. local experimentation, where _bridge_pulumi_otel_env
-    # sets OTEL_EXPORTER_OTLP_HEADERS from pulumi_config.json). Otherwise the
-    # SDK-channel spans (the conventions datarobot_agent span, the FastAPI server
-    # span, framework instrumentors) hit the no-op provider and never export.
-    if is_hosted_runtime() or os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+    if is_hosted_runtime():
         from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()
