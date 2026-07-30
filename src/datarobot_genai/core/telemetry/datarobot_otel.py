@@ -249,10 +249,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         return False
 
     _BOOTSTRAP_STATE["installed"] = True
-    # Header keys are case-insensitive and their case depends on the source:
-    # verbatim from OTEL_EXPORTER_OTLP_HEADERS (typically lowercase) or the
-    # title-case defaults this module builds. Look up case-insensitively so the
-    # log never raises (it runs outside the try/except above).
+    # Case-insensitive: header keys may arrive lowercase, and this log runs outside the try above.
     entity_id = next(
         (v for k, v in headers.items() if k.lower() == "x-datarobot-entity-id"),
         "",
