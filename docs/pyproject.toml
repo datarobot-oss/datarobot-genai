@@ -45,10 +45,13 @@ override-dependencies = [
     "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.43.0,<2.0.0",
     "opentelemetry-instrumentation>=0.64b0,<0.65",
+    "click>=8.3.3",
 ]
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
+# cve-sync:begin
+# cve-sync:end
 # cve-sync:begin
 # cve-sync:end
 # cve-sync:begin
