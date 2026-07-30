@@ -32,6 +32,8 @@ from pydantic import Field
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
+from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import create_memory_space_client
 from datarobot_genai.dragent.redis_cache_signing import open_redis_model
 from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
@@ -54,11 +56,12 @@ class XAATokenCacheConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_xaa_token_cache_backend: Literal["memory", "redis"] = Field(
+    agent_card_xaa_token_cache_backend: Literal["memory", "redis", "memory_space"] = Field(
         default="memory",
         description=(
             "XAAToken cache backend. 'memory' uses in-process cache only; "
-            "'redis' uses shared Redis (same URL/prefix as agent card registry)."
+            "'redis' uses shared Redis (same URL/prefix/namespace as agent card registry); "
+            "'memory_space' uses a provisioned DataRobot MemorySpace."
         ),
     )
 
@@ -233,6 +236,45 @@ class RedisXAATokenCache:
         )
 
 
+class MemorySpaceXAATokenCache:
+    """Shared DataRobot MemorySpace cache for exchanged XAA tokens."""
+
+    def __init__(
+        self,
+        *,
+        kv_cache: MemorySpaceKVCache,
+        skew_seconds: int,
+    ) -> None:
+        self._kv = kv_cache
+        self._skew_seconds = skew_seconds
+
+    def _storage_key(self, cache_key: str) -> str:
+        return _hash_cache_key(cache_key)
+
+    async def get(self, cache_key: str) -> str | None:
+        payload = await self._kv.get_value(self._storage_key(cache_key), kind="xaa_token")
+        if payload is None:
+            return None
+        try:
+            record = XAATokenCacheRecord.model_validate_json(payload)
+        except Exception:
+            return None
+        if not record.is_valid(skew_seconds=self._skew_seconds):
+            return None
+        return record.access_token
+
+    async def set(self, cache_key: str, access_token: str, ttl_seconds: int) -> None:
+        if ttl_seconds <= 0:
+            return
+        expires_at = datetime.fromtimestamp(time.time() + ttl_seconds, tz=UTC)
+        record = XAATokenCacheRecord(access_token=access_token, expires_at=expires_at)
+        await self._kv.set_value(
+            self._storage_key(cache_key),
+            record.model_dump_json(),
+            kind="xaa_token",
+        )
+
+
 class LayeredXAATokenCache:
     """L1 memory read-through / write-through over an L2 backend."""
 
@@ -305,9 +347,28 @@ def create_xaa_token_cache(config: XAATokenCacheConfig | None = None) -> XAAToke
             max_ttl_seconds=cfg.agent_card_xaa_token_max_ttl_seconds,
         )
 
+    if cfg.agent_card_xaa_token_cache_backend == "memory_space":
+        registry_cfg = AgentCardRegistryConfig()
+        client = create_memory_space_client(
+            memory_space_id=registry_cfg.agent_card_registry_memory_space_id,
+        )
+        kv_cache = MemorySpaceKVCache(
+            client,
+            key_prefix=registry_cfg.agent_card_registry_redis_prefix,
+        )
+        memory_space_backend = MemorySpaceXAATokenCache(
+            kv_cache=kv_cache,
+            skew_seconds=cfg.agent_card_xaa_token_skew_seconds,
+        )
+        return LayeredXAATokenCache(
+            memory,
+            memory_space_backend,
+            max_ttl_seconds=cfg.agent_card_xaa_token_max_ttl_seconds,
+        )
+
     raise ValueError(
         f"Unsupported XAA token cache backend: {cfg.agent_card_xaa_token_cache_backend!r}. "
-        "Expected 'memory' or 'redis'."
+        "Expected 'memory', 'redis', or 'memory_space'."
     )
 
 
