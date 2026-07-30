@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.17
+- Add initial version of automated cve-resolution to `datarobot-genai`
+- Resolve `pillow` and `pypdf` CVEs
+- Bring `e2e-tests` under the same cve-sync policy. `e2e-tests` resolves its own `uv.lock`, and uv reads `[tool.uv]` only from the root of whatever it is resolving, so none of the root project's CVE floors were reaching it. Its lock was below 11 floors and overrides (`aiohttp`, `cryptography`, `pillow`, `pypdf`, `pyjwt`, `pip`, `langchain`, `langsmith`, `starlette`, `python-multipart`, `python-dotenv`, `soupsieve`) and carried 6 packages the policy excludes.
+
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
 

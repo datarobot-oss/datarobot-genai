@@ -73,7 +73,7 @@ llamaindex = core + [
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
     "nvidia-nat-llama-index==1.7.0",
     "opentelemetry-instrumentation-llamaindex>=0.62.1,<1.0.0",
-    "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
+    "pypdf>=6.14.0,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
 ]
 
 dragent = core + [
@@ -109,7 +109,7 @@ drtools =  drmcputils + [
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
     "perplexityai>=0.27,<1.0",
-    "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
+    "pypdf>=6.14.0,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
     "polars>=1.0.0,<2.0.0",
     # Required indirectly by polars->pandas conversion.
     "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
