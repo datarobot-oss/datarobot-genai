@@ -25,6 +25,7 @@ from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
 from .config import get_config
+from .constants import OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT
 from .dynamic_prompts.controllers import delete_registered_prompt_template
 from .dynamic_prompts.controllers import refresh_registered_prompt_template
 from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id_and_version
@@ -39,8 +40,6 @@ from .tool_config import ToolType
 from .utils import get_prompt_tags
 from .utils import get_resource_tags
 from .utils import get_tool_tags
-
-from .constants import OAUTH_PROTECTED_RESOURCE_METADATA_ENDPOINT
 
 logger = getLogger(__name__)
 
