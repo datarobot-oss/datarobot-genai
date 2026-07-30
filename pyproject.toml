@@ -111,6 +111,7 @@ constraint-dependencies = [
     "pytest>=9.0.3",
     "requests>=2.33.0",
     "setuptools>=83.0.0",
+    "tornado>=6.5.7",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
