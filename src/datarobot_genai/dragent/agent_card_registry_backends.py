@@ -31,7 +31,8 @@ from pydantic import Field
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import create_memory_space_client
+from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
+from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
 from datarobot_genai.dragent.redis_cache_signing import open_redis_model
 from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
@@ -422,9 +423,12 @@ def create_agent_card_cache_backend(
         )
 
     if backend == "memory_space":
-        memory_space_id = config.agent_card_registry_memory_space_id
-        client = create_memory_space_client(memory_space_id=memory_space_id)
-        kv_cache = MemorySpaceKVCache(client, key_prefix=config.agent_card_registry_redis_prefix)
+        memory_space_id = resolve_memory_space_id(config.agent_card_registry_memory_space_id)
+        configure_datarobot_memory_client()
+        kv_cache = MemorySpaceKVCache(
+            memory_space_id=memory_space_id,
+            key_prefix=config.agent_card_registry_redis_prefix,
+        )
         return LayeredAgentCardCacheBackend(
             MemoryAgentCardCacheBackend(),
             MemorySpaceAgentCardCacheBackend(kv_cache=kv_cache),
