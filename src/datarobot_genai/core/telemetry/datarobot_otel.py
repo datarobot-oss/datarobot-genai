@@ -249,11 +249,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         return False
 
     _BOOTSTRAP_STATE["installed"] = True
-    # Case-insensitive: header keys may arrive lowercase, and this log runs outside the try above.
-    entity_id = next(
-        (v for k, v in headers.items() if k.lower() == "x-datarobot-entity-id"),
-        "",
-    )
+    # keys may arrive lowercase (OTEL_EXPORTER_OTLP_HEADERS) or title-case
+    entity_id = headers.get("x-datarobot-entity-id") or headers.get("X-DataRobot-Entity-Id", "")
     logger.info(
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
