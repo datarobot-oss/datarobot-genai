@@ -102,6 +102,7 @@ constraint-dependencies = [
     "jupyter-server>=2.20.0",
     "jupyterlab>=4.5.10",
     "langchain-classic>=1.0.7",
+    "langchain-openai>=1.1.14",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
