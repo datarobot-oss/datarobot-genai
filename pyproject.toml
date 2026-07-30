@@ -107,6 +107,7 @@ constraint-dependencies = [
     "mistune>=3.3.0",
     "notebook>=7.5.6",
     "pyasn1>=0.6.4",
+    "pygments>=2.20.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",

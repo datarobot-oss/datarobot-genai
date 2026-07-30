@@ -26,6 +26,7 @@ constraints = [
     { name = "pip", specifier = ">=26.1.2" },
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pyasn1", specifier = ">=0.6.4" },
+    { name = "pygments", specifier = ">=2.20.0" },
     { name = "pypdf", specifier = ">=6.14.0" },
     { name = "python-multipart", specifier = ">=0.0.31" },
     { name = "soupsieve", specifier = ">=2.8.4" },
