@@ -33,6 +33,7 @@ constraint-dependencies = [
     "banks>=2.4.2",
     "bleach>=6.4.0",
     "idna>=3.15",
+    "jupyter-server>=2.20.0",
 ]
 override-dependencies = [
     "crewai>=1.11.0",
@@ -52,6 +53,8 @@ override-dependencies = [
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
+# cve-sync:begin
+# cve-sync:end
 # cve-sync:begin
 # cve-sync:end
 # cve-sync:begin
