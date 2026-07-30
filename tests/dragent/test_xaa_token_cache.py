@@ -144,6 +144,16 @@ class TestXAATokenCacheFactory:
             with pytest.raises(ValueError, match="MLOPS_DEPLOYMENT_ID"):
                 create_xaa_token_cache(config)
 
+    def test_memory_space_backend_requires_space_id(self):
+        config = XAATokenCacheConfig(agent_card_xaa_token_cache_backend="memory_space")
+        env = {
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+            "DATAROBOT_API_TOKEN": "token",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with pytest.raises(ValueError, match="MemorySpace ID"):
+                create_xaa_token_cache(config)
+
 
 class TestRedisXAATokenCache:
     async def test_store_and_get(self, fake_redis_client):

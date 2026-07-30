@@ -156,11 +156,12 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_registry_backend: Literal["memory", "redis"] = Field(
+    agent_card_registry_backend: Literal["memory", "redis", "memory_space"] = Field(
         default="memory",
         description=(
             "Cache backend for agent cards. 'memory' uses in-process cache only; "
-            "'redis' adds a shared Redis L2 with in-process L1 read-through."
+            "'redis' adds a shared Redis L2 with in-process L1 read-through; "
+            "'memory_space' uses a provisioned DataRobot MemorySpace as L2."
         ),
     )
 
@@ -188,6 +189,14 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         description=(
             "HMAC signing secret for Redis cache entries. When unset, falls back to "
             "IDP_AGENT_PRIVATE_KEY_JWK then SESSION_SECRET_KEY. Required for Redis backends."
+        ),
+    )
+
+    agent_card_registry_memory_space_id: str | None = Field(
+        default=None,
+        description=(
+            "DataRobot MemorySpace ID for L2 cache when agent_card_registry_backend="
+            "'memory_space'. Defaults to AGENT_MEMORY_SPACE_ID."
         ),
     )
 

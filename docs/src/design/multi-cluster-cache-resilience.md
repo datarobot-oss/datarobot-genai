@@ -183,11 +183,12 @@ Prevents thundering herd on background refresh.
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | `86400` | **Soft TTL**: treat as fresh; skip background refresh. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | `30` | HTTP timeout for registry requests. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | `first` | Duplicate `external_id` strategy. |
-| `AGENT_CARD_REGISTRY_BACKEND` | `memory` | `memory` (today) or `redis`. |
+| `AGENT_CARD_REGISTRY_BACKEND` | `memory` | `memory` (today), `redis`, or `memory_space`. |
 | `AGENT_CARD_REGISTRY_REDIS_URL` | — | Required when `backend=redis`. |
 | `AGENT_CARD_REGISTRY_REDIS_PREFIX` | `dragent:` | Base key prefix (`dep`/`wl`/`dev` kind and namespace are appended). |
 | `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | — | Local-dev-only namespace when platform IDs are unset. Ignored on hosted deployments. |
 | `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | — | HMAC secret for Redis cache entries; falls back to `IDP_AGENT_PRIVATE_KEY_JWK` then `SESSION_SECRET_KEY`. |
+| `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` | — | DataRobot MemorySpace ID when `backend=memory_space`. Defaults to `AGENT_MEMORY_SPACE_ID`. |
 | `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` | `86400` | **Hard bound**: serve stale on fetch error up to this age. |
 | `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | `1800` | Background refresh period (0 = disabled). |
 | `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP` | `true` | Call `prefetch()` for all registered IDs before ready. |
@@ -210,7 +211,7 @@ AGENT_CARD_REGISTRY_STALE_IF_ERROR=true
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_CARD_XAA_TOKEN_CACHE_ENABLED` | `true` | Enable exchanged-token cache. |
-| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory` or `redis` (share with registry Redis). |
+| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory`, `redis`, or `memory_space`. |
 | `AGENT_CARD_XAA_TOKEN_SKEW_SECONDS` | `60` | Refresh token before `exp`. |
 | `AGENT_CARD_XAA_TOKEN_MAX_TTL_SECONDS` | `3600` | Cap cache TTL regardless of token `exp`. |
 
@@ -403,6 +404,55 @@ Use the same Redis URL as registry when `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=redi
 | **P3** | Background refresh loop | Low — **implemented** |
 | **P4** | XAA token cache | Medium — **implemented** |
 | **P5** | Admin API: `POST /admin/registry/flush` (optional) | Low |
+| **P6** | MemorySpace L2 backend | Low — **implemented** |
+
+## DataRobot MemorySpace backend (recommended for user-deployed agents)
+
+When the platform provisions a **dedicated MemorySpace per agent deployment** (via
+`AGENT_MEMORY_SPACE_ID`), set:
+
+```bash
+AGENT_CARD_REGISTRY_BACKEND=memory_space
+AGENT_CARD_XAA_TOKEN_CACHE_BACKEND=memory_space
+# AGENT_MEMORY_SPACE_ID injected by platform
+DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
+DATAROBOT_API_TOKEN=<deployment-scoped token>
+```
+
+### Why MemorySpace satisfies platform security
+
+| Property | Redis (shared) | MemorySpace (per deployment) |
+|----------|----------------|------------------------------|
+| Isolation boundary | Requires per-deployment Redis ACLs + signing keys | **Built-in** — each `memory_space_id` is unique and API access is restricted to the deploying user/workload token |
+| Cross-deployment reads | Possible if ACLs fail | **Not possible** across memory spaces with stock platform auth |
+| HMAC signing | Required for integrity | **Not required** — platform auth is the boundary |
+| Operational overhead | Deploy and ACL-manage shared Redis | Reuse existing MemorySpace provisioning |
+
+Cache entries are stored under a dedicated mem0 `user_id` (`__dragent_cache__`) with
+metadata tags (`dragent_cache`, `dragent_cache_key`, `dragent_cache_kind`) so they do not
+interleave with conversational agent memories in the same space.
+
+### MemorySpace schema
+
+Logical keys mirror the Redis layout (without a deployment namespace prefix — the memory
+space itself is the isolation boundary):
+
+| Logical key | Kind | Value |
+|-------------|------|-------|
+| `dep:{deployment_id}` | `agent_card` | `AgentCardCacheRecord` JSON |
+| `ext:{external_id}` | `agent_card` | Same payload (duplicate index) |
+| `{sha256(xaa_cache_key)}` | `xaa_token` | `XAATokenCacheRecord` JSON |
+
+Freshness and stale-if-error use wall-clock fields inside the JSON payload (same as Redis
+and in-memory backends). Mem0 `expiration_date` is not used for sub-day TTL precision.
+
+### When to use Redis vs MemorySpace
+
+| Scenario | Backend |
+|----------|---------|
+| Secondary-cluster dragent replicas with platform-managed Redis | `redis` |
+| User-deployed agents on a shared multi-tenant cluster | **`memory_space`** (preferred) |
+| Local development / single-process | `memory` (default) |
 
 ## Platform requirements (shared Redis)
 
@@ -549,7 +599,7 @@ enforces per-deployment ACLs and unique signing material. The library optimizati
 
 ## Security considerations
 
-- Redis must be **cluster-private** (network policy, TLS, AUTH). See [Platform requirements](#platform-requirements-shared-redis) for mandatory ACL and signing-key guidance when user-modifiable agents share one Redis instance.
+- Redis must be **cluster-private** (network policy, TLS, AUTH). See [Platform requirements](#platform-requirements-shared-redis) for mandatory ACL and signing-key guidance when user-modifiable agents share one Redis instance. Prefer [MemorySpace backend](#datarobot-memoryspace-backend-recommended-for-user-deployed-agents) when the platform provisions per-deployment memory spaces.
 - Each deployment or workload uses a distinct key prefix (`dep:` / `wl:` + platform ID). Manual `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` cannot override hosted IDs.
 - Agent cards may contain OAuth endpoints and audiences — not highly sensitive, but tenant-scoped.
 - **Never** store user Okta tokens or agent private keys in Redis (the signing key may be derived from deployment-specific material but the key material itself is not stored in Redis).
