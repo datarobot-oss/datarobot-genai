@@ -428,9 +428,11 @@ DATAROBOT_API_TOKEN=<deployment-scoped token>
 | HMAC signing | Required for integrity | **Not required** — platform auth is the boundary |
 | Operational overhead | Deploy and ACL-manage shared Redis | Reuse existing MemorySpace provisioning |
 
-Cache entries are stored under a dedicated mem0 `user_id` (`__dragent_cache__`) with
-metadata tags (`dragent_cache`, `dragent_cache_key`, `dragent_cache_kind`) so they do not
-interleave with conversational agent memories in the same space.
+Cache entries are stored as **memory-service sessions** (one per cache key) with a
+single ``status`` event holding the JSON payload — the same Session/event model the
+agent-application recipe uses for chat history when ``USE_APPLICATION_MEMORY_SPACE``
+is enabled. They do not use the mem0-compatible sub-route or conversational memory
+participants.
 
 ### MemorySpace schema
 
@@ -444,7 +446,8 @@ space itself is the isolation boundary):
 | `{sha256(xaa_cache_key)}` | `xaa_token` | `XAATokenCacheRecord` JSON |
 
 Freshness and stale-if-error use wall-clock fields inside the JSON payload (same as Redis
-and in-memory backends). Mem0 `expiration_date` is not used for sub-day TTL precision.
+and in-memory backends). Session metadata records the cache key and kind; the payload
+lives in a session event body.
 
 ### When to use Redis vs MemorySpace
 

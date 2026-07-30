@@ -33,7 +33,8 @@ from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.cache_namespace import build_namespaced_redis_prefix
 from datarobot_genai.dragent.cache_namespace import require_cache_namespace
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import create_memory_space_client
+from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
+from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
 from datarobot_genai.dragent.redis_cache_signing import open_redis_model
 from datarobot_genai.dragent.redis_cache_signing import resolve_redis_signing_key
 from datarobot_genai.dragent.redis_cache_signing import seal_redis_model
@@ -349,11 +350,10 @@ def create_xaa_token_cache(config: XAATokenCacheConfig | None = None) -> XAAToke
 
     if cfg.agent_card_xaa_token_cache_backend == "memory_space":
         registry_cfg = AgentCardRegistryConfig()
-        client = create_memory_space_client(
-            memory_space_id=registry_cfg.agent_card_registry_memory_space_id,
-        )
+        memory_space_id = resolve_memory_space_id(registry_cfg.agent_card_registry_memory_space_id)
+        configure_datarobot_memory_client()
         kv_cache = MemorySpaceKVCache(
-            client,
+            memory_space_id=memory_space_id,
             key_prefix=registry_cfg.agent_card_registry_redis_prefix,
         )
         memory_space_backend = MemorySpaceXAATokenCache(
