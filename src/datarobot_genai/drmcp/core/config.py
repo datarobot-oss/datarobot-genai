@@ -140,6 +140,14 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         default="INFO",
         description="App log level",
     )
+    mcp_oauth_metadata: str | None = Field(
+        default=None,
+        description="YAML configuration for OAuth protected resource metadata",
+    )
+    mcp_enable_unauthenticated_well_known_route: bool = Field(
+        default=False,
+        description="Enable/disable unauthenticated well known route",
+    )
     # When the server is run in a custom model, it is important to mount all routes under the
     # prefix provided in the URL_PREFIX
     mount_path: str = Field(default="/", alias="URL_PREFIX")
