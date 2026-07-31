@@ -113,6 +113,7 @@ nav:
     - Caveats: nat/caveats.md
   - DRAgent:
     - dragent/README.md
+    - A2A Tasks & Artifacts: dragent/a2a-artifacts.md
     - Tracing: dragent/tracing.md
   - DR Tools:
     - drtools/README.md

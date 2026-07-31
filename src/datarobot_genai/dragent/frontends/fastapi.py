@@ -16,6 +16,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import InvalidParamsError
@@ -35,6 +36,10 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.core.utils.logging import setup_logging
+from datarobot_genai.dragent.a2a_artifacts import ArtifactBuilder
+from datarobot_genai.dragent.a2a_artifacts import TaskArtifactAgentExecutor
+from datarobot_genai.dragent.a2a_artifacts import TaskMode
+from datarobot_genai.dragent.a2a_artifacts import load_artifact_builder
 
 from .a2a import A2A_MOUNT_PATH
 from .a2a import create_agent_card
@@ -158,12 +163,62 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
             if workflow_key:
                 token = self.session_manager._context_state.user_id.set(workflow_key)
 
-            await super().execute(context, event_queue)
+            await self._run_request(context, event_queue)
         finally:
             if token is not None:
                 self.session_manager._context_state.user_id.reset(token)
             if token_headers is not None:
                 _a2a_headers.reset(token_headers)
+
+    async def _run_request(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Handle the request once identity and headers are established.
+
+        The single seam subclasses override to change *what* is returned while
+        inheriting the per-user identity resolution and header forwarding set up by
+        :meth:`execute`.  The default delegates to NAT's message-only
+        implementation.
+
+        Overriding this rather than :meth:`execute` means a subclass cannot
+        accidentally bypass the auth context, and there is no base-class ordering
+        to get wrong.
+        """
+        await super().execute(context, event_queue)
+
+
+class _TaskArtifactPerUserExecutor(_PerUserCompatibleAgentExecutor):
+    """Per-user executor that publishes A2A Tasks and Artifacts.
+
+    Composition, not a mixin: :meth:`execute` is inherited unchanged (so identity
+    resolution and inbound-header forwarding are guaranteed), and the single
+    ``_run_request`` seam delegates to a contained
+    :class:`~datarobot_genai.dragent.a2a_artifacts.TaskArtifactAgentExecutor`.
+
+    Args:
+        session_manager: NAT session manager used to run the workflow.
+        builder: Supplies the artifacts to publish.
+        task_mode: Response shape; see
+            :data:`~datarobot_genai.dragent.a2a_artifacts.TaskMode`.
+    """
+
+    def __init__(
+        self,
+        session_manager: SessionManager,
+        *,
+        builder: ArtifactBuilder,
+        task_mode: TaskMode = "auto",
+    ) -> None:
+        super().__init__(session_manager)
+        self._delegate = TaskArtifactAgentExecutor(
+            session_manager, builder=builder, task_mode=task_mode
+        )
+
+    async def _run_request(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Publish a Task with artifacts (or a Message) instead of NAT's text reply."""
+        await self._delegate.execute(context, event_queue)
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Publish a terminal ``canceled`` state rather than always raising."""
+        await self._delegate.cancel(context, event_queue)
 
 
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
@@ -224,7 +279,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             max_concurrency=self._a2a_worker.max_concurrency,
         )
         self._session_managers.append(session_manager)
-        agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
+        agent_executor = self._build_agent_executor(session_manager)
 
         a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
         a2a_app = a2a_server.build()
@@ -233,6 +288,40 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
+
+    def _build_agent_executor(self, session_manager: SessionManager) -> AgentExecutor:
+        """Construct the A2A agent executor for this front end.
+
+        With no ``a2a.artifact_builder`` configured, the built-in message-only
+        executor is used and behaviour is unchanged.
+
+        When a builder *is* configured, it is composed into
+        :class:`_TaskArtifactPerUserExecutor`, which layers the task/artifact
+        lifecycle onto the per-user identity resolution and inbound-header
+        forwarding that Okta cross-application access depends on.
+
+        Raises
+        ------
+            ValueError: If the builder path cannot be imported or does not
+                implement ``build_artifacts``.
+        """
+        a2a_config = self.front_end_config.a2a
+        builder_path = a2a_config.artifact_builder if a2a_config else None
+
+        if not builder_path or a2a_config is None:
+            return _PerUserCompatibleAgentExecutor(session_manager)
+
+        builder = load_artifact_builder(builder_path)
+        logger.info(
+            "A2A artifact builder %s enabled (task_mode=%s)",
+            builder_path,
+            a2a_config.task_mode,
+        )
+        return _TaskArtifactPerUserExecutor(
+            session_manager,
+            builder=builder,
+            task_mode=a2a_config.task_mode,
+        )
 
     def build_app(self) -> FastAPI:
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""

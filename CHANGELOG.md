@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.17
+- `dragent`: added A2A **Tasks, Artifacts, Files and Images** support via the new
+  `datarobot_genai.dragent.a2a_artifacts` module. NAT's `NATWorkflowAgentExecutor` is
+  message-only (`get_user_input()` drops inbound files, `to_type=str` flattens the result,
+  and it returns a bare `Message`) — and because A2A `Artifact`s only exist on a `Task`,
+  artifacts were structurally impossible, not merely unsupported.
+  - An application implements one method — `ArtifactBuilder.build_artifacts(inputs,
+    response_text)` — and returns artifacts built with the module-level helpers
+    `text_artifact`, `data_artifact`, `file_artifact` (inline `FileWithBytes`),
+    `file_uri_artifact` (`FileWithUri`), and `mixed_artifact` (several part kinds in one
+    artifact). No base class, no imports from private modules.
+  - `extract_request_inputs()` parses **every** inbound part kind (text, file, data) into
+    `A2ARequestInputs` / `InboundFile`, with tolerant base64 decoding so one malformed
+    attachment cannot fail a request.
+  - `TaskArtifactAgentExecutor` owns the whole lifecycle — task creation, state
+    transitions, artifact publication, failure handling, cancellation. It is concrete and
+    public; subclass it directly to override `run_workflow`.
+  - `cancel()` now publishes a terminal `canceled` state instead of always raising
+    `UnsupportedOperationError`. Best-effort bookkeeping — it does not preempt in-flight work.
+- `dragent`: added `a2a.artifact_builder` — a dotted import path to an `ArtifactBuilder`
+  implementation. Applications publish Tasks and Artifacts without registering a
+  front-end plugin. Misconfiguration (bad path, non-class, missing `build_artifacts`) is
+  reported at startup rather than at request time.
+- `dragent`: added `a2a.task_mode` (`auto` | `always` | `never`). Both `Task` and `Message`
+  are valid `message/send` results, so the response shape is now selectable: `auto`
+  (default) returns a `Message` when the builder produces no artifacts and a `Task` when it
+  does; `always` opens a `Task` up front and emits `submitted → working → completed` for
+  long-running work; `never` always replies with a `Message`. Default `auto` is
+  non-breaking for existing callers.
+- `dragent`: the internal per-user A2A executor gained a single `_run_request` seam.
+  Response behaviour is layered by overriding that instead of `execute()`, so per-user
+  identity resolution and inbound-header forwarding (which Okta cross-application access
+  depends on) cannot be bypassed by a subclass.
+
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
 
