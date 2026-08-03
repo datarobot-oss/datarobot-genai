@@ -46,6 +46,8 @@ from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
+from datarobot_genai.dragent.frontends.a2a import _identity_from_headers_for_agent_card
+from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
@@ -710,6 +712,45 @@ class TestRedactAgentCard:
 
         assert redacted.capabilities.extensions is not None
         assert any(ext.uri == JWT_BEARER_GRANT_TYPE_URI for ext in redacted.capabilities.extensions)
+
+
+class TestAgentCardIdentitySelection:
+    def test_invalid_auth_context_treated_as_unauthenticated_for_public_card(self):
+        with patch(_AUTH_HANDLER_PATH, return_value=None):
+            assert (
+                _identity_from_headers_for_agent_card(
+                    {"x-datarobot-authorization-context": "garbage"}
+                )
+                is None
+            )
+
+    async def test_public_card_modifier_returns_full_card_when_authenticated(
+        self, a2a_frontend_config
+    ):
+        from datarobot_genai.dragent.frontends.a2a import _agent_card_request_headers
+
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
+        token = _agent_card_request_headers.set({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        try:
+            result = _public_card_modifier(card)
+        finally:
+            _agent_card_request_headers.reset(token)
+
+        assert result.skills == card.skills
+
+    async def test_public_card_modifier_redacts_when_unauthenticated(self, a2a_frontend_config):
+        from datarobot_genai.dragent.frontends.a2a import _agent_card_request_headers
+
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
+        token = _agent_card_request_headers.set({})
+        try:
+            result = _public_card_modifier(card)
+        finally:
+            _agent_card_request_headers.reset(token)
+
+        assert result.skills == []
 
 
 class TestCreateAgentCard:
