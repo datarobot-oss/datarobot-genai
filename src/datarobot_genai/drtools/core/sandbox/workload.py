@@ -83,6 +83,17 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
+# Provisioning allowance added on top of the caller's ``timeout_s`` when
+# computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
+# already enforced inside the container (DR_SANDBOX_TIMEOUT_SECS → SIGALRM →
+# exit 124); scheduling and image pulls are infrastructure time and must not
+# eat into it. A cold node pulling the sandbox image for the first time
+# routinely takes 60–90s — longer than the default 30s ``timeout_s`` — which
+# used to surface as SandboxTimeout before user code ever ran. This allowance
+# bounds only how long we wait for the infra side; genuinely hung workloads
+# still fail, just later.
+_DEFAULT_PROVISIONING_TIMEOUT_S = 300.0
+
 # Port the sandbox runner image serves on. The workload-api requires a port on
 # primary (service) containers and enforces >= 1024.
 _SANDBOX_RUNNER_PORT = 8080
@@ -133,6 +144,13 @@ class DataRobotWorkloadSandbox:
     http_client
         Optional :class:`httpx.AsyncClient` for dependency injection /
         testing. When ``None``, a client is created and closed per call.
+    provisioning_timeout_s
+        Infrastructure allowance added on top of ``run()``'s ``timeout_s``
+        when waiting for the workload to reach a terminal status. Covers
+        scheduling and image pulls (a cold node's first pull of the sandbox
+        image takes 60–90s), which are not the user code's time to spend —
+        the in-container runner enforces ``timeout_s`` on the code itself.
+        Defaults to :data:`_DEFAULT_PROVISIONING_TIMEOUT_S`.
 
     Notes
     -----
@@ -149,8 +167,10 @@ class DataRobotWorkloadSandbox:
         security_context: SandboxSecurityContext | None = None,
         workload_api_base: str | None = None,
         http_client: httpx.AsyncClient | None = None,
+        provisioning_timeout_s: float = _DEFAULT_PROVISIONING_TIMEOUT_S,
     ) -> None:
         self.image = image
+        self.provisioning_timeout_s = provisioning_timeout_s
         self.datarobot_endpoint = datarobot_endpoint.rstrip("/")
         self.datarobot_api_token = datarobot_api_token
         self.security_context = security_context
@@ -345,6 +365,7 @@ class DataRobotWorkloadSandbox:
         client: httpx.AsyncClient,
         workload_id: str,
         terminal: dict[str, Any],
+        marker_deadline: float | None = None,
     ) -> tuple[str, str]:
         """Return ``(stdout, stderr)``, preferring OTEL logs over ``logTail``.
 
@@ -365,7 +386,14 @@ class DataRobotWorkloadSandbox:
         # Poll until the marker appears (in OTEL or logTail) or the budget
         # elapses: a one-shot runner exits, so the workload can reach a terminal
         # status before the OTEL collector flushes the container's stdout.
-        deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
+        # ``marker_deadline`` (from run(), for failure-status workloads) can
+        # extend this well beyond the flush budget: after a transient
+        # ErrImagePull the container starts a minute+ after terminal status.
+        deadline = (
+            marker_deadline
+            if marker_deadline is not None
+            else time.monotonic() + _LOG_FLUSH_TIMEOUT_S
+        )
         delay = 0.5
         while True:
             try:
@@ -451,7 +479,10 @@ class DataRobotWorkloadSandbox:
 
         payload = self._build_workload_payload(code, inputs, timeout_s)
         start = time.monotonic()
-        deadline = start + timeout_s
+        # timeout_s bounds user code and is enforced in-container (SIGALRM →
+        # exit 124); the poll deadline additionally allows for scheduling and
+        # image pulls so infra time doesn't consume the user-code budget.
+        deadline = start + timeout_s + self.provisioning_timeout_s
 
         owns_client = self._http_client is None
         client = self._http_client or httpx.AsyncClient(timeout=httpx.Timeout(timeout_s + 5))
@@ -459,7 +490,20 @@ class DataRobotWorkloadSandbox:
         try:
             workload_id = await self._submit(client, payload)
             terminal = await self._poll(client, workload_id, deadline)
-            stdout_raw, stderr = await self._fetch_logs(client, workload_id, terminal)
+            status = str(terminal.get("status", "")).lower()
+            # A failure status is often not the end of the story: the one-shot
+            # runner's normal exit is flagged errored/stopped, and a transient
+            # infra event (ErrImagePull that k8s then retries) marks the
+            # workload errored BEFORE the container ever starts — with the
+            # result marker arriving in the logs a minute later. In both cases
+            # the marker is the source of truth, so give the marker wait the
+            # remaining overall budget instead of only the flush budget.
+            marker_deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
+            if status in _TERMINAL_FAILURE:
+                marker_deadline = max(deadline, marker_deadline)
+            stdout_raw, stderr = await self._fetch_logs(
+                client, workload_id, terminal, marker_deadline=marker_deadline
+            )
         except asyncio.CancelledError:
             # Make sure cleanup still fires even when the caller cancels
             # our task. The finally below will run; we just need to
@@ -473,7 +517,6 @@ class DataRobotWorkloadSandbox:
 
         stdout, return_value = parse_result_marker(stdout_raw)
         duration = time.monotonic() - start
-        status = str(terminal.get("status", "")).lower()
         exit_code = int(terminal.get("exitCode", 0) or 0)
         # The runner is a one-shot job, but the workload-api only supports
         # long-running "service" (or "nim") artifacts — so when the runner

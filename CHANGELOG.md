@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.19
+- `drtools/core/sandbox`: workload scheduling and image-pull time no longer consume the caller's `timeout_s` (which bounds user code, enforced in-container). A separate `provisioning_timeout_s` allowance (default 300s, constructor-tunable) bounds the infra wait — a cold node's first pull of the sandbox image (60-90s) used to surface as `SandboxTimeout` before user code ever ran.
+- `drtools/core/sandbox`: a workload marked terminal-failure by a transient `ErrImagePull` (k8s retries the pull and the container then runs) no longer fails with "no result marker in logs"; on failure statuses the marker wait extends to the remaining overall budget instead of the fixed 30s flush budget.
+
 ## 0.26.18
 - `dragent`: restored FastAPI ASGI instrumentation (removed in 0.21.2). Each request opens a server span continuing the caller's `traceparent`, so agent spans nest under it instead of fragmenting into disconnected roots. Health probes (incl. the mount-prefixed k8s probe) and per-chunk SSE `send` spans are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
 - `core.telemetry`: fixed later chats on a warm server losing their agent spans. NAT's `Runner.__aenter__` re-applied the first request's context every run, leaking its trace into later chats and leaving the NAT root parentless; `instrument()` now re-pins per-request trace vars and seeds `_root_span_id` so the NAT tree nests under the request's server span.
