@@ -214,6 +214,33 @@ class LitellmStopWordLLM(LLM):
         """CrewAI's native loop calls us with ``tools`` set and ``available_functions=None``."""
         return bool(kwargs.get("tools")) and kwargs.get("available_functions") is None
 
+    def _apply_stream_options_for_request(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Attach ``stream_options`` only when ``stream`` is enabled on this request.
+
+        Azure/OpenAI-compatible gateways reject ``stream_options`` unless ``stream=true``.
+        CrewAI stores unknown kwargs in ``additional_params``, so a persisted
+        ``stream_options`` would otherwise leak into non-streaming ``litellm.completion`` calls.
+        """
+        if params.get("stream"):
+            params.setdefault("stream_options", {"include_usage": True})
+        else:
+            params.pop("stream_options", None)
+        return params
+
+    def _prepare_completion_params(
+        self,
+        messages: str | list[Any],
+        tools: list[dict[str, Any]] | None = None,
+        skip_file_processing: bool = False,
+    ) -> dict[str, Any]:
+        params = super()._prepare_completion_params(
+            messages, tools, skip_file_processing=skip_file_processing
+        )
+        # Stop words are enforced client-side via ``_apply_stop_words``; many Azure models
+        # reject the wire ``stop`` parameter (and CrewAI's native tool path bypasses its retry).
+        params.pop("stop", None)
+        return self._apply_stream_options_for_request(params)
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
         """Stream and return native tool calls ourselves — CrewAI's handler drops them.
 
@@ -226,6 +253,7 @@ class LitellmStopWordLLM(LLM):
                 tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
+                params = self._apply_stream_options_for_request(params)
                 call_id = str(uuid.uuid4())
                 text: list[str] = []
                 tool_calls: list[Any] = []
@@ -270,6 +298,7 @@ class LitellmStopWordLLM(LLM):
                 tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
+                params = self._apply_stream_options_for_request(params)
                 call_id = str(uuid.uuid4())
                 text: list[str] = []
                 tool_calls: list[Any] = []
@@ -298,7 +327,12 @@ class LitellmStopWordLLM(LLM):
 
 
 def _crewai_model_factory(config: dict) -> LLM:
-    config["stream_options"] = config.get("stream_options", {"include_usage": True})
+    # ``stream_options`` is applied per litellm request in LitellmStopWordLLM (only when
+    # ``stream=true``). Do not persist it in ``additional_params`` — Azure gateways reject it
+    # on non-streaming calls.
+    config.pop("stream_options", None)
+    if config.get("stream") is not False:
+        config.setdefault("stream", True)
     # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
     # Multiple config types (Deployment, Component, Litellm) flow through here.
     config.pop("verify_ssl", None)

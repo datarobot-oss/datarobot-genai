@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.17
+- Fix stream option and stop parameter for crewai and azure
+
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
 
