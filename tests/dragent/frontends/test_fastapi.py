@@ -29,7 +29,6 @@ from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
-from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
@@ -60,6 +59,10 @@ from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+
+from .helpers import AUTH_HANDLER_PATH
+from .helpers import expected_workflow_key
+from .helpers import make_auth_ctx
 
 
 @pytest.fixture
@@ -354,21 +357,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             mock_a2a_worker_cls.assert_not_called()
 
 
-def _expected_key(raw_user_id: str) -> str:
-    """Compute the expected UUID5 workflow key for a raw DataRobot user ID."""
-    return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-
-def _make_auth_ctx(user_id: str) -> MagicMock:
-    """Build a mock AuthCtx with the given ``user.id``."""
-    ctx = MagicMock()
-    ctx.user.id = user_id
-    return ctx
-
-
-_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.session._auth_handler.get_context"
-
-
 class TestPerUserCompatibleAgentExecutor:
     @pytest.fixture
     def session_manager(self):
@@ -430,11 +418,11 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"X-DataRobot-Authorization-Context": "signed-jwt"},
         )
         event_queue = MagicMock()
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("real-dr-user")):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("real-dr-user")):
             await executor.execute(context, event_queue)
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("real-dr-user")
+            expected_workflow_key("real-dr-user")
         )
         patch_super_execute.assert_awaited_once_with(context, event_queue)
 
@@ -449,7 +437,7 @@ class TestPerUserCompatibleAgentExecutor:
         await executor.execute(context, MagicMock())
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("local-dev-ctx-id")
+            expected_workflow_key("local-dev-ctx-id")
         )
 
     async def test_execute_skips_user_id_injection_when_no_context_id_and_no_auth(
@@ -473,7 +461,7 @@ class TestPerUserCompatibleAgentExecutor:
                 context_id="shared-context-id",
                 headers={"X-DataRobot-Authorization-Context": "jwt"},
             )
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx(uid)):
                 await executor.execute(context, MagicMock())
 
         assert len(captured_keys) == 2
@@ -491,7 +479,7 @@ class TestPerUserCompatibleAgentExecutor:
                 context_id=ctx_id,
                 headers={"X-DataRobot-Authorization-Context": "jwt"},
             )
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("consistent-user")):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("consistent-user")):
                 await executor.execute(context, MagicMock())
 
         assert len(captured_keys) == 2
@@ -507,11 +495,11 @@ class TestPerUserCompatibleAgentExecutor:
             context_id="should-not-be-used",
             headers={"X-DataRobot-User-Id": "64baa56996fb36e3eeeefc44"},
         )
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
+        with patch(AUTH_HANDLER_PATH, return_value=None):
             await executor.execute(context, MagicMock())
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("64baa56996fb36e3eeeefc44")
+            expected_workflow_key("64baa56996fb36e3eeeefc44")
         )
 
     async def test_execute_raises_when_auth_context_invalid_instead_of_context_id_fallback(
@@ -523,7 +511,7 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"X-DataRobot-Authorization-Context": "garbage"},
         )
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             pytest.raises(ServerError) as exc_info,
         ):
             await executor.execute(context, MagicMock())
@@ -549,7 +537,7 @@ class TestPerUserCompatibleAgentExecutor:
         original = _a2a_headers.get(sentinel)
 
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             pytest.raises(ServerError),
         ):
             await executor.execute(context, MagicMock())
@@ -565,7 +553,7 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"some-header": "value"},
         )
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             patch("datarobot_genai.dragent.frontends.fastapi.logger") as mock_logger,
         ):
             await executor.execute(context, MagicMock())

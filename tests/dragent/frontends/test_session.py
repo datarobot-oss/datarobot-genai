@@ -36,6 +36,10 @@ from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
 from datarobot_genai.dragent.frontends.session import resolve_identity_from_headers
 
+from .helpers import AUTH_HANDLER_PATH
+from .helpers import expected_workflow_key
+from .helpers import make_auth_ctx
+
 
 @pytest.fixture
 def session_manager():
@@ -341,28 +345,13 @@ class TestSessionPerUserWorkflowFallback:
         assert captured["shim_get_id"] == expected
 
 
-def _expected_key(raw_user_id: str) -> str:
-    """Compute the expected UUID5 workflow key for a raw DataRobot user ID."""
-    return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-
-def _make_auth_ctx(user_id: str) -> MagicMock:
-    """Build a mock AuthCtx with the given ``user.id``."""
-    ctx = MagicMock()
-    ctx.user.id = user_id
-    return ctx
-
-
-_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.session._auth_handler.get_context"
-
-
 class TestResolveIdentityFromHeaders:
     """Tests for the resolve_identity_from_headers helper."""
 
     @pytest.fixture(autouse=True)
     def _no_real_jwt_decode(self):
         """Prevent the real _auth_handler from touching JWT secrets during tests."""
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
+        with patch(AUTH_HANDLER_PATH, return_value=None):
             yield
 
     def test_returns_none_for_none_headers(self):
@@ -378,11 +367,11 @@ class TestResolveIdentityFromHeaders:
         assert result is None
 
     def test_returns_uuid5_for_valid_signed_jwt(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("dr-uid-abc")):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("dr-uid-abc")):
             result = resolve_identity_from_headers(
                 {"x-datarobot-authorization-context": "signed-jwt"}
             )
-        assert result == _expected_key("dr-uid-abc")
+        assert result == expected_workflow_key("dr-uid-abc")
 
     def test_raises_for_invalid_jwt(self):
         with pytest.raises(ServerError) as exc_info:
@@ -394,7 +383,7 @@ class TestResolveIdentityFromHeaders:
     def test_raises_when_auth_handler_throws(self):
         """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
         with (
-            patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
+            patch(AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
             pytest.raises(ServerError) as exc_info,
         ):
             resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
@@ -415,21 +404,21 @@ class TestResolveIdentityFromHeaders:
 
     def test_falls_back_to_gateway_user_id_header(self):
         result = resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
-        assert result == _expected_key("64baa56996fb36e3eeeefc44")
+        assert result == expected_workflow_key("64baa56996fb36e3eeeefc44")
 
     def test_auth_context_takes_precedence_over_gateway_user_id(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("auth-ctx-user")):
             result = resolve_identity_from_headers(
                 {
                     "x-datarobot-authorization-context": "signed-jwt",
                     "x-datarobot-user-id": "gateway-user",
                 }
             )
-        assert result == _expected_key("auth-ctx-user")
-        assert result != _expected_key("gateway-user")
+        assert result == expected_workflow_key("auth-ctx-user")
+        assert result != expected_workflow_key("gateway-user")
 
     def test_deterministic_same_user(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("user-xyz")):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("user-xyz")):
             r1 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
             r2 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
         assert r1 == r2
@@ -437,7 +426,7 @@ class TestResolveIdentityFromHeaders:
     def test_different_users_produce_different_keys(self):
         results = []
         for uid in ("alice", "bob"):
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx(uid)):
                 results.append(
                     resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
                 )
