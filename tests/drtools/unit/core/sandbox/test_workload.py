@@ -34,9 +34,7 @@ DELETE_URL = f"{API_BASE}/workloads/{WORKLOAD_ID}"
 LOGS_URL = f"{API_BASE}/otel/workload/{WORKLOAD_ID}/logs/"
 
 
-def _sandbox(
-    client: httpx.AsyncClient | None = None, **kwargs: object
-) -> DataRobotWorkloadSandbox:
+def _sandbox(client: httpx.AsyncClient | None = None, **kwargs: object) -> DataRobotWorkloadSandbox:
     return DataRobotWorkloadSandbox(
         image="datarobotdev/datarobot-user-models:public_dropin_environments_dr_mcp_execute_sandbox_minimal_latest",
         datarobot_endpoint=API_BASE,
@@ -228,9 +226,7 @@ async def test_run_deletes_workload_on_timeout() -> None:
         with pytest.raises(SandboxTimeout):
             # provisioning_timeout_s=0 so the tiny timeout_s alone drives the
             # poll deadline (the default allowance would stall the test).
-            await _sandbox(client, provisioning_timeout_s=0.0).run(
-                "_return = 1", timeout_s=0.05
-            )
+            await _sandbox(client, provisioning_timeout_s=0.0).run("_return = 1", timeout_s=0.05)
 
     assert delete_route.called
 
