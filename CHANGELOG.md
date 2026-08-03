@@ -4,10 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.17
+## 0.26.19
 - Fix datarobot-moderations middleware after dome updated chunk optimization
 - `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
 - `dragent`: a terminal upstream `RUN_FINISHED` is now held aside like `RUN_ERROR`, so a moderation block no longer ends the stream with no terminal event, and the event can no longer overtake the last segment's trailing deltas.
+
+## 0.26.18
+- `dragent`: restored FastAPI ASGI instrumentation (removed in 0.21.2). Each request opens a server span continuing the caller's `traceparent`, so agent spans nest under it instead of fragmenting into disconnected roots. Health probes (incl. the mount-prefixed k8s probe) and per-chunk SSE `send` spans are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
+- `core.telemetry`: fixed later chats on a warm server losing their agent spans. NAT's `Runner.__aenter__` re-applied the first request's context every run, leaking its trace into later chats and leaving the NAT root parentless; `instrument()` now re-pins per-request trace vars and seeds `_root_span_id` so the NAT tree nests under the request's server span.
+- `core.telemetry`: stopped tracing the OTel exporter's own POST to the collector (a self-referential span per export).
+
+## 0.26.17
+- Fix stream option and stop parameter for crewai and azure
 
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.

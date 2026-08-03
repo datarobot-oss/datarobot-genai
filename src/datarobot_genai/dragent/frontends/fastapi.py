@@ -45,6 +45,10 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
+# Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
+# named endpoints (/chat/completions, /a2a/, ...) keep a path segment and their server span.
+_PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?$,/ping/?$"
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +57,29 @@ _GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
 _INVALID_AUTH_CONTEXT_MSG = (
     "X-DataRobot-Authorization-Context header is present but invalid or expired"
 )
+
+
+def _instrument_fastapi_app(app: FastAPI) -> None:
+    """Open a server span per request that continues the caller's ``traceparent``.
+
+    Without it the agent spans have no parent and fragment into disconnected roots.
+    SSE ``send`` spans and health probes are excluded; a missing package is a no-op.
+    """
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError:
+        logger.debug("opentelemetry-instrumentation-fastapi not installed; skipping")
+        return
+
+    try:
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls=_PROBE_EXCLUDED_URLS,
+            # SSE emits one ASGI "send" span per chunk - drop them.
+            exclude_spans=["receive", "send"],
+        )
+    except Exception:
+        logger.exception("Failed to instrument FastAPI app for OpenTelemetry")
 
 
 def _resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
@@ -256,6 +283,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
                 logger.info("A2A worker resources cleaned up")
 
         app.router.lifespan_context = lifespan
+
+        _instrument_fastapi_app(app)
 
         setup_logging()
         return app

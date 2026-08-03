@@ -85,6 +85,7 @@ dragent = core + [
     "anyio==4.11.0",
     "mem0ai>=1.0.4,<2.0.0",
     "starlette>=1.0.1",  # CVE fix
+    "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
 ]
 
 # auth is standalone set of dependencies for auth utilities only
