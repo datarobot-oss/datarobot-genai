@@ -54,6 +54,7 @@ from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 from .register import DRAgentA2AExternalConfig
 from .session import _a2a_headers
+from .session import headers_from_a2a_state
 from .session import normalise_headers
 from .session import resolve_identity_from_headers
 
@@ -414,8 +415,7 @@ def _public_card_modifier(card: AgentCard) -> AgentCard:
 
 def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
     """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
-    raw_headers = context.state.get("headers") if context.state else None
-    headers = normalise_headers(raw_headers) if isinstance(raw_headers, dict) else None
+    headers = headers_from_a2a_state(context.state)
     if resolve_identity_from_headers(headers) is None:
         raise ServerError(
             error=InvalidParamsError(

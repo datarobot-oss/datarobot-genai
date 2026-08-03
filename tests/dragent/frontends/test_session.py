@@ -34,6 +34,7 @@ from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import DRAgentUserManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
+from datarobot_genai.dragent.frontends.session import headers_from_a2a_state
 from datarobot_genai.dragent.frontends.session import resolve_identity_from_headers
 
 from .helpers import AUTH_HANDLER_PATH
@@ -174,6 +175,18 @@ class TestBuildMetadataFromHeaders:
     def test_returns_empty_headers(self):
         attrs = _build_metadata_from_headers({})
         assert attrs.headers == {}
+
+
+class TestHeadersFromA2aState:
+    def test_returns_none_for_missing_or_invalid_state(self):
+        assert headers_from_a2a_state(None) is None
+        assert headers_from_a2a_state({}) is None
+        assert headers_from_a2a_state({"headers": "not-a-dict"}) is None
+
+    def test_returns_normalised_headers(self):
+        assert headers_from_a2a_state({"headers": {"X-DataRobot-User-Id": "uid"}}) == {
+            "x-datarobot-user-id": "uid"
+        }
 
 
 class TestDRAgentUserManager:

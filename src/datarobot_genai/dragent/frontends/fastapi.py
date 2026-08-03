@@ -38,7 +38,7 @@ from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
-from .session import normalise_headers
+from .session import headers_from_a2a_state
 from .session import resolve_identity_from_headers
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -113,11 +113,9 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
         normalised_headers: dict[str, str] | None = None
         token_headers = None
         if context.call_context and isinstance(context.call_context.state, dict):
-            raw_headers = context.call_context.state.get("headers")
-            if raw_headers and isinstance(raw_headers, dict):
-                normalised_headers = normalise_headers(raw_headers)
-                if normalised_headers is not None:
-                    token_headers = _a2a_headers.set(normalised_headers)
+            normalised_headers = headers_from_a2a_state(context.call_context.state)
+            if normalised_headers is not None:
+                token_headers = _a2a_headers.set(normalised_headers)
 
         # Identity resolution must happen *before* super().execute() so that a
         # ServerError(InvalidParamsError) propagates directly.  The parent's

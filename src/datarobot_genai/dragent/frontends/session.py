@@ -16,6 +16,7 @@ import logging
 from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Literal
@@ -96,6 +97,16 @@ def normalise_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
     if not headers:
         return None
     return {k.lower(): v for k, v in headers.items()}
+
+
+def headers_from_a2a_state(state: Mapping[str, object] | None) -> dict[str, str] | None:
+    """Extract normalised HTTP headers from an A2A server or call context state dict."""
+    if not state:
+        return None
+    raw_headers = state.get("headers")
+    if not isinstance(raw_headers, dict):
+        return None
+    return normalise_headers(raw_headers)
 
 
 def resolve_identity_from_headers(
