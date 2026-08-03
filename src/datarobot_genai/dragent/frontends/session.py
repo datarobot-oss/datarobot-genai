@@ -85,10 +85,10 @@ class DRAgentUserManager(UserManager):
         return super().extract_user_from_connection(connection)
 
 
-# ContextVar used by _PerUserCompatibleAgentExecutor to forward the incoming A2A HTTP
-# request headers into the NAT context so auth providers (e.g. OAuth2CrossApplicationAccess)
-# can read them via Context.get().metadata.headers.  Module-level so the same var is
-# shared across all DRAgentAGUISessionManager instances (ContextVars are per-async-task).
+# ContextVar used to forward incoming A2A HTTP request headers.  Set by
+# :class:`~datarobot_genai.dragent.frontends.fastapi._PerUserCompatibleAgentExecutor`
+# during message execution and by :class:`DRAgentA2AStarletteApplication` during
+# public agent-card GET so auth and card selection can read gateway identity.
 _a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
 
 

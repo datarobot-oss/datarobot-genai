@@ -628,28 +628,28 @@ class TestAgentCardIdentitySelection:
     async def test_public_card_modifier_returns_full_card_when_authenticated(
         self, a2a_frontend_config
     ):
-        from datarobot_genai.dragent.frontends.a2a import _agent_card_request_headers
+        from datarobot_genai.dragent.frontends.session import _a2a_headers
 
         skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
-        token = _agent_card_request_headers.set({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        token = _a2a_headers.set({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
         try:
             result = _public_card_modifier(card)
         finally:
-            _agent_card_request_headers.reset(token)
+            _a2a_headers.reset(token)
 
         assert result.skills == card.skills
 
     async def test_public_card_modifier_redacts_when_unauthenticated(self, a2a_frontend_config):
-        from datarobot_genai.dragent.frontends.a2a import _agent_card_request_headers
+        from datarobot_genai.dragent.frontends.session import _a2a_headers
 
         skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
-        token = _agent_card_request_headers.set({})
+        token = _a2a_headers.set({})
         try:
             result = _public_card_modifier(card)
         finally:
-            _agent_card_request_headers.reset(token)
+            _a2a_headers.reset(token)
 
         assert result.skills == []
 

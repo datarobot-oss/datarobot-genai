@@ -21,7 +21,6 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
-from contextvars import ContextVar
 
 import httpx
 from a2a.server.apps import A2AStarletteApplication
@@ -54,15 +53,11 @@ from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 from .register import DRAgentA2AExternalConfig
+from .session import _a2a_headers
 from .session import normalise_headers
 from .session import resolve_identity_from_headers
 
 logger = logging.getLogger(__name__)
-
-# Populated by :class:`DRAgentA2AStarletteApplication` before the SDK card_modifier runs.
-_agent_card_request_headers: ContextVar[dict[str, str] | None] = ContextVar(
-    "_agent_card_request_headers", default=None
-)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -411,7 +406,7 @@ def redact_agent_card(card: AgentCard) -> AgentCard:
 
 def _public_card_modifier(card: AgentCard) -> AgentCard:
     """Serve the extended card to authenticated callers, redacted otherwise."""
-    headers = _agent_card_request_headers.get()
+    headers = _a2a_headers.get()
     if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
         return card
     return redact_agent_card(card)
@@ -435,11 +430,11 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
 
     async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
         headers = normalise_headers(dict(request.headers))
-        token = _agent_card_request_headers.set(headers)
+        token = _a2a_headers.set(headers)
         try:
             return await super()._handle_get_agent_card(request)
         finally:
-            _agent_card_request_headers.reset(token)
+            _a2a_headers.reset(token)
 
 
 class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
