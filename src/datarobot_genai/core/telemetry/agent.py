@@ -87,8 +87,11 @@ def instrument() -> None:
     # Some libraries collect telemetry data by default. Disable that.
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 
-    # TEMP baseline build: NAT runner patch disabled to capture before/after traces.
-    # Restore patch_nat_runner_context_isolation() before merge.
+    # Keep each request on its own trace: NAT's Runner otherwise leaks the first
+    # request's trace into later ones. See patch_nat_runner_context_isolation.
+    from .nat_context import patch_nat_runner_context_isolation
+
+    patch_nat_runner_context_isolation()
 
     # Install a global OTel TracerProvider pointed at the DataRobot OTel
     # ingest before any instrumentor patches a framework. NAT's
