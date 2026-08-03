@@ -34,6 +34,7 @@ from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
+from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.session import _a2a_headers
@@ -437,3 +438,46 @@ class TestCreateAgentCard:
         assert JWT_BEARER_GRANT_TYPE_URI in uris
         assert INTERNAL_IDENTITY_URI in uris
         assert EXTERNAL_IDENTITY_URI in uris
+
+
+class TestGetA2aEndpointUrl:
+    def test_default(self):
+        assert get_a2a_endpoint_url("localhost", 8000) == "http://localhost:8000/a2a/"
+
+    @pytest.mark.parametrize(
+        "env,expected",
+        [
+            (
+                {
+                    "MLOPS_DEPLOYMENT_ID": "abc123",
+                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                },
+                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
+            ),
+            (
+                {
+                    "MLOPS_DEPLOYMENT_ID": "abc123",
+                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
+                },
+                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
+            ),
+            (
+                {
+                    "MLOPS_DEPLOYMENT_ID": "abc123",
+                    "DATAROBOT_PUBLIC_API_ENDPOINT": "https://public.datarobot.com/api/v2",
+                    "DATAROBOT_ENDPOINT": "https://internal.k8s.local/api/v2",
+                },
+                "https://public.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
+            ),
+        ],
+    )
+    def test_deployment(self, env, expected):
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000) == expected
+
+    def test_deployment_missing_endpoint_raises(self):
+        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=True):
+            with pytest.raises(
+                ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set"
+            ):
+                get_a2a_endpoint_url("localhost", 8000)

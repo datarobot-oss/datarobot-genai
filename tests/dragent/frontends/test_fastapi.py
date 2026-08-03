@@ -35,7 +35,6 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
-from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
@@ -192,47 +191,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
-
-    def test_get_a2a_endpoint_url_default(self, worker):
-        assert get_a2a_endpoint_url("localhost", 8000) == "http://localhost:8000/a2a/"
-
-    @pytest.mark.parametrize(
-        "env,expected",
-        [
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-                },
-                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
-                },
-                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_PUBLIC_API_ENDPOINT": "https://public.datarobot.com/api/v2",
-                    "DATAROBOT_ENDPOINT": "https://internal.k8s.local/api/v2",
-                },
-                "https://public.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-        ],
-    )
-    def test_get_a2a_endpoint_url_deployment(self, worker, env, expected):
-        with patch.dict(os.environ, env, clear=True):
-            assert get_a2a_endpoint_url("localhost", 8000) == expected
-
-    def test_get_a2a_endpoint_url_deployment_missing_endpoint_raises(self, worker):
-        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=True):
-            with pytest.raises(
-                ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set"
-            ):
-                get_a2a_endpoint_url("localhost", 8000)
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker
