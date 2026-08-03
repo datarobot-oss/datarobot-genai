@@ -73,71 +73,54 @@ def test_llm_config_get_llm_type_external() -> None:
 
 
 # ---------------------------------------------------------------------------
-# LLMConfig.to_litellm_params — all four LLMTypes
+# build_litellm_router hydration
+#
+# to_litellm_params itself now lives in datarobot.core and is self-contained (it
+# never reaches back into genai); it is covered in public_api_client. genai's
+# responsibility is to hydrate the router's primary/fallbacks, which are parsed
+# from workflow.yaml with the two globals unset, from the ambient global config
+# before rendering them.
 # ---------------------------------------------------------------------------
 
 
-def test_to_litellm_params_gateway() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=True)
-    params = cfg.to_litellm_params()
-    assert params["model"].startswith("datarobot/")
-    assert params["api_base"] == "https://app.datarobot.com"
-    assert params["api_key"] == "env-token"
+def test_build_litellm_router_hydrates_globals_from_ambient_config() -> None:
+    from datarobot_genai.core.router import build_litellm_router
+
+    # Bare configs: no endpoint/token set, exactly as parsed from workflow.yaml.
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=True)
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router_cls.return_value = MagicMock()
+        build_litellm_router(primary, [fallback])
+
+    model_list = mock_router_cls.call_args.kwargs["model_list"]
+    # api_key + api_base come from the patched ambient Config (env-token / default
+    # endpoint), not from the bare configs themselves.
+    assert model_list[0]["litellm_params"]["api_key"] == "env-token"
+    assert model_list[0]["litellm_params"]["api_base"] == "https://app.datarobot.com"
+    assert model_list[1]["litellm_params"]["api_key"] == "env-token"
+    assert "dep-1" in model_list[1]["litellm_params"]["api_base"]
 
 
-def test_to_litellm_params_deployment() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-abc")
-    params = cfg.to_litellm_params()
-    assert params["model"].startswith("datarobot/")
-    assert "dep-abc" in params["api_base"]
-    assert params["api_key"] == "env-token"
+def test_build_litellm_router_keeps_explicit_config_credentials() -> None:
+    from datarobot_genai.core.router import build_litellm_router
 
-
-def test_to_litellm_params_nim() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_nim_deployment_id="nim-xyz")
-    params = cfg.to_litellm_params()
-    assert "nim-xyz" in params["api_base"]
-    assert params["api_key"] == "env-token"
-
-
-def test_to_litellm_params_external() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_default_model="gpt-4")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "gpt-4"
-    assert "api_base" not in params
-
-
-def test_to_litellm_params_external_strips_datarobot_prefix() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_default_model="datarobot/azure/gpt-4")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "azure/gpt-4"
-
-
-def test_to_litellm_params_uses_explicit_api_key_over_env() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=True, datarobot_api_token="explicit-key")
-    params = cfg.to_litellm_params()
-    assert params["api_key"] == "explicit-key"
-
-
-def test_to_litellm_params_uses_explicit_endpoint() -> None:
-    cfg = LLMConfig(
+    # An explicit token/endpoint on the config wins over the ambient globals.
+    primary = LLMConfig(
         llm_use_datarobot_llm_gateway=True,
+        datarobot_api_token="explicit-key",
         datarobot_endpoint="https://custom.host/api/v2",
     )
-    params = cfg.to_litellm_params()
-    assert params["api_base"] == "https://custom.host"
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
 
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router_cls.return_value = MagicMock()
+        build_litellm_router(primary, [fallback])
 
-def test_to_litellm_params_gateway_adds_datarobot_prefix_when_missing() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=True, llm_default_model="azure/gpt-4o")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "datarobot/azure/gpt-4o"
-
-
-def test_to_litellm_params_gateway_does_not_double_prefix() -> None:
-    cfg = LLMConfig(llm_use_datarobot_llm_gateway=True, llm_default_model="datarobot/azure/gpt-4o")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "datarobot/azure/gpt-4o"
+    model_list = mock_router_cls.call_args.kwargs["model_list"]
+    assert model_list[0]["litellm_params"]["api_key"] == "explicit-key"
+    assert model_list[0]["litellm_params"]["api_base"] == "https://custom.host"
 
 
 # ---------------------------------------------------------------------------

@@ -357,9 +357,15 @@ def get_llm(
     model_name: str | None = None,
     parameters: dict | None = None,
     reasoning: bool = False,
-    name: str | None = None,
+    config: LLMConfig | None = None,
 ) -> LiteLLM:
-    config = resolve_llm_config(name)
+    """Build the framework LLM for a given (or the default) LLM config.
+
+    Pass ``config`` (for example ``resolve_config().resolve_llm_config("bob")``) to
+    build a specific configured LLM instance; omit it to build the app's default LLM.
+    """
+    if config is None:
+        config = resolve_llm_config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, reasoning)
