@@ -25,10 +25,6 @@ import logging
 import httpx
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.context import ServerCallContext
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import BasePushNotificationSender
-from a2a.server.tasks import InMemoryPushNotificationConfigStore
-from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
@@ -452,23 +448,10 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         present.  ``extended_agent_card`` is also wired for
         ``agent/getAuthenticatedExtendedCard`` clients.
         """
-        self._httpx_client = httpx.AsyncClient()
-
-        push_config_store = InMemoryPushNotificationConfigStore()
-        push_sender = BasePushNotificationSender(
-            httpx_client=self._httpx_client,
-            config_store=push_config_store,
-        )
-        request_handler = DefaultRequestHandler(
-            agent_executor=agent_executor,
-            task_store=InMemoryTaskStore(),
-            push_config_store=push_config_store,
-            push_sender=push_sender,
-        )
-
+        base_server = super().create_a2a_server(agent_card, agent_executor)
         server = DRAgentA2AStarletteApplication(
-            agent_card=agent_card,
-            http_handler=request_handler,
+            agent_card=base_server.agent_card,
+            http_handler=base_server.handler.request_handler,
             extended_agent_card=agent_card,
             card_modifier=_public_card_modifier,
             extended_card_modifier=_extended_card_modifier,
