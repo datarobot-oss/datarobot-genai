@@ -5,8 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.17
-- `dragent`: restored FastAPI ASGI instrumentation (removed in 0.26.x) so each request opens a server span continuing the caller's `traceparent`; agent spans nest under it instead of fragmenting into disconnected roots. Per-chunk SSE `send` spans and health probes (incl. the mount-prefixed k8s probe) are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
-- `core.telemetry`: fixed later chats on a warm server showing no agent spans in the playground. NAT's `Runner.__aenter__` re-applied the first-request context every run (leaking its trace into later chats) and left the NAT root parentless; `instrument()` now wraps it to restore per-request trace vars and nest the NAT tree under the request's server span.
+- `dragent`: restored FastAPI ASGI instrumentation (removed in 0.21.2). Each request opens a server span continuing the caller's `traceparent`, so agent spans nest under it instead of fragmenting into disconnected roots. Health probes (incl. the mount-prefixed k8s probe) and per-chunk SSE `send` spans are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
+- `core.telemetry`: fixed later chats on a warm server losing their agent spans. NAT's `Runner.__aenter__` re-applied the first request's context every run, leaking its trace into later chats and leaving the NAT root parentless; `instrument()` now re-pins per-request trace vars and seeds `_root_span_id` so the NAT tree nests under the request's server span.
+- `core.telemetry`: stopped tracing the OTel exporter's own POST to the collector (a self-referential span per export).
 
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
