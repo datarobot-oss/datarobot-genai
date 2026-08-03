@@ -27,7 +27,6 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManage
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
-from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
@@ -35,8 +34,8 @@ from pydantic import Field
 from datarobot_genai.core.utils.logging import setup_logging
 
 from .a2a import A2A_MOUNT_PATH
+from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
-from .a2a import create_dr_a2a_server
 from .a2a import resolve_identity_from_headers
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
@@ -146,7 +145,7 @@ class _PerUserCompatibleAgentExecutor(NATWorkflowAgentExecutor):
 class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
-        self._a2a_worker: A2AFrontEndPluginWorker | None = None
+        self._a2a_worker: DRAgentA2AFrontEndPluginWorker | None = None
 
     def get_step_adaptor(self) -> StepAdaptor:
         return DRAgentNestedReasoningStepAdaptor(self.front_end_config.step_adaptor)
@@ -179,7 +178,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         nat_config = self._config.model_copy(
             update={"general": self._config.general.model_copy(update={"front_end": a2a_config})}
         )
-        self._a2a_worker = A2AFrontEndPluginWorker(nat_config)
+        self._a2a_worker = DRAgentA2AFrontEndPluginWorker(nat_config)
 
         cross_app_access = (
             self.front_end_config.a2a.cross_application_access
@@ -203,7 +202,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._session_managers.append(session_manager)
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
-        a2a_server = create_dr_a2a_server(self._a2a_worker, agent_card, agent_executor)
+        a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
         a2a_app = a2a_server.build()
 
         app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)

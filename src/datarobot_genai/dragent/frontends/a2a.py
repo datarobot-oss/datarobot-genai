@@ -507,38 +507,40 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
             _agent_card_request_headers.reset(token)
 
 
-def create_dr_a2a_server(
-    a2a_worker: A2AFrontEndPluginWorker,
-    agent_card: AgentCard,
-    agent_executor: NATWorkflowAgentExecutor,
-) -> DRAgentA2AStarletteApplication:
-    """Create an A2A server with per-request agent card selection.
+class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
+    """A2A worker that serves redacted vs extended agent cards per request."""
 
-    Mirrors NAT's :meth:`A2AFrontEndPluginWorker.create_a2a_server` but wires
-    ``card_modifier`` / ``extended_agent_card`` / ``extended_card_modifier`` so
-    anonymous callers receive a redacted public card while same-tenant
-    authenticated callers receive the full card.
-    """
-    a2a_worker._httpx_client = httpx.AsyncClient()
+    def create_a2a_server(
+        self,
+        agent_card: AgentCard,
+        agent_executor: NATWorkflowAgentExecutor,
+    ) -> DRAgentA2AStarletteApplication:
+        """Create an A2A server with per-request agent card selection.
 
-    push_config_store = InMemoryPushNotificationConfigStore()
-    push_sender = BasePushNotificationSender(
-        httpx_client=a2a_worker._httpx_client,
-        config_store=push_config_store,
-    )
-    request_handler = DefaultRequestHandler(
-        agent_executor=agent_executor,
-        task_store=InMemoryTaskStore(),
-        push_config_store=push_config_store,
-        push_sender=push_sender,
-    )
+        Wires ``card_modifier`` / ``extended_agent_card`` / ``extended_card_modifier``
+        so anonymous callers receive a redacted public card while same-tenant
+        authenticated callers receive the full card.
+        """
+        self._httpx_client = httpx.AsyncClient()
 
-    server = DRAgentA2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-        extended_agent_card=agent_card,
-        card_modifier=_public_card_modifier,
-        extended_card_modifier=_extended_card_modifier,
-    )
-    logger.info("Created A2A server with per-request agent card selection")
-    return server
+        push_config_store = InMemoryPushNotificationConfigStore()
+        push_sender = BasePushNotificationSender(
+            httpx_client=self._httpx_client,
+            config_store=push_config_store,
+        )
+        request_handler = DefaultRequestHandler(
+            agent_executor=agent_executor,
+            task_store=InMemoryTaskStore(),
+            push_config_store=push_config_store,
+            push_sender=push_sender,
+        )
+
+        server = DRAgentA2AStarletteApplication(
+            agent_card=agent_card,
+            http_handler=request_handler,
+            extended_agent_card=agent_card,
+            card_modifier=_public_card_modifier,
+            extended_card_modifier=_extended_card_modifier,
+        )
+        logger.info("Created A2A server with per-request agent card selection")
+        return server
