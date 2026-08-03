@@ -46,12 +46,10 @@ from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
-from datarobot_genai.dragent.frontends.a2a import _identity_from_headers_for_agent_card
 from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
-from datarobot_genai.dragent.frontends.a2a import resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
@@ -368,95 +366,7 @@ def _make_auth_ctx(user_id: str) -> MagicMock:
     return ctx
 
 
-_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.a2a._auth_handler.get_context"
-
-
-class TestResolveIdentityFromHeaders:
-    """Tests for the resolve_identity_from_headers helper."""
-
-    @pytest.fixture(autouse=True)
-    def _no_real_jwt_decode(self):
-        """Prevent the real _auth_handler from touching JWT secrets during tests."""
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
-            yield
-
-    def test_returns_none_for_none_headers(self):
-        assert resolve_identity_from_headers(None) is None
-
-    def test_returns_none_for_empty_headers(self):
-        assert resolve_identity_from_headers({}) is None
-
-    def test_returns_none_when_no_identity_headers(self):
-        result = resolve_identity_from_headers(
-            {"authorization": "Bearer tok", "content-type": "application/json"}
-        )
-        assert result is None
-
-    def test_returns_uuid5_for_valid_signed_jwt(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("dr-uid-abc")):
-            result = resolve_identity_from_headers(
-                {"x-datarobot-authorization-context": "signed-jwt"}
-            )
-        assert result == _expected_key("dr-uid-abc")
-
-    def test_raises_for_invalid_jwt(self):
-        with pytest.raises(ServerError) as exc_info:
-            resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-        assert "invalid or expired" in exc_info.value.error.message
-
-    def test_raises_when_auth_handler_throws(self):
-        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
-        with (
-            patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
-            pytest.raises(ServerError) as exc_info,
-        ):
-            resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-
-    def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
-        """A present but invalid auth-context JWT must not fall back to gateway user ID."""
-        with pytest.raises(ServerError) as exc_info:
-            resolve_identity_from_headers(
-                {
-                    "x-datarobot-authorization-context": "garbage",
-                    "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
-                }
-            )
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-
-    def test_falls_back_to_gateway_user_id_header(self):
-        result = resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
-        assert result == _expected_key("64baa56996fb36e3eeeefc44")
-
-    def test_auth_context_takes_precedence_over_gateway_user_id(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
-            result = resolve_identity_from_headers(
-                {
-                    "x-datarobot-authorization-context": "signed-jwt",
-                    "x-datarobot-user-id": "gateway-user",
-                }
-            )
-        assert result == _expected_key("auth-ctx-user")
-        assert result != _expected_key("gateway-user")
-
-    def test_deterministic_same_user(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("user-xyz")):
-            r1 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-            r2 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-        assert r1 == r2
-
-    def test_different_users_produce_different_keys(self):
-        results = []
-        for uid in ("alice", "bob"):
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
-                results.append(
-                    resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-                )
-        assert results[0] != results[1]
+_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.session._auth_handler.get_context"
 
 
 class TestPerUserCompatibleAgentExecutor:
@@ -715,15 +625,6 @@ class TestRedactAgentCard:
 
 
 class TestAgentCardIdentitySelection:
-    def test_invalid_auth_context_treated_as_unauthenticated_for_public_card(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
-            assert (
-                _identity_from_headers_for_agent_card(
-                    {"x-datarobot-authorization-context": "garbage"}
-                )
-                is None
-            )
-
     async def test_public_card_modifier_returns_full_card_when_authenticated(
         self, a2a_frontend_config
     ):

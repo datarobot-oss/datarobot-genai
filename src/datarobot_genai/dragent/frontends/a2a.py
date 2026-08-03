@@ -42,7 +42,6 @@ from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from a2a.utils.errors import ServerError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
-from nat.data_models.user_info import UserInfo
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
@@ -55,15 +54,10 @@ from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 from .register import DRAgentA2AExternalConfig
-from .session import _auth_handler
+from .session import normalise_headers
+from .session import resolve_identity_from_headers
 
 logger = logging.getLogger(__name__)
-
-_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
-_GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
-_INVALID_AUTH_CONTEXT_MSG = (
-    "X-DataRobot-Authorization-Context header is present but invalid or expired"
-)
 
 # Populated by :class:`DRAgentA2AStarletteApplication` before the SDK card_modifier runs.
 _agent_card_request_headers: ContextVar[dict[str, str] | None] = ContextVar(
@@ -392,54 +386,6 @@ async def create_agent_card(
 # ---------------------------------------------------------------------------
 
 
-def _normalise_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
-    if not headers:
-        return None
-    return {k.lower(): v for k, v in headers.items()}
-
-
-def resolve_identity_from_headers(headers: dict[str, str] | None) -> str | None:
-    """Extract gateway-validated user identity from A2A-forwarded headers.
-
-    Resolution order (first match wins):
-
-    1. ``X-DataRobot-Authorization-Context`` -- signed JWT forwarded by
-       components in the agent application template.  Decoded via
-       :data:`_auth_handler` and hashed through
-       ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
-       key as the AG-UI path.  When this header is present but validation
-       fails, raises :class:`~a2a.utils.errors.ServerError` with
-       :class:`~a2a.types.InvalidParamsError` (no fall-through to other headers
-       or ``context_id``).
-    2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
-       gateway, tied to the API-key owner.  Used only when the auth-context
-       header is absent.  Same ``_from_session_cookie`` transform is applied
-       for key-format consistency.
-    3. ``None`` -- no gateway-provided identity (local dev).
-
-    Returns ``None`` when *headers* are absent or contain no recognised
-    identity header.
-    """
-    if not headers:
-        return None
-
-    if _AUTH_CONTEXT_HEADER in headers:
-        try:
-            auth_ctx = _auth_handler.get_context(headers)
-        except Exception:
-            logger.warning("Failed to decode auth-context header", exc_info=True)
-            auth_ctx = None
-        if auth_ctx is None:
-            raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
-        return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
-
-    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
-    if raw_user_id:
-        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-    return None
-
-
 def redact_agent_card(card: AgentCard) -> AgentCard:
     """Return a public-safe view of an agent card.
 
@@ -463,37 +409,10 @@ def redact_agent_card(card: AgentCard) -> AgentCard:
     )
 
 
-def _identity_from_headers_for_agent_card(headers: dict[str, str] | None) -> str | None:
-    """Resolve identity for public agent-card selection.
-
-    Unlike :func:`resolve_identity_from_headers`, an invalid auth-context JWT is
-    treated as unauthenticated (returns ``None``) so the public card is redacted.
-    Cross-tenant and other auth failures are rejected by the API gateway upstream.
-    """
-    if not headers:
-        return None
-
-    if _AUTH_CONTEXT_HEADER in headers:
-        try:
-            auth_ctx = _auth_handler.get_context(headers)
-        except Exception:
-            logger.warning("Failed to decode auth-context header", exc_info=True)
-            auth_ctx = None
-        if auth_ctx is not None:
-            return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
-        return None
-
-    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
-    if raw_user_id:
-        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-    return None
-
-
 def _public_card_modifier(card: AgentCard) -> AgentCard:
     """Serve the extended card to authenticated callers, redacted otherwise."""
     headers = _agent_card_request_headers.get()
-    if _identity_from_headers_for_agent_card(headers) is not None:
+    if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
         return card
     return redact_agent_card(card)
 
@@ -501,7 +420,7 @@ def _public_card_modifier(card: AgentCard) -> AgentCard:
 def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
     """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
     raw_headers = context.state.get("headers") if context.state else None
-    headers = _normalise_headers(raw_headers) if isinstance(raw_headers, dict) else None
+    headers = normalise_headers(raw_headers) if isinstance(raw_headers, dict) else None
     if resolve_identity_from_headers(headers) is None:
         raise ServerError(
             error=InvalidParamsError(
@@ -515,7 +434,7 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
     """A2A server that selects redacted vs extended cards on the public GET route."""
 
     async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
-        headers = _normalise_headers(dict(request.headers))
+        headers = normalise_headers(dict(request.headers))
         token = _agent_card_request_headers.set(headers)
         try:
             return await super()._handle_get_agent_card(request)

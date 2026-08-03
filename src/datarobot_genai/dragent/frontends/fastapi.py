@@ -36,9 +36,9 @@ from datarobot_genai.core.utils.logging import setup_logging
 from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
-from .a2a import resolve_identity_from_headers
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
+from .session import resolve_identity_from_headers
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]

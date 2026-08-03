@@ -18,7 +18,10 @@ from collections.abc import Awaitable
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from typing import Literal
 
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import Request
 from nat.data_models.api_server import Request as NATRequest
 from nat.data_models.authentication import AuthenticatedContext
@@ -44,6 +47,12 @@ logger = logging.getLogger(__name__)
 
 
 _auth_handler = AuthContextHeaderHandler()
+
+_AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
+_GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
+_INVALID_AUTH_CONTEXT_MSG = (
+    "X-DataRobot-Authorization-Context header is present but invalid or expired"
+)
 
 # Constant key used by DRAgentAGUISessionManager.session() to satisfy NAT's
 # per-user workflow requirement when no caller identity is present. Purely a
@@ -81,6 +90,61 @@ class DRAgentUserManager(UserManager):
 # can read them via Context.get().metadata.headers.  Module-level so the same var is
 # shared across all DRAgentAGUISessionManager instances (ContextVars are per-async-task).
 _a2a_headers: ContextVar[dict[str, str] | None] = ContextVar("_a2a_headers", default=None)
+
+
+def normalise_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    if not headers:
+        return None
+    return {k.lower(): v for k, v in headers.items()}
+
+
+def resolve_identity_from_headers(
+    headers: dict[str, str] | None,
+    *,
+    on_invalid_auth_context: Literal["error", "none"] = "error",
+) -> str | None:
+    """Extract gateway-validated user identity from forwarded HTTP headers.
+
+    Resolution order (first match wins):
+
+    1. ``X-DataRobot-Authorization-Context`` -- signed JWT forwarded by
+       components in the agent application template.  Decoded via
+       :data:`_auth_handler` and hashed through
+       ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
+       key as the AG-UI path.  When this header is present but validation
+       fails, behaviour depends on *on_invalid_auth_context*: ``"error"``
+       raises :class:`~a2a.utils.errors.ServerError` with
+       :class:`~a2a.types.InvalidParamsError`` (no fall-through to other
+       headers or ``context_id``); ``"none"`` returns ``None``.
+    2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
+       gateway, tied to the API-key owner.  Used only when the auth-context
+       header is absent.  Same ``_from_session_cookie`` transform is applied
+       for key-format consistency.
+    3. ``None`` -- no gateway-provided identity (local dev).
+
+    Returns ``None`` when *headers* are absent or contain no recognised
+    identity header.
+    """
+    if not headers:
+        return None
+
+    if _AUTH_CONTEXT_HEADER in headers:
+        try:
+            auth_ctx = _auth_handler.get_context(headers)
+        except Exception:
+            logger.warning("Failed to decode auth-context header", exc_info=True)
+            auth_ctx = None
+        if auth_ctx is None:
+            if on_invalid_auth_context == "error":
+                raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
+            return None
+        return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
+
+    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
+    if raw_user_id:
+        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
+
+    return None
 
 
 def _build_metadata_from_headers(headers: dict[str, str]) -> RequestAttributes:
