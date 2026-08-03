@@ -69,6 +69,7 @@ from ag_ui.core import Event
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunErrorEvent
+from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -1126,6 +1127,26 @@ def _text_delta_message_ids(events: Iterable[Event]) -> set[str]:
     return ids
 
 
+def _retain_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Record that one more queued source response carries each id in *ids*."""
+    for message_id in ids:
+        counts[message_id] = counts.get(message_id, 0) + 1
+
+
+def _release_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Drop one queued reference per id, deleting ids no longer carried by anything queued.
+
+    Zero-count keys are removed rather than kept so the live set stays proportional to the
+    segments still in flight instead of every message_id the stream has ever produced.
+    """
+    for message_id in ids:
+        remaining = counts.get(message_id, 0) - 1
+        if remaining > 0:
+            counts[message_id] = remaining
+        else:
+            counts.pop(message_id, None)
+
+
 def _closed_text_message_ids(response: DRAgentEventResponse) -> set[str]:
     """Collect the message_ids a buffered batch would close with ``TEXT_MESSAGE_END``."""
     return {
@@ -1246,15 +1267,30 @@ async def _moderated_dragent_stream(
     open_text_message_ids: set[str] = set()
     pending_upstream: list[DRAgentEventResponse] = []
     terminal_run_error: DRAgentEventResponse | None = None
+    terminal_run_finished: DRAgentEventResponse | None = None
     moderation_source_responses: list[DRAgentEventResponse] = []
+    # Live text message_ids carried by ``moderation_source_responses``, maintained as the queue
+    # moves. Rescanning the queue per moderated chunk made a buffered stream quadratic: dome
+    # queues one source response per upstream delta, so the scan cost grew with the stream.
+    queued_source_message_ids: dict[str, int] = {}
     last_source_response: DRAgentEventResponse | None = None
+    last_source_message_ids: set[str] = set()
     stopped_for_content_filter = False
 
     def buffer_upstream(response: DRAgentEventResponse) -> None:
-        nonlocal terminal_run_error
+        nonlocal terminal_run_error, terminal_run_finished
         if any(isinstance(event, RunErrorEvent) for event in response.events):
             # Terminal RUN_ERROR: hold it and emit last so no moderated chunk trails after it.
             terminal_run_error = response
+            return
+        if any(isinstance(event, RunFinishedEvent) for event in response.events):
+            # Terminal RUN_FINISHED: hold it out of the ordinary buffer for two reasons.
+            # A block breaks out of the moderated loop without draining the buffer, so leaving
+            # RUN_FINISHED in there ends a blocked stream with no terminal event at all and the
+            # client keeps waiting on a run that is over. It also must not be released early:
+            # unlike a TEXT_MESSAGE_END it closes no segment, so the prefix release would let it
+            # overtake the last segment's remaining moderated deltas and synthetic END.
+            terminal_run_finished = response
             return
         pending_upstream.append(response)
 
@@ -1263,17 +1299,10 @@ async def _moderated_dragent_stream(
 
         dome buffers the whole upstream stream before releasing its first moderated chunk, so
         source responses queue up far ahead of the moderated output. Anything still queued names
-        a segment whose deltas have not been emitted yet. ``last_source_response`` counts too:
+        a segment whose deltas have not been emitted yet. ``last_source_message_ids`` counts too:
         it is the message_id every further moderated chunk falls back to once the queue drains.
         """
-        live = (
-            _text_delta_message_ids(last_source_response.events)
-            if last_source_response is not None
-            else set()
-        )
-        for queued in moderation_source_responses:
-            live |= _text_delta_message_ids(queued.events)
-        return live
+        return set(queued_source_message_ids) | last_source_message_ids
 
     async def next_text_response() -> DRAgentEventResponse | None:
         async for response in upstream:
@@ -1289,6 +1318,9 @@ async def _moderated_dragent_stream(
         current: DRAgentEventResponse | None = first_text
         while current is not None:
             moderation_source_responses.append(current)
+            _retain_queued_message_ids(
+                queued_source_message_ids, _text_delta_message_ids(current.events)
+            )
             yield dragent_event_response_to_dome_chunk(current)
             current = await next_text_response()
 
@@ -1328,6 +1360,8 @@ async def _moderated_dragent_stream(
                 # synthetic chunks derive from the same upstream text message.
                 if _moderated_chunk_carries_text(moderated) and moderation_source_responses:
                     last_source_response = moderation_source_responses.pop(0)
+                    last_source_message_ids = _text_delta_message_ids(last_source_response.events)
+                    _release_queued_message_ids(queued_source_message_ids, last_source_message_ids)
                 source_response = last_source_response
                 converted = dome_chunk_to_dragent_event_response(
                     moderated,
@@ -1364,9 +1398,12 @@ async def _moderated_dragent_stream(
                 yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
+        # A terminal event last on every path (normal or content_filter) so a block can't mask it.
+        # RUN_ERROR wins when upstream somehow produced both: a run that errored did not finish.
         if terminal_run_error is not None:
-            # Last on every path (normal or content_filter) so a block can't mask it.
             yield prescore_state.emit(terminal_run_error)
+        elif terminal_run_finished is not None:
+            yield prescore_state.emit(terminal_run_finished)
     except Exception as exc:
         # Close open text segments, then end the stream in-band with a terminal RUN_ERROR
         # instead of raising: NAT would otherwise emit an unframed error that clients drop.

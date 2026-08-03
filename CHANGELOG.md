@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.17
 - Fix datarobot-moderations middleware after dome updated chunk optimization
+- `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
+- `dragent`: a terminal upstream `RUN_FINISHED` is now held aside like `RUN_ERROR`, so a moderation block no longer ends the stream with no terminal event, and the event can no longer overtake the last segment's trailing deltas.
 
 ## 0.26.16
 - Added `mcp_enable_unauthenticated_well_known_route` MCP config.
