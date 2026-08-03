@@ -46,7 +46,6 @@ from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
-from datarobot_genai.dragent.frontends.a2a import _identity_from_headers_for_agent_card
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
@@ -711,18 +710,6 @@ class TestRedactAgentCard:
 
         assert redacted.capabilities.extensions is not None
         assert any(ext.uri == JWT_BEARER_GRANT_TYPE_URI for ext in redacted.capabilities.extensions)
-
-
-class TestAgentCardIdentitySelection:
-    def test_invalid_auth_context_treated_as_unauthenticated_for_card(self):
-        """Card selection must not fail closed; gateway rejects invalid auth upstream."""
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
-            assert (
-                _identity_from_headers_for_agent_card(
-                    {"x-datarobot-authorization-context": "garbage"}
-                )
-                is None
-            )
 
 
 class TestCreateAgentCard:

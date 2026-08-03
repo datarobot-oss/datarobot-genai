@@ -21,7 +21,6 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
-from contextvars import ContextVar
 
 import httpx
 from a2a.server.apps import A2AStarletteApplication
@@ -63,11 +62,6 @@ _AUTH_CONTEXT_HEADER = "x-datarobot-authorization-context"
 _GATEWAY_USER_ID_HEADER = "x-datarobot-user-id"
 _INVALID_AUTH_CONTEXT_MSG = (
     "X-DataRobot-Authorization-Context header is present but invalid or expired"
-)
-
-# Populated by :class:`DRAgentA2AStarletteApplication` before the SDK card_modifier runs.
-_agent_card_request_headers: ContextVar[dict[str, str] | None] = ContextVar(
-    "_agent_card_request_headers", default=None
 )
 
 # ---------------------------------------------------------------------------
@@ -388,7 +382,7 @@ async def create_agent_card(
 
 
 # ---------------------------------------------------------------------------
-# Per-request agent card selection (public redacted vs authenticated extended)
+# Agent card redaction (public) and authenticated extended card
 # ---------------------------------------------------------------------------
 
 
@@ -463,46 +457,11 @@ def redact_agent_card(card: AgentCard) -> AgentCard:
     )
 
 
-def _identity_from_headers_for_agent_card(headers: dict[str, str] | None) -> str | None:
-    """Resolve identity for agent card selection.
-
-    Unlike :func:`resolve_identity_from_headers`, an invalid auth-context JWT is
-    treated as unauthenticated (returns ``None``) so the public card is redacted.
-    Invalid auth is rejected by the API gateway before requests reach the agent.
-    """
-    if not headers:
-        return None
-
-    if _AUTH_CONTEXT_HEADER in headers:
-        try:
-            auth_ctx = _auth_handler.get_context(headers)
-        except Exception:
-            logger.warning("Failed to decode auth-context header", exc_info=True)
-            auth_ctx = None
-        if auth_ctx is not None:
-            return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
-        return None
-
-    raw_user_id = headers.get(_GATEWAY_USER_ID_HEADER)
-    if raw_user_id:
-        return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-    return None
-
-
-def _public_card_modifier(card: AgentCard) -> AgentCard:
-    """Serve the extended card to authenticated callers, redacted otherwise."""
-    headers = _agent_card_request_headers.get()
-    if _identity_from_headers_for_agent_card(headers) is not None:
-        return card
-    return redact_agent_card(card)
-
-
 def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
     """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
     raw_headers = context.state.get("headers") if context.state else None
     headers = _normalise_headers(raw_headers) if isinstance(raw_headers, dict) else None
-    if _identity_from_headers_for_agent_card(headers) is None:
+    if resolve_identity_from_headers(headers) is None:
         raise ServerError(
             error=InvalidParamsError(
                 message="Authenticated identity required for extended agent card"
@@ -511,31 +470,19 @@ def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> Agen
     return card
 
 
-class DRAgentA2AStarletteApplication(A2AStarletteApplication):
-    """A2A server that selects redacted vs extended agent cards per request."""
-
-    async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
-        headers = _normalise_headers(dict(request.headers))
-        token = _agent_card_request_headers.set(headers)
-        try:
-            return await super()._handle_get_agent_card(request)
-        finally:
-            _agent_card_request_headers.reset(token)
-
-
 class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
-    """A2A worker that serves redacted vs extended agent cards per request."""
+    """A2A worker that serves a redacted public card and an authenticated extended card."""
 
     def create_a2a_server(
         self,
         agent_card: AgentCard,
         agent_executor: NATWorkflowAgentExecutor,
-    ) -> DRAgentA2AStarletteApplication:
-        """Create an A2A server with per-request agent card selection.
+    ) -> A2AStarletteApplication:
+        """Create an A2A server with redacted public and authenticated extended cards.
 
         Wires ``card_modifier`` / ``extended_agent_card`` / ``extended_card_modifier``
-        so anonymous callers receive a redacted public card while same-tenant
-        authenticated callers receive the full card.
+        so the public card is always redacted and authenticated callers receive the
+        full card through ``agent/getAuthenticatedExtendedCard``.
         """
         self._httpx_client = httpx.AsyncClient()
 
@@ -551,12 +498,12 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
             push_sender=push_sender,
         )
 
-        server = DRAgentA2AStarletteApplication(
+        server = A2AStarletteApplication(
             agent_card=agent_card,
             http_handler=request_handler,
             extended_agent_card=agent_card,
-            card_modifier=_public_card_modifier,
+            card_modifier=redact_agent_card,
             extended_card_modifier=_extended_card_modifier,
         )
-        logger.info("Created A2A server with per-request agent card selection")
+        logger.info("Created A2A server with redacted public agent card")
         return server
