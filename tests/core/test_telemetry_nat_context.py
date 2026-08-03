@@ -22,6 +22,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import INVALID_SPAN_CONTEXT
 from opentelemetry.util._once import Once
 
 from datarobot_genai.core.telemetry import memory
@@ -235,112 +236,61 @@ def test_use_nat_workflow_trace_context_overrides_unrelated_active_span(
     assert span.context.trace_id == workflow_trace_id
 
 
-def _install_fake_nat_runner(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    snapshot_trace_id: int,
-    snapshot_run_id: str | None = "build-run",
-    snapshot_root_span_id: int | None = None,
-) -> tuple[type, type]:
-    """Install a stand-in for ``nat.runtime.runner.Runner`` whose ``__aenter__`` restores the
-    given (poisoned) build-phase snapshot, the way NAT does. A fresh Runner class per call keeps
-    ``patch_nat_runner_context_isolation`` from leaking its wrapper across tests. Returns
-    ``(RunnerClass, ContextStateClass)``.
-    """
+class _FakeContextState:
+    """Minimal stand-in for NAT's ContextState: only the vars the patch re-pins."""
 
-    class _FakeContextState:
-        def __init__(self) -> None:
-            self.workflow_trace_id: ContextVar[int | None] = ContextVar("wtid", default=None)
-            self.workflow_run_id: ContextVar[str | None] = ContextVar("wrid", default=None)
-            self._root_span_id: ContextVar[int | None] = ContextVar("rsid", default=None)
-
-    class _FakeRunner:
-        def __init__(self, context_state: _FakeContextState) -> None:
-            self._context_state = context_state
-
-        async def __aenter__(self) -> _FakeRunner:
-            # NAT restores its build-phase snapshot here (the leak source).
-            self._context_state.workflow_trace_id.set(snapshot_trace_id)
-            self._context_state.workflow_run_id.set(snapshot_run_id)
-            self._context_state._root_span_id.set(snapshot_root_span_id)
-            return self
-
-    monkeypatch.setattr("nat.runtime.runner.Runner", _FakeRunner)
-    monkeypatch.setitem(nat_context._RUNNER_PATCH_STATE, "patched", False)
-    return _FakeRunner, _FakeContextState
+    def __init__(self) -> None:
+        self.workflow_trace_id: ContextVar[int | None] = ContextVar("wtid", default=None)
+        self.workflow_run_id: ContextVar[str | None] = ContextVar("wrid", default=None)
+        self._root_span_id: ContextVar[int | None] = ContextVar("rsid", default=None)
 
 
-async def test_patch_repins_request_trace_and_seeds_root(
+def test_reassert_repins_request_trace_and_seeds_root(
     memory_span_exporter: InMemorySpanExporter,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     leaked_trace_id = uuid.uuid4().int
-    runner_cls, context_state_cls = _install_fake_nat_runner(
-        monkeypatch, snapshot_trace_id=leaked_trace_id
-    )
-    nat_context.patch_nat_runner_context_isolation()
-
-    context_state = context_state_cls()
-    context_state.workflow_run_id.set("request-run")
-    runner = runner_cls(context_state)
+    context_state = _FakeContextState()
+    context_state.workflow_trace_id.set(leaked_trace_id)  # NAT restored the build snapshot
+    context_state.workflow_run_id.set("build-run")
 
     with trace.get_tracer("test").start_as_current_span("POST /chat/completions") as span:
         span_context = span.get_span_context()
-        await runner.__aenter__()
 
-        # Re-pinned to this request's span, not the leaked build snapshot.
-        assert context_state.workflow_trace_id.get() == span_context.trace_id
-        assert context_state.workflow_trace_id.get() != leaked_trace_id
-        # NAT root nests under the request span.
-        assert context_state._root_span_id.get() == span_context.span_id
-        # This request's run id survives the snapshot restore.
-        assert context_state.workflow_run_id.get() == "request-run"
+    nat_context._reassert_request_trace_context(context_state, span_context, "request-run")
 
-
-async def test_patch_keeps_preset_root_span_id(
-    memory_span_exporter: InMemorySpanExporter,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    preset_root_span_id = uuid.uuid4().int >> 64
-    runner_cls, context_state_cls = _install_fake_nat_runner(
-        monkeypatch,
-        snapshot_trace_id=uuid.uuid4().int,
-        snapshot_root_span_id=preset_root_span_id,
-    )
-    nat_context.patch_nat_runner_context_isolation()
-
-    context_state = context_state_cls()
-    runner = runner_cls(context_state)
-
-    with trace.get_tracer("test").start_as_current_span("POST /chat/completions"):
-        await runner.__aenter__()
-        # An already-set root span id (e.g. the eval loop's eager link) is not overwritten.
-        assert context_state._root_span_id.get() == preset_root_span_id
-
-
-async def test_patch_is_safe_without_active_span(monkeypatch: pytest.MonkeyPatch) -> None:
-    leaked_trace_id = uuid.uuid4().int
-    runner_cls, context_state_cls = _install_fake_nat_runner(
-        monkeypatch, snapshot_trace_id=leaked_trace_id
-    )
-    nat_context.patch_nat_runner_context_isolation()
-
-    context_state = context_state_cls()
-    context_state.workflow_run_id.set("request-run")
-    runner = runner_cls(context_state)
-
-    # No active recording span: nothing to re-pin, and it must not raise.
-    await runner.__aenter__()
-
-    assert context_state.workflow_trace_id.get() == leaked_trace_id
+    # Re-pinned to this request's span, not the leaked build snapshot.
+    assert context_state.workflow_trace_id.get() == span_context.trace_id
+    assert context_state.workflow_trace_id.get() != leaked_trace_id
+    # NAT root nests under the request span.
+    assert context_state._root_span_id.get() == span_context.span_id
+    # This request's run id survives the snapshot restore.
     assert context_state.workflow_run_id.get() == "request-run"
 
 
-async def test_patch_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
-    runner_cls, _ = _install_fake_nat_runner(monkeypatch, snapshot_trace_id=uuid.uuid4().int)
+def test_reassert_keeps_preset_root_span_id(
+    memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    preset_root_span_id = uuid.uuid4().int >> 64
+    context_state = _FakeContextState()
+    context_state._root_span_id.set(preset_root_span_id)
 
-    nat_context.patch_nat_runner_context_isolation()
-    wrapped_aenter = runner_cls.__aenter__
-    nat_context.patch_nat_runner_context_isolation()
+    with trace.get_tracer("test").start_as_current_span("POST /chat/completions") as span:
+        span_context = span.get_span_context()
 
-    assert runner_cls.__aenter__ is wrapped_aenter
+    nat_context._reassert_request_trace_context(context_state, span_context, "request-run")
+
+    # An already-set root span id (e.g. the eval loop's eager link) is not overwritten.
+    assert context_state._root_span_id.get() == preset_root_span_id
+
+
+def test_reassert_ignores_invalid_span() -> None:
+    leaked_trace_id = uuid.uuid4().int
+    context_state = _FakeContextState()
+    context_state.workflow_trace_id.set(leaked_trace_id)
+
+    nat_context._reassert_request_trace_context(context_state, INVALID_SPAN_CONTEXT, "request-run")
+
+    # No valid request span: leave NAT's trace/root alone, but still restore run_id.
+    assert context_state.workflow_trace_id.get() == leaked_trace_id
+    assert context_state._root_span_id.get() is None
+    assert context_state.workflow_run_id.get() == "request-run"

@@ -45,6 +45,20 @@ _local_parent_stack: ContextVar[list[NatSpanRef]] = ContextVar("nat_local_parent
 _RUNNER_PATCH_STATE: dict[str, bool] = {"patched": False}
 
 
+def _reassert_request_trace_context(
+    context_state: Any, span_context: SpanContext, run_id: str | None
+) -> None:
+    """Re-pin this request's trace context after NAT's ``Runner.__aenter__`` restored the
+    build-phase snapshot: pin ``workflow_trace_id`` to the request span's trace, seed
+    ``_root_span_id`` from it (only when unset), and restore ``run_id``.
+    """
+    if span_context.is_valid:
+        context_state.workflow_trace_id.set(span_context.trace_id)
+        if context_state._root_span_id.get() is None:
+            context_state._root_span_id.set(span_context.span_id)
+    context_state.workflow_run_id.set(run_id)
+
+
 def patch_nat_runner_context_isolation() -> None:
     """Re-pin each request's trace context across NAT's ``Runner.__aenter__``.
 
@@ -77,11 +91,7 @@ def patch_nat_runner_context_isolation() -> None:
             return await original_aenter(self)
         result = await original_aenter(self)
         try:
-            if span.is_valid:
-                self._context_state.workflow_trace_id.set(span.trace_id)
-                if self._context_state._root_span_id.get() is None:
-                    self._context_state._root_span_id.set(span.span_id)
-            self._context_state.workflow_run_id.set(run_id)
+            _reassert_request_trace_context(self._context_state, span, run_id)
         except Exception:
             logger.debug("NAT trace-context restore failed", exc_info=True)
         return result
