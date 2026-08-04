@@ -25,6 +25,7 @@ from uuid import uuid4
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
@@ -227,6 +228,8 @@ async def agent_chat_completion_wrapper(
                     received_run_finished = True
                     pipeline_interactions = iter_interactions
                     usage_metrics = iter_metrics
+                elif isinstance(event, RunErrorEvent):
+                    raise RuntimeError(event.message)
 
             if not received_run_finished:
                 logger.warning("Agent stream ended without RunFinishedEvent")

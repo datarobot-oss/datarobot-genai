@@ -20,6 +20,7 @@ import pytest
 from ag_ui.core import AssistantMessage
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import SystemMessage
@@ -445,3 +446,42 @@ async def test_agent_chat_completion_wrapper_non_streaming() -> None:
 )
 def test_backfill_model(current: str | None, requested: str | None, expected: str | None) -> None:
     assert backfill_model(current, requested) == expected
+
+
+class ErroringAGUIAgent(BaseAgent):
+    """Agent that frames a mid-run failure as a terminal RUN_ERROR, as the invoke decorator does."""
+
+    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
+        yield (
+            RunStartedEvent(thread_id=run_agent_input.thread_id, run_id=run_agent_input.run_id),
+            None,
+            UsageMetrics(),
+        )
+        yield (TextMessageStartEvent(message_id="m0"), None, UsageMetrics())
+        yield (TextMessageContentEvent(message_id="m0", delta="partial"), None, UsageMetrics())
+        yield (TextMessageEndEvent(message_id="m0"), None, UsageMetrics())
+        yield (RunErrorEvent(message="boom", code="RUN_ERROR"), None, UsageMetrics())
+
+
+async def test_agent_chat_completion_wrapper_non_streaming_raises_on_run_error() -> None:
+    # GIVEN an agent that ends the run with a terminal RUN_ERROR
+    params = {"messages": [{"role": "user", "content": "hi"}], "stream": False}
+
+    # WHEN/THEN the non-streaming wrapper surfaces it as a failure, not a partial success
+    with pytest.raises(RuntimeError, match="boom"):
+        await agent_chat_completion_wrapper(ErroringAGUIAgent(), params, noop_mcp_tools_factory)
+
+
+async def test_agent_chat_completion_wrapper_streaming_forwards_run_error() -> None:
+    # GIVEN an agent that ends the run with a terminal RUN_ERROR
+    params = {"messages": [{"role": "user", "content": "hi"}], "stream": True}
+
+    # WHEN the streaming wrapper is consumed
+    generator = await agent_chat_completion_wrapper(
+        ErroringAGUIAgent(), params, noop_mcp_tools_factory
+    )
+    events = [event async for event, _, _ in generator]
+
+    # THEN the RUN_ERROR is forwarded as the terminal event (converters adapt it per route)
+    assert events[-1].type == EventType.RUN_ERROR
+    assert events[-1].message == "boom"
