@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.26.19"
+version = "0.26.20"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -82,6 +82,12 @@ override-dependencies = [
   "opentelemetry-instrumentation>=0.64b0,<0.65",
 ]
 exclude-dependencies = [
+  # EXPERIMENT (do not merge): we depend on `datarobot-early-access` instead of
+  # `datarobot`. The two unpack into the same top-level `datarobot` package, so having
+  # both installed corrupts the import path. datarobot-predict (`datarobot>=2.17`) and
+  # datarobot-moderations[all] (`datarobot>=3.6.0`) both request stable `datarobot`
+  # transitively, so it has to be excluded for the swap to hold.
+  "datarobot",
   "uv",                       # package manager bundled by crewai; runtime unnecessary
   "langchain-milvus",         # Milvus vector DB adapter pulled in by nvidia-nat-langchain; not used
   "pymilvus",                 # Milvus client pulled in by langchain-milvus; not used

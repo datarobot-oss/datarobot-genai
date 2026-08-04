@@ -24,9 +24,14 @@ from setuptools import setup
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
-    # 3.18.0 is the first release with datarobot.core.config.LLMConfig / LLMType,
-    # which datarobot_genai.core.config now consumes instead of redefining.
-    "datarobot[core]>=3.18.0,<4.0.0",
+    # EXPERIMENT (do not merge): swapped from `datarobot` to `datarobot-early-access`.
+    # Both distributions install into the same top-level `datarobot` package and are
+    # mutually exclusive, so every pin below has to move together, and stable
+    # `datarobot` is excluded in [tool.uv].exclude-dependencies to stop
+    # datarobot-predict / datarobot-moderations[all] pulling it back in transitively.
+    # Reason for the probe: the LLMConfig legacy-param bridge genai delegates to only
+    # exists in 3.19, which is early-access-only today.
+    "datarobot-early-access[core]>=3.19.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
@@ -92,7 +97,7 @@ dragent = core + [
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot[auth]>=3.18.0,<4.0.0",
+  "datarobot-early-access[auth]>=3.19.0,<4.0.0",  # EXPERIMENT: see note in `core`
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
@@ -102,7 +107,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot[fs]>=3.18.0,<4.0.0",
+    "datarobot-early-access[fs]>=3.19.0,<4.0.0",  # EXPERIMENT: see note in `core`
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.

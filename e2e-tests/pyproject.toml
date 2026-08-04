@@ -67,6 +67,10 @@ override-dependencies = [
     "opentelemetry-instrumentation>=0.64b0,<0.65",
 ]
 exclude-dependencies = [
+    # EXPERIMENT (do not merge): keep in sync with the root project. datarobot-genai now
+    # depends on `datarobot-early-access`, which shares the `datarobot` import path, so
+    # stable `datarobot` must be excluded here too or the e2e venv gets both.
+    "datarobot",
     "annoy",                    # nemoguardrails ANN index; sdist -march=native build SIGILLs on non-AVX-512 runners (BUZZOK-31265)
     "llama-index-llms-azure-openai",
     "llama-index-llms-bedrock",

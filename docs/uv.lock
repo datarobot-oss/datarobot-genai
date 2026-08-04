@@ -145,7 +145,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.26.12"
+version = "0.26.20"
 source = { editable = "../" }
 
 [package.metadata]
@@ -177,21 +177,21 @@ requires-dist = [
     { name = "colorama", marker = "extra == 'llamaindex'", specifier = ">=0.4.6,<1.0.0" },
     { name = "crewai", extras = ["litellm"], marker = "extra == 'crewai'", specifier = ">=1.11.0" },
     { name = "crewai-tools", extras = ["mcp"], marker = "extra == 'crewai'", specifier = ">=0.69.0,<0.77.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["core"], marker = "extra == 'core'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["core"], marker = "extra == 'crewai'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["core"], marker = "extra == 'dragent'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["core"], marker = "extra == 'langgraph'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["core"], marker = "extra == 'llamaindex'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcp'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.17.0,<4.0.0" },
-    { name = "datarobot", extras = ["fs"], marker = "extra == 'drtools'", specifier = ">=3.17.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
+    { name = "datarobot-early-access", extras = ["auth"], marker = "extra == 'auth'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["auth"], marker = "extra == 'drmcp'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["auth"], marker = "extra == 'drmcpbase'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["auth"], marker = "extra == 'drmcputils'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["auth"], marker = "extra == 'drtools'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["core"], marker = "extra == 'core'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["core"], marker = "extra == 'crewai'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["core"], marker = "extra == 'dragent'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["core"], marker = "extra == 'langgraph'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["core"], marker = "extra == 'llamaindex'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcp'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcpbase'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.19.0,<4.0.0" },
+    { name = "datarobot-early-access", extras = ["fs"], marker = "extra == 'drtools'", specifier = ">=3.19.0,<4.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.47,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.47,<12.0.0" },
     { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.47,<12.0.0" },
@@ -267,6 +267,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'langgraph'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'llamaindex'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-crewai", marker = "extra == 'crewai'", specifier = ">=0.62.1,<1.0.0" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'dragent'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'core'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'crewai'", specifier = ">=0.64b0,<1.0.0" },
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'dragent'", specifier = ">=0.64b0,<1.0.0" },

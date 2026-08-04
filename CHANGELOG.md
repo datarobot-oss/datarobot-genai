@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.20
+- **EXPERIMENT, NOT FOR MERGE**: swapped the `datarobot` dependency for `datarobot-early-access` across the `core`, `auth`, and `drmcputils` extras to measure the CI blast radius. The two distributions share the `datarobot` import path and are mutually exclusive, so stable `datarobot` is added to `[tool.uv].exclude-dependencies` in both the root and `e2e-tests` projects to stop `datarobot-predict` and `datarobot-moderations[all]` pulling it back in transitively. Intended to be reverted to `datarobot` before this lands.
+
 ## 0.26.19
 - Fix datarobot-moderations middleware after dome updated chunk optimization
 - `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
