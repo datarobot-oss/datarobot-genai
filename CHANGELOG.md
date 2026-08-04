@@ -4,8 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.13
+## 0.26.21
 - `drtools/panels`: new `get_time_series_scoring_dataset_panel` tool — ported from wren-mcp's time-series scoring facade. Introspects a time-series deployment's datetime partitioning + forecast settings via the DataRobot SDK (target, datetime partition column, multiseries id column, feature derivation window, forecast distance/basis unit, known-in-advance features, date format), infers the forecast point from the latest timestamp when not supplied, builds a forward-looking scoring frame (recent history + future forecast window with known-in-advance values carried forward) in polars, and stores it as a derived Dataset panel (Parquet payload) with lineage to the source panel. Like the other wren-ported panel builders (`create_chart_panel`, the composition tools), the default `source` stays wren's session-scoped `staging` (not `main`) for BPA facade-delegation parity; promote via `move_panel`. Prerequisite for the upcoming TS predict / what-if panel flows.
+
+## 0.26.19
+- Fix datarobot-moderations middleware after dome updated chunk optimization
+- `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
+- `dragent`: a terminal upstream `RUN_FINISHED` is now held aside like `RUN_ERROR`, so a moderation block no longer ends the stream with no terminal event, and the event can no longer overtake the last segment's trailing deltas.
+
+## 0.26.18
+- `dragent`: restored FastAPI ASGI instrumentation (removed in 0.21.2). Each request opens a server span continuing the caller's `traceparent`, so agent spans nest under it instead of fragmenting into disconnected roots. Health probes (incl. the mount-prefixed k8s probe) and per-chunk SSE `send` spans are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
+- `core.telemetry`: fixed later chats on a warm server losing their agent spans. NAT's `Runner.__aenter__` re-applied the first request's context every run, leaking its trace into later chats and leaving the NAT root parentless; `instrument()` now re-pins per-request trace vars and seeds `_root_span_id` so the NAT tree nests under the request's server span.
+- `core.telemetry`: stopped tracing the OTel exporter's own POST to the collector (a self-referential span per export).
+
+## 0.26.17
+- Fix stream option and stop parameter for crewai and azure
+
+## 0.26.16
+- Added `mcp_enable_unauthenticated_well_known_route` MCP config.
+
+## 0.26.15
+- `drmcpbase/mcp_oauth_metadata`: Renamed mcp_oauth_protected_resource_metadata into mcp_oauth_metadata.
+
+## 0.26.14
+- `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
+- `dragent`: streaming agent/workflow errors now end the run with a terminal AG-UI `RUN_ERROR` (adapted to an OpenAI-shaped error chunk on `/chat/completions`) instead of NAT's bare `workflow_error` JSON that `data:`-only clients silently drop.
+- `dragent`: the agent OpenTelemetry span is now marked `ERROR` on a `RUN_ERROR` event or raised agent exception, so failed runs are no longer traced as successful.
+- `dragent`: moderation now fails closed on guard errors by emitting a terminal `RUN_ERROR` that the frontend converters adapt per route (non-streaming surfaces as HTTP 422, streaming as a framed `RUN_ERROR`), for prescore, postscore, and mid-stream failures.
+
+## 0.26.13
+- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
 
 ## 0.26.12
 - Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
