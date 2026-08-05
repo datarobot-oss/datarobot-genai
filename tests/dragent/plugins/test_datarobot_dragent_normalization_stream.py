@@ -14,6 +14,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
+from unittest.mock import MagicMock
 
 import pytest
 from ag_ui.core import RunErrorEvent
@@ -29,11 +30,18 @@ from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import ChoiceDeltaToolCall
 from nat.data_models.api_server import ChoiceDeltaToolCallFunction
 
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.tool_call_registry import bind_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import defer_tool_end
 from datarobot_genai.dragent.frontends.tool_call_registry import is_args_done
 from datarobot_genai.dragent.frontends.tool_call_registry import pop_tool_call
 from datarobot_genai.dragent.frontends.tool_call_registry import reset as reset_registry
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    DataRobotDRAgentNormalizationConfig,
+)
+from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
+    DataRobotDRAgentNormalizationMiddleware,
+)
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     convert_chunks_to_agui_events,
 )
@@ -303,7 +311,7 @@ class TestErrorHandling:
         error_events = [e for e in events if isinstance(e, RunErrorEvent)]
         assert len(error_events) == 1
         assert error_events[0].message == "upstream error"
-        assert error_events[0].code == "STREAM_ERROR"
+        assert error_events[0].code == "RUN_ERROR"
 
     @pytest.mark.asyncio
     async def test_aclose_during_stream_does_not_raise(self):
@@ -434,3 +442,39 @@ class TestToolCallRegistry:
         await _collect(convert_chunks_to_agui_events(_async_iter(chunk)))
 
         assert is_args_done("tc-1")
+
+
+class TestPassthroughErrorHandling:
+    """DRAgentEventResponse passthrough (undecorated agents) is framed on failure too."""
+
+    @pytest.mark.asyncio
+    async def test_passthrough_stream_frames_midrun_error_as_run_error(self):
+        # GIVEN an undecorated agent that emits DRAgentEventResponse, opens a text segment,
+        # then raises mid-stream (no @frame_agent_errors decorator to catch it at the source).
+        async def _failing_passthrough(*args, **kwargs):
+            yield DRAgentEventResponse(events=[TextMessageStartEvent(message_id="m1")])
+            yield DRAgentEventResponse(
+                events=[TextMessageContentEvent(message_id="m1", delta="partial")]
+            )
+            raise RuntimeError("agent boom")
+
+        mw = DataRobotDRAgentNormalizationMiddleware(
+            DataRobotDRAgentNormalizationConfig(), MagicMock()
+        )
+
+        # WHEN the passthrough stream is consumed
+        responses = await _collect(
+            mw.function_middleware_stream(
+                MagicMock(), call_next=_failing_passthrough, context=MagicMock()
+            )
+        )
+
+        # THEN the run ends with a terminal RUN_ERROR instead of propagating, and the open text
+        # segment is closed before it so it stays terminal.
+        events = _flat_events(responses)
+        assert isinstance(events[-1], RunErrorEvent)
+        assert events[-1].message == "agent boom"
+        assert events[-1].code == "RUN_ERROR"
+        ends = [e for e in events if isinstance(e, TextMessageEndEvent)]
+        assert ends
+        assert events.index(ends[-1]) < len(events) - 1

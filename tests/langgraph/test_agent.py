@@ -961,8 +961,8 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
 
 
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
-    # AIMessage with list-form content (thinking + text) previously crashed ragas
-    # with TypeError("AIMessage content must be a string, got list").
+    # AIMessage with list-form content (thinking + text) would fail the string-only
+    # message schema with TypeError("AIMessage content must be a string, got list").
     ai_with_thinking = AIMessage(
         content=[
             {"type": "thinking", "thinking": "let me think about it"},
@@ -977,7 +977,7 @@ def test_create_pipeline_interactions_handles_list_content_with_thinking() -> No
     sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
 
     assert sample is not None
-    # Thinking content is stripped before ragas validates; only the text portion remains.
+    # Thinking content is stripped before the message is built; only the text portion remains.
     serialized = " ".join(str(getattr(m, "content", "")) for m in sample.user_input)
     assert "let me think about it" not in serialized
     assert "here is the answer" in serialized
@@ -1141,3 +1141,38 @@ async def test_stream_reasoning_content_kwarg_emits_reasoning_chunks(run_agent_i
 
     text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
     assert text_deltas == ["answer"]
+
+
+class AbortingLangGraphAgent(SimpleLangGraphAgent):
+    """LangGraph agent whose graph stream opens a text message then fails mid-run."""
+
+    @cached_property
+    def workflow(self) -> Any:
+        async def mock_stream_generator():  # type: ignore[no-untyped-def]
+            yield (
+                "final_agent",
+                "messages",
+                (AIMessageChunk(content="half a thought", id="222"), {}),
+            )
+            raise ValueError("boom")
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
+        return Mock(compile=Mock(return_value=mock_graph_stream))
+
+
+async def test_langgraph_invoke_frames_midstream_error_as_run_error(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a graph that opens a text message then raises mid-stream
+    agent = AbortingLangGraphAgent()
+
+    # WHEN the agent is invoked
+    events = [e[0] async for e in agent.invoke(run_agent_input)]
+
+    # THEN the run ends with a terminal RUN_ERROR instead of raising
+    assert events[-1].type == EventType.RUN_ERROR
+    assert "boom" in events[-1].message
+    # AND any opened text segment was closed before the error
+    starts = [e for e in events if e.type == EventType.TEXT_MESSAGE_START]
+    ends = [e for e in events if e.type == EventType.TEXT_MESSAGE_END]
+    assert len(starts) == len(ends)

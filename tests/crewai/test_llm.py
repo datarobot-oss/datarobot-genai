@@ -63,7 +63,7 @@ def test_get_datarobot_gateway_llm_returns_crewai_llm() -> None:
     assert llm.api_base == "https://example.test/genai/llmgw"
     assert llm.api_key == "sk-test-key"
     assert llm.is_litellm is True
-    assert llm.additional_params == {"stream_options": {"include_usage": True}}
+    assert llm.additional_params == {}
 
 
 def test_get_datarobot_gateway_llm_adds_datarobot_model_prefix_when_missing() -> None:
@@ -90,9 +90,7 @@ def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base() -> 
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
     assert llm.api_base == ("https://example.test/deployments/dep-abc-123/chat/completions")
-    assert llm.additional_params == {
-        "stream_options": {"include_usage": True},
-    }
+    assert llm.additional_params == {}
 
 
 def test_get_datarobot_deployment_llm_merges_parameters() -> None:
@@ -144,9 +142,7 @@ def test_get_external_llm_returns_crewai_llm() -> None:
     assert llm.api_base is None
     assert llm.api_key is None
     assert llm.is_litellm is True
-    assert llm.additional_params == {
-        "stream_options": {"include_usage": True},
-    }
+    assert llm.additional_params == {}
     assert llm.model == "default-model"
 
 
@@ -242,6 +238,30 @@ def test_litellm_stop_word_llm_is_litellm_subclass() -> None:
     llm = LitellmStopWordLLM(model="openai/gpt-4o")
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
+
+
+def test_litellm_stop_word_llm_prepare_params_omits_stream_options_when_not_streaming() -> None:
+    llm = LitellmStopWordLLM(
+        model="openai/gpt-4o",
+        stream=False,
+        stream_options={"include_usage": True},
+    )
+    params = llm._prepare_completion_params("hello")
+    assert params["stream"] is False
+    assert "stream_options" not in params
+
+
+def test_litellm_stop_word_llm_prepare_params_adds_stream_options_when_streaming() -> None:
+    llm = LitellmStopWordLLM(model="openai/gpt-4o", stream=True)
+    params = llm._prepare_completion_params("hello")
+    assert params["stream"] is True
+    assert params["stream_options"] == {"include_usage": True}
+
+
+def test_litellm_stop_word_llm_prepare_params_omits_stop_for_client_side_truncation() -> None:
+    llm = LitellmStopWordLLM(model="openai/gpt-4o", stop=["\nObservation:"])
+    params = llm._prepare_completion_params("hello")
+    assert "stop" not in params
 
 
 def test_litellm_stop_word_llm_call_applies_stop_words(

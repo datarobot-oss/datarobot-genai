@@ -4,6 +4,62 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.24
+- Initial cve-sync resync of constraints and overrides.
+- Address CVEs for a large number of packages
+
+## 0.26.23
+- `drmcputils/toolGallery`: Added `name` (exact match) and `provider` (`datarobot`/`third_party`) query filters to `GET /toolGallery/tools/`, applied before pagination so `totalCount`/`hasMore` describe the filtered set. An unrecognised `provider` value matches nothing; blank values are ignored.
+
+## 0.26.22
+- `drmcpbase/oauth_protected_resource_metadata`: the OAuth protected-resource metadata config renames `xaa_metadata` to `cross_application_access`, matching the agent-side config block of the same name. The old key is not accepted; because unknown keys are ignored, a config still using `xaa_metadata` publishes no Cross-Application Access metadata. `XAAMetadata` is renamed to `CrossApplicationAccessMetadata` with no alias.
+- `drmcpbase/oauth_protected_resource_metadata`: `token_endpoint_auth_method` is now optional and defaults to `private_key_jwt` (the only implemented method). `resource`, `authorization_servers` and `scopes_supported` are optional too — nothing enforces them yet, and unset fields are omitted from the served document instead of raising `KeyError`. A config declaring only `cross_application_access` is valid.
+- `drmcpbase/oauth_protected_resource_metadata`: the document served at `/.well-known/oauth-protected-resource` now `x_`-prefixes DataRobot additions to distinguish them from the registered RFC 9728 parameters — currently the new `x_mcp_enable_unauthenticated_well_known_route` (configurable from the metadata YAML instead of only the env var). `cross_application_access` is a deliberate exception to that convention, published under its own name so it matches the agent-side config block exactly.
+- `dragent`: **fixed** `mcp_client_with_xaa_support` never being able to discover Cross-Application Access parameters from an MCP server. It read the metadata document's `urn:datarobot:nat_mcp_xaa_client` member, which no MCP server published, so an agent that omitted `cross_application_access` failed with a `KeyError`. It now reads `cross_application_access` — the member the server actually publishes — and a missing or incomplete block raises an actionable error instead. Note the agent fetches the well-known route unauthenticated, so the MCP server must serve it without auth for discovery to work.
+- `dragent`: `mcp_client_with_xaa_support` no longer requires `token_endpoint_auth_method` in the discovered metadata; it defaults to `private_key_jwt`.
+
+## 0.26.21
+- `dragent`: A2A agent cards are now redacted for anonymous callers on the public `GET /.well-known/agent-card.json` route. Same-tenant authenticated callers (via `X-DataRobot-Authorization-Context` or `X-DataRobot-User-Id`) receive the full card on that route; cross-tenant access is rejected by the API gateway. The redacted public view strips skills and internal/external identity extensions while preserving auth and cross-application-access metadata. An authenticated extended card is also available through `agent/getAuthenticatedExtendedCard` (`supports_authenticated_extended_card=True`).
+
+## 0.26.20
+- `drtools/panels`: **panel-composition tools** — ported the 7 BPA panel-composition tools from wren-mcp into the new `drtools/panels/compose.py` module (MODEL-24090). They compose the DataRobot SDK, the panel store, and the predictive delegates: materialize an AI Catalog dataset as a Dataset panel, upload a panel back to the Catalog, run SQL across Catalog datasets (bound as `t0`, `t1`, ... via the polars SQL engine), store a deployment's prediction history as a panel, report AutoPilot progress, score a panel with a deployment into a lineage-linked child panel, and apply deterministic what-if adjustments (mul/add/set, optionally scoped by inclusive date window and series) on datetime-partitioned deployments. All are gated by the `ENABLE_MCP_SANDBOX` entitlement and registered under the `dr_panels` category. wren → genai name mapping: `get_datarobot_dataset_as_panel` → `create_dataset_panel_from_catalog`, `upload_panel_dataset_to_datarobot` → `upload_dataset_panel_to_catalog`, `query_datarobot_dataset` → `query_datasets_to_panel`; `get_prediction_history`, `get_autopilot_status`, `predict_with_deployment`, and `apply_what_if` keep their names.
+
+## 0.26.19
+- Fix datarobot-moderations middleware after dome updated chunk optimization
+- `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
+- `dragent`: a terminal upstream `RUN_FINISHED` is now held aside like `RUN_ERROR`, so a moderation block no longer ends the stream with no terminal event, and the event can no longer overtake the last segment's trailing deltas.
+
+## 0.26.18
+- `dragent`: restored FastAPI ASGI instrumentation (removed in 0.21.2). Each request opens a server span continuing the caller's `traceparent`, so agent spans nest under it instead of fragmenting into disconnected roots. Health probes (incl. the mount-prefixed k8s probe) and per-chunk SSE `send` spans are excluded. Adds `opentelemetry-instrumentation-fastapi` to the `dragent` extra.
+- `core.telemetry`: fixed later chats on a warm server losing their agent spans. NAT's `Runner.__aenter__` re-applied the first request's context every run, leaking its trace into later chats and leaving the NAT root parentless; `instrument()` now re-pins per-request trace vars and seeds `_root_span_id` so the NAT tree nests under the request's server span.
+- `core.telemetry`: stopped tracing the OTel exporter's own POST to the collector (a self-referential span per export).
+
+## 0.26.17
+- Fix stream option and stop parameter for crewai and azure
+
+## 0.26.16
+- Added `mcp_enable_unauthenticated_well_known_route` MCP config.
+
+## 0.26.15
+- `drmcpbase/mcp_oauth_metadata`: Renamed mcp_oauth_protected_resource_metadata into mcp_oauth_metadata.
+
+## 0.26.14
+- `dragent`: agent `invoke` now frames a mid-run exception as a terminal AG-UI `RUN_ERROR` at the source (all frameworks), so failures surface even without middleware.
+- `dragent`: streaming agent/workflow errors now end the run with a terminal AG-UI `RUN_ERROR` (adapted to an OpenAI-shaped error chunk on `/chat/completions`) instead of NAT's bare `workflow_error` JSON that `data:`-only clients silently drop.
+- `dragent`: the agent OpenTelemetry span is now marked `ERROR` on a `RUN_ERROR` event or raised agent exception, so failed runs are no longer traced as successful.
+- `dragent`: moderation now fails closed on guard errors by emitting a terminal `RUN_ERROR` that the frontend converters adapt per route (non-streaming surfaces as HTTP 422, streaming as a framed `RUN_ERROR`), for prescore, postscore, and mid-stream failures.
+
+## 0.26.13
+- `drmcpbase/oauth_protected_resource_metadata`: Added OAuth protected resource metadata supports in user MCP.
+
+## 0.26.12
+- Re-dropped the `ragas` dependency (re-applies the 0.25.3 removal, which was temporarily reverted in 0.26.2 while a `datarobot-moderations` regression was investigated). Agent pipeline interactions again come from the local `datarobot_genai.core.pipeline_interactions` module reusing the message primitives shipped by `datarobot-moderations`, and the LangGraph / LlamaIndex trace converters are the local reimplementations rather than `ragas.integrations`.
+- `dragent`: fixed moderated streaming failing with `ValueError: <Token ...> was created in a different Context`, which reached clients as a bare NAT `workflow_error` frame instead of a response. `ModerationPipeline.stream_response_async` drains the chunk iterator we hand it from inside its own feed task, while the moderation middleware's peek-ahead loop pulls the leading non-text events in the request task. NAT's `Function.astream` holds a `function_path_stack` token open across every `yield`, so splitting consumption across the two contexts made the token reset raise. The upstream stream is now pinned to a single `contextvars.Context` for the whole of its life, including teardown.
+- Bumped the `datarobot-moderations` floor to `>=11.2.47`. The `11.2.46` build (the previous floor) crashed at import whenever a NAT tracer provider was active: `datarobot_dome.api` decorated its `ModerationPipeline` methods with `@_tracer.start_as_current_span(...)` evaluated at class-definition time, and NAT's `start_as_current_span` returns a `_NatWorkflowSpanContextManager` that is not callable, so using it as a decorator raised `TypeError` and took the whole module down. The result was the `datarobot_moderation` dragent middleware failing to register, so dragent runs errored with `middleware type 'datarobot_moderation' not found`. `11.2.47` defers the span to call time, which fixes the crash.
+
+## 0.26.11
+- Disable litellm local cost map fetching to fix flakes in e2e tests
+
 ## 0.26.10
 - `dragent`: NAT batch evaluation (`nat eval`) plugins for DataRobot moderation metrics — `agent_goal_accuracy`, `faithfulness`, `task_adherence`, and `agent_guideline_adherence` — scoring in-process via `datarobot-moderations` OOTB judges (no NeMo Evaluator microservice).
 

@@ -41,6 +41,7 @@ boundary, then reverses to AG-UI on the way out.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import contextvars
 import logging
@@ -49,12 +50,15 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
+from collections.abc import Coroutine
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from typing import TypeAlias
+from typing import TypeVar
 from typing import cast
 
 import numpy as np
@@ -64,11 +68,12 @@ from ag_ui.core import AssistantMessage
 from ag_ui.core import Event
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
+from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallChunkEvent
 from ag_ui.core import ToolCallEndEvent
@@ -115,6 +120,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function as Open
 from pydantic import Field
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents import track_open_text_in_events
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.constants import DRAGENT_CONFIG_FILE_ENV
 from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
@@ -123,6 +129,7 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.converters import convert_dragent_event_response_to_str
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.frontends.response import run_error_response
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     resolve_streaming_tool_call_id,
@@ -133,6 +140,8 @@ from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_e
 _logger = logging.getLogger(__name__)
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
+
+_T = TypeVar("_T")
 
 
 def _require_workflow_input(args: tuple[Any, ...]) -> WorkflowInput | None:
@@ -1063,17 +1072,6 @@ def skip_event_type(event: Event) -> bool:
     }
 
 
-def _track_open_text_message(open_message_ids: set[str], event: Event) -> None:
-    """Track assistant text segments that started or received content but did not end."""
-    if isinstance(event, TextMessageStartEvent):
-        open_message_ids.add(event.message_id)
-    elif isinstance(event, TextMessageEndEvent):
-        open_message_ids.discard(event.message_id)
-    elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
-        if event.message_id:
-            open_message_ids.add(event.message_id)
-
-
 def _synthetic_text_message_end_events(
     open_message_ids: set[str],
 ) -> list[TextMessageEndEvent]:
@@ -1092,13 +1090,6 @@ def _synthetic_text_message_end_responses(
         DRAgentEventResponse(events=[end_event], usage_metrics=zero)
         for end_event in _synthetic_text_message_end_events(open_message_ids)
     ]
-
-
-def _track_dragent_response_events(
-    open_message_ids: set[str], response: DRAgentEventResponse
-) -> None:
-    for event in response.events:
-        _track_open_text_message(open_message_ids, event)
 
 
 def _response_has_assistant_text_deltas(response: DRAgentEventResponse) -> bool:
@@ -1124,56 +1115,82 @@ def _merge_moderations_into_multi_event_response(
     )
 
 
-def _defer_until_after_moderated_chunk(event: Event) -> bool:
-    """Defer START/END until after the moderated chunk: late moderated deltas still use the prior
-    message_id.
+def _text_delta_message_ids(events: Iterable[Event]) -> set[str]:
+    """Collect the message_ids carried by assistant text deltas in *events*.
 
-    If TEXT_MESSAGE_START for the next segment is yielded before moderated content for the
-    previous segment, storage switches active_message and can drop or mis-attribute the
-    last deltas (truncation in DB). TEXT_MESSAGE_END must stay after moderated text for AG-UI.
+    ``TextMessageChunkEvent.message_id`` is optional, so ids are filtered rather than assumed.
     """
-    return event.type in (
-        EventType.TEXT_MESSAGE_END,
-        EventType.TEXT_MESSAGE_START,
-    )
+    ids: set[str] = set()
+    for event in events:
+        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)) and event.message_id:
+            ids.add(event.message_id)
+    return ids
 
 
-def _pending_after_moderated_chunk(
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
-) -> list[DRAgentEventResponse]:
-    """Order buffered events after a moderated text chunk.
+def _retain_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Record that one more queued source response carries each id in *ids*."""
+    for message_id in ids:
+        counts[message_id] = counts.get(message_id, 0) + 1
 
-    Deferred ``TEXT_MESSAGE_END`` closes the prior segment first. Pass-through events (for example
-    ``STEP_FINISHED`` / ``STEP_STARTED``) keep upstream order. Deferred ``TEXT_MESSAGE_START`` for
-    the next segment follows so step boundaries stay valid for AG-UI verification.
+
+def _release_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Drop one queued reference per id, deleting ids no longer carried by anything queued.
+
+    Zero-count keys are removed rather than kept so the live set stays proportional to the
+    segments still in flight instead of every message_id the stream has ever produced.
     """
-    deferred_ends = [
-        item
-        for item in pending_deferred
-        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_END
-    ]
-    deferred_starts = [
-        item
-        for item in pending_deferred
-        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START
-    ]
-    deferred_other = [
-        item
-        for item in pending_deferred
-        if item not in deferred_ends and item not in deferred_starts
-    ]
-    return deferred_ends + list(pending_pass_through) + deferred_starts + deferred_other
+    for message_id in ids:
+        remaining = counts.get(message_id, 0) - 1
+        if remaining > 0:
+            counts[message_id] = remaining
+        else:
+            counts.pop(message_id, None)
 
 
-def _drain_pending_after_moderated_chunk(
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
+def _closed_text_message_ids(response: DRAgentEventResponse) -> set[str]:
+    """Collect the message_ids a buffered batch would close with ``TEXT_MESSAGE_END``."""
+    return {
+        event.message_id for event in response.events if event.type == EventType.TEXT_MESSAGE_END
+    }
+
+
+def _moderated_chunk_carries_text(chunk: ChatCompletionChunk) -> bool:
+    """Whether a moderated chunk carries assistant text.
+
+    dome's BLOCK/REPLACE sequence wraps the intervention message in a text-less ``role``
+    opener and a text-less terminal ``content_filter`` chunk. Those must not consume a source
+    response, or every following moderated delta would borrow the *next* segment's message_id.
+    """
+    return bool(chunk.choices and chunk.choices[0].delta.content)
+
+
+def _release_buffered_prefix(
+    pending: list[DRAgentEventResponse],
+    live_message_ids: set[str],
 ) -> list[DRAgentEventResponse]:
-    ordered = _pending_after_moderated_chunk(pending_deferred, pending_pass_through)
-    pending_deferred.clear()
-    pending_pass_through.clear()
-    return ordered
+    """Pop the leading buffered batches that are safe to emit before the next moderated delta.
+
+    Non-text upstream batches are buffered because moderated deltas lag behind the source
+    chunks they came from: emitting ``TEXT_MESSAGE_END`` as soon as upstream produces it would
+    close a segment that still has moderated content coming.
+
+    Buffered batches keep upstream order, so the first batch closing a segment in
+    *live_message_ids* (one that can still receive moderated deltas) blocks itself **and
+    everything behind it**. Releasing a later ``TEXT_MESSAGE_START`` ahead of the
+    ``TEXT_MESSAGE_END`` it follows would interleave two segments, and storage would
+    mis-attribute or truncate the earlier segment's last deltas.
+    """
+    released: list[DRAgentEventResponse] = []
+    while pending and not (_closed_text_message_ids(pending[0]) & live_message_ids):
+        released.append(pending.pop(0))
+    return released
+
+
+def _drain_buffered(pending: list[DRAgentEventResponse]) -> list[DRAgentEventResponse]:
+    """Release every remaining buffered batch: no further moderated delta can arrive."""
+    drained = list(pending)
+    pending.clear()
+    return drained
 
 
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
@@ -1182,6 +1199,56 @@ async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
         await iterator.aclose()
     except Exception:
         _logger.debug("Error closing async iterator during stream teardown", exc_info=True)
+
+
+async def _advance_in_context(
+    coro: Coroutine[Any, Any, _T],
+    context: contextvars.Context,
+) -> _T:
+    """Await *coro* inside *context* by running it as a task pinned to that context."""
+    loop = asyncio.get_running_loop()
+    # ``create_task(..., context=...)`` (Python 3.11+) is the only way to run an awaitable
+    # in a caller-chosen Context: ``Context.run`` cannot drive a coroutine. Cancelling the
+    # awaiting side cancels this task too, so ``coro`` still unwinds inside ``context``.
+    task = loop.create_task(coro, context=context)
+    return await task
+
+
+async def _context_pinned_stream(
+    source: AsyncGenerator[DRAgentEventResponse],
+) -> AsyncGenerator[DRAgentEventResponse]:
+    """Advance and tear down *source* from a single fixed :class:`~contextvars.Context`.
+
+    ``ModerationPipeline.stream_response_async`` drains the chunk iterator we hand it from
+    inside its own ``loop.create_task(_feed())``, which runs in a *copy* of our Context. We
+    consume ``source`` on both sides of that boundary: the peek-ahead loop in
+    ``_moderated_dragent_stream`` pulls the leading non-text events in the request task's
+    Context, then dome's feed task drains the rest in its own.
+
+    That split corrupts context-manager tokens held open across ``yield``. NAT's
+    ``Function.astream`` wraps its whole body in the *synchronous*
+    ``Context.push_active_function`` context manager, so its ``function_path_stack`` token is
+    set on the first ``__anext__`` and reset only when the generator finalizes. Enter in one
+    Context and finalize in another and the reset raises
+    ``ValueError: <Token ...> was created in a different Context``, which surfaces as a bare
+    NAT ``workflow_error`` frame instead of a response. The same applies to OTel spans held
+    across a ``yield``, which detach via the same token mechanism.
+
+    Pinning every ``__anext__`` and the final ``aclose`` to one Context makes entry and
+    teardown pair up no matter which task drives the stream.
+    """
+    context = contextvars.copy_context()
+    try:
+        while True:
+            try:
+                item = await _advance_in_context(source.__anext__(), context)
+            except StopAsyncIteration:
+                return
+            yield item
+    finally:
+        # Unwind ``source`` in the Context that entered it, even when the caller closes us
+        # from somewhere else (dome cancels its feed task on an early BLOCK).
+        await _advance_in_context(_aclose_async_iterator(source), context)
 
 
 async def _moderated_dragent_stream(
@@ -1193,33 +1260,54 @@ async def _moderated_dragent_stream(
     """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
 
     Non-text upstream events pass through immediately until the first text delta. Text deltas are
-    moderated via ``stream_response_async``; ``TEXT_MESSAGE_START`` / ``END`` and other events read
-    during peek-ahead are buffered and emitted after each moderated chunk.
+    moderated via ``stream_response_async``; every later non-text event is buffered in upstream
+    order and released only once the moderated stream has passed the segment it closes.
     """
     stream_tool_index_map: dict[int, str] = {}
     open_text_message_ids: set[str] = set()
-    pending_deferred: list[DRAgentEventResponse] = []
-    pending_pass_through: list[DRAgentEventResponse] = []
+    pending_upstream: list[DRAgentEventResponse] = []
+    terminal_run_error: DRAgentEventResponse | None = None
+    terminal_run_finished: DRAgentEventResponse | None = None
     moderation_source_responses: list[DRAgentEventResponse] = []
+    # Live text message_ids carried by ``moderation_source_responses``, maintained as the queue
+    # moves. Rescanning the queue per moderated chunk made a buffered stream quadratic: dome
+    # queues one source response per upstream delta, so the scan cost grew with the stream.
+    queued_source_message_ids: dict[str, int] = {}
     last_source_response: DRAgentEventResponse | None = None
+    last_source_message_ids: set[str] = set()
     stopped_for_content_filter = False
-    prescore_state = _StreamingPrescoreModerationState(
-        prescore_moderations=_prescore_datarobot_moderations_from_df(
-            moderation._pipeline,
-            stream_state.prescore_df,
-        ),
-    )
 
-    def buffer_passthrough(response: DRAgentEventResponse) -> None:
-        if response.events and _defer_until_after_moderated_chunk(response.events[0]):
-            pending_deferred.append(response)
-        else:
-            pending_pass_through.append(response)
+    def buffer_upstream(response: DRAgentEventResponse) -> None:
+        nonlocal terminal_run_error, terminal_run_finished
+        if any(isinstance(event, RunErrorEvent) for event in response.events):
+            # Terminal RUN_ERROR: hold it and emit last so no moderated chunk trails after it.
+            terminal_run_error = response
+            return
+        if any(isinstance(event, RunFinishedEvent) for event in response.events):
+            # Terminal RUN_FINISHED: hold it out of the ordinary buffer for two reasons.
+            # A block breaks out of the moderated loop without draining the buffer, so leaving
+            # RUN_FINISHED in there ends a blocked stream with no terminal event at all and the
+            # client keeps waiting on a run that is over. It also must not be released early:
+            # unlike a TEXT_MESSAGE_END it closes no segment, so the prefix release would let it
+            # overtake the last segment's remaining moderated deltas and synthetic END.
+            terminal_run_finished = response
+            return
+        pending_upstream.append(response)
+
+    def live_moderated_message_ids() -> set[str]:
+        """Segments that can still receive a moderated delta.
+
+        dome buffers the whole upstream stream before releasing its first moderated chunk, so
+        source responses queue up far ahead of the moderated output. Anything still queued names
+        a segment whose deltas have not been emitted yet. ``last_source_message_ids`` counts too:
+        it is the message_id every further moderated chunk falls back to once the queue drains.
+        """
+        return set(queued_source_message_ids) | last_source_message_ids
 
     async def next_text_response() -> DRAgentEventResponse | None:
         async for response in upstream:
             if not response.events or skip_event_type(response.events[0]):
-                buffer_passthrough(response)
+                buffer_upstream(response)
                 continue
             return response
         return None
@@ -1230,16 +1318,25 @@ async def _moderated_dragent_stream(
         current: DRAgentEventResponse | None = first_text
         while current is not None:
             moderation_source_responses.append(current)
+            _retain_queued_message_ids(
+                queued_source_message_ids, _text_delta_message_ids(current.events)
+            )
             yield dragent_event_response_to_dome_chunk(current)
             current = await next_text_response()
 
     first_text: DRAgentEventResponse | None = None
     try:
+        prescore_state = _StreamingPrescoreModerationState(
+            prescore_moderations=_prescore_datarobot_moderations_from_df(
+                moderation._pipeline,
+                stream_state.prescore_df,
+            ),
+        )
         async for response in upstream:
             if response.events and not skip_event_type(response.events[0]):
                 first_text = response
                 break
-            _track_dragent_response_events(open_text_message_ids, response)
+            track_open_text_in_events(open_text_message_ids, response.events)
             yield prescore_state.emit(response)
         if first_text is None:
             return
@@ -1256,13 +1353,15 @@ async def _moderated_dragent_stream(
                 # ModerationIterator (moderations >= 11.2.45) no longer emits one moderated
                 # chunk per source chunk. On BLOCK/REPLACE it discards the buffered content and
                 # yields a synthetic sequence: a role opener, the message chunk, then a terminal
-                # finish chunk. Those extra chunks outnumber the source responses we appended,
-                # and the opener/terminal carry no delta text (empty AG-UI event lists). All the
-                # synthetic chunks derive from the same upstream text message, so once the source
-                # list drains we reuse the last source response to keep AG-UI message IDs
-                # consistent, and we surface only the chunks that actually carry events.
-                if moderation_source_responses:
+                # finish chunk. Only the middle one carries text, so only text-carrying chunks
+                # consume a source response -- otherwise the opener would burn the first
+                # segment's message_id and shift every later delta onto the wrong segment. Once
+                # the source list drains we reuse the last source response, since all the
+                # synthetic chunks derive from the same upstream text message.
+                if _moderated_chunk_carries_text(moderated) and moderation_source_responses:
                     last_source_response = moderation_source_responses.pop(0)
+                    last_source_message_ids = _text_delta_message_ids(last_source_response.events)
+                    _release_queued_message_ids(queued_source_message_ids, last_source_message_ids)
                 source_response = last_source_response
                 converted = dome_chunk_to_dragent_event_response(
                     moderated,
@@ -1272,14 +1371,18 @@ async def _moderated_dragent_stream(
                     stream_tool_index_map=stream_tool_index_map,
                 )
                 if converted.events:
+                    # ``emit_moderated`` first: it owns the prescore-attachment bookkeeping that
+                    # ``emit`` below reads, and that ordering must not depend on what we release.
                     moderated_response = prescore_state.emit_moderated(converted)
-                    _track_dragent_response_events(open_text_message_ids, moderated_response)
-                    yield moderated_response
-                    for item in _drain_pending_after_moderated_chunk(
-                        pending_deferred, pending_pass_through
+                    # Release buffered lifecycle *before* the delta, so this segment's
+                    # TEXT_MESSAGE_START is already open and the previous segment is closed.
+                    for item in _release_buffered_prefix(
+                        pending_upstream, live_moderated_message_ids()
                     ):
-                        _track_dragent_response_events(open_text_message_ids, item)
+                        track_open_text_in_events(open_text_message_ids, item.events)
                         yield prescore_state.emit(item)
+                    track_open_text_in_events(open_text_message_ids, moderated_response.events)
+                    yield moderated_response
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     for end_response in _synthetic_text_message_end_responses(
@@ -1290,13 +1393,24 @@ async def _moderated_dragent_stream(
                     break
 
         if not stopped_for_content_filter:
-            for item in _drain_pending_after_moderated_chunk(
-                pending_deferred, pending_pass_through
-            ):
-                _track_dragent_response_events(open_text_message_ids, item)
+            for item in _drain_buffered(pending_upstream):
+                track_open_text_in_events(open_text_message_ids, item.events)
                 yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
+        # A terminal event last on every path (normal or content_filter) so a block can't mask it.
+        # RUN_ERROR wins when upstream somehow produced both: a run that errored did not finish.
+        if terminal_run_error is not None:
+            yield prescore_state.emit(terminal_run_error)
+        elif terminal_run_finished is not None:
+            yield prescore_state.emit(terminal_run_finished)
+    except Exception as exc:
+        # Close open text segments, then end the stream in-band with a terminal RUN_ERROR
+        # instead of raising: NAT would otherwise emit an unframed error that clients drop.
+        _logger.exception("Error while producing moderated stream")
+        for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+            yield end_response
+        yield run_error_response(str(exc))
     finally:
         await _aclose_async_iterator(upstream)
 
@@ -1383,6 +1497,10 @@ class DataRobotModerationMiddleware(
         ``call_next`` after ``pre_invoke``. When prescore blocks, ``pre_invoke`` sets
         ``ctx.output`` to the guard response; we return it immediately so ``call_next``
         (and thus the LLM) is never invoked.
+
+        On a moderation failure, ``pre_invoke``/``post_invoke`` set ``ctx.output`` to a terminal
+        ``RUN_ERROR``; converters adapt it per route (non-streaming raises, NAT returns 422;
+        streaming frames it). Mid-stream: ``_moderated_dragent_stream``.
         """
         ctx = InvocationContext(
             function_context=context,
@@ -1422,42 +1540,48 @@ class DataRobotModerationMiddleware(
         if moderation is None:
             return None
 
-        pipeline = moderation._pipeline
+        try:
+            pipeline = moderation._pipeline
 
-        prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        prompt = moderation_prompt_from_workflow_input(workflow_input)
+            prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
+            prompt = moderation_prompt_from_workflow_input(workflow_input)
 
-        # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
-        # Wrap in the NAT workflow trace context: dome emits its ``evaluate_prompt`` span via
-        # its own tracer provider, which our ``NatWorkflowTracer`` wrapper never patches. Without
-        # an active workflow parent in context here (moderation is the outer middleware, so this
-        # runs before the ``datarobot_agent`` span exists) that span would start a disconnected
-        # trace.
-        with use_nat_workflow_trace_context():
-            prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
-                prompt
+            # Step 1: Prescore via ``ModerationPipeline.evaluate_prompt_async`` (non-blocking).
+            # Wrap in the NAT workflow trace context: dome emits its ``evaluate_prompt`` span via
+            # its own tracer provider, which our ``NatWorkflowTracer`` wrapper never patches.
+            # Without an active workflow parent in context here (moderation is the outer middleware,
+            # so this runs before the ``datarobot_agent`` span exists) that span would start a
+            # disconnected trace.
+            with use_nat_workflow_trace_context():
+                prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
+                    prompt
+                )
+
+            if prompt_eval.blocked:
+                # If all prompts in the input are blocked, means history as well as the prompt
+                # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never
+                # run.
+                context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
+                return context
+
+            prompt_sent, workflow_rewritten = _prompt_sent_after_prescore_replacement(
+                workflow_input,
+                original_prompt=prompt,
+                prompt_eval=prompt_eval,
+                prescore_df=prescore_df,
+                prompt_column=prompt_column_name,
             )
-
-        if prompt_eval.blocked:
-            # If all prompts in the input are blocked, means history as well as the prompt
-            # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never run.
-            context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
+            _set_moderation_invoke_state(
+                prompt=prompt_sent,
+                prescore_df=prescore_df,
+                latency_so_far=prescore_latency,
+            )
+            # Return context only when workflow input was rewritten (signals modified_args to NAT).
+            return context if workflow_rewritten else None
+        except Exception as exc:
+            _logger.exception("Moderation prescore failed")
+            context.output = run_error_response(f"Moderation failed: {exc}")
             return context
-
-        prompt_sent, workflow_rewritten = _prompt_sent_after_prescore_replacement(
-            workflow_input,
-            original_prompt=prompt,
-            prompt_eval=prompt_eval,
-            prescore_df=prescore_df,
-            prompt_column=prompt_column_name,
-        )
-        _set_moderation_invoke_state(
-            prompt=prompt_sent,
-            prescore_df=prescore_df,
-            latency_so_far=prescore_latency,
-        )
-        # Return context only when workflow input was rewritten (signals modified_args to NAT).
-        return context if workflow_rewritten else None
 
     async def post_invoke(self, context: InvocationContext) -> InvocationContext | None:
         """Post-invocation hook called after the function returns.
@@ -1493,52 +1617,57 @@ class DataRobotModerationMiddleware(
         if state is None:
             return None
 
-        # ==================================================================
-        # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
-        # ``_run_stage`` in dome) when response text is present.
-        prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
-        # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
-        # request trace (see the pre_invoke prescore call for the full rationale).
-        with use_nat_workflow_trace_context():
-            response_eval, _, _postscore_df = await moderation.evaluate_response_async(
-                response_text,
-                prompt=state.prompt,
+        try:
+            # ==================================================================
+            # Step 3: Postscore via ``ModerationPipeline.evaluate_response`` (same path as
+            # ``_run_stage`` in dome) when response text is present.
+            prompt_column_name = pipeline.get_input_column(GuardStage.PROMPT)
+            # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
+            # request trace (see the pre_invoke prescore call for the full rationale).
+            with use_nat_workflow_trace_context():
+                response_eval, _, _postscore_df = await moderation.evaluate_response_async(
+                    response_text,
+                    prompt=state.prompt,
+                )
+
+            prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
+
+            if response_eval.blocked:
+                response_message = response_eval.blocked_message or ""
+                finish_reason = "content_filter"
+            elif response_eval.replaced:
+                response_message = response_eval.replacement or ""
+                finish_reason = "content_filter"
+            else:
+                response_message = response_text
+                finish_reason = "stop"
+
+            moderated_dr = _dragent_event_response_from_postscore_assistant_text(
+                response_message,
+                finish_reason,
+                response_eval,
+                upstream_model=_upstream_model_from_dragent_response(original_output),
+                prompt_eval=prompt_eval,
             )
-
-        prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
-
-        if response_eval.blocked:
-            response_message = response_eval.blocked_message or ""
-            finish_reason = "content_filter"
-        elif response_eval.replaced:
-            response_message = response_eval.replacement or ""
-            finish_reason = "content_filter"
-        else:
-            response_message = response_text
-            finish_reason = "stop"
-
-        moderated_dr = _dragent_event_response_from_postscore_assistant_text(
-            response_message,
-            finish_reason,
-            response_eval,
-            upstream_model=_upstream_model_from_dragent_response(original_output),
-            prompt_eval=prompt_eval,
-        )
-        preserve_ag_ui_envelope = (
-            len(original_output.events) > 1
-            and finish_reason == "stop"
-            and not response_eval.blocked
-            and not response_eval.replaced
-            and response_message == response_text
-        )
-        if preserve_ag_ui_envelope:
-            context.output = _merge_moderations_into_multi_event_response(
-                original_output, moderated_dr
+            preserve_ag_ui_envelope = (
+                len(original_output.events) > 1
+                and finish_reason == "stop"
+                and not response_eval.blocked
+                and not response_eval.replaced
+                and response_message == response_text
             )
-        else:
-            context.output = moderated_dr
+            if preserve_ag_ui_envelope:
+                context.output = _merge_moderations_into_multi_event_response(
+                    original_output, moderated_dr
+                )
+            else:
+                context.output = moderated_dr
 
-        return context
+            return context
+        except Exception as exc:
+            _logger.exception("Moderation postscore failed")
+            context.output = run_error_response(f"Moderation failed: {exc}")
+            return context
 
     async def function_middleware_stream(
         self,
@@ -1590,6 +1719,9 @@ class DataRobotModerationMiddleware(
             # Prescore populates invoke state. If ``pre_invoke`` returned early (e.g. no
             # workflow input / prescore skipped), pass the stream through unchanged.
             stream_state = _moderation_invoke_state_ctx.get()
+            # Clear at read time, in the context that set it (pre_invoke): the reset token is only
+            # valid here. Deferring to the generator ``finally`` runs in a different context.
+            _clear_moderation_invoke_state_if_set()
             if stream_state is None:
                 async with contextlib.aclosing(
                     cast(
@@ -1606,10 +1738,15 @@ class DataRobotModerationMiddleware(
 
             async with contextlib.aclosing(
                 _moderated_dragent_stream(
-                    _validated_dragent_stream(
-                        cast(
-                            AsyncGenerator[Any, None],
-                            call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                    # Pin the upstream stream to one Context: dome drains part of it from its
+                    # own feed task, and NAT's ``push_active_function`` token cannot be reset
+                    # across Contexts. See ``_context_pinned_stream``.
+                    _context_pinned_stream(
+                        _validated_dragent_stream(
+                            cast(
+                                AsyncGenerator[Any, None],
+                                call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                            ),
                         ),
                     ),
                     moderation=moderation,

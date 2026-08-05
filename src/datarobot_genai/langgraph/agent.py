@@ -54,12 +54,13 @@ from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import InvokeReturn
 from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
+from datarobot_genai.core.agents.base import frame_agent_errors
 from datarobot_genai.core.agents.reasoning import flatten_to_text
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
 if TYPE_CHECKING:
-    from ragas import MultiTurnSample
+    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +310,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         )
         return current_messages[:insert_at] + history + current_messages[insert_at:]
 
+    @frame_agent_errors
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the agent with the provided input.
 
@@ -646,7 +648,7 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         cls,
         events: list[dict[str, Any]] | None,
     ) -> MultiTurnSample | None:
-        """Convert a list of LangGraph events into Ragas MultiTurnSample."""
+        """Convert a list of LangGraph events into a pipeline-interactions sample."""
         if not events:
             return None
         messages = []
@@ -655,8 +657,8 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 if v is not None:
                     messages.extend(v.get("messages", []))
         messages = [m for m in messages if not isinstance(m, ToolMessage)]
-        # Flatten list-form content (reasoning models emit blocks) so ragas's
-        # string-only validation does not raise. Thinking blocks are dropped
+        # Flatten list-form content (reasoning models emit blocks) so the
+        # string-only message schema does not raise. Thinking blocks are dropped
         # from the evaluation trace; the AG-UI stream still carries them as
         # structured Thinking* events.
         flattened: list[Any] = []
@@ -665,12 +667,12 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
                 flattened.append(m.model_copy(update={"content": flatten_to_text(m.content)}))
             else:
                 flattened.append(m)
-        # Lazy import to reduce memory overhead when ragas is not used
-        from ragas import MultiTurnSample
-        from ragas.integrations.langgraph import convert_to_ragas_messages
+        # Lazy import so the moderations-backed primitives load only when a run
+        # actually records pipeline interactions.
+        from datarobot_genai.core.pipeline_interactions import MultiTurnSample
+        from datarobot_genai.langgraph.moderations_events import convert_to_moderations_messages
 
-        ragas_trace = convert_to_ragas_messages(flattened)
-        return MultiTurnSample(user_input=ragas_trace)
+        return MultiTurnSample(user_input=convert_to_moderations_messages(flattened))
 
 
 def datarobot_agent_class_from_langgraph(

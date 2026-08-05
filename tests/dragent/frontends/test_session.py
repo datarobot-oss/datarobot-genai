@@ -17,6 +17,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from a2a.types import InvalidParamsError
+from a2a.utils.errors import ServerError
 from fastapi import Request
 from nat.builder.context import ContextState
 from nat.data_models.config import Config
@@ -32,6 +34,12 @@ from datarobot_genai.dragent.frontends.session import DRAgentAGUISessionManager
 from datarobot_genai.dragent.frontends.session import DRAgentUserManager
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 from datarobot_genai.dragent.frontends.session import _build_metadata_from_headers
+from datarobot_genai.dragent.frontends.session import headers_from_a2a_state
+from datarobot_genai.dragent.frontends.session import resolve_identity_from_headers
+
+from .helpers import AUTH_HANDLER_PATH
+from .helpers import expected_workflow_key
+from .helpers import make_auth_ctx
 
 
 @pytest.fixture
@@ -167,6 +175,18 @@ class TestBuildMetadataFromHeaders:
     def test_returns_empty_headers(self):
         attrs = _build_metadata_from_headers({})
         assert attrs.headers == {}
+
+
+class TestHeadersFromA2aState:
+    def test_returns_none_for_missing_or_invalid_state(self):
+        assert headers_from_a2a_state(None) is None
+        assert headers_from_a2a_state({}) is None
+        assert headers_from_a2a_state({"headers": "not-a-dict"}) is None
+
+    def test_returns_normalised_headers(self):
+        assert headers_from_a2a_state({"headers": {"X-DataRobot-User-Id": "uid"}}) == {
+            "x-datarobot-user-id": "uid"
+        }
 
 
 class TestDRAgentUserManager:
@@ -336,3 +356,100 @@ class TestSessionPerUserWorkflowFallback:
 
         assert captured["context_state_user_id"] == expected
         assert captured["shim_get_id"] == expected
+
+
+class TestResolveIdentityFromHeaders:
+    """Tests for the resolve_identity_from_headers helper."""
+
+    @pytest.fixture(autouse=True)
+    def _no_real_jwt_decode(self):
+        """Prevent the real _auth_handler from touching JWT secrets during tests."""
+        with patch(AUTH_HANDLER_PATH, return_value=None):
+            yield
+
+    def test_returns_none_for_none_headers(self):
+        assert resolve_identity_from_headers(None) is None
+
+    def test_returns_none_for_empty_headers(self):
+        assert resolve_identity_from_headers({}) is None
+
+    def test_returns_none_when_no_identity_headers(self):
+        result = resolve_identity_from_headers(
+            {"authorization": "Bearer tok", "content-type": "application/json"}
+        )
+        assert result is None
+
+    def test_returns_uuid5_for_valid_signed_jwt(self):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("dr-uid-abc")):
+            result = resolve_identity_from_headers(
+                {"x-datarobot-authorization-context": "signed-jwt"}
+            )
+        assert result == expected_workflow_key("dr-uid-abc")
+
+    def test_raises_for_invalid_jwt(self):
+        with pytest.raises(ServerError) as exc_info:
+            resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+        assert "invalid or expired" in exc_info.value.error.message
+
+    def test_raises_when_auth_handler_throws(self):
+        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
+        with (
+            patch(AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
+            pytest.raises(ServerError) as exc_info,
+        ):
+            resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+
+    def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
+        """A present but invalid auth-context JWT must not fall back to gateway user ID."""
+        with pytest.raises(ServerError) as exc_info:
+            resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "garbage",
+                    "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
+                }
+            )
+        assert isinstance(exc_info.value.error, InvalidParamsError)
+        assert exc_info.value.error.code == -32602
+
+    def test_falls_back_to_gateway_user_id_header(self):
+        result = resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        assert result == expected_workflow_key("64baa56996fb36e3eeeefc44")
+
+    def test_auth_context_takes_precedence_over_gateway_user_id(self):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("auth-ctx-user")):
+            result = resolve_identity_from_headers(
+                {
+                    "x-datarobot-authorization-context": "signed-jwt",
+                    "x-datarobot-user-id": "gateway-user",
+                }
+            )
+        assert result == expected_workflow_key("auth-ctx-user")
+        assert result != expected_workflow_key("gateway-user")
+
+    def test_deterministic_same_user(self):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("user-xyz")):
+            r1 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+            r2 = resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+        assert r1 == r2
+
+    def test_different_users_produce_different_keys(self):
+        results = []
+        for uid in ("alice", "bob"):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx(uid)):
+                results.append(
+                    resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
+                )
+        assert results[0] != results[1]
+
+    def test_invalid_auth_context_treated_as_unauthenticated_for_public_card(self):
+        assert (
+            resolve_identity_from_headers(
+                {"x-datarobot-authorization-context": "garbage"},
+                on_invalid_auth_context="none",
+            )
+            is None
+        )

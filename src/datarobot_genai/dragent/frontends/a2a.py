@@ -23,26 +23,36 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 import logging
 
 import httpx
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.context import ServerCallContext
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
 from a2a.types import AgentSkill
 from a2a.types import AuthorizationCodeOAuthFlow
 from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import InvalidParamsError
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
+from a2a.utils.errors import ServerError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
+from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
-from ..cross_app_access_config import CrossApplicationAccessConfig
 from .register import DRAgentA2AExternalConfig
+from .session import _a2a_headers
+from .session import headers_from_a2a_state
+from .session import normalise_headers
+from .session import resolve_identity_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +92,8 @@ EXTERNAL_IDENTITY_URI = "urn:datarobot:agent:identity:external"
 EXTERNAL_IDENTITY_DESCRIPTION = (
     "Customer-provided external agent identifiers for catalog discovery."
 )
+
+_IDENTITY_EXTENSION_URIS = frozenset({INTERNAL_IDENTITY_URI, EXTERNAL_IDENTITY_URI})
 
 
 # ---------------------------------------------------------------------------
@@ -357,4 +369,92 @@ async def create_agent_card(
         skills=resolved_skills,
         security_schemes=security_schemes or None,
         security=security or None,
+        supports_authenticated_extended_card=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent card selection (public GET) and authenticated extended card
+# ---------------------------------------------------------------------------
+
+
+def redact_agent_card(card: AgentCard) -> AgentCard:
+    """Return a public-safe view of an agent card.
+
+    Strips advertised skills and removes internal/external identity extensions
+    while preserving auth and cross-application-access metadata needed for
+    anonymous discovery.
+    """
+    extensions = card.capabilities.extensions
+    filtered_extensions = None
+    if extensions:
+        filtered = [ext for ext in extensions if ext.uri not in _IDENTITY_EXTENSION_URIS]
+        filtered_extensions = filtered or None
+
+    return card.model_copy(
+        update={
+            "skills": [],
+            "capabilities": card.capabilities.model_copy(
+                update={"extensions": filtered_extensions}
+            ),
+        }
+    )
+
+
+def _public_card_modifier(card: AgentCard) -> AgentCard:
+    """Serve the extended card to authenticated callers, redacted otherwise."""
+    headers = _a2a_headers.get()
+    if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
+        return card
+    return redact_agent_card(card)
+
+
+def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
+    """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
+    headers = headers_from_a2a_state(context.state)
+    if resolve_identity_from_headers(headers) is None:
+        raise ServerError(
+            error=InvalidParamsError(
+                message="Authenticated identity required for extended agent card"
+            )
+        )
+    return card
+
+
+class DRAgentA2AStarletteApplication(A2AStarletteApplication):
+    """A2A server that selects redacted vs extended cards on the public GET route."""
+
+    async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
+        headers = normalise_headers(dict(request.headers))
+        token = _a2a_headers.set(headers)
+        try:
+            return await super()._handle_get_agent_card(request)
+        finally:
+            _a2a_headers.reset(token)
+
+
+class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
+    """A2A worker with identity-keyed public cards and an authenticated extended card."""
+
+    def create_a2a_server(
+        self,
+        agent_card: AgentCard,
+        agent_executor: NATWorkflowAgentExecutor,
+    ) -> DRAgentA2AStarletteApplication:
+        """Create an A2A server with identity-keyed public and extended agent cards.
+
+        The public ``GET /.well-known/agent-card.json`` route serves a redacted card
+        to anonymous callers and the full card when gateway identity headers are
+        present.  ``extended_agent_card`` is also wired for
+        ``agent/getAuthenticatedExtendedCard`` clients.
+        """
+        base_server = super().create_a2a_server(agent_card, agent_executor)
+        server = DRAgentA2AStarletteApplication(
+            agent_card=base_server.agent_card,
+            http_handler=base_server.handler.request_handler,
+            extended_agent_card=agent_card,
+            card_modifier=_public_card_modifier,
+            extended_card_modifier=_extended_card_modifier,
+        )
+        logger.info("Created A2A server with identity-keyed public agent card")
+        return server

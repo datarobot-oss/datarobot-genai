@@ -21,6 +21,7 @@ from typing import cast
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
@@ -247,6 +248,12 @@ def convert_dragent_event_response_to_chat_response(
     (``convert_dragent_event_response_to_str`` then ``convert_str_to_chat_response``),
     dropping the moderation extra.
     """
+    error_event = _run_error_event(response.events)
+    if error_event is not None:
+        # Raise so the failure surfaces instead of an empty-success response. RuntimeError, not
+        # ValueError, to stay distinct from NAT's own "no conversion path" ValueError.
+        raise RuntimeError(error_event.message)
+
     content = convert_dragent_event_response_to_str(response)
 
     model = response.model
@@ -300,9 +307,36 @@ def _backfill_chunk_model(chunk: ChatResponseChunk) -> ChatResponseChunk:
     return chunk.model_copy(update={"model": model})
 
 
+def _run_error_event(events: list[Any]) -> RunErrorEvent | None:
+    """Return the first ``RunErrorEvent`` in a response, if any."""
+    for event in events:
+        if isinstance(event, RunErrorEvent):
+            return event
+    return None
+
+
+def _chat_response_chunk_from_run_error(event: RunErrorEvent) -> ChatResponseChunk:
+    """OpenAI-shaped error chunk for a terminal ``RunErrorEvent``.
+
+    Uses OpenAI's error-chunk convention (empty ``choices`` plus a top-level ``error`` object)
+    so a ``RUN_ERROR`` reaches the client as a recognized failure, not an empty successful chunk.
+    """
+    chunk = ChatResponseChunk(
+        id=uuid.uuid4().hex,
+        choices=[],
+        created=datetime.datetime.now(datetime.UTC),
+    )
+    return chunk.model_copy(
+        update={"error": {"message": event.message, "type": "workflow_error", "code": event.code}}
+    )
+
+
 def convert_dragent_event_response_to_chat_response_chunk(
     response: DRAgentEventResponse,
 ) -> ChatResponseChunk:
+    error_event = _run_error_event(response.events)
+    if error_event is not None:
+        return _backfill_chunk_model(_chat_response_chunk_from_run_error(error_event))
     if response.original_chunk is not None:
         chunk = response.original_chunk
     else:

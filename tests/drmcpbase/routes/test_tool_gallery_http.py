@@ -171,6 +171,81 @@ class TestToolGalleryRoute:
             assert client.get("/toolGallery/tools/").status_code == 404
 
 
+class TestToolGalleryFilters:
+    """``name`` and ``provider`` query filters, applied before pagination."""
+
+    def _server(self) -> FastMCP:
+        # jira gets an auth_provider (→ third_party); perplexity has none (→ datarobot),
+        # so the two tools land in different providers for filter assertions.
+        mcp = FastMCP("tool-gallery-filters")
+
+        @mcp.tool
+        def jira_search_issues(a: int) -> int:
+            """Search."""
+            return a
+
+        @mcp.tool
+        def perplexity_search(q: str) -> str:
+            """Search web."""
+            return q
+
+        def provider() -> dict[str, dict[str, Any]]:
+            return {"jira_search_issues": {"auth_provider": "jira"}}
+
+        register_tool_gallery_routes(mcp, ui_metadata_provider=provider)
+        return mcp
+
+    def test_name_filter_returns_exact_match(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"name": "jira_search_issues"}).json()
+        assert body["totalCount"] == 1
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+
+    def test_name_filter_unknown_returns_empty(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"name": "nope"}).json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+        assert body["hasMore"] is False
+
+    def test_provider_filter_third_party(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"provider": "third_party"}).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+        assert body["totalCount"] == 1
+
+    def test_provider_filter_datarobot(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"provider": "datarobot"}).json()
+        assert [t["name"] for t in body["tools"]] == ["perplexity_search"]
+        assert body["totalCount"] == 1
+
+    def test_unknown_provider_returns_empty_page(self) -> None:
+        # An unrecognised provider matches nothing rather than 500ing.
+        with TestClient(self._server().http_app()) as client:
+            resp = client.get("/toolGallery/tools/", params={"provider": "nope"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+
+    def test_blank_filters_are_ignored(self) -> None:
+        # Blank values behave like absent params — the full catalog is returned.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"name": "", "provider": ""}).json()
+        assert body["totalCount"] == 2
+
+    def test_filter_totalcount_reflects_filtered_set_before_pagination(self) -> None:
+        # totalCount/hasMore describe the filtered set, not the whole catalog.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/", params={"provider": "third_party", "limit": 1}
+            ).json()
+        assert body["totalCount"] == 1
+        assert body["count"] == 1
+        assert body["hasMore"] is False
+
+
 class TestUiMetadataProvider:
     """The route re-attaches UI fields from the injected ``ui_metadata_provider``."""
 
