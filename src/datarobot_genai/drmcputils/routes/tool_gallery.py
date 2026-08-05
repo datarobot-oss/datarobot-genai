@@ -24,8 +24,9 @@ are stripped before FastMCP registration (see ``DRTOOLS_PRIVATE_METADATA_KEYS``)
 The ``tools`` route re-attaches them via an injected ``ui_metadata_provider`` (drtools'
 ``get_tool_ui_metadata``) — injected, not imported, because ``drmcputils`` may not import
 ``drtools`` — and derives each tool's categories from the single-source-of-truth taxonomy.
-It returns the full catalog (not the per-request filtered/CodeMode view), paginated via
-``limit``/``offset``.
+It returns the full catalog (not the per-request filtered/CodeMode view), optionally
+filtered by ``name`` (exact) and ``provider`` (``datarobot``/``third_party``) and paginated
+via ``limit``/``offset``.
 """
 
 import logging
@@ -75,6 +76,46 @@ def _parse_pagination(request: Request) -> tuple[int, int]:
         return value if value >= 0 else default
 
     return _non_negative_int("limit", _DEFAULT_LIMIT), _non_negative_int("offset", 0)
+
+
+# Providers accepted by the ``provider`` filter; anything else matches no tools.
+_KNOWN_PROVIDERS = frozenset({"datarobot", "third_party"})
+
+
+def _parse_filters(request: Request) -> tuple[str | None, str | None]:
+    """Read the optional ``name`` and ``provider`` filters from the query string.
+
+    Both are absent by default (return ``None`` → no filtering on that field). A blank
+    value is treated as absent so a malformed query never 500s the gallery, matching
+    ``_parse_pagination``. ``provider`` is passed through verbatim; an unrecognised value
+    simply matches nothing (see ``_apply_filters``).
+    """
+
+    def _non_blank(name: str) -> str | None:
+        raw = request.query_params.get(name)
+        if raw is None:
+            return None
+        raw = raw.strip()
+        return raw or None
+
+    return _non_blank("name"), _non_blank("provider")
+
+
+def _apply_filters(
+    items: list[dict[str, Any]], name: str | None, provider: str | None
+) -> list[dict[str, Any]]:
+    """Filter gallery *items* by exact ``name`` and/or ``provider`` (match-any).
+
+    A ``provider`` value outside :data:`_KNOWN_PROVIDERS` matches no tools (empty result),
+    rather than raising, so an unknown filter yields an empty page instead of a 500.
+    """
+    if name is not None:
+        items = [item for item in items if item.get("name") == name]
+    if provider is not None:
+        if provider not in _KNOWN_PROVIDERS:
+            return []
+        items = [item for item in items if item.get("provider") == provider]
+    return items
 
 
 def register_tool_gallery_routes(
@@ -148,6 +189,10 @@ def _make_tools_handler(
         ui_metadata = ui_metadata_provider() if ui_metadata_provider is not None else {}
         merged = [merge_tool_info(tool, ui_metadata) for tool in tools]
         items = build_tool_gallery_items(merged)
+
+        # Filter before counting/paginating so totalCount/hasMore reflect the filtered set.
+        name, provider = _parse_filters(request)
+        items = _apply_filters(items, name, provider)
 
         total_count = len(items)
         limit, offset = _parse_pagination(request)
