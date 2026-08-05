@@ -35,11 +35,12 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 #: Member of the protected resource metadata document carrying the
-#: Cross-Application Access block. The ``x_`` prefix marks it as a non-standard
-#: (non-RFC 9728) member. Kept in sync with the ``x_``-prefixed field on
+#: Cross-Application Access block. Unlike the document's other non-RFC-9728
+#: members it carries no ``x_`` prefix, so it matches this plugin's own
+#: ``cross_application_access`` config field. Kept in sync with the field on
 #: ``drmcpbase.oauth_protected_resource_metadata.entities``'s served metadata
 #: (inlined rather than imported to avoid a dragent -> drmcpbase dependency).
-CROSS_APPLICATION_ACCESS_METADATA_KEY = "x_cross_application_access"
+CROSS_APPLICATION_ACCESS_METADATA_KEY = "cross_application_access"
 
 
 def parse_xaa_params_from_mcp_auth_server_metadata(

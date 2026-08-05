@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 # Only ``private_key_jwt`` is implemented today, so the config may omit it.
 DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD = "private_key_jwt"
 
-# Config key for the Cross-Application Access block. In the *served* document it
-# becomes ``x_cross_application_access``: members that are not registered RFC 9728
-# parameters carry an ``x_`` prefix so clients can tell them apart.
+# Key for the Cross-Application Access block, in both the config and the served
+# document. Deliberately exempt from the ``x_`` prefix that marks the other
+# non-RFC-9728 members, so the name matches the agent-side config block exactly.
 CROSS_APPLICATION_ACCESS_CONFIG_KEY = "cross_application_access"
 
 
@@ -133,10 +133,11 @@ class MCPOAuthProtectedResourceMetadataAdminConfig(BaseDataClass):
 class MCPOAuthProtectedResourceMetadata(BaseDataClass):
     """The document served at ``/.well-known/oauth-protected-resource``.
 
-    Registered RFC 9728 parameters keep their standard names; everything
-    DataRobot-specific is ``x_``-prefixed. Unset fields are dropped by
-    ``to_dict_without_null_attribute``, so a config that only declares
-    ``cross_application_access`` yields just the XAA block plus
+    Registered RFC 9728 parameters keep their standard names, and DataRobot
+    additions are ``x_``-prefixed — except ``cross_application_access``, which is
+    published unprefixed so it matches the agent-side config block name. Unset
+    fields are dropped by ``to_dict_without_null_attribute``, so a config that
+    only declares ``cross_application_access`` yields just that block plus
     ``bearer_methods_supported``.
     """
 
@@ -144,7 +145,7 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
     resource: str | None = None
     authorization_servers: list[str] | None = None
     scopes_supported: list[str] | None = None
-    x_cross_application_access: CrossApplicationAccessMetadata | None = None
+    cross_application_access: CrossApplicationAccessMetadata | None = None
     x_mcp_enable_unauthenticated_well_known_route: bool | None = None
 
     @classmethod
@@ -158,7 +159,7 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
             resource=user_config.resource,
             authorization_servers=user_config.authorization_servers,
             scopes_supported=user_config.scopes_supported,
-            x_cross_application_access=user_config.cross_application_access,
+            cross_application_access=user_config.cross_application_access,
             x_mcp_enable_unauthenticated_well_known_route=(
                 user_config.mcp_enable_unauthenticated_well_known_route
             ),

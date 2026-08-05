@@ -270,11 +270,12 @@ class TestMCPOAuthProtectedResourceMetadata:
         # Registered RFC 9728 parameters keep their standard names.
         assert served["resource"] == metadata_in_dict["resource"]
         assert served["bearer_methods_supported"] == ["header"]
-        # DataRobot extensions are x_-prefixed, and the legacy name is gone.
-        assert served["x_cross_application_access"] == cross_application_access_in_dict
+        # cross_application_access is published unprefixed by design; the other
+        # DataRobot addition is x_-prefixed. The pre-rename name is gone.
+        assert served["cross_application_access"] == cross_application_access_in_dict
         assert served["x_mcp_enable_unauthenticated_well_known_route"] is True
         assert "xaa_metadata" not in served
-        assert "cross_application_access" not in served
+        assert "x_cross_application_access" not in served
         assert "mcp_enable_unauthenticated_well_known_route" not in served
 
     def test_build_omits_unset_optional_fields(
@@ -292,5 +293,5 @@ class TestMCPOAuthProtectedResourceMetadata:
 
         assert served == {
             "bearer_methods_supported": ["header"],
-            "x_cross_application_access": cross_application_access_in_dict,
+            "cross_application_access": cross_application_access_in_dict,
         }

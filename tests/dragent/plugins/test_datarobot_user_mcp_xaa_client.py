@@ -88,7 +88,7 @@ class TestMCPAuthServerMetadataDiscovery:
         mock_target_audience = Mock()
         mock_scopes = [Mock()]
         mcp_auth_server_metadata = {
-            "x_cross_application_access": {
+            "cross_application_access": {
                 "token_endpoint_auth_method": mock_token_endpoint_auth_method,
                 "token_exchange": {
                     "trusted_issuer": mock_trust_issuer,
@@ -120,7 +120,7 @@ class TestMCPAuthServerMetadataDiscovery:
         mock_token_url = Mock()
         mock_scopes = [Mock()]
         mcp_auth_server_metadata = {
-            "x_cross_application_access": {
+            "cross_application_access": {
                 "token_endpoint_auth_method": mock_token_endpoint_auth_method,
                 "token_exchange": {
                     "trusted_issuer": mock_trust_issuer,
@@ -159,26 +159,26 @@ class TestMCPAuthServerMetadataDiscovery:
     def test_parse_xaa_params_defaults_token_endpoint_auth_method(self) -> None:
         """The MCP server's oauth-config.yaml may omit token_endpoint_auth_method."""
         output = parse_xaa_params_from_mcp_auth_server_metadata(
-            {"x_cross_application_access": self._xaa_block()}
+            {"cross_application_access": self._xaa_block()}
         )
 
         assert output.token_endpoint_auth_method == "private_key_jwt"
 
     def test_parse_xaa_params_raises_when_no_block_is_published(self) -> None:
-        with pytest.raises(RuntimeError, match="no `x_cross_application_access` block"):
+        with pytest.raises(RuntimeError, match="no `cross_application_access` block"):
             parse_xaa_params_from_mcp_auth_server_metadata(
                 {"resource": "https://foo", "bearer_methods_supported": ["header"]}
             )
 
     @pytest.mark.parametrize(
         "unsupported_key",
-        ["cross_application_access", "urn:datarobot:nat_mcp_xaa_client", "xaa_metadata"],
+        ["x_cross_application_access", "urn:datarobot:nat_mcp_xaa_client", "xaa_metadata"],
     )
-    def test_parse_xaa_params_rejects_unprefixed_and_legacy_keys(
+    def test_parse_xaa_params_rejects_prefixed_and_legacy_keys(
         self, unsupported_key: str
     ) -> None:
-        """Only the x_-prefixed member is read; no legacy fallbacks."""
-        with pytest.raises(RuntimeError, match="no `x_cross_application_access` block"):
+        """Only the unprefixed member is read; no x_-prefixed or legacy fallbacks."""
+        with pytest.raises(RuntimeError, match="no `cross_application_access` block"):
             parse_xaa_params_from_mcp_auth_server_metadata({unsupported_key: self._xaa_block()})
 
     @pytest.mark.parametrize("missing_key", ["token_exchange", "token_request"])
@@ -187,7 +187,7 @@ class TestMCPAuthServerMetadataDiscovery:
         block.pop(missing_key)
 
         with pytest.raises(RuntimeError, match=f"missing required {missing_key}"):
-            parse_xaa_params_from_mcp_auth_server_metadata({"x_cross_application_access": block})
+            parse_xaa_params_from_mcp_auth_server_metadata({"cross_application_access": block})
 
     @pytest.mark.asyncio
     async def test_get_xaa_params_from_mcp_auth_server_metadata(
