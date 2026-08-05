@@ -131,6 +131,7 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     resolve_moderation_model_dir,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import select_moderation_target
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     workflow_input_to_completion_dict,
 )
@@ -833,6 +834,73 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
         pipeline = load_llm_moderation_pipeline(cfg)
     assert pipeline is not None
     assert pipeline._pipeline.get_prescore_guards()
+
+
+INTEGRATION_MODERATION_MULTI_TARGET_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_multi_target"
+)
+
+
+def _multi_target_moderation_config() -> ModerationConfig:
+    return _moderation_config_from_fixture_dir(INTEGRATION_MODERATION_MULTI_TARGET_DIR)
+
+
+def _prescore_guard_names(pipeline: Any) -> list[str]:
+    return [guard.name for guard in pipeline._pipeline.get_prescore_guards()]
+
+
+def test_select_moderation_target_no_target_returns_same_object() -> None:
+    # ``target=None`` must be a true no-op (identity), not just an equal copy, so that
+    # callers relying on the whole-workflow default never pay a validation/copy cost.
+    moderation = _multi_target_moderation_config()
+    assert select_moderation_target(moderation, None) is moderation
+
+
+@pytest.mark.parametrize(
+    ("target", "expected_guard_names"),
+    [
+        pytest.param("devex-agent", ["DevEx Agent Tokens"], id="matching-target"),
+        pytest.param("workload-agent", [], id="unknown-target-drops-all-targets"),
+    ],
+)
+def test_select_moderation_target_filters_by_name(
+    target: str, expected_guard_names: list[str]
+) -> None:
+    moderation = _multi_target_moderation_config()
+    selected = select_moderation_target(moderation, target)
+    guard_names = [guard.name for block in selected.targets for guard in block.guards]
+    assert guard_names == expected_guard_names
+
+
+@pytest.mark.parametrize("config_mode", ["inline", "config_file"])
+@pytest.mark.parametrize(
+    ("target", "expected_guard_names"),
+    [
+        pytest.param("devex-agent", ["DevEx Agent Tokens"], id="matching-target"),
+        pytest.param(None, ["DevEx Agent Tokens", "Workflow Tokens"], id="no-target-merges-all"),
+        pytest.param("workload-agent", None, id="unknown-target-is-noop"),
+    ],
+)
+def test_load_llm_moderation_pipeline_respects_target(
+    config_mode: str, target: str | None, expected_guard_names: list[str] | None
+) -> None:
+    # GIVEN a moderation config with distinct guards for "workflow_overall" and "devex-agent"
+    # WHEN a middleware config is built with the given ``target`` (inline or config-file source)
+    # THEN the pipeline runs exactly that target's guards, all targets' guards when unset, or is
+    # a no-op (``None``) when ``target`` names no configured ``TargetBlock``
+    if config_mode == "inline":
+        cfg = DataRobotModerationConfig(moderation=_multi_target_moderation_config(), target=target)
+    else:
+        cfg = DataRobotModerationConfig(
+            model_dir=str(INTEGRATION_MODERATION_MULTI_TARGET_DIR), target=target
+        )
+    with patch.dict(os.environ, _CREDENTIAL_ENV):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    if expected_guard_names is None:
+        assert pipeline is None
+    else:
+        assert pipeline is not None
+        assert sorted(_prescore_guard_names(pipeline)) == sorted(expected_guard_names)
 
 
 def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
