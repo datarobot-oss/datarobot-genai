@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.20
+- `drtools/panels`: **panel-composition tools** — ported the 7 BPA panel-composition tools from wren-mcp into the new `drtools/panels/compose.py` module (MODEL-24090). They compose the DataRobot SDK, the panel store, and the predictive delegates: materialize an AI Catalog dataset as a Dataset panel, upload a panel back to the Catalog, run SQL across Catalog datasets (bound as `t0`, `t1`, ... via the polars SQL engine), store a deployment's prediction history as a panel, report AutoPilot progress, score a panel with a deployment into a lineage-linked child panel, and apply deterministic what-if adjustments (mul/add/set, optionally scoped by inclusive date window and series) on datetime-partitioned deployments. All are gated by the `ENABLE_MCP_SANDBOX` entitlement and registered under the `dr_panels` category. wren → genai name mapping: `get_datarobot_dataset_as_panel` → `create_dataset_panel_from_catalog`, `upload_panel_dataset_to_datarobot` → `upload_dataset_panel_to_catalog`, `query_datarobot_dataset` → `query_datasets_to_panel`; `get_prediction_history`, `get_autopilot_status`, `predict_with_deployment`, and `apply_what_if` keep their names.
+
 ## 0.26.19
 - Fix datarobot-moderations middleware after dome updated chunk optimization
 - `dragent`: moderated streams no longer rescan the queued source responses per moderated chunk, which made a buffered stream quadratic in delta count and stalled the event loop on long responses.
