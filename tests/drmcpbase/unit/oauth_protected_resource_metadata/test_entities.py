@@ -17,11 +17,22 @@ from typing import Any
 import pytest
 import yaml
 
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD,
+)
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import BaseDataClass
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    CrossApplicationAccessMetadata,
+)
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    MCPOAuthProtectedResourceMetadata,
+)
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    MCPOAuthProtectedResourceMetadataAdminConfig,
+)
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadataConfig,
 )
-from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import XAAMetadata
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     XAATokenExchangeParams,
 )
@@ -76,7 +87,7 @@ def mock_token_request_scopes() -> list[str]:
 
 
 @pytest.fixture
-def xaa_metadata_in_dict(
+def cross_application_access_in_dict(
     mock_token_endpoint_auth_method: str,
     mock_token_exchange_trusted_issuer: str,
     mock_token_exchange_audience: str,
@@ -103,13 +114,13 @@ def metadata_in_dict(
     mock_mcp_as_resource_server_url: str,
     mock_authorization_server_urls: list[str],
     mock_scopes_supported: list[str],
-    xaa_metadata_in_dict: dict[str, Any],
+    cross_application_access_in_dict: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "resource": mock_mcp_as_resource_server_url,
         "authorization_servers": mock_authorization_server_urls,
         "scopes_supported": mock_scopes_supported,
-        "xaa_metadata": xaa_metadata_in_dict,
+        "cross_application_access": cross_application_access_in_dict,
     }
 
 
@@ -129,18 +140,18 @@ class TestBaseDataClass:
         assert dataclass_object.to_yaml_string() == "attribute: 1\n"
 
 
-class TestXAAMetadata:
+class TestCrossApplicationAccessMetadata:
     @pytest.fixture
     def metadata_without_token_request_audience(
         self,
-        xaa_metadata_in_dict: dict[str, Any],
+        cross_application_access_in_dict: dict[str, Any],
     ) -> dict[str, Any]:
-        xaa_metadata_in_dict["token_request"].pop("audience")
-        return xaa_metadata_in_dict
+        cross_application_access_in_dict["token_request"].pop("audience")
+        return cross_application_access_in_dict
 
     def test_load_from_dict(
         self,
-        xaa_metadata_in_dict: dict[str, Any],
+        cross_application_access_in_dict: dict[str, Any],
         mock_token_endpoint_auth_method: str,
         mock_token_exchange_trusted_issuer: str,
         mock_token_exchange_audience: str,
@@ -148,9 +159,9 @@ class TestXAAMetadata:
         mock_token_request_audience: str,
         mock_token_request_scopes: list[str],
     ) -> None:
-        metadata = XAAMetadata.from_dict(xaa_metadata_in_dict)
+        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
 
-        assert isinstance(metadata, XAAMetadata)
+        assert isinstance(metadata, CrossApplicationAccessMetadata)
         assert metadata.token_endpoint_auth_method == mock_token_endpoint_auth_method
         token_exchange_params = metadata.token_exchange
         assert isinstance(token_exchange_params, XAATokenExchangeParams)
@@ -166,14 +177,25 @@ class TestXAAMetadata:
         self,
         metadata_without_token_request_audience: dict[str, Any],
     ) -> None:
-        metadata = XAAMetadata.from_dict(metadata_without_token_request_audience)
+        metadata = CrossApplicationAccessMetadata.from_dict(metadata_without_token_request_audience)
 
-        assert isinstance(metadata, XAAMetadata)
+        assert isinstance(metadata, CrossApplicationAccessMetadata)
         assert metadata.token_request.audience is None
 
-    def test_to_yaml_string(self, xaa_metadata_in_dict: dict[str, Any]) -> None:
-        metadata = XAAMetadata.from_dict(xaa_metadata_in_dict)
-        assert metadata.to_yaml_string() == yaml.safe_dump(xaa_metadata_in_dict)
+    def test_to_yaml_string(self, cross_application_access_in_dict: dict[str, Any]) -> None:
+        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
+        assert metadata.to_yaml_string() == yaml.safe_dump(cross_application_access_in_dict)
+
+    def test_token_endpoint_auth_method_defaults_when_omitted(
+        self,
+        cross_application_access_in_dict: dict[str, Any],
+    ) -> None:
+        cross_application_access_in_dict.pop("token_endpoint_auth_method")
+
+        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
+
+        assert metadata.token_endpoint_auth_method == DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
+        assert DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD == "private_key_jwt"
 
 
 class TestMCPOAuthProtectedResourceMetadataConfig:
@@ -183,15 +205,92 @@ class TestMCPOAuthProtectedResourceMetadataConfig:
         mock_mcp_as_resource_server_url: str,
         mock_authorization_server_urls: list[str],
         mock_scopes_supported: list[str],
-        xaa_metadata_in_dict: dict[str, Any],
+        cross_application_access_in_dict: dict[str, Any],
     ) -> None:
         metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
 
         assert metadata.resource == mock_mcp_as_resource_server_url
         assert metadata.authorization_servers == mock_authorization_server_urls
         assert metadata.scopes_supported == mock_scopes_supported
-        assert isinstance(metadata.xaa_metadata, XAAMetadata)
+        assert isinstance(metadata.cross_application_access, CrossApplicationAccessMetadata)
 
     def test_to_yaml_string(self, metadata_in_dict: dict[str, Any]) -> None:
         metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
         assert metadata.to_yaml_string() == yaml.safe_dump(metadata_in_dict)
+
+    def test_load_from_dict_with_only_cross_application_access(
+        self,
+        cross_application_access_in_dict: dict[str, Any],
+    ) -> None:
+        """resource/authorization_servers/scopes_supported have no logic behind them yet."""
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(
+            {"cross_application_access": cross_application_access_in_dict}
+        )
+
+        assert metadata.resource is None
+        assert metadata.authorization_servers is None
+        assert metadata.scopes_supported is None
+        assert metadata.mcp_enable_unauthenticated_well_known_route is None
+        assert metadata.to_dict_without_null_attribute() == {
+            "cross_application_access": cross_application_access_in_dict
+        }
+
+    def test_load_from_dict_with_empty_config(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict({})
+
+        assert metadata.cross_application_access is None
+        assert metadata.to_dict_without_null_attribute() == {}
+
+    def test_load_from_dict_reads_unauthenticated_well_known_route_flag(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(
+            {"mcp_enable_unauthenticated_well_known_route": True}
+        )
+
+        assert metadata.mcp_enable_unauthenticated_well_known_route is True
+
+
+class TestMCPOAuthProtectedResourceMetadata:
+    @pytest.fixture
+    def admin_config(self) -> MCPOAuthProtectedResourceMetadataAdminConfig:
+        return MCPOAuthProtectedResourceMetadataAdminConfig(["header"])
+
+    def test_build_publishes_custom_fields_with_x_prefix(
+        self,
+        metadata_in_dict: dict[str, Any],
+        cross_application_access_in_dict: dict[str, Any],
+        admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
+    ) -> None:
+        metadata_in_dict["mcp_enable_unauthenticated_well_known_route"] = True
+        user_config = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
+
+        served = MCPOAuthProtectedResourceMetadata.build(
+            user_config, admin_config
+        ).to_dict_without_null_attribute()
+
+        # Registered RFC 9728 parameters keep their standard names.
+        assert served["resource"] == metadata_in_dict["resource"]
+        assert served["bearer_methods_supported"] == ["header"]
+        # DataRobot extensions are x_-prefixed, and the legacy name is gone.
+        assert served["x_cross_application_access"] == cross_application_access_in_dict
+        assert served["x_mcp_enable_unauthenticated_well_known_route"] is True
+        assert "xaa_metadata" not in served
+        assert "cross_application_access" not in served
+        assert "mcp_enable_unauthenticated_well_known_route" not in served
+
+    def test_build_omits_unset_optional_fields(
+        self,
+        cross_application_access_in_dict: dict[str, Any],
+        admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
+    ) -> None:
+        user_config = MCPOAuthProtectedResourceMetadataConfig.from_dict(
+            {"cross_application_access": cross_application_access_in_dict}
+        )
+
+        served = MCPOAuthProtectedResourceMetadata.build(
+            user_config, admin_config
+        ).to_dict_without_null_attribute()
+
+        assert served == {
+            "bearer_methods_supported": ["header"],
+            "x_cross_application_access": cross_application_access_in_dict,
+        }

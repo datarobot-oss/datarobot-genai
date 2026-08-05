@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.22
+- `drmcpbase/oauth_protected_resource_metadata`: the OAuth protected-resource metadata config renames `xaa_metadata` to `cross_application_access`, matching the agent-side config block of the same name. The old key is not accepted; because unknown keys are ignored, a config still using `xaa_metadata` publishes no Cross-Application Access metadata. `XAAMetadata` is renamed to `CrossApplicationAccessMetadata` with no alias.
+- `drmcpbase/oauth_protected_resource_metadata`: `token_endpoint_auth_method` is now optional and defaults to `private_key_jwt` (the only implemented method). `resource`, `authorization_servers` and `scopes_supported` are optional too — nothing enforces them yet, and unset fields are omitted from the served document instead of raising `KeyError`. A config declaring only `cross_application_access` is valid.
+- `drmcpbase/oauth_protected_resource_metadata`: the document served at `/.well-known/oauth-protected-resource` now `x_`-prefixes DataRobot-specific members to distinguish them from the registered RFC 9728 parameters: `x_cross_application_access`, plus the new `x_mcp_enable_unauthenticated_well_known_route` (now configurable from the metadata YAML instead of only the env var).
+- `dragent`: **fixed** `mcp_client_with_xaa_support` never being able to discover Cross-Application Access parameters from an MCP server. It read the metadata document's `urn:datarobot:nat_mcp_xaa_client` member, which no MCP server published, so an agent that omitted `cross_application_access` failed with a `KeyError`. It now reads `x_cross_application_access` — the member the server actually publishes — and a missing or incomplete block raises an actionable error instead. Note the agent fetches the well-known route unauthenticated, so the MCP server must serve it without auth for discovery to work.
+- `dragent`: `mcp_client_with_xaa_support` no longer requires `token_endpoint_auth_method` in the discovered metadata; it defaults to `private_key_jwt`.
+
 ## 0.26.21
 - `dragent`: A2A agent cards are now redacted for anonymous callers on the public `GET /.well-known/agent-card.json` route. Same-tenant authenticated callers (via `X-DataRobot-Authorization-Context` or `X-DataRobot-User-Id`) receive the full card on that route; cross-tenant access is rejected by the API gateway. The redacted public view strips skills and internal/external identity extensions while preserving auth and cross-application-access metadata. An authenticated extended card is also available through `agent/getAuthenticatedExtendedCard` (`supports_authenticated_extended_card=True`).
 

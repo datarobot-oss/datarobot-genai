@@ -27,18 +27,40 @@ from pydantic import Field
 from pydantic import HttpUrl
 
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
+from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
+#: Member of the protected resource metadata document carrying the
+#: Cross-Application Access block. The ``x_`` prefix marks it as a non-standard
+#: (non-RFC 9728) member. Kept in sync with the ``x_``-prefixed field on
+#: ``drmcpbase.oauth_protected_resource_metadata.entities``'s served metadata
+#: (inlined rather than imported to avoid a dragent -> drmcpbase dependency).
+CROSS_APPLICATION_ACCESS_METADATA_KEY = "x_cross_application_access"
+
 
 def parse_xaa_params_from_mcp_auth_server_metadata(
     mcp_auth_server_metadata: dict[str, Any],
 ) -> _CrossAppFlowParams:
-    xaa_metadata = mcp_auth_server_metadata["urn:datarobot:nat_mcp_xaa_client"]
-    token_endpoint_auth_method = xaa_metadata["token_endpoint_auth_method"]
+    xaa_metadata = mcp_auth_server_metadata.get(CROSS_APPLICATION_ACCESS_METADATA_KEY)
+    if not xaa_metadata:
+        raise RuntimeError(
+            "MCP auth server metadata declares no "
+            f"`{CROSS_APPLICATION_ACCESS_METADATA_KEY}` block. Either configure "
+            "`cross_application_access` on the MCP client, or publish it in the MCP "
+            "server's oauth-config.yaml."
+        )
+
+    missing = [key for key in ("token_exchange", "token_request") if key not in xaa_metadata]
+    if missing:
+        raise RuntimeError(
+            f"MCP auth server metadata `{CROSS_APPLICATION_ACCESS_METADATA_KEY}` block "
+            f"is missing required {', '.join(missing)}."
+        )
+
     token_exchange_metadata = xaa_metadata["token_exchange"]
     token_request_metadata = xaa_metadata["token_request"]
 
@@ -48,7 +70,10 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
         token_url=token_request_metadata["token_url"],
         target_audience=token_request_metadata.get("audience"),
         id_jag_scopes=token_request_metadata["scopes"],
-        token_endpoint_auth_method=token_endpoint_auth_method,
+        # Optional in the document; only private_key_jwt is implemented today.
+        token_endpoint_auth_method=xaa_metadata.get(
+            "token_endpoint_auth_method", TokenEndpointAuthMethod.PRIVATE_KEY_JWT.value
+        ),
     )
 
 

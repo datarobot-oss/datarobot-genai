@@ -20,6 +20,14 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Only ``private_key_jwt`` is implemented today, so the config may omit it.
+DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD = "private_key_jwt"
+
+# Config key for the Cross-Application Access block. In the *served* document it
+# becomes ``x_cross_application_access``: members that are not registered RFC 9728
+# parameters carry an ``x_`` prefix so clients can tell them apart.
+CROSS_APPLICATION_ACCESS_CONFIG_KEY = "cross_application_access"
+
 
 class BaseDataClass:
     def to_dict_without_null_attribute(self) -> dict[str, Any]:
@@ -55,41 +63,64 @@ class XAATokenRequestParams(BaseDataClass):
 
 
 @dataclass
-class XAAMetadata(BaseDataClass):
-    token_endpoint_auth_method: str
+class CrossApplicationAccessMetadata(BaseDataClass):
+    """Cross-Application Access parameters for the hybrid RFC 8693 / RFC 7523 flow.
+
+    Mirrors ``dragent.cross_app_access_config.CrossApplicationAccessConfig`` so an
+    agent can either declare the block itself or read this one off the MCP
+    server's protected resource metadata document.
+    """
+
     token_exchange: XAATokenExchangeParams
     token_request: XAATokenRequestParams
+    token_endpoint_auth_method: str = DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
 
     @classmethod
-    def from_dict(cls, metadata_in_dict: dict[str, Any]) -> "XAAMetadata":
+    def from_dict(cls, metadata_in_dict: dict[str, Any]) -> "CrossApplicationAccessMetadata":
         return cls(
-            metadata_in_dict["token_endpoint_auth_method"],
-            XAATokenExchangeParams.from_dict(metadata_in_dict["token_exchange"]),
-            XAATokenRequestParams.from_dict(metadata_in_dict["token_request"]),
+            token_exchange=XAATokenExchangeParams.from_dict(metadata_in_dict["token_exchange"]),
+            token_request=XAATokenRequestParams.from_dict(metadata_in_dict["token_request"]),
+            token_endpoint_auth_method=metadata_in_dict.get(
+                "token_endpoint_auth_method", DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
+            ),
         )
 
 
 @dataclass
 class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
-    resource: str
-    authorization_servers: list[str]
-    scopes_supported: list[str]
-    xaa_metadata: XAAMetadata | None
+    """User-authored config (``dr_mcp/oauth-config.yaml`` / ``MCP_OAUTH_METADATA``).
+
+    Every field is optional: ``resource``, ``authorization_servers`` and
+    ``scopes_supported`` are published verbatim but nothing enforces them yet, so
+    a config that only declares ``cross_application_access`` is valid. Unknown
+    keys are ignored, so a config still using the pre-rename ``xaa_metadata``
+    block silently publishes no Cross-Application Access metadata.
+    """
+
+    resource: str | None = None
+    authorization_servers: list[str] | None = None
+    scopes_supported: list[str] | None = None
+    cross_application_access: CrossApplicationAccessMetadata | None = None
+    mcp_enable_unauthenticated_well_known_route: bool | None = None
 
     @classmethod
     def from_dict(
         cls, metadata_in_dict: dict[str, Any]
     ) -> "MCPOAuthProtectedResourceMetadataConfig":
-        xaa_metadata = (
-            XAAMetadata.from_dict(metadata_in_dict["xaa_metadata"])
-            if metadata_in_dict.get("xaa_metadata")
+        cross_application_access_in_dict = metadata_in_dict.get(CROSS_APPLICATION_ACCESS_CONFIG_KEY)
+        cross_application_access = (
+            CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
+            if cross_application_access_in_dict
             else None
         )
         return cls(
-            metadata_in_dict["resource"],
-            metadata_in_dict["authorization_servers"],
-            metadata_in_dict["scopes_supported"],
-            xaa_metadata,
+            resource=metadata_in_dict.get("resource"),
+            authorization_servers=metadata_in_dict.get("authorization_servers"),
+            scopes_supported=metadata_in_dict.get("scopes_supported"),
+            cross_application_access=cross_application_access,
+            mcp_enable_unauthenticated_well_known_route=metadata_in_dict.get(
+                "mcp_enable_unauthenticated_well_known_route"
+            ),
         )
 
 
@@ -100,11 +131,21 @@ class MCPOAuthProtectedResourceMetadataAdminConfig(BaseDataClass):
 
 @dataclass
 class MCPOAuthProtectedResourceMetadata(BaseDataClass):
-    resource: str
-    authorization_servers: list[str]
+    """The document served at ``/.well-known/oauth-protected-resource``.
+
+    Registered RFC 9728 parameters keep their standard names; everything
+    DataRobot-specific is ``x_``-prefixed. Unset fields are dropped by
+    ``to_dict_without_null_attribute``, so a config that only declares
+    ``cross_application_access`` yields just the XAA block plus
+    ``bearer_methods_supported``.
+    """
+
     bearer_methods_supported: list[str]
-    scopes_supported: list[str]
-    xaa_metadata: XAAMetadata | None
+    resource: str | None = None
+    authorization_servers: list[str] | None = None
+    scopes_supported: list[str] | None = None
+    x_cross_application_access: CrossApplicationAccessMetadata | None = None
+    x_mcp_enable_unauthenticated_well_known_route: bool | None = None
 
     @classmethod
     def build(
@@ -113,9 +154,12 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
         admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
     ) -> "MCPOAuthProtectedResourceMetadata":
         return cls(
-            user_config.resource,
-            user_config.authorization_servers,
-            admin_config.bearer_methods_supported,
-            user_config.scopes_supported,
-            user_config.xaa_metadata,
+            bearer_methods_supported=admin_config.bearer_methods_supported,
+            resource=user_config.resource,
+            authorization_servers=user_config.authorization_servers,
+            scopes_supported=user_config.scopes_supported,
+            x_cross_application_access=user_config.cross_application_access,
+            x_mcp_enable_unauthenticated_well_known_route=(
+                user_config.mcp_enable_unauthenticated_well_known_route
+            ),
         )
