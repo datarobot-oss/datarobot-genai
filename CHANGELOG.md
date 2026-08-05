@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.26.32
+## 0.27.0
 - `dragent`: added `enable_unauthenticated_well_known_route` to `DRAgentA2AConfig` as the per-agent developer opt-in for unauthenticated `GET /.well-known/agent-card.json`. Unauthenticated access also requires platform-level opt-in per cluster (routing is configured outside this library). Both must be enabled: when the agent flag is disabled (default), unauthenticated requests receive 401 regardless of platform settings; when enabled, anonymous callers receive a redacted agent card. Authenticated callers always receive the full card.
 
 ## 0.26.31
