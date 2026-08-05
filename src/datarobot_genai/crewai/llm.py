@@ -30,6 +30,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GenAi
 from opentelemetry.trace import SpanKind
 from opentelemetry.trace.status import Status
 from opentelemetry.trace.status import StatusCode
+from pydantic import PrivateAttr
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
@@ -50,11 +51,6 @@ def _model_supports_tool_calling(model: str) -> bool | None:
     except Exception:
         return None
     return bool(info.get("supports_function_calling")) or bool(info.get("supports_tool_choice"))
-
-
-def _is_deployment_chat_completions_api_base(api_base: str | None) -> bool:
-    """Whether *api_base* targets a DataRobot deployment ``/chat/completions`` endpoint."""
-    return api_base is not None and "/deployments/" in api_base and "chat/completions" in api_base
 
 
 # Keywords that are invalid when null/empty under JSON Schema draft 2020-12.
@@ -131,12 +127,16 @@ class LitellmStopWordLLM(LLM):
     the underlying API silently ignores the stop parameter.
     """
 
+    _assume_native_tool_calling_when_unmapped: bool = PrivateAttr(default=False)
+
     def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmStopWordLLM":
         return object.__new__(cls)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        assume_native = kwargs.pop("assume_native_tool_calling_when_unmapped", False)
         super().__init__(*args, **kwargs)
         self.is_litellm = True
+        self._assume_native_tool_calling_when_unmapped = assume_native
 
     def _collect_chunk(
         self,
@@ -330,15 +330,19 @@ class LitellmStopWordLLM(LLM):
         supported = _model_supports_tool_calling(self.model)
         if supported is not None:
             return supported
-        # LiteLLM's model catalog omits many NIM / on-prem deployment model strings.
-        # CrewAI only uses native tool calling when this returns True; defaulting to
-        # ReAct on an unresolved model breaks NIM models that do stream tool_calls.
-        if _is_deployment_chat_completions_api_base(getattr(self, "api_base", None)):
+        # LiteLLM has no catalog entry for many NIM-served models (e.g. gpt-oss-20b),
+        # so litellm.utils.supports_function_calling() returns False and CrewAI falls
+        # back to ReAct. NIM LLMs are created with assume_native_tool_calling_when_unmapped.
+        if self._assume_native_tool_calling_when_unmapped:
             return True
         return super().supports_function_calling()
 
 
-def _crewai_model_factory(config: dict) -> LLM:
+def _crewai_model_factory(
+    config: dict[str, Any],
+    *,
+    assume_native_tool_calling_when_unmapped: bool = False,
+) -> LLM:
     # ``stream_options`` is applied per litellm request in LitellmStopWordLLM (only when
     # ``stream=true``). Do not persist it in ``additional_params`` — Azure gateways reject it
     # on non-streaming calls.
@@ -348,7 +352,9 @@ def _crewai_model_factory(config: dict) -> LLM:
     # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
     # Multiple config types (Deployment, Component, Litellm) flow through here.
     config.pop("verify_ssl", None)
-    return LitellmStopWordLLM(**config)
+    llm = LitellmStopWordLLM(**config)
+    llm._assume_native_tool_calling_when_unmapped = assume_native_tool_calling_when_unmapped
+    return llm
 
 
 def get_datarobot_gateway_llm(
@@ -420,7 +426,7 @@ def get_datarobot_nim_llm(
         apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
     )
     config["model"] = model_name
-    return _crewai_model_factory(config)
+    return _crewai_model_factory(config, assume_native_tool_calling_when_unmapped=True)
 
 
 def get_external_llm(

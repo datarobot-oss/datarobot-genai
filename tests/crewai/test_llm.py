@@ -628,12 +628,23 @@ class TestFormatMessagesForProvider:
 
 
 def test_nim_llm_assumes_tool_calling_when_litellm_unmapped() -> None:
-    """NIM deployment endpoints should use native tool calling even when litellm
-    has no catalog entry for the served model (e.g. gpt-oss-20b).
-    """
+    """NIM LLMs should use native tool calling when litellm has no catalog entry."""
     llm = crewai_llm.get_datarobot_nim_llm("nim-1", "datarobot/openai/gpt-oss-20b")
     assert llm.api_base == "https://example.test/deployments/nim-1/chat/completions"
-    assert llm.supports_function_calling() is True
+    assert llm._assume_native_tool_calling_when_unmapped is True
+    with patch.object(crewai_llm, "_model_supports_tool_calling", return_value=None):
+        assert llm.supports_function_calling() is True
+
+
+def test_deployment_llm_does_not_assume_tool_calling_when_litellm_unmapped() -> None:
+    """Non-NIM deployments defer to litellm when the model is unmapped."""
+    llm = crewai_llm.get_datarobot_deployment_llm("dep-1", "datarobot/openai/gpt-oss-20b")
+    assert llm._assume_native_tool_calling_when_unmapped is False
+    with (
+        patch.object(crewai_llm, "_model_supports_tool_calling", return_value=None),
+        patch.object(LLM, "supports_function_calling", return_value=False),
+    ):
+        assert llm.supports_function_calling() is False
 
 
 def test_gateway_llm_derives_function_calling_from_tool_choice() -> None:
