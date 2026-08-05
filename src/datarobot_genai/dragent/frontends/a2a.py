@@ -445,7 +445,12 @@ def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> Agen
 
 
 class DRAgentA2AStarletteApplication(A2AStarletteApplication):
-    """A2A server that gates public agent-card access on developer opt-in."""
+    """A2A server that gates public agent-card access on per-agent developer opt-in.
+
+    Unauthenticated access also depends on platform-level opt-in per cluster to
+    route anonymous traffic to the agent; this class enforces only the agent-side
+    policy once a request reaches the process.
+    """
 
     def __init__(
         self,
@@ -499,9 +504,14 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
     ) -> DRAgentA2AStarletteApplication:
         """Create an A2A server with identity-keyed public and extended agent cards.
 
-        The public ``GET /.well-known/agent-card.json`` route returns 401 for
-        unauthenticated callers unless ``enable_unauthenticated_well_known_route``
-        is enabled, in which case a redacted card is served. Authenticated callers
+        Unauthenticated ``GET /.well-known/agent-card.json`` access requires opt-in
+        at two levels: platform administrators must enable unauthenticated routing
+        per cluster, and ``enable_unauthenticated_well_known_route`` must be set
+        in the agent's ``workflow.yaml``. This method enforces the agent-side
+        flag only.
+
+        When the agent flag is disabled (default), unauthenticated callers receive
+        401. When enabled, they receive a redacted card. Authenticated callers
         always receive the full card. ``extended_agent_card`` is also wired for
         ``agent/getAuthenticatedExtendedCard`` clients.
         """

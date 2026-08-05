@@ -164,7 +164,8 @@ general:
         id: "my-agent-id"       # Emitted as urn:datarobot:agent:identity:external
         url: "https://my-agent-id.example.com/a2a/"  # Overrides the auto-generated card URL
 
-      # Optional: opt in to serving the agent card without authentication
+      # Optional: per-agent opt-in for unauthenticated agent-card access
+      # (also requires platform-level opt-in per cluster)
       enable_unauthenticated_well_known_route: true
 
 # Client-side: call a remote XAA-protected agent
@@ -235,7 +236,24 @@ identity metadata and the agent card URL.
 |-------|---------|
 | `external.id` | Catalog discovery identifier. Emitted as the `urn:datarobot:agent:identity:external` extension on the agent card. |
 | `external.url` | Overrides the auto-generated agent card endpoint URL. Used as-is — no normalization is applied. |
-| `enable_unauthenticated_well_known_route` | When `true`, unauthenticated `GET /.well-known/agent-card.json` requests receive a redacted agent card. When `false` (default), unauthenticated requests receive 401. Authenticated callers always receive the full card. |
+
+### Server-side configuration reference: `enable_unauthenticated_well_known_route`
+
+Unauthenticated access to `GET /.well-known/agent-card.json` requires **two**
+independent opt-ins:
+
+1. **Platform (per cluster)** — cluster administrators enable routing of
+   unauthenticated traffic to agents. This is configured outside `workflow.yaml`.
+2. **Agent (per deployment)** — set `enable_unauthenticated_well_known_route:
+   true` under `general.front_end.a2a` in the agent's `workflow.yaml`.
+
+Both must be enabled for anonymous callers to reach the agent card endpoint.
+The agent-side flag is enforced by the A2A server in this library; platform
+routing is enforced before the request reaches the agent process.
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive 401. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 
