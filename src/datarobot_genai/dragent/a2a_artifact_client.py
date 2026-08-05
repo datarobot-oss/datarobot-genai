@@ -335,29 +335,51 @@ def _iter_tasks(events: list[Any]) -> list[Any]:
 def iter_artifacts(events: list[Any]) -> list[Any]:
     """Collect every ``Artifact`` from a list of A2A response events.
 
-    Handles both response shapes -- a bare ``Message`` (which carries no
-    artifacts) and ``ClientEvent`` tuples carrying a ``Task`` -- and
-    de-duplicates by ``artifact_id``, because a task and its update events can
-    both reference the same artifact.
+    Handles both response shapes: a bare ``Message`` (which carries no artifacts)
+    and ``ClientEvent`` tuples carrying a ``Task``.
+
+    Artifacts are keyed by ``artifact_id``, because a task and its update events
+    can both reference the same artifact. A2A permits an artifact to arrive in
+    **chunks** (``TaskArtifactUpdateEvent.append``), so repeat sightings of an id
+    have their parts *merged* rather than discarded -- taking only the first
+    sighting would silently truncate a chunked artifact. Parts already present are
+    not duplicated, so a peer that re-sends a complete artifact is handled too.
 
     Args:
         events: Events returned by a parts-aware send.
 
     Returns:
-        Artifacts in first-seen order. Empty if the peer replied with a
-        ``Message``, or with a ``Task`` carrying none.
+        Artifacts in first-seen order, each carrying every part observed for it.
+        Empty if the peer replied with a ``Message``, or with a ``Task`` carrying
+        none.
     """
     artifacts: list[Any] = []
-    seen: set[str] = set()
+    by_key: dict[str, Any] = {}
+    anonymous = 0
 
     for task in _iter_tasks(events):
         for artifact in getattr(task, "artifacts", None) or []:
             artifact_id = getattr(artifact, "artifact_id", None)
-            key = str(artifact_id) if artifact_id else f"_anon_{len(seen)}"
-            if key in seen:
+            if artifact_id:
+                key = str(artifact_id)
+            else:
+                # No id to correlate on, so it cannot be a chunk of anything.
+                key = f"_anon_{anonymous}"
+                anonymous += 1
+
+            existing = by_key.get(key)
+            if existing is None:
+                by_key[key] = artifact
+                artifacts.append(artifact)
                 continue
-            seen.add(key)
-            artifacts.append(artifact)
+
+            # Same artifact seen again: merge any parts we haven't already got.
+            known = getattr(existing, "parts", None)
+            if known is None:
+                continue
+            for part in getattr(artifact, "parts", None) or []:
+                if part not in known:
+                    known.append(part)
 
     return artifacts
 

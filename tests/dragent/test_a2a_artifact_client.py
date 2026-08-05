@@ -230,8 +230,39 @@ class TestIterArtifacts:
         task = _task([artifact])
         # WHEN artifacts are collected across both events
         artifacts = iter_artifacts([(task, None), (task, None)])
-        # THEN it appears once, not twice
+        # THEN it appears once, and its parts are not duplicated either
         assert len(artifacts) == 1
+        assert len(artifacts[0].parts) == 1
+
+    def test_merges_parts_of_a_chunked_artifact(self) -> None:
+        # GIVEN one artifact_id arriving in two chunks, as A2A permits via
+        # TaskArtifactUpdateEvent.append
+        first = _task(
+            [_artifact("report", [Part(root=TextPart(text="part-1"))], artifact_id="c")],
+            state=TaskState.working,
+        )
+        second = _task(
+            [_artifact("report", [Part(root=TextPart(text="part-2"))], artifact_id="c")]
+        )
+        # WHEN artifacts are collected across both events
+        artifacts = iter_artifacts([(first, None), (second, None)])
+        # THEN the chunks are merged rather than the later one being dropped --
+        # first-seen-wins would silently truncate a streamed artifact
+        assert len(artifacts) == 1
+        texts = [p.root.text for p in artifacts[0].parts]
+        assert texts == ["part-1", "part-2"]
+
+    def test_keeps_anonymous_artifacts_separate(self) -> None:
+        # GIVEN two artifacts with no artifact_id to correlate on
+        task = _task(
+            [
+                Artifact(artifact_id="", name="a", parts=[Part(root=TextPart(text="1"))]),
+                Artifact(artifact_id="", name="b", parts=[Part(root=TextPart(text="2"))]),
+            ]
+        )
+        # WHEN collected
+        # THEN they are not merged into one: with no id, neither can be a chunk
+        assert len(iter_artifacts([task])) == 2
 
     def test_preserves_distinct_artifacts(self) -> None:
         # GIVEN two different artifacts

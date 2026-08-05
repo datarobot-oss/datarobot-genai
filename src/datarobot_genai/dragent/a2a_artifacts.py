@@ -627,6 +627,16 @@ class TaskArtifactAgentExecutor:
         if self.task_mode == "never" or not artifacts:
             # Nothing task-shaped to return: a plain Message is cheaper and is what
             # callers of a message-only agent already expect.
+            if artifacts:
+                # task_mode="never" is explicit, so honour it -- but this is a
+                # silent data-loss path if it was set by mistake, and A2A gives us
+                # nowhere to put artifacts on a Message.
+                logger.warning(
+                    "task_mode='never' is discarding %d artifact(s) built for this "
+                    "request; artifacts can only be carried by a Task. Use "
+                    "task_mode='auto' to return them when they exist.",
+                    len(artifacts),
+                )
             await event_queue.enqueue_event(
                 new_agent_text_message(response_text, context_id=context.context_id, task_id=None)
             )
