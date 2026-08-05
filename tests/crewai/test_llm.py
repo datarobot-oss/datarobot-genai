@@ -607,6 +607,15 @@ class TestFormatMessagesForProvider:
         assert result[-2] == {"role": "assistant", "content": "I'll use the tool now."}
 
 
+def test_nim_llm_assumes_tool_calling_when_litellm_unmapped() -> None:
+    """NIM deployment endpoints should use native tool calling even when litellm
+    has no catalog entry for the served model (e.g. gpt-oss-20b).
+    """
+    llm = crewai_llm.get_datarobot_nim_llm("nim-1", "datarobot/openai/gpt-oss-20b")
+    assert llm.api_base == "https://example.test/deployments/nim-1/chat/completions"
+    assert llm.supports_function_calling() is True
+
+
 def test_gateway_llm_derives_function_calling_from_tool_choice() -> None:
     """Gateway models report tool-calling support even when litellm omits
     ``supports_function_calling`` but sets ``supports_tool_choice`` (e.g. the

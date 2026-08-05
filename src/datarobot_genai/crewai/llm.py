@@ -52,6 +52,11 @@ def _model_supports_tool_calling(model: str) -> bool | None:
     return bool(info.get("supports_function_calling")) or bool(info.get("supports_tool_choice"))
 
 
+def _is_deployment_chat_completions_api_base(api_base: str | None) -> bool:
+    """Whether *api_base* targets a DataRobot deployment ``/chat/completions`` endpoint."""
+    return api_base is not None and "/deployments/" in api_base and "chat/completions" in api_base
+
+
 # Keywords that are invalid when null/empty under JSON Schema draft 2020-12.
 _EMPTY_INVALID_KEYS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems", "enum"})
 
@@ -294,7 +299,14 @@ class LitellmStopWordLLM(LLM):
 
     def supports_function_calling(self) -> bool:
         supported = _model_supports_tool_calling(self.model)
-        return supported if supported is not None else super().supports_function_calling()
+        if supported is not None:
+            return supported
+        # LiteLLM's model catalog omits many NIM / on-prem deployment model strings.
+        # CrewAI only uses native tool calling when this returns True; defaulting to
+        # ReAct on an unresolved model breaks NIM models that do stream tool_calls.
+        if _is_deployment_chat_completions_api_base(getattr(self, "api_base", None)):
+            return True
+        return super().supports_function_calling()
 
 
 def _crewai_model_factory(config: dict) -> LLM:
