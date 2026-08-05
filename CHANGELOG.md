@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.31
+- `dragent`: A2A agent cards always include `securitySchemes`. Agents without `server_auth` or `cross_application_access` advertise HTTP Bearer auth (`bearerAuth`) for DataRobot API tokens; OAuth-configured agents continue to publish `oauth2` schemes.
+
 ## 0.26.30
 - `drmcputils/categories` + `drmcpbase/fastmcp_transforms`: **`x-datarobot-mcp-tools: dr_user_tools` now selects the user's tools instead of hiding every tool.** The marker-resolved buckets (`dr_user_tools`, `dr_dynamic_tools`) name no static tools — membership comes from each tool's `meta.tool_category` marker at request time — so `resolve_to_tool_names`, a pure function over the taxonomy with no view of the catalog, expanded them to the empty set. A present-but-empty allowlist is a hard deny (deliberately, since 0.26.30's Tool Sets change), so picking "Your own tools" in a category picker returned nothing at all. The header now parses into a **`ToolAllowlist`** that records *how* each name arrived, because "the client named this tool" and "this name fell out of expanding a category" are different permissions that a flat `frozenset[str]` could not tell apart:
   - `explicit` — names the client wrote (and unknown tokens, which simply match nothing). Admits any tool with that name.
