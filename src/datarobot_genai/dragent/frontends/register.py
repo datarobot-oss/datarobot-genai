@@ -77,6 +77,28 @@ class DRAgentA2AConfig(BaseModel):
         default=None,
         description="External identity and URL override for the agent card.",
     )
+    artifact_builder: str | None = Field(
+        default=None,
+        description=(
+            "Dotted import path to a class implementing "
+            "datarobot_genai.dragent.a2a_artifacts.ArtifactBuilder, e.g. "
+            "'myapp.finance.FinanceArtifacts'. Its build_artifacts(inputs, "
+            "response_text) return value is published as A2A Artifacts, enabling "
+            "Tasks, Files and Images. When unset, the agent replies with plain "
+            "Messages."
+        ),
+    )
+    task_mode: typing.Literal["auto", "always", "never"] = Field(
+        default="auto",
+        description=(
+            "Response shape. Both Task and Message are valid message/send results. "
+            "'auto': return a Message when the builder produces no artifacts, a "
+            "Task when it does (no progress events, since the outcome decides). "
+            "'always': open a Task up front and emit submitted -> working -> "
+            "completed, for long-running work. 'never': always reply with a "
+            "Message."
+        ),
+    )
 
 
 # Register frontend

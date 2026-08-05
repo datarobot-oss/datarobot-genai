@@ -17,6 +17,7 @@ import asyncio
 import functools
 import inspect
 import logging
+import mimetypes
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Protocol
@@ -43,6 +44,9 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
+from datarobot_genai.dragent.a2a_artifact_client import OutboundFile
+from datarobot_genai.dragent.a2a_artifact_client import build_client_message
+from datarobot_genai.dragent.a2a_artifact_client import summarize_task
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
@@ -199,6 +203,69 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         logger.info("Connected to A2A agent at %s", self._base_url)
         return self
 
+    async def send_parts(
+        self,
+        text: str | None = None,
+        files: list[OutboundFile] | None = None,
+        data: dict[str, Any] | None = None,
+        *,
+        task_id: str | None = None,
+        context_id: str | None = None,
+    ) -> list[Any]:
+        """Send a multi-part message and return the raw response events.
+
+        NAT's :meth:`send_message` takes ``message_text: str`` and builds a
+        single ``TextPart``, so inbound files and structured data cannot be
+        expressed through it. This sends a full ``Message`` instead.
+
+        Authentication is unchanged: the message goes through the same a2a-sdk
+        client and the same interceptors configured in :meth:`__aenter__`, so
+        the Okta cross-application-access exchange applies exactly as it does to
+        a text-only call.
+
+        Args:
+            text: Optional text body.
+            files: Optional attachments (images, CSVs, PDFs ...).
+            data: Optional structured payload.
+            task_id: Set to continue an existing task.
+            context_id: Set to stay within an existing conversation context.
+
+        Returns:
+            Raw response events. Each is either a ``Message`` or a
+            ``ClientEvent`` tuple of ``(Task, UpdateEvent | None)``. Pass to
+            :func:`~datarobot_genai.dragent.a2a_artifact_client.iter_artifacts`
+            or :func:`~datarobot_genai.dragent.a2a_artifact_client.summarize_task`.
+
+        Raises:
+            RuntimeError: If the client was not initialised via ``async with``.
+            ValueError: If no part of any kind was supplied.
+        """
+        if not self._client:
+            raise RuntimeError(
+                "A2A client not initialized -- enter the function group via "
+                "'async with' before calling send_parts()."
+            )
+
+        message = build_client_message(
+            text=text,
+            files=files,
+            data=data,
+            task_id=task_id,
+            context_id=context_id,
+        )
+
+        events: list[Any] = []
+        async for event in self._client.send_message(message):
+            events.append(event)
+
+        logger.info(
+            "A2A multi-part send returned %d event(s) (files=%d, data=%s)",
+            len(events),
+            len(files or []),
+            data is not None,
+        )
+        return events
+
 
 class AgentCardRegistryLookup(BaseModel):
     """Identifies an agent card in the central DataRobot agent card registry.
@@ -276,6 +343,15 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
     registry: AgentCardRegistryLookup | None = Field(
         default=None,
         description="Central DataRobot agent card registry lookup. Mutually exclusive with 'url'.",
+    )
+
+    artifact_client: bool = Field(
+        default=False,
+        description="Register artifact-aware functions alongside NAT's text-only "
+        "'call'. Adds 'send_with_attachments' (send files and structured data, "
+        "read every returned artifact) and 'get_task_artifacts' (re-read a known "
+        "task's artifacts). Off by default: registering extra functions changes "
+        "which tools an agent's LLM can select, so this is opt-in.",
     )
 
     @model_validator(mode="after")
@@ -446,6 +522,148 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
 
             fn = _raise_registry_error
         super().add_function(name, _wrap_a2a_function(fn), **kwargs)
+
+    async def send_parts(
+        self,
+        text: str | None = None,
+        files: list[OutboundFile] | None = None,
+        data: dict[str, Any] | None = None,
+        *,
+        task_id: str | None = None,
+        context_id: str | None = None,
+    ) -> list[Any]:
+        """Send a multi-part A2A message and return the raw response events.
+
+        The programmatic entry point for callers that need files, images or
+        structured data on the wire. Authentication -- including the Okta
+        cross-application-access exchange -- applies unchanged, because this
+        reuses the function group's own authenticated client.
+
+        Args:
+            text: Optional text body.
+            files: Optional attachments.
+            data: Optional structured payload.
+            task_id: Set to continue an existing task.
+            context_id: Set to stay within an existing conversation context.
+
+        Returns:
+            Raw response events, for
+            :func:`~datarobot_genai.dragent.a2a_artifact_client.iter_artifacts`,
+            :func:`~datarobot_genai.dragent.a2a_artifact_client.summarize_task`
+            or
+            :func:`~datarobot_genai.dragent.a2a_artifact_client.save_task_files`.
+
+        Raises:
+            RuntimeError: If the client is unavailable, including when a registry
+                lookup failed and the group initialised in degraded mode.
+            ValueError: If no part of any kind was supplied.
+        """
+        registry_error = getattr(self, "_registry_error", None)
+        if registry_error is not None:
+            raise RuntimeError(
+                f"A2A client unavailable: agent card registry lookup failed ({registry_error})"
+            )
+
+        send_parts = getattr(self._client, "send_parts", None)
+        if send_parts is None:
+            raise RuntimeError(
+                "A2A client does not support multi-part send -- expected "
+                "_AuthenticatedA2ABaseClient. Ensure the function group was "
+                "entered via 'async with'."
+            )
+
+        return await send_parts(  # type: ignore[no-any-return]
+            text=text,
+            files=files,
+            data=data,
+            task_id=task_id,
+            context_id=context_id,
+        )
+
+    def _register_functions(self) -> None:
+        """Register NAT's functions, plus artifact-aware ones when enabled.
+
+        ``super()`` registers the stock three-level API, of which ``call`` is
+        text-only in both directions. When ``artifact_client`` is set, two more
+        functions are added so an agent's LLM can send attachments and read
+        artifacts without the application writing its own A2A client.
+        """
+        super()._register_functions()
+
+        config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]
+        if not getattr(config, "artifact_client", False):
+            return
+
+        async def send_with_attachments(
+            message: str,
+            attach_data: dict[str, Any] | None = None,
+            attach_uris: list[str] | None = None,
+        ) -> str:
+            """Send a message to the remote agent and report every artifact returned.
+
+            Files are attached **by URI** rather than by content, because a model
+            cannot emit raw bytes. To send bytes, call
+            :meth:`AuthenticatedA2AClientFunctionGroup.send_parts` from code with
+            :class:`~datarobot_genai.dragent.a2a_artifact_client.OutboundFile`.
+
+            Args:
+                message: The text to send.
+                attach_data: Optional structured payload, sent as a DataPart.
+                attach_uris: Optional file URIs, each sent as a FilePart. The MIME
+                    type is inferred from the extension. Note that an A2A URI
+                    carries none of the call's authentication, so the receiving
+                    agent must be able to fetch it independently.
+
+            Returns:
+                A rendered report of the task state and every artifact.
+            """
+            files = [
+                OutboundFile(
+                    name=uri.rstrip("/").rsplit("/", 1)[-1] or "attachment",
+                    mime_type=mimetypes.guess_type(uri)[0] or "application/octet-stream",
+                    uri=uri,
+                )
+                for uri in attach_uris or []
+            ]
+            events = await self.send_parts(
+                text=message, files=files or None, data=attach_data
+            )
+            return summarize_task(events)
+
+        async def get_task_artifacts(task_id: str) -> str:
+            """Re-read the artifacts of a task by id.
+
+            Args:
+                task_id: The task to inspect.
+
+            Returns:
+                A rendered report of the task state and every artifact.
+            """
+            task = await self._client.get_task(task_id)  # type: ignore[union-attr]
+            return summarize_task([task])
+
+        self.add_function(
+            name="send_with_attachments",
+            fn=send_with_attachments,
+            description=(
+                "Send a message to this agent and read back everything it returns, "
+                "including files, images and structured data. Use this instead of "
+                "'call' whenever the reply may contain artifacts, or when the user "
+                "asks what files or images the other agent produced."
+            ),
+        )
+        self.add_function(
+            name="get_task_artifacts",
+            fn=get_task_artifacts,
+            description=(
+                "List the artifacts (files, images, structured data) attached to a "
+                "known task_id on this agent."
+            ),
+        )
+        logger.info(
+            "Registered artifact-aware A2A client functions "
+            "(send_with_attachments, get_task_artifacts)"
+        )
 
     async def __aenter__(self) -> "AuthenticatedA2AClientFunctionGroup":
         config: AuthenticatedA2AClientConfig = self._config  # type: ignore[assignment]

@@ -4,6 +4,64 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.25
+- `dragent`: added A2A **Tasks, Artifacts, Files and Images** support via the new
+  `datarobot_genai.dragent.a2a_artifacts` module. NAT's `NATWorkflowAgentExecutor` is
+  message-only (`get_user_input()` drops inbound files, `to_type=str` flattens the result,
+  and it returns a bare `Message`) — and because A2A `Artifact`s only exist on a `Task`,
+  artifacts were structurally impossible, not merely unsupported.
+  - An application implements one method — `ArtifactBuilder.build_artifacts(inputs,
+    response_text)` — and returns artifacts built with the module-level helpers
+    `text_artifact`, `data_artifact`, `file_artifact` (inline `FileWithBytes`),
+    `file_uri_artifact` (`FileWithUri`), and `mixed_artifact` (several part kinds in one
+    artifact). No base class, no imports from private modules.
+  - `extract_request_inputs()` parses **every** inbound part kind (text, file, data) into
+    `A2ARequestInputs` / `InboundFile`, with tolerant base64 decoding so one malformed
+    attachment cannot fail a request.
+  - `TaskArtifactAgentExecutor` owns the whole lifecycle — task creation, state
+    transitions, artifact publication, failure handling, cancellation. It is concrete and
+    public; subclass it directly to override `run_workflow`.
+  - `cancel()` now publishes a terminal `canceled` state instead of always raising
+    `UnsupportedOperationError`. Best-effort bookkeeping — it does not preempt in-flight work.
+- `dragent`: added `a2a.artifact_builder` — a dotted import path to an `ArtifactBuilder`
+  implementation. Applications publish Tasks and Artifacts without registering a
+  front-end plugin. Misconfiguration (bad path, non-class, missing `build_artifacts`) is
+  reported at startup rather than at request time.
+- `dragent`: added `a2a.task_mode` (`auto` | `always` | `never`). Both `Task` and `Message`
+  are valid `message/send` results, so the response shape is now selectable: `auto`
+  (default) returns a `Message` when the builder produces no artifacts and a `Task` when it
+  does; `always` opens a `Task` up front and emits `submitted → working → completed` for
+  long-running work; `never` always replies with a `Message`. Default `auto` is
+  non-breaking for existing callers.
+- `dragent`: the internal per-user A2A executor gained a single `_run_request` seam.
+  Response behaviour is layered by overriding that instead of `execute()`, so per-user
+  identity resolution and inbound-header forwarding (which Okta cross-application access
+  depends on) cannot be bypassed by a subclass.
+- `dragent`: added the **consuming** half via the new
+  `datarobot_genai.dragent.a2a_artifact_client` module. NAT flattens A2A in both
+  directions — `A2ABaseClient.send_message(message_text: str)` can only build a
+  text-only `Message`, and `extract_text_from_events()` discards artifacts — so an
+  agent could neither send files nor read artifacts back. Neither is a protocol limit:
+  the raw events already carry every artifact.
+  - `OutboundFile` plus `build_client_message` / `build_send_message_payload` put text,
+    files (inline `FileWithBytes` or referenced `FileWithUri`) and structured
+    `DataPart`s on the wire, typed or as raw JSON-RPC.
+  - `iter_artifacts`, `summarize_task` and `save_task_files` read them back.
+    `iter_artifacts` de-duplicates by `artifact_id`, since a task and its update
+    events can both reference the same artifact. `save_task_files` writes inline files
+    only, flattening names to their basename so an artifact cannot traverse out of the
+    output directory.
+- `dragent`: `authenticated_a2a_client` gained `send_parts()`, which sends a full
+  multi-part `Message` through the function group's own authenticated client — so the
+  Okta cross-application-access exchange applies exactly as it does to a text-only
+  call. Applications no longer need to reach into `_client._client` to borrow it.
+- `dragent`: added the `artifact_client` config key to `authenticated_a2a_client`
+  (default `false`). When set, registers two further functions alongside NAT's
+  text-only `call`: `send_with_attachments` (send text, structured data and file URIs;
+  returns a rendered report of every artifact) and `get_task_artifacts` (re-read a
+  known task's artifacts). Opt-in because registering functions changes which tools an
+  agent's LLM can select; unset, tool selection is unchanged.
+
 ## 0.26.24
 - Initial cve-sync resync of constraints and overrides.
 - Address CVEs for a large number of packages
