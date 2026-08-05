@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.25
+- `crewai`: NIM deployment LLMs now assume native tool calling when LiteLLM has no catalog entry for the served model, so CrewAI uses streamed tool calls instead of falling back to ReAct.
+
 ## 0.26.24
 - Initial cve-sync resync of constraints and overrides.
 - Address CVEs for a large number of packages
