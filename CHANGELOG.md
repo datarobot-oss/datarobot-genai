@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.26.25
-- `crewai`: NIM LLMs now assume native tool calling when LiteLLM has no catalog entry for the served model, so CrewAI uses streamed tool calls instead of falling back to ReAct.
+- `crewai`: added `assume_native_tool_calling_when_unmapped` (env `ASSUME_NATIVE_TOOL_CALLING_WHEN_UNMAPPED`, or `workflow.yaml` on `datarobot-llm-component` / `datarobot-nim`) for NIM LLMs. LiteLLM has no catalog entry for many NIM model strings (e.g. `openai/gpt-oss-20b`), so `supports_function_calling()` is false and CrewAI falls back to the ReAct text path; this flag opts NIM into native API tool calling instead. NIM e2e sets it in `llms-nim.yaml`.
 
 ## 0.26.24
 - Initial cve-sync resync of constraints and overrides.
