@@ -79,7 +79,7 @@ def test_apply_reasoning_config_nim_provider() -> None:
     llm_config = DataRobotNIMModelConfig(
         reasoning=True,
         temperature=0,
-        nim_deployment_id="123",
+        llm_nim_deployment_id="123",
         model_name="anthropic/claude-sonnet-4-6",
         api_key="some_token",
     )
@@ -154,7 +154,7 @@ async def test_datarobot_llm_deployment_langchain_with_identity_token():
 
 async def test_datarobot_nim_langchain():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123",
+        llm_nim_deployment_id="123",
         model_name="azure/gpt-4o-2024-11-20",
         temperature=0.0,
         api_key="some_token",
@@ -197,9 +197,9 @@ async def test_datarobot_llm_component_langchain(
     ):
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="anthropic/claude-3",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
+            llm_use_datarobot_llm_gateway=use_datarobot_llm_gateway,
             llm_deployment_id=llm_deployment_id,
-            nim_deployment_id=nim_deployment_id,
+            llm_nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
         identity_patch = patch(

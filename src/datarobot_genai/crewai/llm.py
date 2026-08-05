@@ -32,13 +32,13 @@ from opentelemetry.trace.status import Status
 from opentelemetry.trace.status import StatusCode
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
-from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.config import resolve_llm_config
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.model_info import get_model_info
 
@@ -552,8 +552,15 @@ def get_llm(
     model_name: str | None = None,
     parameters: dict | None = None,
     reasoning: bool = False,
+    config: LLMConfig | None = None,
 ) -> LLM:
-    config = Config()
+    """Build the framework LLM for a given (or the default) LLM config.
+
+    Pass ``config`` (for example ``resolve_config().resolve_llm_config("bob")``) to
+    build a specific configured LLM instance; omit it to build the app's default LLM.
+    """
+    if config is None:
+        config = resolve_llm_config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, reasoning)
@@ -566,7 +573,7 @@ def get_llm(
         )
     elif llm_type == LLMType.NIM:
         return get_datarobot_nim_llm(
-            config.nim_deployment_id,  # type: ignore[arg-type]
+            config.llm_nim_deployment_id,  # type: ignore[arg-type]
             model_name,
             parameters,
             reasoning,

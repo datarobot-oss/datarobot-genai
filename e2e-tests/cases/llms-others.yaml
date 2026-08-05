@@ -3,7 +3,7 @@ cases:
     env:
       LLM: deployment
       LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
-      USE_DATAROBOT_LLM_GATEWAY: 0
+      LLM_USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
@@ -17,7 +17,7 @@ cases:
     env:
       LLM: external
       LLM_DEFAULT_MODEL: "azure/gpt-5-4-2026-03-05"
-      USE_DATAROBOT_LLM_GATEWAY: 0
+      LLM_USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
       - ./dragent_tests
     matrix:
