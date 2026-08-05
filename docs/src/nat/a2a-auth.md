@@ -164,6 +164,9 @@ general:
         id: "my-agent-id"       # Emitted as urn:datarobot:agent:identity:external
         url: "https://my-agent-id.example.com/a2a/"  # Overrides the auto-generated card URL
 
+      # Optional: opt in to serving the agent card without authentication
+      enable_unauthenticated_well_known_route: true
+
 # Client-side: call a remote XAA-protected agent
 function_groups:
   remote_agent:
@@ -232,6 +235,7 @@ identity metadata and the agent card URL.
 |-------|---------|
 | `external.id` | Catalog discovery identifier. Emitted as the `urn:datarobot:agent:identity:external` extension on the agent card. |
 | `external.url` | Overrides the auto-generated agent card endpoint URL. Used as-is — no normalization is applied. |
+| `enable_unauthenticated_well_known_route` | When `true`, unauthenticated `GET /.well-known/agent-card.json` requests receive a redacted agent card. When `false` (default), unauthenticated requests receive 404. Authenticated callers always receive the full card. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 

@@ -556,6 +556,19 @@ class TestDRAgentFastApiFrontEndConfig:
         assert config.a2a.external.id == "ext-id-123"
         assert config.a2a.external.url == "https://external.example.com/"
 
+    def test_a2a_enable_unauthenticated_well_known_route_defaults_false(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
+        assert config.a2a.enable_unauthenticated_well_known_route is False
+
+    def test_a2a_enable_unauthenticated_well_known_route_can_be_enabled(self):
+        config = DRAgentFastApiFrontEndConfig(
+            a2a=DRAgentA2AConfig(
+                server=A2AFrontEndConfig(),
+                enable_unauthenticated_well_known_route=True,
+            )
+        )
+        assert config.a2a.enable_unauthenticated_well_known_route is True
+
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
     @pytest.mark.asyncio

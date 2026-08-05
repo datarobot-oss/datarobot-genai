@@ -77,6 +77,14 @@ class DRAgentA2AConfig(BaseModel):
         default=None,
         description="External identity and URL override for the agent card.",
     )
+    enable_unauthenticated_well_known_route: bool = Field(
+        default=False,
+        description=(
+            "Opt in to serving GET /.well-known/agent-card.json to unauthenticated "
+            "callers. When disabled (default), unauthenticated requests receive 404. "
+            "When enabled, anonymous callers receive a redacted agent card."
+        ),
+    )
 
 
 # Register frontend

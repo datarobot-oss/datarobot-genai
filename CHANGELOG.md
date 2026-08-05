@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.32
+- `dragent`: added `enable_unauthenticated_well_known_route` to `DRAgentA2AConfig` so agent developers can opt in per agent to serving `GET /.well-known/agent-card.json` without authentication. When disabled (default), unauthenticated requests receive 404. When enabled, anonymous callers receive a redacted agent card; authenticated callers always receive the full card.
+
 ## 0.26.31
 - `dragent`: A2A agent cards always include `securitySchemes`. Agents without `server_auth` or `cross_application_access` advertise HTTP Bearer auth (`bearerAuth`) for DataRobot API tokens; OAuth-configured agents continue to publish `oauth2` schemes.
 
