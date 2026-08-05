@@ -486,10 +486,10 @@ class TestUnauthenticatedWellKnownRoute:
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
 
-    async def test_unauthenticated_without_opt_in_returns_404(self, a2a_frontend_config):
+    async def test_unauthenticated_without_opt_in_returns_401(self, a2a_frontend_config):
         server = await self._make_server(a2a_frontend_config)
         response = await server._handle_get_agent_card(self._make_request())
-        assert response.status_code == 404
+        assert response.status_code == 401
 
     async def test_unauthenticated_with_opt_in_returns_redacted_card(self, a2a_frontend_config):
         server = await self._make_server(

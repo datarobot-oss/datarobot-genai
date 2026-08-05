@@ -481,7 +481,7 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
                 resolve_identity_from_headers(headers, on_invalid_auth_context="none") is None
                 and not self._enable_unauthenticated_well_known_route
             ):
-                return Response(status_code=404)
+                return Response(status_code=401)
             return await super()._handle_get_agent_card(request)
         finally:
             _a2a_headers.reset(token)
@@ -499,7 +499,7 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
     ) -> DRAgentA2AStarletteApplication:
         """Create an A2A server with identity-keyed public and extended agent cards.
 
-        The public ``GET /.well-known/agent-card.json`` route returns 404 for
+        The public ``GET /.well-known/agent-card.json`` route returns 401 for
         unauthenticated callers unless ``enable_unauthenticated_well_known_route``
         is enabled, in which case a redacted card is served. Authenticated callers
         always receive the full card. ``extended_agent_card`` is also wired for

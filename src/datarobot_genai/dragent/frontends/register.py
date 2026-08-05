@@ -81,7 +81,7 @@ class DRAgentA2AConfig(BaseModel):
         default=False,
         description=(
             "Opt in to serving GET /.well-known/agent-card.json to unauthenticated "
-            "callers. When disabled (default), unauthenticated requests receive 404. "
+            "callers. When disabled (default), unauthenticated requests receive 401. "
             "When enabled, anonymous callers receive a redacted agent card."
         ),
     )
