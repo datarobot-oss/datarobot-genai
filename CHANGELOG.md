@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.23
+- `drmcputils/toolGallery`: Added `name` (exact match) and `provider` (`datarobot`/`third_party`) query filters to `GET /toolGallery/tools/`, applied before pagination so `totalCount`/`hasMore` describe the filtered set. An unrecognised `provider` value matches nothing; blank values are ignored.
+
 ## 0.26.22
 - `drmcpbase/oauth_protected_resource_metadata`: the OAuth protected-resource metadata config renames `xaa_metadata` to `cross_application_access`, matching the agent-side config block of the same name. The old key is not accepted; because unknown keys are ignored, a config still using `xaa_metadata` publishes no Cross-Application Access metadata. `XAAMetadata` is renamed to `CrossApplicationAccessMetadata` with no alias.
 - `drmcpbase/oauth_protected_resource_metadata`: `token_endpoint_auth_method` is now optional and defaults to `private_key_jwt` (the only implemented method). `resource`, `authorization_servers` and `scopes_supported` are optional too — nothing enforces them yet, and unset fields are omitted from the served document instead of raising `KeyError`. A config declaring only `cross_application_access` is valid.
