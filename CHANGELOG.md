@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.24
+- Initial cve-sync resync of constraints and overrides.
+- Address CVEs for a large number of packages
+
 ## 0.26.23
 - `drmcputils/toolGallery`: Added `name` (exact match) and `provider` (`datarobot`/`third_party`) query filters to `GET /toolGallery/tools/`, applied before pagination so `totalCount`/`hasMore` describe the filtered set. An unrecognised `provider` value matches nothing; blank values are ignored.
 
