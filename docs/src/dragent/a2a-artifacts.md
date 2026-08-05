@@ -213,11 +213,92 @@ class StructuredExecutor(TaskArtifactAgentExecutor):
 `TaskArtifactAgentExecutor` is concrete and public, with a single base class — there
 is no base-ordering requirement to get wrong.
 
+## The other side: consuming artifacts
+
+Everything above makes an agent *return* artifacts. The mirror problem is that a
+*calling* agent can neither send files nor read artifacts back, because NAT
+flattens A2A in both directions:
+
+| Direction | NAT flattens at | Consequence |
+|---|---|---|
+| Sending | `A2ABaseClient.send_message(message_text: str)` | builds a text-only `Message` |
+| Reading | `A2ABaseClient.extract_text_from_events()` | artifacts silently discarded |
+
+Neither is a protocol limit — the raw events already carry every artifact.
+`datarobot_genai.dragent.a2a_artifact_client` supplies the missing helpers.
+
+### From an LLM: one config line
+
+```yaml
+function_groups:
+  finance_agent:
+    _type: authenticated_a2a_client
+    registry:
+      external_id: agent-finance
+    auth_provider: okta_auth
+    artifact_client: true
+```
+
+That registers two functions alongside NAT's text-only `call`:
+
+| Function | Purpose |
+|---|---|
+| `send_with_attachments(message, attach_data=None, attach_uris=None)` | Sends text, structured data and file URIs; returns a rendered report of the Task and every artifact |
+| `get_task_artifacts(task_id)` | Re-reads a known task's artifacts |
+
+Naming the group in `tool_names` exposes both automatically.
+
+!!! note "Why this is opt-in"
+    Registering functions changes which tools an agent's LLM can select, so
+    `artifact_client` defaults to `false`. Unset, tool selection is unchanged.
+
+Files go by **URI** here rather than by content, because a model cannot emit raw
+bytes. To send bytes, call `send_parts()` from code.
+
+### From code: bytes, and structured access
+
+```python
+from datarobot_genai.dragent.a2a_artifact_client import (
+    OutboundFile, iter_artifacts, save_task_files, summarize_task,
+)
+
+group = await builder.get_function_group("finance_agent")
+
+events = await group.send_parts(
+    text="analyse this",
+    files=[OutboundFile("in.png", "image/png", content=png_bytes)],
+    data={"threshold": 0.5},
+)
+
+for artifact in iter_artifacts(events):        # every Artifact, de-duplicated
+    ...
+paths = save_task_files(events, "/tmp/out")    # inline files written to disk
+report = summarize_task(events)                # text rendering, for a tool result
+```
+
+`send_parts()` goes through the function group's own authenticated client, so the
+Okta cross-application-access exchange applies exactly as it does to a text-only
+call. Applications never need to reach into the client to borrow it.
+
+### Rendering vs access
+
+`summarize_task()` returns **text**, because a NAT function's return value becomes
+an LLM tool result: previews are truncated and files are reported by name, type and
+size rather than inlined. When code consumes the result, prefer `iter_artifacts()`
+and `save_task_files()`.
+
+`save_task_files()` writes inline files only — a `FileWithUri` carries none of the
+call's authentication, so fetching it is the caller's problem — and flattens names
+to their basename, so an artifact cannot write outside the output directory.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | Response is `"kind": "message"` with no artifacts | No `artifact_builder` configured, or the builder returned `[]` | Set `a2a.artifact_builder`; check the builder's return value |
+| `send_with_attachments` not offered to the LLM | `artifact_client` not set | Set `artifact_client: true` on the function group; confirm the group is named in `tool_names` |
+| `A2A client not initialized` from `send_parts()` | Function group not entered | Resolve it via `builder.get_function_group(...)`, which enters it |
+| `A2A client unavailable: agent card registry lookup failed` | Degraded mode after a registry miss | Fix `registry.external_id` / `deployment_id`; check `DATAROBOT_API_TOKEN` |
 | `a2a.artifact_builder ... is not a class` / `Could not import` | Bad dotted path | Use `package.module.ClassName`; confirm it is importable from the agent's working directory |
 | `... does not implement build_artifacts` | Class lacks the method | Implement `async def build_artifacts(self, inputs, response_text)` |
 | Artifacts vanish; only text arrives | Caller is reading with a text-only client | Read `result.artifacts`; text-only callers concatenate `TextPart`s and drop the rest |
@@ -227,7 +308,11 @@ is no base-ordering requirement to get wrong.
 
 ## API reference
 
-Full signatures and docstrings for every public name — `ArtifactBuilder`,
-`OutboundArtifact`, `TaskArtifactAgentExecutor`, `A2ARequestInputs`, `InboundFile`,
-and the `*_artifact` helpers — are generated from the source under
-**API → dragent → a2a_artifacts**.
+Full signatures and docstrings for every public name are generated from the source:
+
+- **API → dragent → a2a_artifacts** (producing) — `ArtifactBuilder`,
+  `OutboundArtifact`, `TaskArtifactAgentExecutor`, `A2ARequestInputs`,
+  `InboundFile`, and the `*_artifact` helpers.
+- **API → dragent → a2a_artifact_client** (consuming) — `OutboundFile`,
+  `build_client_message`, `build_send_message_payload`, `iter_artifacts`,
+  `summarize_task`, `save_task_files`.

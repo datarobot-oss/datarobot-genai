@@ -37,6 +37,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Response behaviour is layered by overriding that instead of `execute()`, so per-user
   identity resolution and inbound-header forwarding (which Okta cross-application access
   depends on) cannot be bypassed by a subclass.
+- `dragent`: added the **consuming** half via the new
+  `datarobot_genai.dragent.a2a_artifact_client` module. NAT flattens A2A in both
+  directions — `A2ABaseClient.send_message(message_text: str)` can only build a
+  text-only `Message`, and `extract_text_from_events()` discards artifacts — so an
+  agent could neither send files nor read artifacts back. Neither is a protocol limit:
+  the raw events already carry every artifact.
+  - `OutboundFile` plus `build_client_message` / `build_send_message_payload` put text,
+    files (inline `FileWithBytes` or referenced `FileWithUri`) and structured
+    `DataPart`s on the wire, typed or as raw JSON-RPC.
+  - `iter_artifacts`, `summarize_task` and `save_task_files` read them back.
+    `iter_artifacts` de-duplicates by `artifact_id`, since a task and its update
+    events can both reference the same artifact. `save_task_files` writes inline files
+    only, flattening names to their basename so an artifact cannot traverse out of the
+    output directory.
+- `dragent`: `authenticated_a2a_client` gained `send_parts()`, which sends a full
+  multi-part `Message` through the function group's own authenticated client — so the
+  Okta cross-application-access exchange applies exactly as it does to a text-only
+  call. Applications no longer need to reach into `_client._client` to borrow it.
+- `dragent`: added the `artifact_client` config key to `authenticated_a2a_client`
+  (default `false`). When set, registers two further functions alongside NAT's
+  text-only `call`: `send_with_attachments` (send text, structured data and file URIs;
+  returns a rendered report of every artifact) and `get_task_artifacts` (re-read a
+  known task's artifacts). Opt-in because registering functions changes which tools an
+  agent's LLM can select; unset, tool selection is unchanged.
 
 ## 0.26.24
 - Initial cve-sync resync of constraints and overrides.
