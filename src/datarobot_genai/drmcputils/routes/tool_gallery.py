@@ -14,9 +14,16 @@
 
 """``/toolGallery/*`` — rich tool metadata routes for UIs, shared by both servers.
 
-The first (and currently only) route is ``GET /toolGallery/tools/``. The group is
-designed to grow (e.g. ``/toolGallery/categories/``), and **every** route under
-``/toolGallery`` is gated by the same predicate — see ``register_tool_gallery_routes``.
+Routes in the group:
+  - ``GET /toolGallery/tools/`` — the full paginated tool catalog.
+  - ``GET /toolGallery/categories/`` — the tool-category filter enum (``value`` + ``label``).
+  - ``GET /toolGallery/providers/`` — the tool-provider filter enum (``value`` + ``label``).
+
+The two enum routes back the UI filter panel: they return the filterable values (the same
+``dr_*`` categories / ``datarobot``|``third_party`` providers a tool item carries) paired
+with display labels, so the FE renders filters from the backend instead of hardcoding them.
+The group is designed to grow, and **every** route under ``/toolGallery`` is gated by the
+same predicate — see ``register_tool_gallery_routes``.
 
 The MCP ``tools/list`` response is intentionally lean: agents/LLMs never see the
 UI-oriented fields (``display_name``, ``description_ui``, ``auth_provider``) — they
@@ -37,6 +44,8 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from datarobot_genai.drmcputils.categories import TOOL_CATEGORY_LABELS
+from datarobot_genai.drmcputils.tool_gallery import TOOL_PROVIDER_LABELS
 from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
 from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
 
@@ -149,6 +158,8 @@ def register_tool_gallery_routes(
     # they are gated identically. ``tools`` is the first.
     routes: list[tuple[str, Callable[[Request], Awaitable[JSONResponse]]]] = [
         ("/tools/", _make_tools_handler(mcp, ui_metadata_provider)),
+        ("/categories/", _categories_handler),
+        ("/providers/", _providers_handler),
     ]
     for sub_path, handler in routes:
         _register_gated_route(mcp, f"{prefix}{sub_path}", gate, handler)
@@ -209,6 +220,28 @@ def _make_tools_handler(
         )
 
     return tools_handler
+
+
+def _enum_items(mapping: dict[Any, str]) -> list[dict[str, str]]:
+    """Serialise an ordered ``value -> label`` map into ``[{"value", "label"}]`` items.
+
+    ``value`` is coerced to ``str`` so ``StrEnum`` keys (e.g. ``MCPToolCategory``) render as
+    their plain ``dr_*`` strings — the exact values a tool item reports and the gallery's
+    filter params accept.
+    """
+    return [{"value": str(value), "label": label} for value, label in mapping.items()]
+
+
+async def _categories_handler(_request: Request) -> JSONResponse:
+    """``GET /toolGallery/categories/`` — the tool-category filter enum (value + label)."""
+    items = _enum_items(TOOL_CATEGORY_LABELS)
+    return JSONResponse({"categories": items, "count": len(items)})
+
+
+async def _providers_handler(_request: Request) -> JSONResponse:
+    """``GET /toolGallery/providers/`` — the tool-provider filter enum (value + label)."""
+    items = _enum_items(TOOL_PROVIDER_LABELS)
+    return JSONResponse({"providers": items, "count": len(items)})
 
 
 async def _gate_allows(gate: ToolGalleryGate, request: Request) -> bool:

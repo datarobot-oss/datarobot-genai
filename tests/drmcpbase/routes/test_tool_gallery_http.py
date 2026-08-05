@@ -246,6 +246,85 @@ class TestToolGalleryFilters:
         assert body["hasMore"] is False
 
 
+class TestToolGalleryCategoriesRoute:
+    def test_returns_value_label_items(self) -> None:
+        # GIVEN a server with the gallery routes registered
+        mcp = _make_server_with_route()
+        # WHEN the categories enum route is requested
+        with TestClient(mcp.http_app()) as client:
+            resp = client.get("/toolGallery/categories/")
+        # THEN it returns 200 with {value, label} items and a matching count
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == len(body["categories"])
+        assert all({"value", "label"} <= set(item.keys()) for item in body["categories"])
+
+    def test_values_are_raw_dr_categories_with_labels(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the categories enum is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN values are the raw dr_* strings paired with UI labels
+        by_value = {item["value"]: item["label"] for item in body["categories"]}
+        assert by_value["dr_connectors"] == "Data connectors"
+        assert by_value["dr_web_search"] == "Web search"
+        assert by_value["dr_predictive"] == "Predictive"
+
+    def test_excludes_internal_categories(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the categories enum is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN internal / non-user-facing categories are not offered as filters
+        values = {item["value"] for item in body["categories"]}
+        assert "dr_dynamic_tools" not in values
+        assert "dr_proxied_user_mcp" not in values
+
+
+class TestToolGalleryProvidersRoute:
+    def test_returns_both_providers_with_labels(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the providers enum route is requested
+        with TestClient(mcp.http_app()) as client:
+            resp = client.get("/toolGallery/providers/")
+        # THEN both providers are returned as {value, label}, count matching
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == len(body["providers"]) == 2
+        by_value = {item["value"]: item["label"] for item in body["providers"]}
+        assert by_value == {"datarobot": "DataRobot", "third_party": "Third party"}
+
+
+class TestToolGalleryEnumRoutesAreGated:
+    def test_denied_gate_returns_404_for_enum_routes(self) -> None:
+        # GIVEN a gallery whose gate denies access
+        async def deny(_request: Any) -> bool:
+            return False
+
+        mcp = _make_server_with_route_gated(deny)
+        # WHEN the enum routes are requested
+        with TestClient(mcp.http_app()) as client:
+            categories = client.get("/toolGallery/categories/")
+            providers = client.get("/toolGallery/providers/")
+        # THEN both are hidden (404) just like /tools/
+        assert categories.status_code == 404
+        assert providers.status_code == 404
+
+    def test_custom_base_path_is_honored_for_enum_routes(self) -> None:
+        # GIVEN a gallery mounted under a custom prefix
+        mcp = FastMCP("custom-path-enums")
+        register_tool_gallery_routes(mcp, base_path="/prefixed/toolGallery")
+        # WHEN the enum routes are requested at the prefixed and bare paths
+        with TestClient(mcp.http_app()) as client:
+            # THEN they answer only under the configured prefix
+            assert client.get("/prefixed/toolGallery/categories/").status_code == 200
+            assert client.get("/prefixed/toolGallery/providers/").status_code == 200
+            assert client.get("/toolGallery/categories/").status_code == 404
+
+
 class TestUiMetadataProvider:
     """The route re-attaches UI fields from the injected ``ui_metadata_provider``."""
 

@@ -338,6 +338,28 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
 }
 
 
+# ── gallery filter enum: visible category → display label ─────────────────────
+
+# The subset of categories surfaced as tool-gallery filter options, in UI display
+# order, each mapped to its human-readable label. Single source of truth for
+# ``GET /toolGallery/categories/`` (see ``drmcputils/routes/tool_gallery.py``) and, by
+# extension, the legal values of the gallery's ``category`` filter param — the values
+# here are the same ``dr_*`` strings emitted in each tool item's ``categories``.
+#
+# Deliberately a curated subset of ``MCPToolCategory``: internal / non-user-facing
+# parents (``dr_proxied_user_mcp``, ``dr_dynamic_tools``) and standalone leaves not
+# shown as gallery sections (``dr_documentation``, ``dr_use_cases``, ``dr_deployments``,
+# ``dr_db``) are omitted. Adding an entry here surfaces it in the endpoint automatically
+# — no route change needed.
+TOOL_CATEGORY_LABELS: dict[MCPToolCategory, str] = {
+    MCPToolCategory.DR_CONNECTORS: "Data connectors",
+    MCPToolCategory.DR_WEB_SEARCH: "Web search",
+    MCPToolCategory.DR_VISUAL: "Data visualization",
+    MCPToolCategory.DR_DEVELOPMENT: "Software development & DevOps",
+    MCPToolCategory.DR_PREDICTIVE: "Predictive",
+}
+
+
 def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
     """Expand category names in *entries* to their constituent tool names.
 

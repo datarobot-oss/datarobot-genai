@@ -15,6 +15,9 @@
 """Tests for drmcputils.tool_gallery — gallery response builder and private key set."""
 
 from datarobot_genai.drmcputils.tool_gallery import DRTOOLS_PRIVATE_METADATA_KEYS
+from datarobot_genai.drmcputils.tool_gallery import PROVIDER_DATAROBOT
+from datarobot_genai.drmcputils.tool_gallery import PROVIDER_THIRD_PARTY
+from datarobot_genai.drmcputils.tool_gallery import TOOL_PROVIDER_LABELS
 from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
 
 
@@ -35,6 +38,28 @@ class TestDrtoolsPrivateMetadataKeys:
     def test_gallery_display_fields_in_set(self) -> None:
         for key in ("display_name", "description_ui", "auth_provider", "categories"):
             assert key in DRTOOLS_PRIVATE_METADATA_KEYS, f"{key!r} missing from private keys"
+
+
+class TestToolProvidersFilterEnum:
+    """``TOOL_PROVIDER_LABELS`` is the value->label map behind ``/toolGallery/providers/``."""
+
+    def test_maps_both_provider_values_to_labels(self) -> None:
+        # GIVEN the provider filter enum
+        # THEN it maps exactly the two provider values to their display labels
+        assert TOOL_PROVIDER_LABELS == {
+            PROVIDER_DATAROBOT: "DataRobot",
+            PROVIDER_THIRD_PARTY: "Third party",
+        }
+
+    def test_values_match_what_the_builder_emits(self) -> None:
+        # GIVEN items built for a native and a third-party tool
+        native = build_tool_gallery_items([{"name": "t"}])[0]
+        third_party = build_tool_gallery_items([{"name": "t", "auth_provider": "jira"}])[0]
+        # THEN their ``provider`` values are keys of the providers enum
+        assert native["provider"] in TOOL_PROVIDER_LABELS
+        assert third_party["provider"] in TOOL_PROVIDER_LABELS
+        assert native["provider"] == PROVIDER_DATAROBOT
+        assert third_party["provider"] == PROVIDER_THIRD_PARTY
 
 
 class TestBuildToolGalleryItems:
