@@ -174,9 +174,7 @@ class TestMCPAuthServerMetadataDiscovery:
         "unsupported_key",
         ["x_cross_application_access", "urn:datarobot:nat_mcp_xaa_client", "xaa_metadata"],
     )
-    def test_parse_xaa_params_rejects_prefixed_and_legacy_keys(
-        self, unsupported_key: str
-    ) -> None:
+    def test_parse_xaa_params_rejects_prefixed_and_legacy_keys(self, unsupported_key: str) -> None:
         """Only the unprefixed member is read; no x_-prefixed or legacy fallbacks."""
         with pytest.raises(RuntimeError, match="no `cross_application_access` block"):
             parse_xaa_params_from_mcp_auth_server_metadata({unsupported_key: self._xaa_block()})
