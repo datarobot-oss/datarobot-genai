@@ -21,6 +21,7 @@ from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
+from datarobot_genai.core.config import default_assume_native_tool_calling_when_unmapped
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_llm_deployment_id
@@ -42,6 +43,7 @@ def _make_config(**overrides: object) -> Config:
         "nim_deployment_id": None,
         "use_datarobot_llm_gateway": True,
         "llm_default_model": None,
+        "assume_native_tool_calling_when_unmapped": False,
     }
     defaults.update(overrides)
     return Config.model_construct(**defaults)
@@ -254,3 +256,9 @@ def test_default_nim_deployment_id_returns_none_when_unset() -> None:
     cfg = _make_config(nim_deployment_id=None)
     with patch.object(config_mod, "Config", return_value=cfg):
         assert default_nim_deployment_id() is None
+
+
+def test_default_assume_native_tool_calling_when_unmapped() -> None:
+    cfg = _make_config(assume_native_tool_calling_when_unmapped=True)
+    with patch.object(config_mod, "Config", return_value=cfg):
+        assert default_assume_native_tool_calling_when_unmapped() is True
