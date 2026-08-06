@@ -172,7 +172,7 @@ class TestToolGalleryRoute:
 
 
 class TestToolGalleryFilters:
-    """``name`` and ``provider`` query filters, applied before pagination."""
+    """``name``, ``provider`` and ``category`` query filters, applied before pagination."""
 
     def _server(self) -> FastMCP:
         # jira gets an auth_provider (→ third_party); perplexity has none (→ datarobot),
@@ -229,10 +229,97 @@ class TestToolGalleryFilters:
         assert body["tools"] == []
         assert body["totalCount"] == 0
 
+    def test_category_filter_matches_parent_category(self) -> None:
+        # dr_connectors is the parent category carried by jira_search_issues' categories.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_connectors"}).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+        assert body["totalCount"] == 1
+
+    def test_category_filter_web_search(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_web_search"}).json()
+        assert [t["name"] for t in body["tools"]] == ["perplexity_search"]
+        assert body["totalCount"] == 1
+
+    def test_category_filter_valid_but_unmatched_returns_empty(self) -> None:
+        # A known gallery category with no matching tool in this server yields an empty page.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_predictive"}).json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+
+    def test_unknown_category_returns_empty_page(self) -> None:
+        # An unrecognised category matches nothing rather than 500ing.
+        with TestClient(self._server().http_app()) as client:
+            resp = client.get("/toolGallery/tools/", params={"category": "dr_bogus"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+
+    def test_provider_and_category_combine(self) -> None:
+        # Filters are AND-ed: third_party + dr_connectors both point at jira_search_issues.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"provider": "third_party", "category": "dr_connectors"},
+            ).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+
+    def test_multiple_categories_match_any(self) -> None:
+        # Repeated category params are OR-ed within the dimension (multi-select checkboxes).
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors", "dr_web_search"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_comma_separated_categories_match_any(self) -> None:
+        # A single comma-separated value is equivalent to repeated params (FE join(",")).
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/", params={"category": "dr_connectors,dr_web_search"}
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_comma_and_repeated_params_combine(self) -> None:
+        # Mixing comma-separated and repeated params flattens into one match-any list.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors,dr_bogus", "dr_web_search"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_multiple_providers_match_any(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"provider": ["datarobot", "third_party"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_multiple_categories_ignore_unknown_values(self) -> None:
+        # A mix of known and unknown categories keeps the known matches; unknown match nothing.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors", "dr_bogus"]},
+            ).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+
     def test_blank_filters_are_ignored(self) -> None:
         # Blank values behave like absent params — the full catalog is returned.
         with TestClient(self._server().http_app()) as client:
-            body = client.get("/toolGallery/tools/", params={"name": "", "provider": ""}).json()
+            body = client.get(
+                "/toolGallery/tools/", params={"name": "", "provider": "", "category": ""}
+            ).json()
         assert body["totalCount"] == 2
 
     def test_filter_totalcount_reflects_filtered_set_before_pagination(self) -> None:

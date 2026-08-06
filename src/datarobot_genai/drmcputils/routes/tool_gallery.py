@@ -32,8 +32,10 @@ The ``tools`` route re-attaches them via an injected ``ui_metadata_provider`` (d
 ``get_tool_ui_metadata``) — injected, not imported, because ``drmcputils`` may not import
 ``drtools`` — and derives each tool's categories from the single-source-of-truth taxonomy.
 It returns the full catalog (not the per-request filtered/CodeMode view), optionally
-filtered by ``name`` (exact) and ``provider`` (``datarobot``/``third_party``) and paginated
-via ``limit``/``offset``.
+filtered by ``name`` (exact), ``provider`` (``datarobot``/``third_party``) and ``category``
+(a ``dr_*`` gallery category) — ``provider`` and ``category`` are multi-valued (comma-
+separated and/or repeated params) and match-any within a dimension — and paginated via
+``limit``/``offset``.
 """
 
 import logging
@@ -87,43 +89,68 @@ def _parse_pagination(request: Request) -> tuple[int, int]:
     return _non_negative_int("limit", _DEFAULT_LIMIT), _non_negative_int("offset", 0)
 
 
-# Providers accepted by the ``provider`` filter; anything else matches no tools.
-_KNOWN_PROVIDERS = frozenset({"datarobot", "third_party"})
+def _parse_filters(
+    request: Request,
+) -> tuple[str | None, list[str] | None, list[str] | None]:
+    """Read the optional ``name``, ``provider`` and ``category`` filters from the query string.
 
-
-def _parse_filters(request: Request) -> tuple[str | None, str | None]:
-    """Read the optional ``name`` and ``provider`` filters from the query string.
-
-    Both are absent by default (return ``None`` → no filtering on that field). A blank
-    value is treated as absent so a malformed query never 500s the gallery, matching
-    ``_parse_pagination``. ``provider`` is passed through verbatim; an unrecognised value
-    simply matches nothing (see ``_apply_filters``).
+    ``name`` is a single exact match. ``provider`` and ``category`` are **multi-valued**,
+    mirroring the multi-select checkboxes in the gallery filter panel. Both forms are
+    accepted and combined, so the value survives however a client serialises a list:
+      - comma-separated: ``?category=dr_connectors,dr_web_search`` (recommended — the FE
+        passes a plain ``values.join(",")`` string, avoiding array-serialisation quirks such
+        as axios' default ``category[]=`` bracket keys); matches the repo's existing
+        ``x-datarobot-mcp-tools`` header convention, and
+      - repeated params: ``?category=dr_connectors&category=dr_web_search``.
+    Blank tokens are dropped and a dimension with no non-blank values is treated as absent
+    (``None`` → no filtering), so a malformed query never 500s the gallery. Values are passed
+    through verbatim; unrecognised ones simply match nothing (see ``_apply_filters``).
     """
 
-    def _non_blank(name: str) -> str | None:
-        raw = request.query_params.get(name)
+    def _single(key: str) -> str | None:
+        raw = request.query_params.get(key)
         if raw is None:
             return None
         raw = raw.strip()
         return raw or None
 
-    return _non_blank("name"), _non_blank("provider")
+    def _multi(key: str) -> list[str] | None:
+        # Flatten repeated params and split each on commas, so ``?k=a,b``, ``?k=a&k=b`` and
+        # any mix all yield the same list.
+        values = [
+            token.strip()
+            for raw in request.query_params.getlist(key)
+            for token in raw.split(",")
+            if token.strip()
+        ]
+        return values or None
+
+    return _single("name"), _multi("provider"), _multi("category")
 
 
 def _apply_filters(
-    items: list[dict[str, Any]], name: str | None, provider: str | None
+    items: list[dict[str, Any]],
+    name: str | None,
+    providers: list[str] | None,
+    categories: list[str] | None,
 ) -> list[dict[str, Any]]:
-    """Filter gallery *items* by exact ``name`` and/or ``provider`` (match-any).
+    """Filter gallery *items* by ``name`` (exact), ``provider`` and/or ``category``.
 
-    A ``provider`` value outside :data:`_KNOWN_PROVIDERS` matches no tools (empty result),
-    rather than raising, so an unknown filter yields an empty page instead of a 500.
+    ``provider`` and ``category`` are match-any **within** the dimension (an item is kept if
+    its provider is one of *providers*, and/or if any of its ``categories`` is one of
+    *categories* — each item carries both its leaf and its parent category, so a parent like
+    ``dr_connectors`` matches every connector tool). The dimensions combine with **AND**.
+    An unrecognised provider/category value simply matches no tools, so an unknown filter
+    yields an empty page instead of a 500 — no separate known-value list is needed.
     """
     if name is not None:
         items = [item for item in items if item.get("name") == name]
-    if provider is not None:
-        if provider not in _KNOWN_PROVIDERS:
-            return []
-        items = [item for item in items if item.get("provider") == provider]
+    if providers is not None:
+        wanted = set(providers)
+        items = [item for item in items if item.get("provider") in wanted]
+    if categories is not None:
+        wanted = set(categories)
+        items = [item for item in items if wanted.intersection(item.get("categories") or ())]
     return items
 
 
@@ -202,8 +229,8 @@ def _make_tools_handler(
         items = build_tool_gallery_items(merged)
 
         # Filter before counting/paginating so totalCount/hasMore reflect the filtered set.
-        name, provider = _parse_filters(request)
-        items = _apply_filters(items, name, provider)
+        name, providers, categories = _parse_filters(request)
+        items = _apply_filters(items, name, providers, categories)
 
         total_count = len(items)
         limit, offset = _parse_pagination(request)

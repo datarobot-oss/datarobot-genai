@@ -99,36 +99,6 @@ class TestResolveToToolNamesAdditional:
         assert "search_datarobot_agentic_docs" in result
         assert "datarobot_docs_fetch_page" in result
 
-
-class TestToolCategoriesFilterEnum:
-    """``TOOL_CATEGORY_LABELS`` is the curated value->label map behind the filter endpoint."""
-
-    def test_every_key_is_a_known_category(self) -> None:
-        # GIVEN the gallery filter enum
-        # THEN each key is a real MCPToolCategory member with a non-empty label
-        for value, label in TOOL_CATEGORY_LABELS.items():
-            assert isinstance(value, MCPToolCategory)
-            assert isinstance(label, str) and label
-
-    def test_every_key_is_a_parent_category(self) -> None:
-        # GIVEN the gallery filter enum
-        # THEN each exposed category is a parent in the taxonomy (has children)
-        for value in TOOL_CATEGORY_LABELS:
-            assert value in PARENT_TO_CHILDREN
-
-    def test_excludes_internal_and_standalone_categories(self) -> None:
-        # GIVEN the gallery filter enum
-        # THEN internal / non-user-facing categories are not exposed as filters
-        for excluded in (
-            MCPToolCategory.DR_DYNAMIC_TOOLS,
-            MCPToolCategory.DR_PROXIED_USER_MCP,
-            MCPToolCategory.DR_DOCUMENTATION,
-            MCPToolCategory.DR_USE_CASES,
-            MCPToolCategory.DR_DEPLOYMENTS,
-            MCPToolCategory.DR_DB,
-        ):
-            assert excluded not in TOOL_CATEGORY_LABELS
-
     def test_dr_db_parent_expands_to_vdb_tools(self) -> None:
         result = resolve_to_tool_names(frozenset({"dr_db"}))
         assert "vdb_create" in result
@@ -218,6 +188,36 @@ class TestParseToolAllowlistHeader:
         result = parse_tool_allowlist_header("dr_typo_xyz")
         assert result is not None
         assert "dr_typo_xyz" in result
+
+
+class TestToolCategoriesFilterEnum:
+    """``TOOL_CATEGORY_LABELS`` is the curated value->label map behind the filter endpoint."""
+
+    def test_every_key_is_a_known_category(self) -> None:
+        # GIVEN the gallery filter enum
+        # THEN each key is a real MCPToolCategory member with a non-empty label
+        for value, label in TOOL_CATEGORY_LABELS.items():
+            assert isinstance(value, MCPToolCategory)
+            assert isinstance(label, str) and label
+
+    def test_every_key_is_a_parent_category(self) -> None:
+        # GIVEN the gallery filter enum
+        # THEN each exposed category is a parent in the taxonomy (has children)
+        for value in TOOL_CATEGORY_LABELS:
+            assert value in PARENT_TO_CHILDREN
+
+    def test_excludes_internal_and_standalone_categories(self) -> None:
+        # GIVEN the gallery filter enum
+        # THEN internal / non-user-facing categories are not exposed as filters
+        for excluded in (
+            MCPToolCategory.DR_DYNAMIC_TOOLS,
+            MCPToolCategory.DR_PROXIED_USER_MCP,
+            MCPToolCategory.DR_DOCUMENTATION,
+            MCPToolCategory.DR_USE_CASES,
+            MCPToolCategory.DR_DEPLOYMENTS,
+            MCPToolCategory.DR_DB,
+        ):
+            assert excluded not in TOOL_CATEGORY_LABELS
 
 
 class TestCategoriesForTool:
