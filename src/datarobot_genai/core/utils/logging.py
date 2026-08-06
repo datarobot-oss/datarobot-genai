@@ -20,17 +20,17 @@ _LITELLM_LOGGER_NAMES = ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy")
 
 
 def _configure_litellm_loggers() -> None:
-    """Route LiteLLM log records through the application root logger only.
+    """Keep LiteLLM's native handler/formatter and suppress duplicate root propagation.
 
-    LiteLLM attaches its own ``StreamHandler`` (with a distinct ANSI formatter) when
-    ``litellm._logging`` is imported. If that happens after ``setup_logging()`` has
-    already run, or if handlers are left attached while ``propagate`` is true, each
-    log line is emitted twice (LiteLLM formatter + app formatter).
+    LiteLLM attaches its own ``StreamHandler`` (``HH:MM:SS - LiteLLM:LEVEL: file:line``)
+    when ``litellm._logging`` is imported. With ``propagate=True`` (the prior default here),
+    the same record also reaches the application root logger and prints twice in different
+    formats. We keep LiteLLM's handler and set ``propagate=False`` so only the native
+    LiteLLM line is emitted.
     """
     for name in _LITELLM_LOGGER_NAMES:
         lg = logging.getLogger(name)
-        lg.handlers.clear()
-        lg.propagate = True
+        lg.propagate = False
 
 
 def setup_logging() -> None:
@@ -38,7 +38,7 @@ def setup_logging() -> None:
     current_log_level = logging.getLogger().getEffectiveLevel()
     logger.info(f"Setting up logging, log level: {logging._levelToName[current_log_level]}")
 
-    # Import litellm so its module-level handler registration runs before we strip it.
+    # Import litellm so its module-level handler registration runs before we configure it.
     try:
         import litellm  # noqa: F401, PLC0415
     except ImportError:
