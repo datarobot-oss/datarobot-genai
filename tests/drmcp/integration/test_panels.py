@@ -44,6 +44,7 @@ _EXPECTED_TOOLS = {
     "get_autopilot_status",
     "predict_with_deployment",
     "apply_what_if",
+    "get_time_series_scoring_dataset_panel",
 }
 
 _EXPECTED_RESOURCE_TEMPLATES = {

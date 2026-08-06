@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.27
+- `drtools/panels`: new `get_time_series_scoring_dataset_panel` tool — ported from wren-mcp's time-series scoring facade. Introspects a time-series deployment's datetime partitioning + forecast settings via the DataRobot SDK (target, datetime partition column, multiseries id column, feature derivation window, forecast distance/basis unit, known-in-advance features, date format), infers the forecast point from the latest timestamp when not supplied, builds a forward-looking scoring frame (recent history + future forecast window with known-in-advance values carried forward) in polars, and stores it as a derived Dataset panel (Parquet payload) with lineage to the source panel. Like the other wren-ported panel builders (`create_chart_panel`, the composition tools), the default `source` stays wren's session-scoped `staging` (not `main`) for BPA facade-delegation parity; promote via `move_panel`. Prerequisite for the upcoming TS predict / what-if panel flows.
+
 ## 0.26.26
 - `crewai`: added `assume_native_tool_calling_when_unmapped` (env `ASSUME_NATIVE_TOOL_CALLING_WHEN_UNMAPPED`, or `workflow.yaml` on `datarobot-llm-component` / `datarobot-nim`) for NIM LLMs. LiteLLM has no catalog entry for many NIM model strings (e.g. `openai/gpt-oss-20b`), so `supports_function_calling()` is false and CrewAI falls back to the ReAct text path; this flag opts NIM into native API tool calling instead. NIM e2e sets it in `llms-nim.yaml`.
 

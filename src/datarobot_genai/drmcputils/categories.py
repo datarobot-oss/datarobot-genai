@@ -275,6 +275,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "get_autopilot_status",
             "predict_with_deployment",
             "apply_what_if",
+            "get_time_series_scoring_dataset_panel",
         }
     ),
     MCPToolCategory.DR_VDB: frozenset(
