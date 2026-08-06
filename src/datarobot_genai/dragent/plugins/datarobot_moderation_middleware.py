@@ -33,6 +33,11 @@ Guard configuration (``_type: datarobot_moderation``):
   from ``model_dir`` (defaults to the directory containing ``workflow.yaml``, resolved from
   ``DRAGENT_CONFIG_FILE`` when set, otherwise the process working directory).
 * If neither source is present or both are empty, the middleware is a no-op.
+* **Per-agent targeting** — a ``moderation`` block may declare multiple ``targets`` (e.g.
+  ``workflow_overall``, ``devex-agent``). Set ``target`` on this middleware's config to apply
+  only that entry's guards; declare one middleware instance per ``target`` and attach each to a
+  different ``functions:``/``workflow:`` entry so individual agents get their own guard set from
+  one shared config. Omitting ``target`` merges every target's guards (whole-workflow behavior).
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
@@ -200,11 +205,42 @@ class DataRobotModerationConfig(
             "takes priority over ``moderation_config.yaml``."
         ),
     )
+    target: str | None = Field(
+        default=None,
+        description=(
+            "Name of the single ``ModerationConfig.targets[].target`` entry this middleware "
+            "instance applies. Lets one shared moderation config attach different guard sets "
+            "to different ``workflow.yaml`` functions (e.g. ``workflow_overall`` vs. an "
+            "individual agent) by declaring a separate middleware instance per target. When "
+            "omitted (default), every target's guards are merged, preserving whole-workflow "
+            "behavior."
+        ),
+    )
 
 
 def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     """Return whether ``moderation`` defines at least one guard across all targets."""
     return any(target.guards for target in moderation.targets)
+
+
+def select_moderation_target(moderation: ModerationConfig, target: str | None) -> ModerationConfig:
+    """Restrict ``moderation`` to the single ``TargetBlock`` named ``target``.
+
+    Returns ``moderation`` unchanged when ``target`` is ``None`` (today's whole-workflow
+    behavior: every target's guards apply). When ``target`` is set but no ``TargetBlock``
+    matches, the result has no targets, so the middleware becomes a no-op rather than
+    silently falling back to every guard.
+    """
+    if target is None:
+        return moderation
+    matching = [block for block in moderation.targets if block.target == target]
+    if not matching:
+        _logger.debug(
+            "Moderation target %r not found among configured targets (%s); no guards apply",
+            target,
+            [block.target for block in moderation.targets],
+        )
+    return moderation.model_copy(update={"targets": matching})
 
 
 def _default_moderation_model_dir() -> str:
@@ -253,11 +289,12 @@ def _load_llm_moderation_pipeline_from_inline(
 ) -> ModerationPipeline | None:
     """Load guards from the inline ``moderation`` block."""
     assert config.moderation is not None
-    if not moderation_config_has_guards(config.moderation):
+    moderation = select_moderation_target(config.moderation, config.target)
+    if not moderation_config_has_guards(moderation):
         _logger.debug("Inline ``moderation`` has no guards; moderation middleware is a no-op")
         return None
     resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
-    return ModerationPipeline.from_config(config.moderation, model_dir=resolved_model_dir)
+    return ModerationPipeline.from_config(moderation, model_dir=resolved_model_dir)
 
 
 def _load_llm_moderation_pipeline_from_config_file(
@@ -281,6 +318,7 @@ def _load_llm_moderation_pipeline_from_config_file(
             config_path,
         )
         return None
+    moderation = select_moderation_target(moderation, config.target)
     if not moderation_config_has_guards(moderation):
         _logger.debug(
             "No inline ``moderation`` block and %s has no guards; moderation middleware is a no-op",
@@ -288,7 +326,9 @@ def _load_llm_moderation_pipeline_from_config_file(
         )
         return None
 
-    return ModerationPipeline.from_yaml(str(config_path))
+    return ModerationPipeline.from_config(
+        moderation, model_dir=resolve_moderation_model_dir(config.model_dir)
+    )
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:

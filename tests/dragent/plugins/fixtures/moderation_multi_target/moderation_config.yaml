@@ -1,0 +1,17 @@
+---
+targets:
+  - target: workflow_overall
+    guards:
+      - name: Workflow Tokens
+        description: Track prompt tokens for the whole workflow.
+        ootb_type: token_count
+        stage: prompt
+        type: ootb
+  - target: devex-agent
+    guards:
+      - name: DevEx Agent Tokens
+        description: Track prompt tokens for the devex-agent function only.
+        ootb_type: token_count
+        stage: prompt
+        type: ootb
+timeout_sec: 60

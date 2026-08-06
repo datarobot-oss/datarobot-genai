@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.28
+- `dragent`: `datarobot_moderation` middleware now honors `target` on `DataRobotModerationConfig`. A `moderation` block with multiple `targets` (e.g. `workflow_overall`, `devex-agent`) previously had every target's guards merged into one pipeline regardless of which target a middleware instance was attached to; setting `target` scopes it to a single named `TargetBlock`, so different `workflow.yaml` functions (the overall workflow vs. an individual agent) can each apply a different guard set from one shared config. Omitting `target` preserves the existing whole-workflow behavior. A `target` with no matching block is a no-op rather than silently applying every guard.
+
 ## 0.26.27
 - `drtools/panels`: new `get_time_series_scoring_dataset_panel` tool — ported from wren-mcp's time-series scoring facade. Introspects a time-series deployment's datetime partitioning + forecast settings via the DataRobot SDK (target, datetime partition column, multiseries id column, feature derivation window, forecast distance/basis unit, known-in-advance features, date format), infers the forecast point from the latest timestamp when not supplied, builds a forward-looking scoring frame (recent history + future forecast window with known-in-advance values carried forward) in polars, and stores it as a derived Dataset panel (Parquet payload) with lineage to the source panel. Like the other wren-ported panel builders (`create_chart_panel`, the composition tools), the default `source` stays wren's session-scoped `staging` (not `main`) for BPA facade-delegation parity; promote via `move_panel`. Prerequisite for the upcoming TS predict / what-if panel flows.
 
