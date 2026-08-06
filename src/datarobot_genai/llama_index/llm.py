@@ -48,6 +48,8 @@ def _create_datarobot_litellm(config: dict[str, Any]) -> Any:
     from llama_index.core.base.llms.types import LLMMetadata  # noqa: PLC0415
     from llama_index.llms.litellm import LiteLLM  # noqa: PLC0415
 
+    config.pop("assume_native_tool_calling_when_unmapped", None)
+
     class DataRobotLiteLLM(LiteLLM):  # type: ignore[misc]
         """DataRobotLiteLLM is a small LiteLLM wrapper class that makes all LiteLLM endpoints
         compatible with the LlamaIndex library.
