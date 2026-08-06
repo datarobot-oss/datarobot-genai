@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.25
+- Unify LiteLLM logs with the rest of the dragent logs
+
 ## 0.26.24
 - Initial cve-sync resync of constraints and overrides.
 - Address CVEs for a large number of packages
