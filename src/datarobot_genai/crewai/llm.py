@@ -30,12 +30,14 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GenAi
 from opentelemetry.trace import SpanKind
 from opentelemetry.trace.status import Status
 from opentelemetry.trace.status import StatusCode
+from pydantic import PrivateAttr
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
+from datarobot_genai.core.config import default_assume_native_tool_calling_when_unmapped
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
@@ -126,12 +128,16 @@ class LitellmStopWordLLM(LLM):
     the underlying API silently ignores the stop parameter.
     """
 
+    _assume_native_tool_calling_when_unmapped: bool = PrivateAttr(default=False)
+
     def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmStopWordLLM":
         return object.__new__(cls)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        assume_native = kwargs.pop("assume_native_tool_calling_when_unmapped", False)
         super().__init__(*args, **kwargs)
         self.is_litellm = True
+        self._assume_native_tool_calling_when_unmapped = assume_native
 
     def _collect_chunk(
         self,
@@ -323,10 +329,17 @@ class LitellmStopWordLLM(LLM):
 
     def supports_function_calling(self) -> bool:
         supported = _model_supports_tool_calling(self.model)
-        return supported if supported is not None else super().supports_function_calling()
+        if supported is not None:
+            return supported
+        # LiteLLM has no catalog entry for many NIM-served models (e.g. gpt-oss-20b),
+        # so litellm.utils.supports_function_calling() returns False and CrewAI falls
+        # back to ReAct. NIM LLMs are created with assume_native_tool_calling_when_unmapped.
+        if self._assume_native_tool_calling_when_unmapped:
+            return True
+        return super().supports_function_calling()
 
 
-def _crewai_model_factory(config: dict) -> LLM:
+def _crewai_model_factory(config: dict[str, Any]) -> LLM:
     # ``stream_options`` is applied per litellm request in LitellmStopWordLLM (only when
     # ``stream=true``). Do not persist it in ``additional_params`` — Azure gateways reject it
     # on non-streaming calls.
@@ -336,7 +349,12 @@ def _crewai_model_factory(config: dict) -> LLM:
     # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
     # Multiple config types (Deployment, Component, Litellm) flow through here.
     config.pop("verify_ssl", None)
-    return LitellmStopWordLLM(**config)
+    assume_native = config.pop("assume_native_tool_calling_when_unmapped", False)
+    llm = LitellmStopWordLLM(
+        **config,
+        assume_native_tool_calling_when_unmapped=assume_native,
+    )
+    return llm
 
 
 def get_datarobot_gateway_llm(
@@ -360,6 +378,7 @@ def get_datarobot_gateway_llm(
         apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
     )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
 
     return _crewai_model_factory(config)
 
@@ -383,6 +402,7 @@ def get_datarobot_deployment_llm(
         apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
     )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
     return _crewai_model_factory(config)
 
 
@@ -392,7 +412,7 @@ def get_datarobot_nim_llm(
     parameters: dict | None = None,
     reasoning: bool = False,
 ) -> LLM:
-    config = {
+    config: dict[str, Any] = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(nim_deployment_id),
     }
@@ -408,6 +428,10 @@ def get_datarobot_nim_llm(
         apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
     )
     config["model"] = model_name
+    if "assume_native_tool_calling_when_unmapped" not in config:
+        config["assume_native_tool_calling_when_unmapped"] = (
+            default_assume_native_tool_calling_when_unmapped()
+        )
     return _crewai_model_factory(config)
 
 
@@ -429,6 +453,7 @@ def get_external_llm(
         apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
     )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
 
     return _crewai_model_factory(config)
 

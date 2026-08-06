@@ -33,6 +33,8 @@ includes:
   dev:
     taskfile: .taskfiles/dev.yml
     flatten: true
+  cve-sync:
+    taskfile: .taskfiles/cve-sync.yml
 
 tasks:
   install:

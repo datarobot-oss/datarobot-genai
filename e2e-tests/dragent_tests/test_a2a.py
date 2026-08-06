@@ -62,7 +62,8 @@ def test_a2a_agent_card(http_client: httpx.Client) -> None:
     card = response.json()
     assert card.get("name"), "Agent card missing 'name'"
     assert card.get("url"), "Agent card missing 'url'"
-    assert card.get("skills"), "Agent card missing 'skills' or skills list is empty"
+    assert card.get("skills"), "Authenticated agent card missing 'skills' or skills list is empty"
+    assert card.get("supportsAuthenticatedExtendedCard") is True
 
 
 def _assert_successful_message_send(response: httpx.Response, payload: dict) -> None:  # type: ignore[type-arg]
