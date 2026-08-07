@@ -47,6 +47,21 @@ _OAUTH_PROVIDER_TYPES: dict[str, str] = {
 }
 
 
+# Provider classification reported on each gallery item and exposed as the
+# ``GET /toolGallery/providers/`` filter enum.
+# ``datarobot`` = served by the DataRobot API.
+# ``third_party`` = served from outside it (OAuth / API-key connectors, proxied MCPs).
+PROVIDER_DATAROBOT = "datarobot"
+PROVIDER_THIRD_PARTY = "third_party"
+
+# Ordered provider ``value -> display label``. Single source of truth for the providers
+# filter endpoint; the values match what ``build_tool_gallery_items`` emits as ``provider``.
+TOOL_PROVIDER_LABELS: dict[str, str] = {
+    PROVIDER_DATAROBOT: "DataRobot",
+    PROVIDER_THIRD_PARTY: "Third party",
+}
+
+
 # Hosted (dynamic) tools are classified by their ``meta.tool_category`` marker — set by the
 # tool providers — rather than by the static taxonomy. Each kind maps to the gallery
 # ``provider`` and ``categories`` it should report:
@@ -56,8 +71,8 @@ _OAUTH_PROVIDER_TYPES: dict[str, str] = {
 #     served outside the DataRobot API, so ``provider = third_party``; bucketed under
 #     ``dr_proxied_user_mcp``.
 _HOSTED_TOOL_KINDS: dict[str, dict[str, str]] = {
-    "USER_TOOL_DEPLOYMENT": {"provider": "datarobot", "category": "dr_dynamic_tools"},
-    "PROXIED_USER_MCP": {"provider": "third_party", "category": "dr_proxied_user_mcp"},
+    "USER_TOOL_DEPLOYMENT": {"provider": PROVIDER_DATAROBOT, "category": "dr_dynamic_tools"},
+    "PROXIED_USER_MCP": {"provider": PROVIDER_THIRD_PARTY, "category": "dr_proxied_user_mcp"},
 }
 
 
@@ -110,8 +125,8 @@ def _provider_for(auth_provider: str | None) -> str:
     dynamic deployments — is ``datarobot``.
     """
     if auth_provider:
-        return "third_party"
-    return "datarobot"
+        return PROVIDER_THIRD_PARTY
+    return PROVIDER_DATAROBOT
 
 
 def _oauth_provider_type_for(auth_provider: str | None) -> str | None:

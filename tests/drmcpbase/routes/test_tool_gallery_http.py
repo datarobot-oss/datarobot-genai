@@ -172,7 +172,7 @@ class TestToolGalleryRoute:
 
 
 class TestToolGalleryFilters:
-    """``name`` and ``provider`` query filters, applied before pagination."""
+    """``name``, ``provider`` and ``category`` query filters, applied before pagination."""
 
     def _server(self) -> FastMCP:
         # jira gets an auth_provider (→ third_party); perplexity has none (→ datarobot),
@@ -229,10 +229,97 @@ class TestToolGalleryFilters:
         assert body["tools"] == []
         assert body["totalCount"] == 0
 
+    def test_category_filter_matches_parent_category(self) -> None:
+        # dr_connectors is the parent category carried by jira_search_issues' categories.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_connectors"}).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+        assert body["totalCount"] == 1
+
+    def test_category_filter_web_search(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_web_search"}).json()
+        assert [t["name"] for t in body["tools"]] == ["perplexity_search"]
+        assert body["totalCount"] == 1
+
+    def test_category_filter_valid_but_unmatched_returns_empty(self) -> None:
+        # A known gallery category with no matching tool in this server yields an empty page.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get("/toolGallery/tools/", params={"category": "dr_predictive"}).json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+
+    def test_unknown_category_returns_empty_page(self) -> None:
+        # An unrecognised category matches nothing rather than 500ing.
+        with TestClient(self._server().http_app()) as client:
+            resp = client.get("/toolGallery/tools/", params={"category": "dr_bogus"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["tools"] == []
+        assert body["totalCount"] == 0
+
+    def test_provider_and_category_combine(self) -> None:
+        # Filters are AND-ed: third_party + dr_connectors both point at jira_search_issues.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"provider": "third_party", "category": "dr_connectors"},
+            ).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+
+    def test_multiple_categories_match_any(self) -> None:
+        # Repeated category params are OR-ed within the dimension (multi-select checkboxes).
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors", "dr_web_search"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_comma_separated_categories_match_any(self) -> None:
+        # A single comma-separated value is equivalent to repeated params (FE join(",")).
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/", params={"category": "dr_connectors,dr_web_search"}
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_comma_and_repeated_params_combine(self) -> None:
+        # Mixing comma-separated and repeated params flattens into one match-any list.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors,dr_bogus", "dr_web_search"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_multiple_providers_match_any(self) -> None:
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"provider": ["datarobot", "third_party"]},
+            ).json()
+        assert body["totalCount"] == 2
+        assert {t["name"] for t in body["tools"]} == {"jira_search_issues", "perplexity_search"}
+
+    def test_multiple_categories_ignore_unknown_values(self) -> None:
+        # A mix of known and unknown categories keeps the known matches; unknown match nothing.
+        with TestClient(self._server().http_app()) as client:
+            body = client.get(
+                "/toolGallery/tools/",
+                params={"category": ["dr_connectors", "dr_bogus"]},
+            ).json()
+        assert [t["name"] for t in body["tools"]] == ["jira_search_issues"]
+
     def test_blank_filters_are_ignored(self) -> None:
         # Blank values behave like absent params — the full catalog is returned.
         with TestClient(self._server().http_app()) as client:
-            body = client.get("/toolGallery/tools/", params={"name": "", "provider": ""}).json()
+            body = client.get(
+                "/toolGallery/tools/", params={"name": "", "provider": "", "category": ""}
+            ).json()
         assert body["totalCount"] == 2
 
     def test_filter_totalcount_reflects_filtered_set_before_pagination(self) -> None:
@@ -244,6 +331,85 @@ class TestToolGalleryFilters:
         assert body["totalCount"] == 1
         assert body["count"] == 1
         assert body["hasMore"] is False
+
+
+class TestToolGalleryCategoriesRoute:
+    def test_returns_value_label_items(self) -> None:
+        # GIVEN a server with the gallery routes registered
+        mcp = _make_server_with_route()
+        # WHEN the categories enum route is requested
+        with TestClient(mcp.http_app()) as client:
+            resp = client.get("/toolGallery/categories/")
+        # THEN it returns 200 with {value, label} items and a matching count
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == len(body["categories"])
+        assert all({"value", "label"} <= set(item.keys()) for item in body["categories"])
+
+    def test_values_are_raw_dr_categories_with_labels(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the categories enum is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN values are the raw dr_* strings paired with UI labels
+        by_value = {item["value"]: item["label"] for item in body["categories"]}
+        assert by_value["dr_connectors"] == "Data connectors"
+        assert by_value["dr_web_search"] == "Web search"
+        assert by_value["dr_predictive"] == "Predictive"
+
+    def test_excludes_internal_categories(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the categories enum is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN internal / non-user-facing categories are not offered as filters
+        values = {item["value"] for item in body["categories"]}
+        assert "dr_dynamic_tools" not in values
+        assert "dr_proxied_user_mcp" not in values
+
+
+class TestToolGalleryProvidersRoute:
+    def test_returns_both_providers_with_labels(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the providers enum route is requested
+        with TestClient(mcp.http_app()) as client:
+            resp = client.get("/toolGallery/providers/")
+        # THEN both providers are returned as {value, label}, count matching
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == len(body["providers"]) == 2
+        by_value = {item["value"]: item["label"] for item in body["providers"]}
+        assert by_value == {"datarobot": "DataRobot", "third_party": "Third party"}
+
+
+class TestToolGalleryEnumRoutesAreGated:
+    def test_denied_gate_returns_404_for_enum_routes(self) -> None:
+        # GIVEN a gallery whose gate denies access
+        async def deny(_request: Any) -> bool:
+            return False
+
+        mcp = _make_server_with_route_gated(deny)
+        # WHEN the enum routes are requested
+        with TestClient(mcp.http_app()) as client:
+            categories = client.get("/toolGallery/categories/")
+            providers = client.get("/toolGallery/providers/")
+        # THEN both are hidden (404) just like /tools/
+        assert categories.status_code == 404
+        assert providers.status_code == 404
+
+    def test_custom_base_path_is_honored_for_enum_routes(self) -> None:
+        # GIVEN a gallery mounted under a custom prefix
+        mcp = FastMCP("custom-path-enums")
+        register_tool_gallery_routes(mcp, base_path="/prefixed/toolGallery")
+        # WHEN the enum routes are requested at the prefixed and bare paths
+        with TestClient(mcp.http_app()) as client:
+            # THEN they answer only under the configured prefix
+            assert client.get("/prefixed/toolGallery/categories/").status_code == 200
+            assert client.get("/prefixed/toolGallery/providers/").status_code == 200
+            assert client.get("/toolGallery/categories/").status_code == 404
 
 
 class TestUiMetadataProvider:
