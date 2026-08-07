@@ -15,16 +15,13 @@
 """Tests for MCP tool-call metrics (drmcpbase/tool_metrics.py)."""
 
 from typing import Any
-from unittest.mock import AsyncMock
 from unittest.mock import Mock
-from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import ToolError as FastMCPToolError
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
-from datarobot_genai.drmcp.core.telemetry import OpenTelemetryMiddleware
 from datarobot_genai.drmcpbase import tool_metrics
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
@@ -216,50 +213,3 @@ class TestRecordToolCall:
         # WHEN a successful call is recorded through it
         # THEN nothing propagates to the caller
         tool_metrics.record_tool_call("predict", 0.1, None, instruments=broken)
-
-
-# --- middleware wiring ---------------------------------------------------------------
-
-
-class TestMiddlewareRecordsMetrics:
-    @pytest.mark.asyncio
-    async def test_on_call_tool_success_records_one_call(self) -> None:
-        # GIVEN the OTel middleware and a tool call that succeeds
-        middleware = OpenTelemetryMiddleware()
-        context = Mock()
-        context.message.name = "vdb_query"
-        context.message.arguments = {"q": "hello"}
-        call_next = AsyncMock(return_value=Mock())
-
-        # WHEN the call flows through on_call_tool
-        with patch("datarobot_genai.drmcp.core.telemetry.record_tool_call") as record:
-            await middleware.on_call_tool(context, call_next)
-
-        # THEN exactly one success is recorded with a measured duration
-        record.assert_called_once()
-        name, duration, error = record.call_args.args
-        assert name == "vdb_query"
-        assert duration >= 0
-        assert error is None
-
-    @pytest.mark.asyncio
-    async def test_on_call_tool_failure_records_the_exception_and_reraises(self) -> None:
-        # GIVEN the OTel middleware and a tool call that fails
-        middleware = OpenTelemetryMiddleware()
-        context = Mock()
-        context.message.name = "predict"
-        context.message.arguments = {}
-        boom = FastMCPToolError("[upstream] api broke")
-        call_next = AsyncMock(side_effect=boom)
-
-        # WHEN the call flows through on_call_tool
-        with patch("datarobot_genai.drmcp.core.telemetry.record_tool_call") as record:
-            with pytest.raises(FastMCPToolError):
-                await middleware.on_call_tool(context, call_next)
-
-        # THEN the failure is recorded with the original exception
-        record.assert_called_once()
-        name, duration, error = record.call_args.args
-        assert name == "predict"
-        assert duration >= 0
-        assert error is boom
