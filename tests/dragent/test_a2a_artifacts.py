@@ -194,6 +194,103 @@ def _artifacts(queue: _RecordingQueue) -> list[TaskArtifactUpdateEvent]:
 # ---------------------------------------------------------------------------
 
 
+class TestRequestContextAwareness:
+    """A builder decides *what* to return, so it must see what was asked."""
+
+    def test_surfaces_the_conversation_identifiers(self) -> None:
+        # GIVEN a request on an existing task
+        ctx = _FakeContext(_message(Part(root=TextPart(text="hi"))))
+        # WHEN the request is parsed
+        inputs = extract_request_inputs(ctx)  # type: ignore[arg-type]
+        # THEN the builder can correlate the turn and see it is a follow-up
+        assert inputs.context_id == "ctx-1"
+        assert inputs.task_id == "task-1"
+        assert inputs.is_follow_up is True
+        assert inputs.context is ctx
+
+    def test_first_turn_is_not_a_follow_up(self) -> None:
+        # GIVEN a request with no task association
+        ctx = _FakeContext(_message(Part(root=TextPart(text="hi"))))
+        ctx.task_id = None
+        # WHEN the request is parsed
+        inputs = extract_request_inputs(ctx)  # type: ignore[arg-type]
+        # THEN the builder can distinguish a fresh exchange from a continuation
+        assert inputs.is_follow_up is False
+
+    def test_surfaces_message_metadata(self) -> None:
+        # GIVEN a caller passing out-of-band hints via message metadata
+        message = _message(Part(root=TextPart(text="hi")))
+        message.metadata = {"formats": ["csv"], "locale": "en-GB"}
+        # WHEN the request is parsed
+        inputs = extract_request_inputs(_FakeContext(message))  # type: ignore[arg-type]
+        # THEN they reach the builder, so output can honour a requested format
+        assert inputs.metadata["formats"] == ["csv"]
+
+    def test_metadata_defaults_to_empty_not_none(self) -> None:
+        # GIVEN a request with no metadata
+        inputs = extract_request_inputs(  # type: ignore[arg-type]
+            _FakeContext(_message(Part(root=TextPart(text="hi"))))
+        )
+        # WHEN metadata is read
+        # THEN it is safe to subscript without a None check
+        assert inputs.metadata == {}
+        assert inputs.metadata.get("anything") is None
+
+    def test_surfaces_prior_turns_from_task_history(self) -> None:
+        # GIVEN a task carrying two earlier messages
+        history = [
+            _message(Part(root=TextPart(text="first question"))),
+            _message(Part(root=TextPart(text="second question"))),
+        ]
+        task = SimpleNamespace(id="task-9", context_id="ctx-9", history=history)
+        ctx = _FakeContext(_message(Part(root=TextPart(text="third"))), current_task=task)
+        # WHEN the request is parsed
+        inputs = extract_request_inputs(ctx)  # type: ignore[arg-type]
+        # THEN the builder can see what was already discussed
+        assert len(inputs.history) == 2
+        assert inputs.history_text() == ["first question", "second question"]
+
+    def test_history_text_can_be_limited_to_recent_turns(self) -> None:
+        # GIVEN three prior turns
+        history = [_message(Part(root=TextPart(text=f"turn {i}"))) for i in range(3)]
+        task = SimpleNamespace(id="t", context_id="c", history=history)
+        ctx = _FakeContext(_message(Part(root=TextPart(text="now"))), current_task=task)
+        # WHEN only the most recent turn is requested
+        recent = extract_request_inputs(ctx).history_text(limit=1)  # type: ignore[arg-type]
+        # THEN the newest is returned, so a builder can cap prompt/context size
+        assert recent == ["turn 2"]
+
+    def test_history_is_empty_without_a_task(self) -> None:
+        # GIVEN a first-turn request
+        inputs = extract_request_inputs(  # type: ignore[arg-type]
+            _FakeContext(_message(Part(root=TextPart(text="hi"))), current_task=None)
+        )
+        # WHEN history is read
+        # THEN it is an empty list rather than None
+        assert inputs.history == []
+        assert inputs.history_text() == []
+
+    def test_asked_for_matches_case_insensitively(self) -> None:
+        # GIVEN a request mentioning a chart
+        inputs = extract_request_inputs(  # type: ignore[arg-type]
+            _FakeContext(_message(Part(root=TextPart(text="Send me a CHART of revenue"))))
+        )
+        # WHEN the builder checks what was asked
+        # THEN it can branch without writing its own string handling
+        assert inputs.asked_for("chart") is True
+        assert inputs.asked_for("csv", "chart") is True
+        assert inputs.asked_for("spreadsheet") is False
+
+    def test_context_fields_survive_a_partless_message(self) -> None:
+        # GIVEN a message with no parts (an early-return path)
+        ctx = _FakeContext(None, current_task=SimpleNamespace(id="t2", context_id="c2", history=[]))
+        # WHEN the request is parsed
+        inputs = extract_request_inputs(ctx)  # type: ignore[arg-type]
+        # THEN identifiers are still populated -- the early return must not skip them
+        assert inputs.task_id == "task-1"
+        assert inputs.context_id == "ctx-1"
+
+
 class TestExtractRequestInputs:
     def test_extracts_text(self) -> None:
         # GIVEN a request carrying a single text part

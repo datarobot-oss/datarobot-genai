@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `extract_request_inputs()` parses **every** inbound part kind (text, file, data) into
     `A2ARequestInputs` / `InboundFile`, with tolerant base64 decoding so one malformed
     attachment cannot fail a request.
+  - `A2ARequestInputs` also carries the conversational context a builder needs to decide
+    *what* to return, rather than only what was attached: `message_id`, `task_id`,
+    `context_id` (stable across turns), the inbound message's `metadata` (for
+    out-of-band hints such as requested output formats), `history` (prior `Message`
+    objects on a continued task) and the raw `context` as an escape hatch, plus
+    `is_follow_up`, `history_text(limit=...)` and `asked_for(*keywords)` helpers. The
+    `ArtifactBuilder` signature is unchanged — the extra information arrives on the
+    existing `inputs` argument, so existing builders keep working.
   - `TaskArtifactAgentExecutor` owns the whole lifecycle — task creation, state
     transitions, artifact publication, failure handling, cancellation. It is concrete and
     public; subclass it directly to override `run_workflow`.

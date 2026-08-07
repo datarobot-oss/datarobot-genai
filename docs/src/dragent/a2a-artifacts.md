@@ -213,6 +213,49 @@ class StructuredExecutor(TaskArtifactAgentExecutor):
 `TaskArtifactAgentExecutor` is concrete and public, with a single base class — there
 is no base-ordering requirement to get wrong.
 
+## Deciding what to return
+
+A builder is not obliged to return a fixed set. `inputs` carries the request and the
+conversation around it, so output can vary per call:
+
+| Field | Use it for |
+|---|---|
+| `inputs.text` | What was asked. `inputs.asked_for("chart", "csv")` is a case-insensitive convenience |
+| `inputs.files` / `inputs.data` | Inbound attachments — echo, transform, or analyse them |
+| `inputs.metadata` | Out-of-band hints from the caller, e.g. `{"formats": ["csv"]}`. More reliable than keywords when the caller is code rather than a person |
+| `inputs.context_id` | Stable across turns — key on this to correlate an exchange |
+| `inputs.task_id` / `inputs.is_follow_up` | Whether this continues an existing task |
+| `inputs.history` / `inputs.history_text(limit=n)` | Prior turns on the task, oldest first. Empty on a first turn *and* when the client didn't request history — treat empty as "unknown" |
+| `inputs.context` | The raw `RequestContext`, as an escape hatch. Prefer the named fields |
+
+```python
+class FinanceArtifacts:
+    async def build_artifacts(self, inputs, response_text):
+        artifacts = [text_artifact("summary", response_text)]
+
+        # Rendering is the expensive part, and base64 inflates the response
+        # ~33% -- so earn it rather than doing it every time.
+        requested = {f.lower() for f in (inputs.metadata.get("formats") or [])}
+        if inputs.asked_for("chart", "graph", "trend") or "png" in requested:
+            artifacts.append(file_artifact("chart.png", render_chart(), "image/png"))
+
+        # Don't re-send a reference the caller already has.
+        if not any("reference-doc" in t for t in inputs.history_text()):
+            artifacts.append(file_uri_artifact("reference-doc", DOC_URL, "text/html"))
+
+        return artifacts
+```
+
+Returning `[]` is meaningful: under the default `task_mode: auto` it produces a plain
+`Message` rather than an empty `Task`. That is the intended way to say "nothing
+task-shaped this time".
+
+!!! note "What the builder does *not* see"
+    The workflow's intermediate steps — which tools ran and what they returned — are
+    not surfaced. `run_workflow` returns only the final text. If you need to build an
+    artifact from a tool's raw output, subclass `TaskArtifactAgentExecutor` and
+    override `run_workflow`.
+
 ## The other side: consuming artifacts
 
 Everything above makes an agent *return* artifacts. The mirror problem is that a

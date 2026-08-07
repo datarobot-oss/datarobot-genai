@@ -175,21 +175,95 @@ class InboundFile:
 class A2ARequestInputs:
     """Everything the caller actually sent, not just the text.
 
+    An :class:`ArtifactBuilder` decides *what to return*, so it needs to see what
+    was asked. This carries the request itself plus the conversational context
+    around it, so a builder can vary its output per request instead of returning a
+    fixed set.
+
     Attributes
     ----------
         text: Concatenated text of every ``TextPart`` in the request.
         files: Every ``FilePart``, decoded into :class:`InboundFile`.
         data: The ``data`` payload of every ``DataPart``.
+        message_id: The inbound message's id.
+        task_id: The task this message continues, or ``None`` on a first turn.
+        context_id: Conversation grouping id. Stable across turns, unlike
+            ``task_id`` — key on this to correlate a multi-turn exchange.
+        metadata: The inbound message's ``metadata`` object, if any. Callers use
+            this to pass hints out of band, e.g. requested output formats.
+        history: Earlier ``Message`` objects on the continued task, oldest first.
+            Empty on a first turn, and empty if the client did not request
+            history. Raw A2A models, not flattened — use :meth:`history_text`
+            for the common case.
+        context: The raw ``RequestContext``. An escape hatch for anything not
+            surfaced above; prefer the named fields, which are stable.
     """
 
     text: str = ""
     files: list[InboundFile] = field(default_factory=list)
     data: list[dict[str, Any]] = field(default_factory=list)
+    message_id: str | None = None
+    task_id: str | None = None
+    context_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    history: list[Any] = field(default_factory=list)
+    context: Any = None
 
     @property
     def has_attachments(self) -> bool:
         """True when the request carried any file or structured-data part."""
         return bool(self.files or self.data)
+
+    @property
+    def is_follow_up(self) -> bool:
+        """True when this message continues an existing task."""
+        return bool(self.task_id)
+
+    def history_text(self, limit: int | None = None) -> list[str]:
+        """Return prior turns as plain strings, newest last.
+
+        Flattens each historical ``Message`` to the text of its ``TextPart``s,
+        which is what a builder usually wants when deciding whether something was
+        already sent. Non-text parts are ignored here; read :attr:`history`
+        directly if they matter.
+
+        Args:
+            limit: Return at most this many of the most recent turns. ``None``
+                returns all of them.
+
+        Returns
+        -------
+            One string per historical message that had any text, oldest first.
+        """
+        out: list[str] = []
+        for message in self.history:
+            texts = [
+                getattr(_unwrap(p), "text", "")
+                for p in getattr(message, "parts", None) or []
+                if getattr(_unwrap(p), "kind", None) == "text"
+            ]
+            joined = "\n".join(t for t in texts if t)
+            if joined:
+                out.append(joined)
+        return out[-limit:] if limit else out
+
+    def asked_for(self, *keywords: str) -> bool:
+        """True when the request text mentions any of ``keywords``.
+
+        A convenience for the most common branch in a builder -- deciding whether
+        to build an expensive artifact at all. Case-insensitive substring match;
+        deliberately naive, since anything smarter belongs in the workflow's LLM
+        rather than in artifact assembly.
+
+        Args:
+            *keywords: Terms to look for.
+
+        Returns
+        -------
+            True if any keyword appears in the request text.
+        """
+        haystack = self.text.lower()
+        return any(k.lower() in haystack for k in keywords)
 
 
 def _unwrap(part: Any) -> Any:
@@ -277,10 +351,31 @@ def extract_request_inputs(context: RequestContext) -> A2ARequestInputs:
         that cannot be decoded are logged and skipped rather than raising, so one
         malformed attachment cannot fail the whole request.
     """
-    inputs = A2ARequestInputs()
+    inputs = A2ARequestInputs(context=context)
+
+    # Conversational context, so a builder can vary output per request rather than
+    # returning a fixed set. Read defensively: RequestContext is populated by the
+    # a2a-sdk request handler and not every field is set on every call path.
+    task = getattr(context, "current_task", None)
+    inputs.task_id = getattr(context, "task_id", None) or getattr(task, "id", None)
+    inputs.context_id = getattr(context, "context_id", None) or getattr(
+        task, "context_id", None
+    )
+    if task is not None:
+        # A2A Tasks carry their prior Messages. Present only when the client asked
+        # for history, so treat an empty list as "unknown", not "first turn".
+        inputs.history = list(getattr(task, "history", None) or [])
+
     message = getattr(context, "message", None)
     if message is None or not getattr(message, "parts", None):
         return inputs
+
+    inputs.message_id = getattr(message, "message_id", None)
+    inputs.task_id = inputs.task_id or getattr(message, "task_id", None)
+    inputs.context_id = inputs.context_id or getattr(message, "context_id", None)
+    message_metadata = getattr(message, "metadata", None)
+    if isinstance(message_metadata, dict):
+        inputs.metadata = dict(message_metadata)
 
     texts: list[str] = []
     for raw in message.parts:
@@ -307,6 +402,15 @@ def extract_request_inputs(context: RequestContext) -> A2ARequestInputs:
             len(inputs.files),
             len(inputs.data),
         )
+    logger.debug(
+        "A2A request context: context_id=%s task_id=%s follow_up=%s "
+        "history_turns=%d metadata_keys=%s",
+        inputs.context_id,
+        inputs.task_id,
+        inputs.is_follow_up,
+        len(inputs.history),
+        sorted(inputs.metadata) or "-",
+    )
     return inputs
 
 
