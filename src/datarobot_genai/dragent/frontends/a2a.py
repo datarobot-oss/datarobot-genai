@@ -21,10 +21,14 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
+from collections.abc import Awaitable
+from collections.abc import Callable
 
 import httpx
 from a2a.server.apps import A2AStarletteApplication
+from a2a.server.apps.jsonrpc.jsonrpc_app import CallContextBuilder
 from a2a.server.context import ServerCallContext
+from a2a.server.request_handlers.request_handler import RequestHandler
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
@@ -41,6 +45,7 @@ from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2Resour
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
+from starlette.responses import JSONResponse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
@@ -440,12 +445,58 @@ def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> Agen
 
 
 class DRAgentA2AStarletteApplication(A2AStarletteApplication):
-    """A2A server that selects redacted vs extended cards on the public GET route."""
+    """A2A server that gates public agent-card access on per-agent developer opt-in.
+
+    Unauthenticated access also depends on platform-level opt-in per cluster to
+    route anonymous traffic to the agent; this class enforces only the agent-side
+    policy once a request reaches the process.
+    """
+
+    def __init__(
+        self,
+        agent_card: AgentCard,
+        http_handler: RequestHandler,
+        extended_agent_card: AgentCard | None = None,
+        context_builder: CallContextBuilder | None = None,
+        card_modifier: Callable[[AgentCard], Awaitable[AgentCard] | AgentCard] | None = None,
+        extended_card_modifier: Callable[
+            [AgentCard, ServerCallContext], Awaitable[AgentCard] | AgentCard
+        ]
+        | None = None,
+        max_content_length: int | None = 10 * 1024 * 1024,
+        *,
+        enable_unauthenticated_well_known_route: bool = False,
+    ) -> None:
+        self._enable_unauthenticated_well_known_route = enable_unauthenticated_well_known_route
+        super().__init__(
+            agent_card=agent_card,
+            http_handler=http_handler,
+            extended_agent_card=extended_agent_card,
+            context_builder=context_builder,
+            card_modifier=card_modifier,
+            extended_card_modifier=extended_card_modifier,
+            max_content_length=max_content_length,
+        )
 
     async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
         headers = normalise_headers(dict(request.headers))
         token = _a2a_headers.set(headers)
         try:
+            if (
+                resolve_identity_from_headers(headers, on_invalid_auth_context="none") is None
+                and not self._enable_unauthenticated_well_known_route
+            ):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": (
+                            "Unauthenticated access to /.well-known/agent-card.json is "
+                            "disabled. Set enable_unauthenticated_well_known_route: true in "
+                            "workflow.yaml to allow anonymous access (also requires "
+                            "platform-level opt-in per cluster)."
+                        ),
+                    },
+                )
             return await super()._handle_get_agent_card(request)
         finally:
             _a2a_headers.reset(token)
@@ -458,12 +509,20 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         self,
         agent_card: AgentCard,
         agent_executor: NATWorkflowAgentExecutor,
+        *,
+        enable_unauthenticated_well_known_route: bool = False,
     ) -> DRAgentA2AStarletteApplication:
         """Create an A2A server with identity-keyed public and extended agent cards.
 
-        The public ``GET /.well-known/agent-card.json`` route serves a redacted card
-        to anonymous callers and the full card when gateway identity headers are
-        present.  ``extended_agent_card`` is also wired for
+        Unauthenticated ``GET /.well-known/agent-card.json`` access requires opt-in
+        at two levels: platform administrators must enable unauthenticated routing
+        per cluster, and ``enable_unauthenticated_well_known_route`` must be set
+        in the agent's ``workflow.yaml``. This method enforces the agent-side
+        flag only.
+
+        When the agent flag is disabled (default), unauthenticated callers receive
+        401. When enabled, they receive a redacted card. Authenticated callers
+        always receive the full card. ``extended_agent_card`` is also wired for
         ``agent/getAuthenticatedExtendedCard`` clients.
         """
         base_server = super().create_a2a_server(agent_card, agent_executor)
@@ -473,6 +532,7 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
             extended_agent_card=agent_card,
             card_modifier=_public_card_modifier,
             extended_card_modifier=_extended_card_modifier,
+            enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
         logger.info("Created A2A server with identity-keyed public agent card")
         return server

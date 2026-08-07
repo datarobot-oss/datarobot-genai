@@ -187,6 +187,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
         external = self.front_end_config.a2a.external if self.front_end_config.a2a else None
+        enable_unauthenticated_well_known_route = (
+            self.front_end_config.a2a.enable_unauthenticated_well_known_route
+            if self.front_end_config.a2a
+            else False
+        )
 
         agent_card = await create_agent_card(
             frontend_config=self._a2a_worker.front_end_config,
@@ -202,7 +207,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._session_managers.append(session_manager)
         agent_executor = _PerUserCompatibleAgentExecutor(session_manager)
 
-        a2a_server = self._a2a_worker.create_a2a_server(agent_card, agent_executor)
+        a2a_server = self._a2a_worker.create_a2a_server(
+            agent_card,
+            agent_executor,
+            enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
+        )
         a2a_app = a2a_server.build()
 
         app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)
