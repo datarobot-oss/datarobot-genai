@@ -31,6 +31,7 @@ from a2a.types import AgentExtension
 from a2a.types import AgentSkill
 from a2a.types import AuthorizationCodeOAuthFlow
 from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import HTTPAuthSecurityScheme
 from a2a.types import InvalidParamsError
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
@@ -67,6 +68,10 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "identity assertion via RFC 8693 Token Exchange. Refer to the capabilities.extensions "
     "block for strict execution parameters and routing."
 )
+
+BEARER_SECURITY_SCHEME_NAME = "bearerAuth"
+
+BEARER_SECURITY_DESCRIPTION = "DataRobot API token supplied as an Authorization Bearer header."
 
 # Extension URI for the RFC 7523 JWT Bearer Grant (outer grant type for the hybrid flow).
 JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
@@ -280,25 +285,38 @@ def _resolve_url(
     return get_a2a_endpoint_url(frontend_config.host, frontend_config.port)
 
 
+def build_default_bearer_security_schemes() -> tuple[
+    dict[str, SecurityScheme], list[dict[str, list[str]]]
+]:
+    """Return the default HTTP Bearer scheme for agents without explicit OAuth config."""
+    security_schemes = {
+        BEARER_SECURITY_SCHEME_NAME: SecurityScheme(
+            root=HTTPAuthSecurityScheme(
+                type="http",
+                scheme="bearer",
+                description=BEARER_SECURITY_DESCRIPTION,
+            )
+        )
+    }
+    return security_schemes, [{BEARER_SECURITY_SCHEME_NAME: []}]
+
+
 async def build_security_schemes(
     frontend_config: A2AFrontEndConfig,
     cross_app_access: CrossApplicationAccessConfig | None,
-) -> tuple[
-    dict[str, SecurityScheme] | None,
-    list[dict[str, list[str]]] | None,
-]:
+) -> tuple[dict[str, SecurityScheme], list[dict[str, list[str]]]]:
     """Assemble A2A security schemes, merging up to two auth sources.
 
     * ``server_auth`` → authorization_code flow.
     * ``cross_app_access`` → client_credentials flow.
+    * Neither configured → HTTP Bearer scheme for DataRobot API tokens.
 
-    Returns ``(security_schemes, security_requirements)``, both ``None``
-    when neither source is configured.
+    Always returns a populated ``securitySchemes`` map.
     """
     server_auth = frontend_config.server_auth
 
     if not server_auth and not cross_app_access:
-        return None, None
+        return build_default_bearer_security_schemes()
 
     auth_code_flow, server_auth_scopes = (
         await build_oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
@@ -367,8 +385,8 @@ async def create_agent_card(
             extensions=extensions,
         ),
         skills=resolved_skills,
-        security_schemes=security_schemes or None,
-        security=security or None,
+        security_schemes=security_schemes,
+        security=security,
         supports_authenticated_extended_card=True,
     )
 

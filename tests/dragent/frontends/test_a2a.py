@@ -23,6 +23,8 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_DESCRIPTION
+from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_SCHEME_NAME
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
@@ -67,6 +69,8 @@ class TestRedactAgentCard:
 
         assert redacted.skills == []
         assert redacted.supports_authenticated_extended_card is True
+        assert redacted.security_schemes is not None
+        assert BEARER_SECURITY_SCHEME_NAME in redacted.security_schemes
         assert card.capabilities.extensions is not None
         uris = [ext.uri for ext in card.capabilities.extensions]
         assert INTERNAL_IDENTITY_URI in uris
@@ -95,6 +99,8 @@ class TestRedactAgentCard:
 
         assert redacted.capabilities.extensions is not None
         assert any(ext.uri == JWT_BEARER_GRANT_TYPE_URI for ext in redacted.capabilities.extensions)
+        assert redacted.security_schemes is not None
+        assert "oauth2" in redacted.security_schemes
 
 
 class TestAgentCardIdentitySelection:
@@ -305,10 +311,17 @@ class TestCreateAgentCard:
         assert "token_url" not in ext.params
         assert "scopes" not in ext.params
 
-    async def test_no_security_when_server_auth_absent(self, a2a_frontend_config):
+    async def test_default_bearer_security_schemes_when_no_auth_configured(
+        self, a2a_frontend_config
+    ):
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-        assert card.security_schemes is None
-        assert card.security is None
+
+        assert BEARER_SECURITY_SCHEME_NAME in card.security_schemes
+        bearer_scheme = card.security_schemes[BEARER_SECURITY_SCHEME_NAME].root
+        assert bearer_scheme.type == "http"
+        assert bearer_scheme.scheme == "bearer"
+        assert bearer_scheme.description == BEARER_SECURITY_DESCRIPTION
+        assert card.security == [{BEARER_SECURITY_SCHEME_NAME: []}]
 
     async def test_internal_identity_extension_when_deployment_id_set(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN create_agent_card is called THEN the internal

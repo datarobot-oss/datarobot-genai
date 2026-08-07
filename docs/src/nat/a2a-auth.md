@@ -95,10 +95,12 @@ This is the simplest setup — no agent card extensions or multi-step flows
 involved.
 
 > **Important:** `datarobot_api_key` is the default authentication mechanism
-> for DataRobot-hosted agents. However, when the remote agent card declares a 
-> specific mechanism (e.g. OAuth2 via `cross_application_access`), security-scheme 
-> negotiation validates and requires a matching auth provider on the client side. 
-> Use `okta_cross_app_access` (Option 2) for OAuth2-protected agents. 
+> for DataRobot-hosted agents. Every agent card includes `securitySchemes`; agents
+> without explicit OAuth configuration advertise HTTP Bearer auth (`bearerAuth`)
+> for DataRobot API tokens. When the remote agent card declares OAuth2 via
+> `cross_application_access`, security-scheme negotiation validates and requires a
+> matching auth provider on the client side. Use `okta_cross_app_access` (Option 2)
+> for OAuth2-protected agents.
 
 ## Option 2: Okta cross-application access (XAA)
 
