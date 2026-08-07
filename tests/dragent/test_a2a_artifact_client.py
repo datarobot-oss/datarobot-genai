@@ -42,6 +42,7 @@ from datarobot_genai.dragent.a2a_artifact_client import OutboundFile
 from datarobot_genai.dragent.a2a_artifact_client import build_client_message
 from datarobot_genai.dragent.a2a_artifact_client import build_send_message_payload
 from datarobot_genai.dragent.a2a_artifact_client import iter_artifacts
+from datarobot_genai.dragent.a2a_artifact_client import outbound_file_from_uri
 from datarobot_genai.dragent.a2a_artifact_client import save_task_files
 from datarobot_genai.dragent.a2a_artifact_client import summarize_task
 
@@ -127,6 +128,53 @@ class TestOutboundFile:
         part = outbound.to_part()
         # THEN it is treated as inline content, not as "no content supplied"
         assert base64.b64decode(part.root.file.bytes) == b""
+
+
+class TestOutboundFileFromUri:
+    """Pre-signed URLs are the documented way to send a file, and they carry a
+    query string -- inferring from the whole URI breaks both name and type."""
+
+    def test_ignores_a_presigned_query_string(self) -> None:
+        # GIVEN a pre-signed URL with signature parameters
+        uri = "https://bucket.s3.amazonaws.com/reports/q4.csv?X-Amz-Signature=deadbeef&X-Amz-Expires=900"
+        # WHEN an outbound file is derived from it
+        f = outbound_file_from_uri(uri)
+        # THEN the name is clean and the type is correct -- inferring from the full
+        # URI would give "q4.csv?X-Amz-Signature=..." and application/octet-stream
+        assert f.name == "q4.csv"
+        assert f.mime_type == "text/csv"
+        assert f.uri == uri
+
+    @pytest.mark.parametrize(
+        ("uri", "name", "mime"),
+        [
+            ("https://x/y/chart.png?sig=1", "chart.png", "image/png"),
+            ("https://x/y/data.json", "data.json", "application/json"),
+            ("https://x/y/report.pdf?a=1&b=2", "report.pdf", "application/pdf"),
+            # No extension to infer from -> the documented fallback.
+            ("https://x/y/blob?sig=1", "blob", "application/octet-stream"),
+            # A trailing slash is stripped, so the last real segment names it.
+            ("https://x/y/", "y", "application/octet-stream"),
+            # Nothing in the path at all -> the fallback name.
+            ("https://x", "attachment", "application/octet-stream"),
+            ("https://x/", "attachment", "application/octet-stream"),
+        ],
+    )
+    def test_derives_name_and_type_from_the_path(self, uri: str, name: str, mime: str) -> None:
+        # GIVEN assorted URI shapes
+        f = outbound_file_from_uri(uri)
+        # WHEN name and type are derived
+        # THEN they come from the path, with a safe fallback when there is nothing
+        assert (f.name, f.mime_type) == (name, mime)
+
+    def test_references_rather_than_inlining(self) -> None:
+        # GIVEN a URI-derived file
+        f = outbound_file_from_uri("https://x/y/a.txt")
+        # WHEN converted to a part
+        part = f.to_part()
+        # THEN it is a FileWithUri and no bytes were read or embedded
+        assert f.content is None
+        assert part.root.file.uri == "https://x/y/a.txt"
 
 
 class TestBuildClientMessage:

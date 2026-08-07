@@ -719,9 +719,18 @@ class TaskArtifactAgentExecutor:
         """Run first, then return a ``Message`` or a ``Task`` based on the outcome.
 
         Trade-off: because the choice depends on whether artifacts exist, the task
-        cannot be opened before the workflow runs, so no ``working`` event is
+        cannot be *published* before the workflow runs, so no ``working`` event is
         emitted.  Use ``task_mode="always"`` when progress matters more.
+
+        The task is still *built* up front, though never published unless needed:
+        ``new_task()`` validates the message, and discovering a malformed request
+        only after the workflow had run would turn a successful execution into an
+        ``InvalidParamsError`` and discard the artifacts with it.
         """
+        # Validate now, publish later (or never). Skipped when continuing an
+        # existing task, since that message was validated on its own turn.
+        prepared_task = None if context.current_task is not None else self._build_task(context)
+
         try:
             _, response_text, artifacts = await self._run(context)
         except Exception as exc:
@@ -747,7 +756,7 @@ class TaskArtifactAgentExecutor:
             logger.info("A2A request answered with a Message (%d artifacts)", len(artifacts))
             return
 
-        task = await self._ensure_task(context, event_queue)
+        task = await self._ensure_task(context, event_queue, prepared_task)
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         try:
             await self._publish_artifacts(updater, artifacts)
@@ -783,9 +792,40 @@ class TaskArtifactAgentExecutor:
             await self._publish_failure(updater, task.id, exc)
             raise ServerError(error=InternalError()) from exc
 
-    @staticmethod
-    async def _ensure_task(context: RequestContext, event_queue: EventQueue) -> Any:
-        """Return the task for this request, creating and enqueuing one if needed.
+    def _build_task(self, context: RequestContext) -> Any:
+        """Create -- but do not publish -- the Task for this request.
+
+        ``new_task()`` validates the message as a side effect: it rejects an empty
+        ``TextPart``, for instance. Calling it *before* the workflow runs means a
+        malformed request is refused up front, rather than after the work is done
+        and the artifacts have to be thrown away.
+
+        Args:
+            context: Inbound A2A request context.
+
+        Returns
+        -------
+            A ``Task`` in ``submitted`` state, not yet enqueued.
+
+        Raises
+        ------
+            ServerError: ``InvalidParamsError`` if the message is malformed,
+                translated from ``new_task()``'s ``ValueError`` so callers get the
+                error the protocol expects.
+        """
+        try:
+            return new_task(context.message)  # state = submitted
+        except ValueError as exc:
+            logger.error("Rejecting malformed A2A message: %s", exc)
+            raise ServerError(error=InvalidParamsError(message=str(exc))) from exc
+
+    async def _ensure_task(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+        prepared: Any = None,
+    ) -> Any:
+        """Return the task for this request, publishing one if needed.
 
         A Task must exist before any status or artifact event can reference it.
 
@@ -794,18 +834,20 @@ class TaskArtifactAgentExecutor:
         follow-up referencing a terminal task before ``execute()`` is reached.
         Re-use ``contextId`` (not ``taskId``) to continue a conversation.
 
-        ``new_task()`` also validates the message (it rejects an empty
-        ``TextPart``), so that is translated into the error the caller expects
-        rather than leaking a bare ``ValueError``.
+        Args:
+            context: Inbound A2A request context.
+            event_queue: Queue the A2A server drains to stream events.
+            prepared: A Task already built by :meth:`_build_task`, reused so the
+                message is not validated twice and no id is generated twice.
+
+        Returns
+        -------
+            The Task every subsequent event will reference.
         """
         task = context.current_task
         if task is not None:
             return task
-        try:
-            task = new_task(context.message)  # state = submitted
-        except ValueError as exc:
-            logger.error("Rejecting malformed A2A message: %s", exc)
-            raise ServerError(error=InvalidParamsError(message=str(exc))) from exc
+        task = prepared if prepared is not None else self._build_task(context)
         await event_queue.enqueue_event(task)
         return task
 

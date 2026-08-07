@@ -34,6 +34,7 @@ from a2a.types import FileWithUri
 from a2a.types import Message
 from a2a.types import Part
 from a2a.types import Role
+from a2a.types import Task
 from a2a.types import TaskArtifactUpdateEvent
 from a2a.types import TaskStatusUpdateEvent
 from a2a.types import TextPart
@@ -640,6 +641,54 @@ class TestTaskModeAlways:
             )
         # THEN the ValueError from new_task() is translated, not leaked
         assert exc.value.error.__class__.__name__ == "InvalidParamsError"
+
+
+class TestValidationHappensBeforeWork:
+    """A malformed request must be refused up front, not after the workflow ran."""
+
+    @pytest.mark.asyncio
+    async def test_auto_rejects_a_malformed_message_without_running_the_workflow(self) -> None:
+        # GIVEN auto mode and a message new_task() will reject (empty text part)
+        sm = _StubSessionManager("should never run")
+        ctx = _FakeContext(_message(Part(root=TextPart(text=""))))
+        # WHEN it executes
+        with pytest.raises(ServerError) as exc:
+            await _executor(sm, TwoArtifactBuilder(), "auto").execute(  # type: ignore[arg-type]
+                ctx, _RecordingQueue()
+            )
+        # THEN it fails as invalid params AND the workflow was never invoked --
+        # validating late would have discarded a completed run's artifacts
+        assert exc.value.error.__class__.__name__ == "InvalidParamsError"
+        assert sm.last_query is None, f"workflow ran before validation: {sm.last_query!r}"
+
+    @pytest.mark.asyncio
+    async def test_auto_publishes_the_task_it_validated(self) -> None:
+        # GIVEN a valid request in auto mode
+        queue = _RecordingQueue()
+        ctx = _FakeContext(_message(Part(root=TextPart(text="hi"))))
+        # WHEN it executes
+        await _executor(_StubSessionManager("ok"), TwoArtifactBuilder(), "auto").execute(  # type: ignore[arg-type]
+            ctx, queue
+        )
+        # THEN exactly one Task was published, and every artifact event references
+        # it -- the up-front build must be reused, not duplicated with a fresh id
+        tasks = [e for e in queue.events if isinstance(e, Task)]
+        assert len(tasks) == 1
+        assert {a.task_id for a in _artifacts(queue)} == {tasks[0].id}
+
+    @pytest.mark.asyncio
+    async def test_never_mode_also_validates_before_running(self) -> None:
+        # GIVEN never mode, where no task is ever published
+        sm = _StubSessionManager("should never run")
+        ctx = _FakeContext(_message(Part(root=TextPart(text=""))))
+        # WHEN it executes
+        with pytest.raises(ServerError) as exc:
+            await _executor(sm, TwoArtifactBuilder(), "never").execute(  # type: ignore[arg-type]
+                ctx, _RecordingQueue()
+            )
+        # THEN a malformed request is still refused before any work happens
+        assert exc.value.error.__class__.__name__ == "InvalidParamsError"
+        assert sm.last_query is None
 
 
 class TestTaskModeAuto:

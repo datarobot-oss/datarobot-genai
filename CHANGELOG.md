@@ -63,6 +63,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   multi-part `Message` through the function group's own authenticated client — so the
   Okta cross-application-access exchange applies exactly as it does to a text-only
   call. Applications no longer need to reach into `_client._client` to borrow it.
+- `dragent`: `outbound_file_from_uri()` derives an attachment's filename and MIME type
+  from a URI's **path** rather than the whole URI. Pre-signed URLs are the documented
+  way to send a file by reference and they carry a query string, which previously
+  defeated type inference (everything became `application/octet-stream`) and left the
+  signature parameters in the filename. `send_with_attachments` uses it.
+- `dragent`: under `task_mode="auto"` (and `"never"`), a malformed A2A message is now
+  rejected **before** the workflow runs. `new_task()` validates the message as a side
+  effect, and it was only reached after artifact assembly, so an otherwise successful
+  run could end as `InvalidParamsError` with its artifacts discarded. The task is now
+  built up front and published only if one is needed.
 - `dragent`: added the `artifact_client` config key to `authenticated_a2a_client`
   (default `false`). When set, registers two further functions alongside NAT's
   text-only `call`: `send_with_attachments` (send text, structured data and file URIs;

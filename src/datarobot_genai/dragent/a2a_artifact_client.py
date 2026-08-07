@@ -82,9 +82,11 @@ import base64
 import binascii
 import json
 import logging
+import mimetypes
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any
 
 from a2a.types import DataPart
@@ -102,6 +104,7 @@ __all__ = [
     "OutboundFile",
     "build_client_message",
     "build_send_message_payload",
+    "outbound_file_from_uri",
     "iter_artifacts",
     "save_task_files",
     "summarize_task",
@@ -189,6 +192,36 @@ class OutboundFile:
                 "name": self.name,
             }
         return {"uri": self.uri, "mimeType": self.mime_type, "name": self.name}
+
+
+def outbound_file_from_uri(uri: str) -> OutboundFile:
+    """Build an :class:`OutboundFile` referencing ``uri``, inferring name and type.
+
+    Both are derived from the URI's **path**, never the full URI. Pre-signed URLs
+    are the documented way to send a file and they carry a query string, so
+    inferring from the whole URI yields no MIME match (everything becomes
+    ``application/octet-stream``) and leaves the query blob in the filename.
+
+    Args:
+        uri: The location to reference. A query string is ignored for naming.
+
+    Returns
+    -------
+        An ``OutboundFile`` with ``uri`` set and nothing inlined.
+
+    Examples
+    --------
+        >>> f = outbound_file_from_uri("https://s3/bucket/q4.csv?X-Amz-Signature=abc")
+        >>> f.name, f.mime_type
+        ('q4.csv', 'text/csv')
+    """
+    path = urlparse(uri).path
+    name = path.rstrip("/").rsplit("/", 1)[-1] or "attachment"
+    return OutboundFile(
+        name=name,
+        mime_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
+        uri=uri,
+    )
 
 
 def build_client_message(

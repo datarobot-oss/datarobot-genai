@@ -17,7 +17,6 @@ import asyncio
 import functools
 import inspect
 import logging
-import mimetypes
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Protocol
@@ -46,6 +45,7 @@ from pydantic import model_validator
 
 from datarobot_genai.dragent.a2a_artifact_client import OutboundFile
 from datarobot_genai.dragent.a2a_artifact_client import build_client_message
+from datarobot_genai.dragent.a2a_artifact_client import outbound_file_from_uri
 from datarobot_genai.dragent.a2a_artifact_client import summarize_task
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
@@ -617,14 +617,10 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
             Returns:
                 A rendered report of the task state and every artifact.
             """
-            files = [
-                OutboundFile(
-                    name=uri.rstrip("/").rsplit("/", 1)[-1] or "attachment",
-                    mime_type=mimetypes.guess_type(uri)[0] or "application/octet-stream",
-                    uri=uri,
-                )
-                for uri in attach_uris or []
-            ]
+            # Name and MIME type come from the URI's path only -- pre-signed URLs
+            # carry a query string, which otherwise defeats type inference and
+            # ends up in the filename. See outbound_file_from_uri().
+            files = [outbound_file_from_uri(uri) for uri in attach_uris or []]
             events = await self.send_parts(
                 text=message, files=files or None, data=attach_data
             )
