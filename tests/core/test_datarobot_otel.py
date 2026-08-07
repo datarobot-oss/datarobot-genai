@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -25,6 +27,8 @@ from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
+    "DATAROBOT_DEFAULT_USE_CASE",
+    "DATAROBOT_USE_CASE_ID",
     "MLOPS_DEPLOYMENT_ID",
     "WORKLOAD_ID",
     "DATAROBOT_ENDPOINT",
@@ -39,7 +43,9 @@ _ENV_VARS = (
 def clean_env(monkeypatch):
     """Strip env vars + reset OTel global TracerProvider + module bootstrap flag."""
     for var in _ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
+        # delenv alone records no undo for an absent var, so writes would outlive the test.
+        monkeypatch.setenv(var, "")
+        monkeypatch.delenv(var)
     # OTel guards set_tracer_provider behind Once(); resetting both lets each
     # test exercise a fresh global slot without leaking to siblings.
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
@@ -368,3 +374,121 @@ class TestBootstrapOtelProvider:
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is third_party
+
+
+class TestSetupUseCaseTracing:
+    @staticmethod
+    def _set_local_env(monkeypatch):
+        # Local shape: credentials and endpoint present, no platform-injected ids.
+        monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
+        monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+
+    def test_builds_use_case_headers_from_argument(self, clean_env):
+        self._set_local_env(clean_env)
+        assert datarobot_otel.setup_use_case_tracing("uc123") is True
+        assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (
+            "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123"
+        )
+        assert isinstance(trace.get_tracer_provider(), TracerProvider)
+
+    def test_resolves_from_use_case_id_env(self, clean_env):
+        self._set_local_env(clean_env)
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc789")
+        assert datarobot_otel.setup_use_case_tracing() is True
+        assert "experiment_container-uc789" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+
+    def test_falls_back_to_default_use_case_env_when_use_case_id_unset(self, clean_env):
+        self._set_local_env(clean_env)
+        clean_env.setenv("DATAROBOT_DEFAULT_USE_CASE", "uc456")
+        assert datarobot_otel.setup_use_case_tracing() is True
+        assert "experiment_container-uc456" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+
+    def test_use_case_id_env_wins_over_default_use_case_env(self, clean_env):
+        self._set_local_env(clean_env)
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc-id-wins")
+        clean_env.setenv("DATAROBOT_DEFAULT_USE_CASE", "uc-default-loses")
+        assert datarobot_otel.setup_use_case_tracing() is True
+        assert "experiment_container-uc-id-wins" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+
+    def test_argument_wins_over_env(self, clean_env):
+        self._set_local_env(clean_env)
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "from-use-case-id-env")
+        clean_env.setenv("DATAROBOT_DEFAULT_USE_CASE", "from-default-env")
+        assert datarobot_otel.setup_use_case_tracing("from-arg") is True
+        assert "experiment_container-from-arg" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+
+    def test_returns_false_without_use_case_id(self, clean_env):
+        self._set_local_env(clean_env)
+        assert datarobot_otel.setup_use_case_tracing() is False
+        assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
+        assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
+
+    def test_returns_false_without_api_token(self, clean_env):
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        assert datarobot_otel.setup_use_case_tracing("uc123") is False
+        assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
+
+    def test_returns_false_in_hosted_runtime(self, clean_env):
+        # A deployment already has its entity id; never re-point those traces.
+        self._set_local_env(clean_env)
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        assert datarobot_otel.setup_use_case_tracing("uc123") is False
+        assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
+
+    def test_returns_false_in_workload_runtime(self, clean_env):
+        self._set_local_env(clean_env)
+        clean_env.setenv("WORKLOAD_ID", "wl123")
+        assert datarobot_otel.setup_use_case_tracing("uc123") is False
+        assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
+
+    def test_explicit_argument_overrides_conflicting_preset_headers(self, clean_env):
+        # An explicit use_case_id beats a preset OTEL_EXPORTER_OTLP_HEADERS that
+        # names a different entity: the caller asked for this use case by name.
+        self._set_local_env(clean_env)
+        preset = "X-DataRobot-Api-Key=other,X-DataRobot-Entity-Id=deployment-preset"
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", preset)
+        assert datarobot_otel.setup_use_case_tracing("uc123") is True
+        assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == (
+            "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123"
+        )
+
+    def test_env_resolved_id_does_not_override_conflicting_preset_headers(self, clean_env):
+        # An id resolved from the environment (not passed explicitly) must not
+        # silently repoint a preset header that names a different entity.
+        self._set_local_env(clean_env)
+        preset = "X-DataRobot-Api-Key=other,X-DataRobot-Entity-Id=deployment-preset"
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", preset)
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
+        assert datarobot_otel.setup_use_case_tracing() is False
+        assert os.environ["OTEL_EXPORTER_OTLP_HEADERS"] == preset
+
+    def test_retarget_after_install_is_refused(self, clean_env):
+        # The exporter copies its headers when built, so a later call cannot retarget it;
+        # reporting success would send the caller to a use case receiving no spans.
+        self._set_local_env(clean_env)
+        assert datarobot_otel.setup_use_case_tracing("uc-first") is True
+        assert datarobot_otel.setup_use_case_tracing("uc-second") is False
+        assert "experiment_container-uc-first" in os.environ["OTEL_EXPORTER_OTLP_HEADERS"]
+
+    def test_lowercase_preset_header_naming_same_entity(self, clean_env):
+        # dragent/cli/commands.py:69 writes lowercase header names. A preset
+        # already naming this use case must not raise and must report success
+        # (previously raised KeyError when bootstrap logged the entity id).
+        self._set_local_env(clean_env)
+        preset = "x-datarobot-api-key=tok,x-datarobot-entity-id=experiment_container-uc123"
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", preset)
+        assert datarobot_otel.setup_use_case_tracing("uc123") is True
+
+    def test_second_call_in_same_process_returns_true(self, clean_env):
+        # bootstrap short-circuits on its idempotency flag on the second call;
+        # that must still read as "tracing is on", not as failure.
+        self._set_local_env(clean_env)
+        assert datarobot_otel.setup_use_case_tracing("uc123") is True
+        assert datarobot_otel.setup_use_case_tracing("uc123") is True
+
+    def test_returns_false_without_resolvable_endpoint(self, clean_env):
+        # Endpoint is checked before writing OTEL_EXPORTER_OTLP_HEADERS, so a
+        # missing endpoint cannot strand DATAROBOT_API_TOKEN in the environment.
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        assert datarobot_otel.setup_use_case_tracing("uc123") is False
+        assert "OTEL_EXPORTER_OTLP_HEADERS" not in os.environ
