@@ -45,7 +45,7 @@ from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2Resour
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
-from starlette.responses import Response
+from starlette.responses import JSONResponse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
@@ -486,7 +486,17 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
                 resolve_identity_from_headers(headers, on_invalid_auth_context="none") is None
                 and not self._enable_unauthenticated_well_known_route
             ):
-                return Response(status_code=401)
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": (
+                            "Unauthenticated access to /.well-known/agent-card.json is "
+                            "disabled. Set enable_unauthenticated_well_known_route: true in "
+                            "workflow.yaml to allow anonymous access (also requires "
+                            "platform-level opt-in per cluster)."
+                        ),
+                    },
+                )
             return await super()._handle_get_agent_card(request)
         finally:
             _a2a_headers.reset(token)

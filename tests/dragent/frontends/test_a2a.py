@@ -490,6 +490,9 @@ class TestUnauthenticatedWellKnownRoute:
         server = await self._make_server(a2a_frontend_config)
         response = await server._handle_get_agent_card(self._make_request())
         assert response.status_code == 401
+        body = json.loads(response.body)
+        assert "error" in body
+        assert "enable_unauthenticated_well_known_route" in body["error"]
 
     async def test_unauthenticated_with_opt_in_returns_redacted_card(self, a2a_frontend_config):
         server = await self._make_server(
