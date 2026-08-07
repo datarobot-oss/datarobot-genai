@@ -56,6 +56,14 @@ def _resolve_repo_root(repo_root: Path | None) -> Path:
     return repo_root if repo_root is not None else Path.cwd()
 
 
+def _positive_int(value: str) -> int:
+    """Argparse ``type`` that accepts only integers greater than zero."""
+    n = int(value)
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {n}")
+    return n
+
+
 def run_main(
     argv: Sequence[str] | None = None,
     repo_root: Path | None = None,
@@ -130,18 +138,18 @@ def generate_main(
 
     parser.add_argument(
         "--n",
-        type=int,
+        type=_positive_int,
         default=10,
         help="Total number of cases to generate (split evenly good/bad, default: 10)",
     )
     parser.add_argument(
         "--n-good",
-        type=int,
+        type=_positive_int,
         help="Number of good cases (overrides --n split)",
     )
     parser.add_argument(
         "--n-bad",
-        type=int,
+        type=_positive_int,
         help="Number of bad cases (overrides --n split)",
     )
     parser.add_argument(

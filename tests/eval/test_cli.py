@@ -98,6 +98,14 @@ def test_generate_convert(tmp_path: Path) -> None:
     assert [c["id"] for c in cases] == ["c-001", "c-002"]
 
 
+def test_generate_rejects_non_positive_n(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.generate_main(
+            argv=["--agent-description", "test agent", "--n", "0"],
+            repo_root=tmp_path,
+        )
+    assert exc.value.code == 2
+
 # ---------------------------------------------------------------------------
 # summarize: pretty-print a results file — the eval display codepath
 # ---------------------------------------------------------------------------
