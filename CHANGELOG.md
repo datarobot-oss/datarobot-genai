@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.26.30
+- CLI Validation for split cases for xp
+
 ## 0.26.29
 - `drmcputils/tool_gallery`: added two tool-filtering enum endpoints — `GET /toolGallery/categories/` and `GET /toolGallery/providers/` — each returning `{value, label}` items so the tool gallery UI filter panel is backend-driven instead of hardcoded (MODEL-24384). The returned values are the raw `dr_*` category and `datarobot`/`third_party` provider strings a tool item already emits, so filter selections round-trip against `GET /toolGallery/tools/`. Backed by new single-source-of-truth maps `TOOL_CATEGORY_LABELS` (a curated, UI-ordered subset of the `MCPToolCategory` taxonomy that excludes internal/standalone categories) and `TOOL_PROVIDER_LABELS`. Both routes join the existing `/toolGallery` group and inherit its feature-flag gate (404 when disabled) and `{resource, count}` envelope. Ownership filtering is intentionally out of scope.
 - `drmcputils/tool_gallery`: extended `GET /toolGallery/tools/` with a `category` filter (match-any against a tool's `dr_*` categories), alongside the `name` and `provider` filters from MODEL-24276. `provider` and `category` are multi-valued to mirror the gallery's multi-select checkboxes, accepted as comma-separated (`?category=dr_connectors,dr_web_search`) and/or repeated params; values are OR-ed within a dimension and AND-ed across dimensions. An unrecognised value simply matches no tools (empty page, not a 500).
