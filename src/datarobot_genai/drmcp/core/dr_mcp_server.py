@@ -34,7 +34,6 @@ from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_tr
 from datarobot_genai.drmcpbase.panels import register_panel_resources
 from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
-from datarobot_genai.drmcputils.routes import default_slash_rules
 
 from .clients import RequestHeadersMiddleware
 from .config import get_config
@@ -293,15 +292,12 @@ class DataRobotMCPServer:
                                 # Serve the MCP mount and every shared REST route with
                                 # or without a trailing slash — a 307 would carry a
                                 # container-local Location that breaks behind the
-                                # directAccess gateway. Rules are derived through
-                                # prefix_mount_path, so they match whether or not this
-                                # server is mounted under a URL_PREFIX. First, so the
-                                # header middleware's MCP-path skip sees the normalized
-                                # path.
-                                Middleware(
-                                    TrailingSlashNormalizer,
-                                    rules=default_slash_rules(prefix_mount_path),
-                                ),
+                                # directAccess gateway. It reads the registered
+                                # spellings off this app's own router, so it needs no
+                                # configuring and follows a URL_PREFIX mount for free.
+                                # First, so the header middleware's MCP-path skip sees
+                                # the normalized path.
+                                Middleware(TrailingSlashNormalizer),
                                 # Request headers in context for REST routes only (skips MCP path).
                                 Middleware(RequestHeadersMiddleware),
                                 Middleware(OtelASGIMiddleware),

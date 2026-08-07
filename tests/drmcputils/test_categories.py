@@ -21,6 +21,8 @@ from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.categories import category_label
 from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import resolve_to_tool_names
+from datarobot_genai.drmcputils.categories import resolve_tool_allowlist
+from datarobot_genai.drmcputils.category_tree import ordered_top_level
 
 
 class TestResolveToToolNames:
@@ -77,11 +79,16 @@ class TestResolveToToolNames:
         for cat, tools in LEAF_CATEGORY_TOOLS.items():
             assert isinstance(tools, frozenset), f"{cat} mapped to {type(tools)}"
 
-    def test_hosted_categories_expand_to_empty_and_pass_through(self):
-        # dr_user_tools / dr_dynamic_tools map to empty frozensets; the entries
-        # are recognised as categories, so nothing is passed through.
+    def test_marker_resolved_categories_yield_no_tool_names(self):
+        # dr_user_tools / dr_dynamic_tools name no static tools — membership is decided
+        # from each tool's marker at request time, which this pure function cannot see.
+        # It reports names only; `resolve_tool_allowlist` keeps them as buckets so the
+        # matcher, holding the tool, can settle them.
         result = resolve_to_tool_names(frozenset({"dr_dynamic_tools", "dr_user_tools"}))
         assert result == frozenset()
+        assert resolve_tool_allowlist(frozenset({"dr_user_tools"})).buckets == frozenset(
+            {"dr_user_tools"}
+        )
 
     def test_removed_proxied_category_passes_through_as_unknown(self):
         # dr_proxied_user_mcp was removed from the taxonomy — a stale header
@@ -162,9 +169,9 @@ class TestResolveToToolNamesParents:
         assert "get_panel" in result
         assert "transform_panel" in result
 
-    def test_dr_dynamic_tools_maps_to_empty_frozenset(self) -> None:
-        result = resolve_to_tool_names(frozenset({"dr_dynamic_tools"}))
-        assert result == frozenset()
+    def test_dr_dynamic_tools_contributes_no_names(self) -> None:
+        # It is a bucket, not a name list — see resolve_tool_allowlist.
+        assert resolve_to_tool_names(frozenset({"dr_dynamic_tools"})) == frozenset()
 
     def test_multiple_parents_in_one_call_union_results(self) -> None:
         result = resolve_to_tool_names(frozenset({"dr_web_search", "dr_documentation"}))
@@ -209,57 +216,83 @@ class TestParseToolAllowlistHeader:
     def test_only_commas_returns_none(self) -> None:
         assert parse_tool_allowlist_header(",,,") is None
 
-    def test_category_name_is_resolved(self) -> None:
+    def test_category_name_resolves_into_derived(self) -> None:
+        # A static category contributes DERIVED names — they describe DataRobot's own
+        # tools, so they must not admit a user tool that happens to share a name.
         result = parse_tool_allowlist_header("dr_connector_jira")
         assert result is not None
-        assert "jira_search_issues" in result
+        assert "jira_search_issues" in result.derived
+        assert not result.explicit
 
-    def test_plain_tool_name_is_kept(self) -> None:
+    def test_plain_tool_name_is_explicit(self) -> None:
         result = parse_tool_allowlist_header("jira_search_issues,confluence_get_page")
         assert result is not None
-        assert "jira_search_issues" in result
-        assert "confluence_get_page" in result
+        assert result.explicit == frozenset({"jira_search_issues", "confluence_get_page"})
+        assert not result.derived
 
     def test_whitespace_around_entries_ignored(self) -> None:
         result = parse_tool_allowlist_header("  dr_connector_jira , jira_get_issue  ")
         assert result is not None
-        assert "jira_search_issues" in result
-        assert "jira_get_issue" in result
+        assert "jira_search_issues" in result.derived
+        assert "jira_get_issue" in result.explicit
 
-    def test_typo_category_kept_as_plain_name(self) -> None:
+    def test_typo_category_kept_as_an_explicit_name(self) -> None:
+        # An unknown token is treated as a tool name; it simply matches nothing.
         result = parse_tool_allowlist_header("dr_typo_xyz")
         assert result is not None
-        assert "dr_typo_xyz" in result
+        assert result.explicit == frozenset({"dr_typo_xyz"})
+
+    def test_marker_bucket_becomes_a_bucket(self) -> None:
+        result = parse_tool_allowlist_header("dr_user_tools")
+        assert result is not None
+        assert result.buckets == frozenset({"dr_user_tools"})
+        assert not result.explicit and not result.derived
 
 
-class TestToolCategoriesFilterEnum:
-    """``TOOL_CATEGORY_LABELS`` is the curated value->label map behind the filter endpoint."""
+class TestFilterableCategories:
+    """Which categories the gallery offers as filters.
+
+    This used to be read off ``TOOL_CATEGORY_LABELS``, back when that map was a curated
+    subset. It is now the complete label map (see ``TestToolCategoryLabels``) — every
+    member needs a display name, children included, because the tree renders them — so
+    the filter surface is read off the taxonomy's *shape* instead: the top-level nodes
+    ``ordered_top_level()`` produces. One source of truth for labels, one for structure,
+    neither doing the other's job.
+    """
 
     def test_every_key_is_a_known_category(self) -> None:
-        # GIVEN the gallery filter enum
+        # GIVEN the label map
         # THEN each key is a real MCPToolCategory member with a non-empty label
         for value, label in TOOL_CATEGORY_LABELS.items():
             assert isinstance(value, MCPToolCategory)
             assert isinstance(label, str) and label
 
-    def test_every_key_is_a_parent_category(self) -> None:
-        # GIVEN the gallery filter enum
-        # THEN each exposed category is a parent in the taxonomy (has children)
-        for value in TOOL_CATEGORY_LABELS:
-            assert value in PARENT_TO_CHILDREN
+    def test_top_level_never_offers_a_child_category(self) -> None:
+        # GIVEN the filter surface
+        # THEN a leaf owned by a parent is offered *under* that parent, never beside it —
+        # otherwise selecting "Jira" and "Data connectors" would look like two peers while
+        # one subsumes the other.
+        owned_children = {
+            str(child) for children in PARENT_TO_CHILDREN.values() for child in children
+        }
+        offered_twice = sorted(set(ordered_top_level()) & owned_children)
+        assert offered_twice == [], (
+            f"child categories offered as top-level filters: {offered_twice}"
+        )
 
-    def test_excludes_internal_and_standalone_categories(self) -> None:
-        # GIVEN the gallery filter enum
-        # THEN internal / non-user-facing categories are not exposed as filters
-        for excluded in (
-            MCPToolCategory.DR_DYNAMIC_TOOLS,
-            MCPToolCategory.DR_PROXIED_USER_MCP,
-            MCPToolCategory.DR_DOCUMENTATION,
-            MCPToolCategory.DR_USE_CASES,
-            MCPToolCategory.DR_DEPLOYMENTS,
-            MCPToolCategory.DR_DB,
-        ):
-            assert excluded not in TOOL_CATEGORY_LABELS
+    def test_top_level_values_round_trip_as_filters(self) -> None:
+        # GIVEN the filter surface
+        # THEN every offered value is a real category string — the same spelling
+        # ``?category=`` matches against a tool item's ``categories``.
+        known = {category.value for category in MCPToolCategory}
+        assert set(ordered_top_level()) <= known
+
+    def test_marker_buckets_sort_last(self) -> None:
+        # The predefined taxonomy comes first; the marker-resolved buckets
+        # (dr_user_tools / dr_dynamic_tools) trail it, matching the picker layout.
+        tops = ordered_top_level()
+        dynamic = {MCPToolCategory.DR_USER_TOOLS.value, MCPToolCategory.DR_DYNAMIC_TOOLS.value}
+        assert set(tops[-len(dynamic) :]) == dynamic
 
 
 class TestCategoriesForTool:

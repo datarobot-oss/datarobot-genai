@@ -23,6 +23,7 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import effective_tool_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import expand_toolset_names_to_tools
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import register_toolsets_allowlist_expander
+from datarobot_genai.drmcputils.categories import ToolAllowlist
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +63,8 @@ class TestRegisterToolsetsAllowlistExpander:
         )
         allowlist = await effective_tool_allowlist(ctx)
         assert allowlist is not None
-        assert "jira_search_issues" in allowlist
-        assert "from_toolset" in allowlist
+        assert "jira_search_issues" in allowlist.explicit
+        assert "from_toolset" in allowlist.explicit
 
 
 class TestEffectiveToolAllowlistFailsClosed:
@@ -81,7 +82,9 @@ class TestEffectiveToolAllowlistFailsClosed:
 
         ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "deleted-pack"})
 
-        assert await effective_tool_allowlist(ctx) == frozenset()
+        allowlist = await effective_tool_allowlist(ctx)
+        assert allowlist is not None, "a present header must never mean 'no filter'"
+        assert not allowlist, "an empty allowlist permits nothing"
 
     @pytest.mark.asyncio
     async def test_expander_outage_permits_nothing(self) -> None:
@@ -93,14 +96,18 @@ class TestEffectiveToolAllowlistFailsClosed:
         register_toolsets_allowlist_expander(boom)
         ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack"})
 
-        assert await effective_tool_allowlist(ctx) == frozenset()
+        allowlist = await effective_tool_allowlist(ctx)
+        assert allowlist is not None, "a present header must never mean 'no filter'"
+        assert not allowlist, "an empty allowlist permits nothing"
 
     @pytest.mark.asyncio
     async def test_unregistered_expander_permits_nothing(self) -> None:
         """GIVEN a server with no expander (user-mcp), THEN the header still narrows."""
         ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack"})
 
-        assert await effective_tool_allowlist(ctx) == frozenset()
+        allowlist = await effective_tool_allowlist(ctx)
+        assert allowlist is not None, "a present header must never mean 'no filter'"
+        assert not allowlist, "an empty allowlist permits nothing"
 
     @pytest.mark.asyncio
     async def test_unresolvable_toolsets_leaves_an_explicit_tools_header_intact(self) -> None:
@@ -111,7 +118,9 @@ class TestEffectiveToolAllowlistFailsClosed:
             {"x-datarobot-mcp-tools": "jira_search_issues", MCP_TOOLSETS_HEADER: "deleted-pack"}
         )
 
-        assert await effective_tool_allowlist(ctx) == frozenset({"jira_search_issues"})
+        assert await effective_tool_allowlist(ctx) == ToolAllowlist(
+            explicit=frozenset({"jira_search_issues"})
+        )
 
     @pytest.mark.asyncio
     async def test_no_toolsets_header_leaves_the_allowlist_untouched(self) -> None:
@@ -119,7 +128,7 @@ class TestEffectiveToolAllowlistFailsClosed:
         assert await effective_tool_allowlist(MCPRequestContext.from_headers({})) is None
         assert await effective_tool_allowlist(
             MCPRequestContext.from_headers({"x-datarobot-mcp-tools": "jira_search_issues"})
-        ) == frozenset({"jira_search_issues"})
+        ) == ToolAllowlist(explicit=frozenset({"jira_search_issues"}))
 
 
 class TestEffectiveToolAllowlistCaching:
@@ -135,8 +144,8 @@ class TestEffectiveToolAllowlistCaching:
         register_toolsets_allowlist_expander(counting)
         ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack"})
 
-        assert await effective_tool_allowlist(ctx) == frozenset({"tool_a"})
-        assert await effective_tool_allowlist(ctx) == frozenset({"tool_a"})
+        assert await effective_tool_allowlist(ctx) == ToolAllowlist(explicit=frozenset({"tool_a"}))
+        assert await effective_tool_allowlist(ctx) == ToolAllowlist(explicit=frozenset({"tool_a"}))
         assert len(calls) == 1
 
     @pytest.mark.asyncio
@@ -149,8 +158,12 @@ class TestEffectiveToolAllowlistCaching:
         first = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack_a"})
         second = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack_b"})
 
-        assert await effective_tool_allowlist(first) == frozenset({"tool_from_pack_a"})
-        assert await effective_tool_allowlist(second) == frozenset({"tool_from_pack_b"})
+        assert await effective_tool_allowlist(first) == ToolAllowlist(
+            explicit=frozenset({"tool_from_pack_a"})
+        )
+        assert await effective_tool_allowlist(second) == ToolAllowlist(
+            explicit=frozenset({"tool_from_pack_b"})
+        )
 
 
 async def _return(value: frozenset[str]) -> frozenset[str]:

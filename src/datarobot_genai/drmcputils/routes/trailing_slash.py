@@ -20,114 +20,99 @@ gateway that URL does not map back to anything the client can reach, so the redi
 dead end rather than a correction. Rewriting the path inside the ASGI scope serves both
 spellings from the one registered route, and the client's single request is answered.
 
-This lives in ``drmcputils`` — beside the registrars whose paths it normalizes, and the
-one package every server and sibling package may import. It was previously a
-``drmcp``-private middleware covering only the MCP mount, which put it out of reach of
-global-mcp (which imports nothing from ``drmcp``) and left every REST route redirecting on
-both servers.
+**The router is the source of truth for which spellings exist.** There is no table of
+paths or prefixes to keep in step with the routes: the middleware asks the app's own
+router whether the other spelling matches a registered route, and rewrites only if it
+does. That is the same question ``redirect_slashes`` asks — this answers it with a
+rewrite instead of a redirect.
 
-Rules are ``(prefix, canonical trailing slash)`` and are matched against the request path,
-longest prefix first. A prefix form rather than exact paths is deliberate: it covers
-parameterized routes such as ``/toolGallery/toolSets/{id}/``, which an exact-path table
-would miss — and that is the route a UI hits most.
-
-**Build the rules from the same function that built the routes.** ``shared_route_slash_rules``
-takes the caller's path-prefixing callable so a mounted server (``URL_PREFIX`` set — the
-deployment-backed shape) and an unmounted one (no prefix — the workload-backed shape, and
-global-mcp) both produce rules that match their own registered paths. Hard-coding the
-strings here would silently stop matching the moment a server is mounted.
+A rules table was the previous design, and prefixes were what made it dangerous.
+``("/toolGallery", True)`` asserted a fact about every route under that prefix,
+including ones not yet written: a sibling registered *without* a trailing slash would
+be rewritten to a spelling the router does not serve, Starlette would ``307`` back to
+the spelling the middleware rejects, and the two would bounce forever — strictly worse
+than the ``404`` you would get with no middleware at all. Asking the router cannot
+produce that, because it never rewrites to a path that does not exist. It also needs no
+maintenance when a route is added, and covers routes the table never listed (FastMCP's
+own mount, ``/.well-known/*``, health).
 """
 
-from collections.abc import Callable
-from collections.abc import Iterable
-from collections.abc import Sequence
+import logging
 
+from starlette.routing import Match
 from starlette.types import ASGIApp
 from starlette.types import Receive
 from starlette.types import Scope
 from starlette.types import Send
 
-# (path prefix, whether the registered spelling carries a trailing slash).
-SlashRule = tuple[str, bool]
-
-# Applies a server's mount prefix to a bare route path. ``drmcp``'s ``prefix_mount_path``
-# is one; the identity function is the unmounted case.
-PathPrefixer = Callable[[str], str]
-
-# FastMCP's streamable-http mount. Registered without a trailing slash on both servers.
-DEFAULT_MCP_PATH = "/mcp"
-
-
-def shared_route_slash_rules(prefix: PathPrefixer | None = None) -> tuple[SlashRule, ...]:
-    """Rules for the REST route groups this package registers.
-
-    ``/metadata`` is the odd one out — registered bare, to match the shape user-mcp's own
-    inline route has always had. With normalization in place that asymmetry stops being a
-    contract callers have to know: both spellings work either way.
-    """
-    # Imported here rather than at module scope: the registrars import this module for
-    # nothing, but a future one might, and route modules importing each other at import
-    # time is a cycle waiting to happen.
-    from datarobot_genai.drmcputils.routes.metadata import METADATA_BASE_PATH
-    from datarobot_genai.drmcputils.routes.tool_gallery import TOOL_GALLERY_BASE_PATH
-
-    apply = prefix if prefix is not None else (lambda path: path)
-    # One prefix covers every /toolGallery sub-route — tools, categories, providers and
-    # global-mcp's toolSets/{id}. That is why the rules are prefixes and not exact paths:
-    # a route added to the group inherits normalization by existing.
-    return (
-        (apply(TOOL_GALLERY_BASE_PATH), True),
-        (apply(METADATA_BASE_PATH), False),
-    )
-
-
-def mcp_slash_rule(prefix: PathPrefixer | None = None) -> SlashRule:
-    """Rule for the streamable-http MCP mount."""
-    apply = prefix if prefix is not None else (lambda path: path)
-    return (apply(DEFAULT_MCP_PATH), False)
-
-
-def default_slash_rules(prefix: PathPrefixer | None = None) -> tuple[SlashRule, ...]:
-    """Build rules for the MCP mount plus every shared REST route group."""
-    return (mcp_slash_rule(prefix), *shared_route_slash_rules(prefix))
+logger = logging.getLogger(__name__)
 
 
 class TrailingSlashNormalizer:
-    """Rewrite a request's trailing slash to the spelling its route group registered.
+    """Rewrite a request's trailing slash to the spelling its route actually registered.
 
     Install it **outermost**. Middleware that keys off the request path — user-mcp's
     ``RequestHeadersMiddleware`` skips the MCP mount that way — has to see the normalized
     path, or it makes its decision on a spelling the router will never route.
+
+    Outermost is also where ``scope["app"]`` is already set: Starlette assigns it before
+    entering the middleware stack, so the router is reachable from the very first layer.
     """
 
-    def __init__(self, app: ASGIApp, rules: Iterable[SlashRule]) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self._app = app
-        # Longest prefix first, so a rule for a nested group beats its parent's.
-        self._rules: Sequence[SlashRule] = sorted(
-            ((prefix.rstrip("/") or "/", slashed) for prefix, slashed in rules),
-            key=lambda rule: len(rule[0]),
-            reverse=True,
-        )
+        self._warned_no_router = False
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        path = scope.get("path")
-        if scope.get("type") == "http" and isinstance(path, str):
-            canonical = self._canonical(path)
-            if canonical is not None and canonical != path:
+        if scope.get("type") == "http" and isinstance(scope.get("path"), str):
+            canonical = self._canonical(scope)
+            if canonical is not None:
                 scope = dict(scope, path=canonical, raw_path=self._rewrite_raw(scope, canonical))
         await self._app(scope, receive, send)
 
-    def _canonical(self, path: str) -> str | None:
-        """Return the spelling a route registered for *path*, or ``None`` if no rule fits."""
-        # Collapse repeated slashes too: `/mcp///` and `/mcp/` are the same request.
+    def _canonical(self, scope: Scope) -> str | None:
+        """Return the registered spelling for this path, or ``None`` to leave it alone.
+
+        ``None`` covers every case where rewriting would be wrong or pointless: the path
+        already routes, no other spelling routes either (let the router 404 on what the
+        client actually sent), or the router is unreachable.
+        """
+        path: str = scope["path"]
+        routes = self._routes(scope)
+        if routes is None:
+            return None
+        if self._matches(routes, scope, path):
+            return None
+        # Collapse repeated trailing slashes too: `/mcp///`, `/mcp/` and `/mcp` are one
+        # request as far as any route table is concerned.
         bare = path.rstrip("/") or "/"
-        for prefix, slashed in self._rules:
-            if bare != prefix and not bare.startswith(prefix.rstrip("/") + "/"):
-                continue
-            if bare == "/":
-                return None
-            return bare + "/" if slashed else bare
+        for candidate in (bare, bare + "/"):
+            if candidate != path and self._matches(routes, scope, candidate):
+                return candidate
         return None
+
+    def _routes(self, scope: Scope) -> list | None:
+        """Return the app's route table, or ``None`` (warned once) if unreachable."""
+        routes = getattr(scope.get("app"), "routes", None)
+        if routes is None and not self._warned_no_router:
+            self._warned_no_router = True
+            logger.warning(
+                "TrailingSlashNormalizer cannot reach the app router (no scope['app']); "
+                "trailing-slash near-misses will fall through to Starlette's redirect. "
+                "Install it as Starlette middleware so the router is in scope."
+            )
+        return routes
+
+    @staticmethod
+    def _matches(routes: list, scope: Scope, path: str) -> bool:
+        """Whether *path* would route, ignoring the method.
+
+        ``Match.PARTIAL`` — right path, wrong method — counts: a ``POST`` to the
+        slash-less spelling of a ``GET`` route should be normalized and then answered
+        ``405`` by the router, not left to miss the route entirely.
+        """
+        probe = dict(scope, path=path)
+        return any(route.matches(probe)[0] is not Match.NONE for route in routes)
 
     @staticmethod
     def _rewrite_raw(scope: Scope, canonical: str) -> bytes:
@@ -142,5 +127,9 @@ class TrailingSlashNormalizer:
         if not isinstance(raw, bytes):
             return (root + canonical).encode("utf-8")
         # raw_path is the undecoded target; keep whatever precedes the routed path.
-        head = raw[: len(raw) - len(scope.get("path", "").encode("utf-8"))]
-        return head + canonical.encode("utf-8")
+        # A percent-encoded target makes `path` shorter than its raw form, so only trust
+        # the arithmetic when the decoded path really is a suffix of raw_path.
+        tail = scope.get("path", "").encode("utf-8")
+        if not raw.endswith(tail):
+            return raw
+        return raw[: len(raw) - len(tail)] + canonical.encode("utf-8")

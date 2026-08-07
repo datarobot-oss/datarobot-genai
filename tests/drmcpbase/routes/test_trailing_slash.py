@@ -17,121 +17,188 @@
 A ``307`` here carries a ``Location`` built from the path as the container saw it, which
 does not resolve back through the deployment directAccess gateway — so the client
 dead-ends rather than being corrected.
+
+The normalizer reads the registered spellings off the app's own router, so these tests
+drive it through real Starlette apps rather than a table of rules.
 """
 
 from typing import Any
 
 import pytest
 from fastmcp import FastMCP
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.responses import PlainTextResponse
+from starlette.routing import Mount
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
-from datarobot_genai.drmcputils.routes import default_slash_rules
 from datarobot_genai.drmcputils.routes import register_metadata_routes
 from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 
 
-def _recording_app(seen: list[Any]):
-    async def app(scope, receive, send):  # type: ignore[no-untyped-def]
-        seen.append(scope)
-
-    return app
+def _ok(_request: Any) -> PlainTextResponse:
+    return PlainTextResponse("ok")
 
 
-async def _run(rules, scope):  # type: ignore[no-untyped-def]
-    seen: list[Any] = []
-    await TrailingSlashNormalizer(_recording_app(seen), rules)(scope, None, None)
-    return seen[0]
+def _app(
+    paths: list[str], methods: list[str] | None = None, seen: list[str] | None = None
+) -> Starlette:
+    """Build a Starlette app serving exactly *paths*, with the normalizer outermost.
 
-
-class TestUnmountedServer:
-    """global-mcp, and the workload-backed user MCP: no ``URL_PREFIX``, bare paths."""
-
-    @pytest.mark.parametrize(
-        "requested, expected",
-        [
-            # The MCP mount is registered bare; every spelling collapses onto it.
-            ("/mcp", "/mcp"),
-            ("/mcp/", "/mcp"),
-            ("/mcp///", "/mcp"),
-            # REST groups are registered slashed; the bare spelling gains one.
-            ("/toolGallery/tools", "/toolGallery/tools/"),
-            ("/toolGallery/tools/", "/toolGallery/tools/"),
-            ("/toolGallery/categories", "/toolGallery/categories/"),
-            ("/toolGallery/categories/", "/toolGallery/categories/"),
-            # Parameterized routes are why the rules are prefixes, not exact paths.
-            ("/toolGallery/toolSets/665f", "/toolGallery/toolSets/665f/"),
-            ("/toolGallery/toolSets/665f/", "/toolGallery/toolSets/665f/"),
-            # /metadata is registered bare, matching user-mcp's own inline route.
-            ("/metadata", "/metadata"),
-            ("/metadata/", "/metadata"),
-            # Nothing outside a known group is touched, even under the MCP mount.
-            ("/mcp/metadata", "/mcp/metadata"),
-            ("/health/", "/health/"),
-            ("/", "/"),
-        ],
-    )
-    async def test_paths_resolve_to_the_registered_spelling(self, requested, expected) -> None:
-        scope = await _run(default_slash_rules(), {"type": "http", "path": requested})
-        assert scope["path"] == expected
-
-
-class TestMountedServer:
-    """The deployment-backed user MCP: ``URL_PREFIX`` set, every path prefixed.
-
-    Rules come from the same prefixing callable the routes were registered with, so a
-    mounted server matches its own paths and not the bare ones.
+    When *seen* is given, each endpoint records the path it was reached at — which is
+    the post-rewrite spelling, i.e. what the route actually matched.
     """
 
-    @staticmethod
-    def _prefix(path: str) -> str:
-        return "/api" + path
+    async def endpoint(request: Any) -> PlainTextResponse:
+        if seen is not None:
+            seen.append(request.scope["path"])
+        return PlainTextResponse("ok")
+
+    return Starlette(
+        routes=[Route(p, endpoint, methods=methods or ["GET"]) for p in paths],
+        middleware=[Middleware(TrailingSlashNormalizer)],
+    )
+
+
+def _reaches(paths: list[str], requested: str) -> tuple[int, str | None]:
+    """Request *requested* against an app serving *paths*; report (status, matched path)."""
+    seen: list[str] = []
+    with TestClient(_app(paths, seen=seen)) as client:
+        resp = client.get(requested, follow_redirects=False)
+    return resp.status_code, (seen[0] if seen else None)
+
+
+class TestBothSpellingsAreServed:
+    """Whichever spelling is registered, the other one reaches it — as a rewrite."""
+
+    @pytest.mark.parametrize(
+        "registered, requested",
+        [
+            # Registered bare (FastMCP's /mcp mount is an exact Route like this).
+            ("/mcp", "/mcp"),
+            ("/mcp", "/mcp/"),
+            ("/mcp", "/mcp///"),
+            ("/metadata", "/metadata"),
+            ("/metadata", "/metadata/"),
+            # Registered slashed (every /toolGallery REST route).
+            ("/toolGallery/tools/", "/toolGallery/tools"),
+            ("/toolGallery/tools/", "/toolGallery/tools/"),
+            ("/toolGallery/categories/", "/toolGallery/categories"),
+        ],
+    )
+    def test_request_reaches_the_registered_route(self, registered: str, requested: str) -> None:
+        status, seen = _reaches([registered], requested)
+        assert status == 200, f"{requested} → {status}"
+        assert seen == registered
+
+    def test_parameterized_routes_normalize_too(self) -> None:
+        # The route a UI hits most, and the one an exact-path table would have missed.
+        status, seen = _reaches(["/toolGallery/toolSets/{sid}/"], "/toolGallery/toolSets/665f")
+        assert status == 200
+        assert seen == "/toolGallery/toolSets/665f/"
+
+    def test_a_wrong_method_still_normalizes_then_405s(self) -> None:
+        # Match.PARTIAL — right path, wrong method — must still be rewritten, so the
+        # router answers 405 for the route rather than missing it entirely.
+        app = _app(["/toolGallery/tools/"], methods=["GET"])
+        with TestClient(app) as client:
+            resp = client.post("/toolGallery/tools", follow_redirects=False)
+        assert resp.status_code == 405
+
+
+class TestItCannotCreateARedirectLoop:
+    """The failure the rules table made possible, and this design cannot.
+
+    ``("/toolGallery", True)`` forced a trailing slash onto every path under the prefix,
+    including routes registered without one. Starlette's ``redirect_slashes`` stripped it
+    straight back and the two bounced forever — worse than the 404 you get with no
+    middleware. Rewriting only to a spelling the router actually serves rules that out.
+    """
+
+    def test_a_slashless_route_beside_slashed_siblings_is_left_alone(self) -> None:
+        paths = ["/toolGallery/tools/", "/toolGallery/toolSets/{sid}"]
+        # The slash-less sibling is served as registered...
+        status, seen = _reaches(paths, "/toolGallery/toolSets/abc")
+        assert status == 200
+        assert seen == "/toolGallery/toolSets/abc"
+        # ...and its slashed spelling resolves onto it rather than looping.
+        status, seen = _reaches(paths, "/toolGallery/toolSets/abc/")
+        assert status == 200
+        assert seen == "/toolGallery/toolSets/abc"
+
+    def test_an_unknown_path_is_not_rewritten(self) -> None:
+        # Neither spelling routes, so the client's own path reaches the 404 — no
+        # invented rewrite, and nothing to bounce against.
+        with TestClient(_app(["/metadata"])) as client:
+            resp = client.get("/nope/", follow_redirects=False)
+        assert resp.status_code == 404
+
+
+class TestMountedUnderAPrefix:
+    """The deployment-backed user MCP: ``URL_PREFIX`` set, every path prefixed.
+
+    Nothing to configure — the router holds the prefixed paths, so they are what the
+    normalizer reads.
+    """
 
     @pytest.mark.parametrize(
         "requested, expected",
         [
             ("/api/mcp/", "/api/mcp"),
             ("/api/toolGallery/tools", "/api/toolGallery/tools/"),
-            ("/api/metadata/", "/api/metadata"),
-            # The unprefixed spelling is somebody else's route, not ours.
-            ("/mcp/", "/mcp/"),
-            ("/toolGallery/tools", "/toolGallery/tools"),
         ],
     )
-    async def test_rules_follow_the_mount_prefix(self, requested, expected) -> None:
-        scope = await _run(default_slash_rules(self._prefix), {"type": "http", "path": requested})
-        assert scope["path"] == expected
+    def test_prefixed_paths_normalize(self, requested: str, expected: str) -> None:
+        status, seen = _reaches(["/api/mcp", "/api/toolGallery/tools/"], requested)
+        assert status == 200
+        assert seen == expected
+
+    def test_the_unprefixed_spelling_is_somebody_elses_route(self) -> None:
+        with TestClient(_app(["/api/mcp"])) as client:
+            assert client.get("/mcp/", follow_redirects=False).status_code == 404
 
 
 class TestScopeHandling:
-    async def test_raw_path_keeps_its_root_path_prefix(self) -> None:
-        """Assigning the bare path would drop the prefix uvicorn puts in ``raw_path``."""
-        scope = await _run(
-            default_slash_rules(),
-            {"type": "http", "path": "/mcp/", "raw_path": b"/root/mcp/", "root_path": "/root"},
-        )
-        assert scope["raw_path"] == b"/root/mcp"
-
-    async def test_raw_path_is_synthesized_when_absent(self) -> None:
-        scope = await _run(default_slash_rules(), {"type": "http", "path": "/mcp/"})
-        assert scope["raw_path"] == b"/mcp"
-
     async def test_non_http_scopes_pass_through_by_identity(self) -> None:
         """A lifespan scope must reach the app untouched, not merely equal."""
         seen: list[Any] = []
+
+        async def app(scope: Any, receive: Any, send: Any) -> None:
+            seen.append(scope)
+
         lifespan = {"type": "lifespan"}
-        await TrailingSlashNormalizer(_recording_app(seen), default_slash_rules())(
-            lifespan, None, None
-        )
+        await TrailingSlashNormalizer(app)(lifespan, None, None)
         assert seen[0] is lifespan
 
-    async def test_a_matching_path_is_not_copied_needlessly(self) -> None:
+    async def test_no_router_in_scope_leaves_the_path_alone(self) -> None:
+        # Installed outside Starlette there is no scope["app"]; degrade to leaving the
+        # path untouched (and warn) rather than guessing at spellings.
         seen: list[Any] = []
-        already_canonical = {"type": "http", "path": "/mcp"}
-        await TrailingSlashNormalizer(_recording_app(seen), default_slash_rules())(
-            already_canonical, None, None
+
+        async def app(scope: Any, receive: Any, send: Any) -> None:
+            seen.append(scope)
+
+        scope = {"type": "http", "path": "/toolGallery/tools"}
+        await TrailingSlashNormalizer(app)(scope, None, None)
+        assert seen[0] is scope
+
+    def test_raw_path_keeps_its_root_path_prefix(self) -> None:
+        """Assigning the bare path would drop the prefix uvicorn puts in ``raw_path``."""
+        seen: list[bytes] = []
+
+        async def record(request: Any) -> PlainTextResponse:
+            seen.append(request.scope["raw_path"])
+            return PlainTextResponse("ok")
+
+        app = Starlette(
+            routes=[Route("/mcp", record)], middleware=[Middleware(TrailingSlashNormalizer)]
         )
-        assert seen[0] is already_canonical
+        with TestClient(app, root_path="/root") as client:
+            client.get("/mcp/", follow_redirects=False)
+        assert seen and seen[0].endswith(b"/mcp")
+        assert not seen[0].endswith(b"/mcp/")
 
 
 class TestEndToEnd:
@@ -148,8 +215,7 @@ class TestEndToEnd:
 
         register_tool_gallery_routes(mcp)
         register_metadata_routes(mcp)
-        app = mcp.http_app()
-        return TestClient(TrailingSlashNormalizer(app, default_slash_rules()))
+        return TestClient(mcp.http_app(middleware=[Middleware(TrailingSlashNormalizer)]))
 
     @pytest.mark.parametrize(
         "path",
@@ -158,6 +224,8 @@ class TestEndToEnd:
             "/toolGallery/tools/",
             "/toolGallery/categories",
             "/toolGallery/categories/",
+            "/toolGallery/providers",
+            "/toolGallery/providers/",
             "/metadata",
             "/metadata/",
         ],
@@ -166,3 +234,17 @@ class TestEndToEnd:
         with self._client() as client:
             resp = client.get(path, follow_redirects=False)
         assert resp.status_code == 200, f"{path} → {resp.status_code}"
+
+
+class TestMountedSubApps:
+    """A ``Mount`` is a route too — the normalizer sees it without being told."""
+
+    def test_paths_under_a_mount_are_untouched(self) -> None:
+        inner = Starlette(routes=[Route("/thing/", _ok)])
+        app = Starlette(
+            routes=[Mount("/sub", inner)], middleware=[Middleware(TrailingSlashNormalizer)]
+        )
+        with TestClient(app) as client:
+            # The mount matches both spellings itself, so the outer layer leaves the
+            # path alone and the inner app routes it.
+            assert client.get("/sub/thing/", follow_redirects=False).status_code == 200

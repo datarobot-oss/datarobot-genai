@@ -713,6 +713,79 @@ class TestMetadataRoute:
     @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
     @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
+    async def test_metadata_reads_the_unfiltered_catalog(
+        self,
+        mock_get_tool_tags: Mock,
+        mock_get_prompt_tags: Mock,
+        mock_get_resource_tags: Mock,
+        mock_get_config: Mock,
+    ):
+        """``/metadata`` describes the server, so the caller's session headers must not shape it.
+
+        Reading ``mcp.list_tools()`` directly ran the catalog transform, which enforces the
+        ``x-datarobot-mcp-*`` filter: ``mode=search`` reported two tools, ``mode=code`` 500'd,
+        and once a present ``x-datarobot-mcp-toolsets`` header became a hard cap it reported
+        none at all. ``run_middleware=False`` is the observable half of the fix here; that the
+        provider also neutralizes the transform is covered by
+        ``tests/drmcpbase/routes/test_describe_routes_ignore_session_filter.py``.
+        """
+        self.mock_mcp.list_tools = AsyncMock(return_value=[])
+        self.mock_mcp.list_prompts = AsyncMock(return_value=[])
+        self.mock_mcp.list_resources = AsyncMock(return_value=[])
+        mock_get_tool_tags.return_value = set()
+        mock_get_prompt_tags.return_value = set()
+        mock_get_resource_tags.return_value = set()
+        # The config block is serialized into the response but is not what this test is
+        # about; give it plain values so json.dumps has no Mock to choke on.
+        mock_config = Mock()
+        mock_config.configure_mock(
+            mcp_server_name="test-server",
+            mcp_server_port=8080,
+            mcp_server_log_level="INFO",
+            app_log_level="DEBUG",
+            mount_path="/",
+            mcp_server_register_dynamic_tools_on_startup=False,
+            mcp_server_register_dynamic_prompts_on_startup=False,
+            mcp_server_tool_registration_allow_empty_schema=False,
+            mcp_server_tool_registration_duplicate_behavior="warn",
+            mcp_server_prompt_registration_duplicate_behavior="warn",
+        )
+        mock_config.tool_config = Mock()
+        mock_config.tool_config.configure_mock(
+            **{
+                f"enable_{name}_tools": False
+                for name in (
+                    "predictive",
+                    "jira",
+                    "confluence",
+                    "gdrive",
+                    "microsoft_graph",
+                    "perplexity",
+                    "tavily",
+                    "dr_docs",
+                    "use_case",
+                    "code_execution",
+                    "optimization",
+                    "vdb",
+                    "panels",
+                    "workload",
+                    "files_api",
+                )
+            }
+        )
+        mock_get_config.return_value = mock_config
+
+        register_routes(self.mock_mcp)
+        response = await self.registered_routes["GET", "/metadata"](self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK
+        self.mock_mcp.list_tools.assert_awaited_once_with(run_middleware=False)
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.get_config")
+    @patch("datarobot_genai.drmcp.core.routes.get_resource_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_prompt_tags")
+    @patch("datarobot_genai.drmcp.core.routes.get_tool_tags")
     async def test_metadata_route_empty_lists(
         self,
         mock_get_tool_tags: Mock,

@@ -32,8 +32,8 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import effective_tool_al
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_category_gates
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_allowed
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_category_disabled
-from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -131,12 +131,21 @@ class DataRobotMCPCatalogTransform(CodeMode):
         # Catalog tools: the allowlist is a hard cap in every mode.  (H5: the
         # code-mode path used to skip it, so switching the mode header made
         # every non-allowlisted tool resolvable and callable again.)
-        if allowlist is not None and not is_tool_name_allowed(name, allowlist):
+        #
+        # `may_admit_name` is the half of the decision a name alone can settle, so a
+        # hopeless name never costs a resolution.  It says "keep going", not
+        # "allowed": whether a derived name or a bucket admits THIS tool depends on
+        # its marker, which needs the tool itself.
+        if allowlist is not None and not allowlist.may_admit_name(name):
             return None
         tool = await call_next(name, version=version)
+        if tool is None:
+            return None
+        if allowlist is not None and not is_tool_allowed(tool, allowlist):
+            return None
         # Category gates apply in every mode: a tool in a disabled category is not
         # resolvable — and therefore not callable — for this request.
-        if tool is not None and is_tool_category_disabled(tool, ctx.disabled_categories):
+        if is_tool_category_disabled(tool, ctx.disabled_categories):
             return None
         return tool
 

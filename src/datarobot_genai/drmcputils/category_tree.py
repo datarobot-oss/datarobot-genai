@@ -31,11 +31,12 @@ taxonomy applies to ``["global", "user"]``; the marker-resolved buckets
 global-mcp serves built-in tools exclusively.
 
 Counts come from the server's real catalog (see ``resolve_catalog``: the caller's
-session headers must not narrow it) mapped through the single-source-of-truth
-taxonomy (``merge_tool_info`` → ``categories_for_tool``) plus the marker classifier
-(``marked_kind``) — never from the static ``LEAF_CATEGORY_TOOLS`` map alone, which
-would over-count tools a given server does not register. Proxied user-MCP tools
-carry no category and are not bucketed anywhere.
+session headers must not narrow it), classified by ``build_tool_gallery_items`` —
+the very function behind ``GET /toolGallery/tools/``, so a node's contents and what
+``?category=`` returns are the same computation rather than two that agree by
+inspection. Never from the static ``LEAF_CATEGORY_TOOLS`` map alone, which would
+over-count tools a given server does not register. Proxied user-MCP tools carry no
+category and are not bucketed anywhere.
 
 This module has no route of its own: it used to be ``routes/tool_categories.py``
 serving a separate ``GET /toolCategories/``, which meant two endpoints answered
@@ -47,10 +48,11 @@ from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
+from datarobot_genai.drmcputils.categories import MARKER_RESOLVED_CATEGORIES
 from datarobot_genai.drmcputils.categories import PARENT_TO_CHILDREN
 from datarobot_genai.drmcputils.categories import MCPToolCategory
 from datarobot_genai.drmcputils.categories import category_label
-from datarobot_genai.drmcputils.tool_gallery import marked_kind
+from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
 from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
 
 # Enum definition order → stable ordering for both top-level categories and children.
@@ -64,9 +66,9 @@ _CHILDREN: frozenset[str] = frozenset(
 
 # Categories resolved from tool markers at request time — no static tool names.
 # Flagged ``dynamic`` so a UI can render them; counts still come from live tools.
-_DYNAMIC_CATEGORIES: frozenset[str] = frozenset(
-    {MCPToolCategory.DR_USER_TOOLS.value, MCPToolCategory.DR_DYNAMIC_TOOLS.value}
-)
+# Shared with the allowlist matcher rather than restated here: which categories are
+# marker-resolved is one fact, and this module used to hold a second copy of it.
+_DYNAMIC_CATEGORIES: frozenset[str] = MARKER_RESOLVED_CATEGORIES
 
 # ``appliesTo`` values per node: the marker-resolved buckets only exist on user
 # MCPs (user-authored / dynamically registered tools); everything else is
@@ -109,21 +111,24 @@ def ordered_top_level() -> list[str]:
 def _category_to_tools(tools: Sequence[Any]) -> dict[str, set[str]]:
     """Map each category → the set of *this server's* tool names in it.
 
-    Static tools contribute their leaf + parent categories (``categories_for_tool``
-    via ``merge_tool_info``); marker-classified tools (user/dynamic) contribute
-    their bucket (``marked_kind``). A tool with no known category contributes
-    nothing.
+    The bucketing is read straight off ``build_tool_gallery_items`` — the same
+    function that decides the ``categories`` a tool reports on ``GET
+    /toolGallery/tools/`` — so a node's contents and what ``?category=<value>``
+    returns cannot drift apart. Deriving it a second time here is what made them
+    drift: this used to UNION the static taxonomy with the marker bucket, while
+    the gallery treats them as mutually exclusive (a marked tool reports its
+    bucket and nothing else). A user-authored ``file_read`` was then filed under
+    Development → Files in the tree, and clicking Files returned nothing.
+
+    Static tools contribute their leaf *and* parent category, so a parent counts
+    every tool beneath it. A tool the classifier places nowhere (a proxied
+    user-MCP tool) contributes nothing and is absent from every node.
     """
     mapping: dict[str, set[str]] = defaultdict(set)
-    for tool in tools:
-        info = merge_tool_info(tool, {})
-        names = {str(category) for category in info["categories"]}
-        kind = marked_kind(info.get("tool_category"))
-        # Proxied tools have a marker kind but no category → contribute nothing.
-        if kind and kind["category"]:
-            names.add(kind["category"])
-        for name in names:
-            mapping[name].add(tool.name)
+    merged = [merge_tool_info(tool, {}) for tool in tools]
+    for item in build_tool_gallery_items(merged):
+        for name in item["categories"]:
+            mapping[str(name)].add(item["name"])
     return mapping
 
 

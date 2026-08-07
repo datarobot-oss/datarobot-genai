@@ -27,8 +27,10 @@ from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcputils.categories import ToolAllowlist
 from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import parse_toolset_names_header
+from datarobot_genai.drmcputils.tool_gallery import marked_kind
 
 logger = getLogger(__name__)
 
@@ -176,15 +178,54 @@ async def expand_toolset_names_to_tools(names: frozenset[str] | None) -> frozens
         return frozenset()
 
 
+def is_tool_allowed(tool: Tool, allowlist: ToolAllowlist) -> bool:
+    """Whether *tool* survives *allowlist*, taking into account how it was named.
+
+    Three ways in, and which apply depends on what kind of tool this is:
+
+    - an **explicit** name admits anything — the client asked for this tool by name;
+    - a **derived** name (from expanding a static category) admits only *built-ins*,
+      because the static taxonomy describes DataRobot's own tools. A user-authored
+      tool that merely shares a name is not what ``dr_db`` meant;
+    - a **bucket** admits a tool whose marker puts it there.
+
+    Ordered so the common paths never read the tool's marker: an explicit hit returns
+    at once, and a name in neither set with no bucket requested is rejected before the
+    marker is touched. Only a name that *could* match — or a request that named a
+    bucket — pays for the lookup.
+    """
+    name = tool.name
+    if name in allowlist.explicit:
+        return True
+    in_derived = name in allowlist.derived
+    if not in_derived and not allowlist.buckets:
+        return False
+    kind = marked_kind(get_tool_category(tool))
+    if kind is None:
+        # A built-in: the static taxonomy speaks for it.
+        return in_derived
+    # Marker-classified (user / deployment / proxied). Its category comes from the
+    # marker, so only a bucket can admit it — never a name a static category expanded
+    # to. Proxied tools carry a marker but no category, so no bucket names them.
+    bucket = kind["category"]
+    return bucket is not None and bucket in allowlist.buckets
+
+
 def filter_tools_by_allowlist(
     tools: Sequence[Tool],
-    allowlist: frozenset[str],
+    allowlist: ToolAllowlist,
 ) -> list[Tool]:
-    return [tool for tool in tools if tool.name in allowlist]
+    """Apply *allowlist* to a whole catalog.
 
-
-def is_tool_name_allowed(name: str, allowlist: frozenset[str]) -> bool:
-    return name in allowlist
+    The fast path is not a second copy of the rule — it is the one case where the rule
+    provably collapses. With no derived names and no buckets, :func:`is_tool_allowed`
+    can only return ``name in explicit``, so the marker is never consulted and this is
+    the same single set lookup per tool the allowlist has always cost.
+    """
+    if not allowlist.derived and not allowlist.buckets:
+        explicit = allowlist.explicit
+        return [tool for tool in tools if tool.name in explicit]
+    return [tool for tool in tools if is_tool_allowed(tool, allowlist)]
 
 
 def get_tool_category(tool: Tool) -> str | None:
@@ -211,7 +252,7 @@ def filter_tools_by_category_gates(
 @dataclass(frozen=True, slots=True)
 class MCPRequestContext:
     mode: MCPRequestMode
-    tool_allowlist: frozenset[str] | None
+    tool_allowlist: ToolAllowlist | None
     disabled_categories: frozenset[str] = frozenset()
     # Raw bundle names from ``x-datarobot-mcp-toolsets`` — expanded asynchronously.
     toolset_names: frozenset[str] | None = None
@@ -232,7 +273,7 @@ class MCPRequestContext:
         return get_request_context()
 
 
-async def effective_tool_allowlist(ctx: MCPRequestContext) -> frozenset[str] | None:
+async def effective_tool_allowlist(ctx: MCPRequestContext) -> ToolAllowlist | None:
     """Union ``x-datarobot-mcp-tools`` and expanded ``x-datarobot-mcp-toolsets`` names.
 
     ``None`` means *no allowlist* — every tool is permitted — so it is only ever returned
@@ -250,8 +291,8 @@ async def effective_tool_allowlist(ctx: MCPRequestContext) -> frozenset[str] | N
         return ctx.tool_allowlist
     expanded = await _expand_toolset_names_cached(ctx)
     if ctx.tool_allowlist is None:
-        return expanded
-    return ctx.tool_allowlist | expanded
+        return ToolAllowlist(explicit=expanded)
+    return ctx.tool_allowlist.with_explicit(expanded)
 
 
 # Cache of one (context, expansion) pair, valid for the current request only — the same
@@ -301,7 +342,8 @@ _UNFILTERED_REQUEST_CONTEXT = MCPRequestContext(mode=MCPRequestMode.TOOLS, tool_
 def unfiltered_catalog_provider(mcp: Any) -> Callable[[], Awaitable[Sequence[Tool]]]:
     """Build a catalog provider that ignores the caller's ``x-datarobot-mcp-*`` headers.
 
-    For the describe-the-server REST routes (``/toolGallery/tools/``, ``/toolCategories/``,
+    For the describe-the-server REST routes (``/toolGallery/tools/``,
+    ``/toolGallery/categories/``,
     ``/metadata``), which report what the server registers rather than what the current
     request may call. ``list_tools(run_middleware=False)`` is not enough on its own —
     FastMCP still applies registered catalog transforms, and

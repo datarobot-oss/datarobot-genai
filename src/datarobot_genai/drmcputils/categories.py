@@ -48,6 +48,7 @@ Hierarchy:
   dr_dynamic_tools                       (hosted tools — registered separately)
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -291,11 +292,29 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
     ),
     # Marker-resolved categories — tool names are resolved at request time
     # from each tool's ``meta.tool_category`` marker, not from this static
-    # map.  Kept here so the category names are recognised and not passed
-    # through as plain (unknown) tool names.
+    # map.  Present so the names are recognised as categories; the empty set
+    # is NOT what an allowlist expands them to (see MARKER_RESOLVED_CATEGORIES).
     MCPToolCategory.DR_USER_TOOLS: frozenset(),
     MCPToolCategory.DR_DYNAMIC_TOOLS: frozenset(),
 }
+
+# Categories whose membership is decided by a tool's ``meta.tool_category`` marker at
+# request time rather than by any static list of names. They are the one kind of
+# category ``resolve_to_tool_names`` cannot expand: it is a pure function over this
+# taxonomy and never sees the server's catalog.
+#
+# So it passes them through as literal tokens and the *matcher* resolves them, where
+# the tools are in hand (``drmcpbase.fastmcp_transforms.utils.is_tool_allowed``).
+# Expanding them to the empty set instead — which is what the map above would do —
+# made ``x-datarobot-mcp-tools: dr_user_tools`` a present-but-empty allowlist, and an
+# empty allowlist is a hard deny: picking "Your own tools" hid every tool on the
+# server. Neither of the two obvious readings of that header is "show me nothing".
+MARKER_RESOLVED_CATEGORIES: frozenset[str] = frozenset(
+    {
+        MCPToolCategory.DR_USER_TOOLS.value,
+        MCPToolCategory.DR_DYNAMIC_TOOLS.value,
+    }
+)
 
 # ── parent category → leaf category names ────────────────────────────────────
 
@@ -409,6 +428,80 @@ def category_label(name: str) -> str:
         return name
 
 
+@dataclass(frozen=True, slots=True)
+class ToolAllowlist:
+    """A parsed ``x-datarobot-mcp-tools`` header, keeping *how* each name got here.
+
+    Three buckets, because "the client named this tool" and "this name fell out of
+    expanding a category" must not be treated alike:
+
+    - ``explicit``: names the client wrote verbatim, plus unknown tokens (a typo stays
+      a name that matches nothing). Admits any tool with that name, whatever it is.
+    - ``derived``: names produced by expanding a *static* category. These describe
+      DataRobot's own built-in tools, so they must only admit built-ins — a
+      user-authored tool that happens to share a name is not the tool the category
+      meant. Flattening these into ``explicit`` is what made ``dr_db`` admit a
+      ``USER_TOOL`` called ``vdb_query`` while ``?category=dr_db`` returned nothing.
+    - ``buckets``: marker-resolved categories (``dr_user_tools``/``dr_dynamic_tools``),
+      which name no tools at all and are matched against a tool's own marker.
+
+    Matching needs the tool object, so it lives beside the transform
+    (``drmcpbase.fastmcp_transforms.utils.is_tool_allowed``); this stays a pure
+    taxonomy type with no view of any catalog.
+    """
+
+    explicit: frozenset[str] = frozenset()
+    derived: frozenset[str] = frozenset()
+    buckets: frozenset[str] = frozenset()
+
+    def may_admit_name(self, name: str) -> bool:
+        """Report whether a tool with this name could be admitted at all.
+
+        The cheap half of the decision, for callers holding only a name (``get_tool``
+        rejects before resolving). ``True`` means "keep going", not "allowed": whether
+        a derived name or a bucket admits *this* tool depends on its marker, which
+        needs the tool in hand.
+        """
+        return name in self.explicit or name in self.derived or bool(self.buckets)
+
+    def with_explicit(self, names: frozenset[str]) -> "ToolAllowlist":
+        """Union in concrete tool names, as explicitly named (Tool Sets expansion).
+
+        A Tool Set lists tool *functions* by name, which is the client naming them —
+        so a user-authored tool in a bundle is admitted like any other.
+        """
+        return ToolAllowlist(self.explicit | names, self.derived, self.buckets)
+
+    def __bool__(self) -> bool:
+        return bool(self.explicit or self.derived or self.buckets)
+
+
+def resolve_tool_allowlist(entries: frozenset[str]) -> ToolAllowlist:
+    """Sort raw header tokens into explicit names, category-derived names and buckets.
+
+    Resolution rules (per entry):
+    1. Marker-resolved category  → a bucket, matched against the tool's own marker
+    2. Parent category           → its leaf children's tool names, as *derived*
+    3. Leaf category             → its tool names, as *derived*
+    4. Anything else             → an *explicit* name (a plain tool name, or a typo
+       that will simply match nothing — never an error)
+    """
+    explicit: set[str] = set()
+    derived: set[str] = set()
+    buckets: set[str] = set()
+    for entry in entries:
+        if entry in MARKER_RESOLVED_CATEGORIES:
+            buckets.add(entry)
+        elif entry in PARENT_TO_CHILDREN:
+            for leaf in PARENT_TO_CHILDREN[entry]:
+                derived.update(LEAF_CATEGORY_TOOLS.get(leaf, frozenset()))
+        elif entry in LEAF_CATEGORY_TOOLS:
+            derived.update(LEAF_CATEGORY_TOOLS[entry])
+        else:
+            explicit.add(entry)
+    return ToolAllowlist(frozenset(explicit), frozenset(derived), frozenset(buckets))
+
+
 def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
     """Expand category names in *entries* to their constituent tool names.
 
@@ -421,6 +514,10 @@ def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
     strings.  They will simply never match any registered tool name and the
     filter will ignore them — no error is raised.
 
+    Marker-resolved categories expand to nothing here: their membership is a property
+    of each tool's marker, not of this taxonomy. Use :func:`resolve_tool_allowlist`
+    for the request path, which keeps them as buckets for the matcher to settle.
+
     Args:
         entries: Raw strings parsed from the ``x-datarobot-mcp-tools`` header.
 
@@ -428,19 +525,8 @@ def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
     -------
         Resolved set of tool function names (plain strings only).
     """
-    resolved: set[str] = set()
-    for entry in entries:
-        if entry in PARENT_TO_CHILDREN:
-            # Parent → expand each leaf child to tool names
-            for leaf in PARENT_TO_CHILDREN[entry]:
-                resolved.update(LEAF_CATEGORY_TOOLS.get(leaf, frozenset()))
-        elif entry in LEAF_CATEGORY_TOOLS:
-            # Leaf → expand to tool names
-            resolved.update(LEAF_CATEGORY_TOOLS[entry])
-        else:
-            # Plain tool name or unknown category — pass through
-            resolved.add(entry)
-    return frozenset(resolved)
+    allowlist = resolve_tool_allowlist(entries)
+    return allowlist.explicit | allowlist.derived
 
 
 def _parse_header_entries(raw: str | None) -> frozenset[str] | None:
@@ -466,18 +552,21 @@ def parse_toolset_names_header(raw: str | None) -> frozenset[str] | None:
     return _parse_header_entries(raw)
 
 
-def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:
-    """Parse the x-datarobot-mcp-tools header and resolve any category names.
+def parse_tool_allowlist_header(raw: str | None) -> ToolAllowlist | None:
+    """Parse the x-datarobot-mcp-tools header into a :class:`ToolAllowlist`.
 
-    Category names (e.g. ``dr_connectors``, ``dr_connector_jira``) are expanded
-    to the set of tool function names they contain.  Plain tool names and unknown
-    entries are kept as-is.  Returns None when the header is absent or blank,
-    meaning no tool filtering should be applied.
+    Static category names (e.g. ``dr_connectors``, ``dr_connector_jira``) expand to
+    the tool names they contain; marker-resolved categories become buckets; plain
+    tool names and unknown entries are kept as explicit names.
+
+    Returns ``None`` when the header is absent or blank — *no filtering*. That is a
+    different answer from an empty allowlist, which denies everything; see
+    ``effective_tool_allowlist``.
     """
     entries = _parse_header_entries(raw)
     if entries is None:
         return None
-    return resolve_to_tool_names(entries)
+    return resolve_tool_allowlist(entries)
 
 
 # ── reverse index: tool name → its categories ────────────────────────────────
