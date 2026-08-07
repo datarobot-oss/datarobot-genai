@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
+from datarobot_genai.drmcpbase.fastmcp_transforms import unfiltered_catalog_provider
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
@@ -56,6 +57,12 @@ async def _tools_gallery_enabled(_request: Request) -> bool:
 
 def register_routes(mcp: DataRobotMCP) -> None:
     """Register all routes with the MCP server."""
+    # The describe-the-server routes must report the same catalog to every caller, so
+    # they read it through this rather than `mcp.list_tools()`: the catalog transform
+    # would otherwise narrow them by the caller's own x-datarobot-mcp-* session headers,
+    # and reject `mode=code` outright.
+    unfiltered_catalog = unfiltered_catalog_provider(mcp)
+
     # Shared toolGallery routes (also exposed by global-mcp), mounted under this
     # server's configured prefix and gated behind ENABLE_MCP_TOOLS_GALLERY_SUPPORT.
     register_tool_gallery_routes(
@@ -63,6 +70,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         base_path=prefix_mount_path("/toolGallery"),
         gate=_tools_gallery_enabled,
         ui_metadata_provider=get_tool_ui_metadata,
+        catalog_provider=unfiltered_catalog,
     )
 
     @mcp.custom_route(prefix_mount_path("/"), methods=["GET"])
@@ -79,12 +87,22 @@ def register_routes(mcp: DataRobotMCP) -> None:
     async def get_metadata(_: Request) -> JSONResponse:
         """Get metadata about tools, prompts, resources, and system configuration."""
         try:
-            # Get tools with tags
-            tools = await mcp.list_tools()
+            # Get tools with tags. ``toolCategory`` is the registrar's
+            # ``meta.tool_category`` marker (USER_TOOL / BUILT_IN_TOOL /
+            # USER_TOOL_DEPLOYMENT / …; None when unmarked) — additive so UIs
+            # can distinguish user-authored tools from taxonomy/dynamic ones.
+            #
+            # Unfiltered, like the sibling gallery routes: this route describes the
+            # server. Reading `mcp.list_tools()` directly let the caller's session
+            # headers reshape it — `mode=search` reported two tools, `mode=code` 500'd,
+            # and once a present `x-datarobot-mcp-toolsets` header became a hard cap
+            # (user-mcp registers no expander) it reported no tools at all.
+            tools = await unfiltered_catalog()
             tools_metadata = [
                 {
                     "name": tool.name,
                     "tags": sorted(list(get_tool_tags(tool))),
+                    "toolCategory": (getattr(tool, "meta", None) or {}).get("tool_category"),
                 }
                 for tool in tools
             ]

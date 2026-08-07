@@ -19,6 +19,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError as FastMCPToolError
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 
@@ -520,3 +521,53 @@ class TestOpenTelemetryMiddleware:
         mock_span.set_attribute.assert_any_call("error.type", "Exception")
         mock_span.record_exception.assert_called_once()
         mock_span.set_status.assert_called_once()
+
+
+class TestMiddlewareRecordsToolMetrics:
+    """``on_call_tool`` feeds drmcpbase's ``record_tool_call``.
+
+    Lives here rather than beside the metrics themselves: this is drmcp wiring,
+    and the drmcpbase test job does not install drmcp's dependencies.
+    """
+
+    @pytest.mark.asyncio
+    async def test_on_call_tool_success_records_one_call(self) -> None:
+        # GIVEN the OTel middleware and a tool call that succeeds
+        middleware = OpenTelemetryMiddleware()
+        context = Mock()
+        context.message.name = "vdb_query"
+        context.message.arguments = {"q": "hello"}
+        call_next = AsyncMock(return_value=Mock())
+
+        # WHEN the call flows through on_call_tool
+        with patch("datarobot_genai.drmcp.core.telemetry.record_tool_call") as record:
+            await middleware.on_call_tool(context, call_next)
+
+        # THEN exactly one success is recorded with a measured duration
+        record.assert_called_once()
+        name, duration, error = record.call_args.args
+        assert name == "vdb_query"
+        assert duration >= 0
+        assert error is None
+
+    @pytest.mark.asyncio
+    async def test_on_call_tool_failure_records_the_exception_and_reraises(self) -> None:
+        # GIVEN the OTel middleware and a tool call that fails
+        middleware = OpenTelemetryMiddleware()
+        context = Mock()
+        context.message.name = "predict"
+        context.message.arguments = {}
+        boom = FastMCPToolError("[upstream] api broke")
+        call_next = AsyncMock(side_effect=boom)
+
+        # WHEN the call flows through on_call_tool
+        with patch("datarobot_genai.drmcp.core.telemetry.record_tool_call") as record:
+            with pytest.raises(FastMCPToolError):
+                await middleware.on_call_tool(context, call_next)
+
+        # THEN the failure is recorded with the original exception
+        record.assert_called_once()
+        name, duration, error = record.call_args.args
+        assert name == "predict"
+        assert duration >= 0
+        assert error is boom
