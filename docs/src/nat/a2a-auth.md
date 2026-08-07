@@ -239,12 +239,12 @@ identity metadata and the agent card URL.
 
 ### Server-side configuration reference: `enable_unauthenticated_well_known_route`
 
-Unauthenticated access to `GET /.well-known/agent-card.json` requires **two**
+Unauthenticated access to `GET /.well-known/agent-card.json` requires two
 independent opt-ins:
 
-1. **Platform (per cluster)** — cluster administrators enable routing of
+1. Platform (per cluster) — cluster administrators enable routing of
    unauthenticated traffic to agents. This is configured outside `workflow.yaml`.
-2. **Agent (per deployment)** — set `enable_unauthenticated_well_known_route:
+2. Agent (per deployment) — set `enable_unauthenticated_well_known_route:
    true` under `general.front_end.a2a` in the agent's `workflow.yaml`.
 
 Both must be enabled for anonymous callers to reach the agent card endpoint.
