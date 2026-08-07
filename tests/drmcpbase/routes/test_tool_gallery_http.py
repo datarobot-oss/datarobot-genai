@@ -19,6 +19,7 @@ from typing import Any
 from fastmcp import FastMCP
 from starlette.testclient import TestClient
 
+from datarobot_genai.drmcputils.category_tree import ordered_top_level
 from datarobot_genai.drmcputils.routes.tool_gallery import register_tool_gallery_routes
 
 
@@ -358,16 +359,53 @@ class TestToolGalleryCategoriesRoute:
         assert by_value["dr_web_search"] == "Web search"
         assert by_value["dr_predictive"] == "Predictive"
 
-    def test_excludes_internal_categories(self) -> None:
+    def test_offers_every_top_level_category_including_marker_buckets(self) -> None:
         # GIVEN the gallery routes
         mcp = _make_server_with_route()
-        # WHEN the categories enum is fetched
+        # WHEN the categories route is fetched
         with TestClient(mcp.http_app()) as client:
             body = client.get("/toolGallery/categories/").json()
-        # THEN internal / non-user-facing categories are not offered as filters
         values = {item["value"] for item in body["categories"]}
-        assert "dr_dynamic_tools" not in values
-        assert "dr_proxied_user_mcp" not in values
+        # THEN every top-level category is filterable — the marker buckets included.
+        # They were excluded as "internal" while this was a curated list, which left a
+        # user MCP offering five categories it has no tools in and hiding the one it
+        # does: dr_user_tools is most of a user MCP's catalog.
+        assert values == set(ordered_top_level())
+        assert {"dr_user_tools", "dr_dynamic_tools", "dr_db", "dr_deployments"} <= values
+
+    def test_nodes_carry_live_counts_children_and_applies_to(self) -> None:
+        # GIVEN a server exposing one jira tool
+        mcp = _make_server_with_route()
+        # WHEN the categories route is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        by_value = {item["value"]: item for item in body["categories"]}
+        connectors = by_value["dr_connectors"]
+        # THEN the parent counts THIS server's tools and names them, one level down
+        assert connectors["count"] == 1
+        assert connectors["toolNames"] == ["jira_search_issues"]
+        assert connectors["appliesTo"] == ["global", "user"]
+        assert connectors["dynamic"] is False
+        jira = {child["value"]: child for child in connectors["children"]}["dr_connector_jira"]
+        assert jira["label"] == "Jira"
+        assert jira["toolNames"] == ["jira_search_issues"]
+        # A category this server has nothing in still appears, at zero — a picker has
+        # to be able to show what it cannot offer.
+        assert by_value["dr_predictive"]["count"] == 0
+        # Marker buckets are user-MCP-only and flagged dynamic.
+        assert by_value["dr_user_tools"]["appliesTo"] == ["user"]
+        assert by_value["dr_user_tools"]["dynamic"] is True
+
+    def test_total_count_is_distinct_categorized_tools(self) -> None:
+        # GIVEN a server with one categorized tool
+        mcp = _make_server_with_route()
+        # WHEN the categories route is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN count is the node count and totalCount the DISTINCT tools mapped: each
+        # of the two tools sits in both a leaf and its parent, and is counted once.
+        assert body["count"] == len(body["categories"])
+        assert body["totalCount"] == 2
 
 
 class TestToolGalleryProvidersRoute:
