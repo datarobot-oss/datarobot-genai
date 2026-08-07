@@ -62,10 +62,10 @@ The core `instrument()` sets up HTTP-client, OpenAI SDK, and threading instrumen
 
 ```python
 from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.langgraph.telemetry import instrument as langgraph_instrument
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
 
 instrument()  # HTTP clients + OpenAI SDK + OTel SDK bootstrap
-langgraph_instrument()  # framework auto-instrumentor spans
+instrument_langgraph()  # framework auto-instrumentor spans
 ```
 
 The per-framework helpers live alongside each framework package:
@@ -97,8 +97,30 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 
 Two caveats regardless of which path supplies the endpoint/headers:
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` being set, so set it (any value) even when you configure the export via `OTEL_EXPORTER_OTLP_*`.
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) only runs inside a DataRobot runtime. Outside one, call `setup_use_case_tracing()` (see below) instead of faking `MLOPS_DEPLOYMENT_ID`.
 - Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
+
+## Local tracing
+
+Outside a DataRobot runtime there is no `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID`, so `instrument()` exports nothing. Attach the run to a use case instead:
+
+```python
+from datarobot_genai.core.telemetry.agent import instrument
+from datarobot_genai.core.telemetry.datarobot_otel import setup_use_case_tracing
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+
+instrument()
+instrument_langgraph()
+setup_use_case_tracing("<use-case-id>")
+```
+
+The id can also come from `DATAROBOT_USE_CASE_ID` or `DATAROBOT_DEFAULT_USE_CASE`. `OTEL_SDK_DISABLED=true` turns export off. `find_or_create_use_case("<name>")` in `datarobot_genai.core.use_case` returns an id, creating the use case in your org if there is no exact name match.
+
+View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
+
+```bash
+dr xp --entity-id <use-case-id>
+```
 
 ## Troubleshooting
 

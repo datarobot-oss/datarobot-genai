@@ -36,6 +36,7 @@ import urllib.parse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.core.runtime import is_hosted_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 # can't drift.
 DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
 WORKLOAD_ENTITY_ID_PREFIX = "workload-"
+# The ingest and `dr xp` both address a use case as an experiment container.
+USE_CASE_ENTITY_ID_PREFIX = "experiment_container-"
 
 
 def resolve_api_key_from_env() -> str:
@@ -109,6 +112,90 @@ def resolve_otel_traces_endpoint_from_env() -> str:
     if not parsed.scheme or not parsed.netloc:
         return ""
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
+
+
+def setup_use_case_tracing(use_case_id: str | None = None) -> bool:
+    """Export this process's traces to a DataRobot use case, for notebooks and scripts.
+
+    The id comes from ``use_case_id``, then ``DATAROBOT_USE_CASE_ID``, then
+    ``DATAROBOT_DEFAULT_USE_CASE``. An explicit ``use_case_id`` overrides a preset
+    ``OTEL_EXPORTER_OTLP_HEADERS``; an id from the environment does not.
+
+    Returns ``True`` while this process is exporting to that use case, including when
+    an earlier call already installed the exporter. Returns ``False`` and changes
+    nothing inside a DataRobot runtime (which supplies its own entity id), with no id
+    configured, without ``DATAROBOT_API_TOKEN``, or with no resolvable endpoint.
+    """
+    if is_hosted_runtime():
+        logger.info(
+            "Skipping use case tracing setup: inside a DataRobot runtime, which supplies "
+            "its own entity id."
+        )
+        return False
+
+    # DATAROBOT_DEFAULT_USE_CASE provisions (Pulumi adopts it), so it stays a fallback.
+    # Assigned, not inlined: mypy widens os.getenv's 2-arg overload as a right operand.
+    configured_use_case = os.getenv("DATAROBOT_USE_CASE_ID", "") or os.getenv(
+        "DATAROBOT_DEFAULT_USE_CASE", ""
+    )
+    resolved_id = (use_case_id or configured_use_case).strip()
+
+    if not resolved_id:
+        logger.info(
+            "Skipping use case tracing setup: pass use_case_id or set %s (or %s).",
+            "DATAROBOT_USE_CASE_ID",
+            "DATAROBOT_DEFAULT_USE_CASE",
+        )
+        return False
+
+    entity_id = f"{USE_CASE_ENTITY_ID_PREFIX}{resolved_id}"
+
+    # The exporter copies its headers when it is built, so rewriting the env afterwards
+    # retargets nothing. Report that rather than claim a retarget that cannot happen.
+    if _BOOTSTRAP_STATE["installed"]:
+        if entity_id in os.getenv("OTEL_EXPORTER_OTLP_HEADERS", ""):
+            return True
+        logger.warning(
+            "Tracing is already exporting to a different entity than %s. "
+            "Restart the process to retarget it.",
+            entity_id,
+        )
+        return False
+
+    if not _point_headers_at(entity_id, override_preset=bool(use_case_id)):
+        return False
+    return bootstrap_otel_provider_for_datarobot()
+
+
+def _point_headers_at(entity_id: str, override_preset: bool) -> bool:
+    """Make ``OTEL_EXPORTER_OTLP_HEADERS`` target ``entity_id``, or explain why not."""
+    preset = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+    # An explicit argument beats ambient env; an id from the env does not, so the dev
+    # server's bridged headers survive.
+    if preset and not override_preset:
+        if entity_id in preset:
+            return True
+        logger.warning(
+            "Tracing left as configured: OTEL_EXPORTER_OTLP_HEADERS already targets "
+            "a different entity than %s. Pass use_case_id to override.",
+            entity_id,
+        )
+        return False
+
+    api_key = resolve_api_key_from_env()
+    if not api_key:
+        logger.info("Skipping use case tracing setup: DATAROBOT_API_TOKEN not set.")
+        return False
+    if not resolve_otel_traces_endpoint_from_env():
+        # Checked before writing, so a missing endpoint cannot strand the token in the
+        # environment and pin the entity id for every other resolver.
+        logger.info("Skipping use case tracing setup: no DataRobot endpoint resolved.")
+        return False
+
+    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+        f"X-DataRobot-Api-Key={api_key},X-DataRobot-Entity-Id={entity_id}"
+    )
+    return True
 
 
 def _use_simple_span_processor() -> bool:
@@ -253,7 +340,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        headers["X-DataRobot-Entity-Id"],
+        headers.get("X-DataRobot-Entity-Id", headers.get("x-datarobot-entity-id", "")),
     )
     return True
 
