@@ -32,7 +32,7 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCP_TOOLSETS_HEAD
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestMode
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import _request_context_cache
-from datarobot_genai.drmcpbase.fastmcp_transforms.utils import _resolve_toolsets
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import effective_tool_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_header_case_insensitive
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
@@ -41,6 +41,14 @@ from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allo
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_bool_header
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_disabled_categories
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import parse_tool_allowlist_header
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import register_toolsets_allowlist_expander
+
+
+@pytest.fixture(autouse=True)
+def _reset_toolsets_header_resolver() -> Iterator[None]:
+    register_toolsets_allowlist_expander(None)
+    yield
+    register_toolsets_allowlist_expander(None)
 
 
 @pytest.fixture(autouse=True)
@@ -684,19 +692,6 @@ class _NamedTool:
         self.name = name
 
 
-class TestResolveToolsets:
-    def test_always_returns_empty_frozenset(self) -> None:
-        assert _resolve_toolsets(None) == frozenset()
-
-    def test_non_empty_raw_still_returns_empty(self) -> None:
-        # The stub ignores the header value — implementation is for global-mcp only.
-        assert _resolve_toolsets("my_toolset") == frozenset()
-
-    def test_returns_frozenset_type(self) -> None:
-        result = _resolve_toolsets("anything")
-        assert isinstance(result, frozenset)
-
-
 class TestMCPRequestContextFromHeaders:
     def test_no_headers_gives_tools_mode_no_allowlist(self) -> None:
         ctx = MCPRequestContext.from_headers({})
@@ -708,31 +703,33 @@ class TestMCPRequestContextFromHeaders:
         assert ctx.tool_allowlist is not None
         assert "jira_search_issues" in ctx.tool_allowlist
 
-    def test_toolsets_header_alone_returns_empty_allowlist(self) -> None:
-        # Stub always resolves to empty frozenset; empty frozenset is falsy →
-        # combined falls through to tools_allowlist (None).
+    def test_toolsets_header_alone_parses_names_without_sync_expand(self) -> None:
         ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "my_toolset"})
         assert ctx.tool_allowlist is None
+        assert ctx.toolset_names == frozenset({"my_toolset"})
 
-    def test_both_headers_unions_results(self) -> None:
-        # Patch _resolve_toolsets so it returns a non-empty set to exercise the union branch.
-        with patch(
-            "datarobot_genai.drmcpbase.fastmcp_transforms.utils._resolve_toolsets",
-            return_value=frozenset({"extra_tool"}),
-        ):
-            ctx = MCPRequestContext.from_headers({"x-datarobot-mcp-tools": "jira_search_issues"})
-        assert ctx.tool_allowlist is not None
-        assert "jira_search_issues" in ctx.tool_allowlist
-        assert "extra_tool" in ctx.tool_allowlist
+    @pytest.mark.asyncio
+    async def test_both_headers_unions_results(self) -> None:
+        async def expander(_names: frozenset[str]) -> frozenset[str]:
+            return frozenset({"extra_tool"})
 
-    def test_only_toolsets_non_empty_becomes_allowlist(self) -> None:
-        # If tools header absent but toolsets resolves non-empty, it becomes the allowlist.
-        with patch(
-            "datarobot_genai.drmcpbase.fastmcp_transforms.utils._resolve_toolsets",
-            return_value=frozenset({"toolset_tool"}),
-        ):
-            ctx = MCPRequestContext.from_headers({})
-        assert ctx.tool_allowlist == frozenset({"toolset_tool"})
+        register_toolsets_allowlist_expander(expander)
+        ctx = MCPRequestContext.from_headers(
+            {"x-datarobot-mcp-tools": "jira_search_issues", MCP_TOOLSETS_HEADER: "pack"}
+        )
+        allowlist = await effective_tool_allowlist(ctx)
+        assert allowlist is not None
+        assert "jira_search_issues" in allowlist
+        assert "extra_tool" in allowlist
+
+    @pytest.mark.asyncio
+    async def test_only_toolsets_non_empty_becomes_allowlist(self) -> None:
+        async def expander(_names: frozenset[str]) -> frozenset[str]:
+            return frozenset({"toolset_tool"})
+
+        register_toolsets_allowlist_expander(expander)
+        ctx = MCPRequestContext.from_headers({MCP_TOOLSETS_HEADER: "pack"})
+        assert await effective_tool_allowlist(ctx) == frozenset({"toolset_tool"})
 
     def test_category_header_expands_to_tool_names(self) -> None:
         ctx = MCPRequestContext.from_headers({"x-datarobot-mcp-tools": "dr_connector_jira"})

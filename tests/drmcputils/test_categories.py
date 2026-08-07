@@ -18,6 +18,7 @@ from datarobot_genai.drmcputils.categories import PARENT_TO_CHILDREN
 from datarobot_genai.drmcputils.categories import TOOL_CATEGORY_LABELS
 from datarobot_genai.drmcputils.categories import MCPToolCategory
 from datarobot_genai.drmcputils.categories import categories_for_tool
+from datarobot_genai.drmcputils.categories import category_label
 from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import resolve_to_tool_names
 
@@ -77,10 +78,16 @@ class TestResolveToToolNames:
             assert isinstance(tools, frozenset), f"{cat} mapped to {type(tools)}"
 
     def test_hosted_categories_expand_to_empty_and_pass_through(self):
-        # dr_proxied_user_mcp and dr_dynamic_tools map to empty frozensets;
-        # entries are recognised as categories, so nothing is passed through.
-        result = resolve_to_tool_names(frozenset({"dr_proxied_user_mcp"}))
+        # dr_user_tools / dr_dynamic_tools map to empty frozensets; the entries
+        # are recognised as categories, so nothing is passed through.
+        result = resolve_to_tool_names(frozenset({"dr_dynamic_tools", "dr_user_tools"}))
         assert result == frozenset()
+
+    def test_removed_proxied_category_passes_through_as_unknown(self):
+        # dr_proxied_user_mcp was removed from the taxonomy — a stale header
+        # token is kept as a plain (never-matching) tool name, not an error.
+        result = resolve_to_tool_names(frozenset({"dr_proxied_user_mcp"}))
+        assert result == frozenset({"dr_proxied_user_mcp"})
 
 
 class TestResolveToToolNamesAdditional:
@@ -98,6 +105,41 @@ class TestResolveToToolNamesAdditional:
         result = resolve_to_tool_names(frozenset({"dr_documentation"}))
         assert "search_datarobot_agentic_docs" in result
         assert "datarobot_docs_fetch_page" in result
+
+
+class TestToolCategoryLabels:
+    """``TOOL_CATEGORY_LABELS`` is the one place a category's display name is written."""
+
+    def test_every_category_has_a_label(self) -> None:
+        # GIVEN the taxonomy
+        # THEN every member — children included — has a non-empty label.
+        # This is the guard that makes the map a single source of truth: adding a
+        # category without a label fails here instead of shipping a node labelled
+        # with its own raw dr_* string.
+        missing = [
+            category.value for category in MCPToolCategory if category not in TOOL_CATEGORY_LABELS
+        ]
+        assert missing == [], f"categories with no display label: {missing}"
+        assert all(isinstance(label, str) and label for label in TOOL_CATEGORY_LABELS.values())
+
+    def test_labels_are_distinct(self) -> None:
+        # Two categories sharing a label is indistinguishable in a filter panel.
+        labels = list(TOOL_CATEGORY_LABELS.values())
+        assert len(labels) == len(set(labels))
+
+    def test_category_label_resolves_known_names(self) -> None:
+        assert category_label("dr_connectors") == "Data connectors"
+        assert category_label("dr_connector_jira") == "Jira"
+        assert category_label("dr_user_tools") == "Your own tools"
+
+    def test_category_label_falls_back_to_the_raw_name(self) -> None:
+        # A stale name from an older server must render as itself, not raise.
+        assert category_label("dr_proxied_user_mcp") == "dr_proxied_user_mcp"
+        assert category_label("not_a_category") == "not_a_category"
+
+
+class TestResolveToToolNamesParents:
+    """Parent categories expand to the union of their children's tools."""
 
     def test_dr_db_parent_expands_to_vdb_tools(self) -> None:
         result = resolve_to_tool_names(frozenset({"dr_db"}))
@@ -251,9 +293,9 @@ class TestCategoriesForTool:
         assert categories_for_tool("not_a_real_tool") == []
 
     def test_hosted_category_tool_names_are_not_indexed(self) -> None:
-        # dr_proxied_user_mcp / dr_dynamic_tools map to empty tool sets, so no
-        # tool names are indexed under them.
-        assert categories_for_tool("dr_proxied_user_mcp") == []
+        # dr_dynamic_tools maps to an empty tool set, so no tool names are
+        # indexed under it.
+        assert categories_for_tool("dr_dynamic_tools") == []
 
     def test_every_categorized_tool_round_trips(self) -> None:
         # Each tool in every leaf category must report that leaf among its categories.

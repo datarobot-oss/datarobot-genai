@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
+from datarobot_genai.drmcpbase.fastmcp_transforms import unfiltered_catalog_provider
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
@@ -63,6 +64,10 @@ def register_routes(mcp: DataRobotMCP) -> None:
         base_path=prefix_mount_path("/toolGallery"),
         gate=_tools_gallery_enabled,
         ui_metadata_provider=get_tool_ui_metadata,
+        # The gallery describes the server, so it must not be reshaped by the caller's
+        # own x-datarobot-mcp-* session headers (the catalog transform would otherwise
+        # narrow it, and reject `mode=code` outright).
+        catalog_provider=unfiltered_catalog_provider(mcp),
     )
 
     @mcp.custom_route(prefix_mount_path("/"), methods=["GET"])
@@ -79,12 +84,16 @@ def register_routes(mcp: DataRobotMCP) -> None:
     async def get_metadata(_: Request) -> JSONResponse:
         """Get metadata about tools, prompts, resources, and system configuration."""
         try:
-            # Get tools with tags
+            # Get tools with tags. ``toolCategory`` is the registrar's
+            # ``meta.tool_category`` marker (USER_TOOL / BUILT_IN_TOOL /
+            # USER_TOOL_DEPLOYMENT / …; None when unmarked) — additive so UIs
+            # can distinguish user-authored tools from taxonomy/dynamic ones.
             tools = await mcp.list_tools()
             tools_metadata = [
                 {
                     "name": tool.name,
                     "tags": sorted(list(get_tool_tags(tool))),
+                    "toolCategory": (getattr(tool, "meta", None) or {}).get("tool_category"),
                 }
                 for tool in tools
             ]

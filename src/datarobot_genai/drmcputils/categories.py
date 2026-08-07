@@ -44,7 +44,7 @@ Hierarchy:
     dr_panels
   dr_db
     dr_vdb
-  dr_proxied_user_mcp                    (global-mcp only — proxied user MCPs)
+  dr_user_tools                          (user-authored tools — outside the static taxonomy)
   dr_dynamic_tools                       (hosted tools — registered separately)
 """
 
@@ -93,8 +93,10 @@ class MCPToolCategory(StrEnum):
     DR_DB = "dr_db"
     DR_VDB = "dr_vdb"
 
-    # ── special / hosted ─────────────────────────────────────────────────────
-    DR_PROXIED_USER_MCP = "dr_proxied_user_mcp"
+    # ── special / marker-resolved ────────────────────────────────────────────
+    # Tools the user authored in their own MCP server code (``dr_mcp_tool``'s
+    # default USER_TOOL marker) — not part of the predefined static taxonomy.
+    DR_USER_TOOLS = "dr_user_tools"
     DR_DYNAMIC_TOOLS = "dr_dynamic_tools"
 
 
@@ -287,10 +289,11 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "vdb_query",
         }
     ),
-    # Hosted categories — tool names are dynamic and resolved at request time,
-    # not from this static map.  Kept here so category names are recognised and
-    # not passed through as plain (unknown) tool names.
-    MCPToolCategory.DR_PROXIED_USER_MCP: frozenset(),
+    # Marker-resolved categories — tool names are resolved at request time
+    # from each tool's ``meta.tool_category`` marker, not from this static
+    # map.  Kept here so the category names are recognised and not passed
+    # through as plain (unknown) tool names.
+    MCPToolCategory.DR_USER_TOOLS: frozenset(),
     MCPToolCategory.DR_DYNAMIC_TOOLS: frozenset(),
 }
 
@@ -338,26 +341,72 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
 }
 
 
-# ── gallery filter enum: visible category → display label ─────────────────────
+# ── category → display label ─────────────────────────────────────────────────
 
-# The subset of categories surfaced as tool-gallery filter options, in UI display
-# order, each mapped to its human-readable label. Single source of truth for
-# ``GET /toolGallery/categories/`` (see ``drmcputils/routes/tool_gallery.py``) and, by
-# extension, the legal values of the gallery's ``category`` filter param — the values
-# here are the same ``dr_*`` strings emitted in each tool item's ``categories``.
+# The human-readable name of every category, in UI display order. Single source of
+# truth for the ``label`` on each node of ``GET /toolGallery/categories/`` (see
+# ``drmcputils/category_tree.py``) and, through it, for the legal values of the
+# gallery's ``category`` filter param — the keys here are the same ``dr_*`` strings
+# emitted in each tool item's ``categories``.
 #
-# Deliberately a curated subset of ``MCPToolCategory``: internal / non-user-facing
-# parents (``dr_proxied_user_mcp``, ``dr_dynamic_tools``) and standalone leaves not
-# shown as gallery sections (``dr_documentation``, ``dr_use_cases``, ``dr_deployments``,
-# ``dr_db``) are omitted. Adding an entry here surfaces it in the endpoint automatically
-# — no route change needed.
+# EVERY member of ``MCPToolCategory`` must appear, children included; a test pins
+# that, so adding a category without a label fails CI rather than shipping a node
+# labelled with its own raw ``dr_*`` string. This started life as a curated subset
+# of five parents, which meant the filter panel could not reach 17 of the 120
+# categorized tools — and on a user MCP it offered five categories the server has
+# no tools in while omitting ``dr_user_tools``, the only bucket it does have.
+# Which categories are *filterable* is now decided by the taxonomy's shape (top-level
+# nodes), not by a hand-kept list that can silently fall behind it.
 TOOL_CATEGORY_LABELS: dict[MCPToolCategory, str] = {
+    # ── connectors ──────────────────────────────────────────────────────────
     MCPToolCategory.DR_CONNECTORS: "Data connectors",
+    MCPToolCategory.DR_CONNECTOR_CONFLUENCE: "Confluence",
+    MCPToolCategory.DR_CONNECTOR_JIRA: "Jira",
+    MCPToolCategory.DR_CONNECTOR_GDRIVE: "Google Drive",
+    MCPToolCategory.DR_CONNECTOR_MICROSOFT_SHAREPOINT_ONEDRIVE: "SharePoint & OneDrive",
+    # ── web search ──────────────────────────────────────────────────────────
     MCPToolCategory.DR_WEB_SEARCH: "Web search",
-    MCPToolCategory.DR_VISUAL: "Data visualization",
-    MCPToolCategory.DR_DEVELOPMENT: "Software development & DevOps",
+    MCPToolCategory.DR_WEB_SEARCH_PERPLEXITY: "Perplexity",
+    MCPToolCategory.DR_WEB_SEARCH_TAVILY: "Tavily",
+    # ── documentation ───────────────────────────────────────────────────────
+    MCPToolCategory.DR_DOCUMENTATION: "Documentation",
+    # ── use cases ───────────────────────────────────────────────────────────
+    MCPToolCategory.DR_USE_CASES: "Use cases",
+    # ── predictive ──────────────────────────────────────────────────────────
     MCPToolCategory.DR_PREDICTIVE: "Predictive",
+    MCPToolCategory.DR_CATALOG: "Data catalog",
+    MCPToolCategory.DR_MODELING: "Modeling",
+    MCPToolCategory.DR_PREDICTIONS: "Predictions",
+    # ── deployments ─────────────────────────────────────────────────────────
+    MCPToolCategory.DR_DEPLOYMENTS: "Deployments",
+    # ── development ─────────────────────────────────────────────────────────
+    MCPToolCategory.DR_DEVELOPMENT: "Software development & DevOps",
+    MCPToolCategory.DR_WORKLOAD: "Workloads",
+    MCPToolCategory.DR_FILE: "Files",
+    # ── visual ──────────────────────────────────────────────────────────────
+    MCPToolCategory.DR_VISUAL: "Data visualization",
+    MCPToolCategory.DR_MCPAPPS: "Applications",
+    MCPToolCategory.DR_PANELS: "Panels",
+    # ── databases ───────────────────────────────────────────────────────────
+    MCPToolCategory.DR_DB: "Databases",
+    MCPToolCategory.DR_VDB: "Vector databases",
+    # ── marker-resolved (user MCPs only) ────────────────────────────────────
+    MCPToolCategory.DR_USER_TOOLS: "Your own tools",
+    MCPToolCategory.DR_DYNAMIC_TOOLS: "Deployed tools",
 }
+
+
+def category_label(name: str) -> str:
+    """Display label for a category, falling back to its raw ``dr_*`` name.
+
+    The fallback exists so an unlabelled category degrades to something readable
+    instead of a ``KeyError`` mid-response; the test that pins full coverage of
+    ``MCPToolCategory`` is what keeps the fallback unreachable in practice.
+    """
+    try:
+        return TOOL_CATEGORY_LABELS[MCPToolCategory(name)]
+    except (KeyError, ValueError):
+        return name
 
 
 def resolve_to_tool_names(entries: frozenset[str]) -> frozenset[str]:
@@ -406,6 +455,15 @@ def _parse_header_entries(raw: str | None) -> frozenset[str] | None:
         return None
     entries = frozenset(part.strip() for part in stripped.split(",") if part.strip())
     return entries if entries else None
+
+
+def parse_toolset_names_header(raw: str | None) -> frozenset[str] | None:
+    """Parse ``x-datarobot-mcp-toolsets`` to toolset bundle names (not tool names).
+
+    Uses the same comma-separated token format as ``x-datarobot-mcp-tools``. Returns
+    ``None`` when the header is absent or blank (no toolset filter).
+    """
+    return _parse_header_entries(raw)
 
 
 def parse_tool_allowlist_header(raw: str | None) -> frozenset[str] | None:

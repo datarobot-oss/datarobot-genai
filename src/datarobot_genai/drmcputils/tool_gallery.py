@@ -62,25 +62,39 @@ TOOL_PROVIDER_LABELS: dict[str, str] = {
 }
 
 
-# Hosted (dynamic) tools are classified by their ``meta.tool_category`` marker — set by the
-# tool providers — rather than by the static taxonomy. Each kind maps to the gallery
-# ``provider`` and ``categories`` it should report:
+# Marker-classified tools: registrars stamp ``meta.tool_category`` and each marker maps
+# to the gallery ``provider``/``category`` it should report plus whether the tool is
+# *hosted* (resolved dynamically at request time rather than statically registered):
+#   - USER_TOOL: tools the user authored in their own MCP server code (``dr_mcp_tool``'s
+#     default marker). DataRobot-served, NOT hosted; bucketed under ``dr_user_tools``
+#     because they live outside the predefined static taxonomy.
 #   - USER_TOOL_DEPLOYMENT: DataRobot deployment tools (CustomModelToolProvider). They are
-#     DataRobot-served, so ``provider = datarobot``; bucketed under ``dr_dynamic_tools``.
-#   - PROXIED_USER_MCP: tools proxied from a user's own MCP server (UserMCPProvider). They are
-#     served outside the DataRobot API, so ``provider = third_party``; bucketed under
-#     ``dr_proxied_user_mcp``.
-_HOSTED_TOOL_KINDS: dict[str, dict[str, str]] = {
-    "USER_TOOL_DEPLOYMENT": {"provider": PROVIDER_DATAROBOT, "category": "dr_dynamic_tools"},
-    "PROXIED_USER_MCP": {"provider": PROVIDER_THIRD_PARTY, "category": "dr_proxied_user_mcp"},
+#     DataRobot-served, hosted; bucketed under ``dr_dynamic_tools``.
+#   - PROXIED_USER_MCP: tools proxied from a user's own MCP server (UserMCPProvider). They
+#     are served outside the DataRobot API, so ``provider = third_party``, hosted. They
+#     carry no category (``None``) — the former ``dr_proxied_user_mcp`` bucket was removed.
+# BUILT_IN_TOOL deliberately has no row: built-ins are classified by the static taxonomy
+# (``categories_for_tool``) and their drtools ``auth_provider``.
+_MARKED_TOOL_KINDS: dict[str, dict[str, Any]] = {
+    "USER_TOOL": {
+        "provider": PROVIDER_DATAROBOT,
+        "category": "dr_user_tools",
+        "hosted": False,
+    },
+    "USER_TOOL_DEPLOYMENT": {
+        "provider": PROVIDER_DATAROBOT,
+        "category": "dr_dynamic_tools",
+        "hosted": True,
+    },
+    "PROXIED_USER_MCP": {"provider": PROVIDER_THIRD_PARTY, "category": None, "hosted": True},
 }
 
 
-def hosted_kind(tool_category: str | None) -> dict[str, str] | None:
-    """Return the gallery classification for a hosted tool, or None if it isn't hosted."""
+def marked_kind(tool_category: str | None) -> dict[str, Any] | None:
+    """Return the gallery classification for a marker-classified tool, or None."""
     if not tool_category:
         return None
-    return _HOSTED_TOOL_KINDS.get(tool_category)
+    return _MARKED_TOOL_KINDS.get(tool_category)
 
 
 def _tool_category(tool: Any) -> str | None:
@@ -90,8 +104,9 @@ def _tool_category(tool: Any) -> str | None:
 
 
 def is_hosted(tool: Any) -> bool:
-    """Return True for dynamic/proxied tools — those carrying a hosted ``tool_category``."""
-    return hosted_kind(_tool_category(tool)) is not None
+    """Return True for dynamic/proxied tools — resolved at request time, not registered."""
+    kind = marked_kind(_tool_category(tool))
+    return bool(kind and kind["hosted"])
 
 
 def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -157,14 +172,15 @@ def build_tool_gallery_items(tools: list[dict]) -> list[dict]:
     """
     items: list[dict] = []
     for t in tools:
-        kind = hosted_kind(t.get("tool_category"))
+        kind = marked_kind(t.get("tool_category"))
         if kind is not None:
-            # Hosted (dynamic) tool: classification comes from its provider's meta marker,
-            # not the static taxonomy or a drtools auth_provider.
+            # Marker-classified tool (user/dynamic/proxied): classification comes from
+            # its meta marker, not the static taxonomy or a drtools auth_provider.
             provider = kind["provider"]
             oauth_provider_type = None
-            categories = [kind["category"]]
-            hosted = True
+            # Proxied tools have no category (kind["category"] is None) → [].
+            categories = [kind["category"]] if kind["category"] else []
+            hosted = bool(kind["hosted"])
         else:
             auth_provider = t.get("auth_provider")
             provider = _provider_for(auth_provider)

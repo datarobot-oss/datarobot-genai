@@ -16,14 +16,22 @@
 
 Routes in the group:
   - ``GET /toolGallery/tools/`` — the full paginated tool catalog.
-  - ``GET /toolGallery/categories/`` — the tool-category filter enum (``value`` + ``label``).
+  - ``GET /toolGallery/categories/`` — the category tree, with live per-node tool counts.
   - ``GET /toolGallery/providers/`` — the tool-provider filter enum (``value`` + ``label``).
 
-The two enum routes back the UI filter panel: they return the filterable values (the same
-``dr_*`` categories / ``datarobot``|``third_party`` providers a tool item carries) paired
-with display labels, so the FE renders filters from the backend instead of hardcoding them.
-The group is designed to grow, and **every** route under ``/toolGallery`` is gated by the
-same predicate — see ``register_tool_gallery_routes``.
+Both describe-the-catalog routes return the filterable values (the same ``dr_*``
+categories / ``datarobot``|``third_party`` providers a tool item carries) paired with
+display labels, so a UI renders its filter panel from the backend instead of hardcoding
+it. The group is designed to grow, and **every** route under ``/toolGallery`` is gated by
+the same predicate — see ``register_tool_gallery_routes``.
+
+``categories`` is catalog-backed (see ``drmcputils/category_tree.py``), not a static
+list: each node carries ``count``/``toolNames`` for THIS server plus ``children`` and
+``appliesTo``, so the filter panel and the category picker read one endpoint. It replaces
+the separate ``GET /toolCategories/`` — two routes answering "what categories exist" with
+different shapes and different completeness is a disagreement waiting to be shipped, and
+it already had been: the old flat enum omitted ``dr_user_tools``, which on a user MCP is
+the only bucket the server has.
 
 The MCP ``tools/list`` response is intentionally lean: agents/LLMs never see the
 UI-oriented fields (``display_name``, ``description_ui``, ``auth_provider``) — they
@@ -41,12 +49,15 @@ separated and/or repeated params) and match-any within a dimension — and pagin
 import logging
 from collections.abc import Awaitable
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from datarobot_genai.drmcputils.categories import TOOL_CATEGORY_LABELS
+from datarobot_genai.drmcputils.category_tree import build_category_tree
+from datarobot_genai.drmcputils.routes.utils import CatalogProvider
+from datarobot_genai.drmcputils.routes.utils import resolve_catalog
 from datarobot_genai.drmcputils.tool_gallery import TOOL_PROVIDER_LABELS
 from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
 from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
@@ -55,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 # Base path for the route group. Singular "toolGallery"; sub-routes hang off it
 # (e.g. /toolGallery/tools/). All sub-routes are gated together.
-_DEFAULT_BASE_PATH = "/toolGallery"
+TOOL_GALLERY_BASE_PATH = "/toolGallery"
 # Default page size when the request omits ``limit``.
 _DEFAULT_LIMIT = 100
 
@@ -156,9 +167,10 @@ def _apply_filters(
 
 def register_tool_gallery_routes(
     mcp: Any,
-    base_path: str = _DEFAULT_BASE_PATH,
+    base_path: str = TOOL_GALLERY_BASE_PATH,
     gate: ToolGalleryGate | None = None,
     ui_metadata_provider: UiMetadataProvider | None = None,
+    catalog_provider: CatalogProvider | None = None,
 ) -> None:
     """Register every ``/toolGallery/*`` route on the FastMCP server, all sharing *gate*.
 
@@ -178,14 +190,18 @@ def register_tool_gallery_routes(
             imported) so this module avoids a forbidden ``drmcputils -> drtools`` import;
             both servers pass drtools' ``get_tool_ui_metadata``. When unset, those fields
             fall back to defaults (provider classified as ``datarobot``).
+        catalog_provider: Supplies the tool catalog to list. Servers running the DataRobot
+            catalog transform must pass
+            ``drmcpbase.fastmcp_transforms.unfiltered_catalog_provider(mcp)`` so the
+            caller's session headers cannot narrow the gallery — see ``resolve_catalog``.
     """
     prefix = base_path.rstrip("/")
 
     # (sub-path, handler) for each route in the group. Add new gallery routes here;
     # they are gated identically. ``tools`` is the first.
     routes: list[tuple[str, Callable[[Request], Awaitable[JSONResponse]]]] = [
-        ("/tools/", _make_tools_handler(mcp, ui_metadata_provider)),
-        ("/categories/", _categories_handler),
+        ("/tools/", _make_tools_handler(mcp, ui_metadata_provider, catalog_provider)),
+        ("/categories/", _make_categories_handler(mcp, catalog_provider)),
         ("/providers/", _providers_handler),
     ]
     for sub_path, handler in routes:
@@ -217,13 +233,25 @@ def _register_gated_route(
 def _make_tools_handler(
     mcp: Any,
     ui_metadata_provider: UiMetadataProvider | None,
+    catalog_provider: CatalogProvider | None = None,
 ) -> Callable[[Request], Awaitable[JSONResponse]]:
     """Build the ``/tools/`` handler bound to *mcp* (full paginated tool catalog)."""
 
     async def tools_handler(request: Request) -> JSONResponse:
-        # run_middleware=False → the full catalog, not the per-request
-        # allowlist-filtered / CodeMode-collapsed view. The gallery shows everything.
-        tools = await mcp.list_tools(run_middleware=False)
+        # The gallery shows everything the server registers, never the per-request
+        # allowlist-filtered / CodeMode-collapsed view — see resolve_catalog for why
+        # run_middleware=False does not achieve that by itself.
+        try:
+            tools = await resolve_catalog(mcp, catalog_provider)
+        except Exception as exc:
+            # Without this, an unsupported mode header (CodeMode raises
+            # NotImplementedError inside the transform) escaped as a bare 500 with a
+            # traceback — the sibling toolCategories/metadata routes already answer JSON.
+            logger.exception("Failed to build the tool gallery")
+            return JSONResponse(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                content={"error": f"Failed to retrieve tool gallery: {exc}"},
+            )
         ui_metadata = ui_metadata_provider() if ui_metadata_provider is not None else {}
         merged = [merge_tool_info(tool, ui_metadata) for tool in tools]
         items = build_tool_gallery_items(merged)
@@ -259,10 +287,37 @@ def _enum_items(mapping: dict[Any, str]) -> list[dict[str, str]]:
     return [{"value": str(value), "label": label} for value, label in mapping.items()]
 
 
-async def _categories_handler(_request: Request) -> JSONResponse:
-    """``GET /toolGallery/categories/`` — the tool-category filter enum (value + label)."""
-    items = _enum_items(TOOL_CATEGORY_LABELS)
-    return JSONResponse({"categories": items, "count": len(items)})
+def _make_categories_handler(
+    mcp: Any, catalog_provider: CatalogProvider | None = None
+) -> Callable[[Request], Awaitable[JSONResponse]]:
+    """Build the ``/categories/`` handler bound to *mcp*.
+
+    Catalog-backed rather than a static list: the same node carries the filter value,
+    its label, and how many of THIS server's tools are in it, so the filter panel and
+    the category picker read one endpoint and cannot disagree about what exists.
+    """
+
+    async def categories_handler(_request: Request) -> JSONResponse:
+        try:
+            # Everything the server registers — a picker built from a taxonomy already
+            # narrowed by the caller's own filter cannot offer what was filtered out.
+            tools = await resolve_catalog(mcp, catalog_provider)
+            categories, mapped = build_category_tree(tools)
+        except Exception as exc:
+            logger.exception("Failed to build tool categories")
+            return JSONResponse(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                content={"error": f"Failed to retrieve tool categories: {exc}"},
+            )
+        # ``count`` is the top-level node count (matching /providers/); ``totalCount``
+        # is the number of DISTINCT tools that landed in a category, which is lower
+        # than /toolGallery/tools/'s totalCount whenever the server exposes
+        # uncategorized tools — proxied user-MCP tools, foremost.
+        return JSONResponse(
+            {"categories": categories, "count": len(categories), "totalCount": mapped}
+        )
+
+    return categories_handler
 
 
 async def _providers_handler(_request: Request) -> JSONResponse:

@@ -576,11 +576,14 @@ class TestMetadataRoute:
         mock_get_config: Mock,
     ):
         """Test metadata route success execution."""
-        # Create mock tools
+        # Create mock tools (``meta`` is dict | None on real FastMCP tools; the
+        # route reads the registrar's ``tool_category`` marker out of it)
         mock_tool1 = Mock()
         mock_tool1.name = "tool1"
+        mock_tool1.meta = {"tool_category": "USER_TOOL"}
         mock_tool2 = Mock()
         mock_tool2.name = "tool2"
+        mock_tool2.meta = None
 
         # Create mock prompts
         mock_prompt1 = Mock()
@@ -664,6 +667,8 @@ class TestMetadataRoute:
         assert sorted(response_data["tools"]["items"][0]["tags"]) == ["tag1", "tag2"]
         assert response_data["tools"]["items"][1]["name"] == "tool2"
         assert sorted(response_data["tools"]["items"][1]["tags"]) == ["tag3"]
+        assert response_data["tools"]["items"][0]["toolCategory"] == "USER_TOOL"
+        assert response_data["tools"]["items"][1]["toolCategory"] is None
 
         # Verify prompts
         assert response_data["prompts"]["count"] == 2

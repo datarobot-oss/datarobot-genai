@@ -33,6 +33,8 @@ from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
 from datarobot_genai.drmcpbase.panels import register_panel_resources
 from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
+from datarobot_genai.drmcputils.routes import default_slash_rules
 
 from .clients import RequestHeadersMiddleware
 from .config import get_config
@@ -288,6 +290,18 @@ class DataRobotMCPServer:
                         self._mcp.run_http_async(
                             transport="http",
                             middleware=[
+                                # Serve the MCP mount and every shared REST route with
+                                # or without a trailing slash — a 307 would carry a
+                                # container-local Location that breaks behind the
+                                # directAccess gateway. Rules are derived through
+                                # prefix_mount_path, so they match whether or not this
+                                # server is mounted under a URL_PREFIX. First, so the
+                                # header middleware's MCP-path skip sees the normalized
+                                # path.
+                                Middleware(
+                                    TrailingSlashNormalizer,
+                                    rules=default_slash_rules(prefix_mount_path),
+                                ),
                                 # Request headers in context for REST routes only (skips MCP path).
                                 Middleware(RequestHeadersMiddleware),
                                 Middleware(OtelASGIMiddleware),
