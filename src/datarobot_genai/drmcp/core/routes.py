@@ -19,6 +19,9 @@ from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
 from datarobot_genai.drmcpbase.fastmcp_transforms import unfiltered_catalog_provider
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    MCPOAuthProtectedResourceMetadataConfig,
+)
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
@@ -358,8 +361,19 @@ def register_routes(mcp: DataRobotMCP) -> None:
 
     @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
     async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
+        config = get_config()
         manager = MCPOAuthProtectedResourceMetadataManager(
-            mcp_oauth_metadata=get_config().mcp_oauth_metadata,
+            MCPOAuthProtectedResourceMetadataConfig.from_settings(
+                resource=config.mcp_oauth_resource,
+                authorization_servers=config.mcp_oauth_authorization_servers,
+                scopes_supported=config.mcp_oauth_scopes_supported,
+                xaa_trusted_issuer=config.mcp_xaa_trusted_issuer,
+                xaa_exchange_audience=config.mcp_xaa_exchange_audience,
+                xaa_token_url=config.mcp_xaa_token_url,
+                xaa_token_audience=config.mcp_xaa_token_audience,
+                xaa_scopes=config.mcp_xaa_scopes,
+                xaa_token_endpoint_auth_method=config.mcp_xaa_token_endpoint_auth_method,
+            )
         )
         api_response = manager.get_protected_resource_metadata_api_response()
         if api_response:

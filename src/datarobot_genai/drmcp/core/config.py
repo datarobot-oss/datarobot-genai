@@ -140,9 +140,45 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         default="INFO",
         description="App log level",
     )
-    mcp_oauth_metadata: str | None = Field(
+    # OAuth protected resource metadata, published at
+    # /.well-known/oauth-protected-resource. Comma-separated where a list is
+    # expected, so every value stays a plain string that a runtime parameter or
+    # container env var can carry.
+    mcp_oauth_resource: str | None = Field(
         default=None,
-        description="YAML configuration for OAuth protected resource metadata",
+        description="RFC 9728 `resource`: the canonical URI of this MCP server",
+    )
+    mcp_oauth_authorization_servers: str | None = Field(
+        default=None,
+        description="RFC 9728 `authorization_servers`, comma-separated",
+    )
+    mcp_oauth_scopes_supported: str | None = Field(
+        default=None,
+        description="RFC 9728 `scopes_supported`, comma-separated",
+    )
+    mcp_xaa_trusted_issuer: str | None = Field(
+        default=None,
+        description="Cross-Application Access token exchange trusted issuer",
+    )
+    mcp_xaa_exchange_audience: str | None = Field(
+        default=None,
+        description="Cross-Application Access token exchange audience",
+    )
+    mcp_xaa_token_url: str | None = Field(
+        default=None,
+        description="Cross-Application Access token request URL",
+    )
+    mcp_xaa_token_audience: str | None = Field(
+        default=None,
+        description="Cross-Application Access token request audience (optional)",
+    )
+    mcp_xaa_scopes: str | None = Field(
+        default=None,
+        description="Cross-Application Access token request scopes, comma-separated",
+    )
+    mcp_xaa_token_endpoint_auth_method: str | None = Field(
+        default=None,
+        description="Cross-Application Access token endpoint auth method",
     )
     mcp_enable_unauthenticated_well_known_route: bool = Field(
         default=False,

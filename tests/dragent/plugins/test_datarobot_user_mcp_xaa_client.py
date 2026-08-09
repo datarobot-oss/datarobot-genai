@@ -157,7 +157,7 @@ class TestMCPAuthServerMetadataDiscovery:
         }
 
     def test_parse_xaa_params_defaults_token_endpoint_auth_method(self) -> None:
-        """The MCP server's oauth-config.yaml may omit token_endpoint_auth_method."""
+        """The MCP server's published metadata may omit token_endpoint_auth_method."""
         output = parse_xaa_params_from_mcp_auth_server_metadata(
             {"cross_application_access": self._xaa_block()}
         )

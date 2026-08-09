@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.2
+- `drmcp`: **`MCP_OAUTH_METADATA` is removed.** OAuth protected-resource metadata is configured from discrete settings instead of a YAML blob, so each value is an ordinary runtime parameter or env var and nothing has to hand-maintain a document: `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_AUTHORIZATION_SERVERS`, `MCP_OAUTH_SCOPES_SUPPORTED`, `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE`, `MCP_XAA_TOKEN_URL`, `MCP_XAA_TOKEN_AUDIENCE`, `MCP_XAA_SCOPES`, `MCP_XAA_TOKEN_ENDPOINT_AUTH_METHOD`. Lists are comma-separated. The served document is unchanged in shape, including `cross_application_access` under its own name so it matches the agent-side config block. `MCPOAuthProtectedResourceMetadataManager` now takes a built `MCPOAuthProtectedResourceMetadataConfig` rather than a YAML string, and the `from_dict` constructors are replaced by `from_settings`.
+- `drmcpbase/oauth_protected_resource_metadata`: **`x_mcp_enable_unauthenticated_well_known_route` is no longer published.** How a deployment is routed is not something the protected resource declares about itself, and a client that received the document unauthenticated has already observed the answer. `mcp_enable_unauthenticated_well_known_route` remains a server config field, unpublished. As with the A2A agent card, unauthenticated access also requires platform-level opt-in per cluster; with only the server flag set, anonymous requests never reach the route.
+- `drmcpbase/oauth_protected_resource_metadata`: an incomplete Cross-Application Access configuration is dropped with a warning instead of publishing a partial block. All of `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE`, `MCP_XAA_TOKEN_URL` and `MCP_XAA_SCOPES` are required together.
+
 ## 0.27.1
 - `drtools/predictive/deployment_info`: clarified MCP tool descriptions for `deployment_get_info` and `deployment_generate_prediction_sample` so agents route sample/example/template row requests to the sample generator and use get-info for scoring semantics (types, importance) without expecting rows from it.
 

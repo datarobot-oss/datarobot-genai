@@ -16,17 +16,17 @@ from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Any
 
-import yaml
-
 logger = logging.getLogger(__name__)
 
 # Only ``private_key_jwt`` is implemented today, so the config may omit it.
 DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD = "private_key_jwt"
 
-# Key for the Cross-Application Access block, in both the config and the served
-# document. Deliberately exempt from the ``x_`` prefix that marks the other
-# non-RFC-9728 members, so the name matches the agent-side config block exactly.
-CROSS_APPLICATION_ACCESS_CONFIG_KEY = "cross_application_access"
+
+def split_list_setting(value: str | None) -> list[str] | None:
+    """Read a comma-separated setting, treating blank and unset alike."""
+    if not value:
+        return None
+    return [item.strip() for item in value.split(",") if item.strip()] or None
 
 
 class BaseDataClass:
@@ -36,18 +36,11 @@ class BaseDataClass:
             dict_factory=lambda x: {k: v for k, v in x if v is not None},
         )
 
-    def to_yaml_string(self) -> str:
-        return yaml.safe_dump(self.to_dict_without_null_attribute())
-
 
 @dataclass
 class XAATokenExchangeParams(BaseDataClass):
     trusted_issuer: str
     audience: str
-
-    @classmethod
-    def from_dict(cls, dict_input: dict[str, str]) -> "XAATokenExchangeParams":
-        return cls(dict_input["trusted_issuer"], dict_input["audience"])
 
 
 @dataclass
@@ -56,10 +49,6 @@ class XAATokenRequestParams(BaseDataClass):
     # audience can be None if it is not setup for AuthN & AuthZ check (as resource) in IdP.
     audience: str | None
     scopes: list[str]
-
-    @classmethod
-    def from_dict(cls, dict_input: dict[str, Any]) -> "XAATokenRequestParams":
-        return cls(dict_input["token_url"], dict_input.get("audience"), dict_input["scopes"])
 
 
 @dataclass
@@ -76,56 +65,100 @@ class CrossApplicationAccessMetadata(BaseDataClass):
     token_endpoint_auth_method: str = DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
 
     @classmethod
-    def from_dict(cls, metadata_in_dict: dict[str, Any]) -> "CrossApplicationAccessMetadata":
+    def from_settings(
+        cls,
+        *,
+        trusted_issuer: str | None = None,
+        exchange_audience: str | None = None,
+        token_url: str | None = None,
+        token_audience: str | None = None,
+        scopes: str | None = None,
+        token_endpoint_auth_method: str | None = None,
+    ) -> "CrossApplicationAccessMetadata | None":
+        """Assemble the block from the flat ``MCP_XAA_*`` settings.
+
+        All four required settings must be present. A partial block is dropped
+        with a warning rather than raising: the deployment tooling rejects it up
+        front, so reaching here means the container was configured by hand and a
+        broken well-known route helps nobody.
+        """
+        parsed_scopes = split_list_setting(scopes)
+        if not any((trusted_issuer, exchange_audience, token_url, parsed_scopes)):
+            return None
+        if not (trusted_issuer and exchange_audience and token_url and parsed_scopes):
+            logger.warning(
+                "Incomplete Cross-Application Access settings; publishing no "
+                "cross_application_access block. All of MCP_XAA_TRUSTED_ISSUER, "
+                "MCP_XAA_EXCHANGE_AUDIENCE, MCP_XAA_TOKEN_URL and MCP_XAA_SCOPES "
+                "are required."
+            )
+            return None
         return cls(
-            token_exchange=XAATokenExchangeParams.from_dict(metadata_in_dict["token_exchange"]),
-            token_request=XAATokenRequestParams.from_dict(metadata_in_dict["token_request"]),
-            token_endpoint_auth_method=metadata_in_dict.get(
-                "token_endpoint_auth_method", DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
+            token_exchange=XAATokenExchangeParams(
+                trusted_issuer=trusted_issuer,
+                audience=exchange_audience,
+            ),
+            token_request=XAATokenRequestParams(
+                token_url=token_url,
+                audience=token_audience,
+                scopes=parsed_scopes,
+            ),
+            token_endpoint_auth_method=(
+                token_endpoint_auth_method or DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
             ),
         )
 
 
 @dataclass
 class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
-    """User-authored config (``dr_mcp/oauth-config.yaml`` / ``MCP_OAUTH_METADATA``).
+    """User-authored part of the document, from the server's own settings.
 
     Every field is optional: ``resource``, ``authorization_servers`` and
     ``scopes_supported`` are published verbatim but nothing enforces them yet, so
-    a config that only declares ``cross_application_access`` is valid. Unknown
-    keys are ignored, so a config still using the pre-rename ``xaa_metadata``
-    block silently publishes no Cross-Application Access metadata.
+    a config that only declares ``cross_application_access`` is valid.
     """
 
     resource: str | None = None
     authorization_servers: list[str] | None = None
     scopes_supported: list[str] | None = None
     cross_application_access: CrossApplicationAccessMetadata | None = None
-    mcp_enable_unauthenticated_well_known_route: bool | None = None
 
     @classmethod
-    def from_dict(
-        cls, metadata_in_dict: dict[str, Any]
+    def from_settings(
+        cls,
+        *,
+        resource: str | None = None,
+        authorization_servers: str | None = None,
+        scopes_supported: str | None = None,
+        xaa_trusted_issuer: str | None = None,
+        xaa_exchange_audience: str | None = None,
+        xaa_token_url: str | None = None,
+        xaa_token_audience: str | None = None,
+        xaa_scopes: str | None = None,
+        xaa_token_endpoint_auth_method: str | None = None,
     ) -> "MCPOAuthProtectedResourceMetadataConfig":
-        cross_application_access_in_dict = metadata_in_dict.get(CROSS_APPLICATION_ACCESS_CONFIG_KEY)
-        cross_application_access = (
-            CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
-            if cross_application_access_in_dict
-            else None
-        )
         return cls(
-            resource=metadata_in_dict.get("resource"),
-            authorization_servers=metadata_in_dict.get("authorization_servers"),
-            scopes_supported=metadata_in_dict.get("scopes_supported"),
-            cross_application_access=cross_application_access,
-            mcp_enable_unauthenticated_well_known_route=metadata_in_dict.get(
-                "mcp_enable_unauthenticated_well_known_route"
+            resource=resource or None,
+            authorization_servers=split_list_setting(authorization_servers),
+            scopes_supported=split_list_setting(scopes_supported),
+            cross_application_access=CrossApplicationAccessMetadata.from_settings(
+                trusted_issuer=xaa_trusted_issuer,
+                exchange_audience=xaa_exchange_audience,
+                token_url=xaa_token_url,
+                token_audience=xaa_token_audience,
+                scopes=xaa_scopes,
+                token_endpoint_auth_method=xaa_token_endpoint_auth_method,
             ),
         )
+
+    def is_empty(self) -> bool:
+        return not self.to_dict_without_null_attribute()
 
 
 @dataclass
 class MCPOAuthProtectedResourceMetadataAdminConfig(BaseDataClass):
+    """Server-owned facts about this deployment, not user-authored metadata."""
+
     bearer_methods_supported: list[str]
 
 
@@ -133,11 +166,11 @@ class MCPOAuthProtectedResourceMetadataAdminConfig(BaseDataClass):
 class MCPOAuthProtectedResourceMetadata(BaseDataClass):
     """The document served at ``/.well-known/oauth-protected-resource``.
 
-    Registered RFC 9728 parameters keep their standard names, and DataRobot
-    additions are ``x_``-prefixed — except ``cross_application_access``, which is
-    published unprefixed so it matches the agent-side config block name. Unset
-    fields are dropped by ``to_dict_without_null_attribute``, so a config that
-    only declares ``cross_application_access`` yields just that block plus
+    Registered RFC 9728 parameters keep their standard names.
+    ``cross_application_access`` is a DataRobot addition published under its own
+    name, matching the agent-side config block exactly. Unset fields are dropped
+    by ``to_dict_without_null_attribute``, so a config that only declares
+    ``cross_application_access`` yields just that block plus
     ``bearer_methods_supported``.
     """
 
@@ -146,7 +179,6 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
     authorization_servers: list[str] | None = None
     scopes_supported: list[str] | None = None
     cross_application_access: CrossApplicationAccessMetadata | None = None
-    x_mcp_enable_unauthenticated_well_known_route: bool | None = None
 
     @classmethod
     def build(
@@ -160,7 +192,4 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
             authorization_servers=user_config.authorization_servers,
             scopes_supported=user_config.scopes_supported,
             cross_application_access=user_config.cross_application_access,
-            x_mcp_enable_unauthenticated_well_known_route=(
-                user_config.mcp_enable_unauthenticated_well_known_route
-            ),
         )
