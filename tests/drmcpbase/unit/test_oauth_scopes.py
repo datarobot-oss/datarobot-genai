@@ -517,6 +517,15 @@ class TestCodeDeclaredScopes:
 
         assert await collect_code_declared_scopes(mcp) == {EXECUTE}
 
+    async def test_tag_checks_do_not_masquerade_as_code_declarations(self, mcp: FastMCP) -> None:
+        """run_sql declares EXECUTE in code; its tag maps DB_WRITE from config."""
+        configure_scopes(enforcing(tag_scopes={"DATABASE": [DB_WRITE]}))
+        await apply_tag_scopes(mcp)
+
+        found = await collect_code_declared_scopes(mcp)
+
+        assert found == {EXECUTE}
+
     async def test_they_reach_the_published_list(self, mcp: FastMCP) -> None:
         await wire_scopes(mcp, ScopeSettings(source="code"))
 
@@ -734,6 +743,27 @@ class TestStartupValidation:
 
         assert EXECUTE in caplog.text
         assert "inert" in caplog.text
+        assert DB_WRITE not in caplog.text, "the tag scope is active, not an inert code rule"
+
+    async def test_active_tag_scopes_are_not_reported_as_inert_code(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN source=tags and no code declaration anywhere on the server.
+
+        The tag checks record their scopes like code checks do, so the
+        collector must tell them apart — or the startup report warns that the
+        tag's own scopes are inert code, against the very source enforcing them.
+        """
+        bare: FastMCP = FastMCP(name="tags-only")
+
+        @bare.tool(tags={"database"})
+        def list_tables() -> str:
+            """Guarded through its tag alone."""
+            return "ok"
+
+        await wire_scopes(bare, enforcing(source="tags", tag_scopes={"DATABASE": [DB_WRITE]}))
+
+        assert "inert" not in caplog.text
 
 
 class _CountingVerifier:

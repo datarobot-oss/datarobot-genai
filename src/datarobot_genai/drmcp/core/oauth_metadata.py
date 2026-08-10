@@ -44,11 +44,10 @@ def build_protected_resource_metadata_config() -> MCPOAuthProtectedResourceMetad
     A configured value always wins over the resolved one.
     """
     config = get_config()
-    advertised_scopes = derived_scopes()
     return MCPOAuthProtectedResourceMetadataConfig.from_settings(
         resource=config.mcp_oauth_resource or resolve_self_url(),
         authorization_servers=config.mcp_oauth_authorization_servers,
-        scopes_supported=",".join(advertised_scopes) if advertised_scopes else None,
+        scopes_supported=derived_scopes(),
         xaa_trusted_issuer=config.mcp_xaa_trusted_issuer,
         xaa_exchange_audience=config.mcp_xaa_exchange_audience,
         xaa_token_url=config.mcp_xaa_token_url,

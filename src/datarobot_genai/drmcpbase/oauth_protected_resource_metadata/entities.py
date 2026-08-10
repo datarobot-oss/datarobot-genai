@@ -125,9 +125,10 @@ class CrossApplicationAccessMetadata(BaseDataClass):
 class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
     """User-authored part of the document, from the server's own settings.
 
-    Every field is optional: ``resource``, ``authorization_servers`` and
-    ``scopes_supported`` are published verbatim but nothing enforces them yet, so
-    a config that only declares ``cross_application_access`` is valid.
+    Every field is optional, so a config that only declares
+    ``cross_application_access`` is valid. ``resource`` and
+    ``authorization_servers`` are published verbatim; ``scopes_supported`` is
+    handed in by the server, derived from the scope rules it actually enforces.
     """
 
     resource: str | None = None
@@ -141,7 +142,7 @@ class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
         *,
         resource: str | None = None,
         authorization_servers: str | None = None,
-        scopes_supported: str | None = None,
+        scopes_supported: list[str] | None = None,
         xaa_trusted_issuer: str | None = None,
         xaa_exchange_audience: str | None = None,
         xaa_token_url: str | None = None,
@@ -149,10 +150,21 @@ class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
         xaa_scopes: str | None = None,
         xaa_token_endpoint_auth_method: str | None = None,
     ) -> "MCPOAuthProtectedResourceMetadataConfig":
+        """Assemble the config from the server's settings.
+
+        Every parameter is the flat string an env var or runtime parameter can
+        carry — except ``scopes_supported``, which takes a list: its only
+        source is the scope rules declared in code and configuration (see
+        ``datarobot_genai.drmcpbase.oauth_scopes.derived_scopes``), never a
+        flat setting, so there is no comma-string for callers to hand-join
+        here or for this to split. Blank entries are dropped and an empty list
+        publishes nothing, like every other unset field.
+        """
+        scopes = [scope.strip() for scope in (scopes_supported or []) if scope.strip()]
         return cls(
             resource=resource or None,
             authorization_servers=split_list_setting(authorization_servers),
-            scopes_supported=split_list_setting(scopes_supported),
+            scopes_supported=scopes or None,
             cross_application_access=CrossApplicationAccessMetadata.from_settings(
                 trusted_issuer=xaa_trusted_issuer,
                 exchange_audience=xaa_exchange_audience,

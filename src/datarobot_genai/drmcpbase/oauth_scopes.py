@@ -596,10 +596,17 @@ async def collect_code_declared_scopes(mcp: Any) -> set[str]:
 
     Must run *after* the component modules are imported, and after any dynamic
     registration: before that there is nothing to read.
+
+    Checks attached by :func:`apply_tag_scopes` record their scopes too, but
+    they are configuration, not code, and are skipped here — counting them
+    would re-report every active tag rule as a code declaration, and under
+    ``source=tags`` warn it inert against the very source enforcing it.
     """
     found: set[str] = set()
     for component in await _all_components(mcp):
         for check in _as_check_list(component.auth):
+            if getattr(check, TAG_APPLIED_ATTR, False):
+                continue
             found.update(_declared_scopes_of(check))
 
     _code_declared_scopes.clear()
