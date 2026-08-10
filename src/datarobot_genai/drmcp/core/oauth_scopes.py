@@ -45,7 +45,6 @@ from typing import Any
 
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
-from datarobot_genai.drmcpbase.oauth_scopes import probe_verification_keys
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes as _wire_scopes
 from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
@@ -156,8 +155,8 @@ def build_scope_settings(config: MCPServerConfig | None = None) -> ScopeSettings
 async def wire_scopes(mcp: Any, config: MCPServerConfig | None = None) -> None:
     """Install this server's scope settings and apply them to every component.
 
-    Also probes the JWKS once, so an unreachable IdP shows up in the startup
-    log rather than as a server that silently serves nothing to anyone.
+    Wiring only — no network. The one-off JWKS reachability probe is a startup
+    concern and is called from the server's startup path instead, so re-wiring
+    (or a test) never fetches anything.
     """
     await _wire_scopes(mcp, build_scope_settings(config))
-    await probe_verification_keys()

@@ -284,6 +284,14 @@ _code_declared_scopes: set[str] = set()
 
 # JWTVerifier caches the IdP's JWKS on the instance, so rebuilding one per
 # request would refetch the keys every time. Keyed by the settings that define it.
+#
+# Key rotation needs no handling here: the verifier refreshes its JWKS hourly
+# and refetches immediately when a token presents a ``kid`` it does not know,
+# so a token minted right after a rotation verifies on first sight. The cost of
+# that behaviour is bounded — there is no negative cache, so a well-formed JWT
+# with an unknown ``kid`` spends one JWKS fetch per request, but opaque API
+# keys fail at parse before any fetch and the per-request memo caps the chain
+# at one per request.
 _verifier_cache: dict[tuple[str, str, str], JWTVerifier] = {}
 
 
