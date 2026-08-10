@@ -30,6 +30,19 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import 
 )
 
 
+@pytest.fixture(autouse=True)
+def rewire(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Stub the scope re-wiring the mutation handlers do.
+
+    The real one enumerates the server's components, which a ``Mock()`` mcp
+    cannot answer for. Returned so tests can assert it ran — a component
+    registered at runtime is unguarded until it does.
+    """
+    stub = AsyncMock()
+    monkeypatch.setattr("datarobot_genai.drmcp.core.routes.wire_scopes", stub)
+    return stub
+
+
 class TestRoutesCoverage:
     """Test cases for route handlers in routes.py to improve coverage."""
 
@@ -538,6 +551,133 @@ class TestPromptTemplateRoutes:
         response = await refresh_handler(self.mock_request)
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, response.body
         assert b"Failed to refresh prompt template" in response.body
+
+
+class TestScopeRewiringOnRuntimeMutation:
+    """Every runtime component mutation re-wires the scope rules.
+
+    A component registered after startup carries neither the token floor nor
+    its tag's requirements until wired — on an OAuth-verified server that would
+    serve exactly the new tool to the callers the floor shuts out. Removals
+    re-wire too, so the published ``scopes_supported`` stays derived from the
+    components actually registered.
+    """
+
+    def setup_method(self):
+        """Set up test fixtures, capturing handlers by method and path."""
+        self.mock_mcp = Mock()
+        self.mock_request = Mock()
+        self.mock_request.path_params = {}
+        self.mock_request.query_params = {}
+        self.registered_routes: dict[tuple[str, str], Callable] = {}
+
+        def mock_custom_route(route_path: str, methods: list[str]):
+            def decorator(handler: Callable):
+                for method in methods:
+                    self.registered_routes[(method, route_path)] = handler
+                return handler
+
+            return decorator
+
+        self.mock_mcp.custom_route = mock_custom_route
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.register_tool_for_deployment_id")
+    async def test_a_deployment_tool_is_wired_on_registration(
+        self, register_mock: Mock, rewire: AsyncMock
+    ):
+        tool = Mock()
+        tool.name, tool.description, tool.tags = "t", "d", set()
+        register_mock.return_value = tool
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"deployment_id": "deployment123"}
+
+        handler = self.registered_routes["PUT", "/registeredDeployments/{deployment_id}"]
+        response = await handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.CREATED, response.body
+        rewire.assert_awaited_once_with(self.mock_mcp)
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.register_tool_for_deployment_id")
+    async def test_a_failed_registration_does_not_rewire(
+        self, register_mock: Mock, rewire: AsyncMock
+    ):
+        register_mock.side_effect = ValueError("no such deployment")
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"deployment_id": "deployment123"}
+
+        handler = self.registered_routes["PUT", "/registeredDeployments/{deployment_id}"]
+        await handler(self.mock_request)
+
+        rewire.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_tool_deployment")
+    async def test_a_deleted_deployment_tool_rewires(self, delete_mock: Mock, rewire: AsyncMock):
+        delete_mock.return_value = True
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"deployment_id": "deployment123"}
+
+        handler = self.registered_routes["DELETE", "/registeredDeployments/{deployment_id}"]
+        response = await handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK, response.body
+        rewire.assert_awaited_once_with(self.mock_mcp)
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_tool_deployment")
+    async def test_deleting_nothing_does_not_rewire(self, delete_mock: Mock, rewire: AsyncMock):
+        delete_mock.return_value = False
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"deployment_id": "deployment123"}
+
+        handler = self.registered_routes["DELETE", "/registeredDeployments/{deployment_id}"]
+        await handler(self.mock_request)
+
+        rewire.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.register_prompt_from_prompt_template_id_and_version")
+    async def test_a_prompt_is_wired_on_registration(
+        self, add_prompt_mock: Mock, rewire: AsyncMock
+    ):
+        add_prompt_mock.return_value = Prompt(
+            name="n", description="d", meta={"prompt_template_version_id": "v1"}
+        )
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        handler = self.registered_routes["PUT", "/registeredPrompts/{prompt_template_id}"]
+        response = await handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.CREATED, response.body
+        rewire.assert_awaited_once_with(self.mock_mcp)
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.delete_registered_prompt_template")
+    async def test_a_deleted_prompt_rewires(self, delete_mock: Mock, rewire: AsyncMock):
+        delete_mock.return_value = True
+        register_routes(self.mock_mcp)
+        self.mock_request.path_params = {"prompt_template_id": "pt1"}
+
+        handler = self.registered_routes["DELETE", "/registeredPrompts/{prompt_template_id}"]
+        response = await handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK, response.body
+        rewire.assert_awaited_once_with(self.mock_mcp)
+
+    @pytest.mark.asyncio
+    @patch("datarobot_genai.drmcp.core.routes.refresh_registered_prompt_template")
+    async def test_a_prompt_refresh_rewires(self, refresh_mock: Mock, rewire: AsyncMock):
+        refresh_mock.return_value = None
+        register_routes(self.mock_mcp)
+
+        handler = self.registered_routes["PUT", "/registeredPrompts"]
+        response = await handler(self.mock_request)
+
+        assert response.status_code == HTTPStatus.OK, response.body
+        rewire.assert_awaited_once_with(self.mock_mcp)
 
 
 class TestMetadataRoute:

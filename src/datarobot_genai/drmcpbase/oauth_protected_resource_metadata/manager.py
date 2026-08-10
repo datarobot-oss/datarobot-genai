@@ -32,9 +32,20 @@ logger = logging.getLogger(__name__)
 class SupportedMethodsToSendBearerToken(Enum):
     """How a client may present its bearer token to this resource server.
 
-    RFC 6750 also defines form-encoded body and query-string delivery; both are
-    discouraged and neither is accepted here, so the served
-    ``bearer_methods_supported`` lists only the Authorization header.
+    RFC 6750 defines three ways a client may present a bearer token: the
+    Authorization header, a form-encoded body parameter, and a URI query
+    parameter. RFC 9728 lets the resource server declare which of them it
+    actually accepts, so a client doesn't have to guess.
+
+    We accept the header and nothing else. The other two are discouraged by RFC
+    6750 itself — a query-string token ends up in access logs, proxy logs,
+    Referer headers and browser history; the body form constrains the content
+    type.
+
+    This is a declaration, not an enforcement point: nothing reads it inbound,
+    and the request side only ever looks at ``OAUTH_TOKEN_HEADERS``. Adding a
+    member here would change what is advertised without changing what is
+    accepted.
     """
 
     HEADER = auto()

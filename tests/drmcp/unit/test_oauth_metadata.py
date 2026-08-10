@@ -24,7 +24,6 @@ def _config(**overrides: str | None) -> MCPServerConfig:
     fields: dict[str, str | None] = {
         "mcp_oauth_resource": None,
         "mcp_oauth_authorization_servers": None,
-        "mcp_oauth_scopes_supported": None,
         "mcp_xaa_trusted_issuer": None,
         "mcp_xaa_exchange_audience": None,
         "mcp_xaa_token_url": None,
@@ -45,7 +44,6 @@ class TestBuildProtectedResourceMetadataConfig:
         config = _config(
             mcp_oauth_resource="https://mcp.example.com/",
             mcp_oauth_authorization_servers="https://as.example.com",
-            mcp_oauth_scopes_supported="read,write",
             mcp_xaa_trusted_issuer="https://issuer.example.com",
             mcp_xaa_exchange_audience="https://audience.example.com",
             mcp_xaa_token_url="https://issuer.example.com/token",
@@ -54,6 +52,10 @@ class TestBuildProtectedResourceMetadataConfig:
             mcp_xaa_token_endpoint_auth_method="client_secret_jwt",
         )
         monkeypatch.setattr("datarobot_genai.drmcp.core.oauth_metadata.get_config", lambda: config)
+        # `scopes_supported` is derived from the enforced scope rules, never configured.
+        monkeypatch.setattr(
+            "datarobot_genai.drmcp.core.oauth_metadata.derived_scopes", lambda: ["read", "write"]
+        )
 
         built = build_protected_resource_metadata_config()
 
