@@ -131,21 +131,49 @@ class TestCrossApplicationAccessMetadata:
     def test_from_settings_without_any_setting(self) -> None:
         assert CrossApplicationAccessMetadata.from_settings() is None
 
+    #: Maps each required ``from_settings`` argument to the variable that sets it.
+    REQUIRED_ENV_NAMES = {
+        "trusted_issuer": "MCP_XAA_TRUSTED_ISSUER",
+        "exchange_audience": "MCP_XAA_EXCHANGE_AUDIENCE",
+        "token_url": "MCP_XAA_TOKEN_URL",
+        "scopes": "MCP_XAA_SCOPES",
+    }
+
     @pytest.mark.parametrize(
         "omitted",
         ["trusted_issuer", "exchange_audience", "token_url", "scopes"],
     )
-    def test_from_settings_drops_a_partial_block_with_a_warning(
+    def test_from_settings_drops_a_partial_block_naming_what_is_missing(
         self,
         xaa_settings: dict[str, Any],
         omitted: str,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """The deploy tooling rejects this up front; here it must not 500."""
+        """The deploy tooling rejects this up front; here it must not 500.
+
+        The warning names exactly the variable that is missing — the fix is
+        setting that one variable, so the message should say which.
+        """
         xaa_settings.pop(omitted)
 
         assert CrossApplicationAccessMetadata.from_settings(**xaa_settings) is None
         assert "Incomplete Cross-Application Access settings" in caplog.text
+        assert self.REQUIRED_ENV_NAMES[omitted] in caplog.text
+        for present, env_name in self.REQUIRED_ENV_NAMES.items():
+            if present != omitted:
+                assert env_name not in caplog.text
+
+    def test_every_missing_setting_is_named_at_once(
+        self, xaa_settings: dict[str, Any], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """One warning lists the whole gap, not one variable per restart."""
+        xaa_settings.pop("token_url")
+        xaa_settings.pop("scopes")
+
+        assert CrossApplicationAccessMetadata.from_settings(**xaa_settings) is None
+        assert "MCP_XAA_TOKEN_URL" in caplog.text
+        assert "MCP_XAA_SCOPES" in caplog.text
+        assert "MCP_XAA_TRUSTED_ISSUER" not in caplog.text
 
     def test_token_endpoint_auth_method_defaults_when_omitted(
         self, xaa_settings: dict[str, Any]

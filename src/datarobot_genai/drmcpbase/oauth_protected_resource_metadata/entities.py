@@ -78,21 +78,33 @@ class CrossApplicationAccessMetadata(BaseDataClass):
         """Assemble the block from the flat ``MCP_XAA_*`` settings.
 
         All four required settings must be present. A partial block is dropped
-        with a warning rather than raising: the deployment tooling rejects it up
-        front, so reaching here means the container was configured by hand and a
-        broken well-known route helps nobody.
+        with a warning naming exactly what is missing rather than raising: the
+        deployment tooling rejects it up front, so reaching here means the
+        container was configured by hand and a broken well-known route helps
+        nobody.
         """
         parsed_scopes = split_list_setting(scopes)
-        if not any((trusted_issuer, exchange_audience, token_url, parsed_scopes)):
+        # Env var names keyed to their values: both guards and the warning are
+        # derived from this one mapping, so the set of required settings can
+        # never drift from the message that names them.
+        required: dict[str, str | list[str] | None] = {
+            "MCP_XAA_TRUSTED_ISSUER": trusted_issuer,
+            "MCP_XAA_EXCHANGE_AUDIENCE": exchange_audience,
+            "MCP_XAA_TOKEN_URL": token_url,
+            "MCP_XAA_SCOPES": parsed_scopes,
+        }
+        if not any(required.values()):
             return None
-        if not (trusted_issuer and exchange_audience and token_url and parsed_scopes):
+        if missing := [name for name, value in required.items() if not value]:
             logger.warning(
                 "Incomplete Cross-Application Access settings; publishing no "
-                "cross_application_access block. All of MCP_XAA_TRUSTED_ISSUER, "
-                "MCP_XAA_EXCHANGE_AUDIENCE, MCP_XAA_TOKEN_URL and MCP_XAA_SCOPES "
-                "are required."
+                "cross_application_access block. Missing: %s.",
+                ", ".join(missing),
             )
             return None
+        # `missing` being empty proves these are set; spelled out only because
+        # mypy cannot see that through the mapping.
+        assert trusted_issuer and exchange_audience and token_url and parsed_scopes
         return cls(
             token_exchange=XAATokenExchangeParams(
                 trusted_issuer=trusted_issuer,

@@ -97,6 +97,29 @@ class TestDataRobotMCPServer:
         assert server._mcp == mock_mcp
         assert server._mcp_transport == "stdio"
 
+    def test_http_transport_validates_the_published_metadata_at_startup(
+        self, mock_mcp: MagicMock
+    ) -> None:
+        """Building the metadata is what validates it — a partial XAA block must
+        warn in the boot log, not on the first discovery request.
+        """
+        with patch(
+            "datarobot_genai.drmcp.core.dr_mcp_server.build_protected_resource_metadata_config"
+        ) as build:
+            DataRobotMCPServer(mock_mcp)
+
+        build.assert_called_once_with()
+
+    def test_stdio_transport_serves_no_metadata_and_skips_the_check(
+        self, mock_mcp: MagicMock
+    ) -> None:
+        with patch(
+            "datarobot_genai.drmcp.core.dr_mcp_server.build_protected_resource_metadata_config"
+        ) as build:
+            DataRobotMCPServer(mock_mcp, transport="stdio")
+
+        build.assert_not_called()
+
     @pytest.mark.usefixtures(
         "mock_lineage_manager_init",
         "mock_sync_mcp_tools",

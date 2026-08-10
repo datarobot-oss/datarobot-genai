@@ -44,6 +44,7 @@ from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_man
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
+from .oauth_metadata import build_protected_resource_metadata_config
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
@@ -183,6 +184,15 @@ class DataRobotMCPServer:
         # Register HTTP routes if using streamable-http transport
         if transport == "streamable-http":
             register_routes(self._mcp)
+            # Building the published OAuth metadata is what validates it, so
+            # build it once now: an incomplete Cross-Application Access block
+            # becomes a startup warning naming the missing variables, rather
+            # than a surprise on the first discovery request. The deployment
+            # tooling rejects a partial set outright before it ever ships;
+            # this covers containers configured by hand. Deliberately not a
+            # hard failure — the block is optional metadata, and refusing to
+            # start would turn a typo in it into a full outage.
+            build_protected_resource_metadata_config()
 
     def _configure_mcp_capabilities(self) -> None:
         """Configure MCP capabilities that FastMCP doesn't expose directly.
