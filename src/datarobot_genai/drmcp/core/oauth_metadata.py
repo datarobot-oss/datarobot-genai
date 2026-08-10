@@ -25,8 +25,10 @@ can never drift from what is served.
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadataConfig,
 )
+from datarobot_genai.drmcpbase.oauth_scopes import derived_scopes
 
 from .config import get_config
+from .runtime_identity import resolve_self_url
 
 
 def build_protected_resource_metadata_config() -> MCPOAuthProtectedResourceMetadataConfig:
@@ -35,12 +37,17 @@ def build_protected_resource_metadata_config() -> MCPOAuthProtectedResourceMetad
     Building the config is what validates it — an incomplete
     Cross-Application Access block is dropped with a warning naming the
     missing variables.
+
+    `resource` and `scopes_supported` are the two fields the server can
+    answer for itself: its own URL is knowable at runtime even though it
+    was not at build time, and the scopes it enforces are readable data.
+    A configured value always wins over the resolved one.
     """
     config = get_config()
     return MCPOAuthProtectedResourceMetadataConfig.from_settings(
-        resource=config.mcp_oauth_resource,
+        resource=config.mcp_oauth_resource or resolve_self_url(),
         authorization_servers=config.mcp_oauth_authorization_servers,
-        scopes_supported=config.mcp_oauth_scopes_supported,
+        scopes_supported=derived_scopes(),
         xaa_trusted_issuer=config.mcp_xaa_trusted_issuer,
         xaa_exchange_audience=config.mcp_xaa_exchange_audience,
         xaa_token_url=config.mcp_xaa_token_url,

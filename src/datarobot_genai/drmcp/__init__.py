@@ -28,6 +28,7 @@ from datarobot_genai.drmcp.test_utils.mcp_utils_integration import integration_t
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectations
+from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_sdk
 from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 from datarobot_genai.drmcputils.credentials import ToolsAuthCredentials
@@ -61,6 +62,7 @@ __all__ = [
     "request_user_dr_sdk",
     "dr_mcp_tool",
     "register_tools",
+    "require_scopes",
     "ToolKwargs",
     # Utilities
     "MCPLogging",

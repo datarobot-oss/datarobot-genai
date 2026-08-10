@@ -30,7 +30,9 @@ from starlette.middleware import Middleware
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
+from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
+from datarobot_genai.drmcpbase.oauth_scopes import probe_verification_keys
 from datarobot_genai.drmcpbase.panels import register_panel_resources
 from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
@@ -274,6 +276,21 @@ class DataRobotMCPServer:
             self._logger.info(f"Registered resources: {resources_count}")
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
+
+            # Wire OAuth scope requirements last, once every component exists:
+            # the dynamic ones registered above, plus anything pre_server_start
+            # added. Wiring earlier leaves later components unguarded while
+            # looking configured. It also has to follow the listing above — the
+            # public listers apply the very auth checks being wired, and with no
+            # request (hence no token) an enforcing server would log its own
+            # startup inventory as empty.
+            asyncio.run(wire_scopes(self._mcp))
+
+            # Probe the JWKS once, here rather than inside wire_scopes: wiring
+            # re-runs on every dynamic registration and must stay network-free,
+            # while an unreachable IdP should be a line in the boot log instead
+            # of a server that silently serves nothing to anyone.
+            asyncio.run(probe_verification_keys())
 
             # Create event loop for async operations
             loop = asyncio.new_event_loop()

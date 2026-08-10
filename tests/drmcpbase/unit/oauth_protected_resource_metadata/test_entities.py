@@ -200,7 +200,7 @@ class TestMCPOAuthProtectedResourceMetadataConfig:
         metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
             resource=RESOURCE_URL,
             authorization_servers="https://as1,https://as2",
-            scopes_supported="scope",
+            scopes_supported=["scope"],
             xaa_trusted_issuer=xaa_settings["trusted_issuer"],
             xaa_exchange_audience=xaa_settings["exchange_audience"],
             xaa_token_url=xaa_settings["token_url"],
@@ -233,6 +233,19 @@ class TestMCPOAuthProtectedResourceMetadataConfig:
         assert metadata.to_dict_without_null_attribute() == {
             "cross_application_access": cross_application_access_in_dict
         }
+
+    def test_scopes_supported_blank_entries_are_dropped(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            scopes_supported=["mcp:tools:read", "  ", ""]
+        )
+
+        assert metadata.scopes_supported == ["mcp:tools:read"]
+
+    def test_no_scopes_publishes_no_scopes_supported(self) -> None:
+        """An empty list is an unset field, not an empty array in the document."""
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(scopes_supported=[])
+
+        assert metadata.scopes_supported is None
 
     def test_from_settings_with_nothing_set(self) -> None:
         metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings()
