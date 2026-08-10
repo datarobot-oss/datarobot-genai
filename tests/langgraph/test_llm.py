@@ -151,7 +151,7 @@ def test_get_external_llm_merges_parameters() -> None:
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm()
     assert isinstance(llm, BaseChatModel)
     assert llm.api_base == "https://example.test/genai/llmgw"
@@ -161,7 +161,7 @@ def test_get_llm_routes_to_deployment() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.DEPLOYMENT
     config.llm_deployment_id = "dep-123"
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm()
     assert isinstance(llm, BaseChatModel)
     assert llm.api_base == "https://example.test/deployments/dep-123/chat/completions"
@@ -170,8 +170,8 @@ def test_get_llm_routes_to_deployment() -> None:
 def test_get_llm_routes_to_nim() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.NIM
-    config.nim_deployment_id = "nim-456"
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    config.llm_nim_deployment_id = "nim-456"
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm()
     assert isinstance(llm, BaseChatModel)
     assert llm.api_base == "https://example.test/deployments/nim-456/chat/completions"
@@ -180,7 +180,7 @@ def test_get_llm_routes_to_nim() -> None:
 def test_get_llm_routes_to_external() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.EXTERNAL
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm()
     assert isinstance(llm, BaseChatModel)
     assert llm.model == "default-model"
@@ -189,7 +189,7 @@ def test_get_llm_routes_to_external() -> None:
 def test_get_llm_raises_on_unknown_type() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = "unknown"
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         with pytest.raises(ValueError, match="Invalid LLM type"):
             langgraph_llm.get_llm()
 
@@ -197,7 +197,7 @@ def test_get_llm_raises_on_unknown_type() -> None:
 def test_get_llm_forwards_model_name_and_parameters() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.temperature == 0.5
@@ -237,7 +237,7 @@ def test_factory_omits_model_kwargs_when_no_extra_body() -> None:
 def test_get_llm_forwards_streaming_flag() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(langgraph_llm, "Config", return_value=config):
+    with patch.object(langgraph_llm, "resolve_llm_config", return_value=config):
         llm = langgraph_llm.get_llm(streaming=False)
     assert llm.streaming is False
 
