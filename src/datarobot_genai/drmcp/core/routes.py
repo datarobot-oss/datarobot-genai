@@ -34,6 +34,7 @@ from .dynamic_tools.deployment.controllers import get_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
 from .feature_flags import FeatureFlag
 from .mcp_instance import DataRobotMCP
+from .oauth_metadata import build_protected_resource_metadata_config
 from .routes_utils import prefix_mount_path
 from .tool_config import TOOL_CONFIGS
 from .tool_config import ToolType
@@ -359,7 +360,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
     @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
     async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
         manager = MCPOAuthProtectedResourceMetadataManager(
-            mcp_oauth_metadata=get_config().mcp_oauth_metadata,
+            build_protected_resource_metadata_config()
         )
         api_response = manager.get_protected_resource_metadata_api_response()
         if api_response:

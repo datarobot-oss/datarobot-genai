@@ -16,7 +16,6 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-import yaml
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
@@ -55,14 +54,8 @@ class TestSupportedMethodsToSendBearerToken:
 
 class TestMCPOAuthProtectedResourceMetadataManager:
     @pytest.fixture
-    def mock_yaml_safe_load(self) -> Iterator[Mock]:
-        with patch.object(yaml, "safe_load") as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_mcp_oauth_protected_resource_metadata_user_config_from_dict(self) -> Iterator[Mock]:
-        with patch.object(MCPOAuthProtectedResourceMetadataConfig, "from_dict") as mock_func:
-            yield mock_func
+    def metadata_config(self) -> MCPOAuthProtectedResourceMetadataConfig:
+        return MCPOAuthProtectedResourceMetadataConfig(resource="https://foo/bar/mcp")
 
     @pytest.fixture
     def mock_build_mcp_oauth_protected_resource_metadata(self) -> Iterator[Mock]:
@@ -89,21 +82,21 @@ class TestMCPOAuthProtectedResourceMetadataManager:
         ) as mock_func:
             yield mock_func
 
-    def test_load_config(
-        self,
-        mock_yaml_safe_load: Mock,
-        mock_mcp_oauth_protected_resource_metadata_user_config_from_dict: Mock,
-    ) -> None:
-        manager = MCPOAuthProtectedResourceMetadataManager(mcp_oauth_metadata="mock-metadata")
-        output = manager.load_config()
+    def test_load_config(self, metadata_config: MCPOAuthProtectedResourceMetadataConfig) -> None:
+        manager = MCPOAuthProtectedResourceMetadataManager(metadata_config)
 
-        mock_yaml_safe_load.assert_called_once_with("mock-metadata")
-        mock_mcp_oauth_protected_resource_metadata_user_config_from_dict.assert_called_once_with(
-            mock_yaml_safe_load.return_value
+        assert manager.load_config() == metadata_config
+
+    def test_load_config_without_a_config(self) -> None:
+        assert MCPOAuthProtectedResourceMetadataManager().load_config() is None
+
+    def test_load_config_treats_an_empty_config_as_unconfigured(self) -> None:
+        """Nothing was set, so there is no resource to describe."""
+        manager = MCPOAuthProtectedResourceMetadataManager(
+            MCPOAuthProtectedResourceMetadataConfig()
         )
-        assert (
-            output == mock_mcp_oauth_protected_resource_metadata_user_config_from_dict.return_value
-        )
+
+        assert manager.load_config() is None
 
     def test_get_admin_config(self) -> None:
         output = MCPOAuthProtectedResourceMetadataManager().get_admin_config()
