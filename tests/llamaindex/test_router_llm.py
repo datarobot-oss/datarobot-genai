@@ -210,7 +210,7 @@ def _echo_tool() -> Any:
 
 
 def _gateway_cfg(model: str) -> LLMConfig:
-    return LLMConfig(use_datarobot_llm_gateway=True, llm_default_model=model)
+    return LLMConfig(llm_use_datarobot_llm_gateway=True, llm_default_model=model)
 
 
 @pytest.mark.parametrize(
