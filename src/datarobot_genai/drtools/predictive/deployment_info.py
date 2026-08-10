@@ -51,11 +51,13 @@ def _feature_importance_value(feature: Any) -> float:
 @tool_metadata(
     tags={"predictive", "deployment", "read", "info", "metadata", "daria"},
     description=(
-        "[Deploy—scoring contract] Use first when building or validating payloads for a "
-        "deployment: target name/type, model family, all input features (name, type, "
-        "importance), plus time-series settings when relevant. Read-only. Narrower feature-only "
-        "view is deployment_get_features; model training diagnostics stay on the project "
-        "(modeling_get_modeldetails)."
+        "[Deploy—scoring contract] Use when you need a deployment's scoring semantics: target "
+        "name/type, model family, all input features (name, type, importance), plus time-series "
+        "settings when relevant. Read-only. This tool describes the contract; it does NOT produce "
+        "rows — for example/sample/template rows to score, use "
+        "deployment_generate_prediction_sample (and this tool alongside it if the columns also "
+        "need describing). Narrower feature-only view is deployment_get_features; model training "
+        "diagnostics stay on the project (modeling_get_modeldetails)."
     ),
     display_name="Deployment — Get info",
     description_ui=(
@@ -131,11 +133,12 @@ async def deployment_get_info(
 @tool_metadata(
     tags={"predictive", "deployment", "read", "template", "data"},
     description=(
-        "[Deploy—sample prediction rows] Use when the user needs example rows with correct "
-        "column names and types for one deployment (placeholder values only). Read-only. "
-        "Pair with deployment_get_info for semantics; output is meant as a skeleton for "
-        "predict_score_inline_realtime CSV/JSON, not for batch catalog jobs "
-        "or project model scoring."
+        "[Deploy—sample prediction rows] Use whenever the user asks for sample/example/template "
+        "rows, a payload skeleton, or what the scoring input should look like for one deployment. "
+        "Returns rows with the correct column names and placeholder values. Read-only. It returns "
+        "rows only — if the user also wants the columns explained (types, importance), call "
+        "deployment_get_info as well. Output feeds predict_score_inline_realtime CSV/JSON, not "
+        "batch catalog jobs or project model scoring."
     ),
     display_name="Deployment — Generate prediction sample",
     description_ui=(

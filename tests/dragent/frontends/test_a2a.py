@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -23,6 +24,8 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_DESCRIPTION
+from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_SCHEME_NAME
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
@@ -32,6 +35,7 @@ from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
+from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
 from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
@@ -67,6 +71,8 @@ class TestRedactAgentCard:
 
         assert redacted.skills == []
         assert redacted.supports_authenticated_extended_card is True
+        assert redacted.security_schemes is not None
+        assert BEARER_SECURITY_SCHEME_NAME in redacted.security_schemes
         assert card.capabilities.extensions is not None
         uris = [ext.uri for ext in card.capabilities.extensions]
         assert INTERNAL_IDENTITY_URI in uris
@@ -95,6 +101,8 @@ class TestRedactAgentCard:
 
         assert redacted.capabilities.extensions is not None
         assert any(ext.uri == JWT_BEARER_GRANT_TYPE_URI for ext in redacted.capabilities.extensions)
+        assert redacted.security_schemes is not None
+        assert "oauth2" in redacted.security_schemes
 
 
 class TestAgentCardIdentitySelection:
@@ -305,10 +313,17 @@ class TestCreateAgentCard:
         assert "token_url" not in ext.params
         assert "scopes" not in ext.params
 
-    async def test_no_security_when_server_auth_absent(self, a2a_frontend_config):
+    async def test_default_bearer_security_schemes_when_no_auth_configured(
+        self, a2a_frontend_config
+    ):
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-        assert card.security_schemes is None
-        assert card.security is None
+
+        assert BEARER_SECURITY_SCHEME_NAME in card.security_schemes
+        bearer_scheme = card.security_schemes[BEARER_SECURITY_SCHEME_NAME].root
+        assert bearer_scheme.type == "http"
+        assert bearer_scheme.scheme == "bearer"
+        assert bearer_scheme.description == BEARER_SECURITY_DESCRIPTION
+        assert card.security == [{BEARER_SECURITY_SCHEME_NAME: []}]
 
     async def test_internal_identity_extension_when_deployment_id_set(self, a2a_frontend_config):
         """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN create_agent_card is called THEN the internal
@@ -438,6 +453,64 @@ class TestCreateAgentCard:
         assert JWT_BEARER_GRANT_TYPE_URI in uris
         assert INTERNAL_IDENTITY_URI in uris
         assert EXTERNAL_IDENTITY_URI in uris
+
+
+class TestUnauthenticatedWellKnownRoute:
+    @staticmethod
+    def _make_request(headers: dict[str, str] | None = None):
+        from starlette.requests import Request
+
+        raw_headers = [
+            (key.lower().encode(), value.encode()) for key, value in (headers or {}).items()
+        ]
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/.well-known/agent-card.json",
+            "headers": raw_headers,
+        }
+        return Request(scope)
+
+    @staticmethod
+    async def _make_server(
+        a2a_frontend_config,
+        *,
+        enable_unauthenticated_well_known_route: bool = False,
+    ) -> DRAgentA2AStarletteApplication:
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        return DRAgentA2AStarletteApplication(
+            agent_card=card,
+            http_handler=MagicMock(),
+            extended_agent_card=card,
+            card_modifier=_public_card_modifier,
+            enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
+        )
+
+    async def test_unauthenticated_without_opt_in_returns_401(self, a2a_frontend_config):
+        server = await self._make_server(a2a_frontend_config)
+        response = await server._handle_get_agent_card(self._make_request())
+        assert response.status_code == 401
+        body = json.loads(response.body)
+        assert "error" in body
+        assert "enable_unauthenticated_well_known_route" in body["error"]
+
+    async def test_unauthenticated_with_opt_in_returns_redacted_card(self, a2a_frontend_config):
+        server = await self._make_server(
+            a2a_frontend_config, enable_unauthenticated_well_known_route=True
+        )
+        response = await server._handle_get_agent_card(self._make_request())
+        assert response.status_code == 200
+        card = json.loads(response.body)
+        assert card.get("skills") == []
+
+    async def test_authenticated_without_opt_in_returns_full_card(self, a2a_frontend_config):
+        server = await self._make_server(a2a_frontend_config)
+        response = await server._handle_get_agent_card(
+            self._make_request({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
+        )
+        assert response.status_code == 200
+        card = json.loads(response.body)
+        assert card.get("skills")
 
 
 class TestGetA2aEndpointUrl:

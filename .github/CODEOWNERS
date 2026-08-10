@@ -29,4 +29,5 @@
 /e2e-tests/drmcp/ @datarobot-oss/mcp
 /.taskfiles/drmcp.yml @datarobot-oss/mcp
 /docs/drtools/ @datarobot-oss/mcp
+/tests/dragent/plugins/test_datarobot_user_mcp_xaa_client.py @datarobot-oss/mcp
 /src/datarobot_genai/dragent/plugins/datarobot_user_mcp_xaa_client.py @datarobot-oss/mcp
