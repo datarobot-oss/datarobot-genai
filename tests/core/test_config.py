@@ -34,8 +34,8 @@ from datarobot_genai.core.config import deployment_url
 from datarobot_genai.core.config import get_max_history_messages_default
 from datarobot_genai.core.config import llm_gateway_url
 from datarobot_genai.core.config import register_config_provider
+from datarobot_genai.core.config import registered_default_llm_name
 from datarobot_genai.core.config import resolve_config
-from datarobot_genai.core.config import resolve_llm_config
 
 
 def _make_config(**overrides: object) -> Config:
@@ -323,7 +323,8 @@ def test_injected_config_overrides_env_for_user_intent_fields() -> None:
         assert default_use_datarobot_llm_gateway() is False
         assert default_llm_deployment_id() == "dep-from-app"
         assert default_model_name() == "anthropic/claude-sonnet-4-20250514"
-        assert resolve_llm_config().get_llm_type() == LLMType.DEPLOYMENT
+        resolved = resolve_config().resolve_llm_config(name=registered_default_llm_name())
+        assert resolved.get_llm_type() == LLMType.DEPLOYMENT
 
 
 def test_provider_is_called_each_resolve_for_dynamic_values() -> None:
@@ -367,9 +368,9 @@ def test_injected_config_drives_endpoint_helpers() -> None:
 # The legacy bare-name fallback (NIM_DEPLOYMENT_ID / USE_DATAROBOT_LLM_GATEWAY)
 # and its deprecation warning live in
 # DataRobotAppFrameworkBaseSettings.resolve_llm_config and are covered in
-# public_api_client. genai's resolve_llm_config only delegates, so these check the
-# delegation carries the fallback through and honors the registered default
-# instance name; the warning contract itself is core's.
+# public_api_client. genai owns no LLM-config logic of its own, so these check that
+# resolving off the global config at a call site carries the fallback through and
+# honors the registered default instance name; the warning contract itself is core's.
 
 
 def _config_fields_set(fields_set: set[str], **values: object) -> Config:
@@ -402,12 +403,12 @@ def clear_legacy_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_llm_config_delegates_legacy_fallback(
     clear_legacy_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Delegation reaches core's bridge: a legacy bare param still resolves."""
+    """Resolving at a call site reaches core's bridge: a legacy bare param resolves."""
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
     cfg = _config_fields_set(set())  # namespaced field not explicitly provided
     with patch.object(config_mod, "Config", return_value=cfg):
         with pytest.warns(Warning):
-            result = resolve_llm_config()
+            result = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     assert result.llm_nim_deployment_id == "legacy-nim"
 
 
@@ -417,20 +418,27 @@ def test_resolve_llm_config_namespaced_field_wins_over_legacy(
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
     cfg = _config_fields_set({"llm_nim_deployment_id"}, llm_nim_deployment_id="new-nim")
     with patch.object(config_mod, "Config", return_value=cfg):
-        result = resolve_llm_config()
+        result = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     assert result.llm_nim_deployment_id == "new-nim"
 
 
-def test_resolve_llm_config_uses_registered_default_instance_name(
+def test_registered_default_llm_name_defaults_to_llm() -> None:
+    """With nothing registered, the default instance namespace is "llm"."""
+    assert registered_default_llm_name() == "llm"
+
+
+def test_registered_default_instance_name_is_used_when_resolving(
     clear_legacy_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The registered default instance name is genai's one remaining contribution.
 
-    A non-"llm" default name selects that instance's namespace when resolving, which
-    the bare legacy fallback then targets.
+    It is a plain string, not a resolved config: a call site with no name of its own
+    passes it to the global config's ``resolve_llm_config``, which selects that
+    instance's namespace, which the bare legacy fallback then targets.
     """
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
     register_config_provider(lambda: _config_fields_set(set()), default_llm_name="myagent")
+    assert registered_default_llm_name() == "myagent"
     with pytest.warns(Warning):
-        result = resolve_llm_config()
+        result = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     assert result.llm_nim_deployment_id == "legacy-nim"

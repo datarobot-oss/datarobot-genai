@@ -208,13 +208,23 @@ Remove what the injected resolver now supersedes, and undo the collapse damage.
 
 **Mixin broken + two-resolver split DONE 2026-07-21 (the central untangle).**
 `Config` no longer inherits `LLMConfig`. `resolve_config() -> Config` is the global
-(the two globals + app-wide + default-instance fields); `resolve_llm_config(name)
--> LLMConfig` is one LLM's config, mapped from it and wired into the `get_llm`
-dispatch and every `default_*` helper (previously dead code). Nothing in genai
-reads a config attribute directly: the globals go through
+(the two globals + app-wide + default-instance fields); one LLM's config comes from
+`resolve_config().resolve_llm_config(name=...)`, mapped from it and wired into the
+`get_llm` dispatch and every `default_*` helper (previously dead code). Nothing in
+genai reads a config attribute directly: the globals go through
 `resolve_datarobot_endpoint()` / `resolve_datarobot_api_token()`, per-LLM through
-`resolve_llm_config()`. The provider now registers the global `Config` plus a
-`default_llm_name`; `_validate_global_config` duck-type-checks it. Still deferred:
+the config object's own `resolve_llm_config(name=...)`. The provider now registers
+the global `Config` plus a `default_llm_name`, read back by the string-only
+`registered_default_llm_name()`; `_validate_global_config` duck-type-checks it.
+
+**No module-level `resolve_llm_config()` wrapper in genai.** One existed through
+several iterations of this migration and was removed five times; it keeps returning
+on refactors and rebases. It has to stay gone: a free function returning an
+`LLMConfig` gets imported, monkeypatched, and extended, and those overrides live in
+genai rather than on the app's config object, so they break as soon as an app
+registers a real `config.py`. Resolve at the call site with an explicit instance
+name instead. The `DO NOT` note in `core/config.py` is the durable version of this.
+Still deferred:
 3d canonical de-prefixing of `LLMConfig` (it keeps `llm_*` field names for now),
 and the router path (`to_litellm_params` / `core/router.py`).
 

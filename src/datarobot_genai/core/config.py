@@ -19,7 +19,7 @@ from typing import Any
 from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
-from datarobot.core.config import LLMConfig
+from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import deployment_url
 from datarobot.core.config import llm_gateway_url
@@ -45,9 +45,9 @@ class Config(DataRobotAppFrameworkBaseSettings):
     resolve the default LLM from the environment.
 
     This is NOT an :class:`LLMConfig`. genai never reads LLM routing fields off it
-    directly; those are mapped into an :class:`LLMConfig` by
-    :func:`resolve_llm_config`, and the two globals through the base class's
-    ``resolve_datarobot_endpoint`` / ``resolve_datarobot_api_token`` methods.
+    directly; those are mapped into an :class:`LLMConfig` by its
+    ``resolve_llm_config(name=...)`` method, and the two globals through the base
+    class's ``resolve_datarobot_endpoint`` / ``resolve_datarobot_api_token`` methods.
     """
 
     # True ecosystem-wide globals. Fixed names, shared by every LLM instance.
@@ -83,8 +83,9 @@ class Config(DataRobotAppFrameworkBaseSettings):
 #
 #   Config       - the single GLOBAL app config (endpoint, token, app-wide
 #                  settings, and per-instance LLM fields). resolve_config() -> Config.
-#   LLMConfig    - ONE LLM instance's routing config. resolve_llm_config(name) -> LLMConfig,
-#                  mapped from the global config's {name}_* fields plus the two globals.
+#   LLMConfig    - ONE LLM instance's routing config, obtained by calling
+#                  resolve_config().resolve_llm_config(name=...), which maps the
+#                  global config's {name}_* fields plus the two globals.
 #
 # The application (an af-component-* app) owns the authoritative global config: a
 # DataRobotAppFrameworkBaseSettings subclass in its config.py. genai cannot import
@@ -98,8 +99,23 @@ class Config(DataRobotAppFrameworkBaseSettings):
 # The invariant that keeps this from getting twisted again: NOTHING in genai reads
 # a config attribute directly. Everything is resolved off the config object through
 # the datarobot.core base class methods (resolve_datarobot_endpoint /
-# resolve_datarobot_api_token / resolve_llm_config); resolve_llm_config() below is
-# the only genai wrapper, and only to inject the registered default instance name.
+# resolve_datarobot_api_token / resolve_llm_config).
+#
+# DO NOT add a module-level resolve_llm_config() wrapper here. This has been
+# removed five separate times and keeps coming back through refactors and rebases.
+# A module-level function that hands back an LLMConfig is an attractive nuisance:
+# people import it, monkeypatch it, and grow LLM-routing logic inside it, all of
+# which breaks the moment a real app registers its own config.py, because the
+# override lives in genai instead of on the app's config object. Always resolve
+# per-LLM config at the call site off the resolved global config, with an explicit
+# instance name:
+#
+#     llm_name = <passed in, or registered_default_llm_name()>
+#     config = resolve_config()
+#     llm_config = config.resolve_llm_config(name=llm_name)
+#
+# Callers that already hold an LLMConfig (the NAT path builds one from
+# workflow.yaml) should pass it down rather than re-resolving.
 
 _provider_registry: dict[str, Any] = {"provider": None, "default_llm_name": DEFAULT_LLM_NAME}
 
@@ -116,8 +132,9 @@ def register_config_provider(
     settings sources (env / .env / secrets / Pulumi) on every read.
 
     ``default_llm_name`` is the app's default LLM instance name (the prefix on its
-    per-LLM fields). ``resolve_llm_config()`` with no explicit name uses it, so a
-    non-"llm" component name still works for a bare ``get_llm()``.
+    per-LLM fields), read back by :func:`registered_default_llm_name`. Call sites
+    with no name of their own pass it to ``config.resolve_llm_config(name=...)``, so
+    a non-"llm" component name still works for a bare ``get_llm()``.
     """
     _provider_registry["provider"] = provider
     _provider_registry["default_llm_name"] = default_llm_name
@@ -147,7 +164,7 @@ def resolve_config() -> Config:
     env-reading :class:`Config` (a standalone genai with no app around it).
     Everything is resolved off the returned config through the ``datarobot.core``
     base class methods (``resolve_datarobot_endpoint`` / ``resolve_datarobot_api_token``);
-    for LLM routing use :func:`resolve_llm_config`.
+    for LLM routing call ``resolve_llm_config(name=...)`` on the returned config.
     """
     provider = _provider_registry["provider"]
     if provider is not None:
@@ -161,23 +178,20 @@ def resolve_config() -> Config:
     return Config()
 
 
-def resolve_llm_config(name: str | None = None) -> LLMConfig:
-    """Resolve ONE LLM instance's config from the global config.
+def registered_default_llm_name() -> str:
+    """Return the app's registered default LLM instance name (``"llm"`` if none).
 
-    Thin seam glue: it injects genai's global config (:func:`resolve_config`) and
-    the app's registered default instance name, then defers the entire mapping to
-    :meth:`DataRobotAppFrameworkBaseSettings.resolve_llm_config` in ``datarobot.core``.
-    That base method folds the instance's ``{name}_*`` fields together with the two
-    globals and applies the deprecated-name backwards-compat bridge, so genai holds
-    no LLM-config logic of its own.
+    This is a plain lookup of the name registered with
+    :func:`register_config_provider`, and nothing more. It exists so a call site
+    with no instance name of its own can still target the app's namespace:
 
-    ``name`` is the LLM component instance name; when omitted it is the app's
-    registered default (``"llm"`` for a standalone genai). Core's base method
-    defaults to ``"llm"`` too, but only genai knows the registered override, which
-    is the one thing this wrapper still contributes.
+        config = resolve_config()
+        llm_config = config.resolve_llm_config(name=registered_default_llm_name())
+
+    Deliberately returns a ``str`` and not an :class:`LLMConfig`. See the DO NOT
+    note above: genai must not have a function that resolves an LLM config for you.
     """
-    instance = name if name is not None else cast(str, _provider_registry["default_llm_name"])
-    return resolve_config().resolve_llm_config(instance)
+    return cast(str, _provider_registry["default_llm_name"])
 
 
 def get_max_history_messages_default() -> int:
@@ -195,7 +209,8 @@ def default_api_key() -> str | None:
 
 
 def default_model_name() -> str | None:
-    return resolve_llm_config().llm_default_model
+    config = resolve_config()
+    return config.resolve_llm_config(name=registered_default_llm_name()).llm_default_model
 
 
 def default_response_model() -> str:
@@ -212,15 +227,21 @@ def default_response_model() -> str:
 
 
 def default_use_datarobot_llm_gateway() -> bool:
-    return resolve_llm_config().llm_use_datarobot_llm_gateway
+    config = resolve_config()
+    llm_config = config.resolve_llm_config(name=registered_default_llm_name())
+    return llm_config.llm_use_datarobot_llm_gateway
 
 
 def default_deployment_url(deployment_id: str | None = None) -> str:
-    resolved_id = deployment_id or resolve_llm_config().llm_deployment_id
+    config = resolve_config()
+    resolved_id = (
+        deployment_id
+        or config.resolve_llm_config(name=registered_default_llm_name()).llm_deployment_id
+    )
     if resolved_id is None:
         raise ValueError("Neither deployment ID nor default deployment ID is set")
 
-    return deployment_url(resolved_id, resolve_config().resolve_datarobot_endpoint())
+    return deployment_url(resolved_id, config.resolve_datarobot_endpoint())
 
 
 def default_datarobot_llm_gateway_url() -> str:
@@ -228,11 +249,13 @@ def default_datarobot_llm_gateway_url() -> str:
 
 
 def default_llm_deployment_id() -> str | None:
-    return resolve_llm_config().llm_deployment_id
+    config = resolve_config()
+    return config.resolve_llm_config(name=registered_default_llm_name()).llm_deployment_id
 
 
 def default_nim_deployment_id() -> str | None:
-    return resolve_llm_config().llm_nim_deployment_id
+    config = resolve_config()
+    return config.resolve_llm_config(name=registered_default_llm_name()).llm_nim_deployment_id
 
 
 def default_assume_native_tool_calling_when_unmapped() -> bool:

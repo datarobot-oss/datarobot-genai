@@ -27,7 +27,8 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
-from datarobot_genai.core.config import resolve_llm_config
+from datarobot_genai.core.config import registered_default_llm_name
+from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 
 
@@ -249,11 +250,11 @@ def get_llm(
 ) -> BaseChatModel:
     """Build the framework LLM for a given (or the default) LLM config.
 
-    Pass ``config`` (for example ``resolve_config().resolve_llm_config("bob")``) to
-    build a specific configured LLM instance; omit it to build the app's default LLM.
+    Pass ``config`` (for example ``resolve_config().resolve_llm_config(name="bob")``)
+    to build a specific configured LLM instance; omit it to build the app's default LLM.
     """
     if config is None:
-        config = resolve_llm_config()
+        config = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, streaming, reasoning)
