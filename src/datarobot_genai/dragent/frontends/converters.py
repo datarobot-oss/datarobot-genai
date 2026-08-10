@@ -55,6 +55,7 @@ from openai.types.completion_usage import CompletionUsage
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.chat.completions import backfill_model
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
+from datarobot_genai.core.chat.completions import final_assistant_text
 from datarobot_genai.core.config import default_response_model
 
 from .request import DRAgentRunAgentInput
@@ -568,8 +569,12 @@ def aggregate_dragent_event_responses(
 
 
 def convert_dragent_event_response_to_str(response: DRAgentEventResponse) -> str:
-    return "".join(
-        event.delta
-        for event in response.events
-        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent))
-    )
+    """Flatten an (already aggregated) response to the text of its final assistant message.
+
+    Non-streaming callers get one ``content`` string. Joining every text delta in the
+    run instead concatenates each assistant message an agent produced -- for the recipe
+    template's two-node LangGraph graph that is the researcher's notes glued onto the
+    responder's answer (the reported ``"ParisParis"``). ``final_assistant_text`` applies
+    the same "final message only" rule the SDK's own non-streaming path uses.
+    """
+    return final_assistant_text(response.events)
