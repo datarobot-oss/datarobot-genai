@@ -54,6 +54,14 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
 WORKLOAD_ENTITY_ID_PREFIX = "workload-"
 
+# HTTP header names are case-insensitive, but callers read these two back by
+# exact key, and the dragent CLI writes them lowercase into
+# OTEL_EXPORTER_OTLP_HEADERS. Fold them onto their canonical spelling on parse.
+_CANONICAL_HEADER_NAMES = {
+    "x-datarobot-api-key": "X-DataRobot-Api-Key",
+    "x-datarobot-entity-id": "X-DataRobot-Entity-Id",
+}
+
 
 def resolve_api_key_from_env() -> str:
     return os.getenv("DATAROBOT_API_TOKEN", "")
@@ -77,7 +85,8 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers: dict[str, str] = {}
         for header in headers_list:
             key, value = header.split("=", 1)
-            headers[key.strip()] = value.strip()
+            key = key.strip()
+            headers[_CANONICAL_HEADER_NAMES.get(key.lower(), key)] = value.strip()
         return headers
     api_key = resolve_api_key_from_env()
     entity_id = resolve_entity_id_from_env()
@@ -165,9 +174,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
 
-    * the hosted-runtime env is incomplete (``MLOPS_DEPLOYMENT_ID`` or
-      ``WORKLOAD_ID``, ``DATAROBOT_API_TOKEN``, or
-      ``DATAROBOT_(PUBLIC_)ENDPOINT`` missing) — the local-dev / CI shape;
+    * the environment resolves to no export endpoint and headers, from either
+      ``OTEL_EXPORTER_OTLP_*`` or the ``DATAROBOT_*`` fallback;
     * something other than an SDK ``TracerProvider`` or the default proxy is
       already installed (we can't attach to an unknown provider type);
     * this function has already run successfully in this process.
@@ -179,9 +187,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     endpoint = resolve_otel_traces_endpoint_from_env()
     if not headers or not endpoint:
         logger.info(
-            "Skipping OTel TracerProvider bootstrap: hosted-runtime env "
-            "(MLOPS_DEPLOYMENT_ID or WORKLOAD_ID / DATAROBOT_API_TOKEN / "
-            "DATAROBOT_(PUBLIC_)ENDPOINT) not fully set."
+            "Skipping OTel TracerProvider bootstrap: no export endpoint and headers "
+            "resolved from OTEL_EXPORTER_OTLP_* or the DATAROBOT_* fallback."
         )
         return False
 
@@ -253,9 +260,18 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        headers["X-DataRobot-Entity-Id"],
+        headers.get("X-DataRobot-Entity-Id", ""),
     )
     return True
+
+
+def datarobot_otel_provider_installed() -> bool:
+    """Whether the DataRobot span processor is active in this process.
+
+    Stays ``True`` for the life of the process, unlike the bootstrap's return
+    value, which reports only what a single call did.
+    """
+    return _BOOTSTRAP_STATE["installed"]
 
 
 def _redirect_dome_tracer_provider(provider: object) -> None:

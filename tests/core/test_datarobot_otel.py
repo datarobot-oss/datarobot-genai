@@ -39,7 +39,9 @@ _ENV_VARS = (
 def clean_env(monkeypatch):
     """Strip env vars + reset OTel global TracerProvider + module bootstrap flag."""
     for var in _ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
+        # delenv alone records no undo for an absent var, so writes would outlive the test.
+        monkeypatch.setenv(var, "")
+        monkeypatch.delenv(var)
     # OTel guards set_tracer_provider behind Once(); resetting both lets each
     # test exercise a fresh global slot without leaking to siblings.
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
@@ -161,6 +163,19 @@ class TestHeaderResolvers:
             "X-DataRobot-Entity-Id": "deployment-env",
         }
 
+    def test_headers_canonicalize_datarobot_names(self, clean_env):
+        # The dragent CLI writes these lowercase; callers read them back by the
+        # canonical key, so parsing folds the casing. Other headers pass through.
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "x-datarobot-api-key=env-key,x-datarobot-entity-id=experiment_container-uc123,X-Other=v",
+        )
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "env-key",
+            "X-DataRobot-Entity-Id": "experiment_container-uc123",
+            "X-Other": "v",
+        }
+
     def test_headers_value_with_equals_preserved(self, clean_env):
         # A header value can legitimately contain '=' (e.g. base64 padding or
         # a token with '='). Splitting on the first '=' only must keep the
@@ -197,6 +212,18 @@ class TestBootstrapOtelProvider:
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
+
+    def test_lowercase_preset_header_names(self, clean_env):
+        # dragent/cli/commands.py writes lowercase header names, and a local caller
+        # bootstraps with whatever OTEL_EXPORTER_OTLP_HEADERS holds. Logging the entity
+        # id must tolerate that casing rather than raise KeyError after installing.
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "x-datarobot-api-key=tok,x-datarobot-entity-id=experiment_container-uc123",
+        )
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
+        assert isinstance(trace.get_tracer_provider(), TracerProvider)
 
     def test_installs_provider_when_env_present(self, clean_env):
         self._set_full_env(clean_env)
@@ -305,11 +332,24 @@ class TestBootstrapOtelProvider:
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is provider_first
 
+    def test_provider_installed_reports_process_state(self, clean_env):
+        # Unlike the bootstrap's return value, which reports what one call did,
+        # this stays True for the process, which is what a caller needs to know before
+        # relying on its spans reaching DataRobot.
+        assert datarobot_otel.datarobot_otel_provider_installed() is False
+
+        self._set_full_env(clean_env)
+        datarobot_otel.bootstrap_otel_provider_for_datarobot()
+        assert datarobot_otel.datarobot_otel_provider_installed() is True
+
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
+        assert datarobot_otel.datarobot_otel_provider_installed() is True
+
     def test_attaches_processor_to_existing_sdk_provider(self, clean_env, monkeypatch):
-        # Simulate the dragent_fastapi server installing its own SDK provider
-        # before NAT plugin discovery runs. Bootstrap should keep that provider
-        # in place (we don't fight the FastAPI layer) but attach a DR-pointed
-        # BatchSpanProcessor so framework spans still reach DR.
+        # Simulate a host that set up its own SDK provider before handing control
+        # to agent code. Bootstrap should keep that provider in place (we don't
+        # fight the host) but attach a DR-pointed BatchSpanProcessor so framework
+        # spans still reach DR.
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.8
+- `core.telemetry`: **`instrument()` now installs the DataRobot span exporter outside a DataRobot runtime too.** The `MLOPS_DEPLOYMENT_ID` / `WORKLOAD_ID` gate had dropped every framework, LLM, HTTP, memory, and moderation span locally. Still a no-op unless OTel export is configured; adds `datarobot_otel_provider_installed()`.
+- `core.telemetry`: `OTEL_EXPORTER_OTLP_HEADERS` is parsed onto canonical `X-DataRobot-*` casing, fixing a `KeyError` on lowercase names from the `dragent` CLI.
+- Added a local tracing example to the quickstart notebook and documented it in the DRAgent tracing guide: spans attach to a use case, viewable with `dr xp`.
+
 ## 0.27.7
 - `drtools/workload`: synced the workload tools with the Workload API MCP server's `datarobot-workload-api` skill alignment:
   - `artifact_get_build` now normalizes build-status variants (`completed`, `in-progress`, …) and annotates single-build responses with `deployable` and `status_guidance` — `BUILT` means built but **not yet pushed** to the registry and is not deployable; only `COMPLETED` is. `artifact_build_run_action(action='trigger')` responses now tell callers to wait for `COMPLETED`.

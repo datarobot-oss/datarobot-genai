@@ -50,7 +50,7 @@ Fields:
 | `project` | yes | — | OTel `service.name` for spans emitted by this workflow. |
 | `endpoint` | no | `<DATAROBOT_(PUBLIC_)ENDPOINT>/otel/v1/traces` | Full OTLP/HTTP endpoint override. |
 | `datarobot_api_key` | no | `DATAROBOT_API_TOKEN` env var | Sent as the `X-DataRobot-Api-Key` header. |
-| `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header. Non-empty values must keep the `deployment-` prefix. |
+| `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header, in `<entity type>-<id>` form: `deployment-`, `workload-` or `experiment_container-` (a use case). |
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
 
@@ -62,10 +62,10 @@ The core `instrument()` sets up HTTP-client, OpenAI SDK, and threading instrumen
 
 ```python
 from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.langgraph.telemetry import instrument as langgraph_instrument
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
 
 instrument()  # HTTP clients + OpenAI SDK + OTel SDK bootstrap
-langgraph_instrument()  # framework auto-instrumentor spans
+instrument_langgraph()  # framework auto-instrumentor spans
 ```
 
 The per-framework helpers live alongside each framework package:
@@ -92,17 +92,51 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 | Fallback variable | Used for | Missing → |
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | `X-DataRobot-Api-Key` header | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID` | `X-DataRobot-Entity-Id` (auto-prefixed `deployment-<id>`) | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` | `X-DataRobot-Entity-Id`, auto-prefixed `deployment-` or `workload-` (deployment wins) | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
-Two caveats regardless of which path supplies the endpoint/headers:
+Optionally set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead). It does not affect routing: the ingest attributes spans by the `X-DataRobot-Entity-Id` header.
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` being set, so set it (any value) even when you configure the export via `OTEL_EXPORTER_OTLP_*`.
-- Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
+## Local tracing
+
+Outside a DataRobot runtime there is no deployment or workload to attribute spans to, so name the
+entity yourself through the standard OTLP variables. A use case is the natural target for local
+runs; the ingest knows one as an `experiment_container`:
+
+```python
+import os
+
+from datarobot_genai.core.telemetry.agent import instrument
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+
+host = os.environ["DATAROBOT_ENDPOINT"].removesuffix("/").removesuffix("/api/v2")
+os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/otel")
+os.environ.setdefault(
+    "OTEL_EXPORTER_OTLP_HEADERS",
+    f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
+    f"X-DataRobot-Entity-Id=experiment_container-<use-case-id>",
+)
+
+instrument()
+instrument_langgraph()
+```
+
+`setdefault`, not assignment, so the same code works unchanged once deployed: inside a runtime the
+platform supplies these variables, and a collector you configured yourself keeps winning too.
+`OTEL_SDK_DISABLED=true` turns export off, and `datarobot_otel_provider_installed()` reports
+whether spans will reach DataRobot, worth asserting in a local smoke test since a missing
+variable is otherwise a silent no-op. For looking a use case up by name, or creating one, see
+[`quickstart.ipynb`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb).
+
+View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
+
+```bash
+dr xp --entity-id <use-case-id>
+```
 
 ## Troubleshooting
 
 - **Data Exploration tab is empty**: Confirm the export is configured — `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` (primary) or the `DATAROBOT_*` fallback. Both span paths silently skip when neither supplies an endpoint and headers.
 - **NAT lifecycle spans appear but framework spans don't**: the framework `instrument()` (e.g. `datarobot_genai.langgraph.telemetry.instrument`) was not called, or was called after the framework imported. Move the call to the top of `register.py`.
 - **Framework or memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py` before the framework imports. The exporter bridges NAT context into the SDK and the bootstrap wraps the global `TracerProvider` so LangChain/LangGraph, HTTP `POST`, and memory spans share the active workflow trace.
-- **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.
+- **Spans land on the wrong entity**: `OTEL_EXPORTER_OTLP_HEADERS` wins over the `DATAROBOT_*` fallback, so a stale value there redirects everything. The bootstrap logs the entity it resolved (`DataRobot OTel span processor installed → ... (entity_id=...)`).
