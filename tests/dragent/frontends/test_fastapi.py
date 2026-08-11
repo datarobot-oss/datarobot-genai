@@ -21,7 +21,6 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from a2a.types import AgentSkill
 from a2a.types import InvalidParamsError
 from a2a.utils.errors import ServerError
 from fastapi import FastAPI
@@ -29,7 +28,6 @@ from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
-from nat.data_models.user_info import UserInfo
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
@@ -37,28 +35,20 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
-from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
-from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_FLOW_REF
-from datarobot_genai.dragent.frontends.a2a import CROSS_APP_SECURITY_SCHEME_REF
-from datarobot_genai.dragent.frontends.a2a import EXTERNAL_IDENTITY_URI
-from datarobot_genai.dragent.frontends.a2a import INTERNAL_IDENTITY_URI
-from datarobot_genai.dragent.frontends.a2a import JWT_BEARER_GRANT_TYPE_URI
-from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
-from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
-from datarobot_genai.dragent.frontends.a2a import create_agent_card
-from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
 from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
-from datarobot_genai.dragent.frontends.fastapi import _resolve_identity_from_headers
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
+
+from .helpers import AUTH_HANDLER_PATH
+from .helpers import expected_workflow_key
+from .helpers import make_auth_ctx
 
 
 @pytest.fixture
@@ -90,13 +80,6 @@ def dragent_worker():
 def dragent_worker_with_a2a(dragent_worker, mock_a2a_worker):
     dragent_worker._a2a_worker = mock_a2a_worker
     return dragent_worker
-
-
-@pytest.fixture
-def a2a_frontend_config():
-    return A2AFrontEndConfig(
-        name="My Agent", description="Does things", host="localhost", port=8000
-    )
 
 
 @pytest.fixture
@@ -149,6 +132,55 @@ def patch_super_add_routes():
         yield
 
 
+def test_build_app_instruments_fastapi(worker):
+    """build_app wires OTel FastAPI instrumentation onto the served app."""
+
+    @asynccontextmanager
+    async def mock_from_config(_config):
+        yield MagicMock()
+
+    with (
+        patch.object(worker, "configure", new_callable=AsyncMock),
+        patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        patch(
+            "datarobot_genai.dragent.frontends.fastapi._instrument_fastapi_app"
+        ) as mock_instrument,
+    ):
+        app = worker.build_app()
+    mock_instrument.assert_called_once_with(app)
+
+
+def test_instrument_fastapi_app_excludes_streaming_and_probe_spans():
+    """_instrument_fastapi_app drops per-SSE-chunk send spans and health probes."""
+    pytest.importorskip("opentelemetry.instrumentation.fastapi")
+    from datarobot_genai.dragent.frontends.fastapi import _instrument_fastapi_app
+
+    app = FastAPI()
+    with patch(
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor.instrument_app"
+    ) as mock_instr:
+        _instrument_fastapi_app(app)
+    mock_instr.assert_called_once()
+    kwargs = mock_instr.call_args.kwargs
+    assert kwargs["exclude_spans"] == ["receive", "send"]
+
+    from opentelemetry.util.http import parse_excluded_urls
+
+    excluded = parse_excluded_urls(kwargs["excluded_urls"])
+    dep, model = "6a6a20b7fb870c8f3ea97011", "6a6a207a102de64dbe013214"
+    # probes are dropped: bare root, mount-prefixed root, health, ping
+    for url in ("http://h/", f"http://h/{dep}/{model}/", "http://h/health", "http://h/ping"):
+        assert excluded.url_disabled(url), url
+    # named endpoints keep their server span
+    for url in (
+        "http://h/a2a/",
+        f"http://h/{dep}/{model}/a2a/",
+        "http://h/v1/chat/completions",
+        f"http://h/{dep}/{model}/chat/completions",
+    ):
+        assert not excluded.url_disabled(url), url
+
+
 class TestDRAgentFastApiFrontEndPluginWorker:
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
     def test_health_routes_return_healthy_status(self, app_with_health, path):
@@ -159,47 +191,6 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
-
-    def test_get_a2a_endpoint_url_default(self, worker):
-        assert get_a2a_endpoint_url("localhost", 8000) == "http://localhost:8000/a2a/"
-
-    @pytest.mark.parametrize(
-        "env,expected",
-        [
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-                },
-                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
-                },
-                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-            (
-                {
-                    "MLOPS_DEPLOYMENT_ID": "abc123",
-                    "DATAROBOT_PUBLIC_API_ENDPOINT": "https://public.datarobot.com/api/v2",
-                    "DATAROBOT_ENDPOINT": "https://internal.k8s.local/api/v2",
-                },
-                "https://public.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/",
-            ),
-        ],
-    )
-    def test_get_a2a_endpoint_url_deployment(self, worker, env, expected):
-        with patch.dict(os.environ, env, clear=True):
-            assert get_a2a_endpoint_url("localhost", 8000) == expected
-
-    def test_get_a2a_endpoint_url_deployment_missing_endpoint_raises(self, worker):
-        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "abc123"}, clear=True):
-            with pytest.raises(
-                ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set"
-            ):
-                get_a2a_endpoint_url("localhost", 8000)
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker
@@ -216,7 +207,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 mock_super_add_routes,
             ),
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ) as mock_a2a_worker_cls,
             patch(
@@ -238,7 +229,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         app = FastAPI()
         with (
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ),
             patch(
@@ -258,7 +249,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         app = FastAPI()
         with (
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ),
             patch(
@@ -278,7 +269,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         mock_session_manager = MagicMock()
         with (
             patch(
-                "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker",
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
                 return_value=mock_a2a_worker,
             ),
             patch(
@@ -298,113 +289,10 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             disabled_worker = DRAgentFastApiFrontEndPluginWorker(config)
         app = FastAPI()
         with patch(
-            "datarobot_genai.dragent.frontends.fastapi.A2AFrontEndPluginWorker"
+            "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker"
         ) as mock_a2a_worker_cls:
             await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
-
-
-def _expected_key(raw_user_id: str) -> str:
-    """Compute the expected UUID5 workflow key for a raw DataRobot user ID."""
-    return UserInfo._from_session_cookie(raw_user_id).get_user_id()
-
-
-def _make_auth_ctx(user_id: str) -> MagicMock:
-    """Build a mock AuthCtx with the given ``user.id``."""
-    ctx = MagicMock()
-    ctx.user.id = user_id
-    return ctx
-
-
-_AUTH_HANDLER_PATH = "datarobot_genai.dragent.frontends.fastapi._auth_handler.get_context"
-
-
-class TestResolveIdentityFromHeaders:
-    """Tests for the _resolve_identity_from_headers helper."""
-
-    @pytest.fixture(autouse=True)
-    def _no_real_jwt_decode(self):
-        """Prevent the real _auth_handler from touching JWT secrets during tests."""
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
-            yield
-
-    def test_returns_none_for_none_headers(self):
-        assert _resolve_identity_from_headers(None) is None
-
-    def test_returns_none_for_empty_headers(self):
-        assert _resolve_identity_from_headers({}) is None
-
-    def test_returns_none_when_no_identity_headers(self):
-        result = _resolve_identity_from_headers(
-            {"authorization": "Bearer tok", "content-type": "application/json"}
-        )
-        assert result is None
-
-    def test_returns_uuid5_for_valid_signed_jwt(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("dr-uid-abc")):
-            result = _resolve_identity_from_headers(
-                {"x-datarobot-authorization-context": "signed-jwt"}
-            )
-        assert result == _expected_key("dr-uid-abc")
-
-    def test_raises_for_invalid_jwt(self):
-        with pytest.raises(ServerError) as exc_info:
-            _resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-        assert "invalid or expired" in exc_info.value.error.message
-
-    def test_raises_when_auth_handler_throws(self):
-        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
-        with (
-            patch(_AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
-            pytest.raises(ServerError) as exc_info,
-        ):
-            _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-
-    def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
-        """A present but invalid auth-context JWT must not fall back to gateway user ID."""
-        with pytest.raises(ServerError) as exc_info:
-            _resolve_identity_from_headers(
-                {
-                    "x-datarobot-authorization-context": "garbage",
-                    "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
-                }
-            )
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-
-    def test_falls_back_to_gateway_user_id_header(self):
-        result = _resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
-        assert result == _expected_key("64baa56996fb36e3eeeefc44")
-
-    def test_auth_context_takes_precedence_over_gateway_user_id(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("auth-ctx-user")):
-            result = _resolve_identity_from_headers(
-                {
-                    "x-datarobot-authorization-context": "signed-jwt",
-                    "x-datarobot-user-id": "gateway-user",
-                }
-            )
-        assert result == _expected_key("auth-ctx-user")
-        assert result != _expected_key("gateway-user")
-
-    def test_deterministic_same_user(self):
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("user-xyz")):
-            r1 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-            r2 = _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-        assert r1 == r2
-
-    def test_different_users_produce_different_keys(self):
-        results = []
-        for uid in ("alice", "bob"):
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
-                results.append(
-                    _resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-                )
-        assert results[0] != results[1]
 
 
 class TestPerUserCompatibleAgentExecutor:
@@ -468,11 +356,11 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"X-DataRobot-Authorization-Context": "signed-jwt"},
         )
         event_queue = MagicMock()
-        with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("real-dr-user")):
+        with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("real-dr-user")):
             await executor.execute(context, event_queue)
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("real-dr-user")
+            expected_workflow_key("real-dr-user")
         )
         patch_super_execute.assert_awaited_once_with(context, event_queue)
 
@@ -487,7 +375,7 @@ class TestPerUserCompatibleAgentExecutor:
         await executor.execute(context, MagicMock())
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("local-dev-ctx-id")
+            expected_workflow_key("local-dev-ctx-id")
         )
 
     async def test_execute_skips_user_id_injection_when_no_context_id_and_no_auth(
@@ -511,7 +399,7 @@ class TestPerUserCompatibleAgentExecutor:
                 context_id="shared-context-id",
                 headers={"X-DataRobot-Authorization-Context": "jwt"},
             )
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx(uid)):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx(uid)):
                 await executor.execute(context, MagicMock())
 
         assert len(captured_keys) == 2
@@ -529,7 +417,7 @@ class TestPerUserCompatibleAgentExecutor:
                 context_id=ctx_id,
                 headers={"X-DataRobot-Authorization-Context": "jwt"},
             )
-            with patch(_AUTH_HANDLER_PATH, return_value=_make_auth_ctx("consistent-user")):
+            with patch(AUTH_HANDLER_PATH, return_value=make_auth_ctx("consistent-user")):
                 await executor.execute(context, MagicMock())
 
         assert len(captured_keys) == 2
@@ -545,11 +433,11 @@ class TestPerUserCompatibleAgentExecutor:
             context_id="should-not-be-used",
             headers={"X-DataRobot-User-Id": "64baa56996fb36e3eeeefc44"},
         )
-        with patch(_AUTH_HANDLER_PATH, return_value=None):
+        with patch(AUTH_HANDLER_PATH, return_value=None):
             await executor.execute(context, MagicMock())
 
         session_manager._context_state.user_id.set.assert_called_once_with(
-            _expected_key("64baa56996fb36e3eeeefc44")
+            expected_workflow_key("64baa56996fb36e3eeeefc44")
         )
 
     async def test_execute_raises_when_auth_context_invalid_instead_of_context_id_fallback(
@@ -561,7 +449,7 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"X-DataRobot-Authorization-Context": "garbage"},
         )
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             pytest.raises(ServerError) as exc_info,
         ):
             await executor.execute(context, MagicMock())
@@ -587,7 +475,7 @@ class TestPerUserCompatibleAgentExecutor:
         original = _a2a_headers.get(sentinel)
 
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             pytest.raises(ServerError),
         ):
             await executor.execute(context, MagicMock())
@@ -603,329 +491,13 @@ class TestPerUserCompatibleAgentExecutor:
             headers={"some-header": "value"},
         )
         with (
-            patch(_AUTH_HANDLER_PATH, return_value=None),
+            patch(AUTH_HANDLER_PATH, return_value=None),
             patch("datarobot_genai.dragent.frontends.fastapi.logger") as mock_logger,
         ):
             await executor.execute(context, MagicMock())
 
         mock_logger.warning.assert_called_once()
         assert "falling back to context_id" in mock_logger.warning.call_args[0][0].lower()
-
-
-class TestCreateAgentCard:
-    async def test_default_skill_when_skills_empty(self, a2a_frontend_config):
-        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-        assert len(card.skills) == 1
-        assert card.skills[0].id == "call"
-        assert card.skills[0].name == "My Agent"
-        assert card.skills[0].description == "Does things"
-
-    async def test_configured_skills_used_when_present(self, a2a_frontend_config):
-        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
-        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
-        assert len(card.skills) == 1
-        assert card.skills[0].id == "summarize"
-
-    async def test_agent_card_fields_from_frontend_config(self):
-        cfg = A2AFrontEndConfig(
-            name="My Agent",
-            description="Does things",
-            version="2.0.0",
-            host="localhost",
-            port=9000,
-        )
-        card = await create_agent_card(cfg, cross_app_access=None, skills=[])
-        assert card.name == "My Agent"
-        assert card.description == "Does things"
-        assert card.version == "2.0.0"
-        assert card.url == "http://localhost:9000/a2a/"
-
-    async def test_security_schemes_set_when_cross_application_access_present(
-        self, a2a_frontend_config
-    ):
-        cross_app_access = CrossApplicationAccessConfig(
-            token_endpoint_auth_method="private_key_jwt",
-            token_exchange=CrossAppTokenExchange(
-                trusted_issuer="https://your-org.oktapreview.com",
-                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
-            ),
-            token_request=CrossAppTokenRequest(
-                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
-                scopes=["blog:write"],
-            ),
-        )
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=cross_app_access, skills=[]
-        )
-
-        assert "oauth2" in card.security_schemes
-        oauth_scheme = card.security_schemes["oauth2"].root
-        assert oauth_scheme.type == "oauth2"
-        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-
-        # Only client_credentials flow, no authorization_code
-        assert oauth_scheme.flows.authorization_code is None
-        flow = oauth_scheme.flows.client_credentials
-        assert flow.token_url == "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
-        assert flow.scopes == {"blog:write": "Permission: blog:write"}
-
-        assert card.security == [{"oauth2": ["blog:write"]}]
-
-        # JWT Bearer extension: nested params — token_url/scopes must NOT appear here
-        assert card.capabilities.extensions is not None
-        assert len(card.capabilities.extensions) == 1
-        ext = card.capabilities.extensions[0]
-        assert ext.uri == JWT_BEARER_GRANT_TYPE_URI
-        assert ext.description == CROSS_APP_EXTENSION_DESCRIPTION
-        assert ext.params == {
-            "ref": {
-                "scheme": CROSS_APP_SECURITY_SCHEME_REF,
-                "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
-            },
-            "tokenEndpointAuthMethod": "private_key_jwt",
-            "tokenExchange": {
-                "grantType": TOKEN_EXCHANGE_GRANT_TYPE_URI,
-                "requestedTokenType": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
-                "trustedIssuer": "https://your-org.oktapreview.com",
-                "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
-            },
-            "tokenRequest": {
-                "grantType": JWT_BEARER_GRANT_TYPE_URI,
-                "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
-            },
-        }
-        # Verify OpenAPI/extension strict separation: token_url and scopes are NOT in params
-        assert "token_url" not in ext.params
-        assert "scopes" not in ext.params
-
-    async def test_security_schemes_from_server_auth(self, a2a_frontend_config):
-        a2a_frontend_config.server_auth = MagicMock(
-            issuer_url="https://issuer.example.com",
-            discovery_url=None,
-            scopes=["read"],
-        )
-        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-
-        oauth_scheme = card.security_schemes["oauth2"].root
-        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-        # Only authorization_code flow, no client_credentials
-        assert oauth_scheme.flows.authorization_code is not None
-        assert (
-            oauth_scheme.flows.authorization_code.authorization_url
-            == "https://issuer.example.com/oauth/authorize"
-        )
-        assert (
-            oauth_scheme.flows.authorization_code.token_url
-            == "https://issuer.example.com/oauth/token"
-        )
-        assert oauth_scheme.flows.client_credentials is None
-        assert card.security == [{"oauth2": ["read"]}]
-
-    async def test_both_server_auth_and_cross_application_access(self, a2a_frontend_config):
-        # server_auth → authorization_code flow
-        a2a_frontend_config.server_auth = MagicMock(
-            issuer_url="https://issuer.example.com",
-            discovery_url=None,
-            scopes=["read"],
-        )
-
-        # cross_application_access → client_credentials flow + JWT Bearer extension
-        cross_app_access = CrossApplicationAccessConfig(
-            token_endpoint_auth_method="private_key_jwt",
-            token_exchange=CrossAppTokenExchange(
-                trusted_issuer="https://your-org.oktapreview.com",
-                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
-            ),
-            token_request=CrossAppTokenRequest(
-                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
-                scopes=["blog:write"],
-            ),
-        )
-
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=cross_app_access, skills=[]
-        )
-
-        # Single oauth2 scheme with both flows
-        assert len(card.security_schemes) == 1
-        oauth_scheme = card.security_schemes["oauth2"].root
-        assert oauth_scheme.description == OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE
-
-        assert oauth_scheme.flows.authorization_code is not None
-        assert (
-            oauth_scheme.flows.authorization_code.authorization_url
-            == "https://issuer.example.com/oauth/authorize"
-        )
-
-        assert oauth_scheme.flows.client_credentials is not None
-        assert (
-            oauth_scheme.flows.client_credentials.token_url
-            == "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token"
-        )
-
-        # Merged scopes (deduplicated)
-        assert card.security == [{"oauth2": ["read", "blog:write"]}]
-
-        # Cross-app extension: nested params; token_url/scopes only under OpenAPI flows
-        assert card.capabilities.extensions is not None
-        ext = card.capabilities.extensions[0]
-        assert ext.uri == JWT_BEARER_GRANT_TYPE_URI
-        assert ext.description == CROSS_APP_EXTENSION_DESCRIPTION
-        assert ext.params == {
-            "ref": {
-                "scheme": CROSS_APP_SECURITY_SCHEME_REF,
-                "flow": CROSS_APP_SECURITY_SCHEME_FLOW_REF,
-            },
-            "tokenEndpointAuthMethod": "private_key_jwt",
-            "tokenExchange": {
-                "grantType": TOKEN_EXCHANGE_GRANT_TYPE_URI,
-                "requestedTokenType": TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE,
-                "trustedIssuer": "https://your-org.oktapreview.com",
-                "audience": "https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
-            },
-            "tokenRequest": {
-                "grantType": JWT_BEARER_GRANT_TYPE_URI,
-                "audience": "https://app.datarobot.com/dr_org_id/my_agent_id",
-            },
-        }
-        assert "token_url" not in ext.params
-        assert "scopes" not in ext.params
-
-    async def test_no_security_when_server_auth_absent(self, a2a_frontend_config):
-        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-        assert card.security_schemes is None
-        assert card.security is None
-
-    async def test_internal_identity_extension_when_deployment_id_set(self, a2a_frontend_config):
-        """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN create_agent_card is called THEN the internal
-        identity extension is present with the deployment_id.
-        """
-        env = {
-            "MLOPS_DEPLOYMENT_ID": "dep-abc123",
-            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-        }
-        with patch.dict(os.environ, env):
-            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-
-        assert card.capabilities.extensions is not None
-        uris = [ext.uri for ext in card.capabilities.extensions]
-        assert INTERNAL_IDENTITY_URI in uris
-        internal = next(e for e in card.capabilities.extensions if e.uri == INTERNAL_IDENTITY_URI)
-        assert internal.required is True
-        assert internal.params == {"deployment_id": "dep-abc123"}
-
-    async def test_internal_identity_extension_when_workload_id_set(self, a2a_frontend_config):
-        """GIVEN WORKLOAD_ID is set WHEN create_agent_card is called THEN the internal
-        identity extension is present with the workload_id.
-        """
-        env = {
-            "WORKLOAD_ID": "wl-abc123",
-            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-
-        assert card.capabilities.extensions is not None
-        uris = [ext.uri for ext in card.capabilities.extensions]
-        assert INTERNAL_IDENTITY_URI in uris
-        internal = next(e for e in card.capabilities.extensions if e.uri == INTERNAL_IDENTITY_URI)
-        assert internal.required is True
-        assert internal.params == {"workload_id": "wl-abc123"}
-
-    async def test_no_internal_identity_extension_in_local_dev(self, a2a_frontend_config):
-        """GIVEN MLOPS_DEPLOYMENT_ID is not set WHEN create_agent_card is called THEN the
-        internal identity extension is absent.
-        """
-        with patch.dict(os.environ, {}, clear=True):
-            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
-
-        extensions = card.capabilities.extensions or []
-        assert not any(e.uri == INTERNAL_IDENTITY_URI for e in extensions)
-
-    async def test_external_identity_extension_when_external_id_set(self, a2a_frontend_config):
-        """GIVEN external.id is provided WHEN create_agent_card is called THEN the external
-        identity extension is present with the correct id.
-        """
-        external = DRAgentA2AExternalConfig(id="catalog-id-xyz")
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=None, skills=[], external=external
-        )
-
-        assert card.capabilities.extensions is not None
-        uris = [ext.uri for ext in card.capabilities.extensions]
-        assert EXTERNAL_IDENTITY_URI in uris
-        ext = next(e for e in card.capabilities.extensions if e.uri == EXTERNAL_IDENTITY_URI)
-        assert ext.required is False
-        assert ext.params == {"id": "catalog-id-xyz"}
-
-    async def test_no_external_identity_extension_when_external_absent(self, a2a_frontend_config):
-        """GIVEN external is None WHEN create_agent_card is called THEN no external identity
-        extension is present.
-        """
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=None, skills=[], external=None
-        )
-
-        extensions = card.capabilities.extensions or []
-        assert not any(e.uri == EXTERNAL_IDENTITY_URI for e in extensions)
-
-    async def test_external_url_overrides_agent_card_url(self, a2a_frontend_config):
-        """GIVEN external.url is set WHEN create_agent_card is called THEN the agent card url
-        uses the external URL exactly as provided.
-        """
-        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent/")
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=None, skills=[], external=external
-        )
-
-        assert card.url == "https://custom.example.com/agent/"
-
-    async def test_external_url_used_as_provided(self, a2a_frontend_config):
-        """GIVEN external.url is set without a trailing slash WHEN create_agent_card is called
-        THEN the url is used exactly as provided, without modification.
-        """
-        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent")
-        card = await create_agent_card(
-            a2a_frontend_config, cross_app_access=None, skills=[], external=external
-        )
-
-        assert card.url == "https://custom.example.com/agent"
-
-    async def test_all_extensions_combined(self, a2a_frontend_config):
-        """GIVEN cross_app_access, MLOPS_DEPLOYMENT_ID, and external.id are all set WHEN
-        create_agent_card is called THEN all three extensions are present.
-        """
-        cross_app_access = CrossApplicationAccessConfig(
-            token_endpoint_auth_method="private_key_jwt",
-            token_exchange=CrossAppTokenExchange(
-                trusted_issuer="https://your-org.oktapreview.com",
-                audience="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7",
-            ),
-            token_request=CrossAppTokenRequest(
-                token_url="https://your-org.okta.com/oauth2/aussu3akcsQeofA0C1d7/v1/token",
-                audience="https://app.datarobot.com/dr_org_id/my_agent_id",
-            ),
-        )
-        external = DRAgentA2AExternalConfig(id="catalog-id-combined")
-        env = {
-            "MLOPS_DEPLOYMENT_ID": "dep-combined",
-            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-        }
-        with patch.dict(os.environ, env):
-            card = await create_agent_card(
-                a2a_frontend_config,
-                cross_app_access=cross_app_access,
-                skills=[],
-                external=external,
-            )
-
-        assert card.capabilities.extensions is not None
-        uris = [ext.uri for ext in card.capabilities.extensions]
-        assert JWT_BEARER_GRANT_TYPE_URI in uris
-        assert INTERNAL_IDENTITY_URI in uris
-        assert EXTERNAL_IDENTITY_URI in uris
 
 
 class TestDRAgentFastApiFrontEndConfig:
@@ -983,6 +555,19 @@ class TestDRAgentFastApiFrontEndConfig:
         )
         assert config.a2a.external.id == "ext-id-123"
         assert config.a2a.external.url == "https://external.example.com/"
+
+    def test_a2a_enable_unauthenticated_well_known_route_defaults_false(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
+        assert config.a2a.enable_unauthenticated_well_known_route is False
+
+    def test_a2a_enable_unauthenticated_well_known_route_can_be_enabled(self):
+        config = DRAgentFastApiFrontEndConfig(
+            a2a=DRAgentA2AConfig(
+                server=A2AFrontEndConfig(),
+                enable_unauthenticated_well_known_route=True,
+            )
+        )
+        assert config.a2a.enable_unauthenticated_well_known_route is True
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:

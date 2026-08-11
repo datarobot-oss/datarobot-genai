@@ -60,6 +60,7 @@ def _wrap_bare_text_blocks(
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
 
+    config.pop("assume_native_tool_calling_when_unmapped", None)
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
     else:

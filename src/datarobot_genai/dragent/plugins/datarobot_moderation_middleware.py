@@ -33,6 +33,11 @@ Guard configuration (``_type: datarobot_moderation``):
   from ``model_dir`` (defaults to the directory containing ``workflow.yaml``, resolved from
   ``DRAGENT_CONFIG_FILE`` when set, otherwise the process working directory).
 * If neither source is present or both are empty, the middleware is a no-op.
+* **Per-agent targeting** — a ``moderation`` block may declare multiple ``targets`` (e.g.
+  ``workflow_overall``, ``devex-agent``). Set ``target`` on this middleware's config to apply
+  only that entry's guards; declare one middleware instance per ``target`` and attach each to a
+  different ``functions:``/``workflow:`` entry so individual agents get their own guard set from
+  one shared config. Omitting ``target`` merges every target's guards (whole-workflow behavior).
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
@@ -51,6 +56,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Coroutine
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -68,6 +74,7 @@ from ag_ui.core import Event
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunErrorEvent
+from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -198,11 +205,42 @@ class DataRobotModerationConfig(
             "takes priority over ``moderation_config.yaml``."
         ),
     )
+    target: str | None = Field(
+        default=None,
+        description=(
+            "Name of the single ``ModerationConfig.targets[].target`` entry this middleware "
+            "instance applies. Lets one shared moderation config attach different guard sets "
+            "to different ``workflow.yaml`` functions (e.g. ``workflow_overall`` vs. an "
+            "individual agent) by declaring a separate middleware instance per target. When "
+            "omitted (default), every target's guards are merged, preserving whole-workflow "
+            "behavior."
+        ),
+    )
 
 
 def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
     """Return whether ``moderation`` defines at least one guard across all targets."""
     return any(target.guards for target in moderation.targets)
+
+
+def select_moderation_target(moderation: ModerationConfig, target: str | None) -> ModerationConfig:
+    """Restrict ``moderation`` to the single ``TargetBlock`` named ``target``.
+
+    Returns ``moderation`` unchanged when ``target`` is ``None`` (today's whole-workflow
+    behavior: every target's guards apply). When ``target`` is set but no ``TargetBlock``
+    matches, the result has no targets, so the middleware becomes a no-op rather than
+    silently falling back to every guard.
+    """
+    if target is None:
+        return moderation
+    matching = [block for block in moderation.targets if block.target == target]
+    if not matching:
+        _logger.debug(
+            "Moderation target %r not found among configured targets (%s); no guards apply",
+            target,
+            [block.target for block in moderation.targets],
+        )
+    return moderation.model_copy(update={"targets": matching})
 
 
 def _default_moderation_model_dir() -> str:
@@ -251,11 +289,12 @@ def _load_llm_moderation_pipeline_from_inline(
 ) -> ModerationPipeline | None:
     """Load guards from the inline ``moderation`` block."""
     assert config.moderation is not None
-    if not moderation_config_has_guards(config.moderation):
+    moderation = select_moderation_target(config.moderation, config.target)
+    if not moderation_config_has_guards(moderation):
         _logger.debug("Inline ``moderation`` has no guards; moderation middleware is a no-op")
         return None
     resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
-    return ModerationPipeline.from_config(config.moderation, model_dir=resolved_model_dir)
+    return ModerationPipeline.from_config(moderation, model_dir=resolved_model_dir)
 
 
 def _load_llm_moderation_pipeline_from_config_file(
@@ -279,6 +318,7 @@ def _load_llm_moderation_pipeline_from_config_file(
             config_path,
         )
         return None
+    moderation = select_moderation_target(moderation, config.target)
     if not moderation_config_has_guards(moderation):
         _logger.debug(
             "No inline ``moderation`` block and %s has no guards; moderation middleware is a no-op",
@@ -286,7 +326,9 @@ def _load_llm_moderation_pipeline_from_config_file(
         )
         return None
 
-    return ModerationPipeline.from_yaml(str(config_path))
+    return ModerationPipeline.from_config(
+        moderation, model_dir=resolve_moderation_model_dir(config.model_dir)
+    )
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
@@ -1113,57 +1155,82 @@ def _merge_moderations_into_multi_event_response(
     )
 
 
-def _defer_until_after_moderated_chunk(event: Event) -> bool:
-    """Defer START/END until after the moderated chunk: late moderated deltas still use the prior
-    message_id.
+def _text_delta_message_ids(events: Iterable[Event]) -> set[str]:
+    """Collect the message_ids carried by assistant text deltas in *events*.
 
-    If TEXT_MESSAGE_START for the next segment is yielded before moderated content for the
-    previous segment, storage switches active_message and can drop or mis-attribute the
-    last deltas (truncation in DB). TEXT_MESSAGE_END must stay after moderated text for AG-UI.
+    ``TextMessageChunkEvent.message_id`` is optional, so ids are filtered rather than assumed.
     """
-    return event.type in (
-        EventType.TEXT_MESSAGE_END,
-        EventType.TEXT_MESSAGE_START,
-    )
+    ids: set[str] = set()
+    for event in events:
+        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)) and event.message_id:
+            ids.add(event.message_id)
+    return ids
 
 
-def _pending_after_moderated_chunk(
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
-) -> list[DRAgentEventResponse]:
-    """Order buffered events after a moderated chunk: a prior-segment ``TEXT_MESSAGE_END`` first
-    (keeps its id for late moderated deltas), then pass-through, then this batch's own segments in
-    upstream order so a content-less one isn't split into an ``END`` before its ``START``.
+def _retain_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Record that one more queued source response carries each id in *ids*."""
+    for message_id in ids:
+        counts[message_id] = counts.get(message_id, 0) + 1
+
+
+def _release_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
+    """Drop one queued reference per id, deleting ids no longer carried by anything queued.
+
+    Zero-count keys are removed rather than kept so the live set stays proportional to the
+    segments still in flight instead of every message_id the stream has ever produced.
     """
-    started_in_batch = {
-        item.events[0].message_id
-        for item in pending_deferred
-        if item.events and item.events[0].type == EventType.TEXT_MESSAGE_START
-    }
-    prior_segment_ends: list[DRAgentEventResponse] = []
-    rest: list[DRAgentEventResponse] = []
-    for item in pending_deferred:
-        first = item.events[0] if item.events else None
-        # Only an END whose START was in an earlier batch closes a prior segment and may lead.
-        if (
-            first is not None
-            and first.type == EventType.TEXT_MESSAGE_END
-            and first.message_id not in started_in_batch
-        ):
-            prior_segment_ends.append(item)
+    for message_id in ids:
+        remaining = counts.get(message_id, 0) - 1
+        if remaining > 0:
+            counts[message_id] = remaining
         else:
-            rest.append(item)
-    return prior_segment_ends + list(pending_pass_through) + rest
+            counts.pop(message_id, None)
 
 
-def _drain_pending_after_moderated_chunk(
-    pending_deferred: list[DRAgentEventResponse],
-    pending_pass_through: list[DRAgentEventResponse],
+def _closed_text_message_ids(response: DRAgentEventResponse) -> set[str]:
+    """Collect the message_ids a buffered batch would close with ``TEXT_MESSAGE_END``."""
+    return {
+        event.message_id for event in response.events if event.type == EventType.TEXT_MESSAGE_END
+    }
+
+
+def _moderated_chunk_carries_text(chunk: ChatCompletionChunk) -> bool:
+    """Whether a moderated chunk carries assistant text.
+
+    dome's BLOCK/REPLACE sequence wraps the intervention message in a text-less ``role``
+    opener and a text-less terminal ``content_filter`` chunk. Those must not consume a source
+    response, or every following moderated delta would borrow the *next* segment's message_id.
+    """
+    return bool(chunk.choices and chunk.choices[0].delta.content)
+
+
+def _release_buffered_prefix(
+    pending: list[DRAgentEventResponse],
+    live_message_ids: set[str],
 ) -> list[DRAgentEventResponse]:
-    ordered = _pending_after_moderated_chunk(pending_deferred, pending_pass_through)
-    pending_deferred.clear()
-    pending_pass_through.clear()
-    return ordered
+    """Pop the leading buffered batches that are safe to emit before the next moderated delta.
+
+    Non-text upstream batches are buffered because moderated deltas lag behind the source
+    chunks they came from: emitting ``TEXT_MESSAGE_END`` as soon as upstream produces it would
+    close a segment that still has moderated content coming.
+
+    Buffered batches keep upstream order, so the first batch closing a segment in
+    *live_message_ids* (one that can still receive moderated deltas) blocks itself **and
+    everything behind it**. Releasing a later ``TEXT_MESSAGE_START`` ahead of the
+    ``TEXT_MESSAGE_END`` it follows would interleave two segments, and storage would
+    mis-attribute or truncate the earlier segment's last deltas.
+    """
+    released: list[DRAgentEventResponse] = []
+    while pending and not (_closed_text_message_ids(pending[0]) & live_message_ids):
+        released.append(pending.pop(0))
+    return released
+
+
+def _drain_buffered(pending: list[DRAgentEventResponse]) -> list[DRAgentEventResponse]:
+    """Release every remaining buffered batch: no further moderated delta can arrive."""
+    drained = list(pending)
+    pending.clear()
+    return drained
 
 
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
@@ -1233,33 +1300,54 @@ async def _moderated_dragent_stream(
     """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
 
     Non-text upstream events pass through immediately until the first text delta. Text deltas are
-    moderated via ``stream_response_async``; ``TEXT_MESSAGE_START`` / ``END`` and other events read
-    during peek-ahead are buffered and emitted after each moderated chunk.
+    moderated via ``stream_response_async``; every later non-text event is buffered in upstream
+    order and released only once the moderated stream has passed the segment it closes.
     """
     stream_tool_index_map: dict[int, str] = {}
     open_text_message_ids: set[str] = set()
-    pending_deferred: list[DRAgentEventResponse] = []
-    pending_pass_through: list[DRAgentEventResponse] = []
+    pending_upstream: list[DRAgentEventResponse] = []
     terminal_run_error: DRAgentEventResponse | None = None
+    terminal_run_finished: DRAgentEventResponse | None = None
     moderation_source_responses: list[DRAgentEventResponse] = []
+    # Live text message_ids carried by ``moderation_source_responses``, maintained as the queue
+    # moves. Rescanning the queue per moderated chunk made a buffered stream quadratic: dome
+    # queues one source response per upstream delta, so the scan cost grew with the stream.
+    queued_source_message_ids: dict[str, int] = {}
     last_source_response: DRAgentEventResponse | None = None
+    last_source_message_ids: set[str] = set()
     stopped_for_content_filter = False
 
-    def buffer_passthrough(response: DRAgentEventResponse) -> None:
-        nonlocal terminal_run_error
+    def buffer_upstream(response: DRAgentEventResponse) -> None:
+        nonlocal terminal_run_error, terminal_run_finished
         if any(isinstance(event, RunErrorEvent) for event in response.events):
             # Terminal RUN_ERROR: hold it and emit last so no moderated chunk trails after it.
             terminal_run_error = response
             return
-        if response.events and _defer_until_after_moderated_chunk(response.events[0]):
-            pending_deferred.append(response)
-        else:
-            pending_pass_through.append(response)
+        if any(isinstance(event, RunFinishedEvent) for event in response.events):
+            # Terminal RUN_FINISHED: hold it out of the ordinary buffer for two reasons.
+            # A block breaks out of the moderated loop without draining the buffer, so leaving
+            # RUN_FINISHED in there ends a blocked stream with no terminal event at all and the
+            # client keeps waiting on a run that is over. It also must not be released early:
+            # unlike a TEXT_MESSAGE_END it closes no segment, so the prefix release would let it
+            # overtake the last segment's remaining moderated deltas and synthetic END.
+            terminal_run_finished = response
+            return
+        pending_upstream.append(response)
+
+    def live_moderated_message_ids() -> set[str]:
+        """Segments that can still receive a moderated delta.
+
+        dome buffers the whole upstream stream before releasing its first moderated chunk, so
+        source responses queue up far ahead of the moderated output. Anything still queued names
+        a segment whose deltas have not been emitted yet. ``last_source_message_ids`` counts too:
+        it is the message_id every further moderated chunk falls back to once the queue drains.
+        """
+        return set(queued_source_message_ids) | last_source_message_ids
 
     async def next_text_response() -> DRAgentEventResponse | None:
         async for response in upstream:
             if not response.events or skip_event_type(response.events[0]):
-                buffer_passthrough(response)
+                buffer_upstream(response)
                 continue
             return response
         return None
@@ -1270,6 +1358,9 @@ async def _moderated_dragent_stream(
         current: DRAgentEventResponse | None = first_text
         while current is not None:
             moderation_source_responses.append(current)
+            _retain_queued_message_ids(
+                queued_source_message_ids, _text_delta_message_ids(current.events)
+            )
             yield dragent_event_response_to_dome_chunk(current)
             current = await next_text_response()
 
@@ -1302,13 +1393,15 @@ async def _moderated_dragent_stream(
                 # ModerationIterator (moderations >= 11.2.45) no longer emits one moderated
                 # chunk per source chunk. On BLOCK/REPLACE it discards the buffered content and
                 # yields a synthetic sequence: a role opener, the message chunk, then a terminal
-                # finish chunk. Those extra chunks outnumber the source responses we appended,
-                # and the opener/terminal carry no delta text (empty AG-UI event lists). All the
-                # synthetic chunks derive from the same upstream text message, so once the source
-                # list drains we reuse the last source response to keep AG-UI message IDs
-                # consistent, and we surface only the chunks that actually carry events.
-                if moderation_source_responses:
+                # finish chunk. Only the middle one carries text, so only text-carrying chunks
+                # consume a source response -- otherwise the opener would burn the first
+                # segment's message_id and shift every later delta onto the wrong segment. Once
+                # the source list drains we reuse the last source response, since all the
+                # synthetic chunks derive from the same upstream text message.
+                if _moderated_chunk_carries_text(moderated) and moderation_source_responses:
                     last_source_response = moderation_source_responses.pop(0)
+                    last_source_message_ids = _text_delta_message_ids(last_source_response.events)
+                    _release_queued_message_ids(queued_source_message_ids, last_source_message_ids)
                 source_response = last_source_response
                 converted = dome_chunk_to_dragent_event_response(
                     moderated,
@@ -1318,14 +1411,18 @@ async def _moderated_dragent_stream(
                     stream_tool_index_map=stream_tool_index_map,
                 )
                 if converted.events:
+                    # ``emit_moderated`` first: it owns the prescore-attachment bookkeeping that
+                    # ``emit`` below reads, and that ordering must not depend on what we release.
                     moderated_response = prescore_state.emit_moderated(converted)
-                    track_open_text_in_events(open_text_message_ids, moderated_response.events)
-                    yield moderated_response
-                    for item in _drain_pending_after_moderated_chunk(
-                        pending_deferred, pending_pass_through
+                    # Release buffered lifecycle *before* the delta, so this segment's
+                    # TEXT_MESSAGE_START is already open and the previous segment is closed.
+                    for item in _release_buffered_prefix(
+                        pending_upstream, live_moderated_message_ids()
                     ):
                         track_open_text_in_events(open_text_message_ids, item.events)
                         yield prescore_state.emit(item)
+                    track_open_text_in_events(open_text_message_ids, moderated_response.events)
+                    yield moderated_response
                 finish = moderated.choices[0].finish_reason if moderated.choices else None
                 if finish == "content_filter":
                     for end_response in _synthetic_text_message_end_responses(
@@ -1336,16 +1433,17 @@ async def _moderated_dragent_stream(
                     break
 
         if not stopped_for_content_filter:
-            for item in _drain_pending_after_moderated_chunk(
-                pending_deferred, pending_pass_through
-            ):
+            for item in _drain_buffered(pending_upstream):
                 track_open_text_in_events(open_text_message_ids, item.events)
                 yield prescore_state.emit(item)
             for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
                 yield end_response
+        # A terminal event last on every path (normal or content_filter) so a block can't mask it.
+        # RUN_ERROR wins when upstream somehow produced both: a run that errored did not finish.
         if terminal_run_error is not None:
-            # Last on every path (normal or content_filter) so a block can't mask it.
             yield prescore_state.emit(terminal_run_error)
+        elif terminal_run_finished is not None:
+            yield prescore_state.emit(terminal_run_finished)
     except Exception as exc:
         # Close open text segments, then end the stream in-band with a terminal RUN_ERROR
         # instead of raising: NAT would otherwise emit an unframed error that clients drop.

@@ -24,6 +24,8 @@ def test_instrument_idempotent() -> None:
 
 def test_instrument_skips_bootstrap_without_deployment_id(monkeypatch) -> None:
     monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+    monkeypatch.delenv("WORKLOAD_ID", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
     with patch(
         "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
     ) as mock:

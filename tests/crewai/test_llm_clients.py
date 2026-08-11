@@ -66,7 +66,6 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
             assert llm.additional_params == {
                 "max_retries": 10,
                 "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
-                "stream_options": {"include_usage": True},
             }
 
 
@@ -129,7 +128,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         elif llm_config.get_llm_type() == LLMType.DEPLOYMENT:
             assert llm.model == "datarobot/anthropic/claude-3"
@@ -139,7 +137,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
                 "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             }
         elif llm_config.get_llm_type() == LLMType.NIM:
@@ -150,7 +147,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         elif llm_config.get_llm_type() == LLMType.EXTERNAL:
             assert llm.model == "anthropic/claude-3"
@@ -158,7 +154,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key is None
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         else:
             raise ValueError(f"Invalid LLM type inferred from config: {llm_config.get_llm_type()}")

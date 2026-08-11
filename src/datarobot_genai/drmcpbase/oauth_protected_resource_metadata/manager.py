@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
 from enum import Enum
 from enum import auto
 from typing import Any
-
-import yaml
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
@@ -33,6 +30,24 @@ logger = logging.getLogger(__name__)
 
 
 class SupportedMethodsToSendBearerToken(Enum):
+    """How a client may present its bearer token to this resource server.
+
+    RFC 6750 defines three ways a client may present a bearer token: the
+    Authorization header, a form-encoded body parameter, and a URI query
+    parameter. RFC 9728 lets the resource server declare which of them it
+    actually accepts, so a client doesn't have to guess.
+
+    We accept the header and nothing else. The other two are discouraged by RFC
+    6750 itself — a query-string token ends up in access logs, proxy logs,
+    Referer headers and browser history; the body form constrains the content
+    type.
+
+    This is a declaration, not an enforcement point: nothing reads it inbound,
+    and the request side only ever looks at ``OAUTH_TOKEN_HEADERS``. Adding a
+    member here would change what is advertised without changing what is
+    accepted.
+    """
+
     HEADER = auto()
 
     def get_name_in_lower_case(self) -> str:
@@ -43,24 +58,17 @@ class SupportedMethodsToSendBearerToken(Enum):
         return [supported_method.get_name_in_lower_case() for supported_method in cls]
 
 
-class ContainerEnvVar(Enum):
-    MCP_OAUTH_PROTECTED_RESOURCE_METADATA = auto()
-
-    def get_env_var_value(self) -> str | None:
-        return os.getenv(self.name)
-
-
 class MCPOAuthProtectedResourceMetadataManager:
-    @staticmethod
-    def load_config() -> MCPOAuthProtectedResourceMetadataConfig | None:
-        metadata_in_json_str = (
-            ContainerEnvVar.MCP_OAUTH_PROTECTED_RESOURCE_METADATA.get_env_var_value()
-        )
-        if metadata_in_json_str:
-            metadata_in_json = yaml.safe_load(metadata_in_json_str)
-            return MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_json)
-        else:
+    def __init__(
+        self, metadata_config: MCPOAuthProtectedResourceMetadataConfig | None = None
+    ) -> None:
+        self._metadata_config = metadata_config
+
+    def load_config(self) -> MCPOAuthProtectedResourceMetadataConfig | None:
+        """Return the configured metadata, or ``None`` when nothing was set."""
+        if self._metadata_config is None or self._metadata_config.is_empty():
             return None
+        return self._metadata_config
 
     @staticmethod
     def get_admin_config() -> MCPOAuthProtectedResourceMetadataAdminConfig:

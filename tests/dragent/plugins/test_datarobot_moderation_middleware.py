@@ -131,6 +131,7 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     resolve_moderation_model_dir,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import select_moderation_target
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     workflow_input_to_completion_dict,
 )
@@ -833,6 +834,73 @@ def test_load_llm_moderation_pipeline_from_config_moderation_field() -> None:
         pipeline = load_llm_moderation_pipeline(cfg)
     assert pipeline is not None
     assert pipeline._pipeline.get_prescore_guards()
+
+
+INTEGRATION_MODERATION_MULTI_TARGET_DIR = (
+    Path(__file__).parent / "fixtures" / "moderation_multi_target"
+)
+
+
+def _multi_target_moderation_config() -> ModerationConfig:
+    return _moderation_config_from_fixture_dir(INTEGRATION_MODERATION_MULTI_TARGET_DIR)
+
+
+def _prescore_guard_names(pipeline: Any) -> list[str]:
+    return [guard.name for guard in pipeline._pipeline.get_prescore_guards()]
+
+
+def test_select_moderation_target_no_target_returns_same_object() -> None:
+    # ``target=None`` must be a true no-op (identity), not just an equal copy, so that
+    # callers relying on the whole-workflow default never pay a validation/copy cost.
+    moderation = _multi_target_moderation_config()
+    assert select_moderation_target(moderation, None) is moderation
+
+
+@pytest.mark.parametrize(
+    ("target", "expected_guard_names"),
+    [
+        pytest.param("devex-agent", ["DevEx Agent Tokens"], id="matching-target"),
+        pytest.param("workload-agent", [], id="unknown-target-drops-all-targets"),
+    ],
+)
+def test_select_moderation_target_filters_by_name(
+    target: str, expected_guard_names: list[str]
+) -> None:
+    moderation = _multi_target_moderation_config()
+    selected = select_moderation_target(moderation, target)
+    guard_names = [guard.name for block in selected.targets for guard in block.guards]
+    assert guard_names == expected_guard_names
+
+
+@pytest.mark.parametrize("config_mode", ["inline", "config_file"])
+@pytest.mark.parametrize(
+    ("target", "expected_guard_names"),
+    [
+        pytest.param("devex-agent", ["DevEx Agent Tokens"], id="matching-target"),
+        pytest.param(None, ["DevEx Agent Tokens", "Workflow Tokens"], id="no-target-merges-all"),
+        pytest.param("workload-agent", None, id="unknown-target-is-noop"),
+    ],
+)
+def test_load_llm_moderation_pipeline_respects_target(
+    config_mode: str, target: str | None, expected_guard_names: list[str] | None
+) -> None:
+    # GIVEN a moderation config with distinct guards for "workflow_overall" and "devex-agent"
+    # WHEN a middleware config is built with the given ``target`` (inline or config-file source)
+    # THEN the pipeline runs exactly that target's guards, all targets' guards when unset, or is
+    # a no-op (``None``) when ``target`` names no configured ``TargetBlock``
+    if config_mode == "inline":
+        cfg = DataRobotModerationConfig(moderation=_multi_target_moderation_config(), target=target)
+    else:
+        cfg = DataRobotModerationConfig(
+            model_dir=str(INTEGRATION_MODERATION_MULTI_TARGET_DIR), target=target
+        )
+    with patch.dict(os.environ, _CREDENTIAL_ENV):
+        pipeline = load_llm_moderation_pipeline(cfg)
+    if expected_guard_names is None:
+        assert pipeline is None
+    else:
+        assert pipeline is not None
+        assert sorted(_prescore_guard_names(pipeline)) == sorted(expected_guard_names)
 
 
 def test_load_llm_moderation_pipeline_from_config_file_model_dir() -> None:
@@ -3389,3 +3457,449 @@ async def test_function_middleware_stream_run_error_terminal_when_dome_buffers_m
     assert event_types.count(EventType.TEXT_MESSAGE_CONTENT) == 2, event_types
     assert event_types.count(EventType.RUN_ERROR) == 1, event_types
     assert event_types[-1] == EventType.RUN_ERROR, event_types
+
+
+async def _buffer_whole_stream_then_emit(completion: Any, **kwargs: Any) -> Any:
+    """Mirror dome >= 11.2.45 buffered path: drain the WHOLE source to EOF, then emit 1:1.
+
+    Any BLOCK/REPLACE postscore guard puts ``ModerationIterator`` on this path, and dome drains
+    our chunk iterator from its own feed task, so every non-text upstream event lands in the
+    pending buffer before the first moderated delta is released.
+    """
+    buffered = [chunk async for chunk in completion]
+    for chunk in buffered:
+        yield chunk
+
+
+async def test_function_middleware_stream_keeps_segments_ordered_when_dome_buffers_whole_stream(
+    builder_mock: MagicMock,
+) -> None:
+    """Buffered dome must not flush a whole segment's lifecycle after the first moderated delta.
+
+    Regression for dome #658: with the entire upstream stream buffered, the old drain released
+    every pending batch after the first moderated chunk, so the remaining deltas arrived after
+    their TEXT_MESSAGE_END (and after RUN_FINISHED). Each moderated delta must stay inside its
+    own START/END pair, in upstream order.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    moderation.stream_response_async = _buffer_whole_stream_then_emit
+    zero = default_usage_metrics()
+    mid_a, mid_b = "msg-a", "msg-b"
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_a, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a1")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a2")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_a)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_b, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="b1")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_b)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    # No protocol violation: every delta/END falls inside an open segment.
+    validate_sequence(flat)
+    assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
+        (EventType.RUN_STARTED, None),
+        (EventType.TEXT_MESSAGE_START, mid_a),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_a),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_a),
+        (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.TEXT_MESSAGE_START, mid_b),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_b),
+        (EventType.TEXT_MESSAGE_END, mid_b),
+        (EventType.RUN_FINISHED, None),
+    ]
+    # Exactly one END per segment: no synthetic close for a segment reopened by a late delta.
+    assert [ev.type for ev in flat].count(EventType.TEXT_MESSAGE_END) == 2
+
+
+async def test_function_middleware_stream_buffered_run_finished_follows_trailing_deltas(
+    builder_mock: MagicMock,
+) -> None:
+    """A buffered RUN_FINISHED must not overtake the last segment's deltas or synthetic END.
+
+    RUN_FINISHED closes no text segment, so the prefix release treats it as always safe to emit.
+    When upstream ends without a ``TEXT_MESSAGE_END`` for its last segment, nothing behind
+    RUN_FINISHED holds it back and it was released *before* that segment's remaining moderated
+    deltas, terminating the run mid-text.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    moderation.stream_response_async = _buffer_whole_stream_then_emit
+    zero = default_usage_metrics()
+    mid_a, mid_b = "msg-a", "msg-b"
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_a, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a1")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_a)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_b, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="b1")], usage_metrics=zero
+        )
+        # No TEXT_MESSAGE_END for mid_b: the middleware synthesizes it.
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    validate_sequence(flat)
+    assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
+        (EventType.RUN_STARTED, None),
+        (EventType.TEXT_MESSAGE_START, mid_a),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_a),
+        (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.TEXT_MESSAGE_START, mid_b),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_b),
+        (EventType.TEXT_MESSAGE_END, mid_b),
+        (EventType.RUN_FINISHED, None),
+    ]
+
+
+async def test_function_middleware_stream_block_role_opener_keeps_first_segment_message_id(
+    builder_mock: MagicMock,
+) -> None:
+    """Text-less block chunks from dome must not consume a source response's message_id.
+
+    ``_build_blocked_output`` wraps the intervention message in a text-less ``role`` opener and a
+    text-less terminal ``content_filter`` chunk. Popping a source response for the opener shifted
+    the block message onto the *second* segment's id, so it was emitted for a message the client
+    had never opened.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    zero = default_usage_metrics()
+    mid_a, mid_b = "msg-a", "msg-b"
+    blocked_text = "Blocked by moderation."
+
+    async def _block_after_buffering(completion: Any, **kwargs: Any) -> Any:
+        # Buffer everything (as dome does), then discard it for the 3-chunk block sequence.
+        buffered = [chunk async for chunk in completion]
+        template = buffered[0]
+
+        def _chunk(
+            content: str | None, role: str | None, finish: str | None
+        ) -> ChatCompletionChunk:
+            return ChatCompletionChunk(
+                id=template.id,
+                choices=[
+                    OpenAIChunkChoice(
+                        index=0,
+                        delta=OpenAIChoiceDelta(content=content, role=role),
+                        finish_reason=finish,
+                    )
+                ],
+                created=template.created,
+                model=template.model,
+                object="chat.completion.chunk",
+            )
+
+        yield _chunk("", "assistant", None)
+        yield _chunk(blocked_text, None, None)
+        yield _chunk(None, None, "content_filter")
+
+    moderation.stream_response_async = _block_after_buffering
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_a, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="secret")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_a)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_b, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="more")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_b)], usage_metrics=zero
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    validate_sequence(flat)
+    content = [ev for ev in flat if isinstance(ev, TextMessageContentEvent)]
+    assert [ev.delta for ev in content] == [blocked_text]
+    # The block message belongs to the segment the client already opened, not the next one.
+    assert content[0].message_id == mid_a
+
+
+async def test_function_middleware_stream_block_still_emits_upstream_run_finished(
+    builder_mock: MagicMock,
+) -> None:
+    """A block must not swallow upstream's terminal RUN_FINISHED.
+
+    ``content_filter`` breaks out of the moderated loop and skips the pending-buffer drain, so a
+    RUN_FINISHED sitting in that buffer was dropped: the blocked stream ended with no terminal
+    event and clients waited on a run that was already over. The rest of the buffer stays dropped
+    on purpose -- those batches frame text the block discarded.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    zero = default_usage_metrics()
+    mid_a, mid_b = "msg-a", "msg-b"
+    blocked_text = "Blocked by moderation."
+
+    async def _block_after_buffering(completion: Any, **kwargs: Any) -> Any:
+        buffered = [chunk async for chunk in completion]
+        template = buffered[0]
+
+        def _chunk(
+            content: str | None, role: str | None, finish: str | None
+        ) -> ChatCompletionChunk:
+            return ChatCompletionChunk(
+                id=template.id,
+                choices=[
+                    OpenAIChunkChoice(
+                        index=0,
+                        delta=OpenAIChoiceDelta(content=content, role=role),
+                        finish_reason=finish,
+                    )
+                ],
+                created=template.created,
+                model=template.model,
+                object="chat.completion.chunk",
+            )
+
+        yield _chunk("", "assistant", None)
+        yield _chunk(blocked_text, None, None)
+        yield _chunk(None, None, "content_filter")
+
+    moderation.stream_response_async = _block_after_buffering
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+        for mid, text in ((mid_a, "secret"), (mid_b, "more")):
+            yield DRAgentEventResponse(
+                events=[TextMessageStartEvent(message_id=mid, role="assistant")],
+                usage_metrics=zero,
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageContentEvent(message_id=mid, delta=text)], usage_metrics=zero
+            )
+            yield DRAgentEventResponse(
+                events=[TextMessageEndEvent(message_id=mid)], usage_metrics=zero
+            )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    validate_sequence(flat)
+    assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
+        (EventType.RUN_STARTED, None),
+        (EventType.TEXT_MESSAGE_START, mid_a),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_a),
+        (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.RUN_FINISHED, None),
+    ]
+    # The blocked upstream text never reaches the client, and mid_b is never opened.
+    assert [ev.delta for ev in flat if isinstance(ev, TextMessageContentEvent)] == [blocked_text]
+
+
+async def test_function_middleware_stream_late_moderated_delta_stays_inside_its_segment(
+    builder_mock: MagicMock,
+) -> None:
+    """A moderated delta beyond the source count must not land after its segment's END.
+
+    dome can release more text chunks than we fed it, and those trailing chunks fall back to the
+    last source response's message_id. With the whole upstream buffered, the old drain had already
+    emitted that segment's TEXT_MESSAGE_END (and RUN_FINISHED), so the late delta reopened a closed
+    message and the stream-end synthetic close then emitted a second, unmatched END -- the
+    ``Cannot send 'TEXT_MESSAGE_END' ... No active text message found`` e2e failure.
+    """
+    pipeline = _pipeline_mock()
+    pipeline.get_prescore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    zero = default_usage_metrics()
+    mid_a, mid_b = "msg-a", "msg-b"
+
+    async def _buffer_then_emit_extra_delta(completion: Any, **kwargs: Any) -> Any:
+        buffered = [chunk async for chunk in completion]
+        for chunk in buffered:
+            yield chunk
+        # One more text chunk than we were fed: it reuses the last source response's message_id.
+        template = buffered[-1]
+        yield ChatCompletionChunk(
+            id=template.id,
+            choices=[
+                OpenAIChunkChoice(
+                    index=0, delta=OpenAIChoiceDelta(content="tail"), finish_reason=None
+                )
+            ],
+            created=template.created,
+            model=template.model,
+            object="chat.completion.chunk",
+        )
+
+    moderation.stream_response_async = _buffer_then_emit_extra_delta
+
+    async def upstream() -> Any:
+        yield DRAgentEventResponse(
+            events=[RunStartedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_a, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_a, delta="a1")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_a)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id=mid_b, role="assistant")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id=mid_b, delta="b1")], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[TextMessageEndEvent(message_id=mid_b)], usage_metrics=zero
+        )
+        yield DRAgentEventResponse(
+            events=[RunFinishedEvent(thread_id="t", run_id="r")], usage_metrics=zero
+        )
+
+    stream_next = MagicMock(return_value=upstream())
+
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        responses = [
+            response
+            async for response in mw.function_middleware_stream(
+                _make_run_input("hi"),
+                call_next=stream_next,
+                context=_fn_context(),
+            )
+        ]
+
+    flat = [ev for resp in responses for ev in resp.events]
+    validate_sequence(flat)
+    assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
+        (EventType.RUN_STARTED, None),
+        (EventType.TEXT_MESSAGE_START, mid_a),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_a),
+        (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.TEXT_MESSAGE_START, mid_b),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_b),
+        (EventType.TEXT_MESSAGE_CONTENT, mid_b),
+        (EventType.TEXT_MESSAGE_END, mid_b),
+        (EventType.RUN_FINISHED, None),
+    ]

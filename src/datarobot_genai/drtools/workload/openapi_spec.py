@@ -48,28 +48,27 @@ _spec_lock = threading.Lock()
 
 def _load_spec() -> dict[str, Any]:
     """Fetch, parse, and cache the live OpenAPI spec (once per process)."""
-    if "spec" not in _spec_cache:
-        with _spec_lock:
-            if "spec" not in _spec_cache:
-                try:
-                    text = WorkloadApiClient().get_openapi_spec_text()
-                except ClientError as exc:
-                    raise_tool_error_for_client_error(exc)
-                try:
-                    parsed = yaml.safe_load(text)
-                except yaml.YAMLError as exc:
-                    raise ToolError(
-                        f"Failed to parse the OpenAPI spec as YAML: {exc}",
-                        kind=ToolErrorKind.UPSTREAM,
-                    ) from exc
-                if not isinstance(parsed, dict):
-                    raise ToolError(
-                        "The OpenAPI spec endpoint returned unexpected content "
-                        "(expected a YAML mapping).",
-                        kind=ToolErrorKind.UPSTREAM,
-                    )
-                _spec_cache["spec"] = parsed
-    return _spec_cache["spec"]
+    with _spec_lock:
+        if "spec" not in _spec_cache:
+            try:
+                text = WorkloadApiClient().get_openapi_spec_text()
+            except ClientError as exc:
+                raise_tool_error_for_client_error(exc)
+            try:
+                parsed = yaml.safe_load(text)
+            except yaml.YAMLError as exc:
+                raise ToolError(
+                    f"Failed to parse the OpenAPI spec as YAML: {exc}",
+                    kind=ToolErrorKind.UPSTREAM,
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ToolError(
+                    "The OpenAPI spec endpoint returned unexpected content "
+                    "(expected a YAML mapping).",
+                    kind=ToolErrorKind.UPSTREAM,
+                )
+            _spec_cache["spec"] = parsed
+        return _spec_cache["spec"]
 
 
 def _dump_capped(obj: Any) -> str:
@@ -201,6 +200,7 @@ def _overview(spec: dict[str, Any]) -> dict[str, Any]:
 
 @tool_metadata(
     tags={"workload", "openapi", "spec", "datarobot", "get", "search"},
+    enabled=False,
     description=(
         "[Workload—OpenAPI spec] Query the Workload API OpenAPI specification. Use "
         "this to understand endpoints, request/response formats, and valid field "

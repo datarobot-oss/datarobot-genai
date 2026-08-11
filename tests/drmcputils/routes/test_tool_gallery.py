@@ -33,6 +33,11 @@ class TestIsHosted:
     def test_built_in_tool_is_not_hosted(self) -> None:
         assert not is_hosted(_FakeTool("t", meta={"tool_category": "BUILT_IN_TOOL"}))
 
+    def test_user_tool_is_not_hosted(self) -> None:
+        # User-authored tools are statically registered code, not hosted —
+        # they are still marker-classified (dr_user_tools) in the gallery.
+        assert not is_hosted(_FakeTool("t", meta={"tool_category": "USER_TOOL"}))
+
     def test_no_meta_is_not_hosted(self) -> None:
         assert not is_hosted(_FakeTool("t", meta=None))
 

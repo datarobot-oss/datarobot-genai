@@ -21,28 +21,44 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 """
 
 import logging
+from collections.abc import Awaitable
+from collections.abc import Callable
 
 import httpx
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.apps.jsonrpc.jsonrpc_app import CallContextBuilder
+from a2a.server.context import ServerCallContext
+from a2a.server.request_handlers.request_handler import RequestHandler
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from a2a.types import AgentExtension
 from a2a.types import AgentSkill
 from a2a.types import AuthorizationCodeOAuthFlow
 from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import HTTPAuthSecurityScheme
+from a2a.types import InvalidParamsError
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
+from a2a.utils.errors import ServerError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
+from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
+from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
+from starlette.responses import JSONResponse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
-from ..cross_app_access_config import CrossApplicationAccessConfig
 from .register import DRAgentA2AExternalConfig
+from .session import _a2a_headers
+from .session import headers_from_a2a_state
+from .session import normalise_headers
+from .session import resolve_identity_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +73,10 @@ OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "identity assertion via RFC 8693 Token Exchange. Refer to the capabilities.extensions "
     "block for strict execution parameters and routing."
 )
+
+BEARER_SECURITY_SCHEME_NAME = "bearerAuth"
+
+BEARER_SECURITY_DESCRIPTION = "DataRobot API token supplied as an Authorization Bearer header."
 
 # Extension URI for the RFC 7523 JWT Bearer Grant (outer grant type for the hybrid flow).
 JWT_BEARER_GRANT_TYPE_URI = "urn:ietf:params:oauth:grant-type:jwt-bearer"
@@ -82,6 +102,8 @@ EXTERNAL_IDENTITY_URI = "urn:datarobot:agent:identity:external"
 EXTERNAL_IDENTITY_DESCRIPTION = (
     "Customer-provided external agent identifiers for catalog discovery."
 )
+
+_IDENTITY_EXTENSION_URIS = frozenset({INTERNAL_IDENTITY_URI, EXTERNAL_IDENTITY_URI})
 
 
 # ---------------------------------------------------------------------------
@@ -268,25 +290,38 @@ def _resolve_url(
     return get_a2a_endpoint_url(frontend_config.host, frontend_config.port)
 
 
+def build_default_bearer_security_schemes() -> tuple[
+    dict[str, SecurityScheme], list[dict[str, list[str]]]
+]:
+    """Return the default HTTP Bearer scheme for agents without explicit OAuth config."""
+    security_schemes = {
+        BEARER_SECURITY_SCHEME_NAME: SecurityScheme(
+            root=HTTPAuthSecurityScheme(
+                type="http",
+                scheme="bearer",
+                description=BEARER_SECURITY_DESCRIPTION,
+            )
+        )
+    }
+    return security_schemes, [{BEARER_SECURITY_SCHEME_NAME: []}]
+
+
 async def build_security_schemes(
     frontend_config: A2AFrontEndConfig,
     cross_app_access: CrossApplicationAccessConfig | None,
-) -> tuple[
-    dict[str, SecurityScheme] | None,
-    list[dict[str, list[str]]] | None,
-]:
+) -> tuple[dict[str, SecurityScheme], list[dict[str, list[str]]]]:
     """Assemble A2A security schemes, merging up to two auth sources.
 
     * ``server_auth`` → authorization_code flow.
     * ``cross_app_access`` → client_credentials flow.
+    * Neither configured → HTTP Bearer scheme for DataRobot API tokens.
 
-    Returns ``(security_schemes, security_requirements)``, both ``None``
-    when neither source is configured.
+    Always returns a populated ``securitySchemes`` map.
     """
     server_auth = frontend_config.server_auth
 
     if not server_auth and not cross_app_access:
-        return None, None
+        return build_default_bearer_security_schemes()
 
     auth_code_flow, server_auth_scopes = (
         await build_oauth_flow_from_server_auth(server_auth) if server_auth else (None, [])
@@ -355,6 +390,149 @@ async def create_agent_card(
             extensions=extensions,
         ),
         skills=resolved_skills,
-        security_schemes=security_schemes or None,
-        security=security or None,
+        security_schemes=security_schemes,
+        security=security,
+        supports_authenticated_extended_card=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent card selection (public GET) and authenticated extended card
+# ---------------------------------------------------------------------------
+
+
+def redact_agent_card(card: AgentCard) -> AgentCard:
+    """Return a public-safe view of an agent card.
+
+    Strips advertised skills and removes internal/external identity extensions
+    while preserving auth and cross-application-access metadata needed for
+    anonymous discovery.
+    """
+    extensions = card.capabilities.extensions
+    filtered_extensions = None
+    if extensions:
+        filtered = [ext for ext in extensions if ext.uri not in _IDENTITY_EXTENSION_URIS]
+        filtered_extensions = filtered or None
+
+    return card.model_copy(
+        update={
+            "skills": [],
+            "capabilities": card.capabilities.model_copy(
+                update={"extensions": filtered_extensions}
+            ),
+        }
+    )
+
+
+def _public_card_modifier(card: AgentCard) -> AgentCard:
+    """Serve the extended card to authenticated callers, redacted otherwise."""
+    headers = _a2a_headers.get()
+    if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
+        return card
+    return redact_agent_card(card)
+
+
+def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
+    """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
+    headers = headers_from_a2a_state(context.state)
+    if resolve_identity_from_headers(headers) is None:
+        raise ServerError(
+            error=InvalidParamsError(
+                message="Authenticated identity required for extended agent card"
+            )
+        )
+    return card
+
+
+class DRAgentA2AStarletteApplication(A2AStarletteApplication):
+    """A2A server that gates public agent-card access on per-agent developer opt-in.
+
+    Unauthenticated access also depends on platform-level opt-in per cluster to
+    route anonymous traffic to the agent; this class enforces only the agent-side
+    policy once a request reaches the process.
+    """
+
+    def __init__(
+        self,
+        agent_card: AgentCard,
+        http_handler: RequestHandler,
+        extended_agent_card: AgentCard | None = None,
+        context_builder: CallContextBuilder | None = None,
+        card_modifier: Callable[[AgentCard], Awaitable[AgentCard] | AgentCard] | None = None,
+        extended_card_modifier: Callable[
+            [AgentCard, ServerCallContext], Awaitable[AgentCard] | AgentCard
+        ]
+        | None = None,
+        max_content_length: int | None = 10 * 1024 * 1024,
+        *,
+        enable_unauthenticated_well_known_route: bool = False,
+    ) -> None:
+        self._enable_unauthenticated_well_known_route = enable_unauthenticated_well_known_route
+        super().__init__(
+            agent_card=agent_card,
+            http_handler=http_handler,
+            extended_agent_card=extended_agent_card,
+            context_builder=context_builder,
+            card_modifier=card_modifier,
+            extended_card_modifier=extended_card_modifier,
+            max_content_length=max_content_length,
+        )
+
+    async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
+        headers = normalise_headers(dict(request.headers))
+        token = _a2a_headers.set(headers)
+        try:
+            if (
+                resolve_identity_from_headers(headers, on_invalid_auth_context="none") is None
+                and not self._enable_unauthenticated_well_known_route
+            ):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": (
+                            "Unauthenticated access to /.well-known/agent-card.json is "
+                            "disabled. Set enable_unauthenticated_well_known_route: true in "
+                            "workflow.yaml to allow anonymous access (also requires "
+                            "platform-level opt-in per cluster)."
+                        ),
+                    },
+                )
+            return await super()._handle_get_agent_card(request)
+        finally:
+            _a2a_headers.reset(token)
+
+
+class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
+    """A2A worker with identity-keyed public cards and an authenticated extended card."""
+
+    def create_a2a_server(
+        self,
+        agent_card: AgentCard,
+        agent_executor: NATWorkflowAgentExecutor,
+        *,
+        enable_unauthenticated_well_known_route: bool = False,
+    ) -> DRAgentA2AStarletteApplication:
+        """Create an A2A server with identity-keyed public and extended agent cards.
+
+        Unauthenticated ``GET /.well-known/agent-card.json`` access requires opt-in
+        at two levels: platform administrators must enable unauthenticated routing
+        per cluster, and ``enable_unauthenticated_well_known_route`` must be set
+        in the agent's ``workflow.yaml``. This method enforces the agent-side
+        flag only.
+
+        When the agent flag is disabled (default), unauthenticated callers receive
+        401. When enabled, they receive a redacted card. Authenticated callers
+        always receive the full card. ``extended_agent_card`` is also wired for
+        ``agent/getAuthenticatedExtendedCard`` clients.
+        """
+        base_server = super().create_a2a_server(agent_card, agent_executor)
+        server = DRAgentA2AStarletteApplication(
+            agent_card=base_server.agent_card,
+            http_handler=base_server.handler.request_handler,
+            extended_agent_card=agent_card,
+            card_modifier=_public_card_modifier,
+            extended_card_modifier=_extended_card_modifier,
+            enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
+        )
+        logger.info("Created A2A server with identity-keyed public agent card")
+        return server
