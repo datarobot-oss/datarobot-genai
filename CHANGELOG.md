@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.7
+- `drtools/workload`: synced the workload tools with the Workload API MCP server's `datarobot-workload-api` skill alignment:
+  - `artifact_get_build` now normalizes build-status variants (`completed`, `in-progress`, …) and annotates single-build responses with `deployable` and `status_guidance` — `BUILT` means built but **not yet pushed** to the registry and is not deployable; only `COMPLETED` is. `artifact_build_run_action(action='trigger')` responses now tell callers to wait for `COMPLETED`.
+  - `workload_create` and `workload_artifact_replace` 422 errors mentioning `runtime_image_uri` include a hint naming the BUILT-not-pushed cause and how to recover.
+  - new `read_openapi_spec` tool: queries the Workload API OpenAPI spec
+
 ## 0.27.6
 - `eval`: a successful run now keeps its own copy of the results instead of overwriting the previous run's. Alongside the fixed `output/eval_results.json` pointer, the runner writes a per-run archive named after the pipeline and run ID, e.g. `output/answer_quality_20260807_142530_481922.json`. Both files come from one serialization, so the pointer and the archive can never disagree about what a run produced. Use `--output-name` to choose the archive filename (bare filename, `.json` appended if omitted) or `--no-archive` for the previous single-file behavior; the two flags are mutually exclusive. An invalid `--output-name` (a path, a leading dot, or one of the reserved `eval_results.json` / `eval_status.json` names) is reported as an input validation error with exit code 1 before the evaluation runs, leaving any existing results untouched.
 - `eval`: `make_run_id()` moves from second to microsecond precision (`%Y%m%d_%H%M%S_%f`). The run ID names both `output/raw/<run_id>/` and the archived results file, so two runs starting within the same second previously overwrote each other's output. IDs remain lexically sortable. `run_id` is an opaque string in the output contract, so this is not a schema change.

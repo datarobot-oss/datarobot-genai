@@ -28,6 +28,8 @@ from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiC
 from datarobot_genai.drtools.core.utils import require_id
 from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
+from datarobot_genai.drtools.workload.build_status import WAIT_FOR_COMPLETED_NOTE
+from datarobot_genai.drtools.workload.build_status import annotate_build_deployability
 
 # ------------------------------------------------------------------ #
 # artifact_get_build  (list / single / logs)                          #
@@ -42,6 +44,10 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
         "  - Set build_id to GET a single build's status and metadata.\n"
         "  - Set build_id and include_logs=True to also attach the raw build log "
         "output under 'logs' — useful for debugging build failures.\n\n"
+        "Builds progress PENDING -> IN_PROGRESS -> BUILT -> COMPLETED (or FAILED). "
+        "BUILT is NOT deployable — the image was built but not yet pushed to the "
+        "registry; only COMPLETED is a green light for scheduling a workload. "
+        "Single-build responses include 'deployable' and 'status_guidance' fields.\n\n"
         "Example (list): artifact_get_build(artifact_id='art-abc')\n"
         "Example (logs): artifact_get_build(artifact_id='art-abc', build_id='bld-xyz', "
         "include_logs=True)"
@@ -90,7 +96,7 @@ async def artifact_get_build(
 
     bid = require_id(build_id, "build_id")
     try:
-        build = client.get_artifact_build(aid, bid)
+        build = annotate_build_deployability(client.get_artifact_build(aid, bid))
         if include_logs:
             logs = client.get_artifact_build_logs(aid, bid)
             build = dict(build)
@@ -111,7 +117,10 @@ async def artifact_get_build(
         "[Artifact build—action] Run an action on artifact image builds. action is "
         "one of:\n"
         "  'trigger' — start an image build for a draft service artifact (codeRef). "
-        "Locked artifacts are rejected. Returns the triggered build record.\n"
+        "Locked artifacts are rejected. Returns the triggered build record. Builds "
+        "are asynchronous: wait for status COMPLETED (via artifact_get_build) before "
+        "scheduling a workload — BUILT means built but not yet pushed to the "
+        "registry, and is not deployable.\n"
         "  'delete'  — cancel or delete a build (requires build_id). Locked artifacts "
         "cannot have their builds deleted.\n\n"
         "Example (trigger): artifact_build_run_action(artifact_id='art-abc', action='trigger')\n"
@@ -137,9 +146,11 @@ async def artifact_build_run_action(
 
     if action == "trigger":
         try:
-            return client.trigger_artifact_build(aid)
+            triggered = dict(client.trigger_artifact_build(aid))
         except ClientError as exc:
             raise_tool_error_for_client_error(exc)
+        triggered["note"] = WAIT_FOR_COMPLETED_NOTE
+        return triggered
 
     if action == "delete":
         bid = require_id(build_id or "", "build_id")
