@@ -189,3 +189,48 @@ def test_run_dry_run_exits_zero(tmp_path: Path) -> None:
             repo_root=tmp_path,
         )
     assert exc.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# run archive flags: parsed and handed to EvalRunner
+# ---------------------------------------------------------------------------
+
+
+def _run_argv(*extra: str) -> list[str]:
+    return [
+        "--endpoint",
+        "http://localhost/v1",
+        "--pipeline",
+        "answer_quality.yaml",
+        *extra,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        ((), {"output_name": None, "archive": True}),
+        (("--output-name", "baseline"), {"output_name": "baseline", "archive": True}),
+        (("--no-archive",), {"output_name": None, "archive": False}),
+    ],
+)
+def test_run_archive_flags_reach_runner(
+    tmp_path: Path, extra: tuple[str, ...], expected: dict[str, Any]
+) -> None:
+    with (
+        patch("datarobot_genai.eval.cli.EvalRunner") as runner_cls,
+        pytest.raises(SystemExit),
+    ):
+        cli.run_main(argv=_run_argv(*extra), repo_root=tmp_path)
+    kwargs = runner_cls.call_args.kwargs
+    assert kwargs["output_name"] == expected["output_name"]
+    assert kwargs["archive"] == expected["archive"]
+
+
+def test_run_output_name_and_no_archive_are_mutually_exclusive(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.run_main(
+            argv=_run_argv("--output-name", "baseline", "--no-archive"),
+            repo_root=tmp_path,
+        )
+    assert exc.value.code == 2  # argparse usage error

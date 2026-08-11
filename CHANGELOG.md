@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.6
+- `eval`: a successful run now keeps its own copy of the results instead of overwriting the previous run's. Alongside the fixed `output/eval_results.json` pointer, the runner writes a per-run archive named after the pipeline and run ID, e.g. `output/answer_quality_20260807_142530_481922.json`. Both files come from one serialization, so the pointer and the archive can never disagree about what a run produced. Use `--output-name` to choose the archive filename (bare filename, `.json` appended if omitted) or `--no-archive` for the previous single-file behavior; the two flags are mutually exclusive. An invalid `--output-name` (a path, a leading dot, or one of the reserved `eval_results.json` / `eval_status.json` names) is reported as an input validation error with exit code 1 before the evaluation runs, leaving any existing results untouched.
+- `eval`: `make_run_id()` moves from second to microsecond precision (`%Y%m%d_%H%M%S_%f`). The run ID names both `output/raw/<run_id>/` and the archived results file, so two runs starting within the same second previously overwrote each other's output. IDs remain lexically sortable. `run_id` is an opaque string in the output contract, so this is not a schema change.
+- This supersedes the results archiving that `dr-experimentation-cli` performed in its Go wrapper after each run; that copy is removed there in a companion change. The archive filenames now carry the same run ID the file's `run_id` field reports, which the Go wrapper's own timestamp did not.
 
 ## 0.27.5
 - CLI Validation for split cases for xp

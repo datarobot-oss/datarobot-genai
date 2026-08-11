@@ -42,7 +42,12 @@ The external CLI passes three things:
 
 Fixed output locations (always the same — external CLI can rely on these paths):
   output/eval_status.json     current run status
-  output/eval_results.json    normalized results (written on success)
+  output/eval_results.json    normalized results for the latest run (written on success)
+
+Per-run archive (also written on success, so runs do not overwrite each other):
+  output/<pipeline>_<run_id>.json
+    e.g. output/answer_quality_20260807_142530_481922.json
+  Use --output-name to choose the filename, or --no-archive to skip it.
 
 Exit codes:
   0  success
@@ -105,6 +110,24 @@ def run_main(
         action="store_true",
         help="Validate inputs and print what would run, without executing",
     )
+
+    archive = parser.add_mutually_exclusive_group()
+    archive.add_argument(
+        "--output-name",
+        help=(
+            "Filename for this run's archived results, written into output/ "
+            "alongside eval_results.json. Bare filename only; '.json' is appended "
+            "if omitted. Default: <pipeline>_<run_id>.json"
+        ),
+    )
+    archive.add_argument(
+        "--no-archive",
+        action="store_true",
+        help=(
+            "Write only output/eval_results.json, overwriting the previous run's "
+            "results instead of keeping a per-run copy"
+        ),
+    )
     args = parser.parse_args(argv)
 
     runner = EvalRunner(
@@ -112,6 +135,8 @@ def run_main(
         pipeline=args.pipeline,
         dataset=args.dataset,
         repo_root=repo_root,
+        output_name=args.output_name,
+        archive=not args.no_archive,
     )
     sys.exit(runner.run(dry_run=args.dry_run))
 
