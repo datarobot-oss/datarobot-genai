@@ -92,6 +92,12 @@ class TestEnvResolvers:
     def test_endpoint_empty_when_unset(self, clean_env):
         assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
 
+    def test_endpoint_empty_for_unparseable_url(self, clean_env):
+        # urlsplit raises on some malformed inputs (an unclosed IPv6 bracket);
+        # same reasoning as the header parse, it must not reach agent startup.
+        clean_env.setenv("DATAROBOT_ENDPOINT", "http://[")
+        assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
+
     def test_endpoint_empty_for_malformed_url(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "not-a-url")
         assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
@@ -175,6 +181,25 @@ class TestHeaderResolvers:
             "X-DataRobot-Entity-Id": "experiment_container-uc123",
             "X-Other": "v",
         }
+
+    def test_headers_skips_malformed_entries(self, clean_env):
+        # A trailing comma is the common way to malform this variable, and the
+        # parse runs at instrument() time, outside the bootstrap's try/except —
+        # so a bad entry must be dropped rather than raise into agent startup.
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123,",
+        )
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "tok",
+            "X-DataRobot-Entity-Id": "experiment_container-uc123",
+        }
+
+    def test_headers_empty_when_every_entry_is_malformed(self, clean_env):
+        # Falsy is what matters: the bootstrap skips rather than installing an
+        # exporter with no auth headers.
+        clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", "nonsense")
+        assert not datarobot_otel.resolve_datarobot_headers_from_env()
 
     def test_headers_value_with_equals_preserved(self, clean_env):
         # A header value can legitimately contain '=' (e.g. base64 padding or

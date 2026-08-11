@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.27.8
 - `core.telemetry`: **`instrument()` now installs the DataRobot span exporter outside a DataRobot runtime too.** The `MLOPS_DEPLOYMENT_ID` / `WORKLOAD_ID` gate had dropped every framework, LLM, HTTP, memory, and moderation span locally. Still a no-op unless OTel export is configured; adds `datarobot_otel_provider_installed()`.
-- `core.telemetry`: `OTEL_EXPORTER_OTLP_HEADERS` is parsed onto canonical `X-DataRobot-*` casing, fixing a `KeyError` on lowercase names from the `dragent` CLI.
+- `core.telemetry`: `OTEL_EXPORTER_OTLP_HEADERS` is now parsed defensively: malformed entries (a trailing comma, say) are skipped with a warning instead of raising, and the two DataRobot header names are folded to canonical casing. Both parse before the bootstrap's own try/except, so without this the gate removal above would let a stray value crash `instrument()` at `register.py` import.
 - Added a local tracing example to the quickstart notebook and documented it in the DRAgent tracing guide: spans attach to a use case, viewable with `dr xp`.
 
 ## 0.27.7

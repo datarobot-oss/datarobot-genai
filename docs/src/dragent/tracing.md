@@ -49,10 +49,10 @@ Fields:
 |---|---|---|---|
 | `project` | yes | — | OTel `service.name` for spans emitted by this workflow. |
 | `endpoint` | no | `<DATAROBOT_(PUBLIC_)ENDPOINT>/otel/v1/traces` | Full OTLP/HTTP endpoint override. |
-| `datarobot_api_key` | no | `DATAROBOT_API_TOKEN` env var | Sent as the `X-DataRobot-Api-Key` header. |
-| `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header, in `<entity type>-<id>` form: `deployment-`, `workload-` or `experiment_container-` (a use case). |
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
+
+The API key and entity id come from the environment (see below), not from this block. To send a workflow's spans to a specific entity, set `extra_headers` — e.g. `{X-DataRobot-Entity-Id: experiment_container-<use-case-id>}` for a use case. Unknown keys in this block are silently ignored, so a misspelled one fails quietly.
 
 Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are inherited from NAT's `BatchConfigMixin`; defaults are fine for most agents.
 
@@ -85,7 +85,7 @@ The export endpoint and auth headers are configured through the standard OpenTel
 | Variable | Description |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP base URL; `/v1/traces` is appended. Point it at `<host>/otel` (not `<host>/otel/v1/traces`) to hit the DataRobot ingest path. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Used verbatim; |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Passed through as given, except that the two DataRobot names are folded to this casing and malformed entries are skipped with a warning. |
 
 When the OTLP vars are not set, the runtime **falls back** to deriving the endpoint and headers from the DataRobot deployment env (populated for you inside a deployment):
 
@@ -105,27 +105,33 @@ runs; the ingest knows one as an `experiment_container`:
 
 ```python
 import os
+import urllib.parse
 
 from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
 
-host = os.environ["DATAROBOT_ENDPOINT"].removesuffix("/").removesuffix("/api/v2")
-os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/otel")
-os.environ.setdefault(
-    "OTEL_EXPORTER_OTLP_HEADERS",
-    f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
-    f"X-DataRobot-Entity-Id=experiment_container-<use-case-id>",
-)
+if not (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_HEADERS")):
+    api_url = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.environ["DATAROBOT_ENDPOINT"]
+    host = urllib.parse.urlsplit(api_url)
+    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = urllib.parse.urlunsplit(
+        (host.scheme, host.netloc, "/otel", "", "")
+    )
+    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+        f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
+        f"X-DataRobot-Entity-Id=experiment_container-<use-case-id>"
+    )
 
 instrument()
 instrument_langgraph()
 ```
 
-`setdefault`, not assignment, so the same code works unchanged once deployed: inside a runtime the
-platform supplies these variables, and a collector you configured yourself keeps winning too.
-`OTEL_SDK_DISABLED=true` turns export off, and `datarobot_otel_provider_installed()` reports
-whether spans will reach DataRobot, worth asserting in a local smoke test since a missing
-variable is otherwise a silent no-op. For looking a use case up by name, or creating one, see
+Both variables are set together or not at all, so the same code works unchanged once deployed
+(the platform supplies them) and a collector you configured yourself neither loses its endpoint nor
+receives your DataRobot credentials. `OTEL_SDK_DISABLED=true` turns export off.
+`datarobot_otel_provider_installed()` reports whether the DataRobot span processor was installed,
+which is worth asserting in a local smoke test since an unresolved variable is otherwise a silent
+no-op; it does not tell you the ingest accepted the spans, and it stays `True` under
+`OTEL_SDK_DISABLED`. For looking a use case up by name, or creating one, see
 [`quickstart.ipynb`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb).
 
 View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):

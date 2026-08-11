@@ -15,7 +15,11 @@
 from unittest.mock import patch
 
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.util._once import Once
 
+from datarobot_genai.core.telemetry import datarobot_otel
 from datarobot_genai.core.telemetry.agent import instrument
 
 _EXPORT_ENV_VARS = (
@@ -38,6 +42,11 @@ def no_ambient_otel_export(monkeypatch):
     """
     for var in _EXPORT_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    # OTel guards set_tracer_provider behind Once(); resetting both (and the
+    # bootstrap flag) lets a test observe a fresh global slot.
+    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
+    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
+    monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
 
 
 def test_instrument_idempotent() -> None:
@@ -45,33 +54,38 @@ def test_instrument_idempotent() -> None:
     instrument()  # idempotent
 
 
-@pytest.mark.parametrize(
-    "export_env",
-    [
-        pytest.param(
-            {
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "https://example.test/otel",
-                "OTEL_EXPORTER_OTLP_HEADERS": (
-                    "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123"
-                ),
-            },
-            id="local-otlp-env",
-        ),
-        pytest.param({"MLOPS_DEPLOYMENT_ID": "abc123"}, id="deployment"),
-        pytest.param({"WORKLOAD_ID": "wkl42"}, id="workload"),
-    ],
-)
-def test_instrument_bootstraps_in_any_runtime(monkeypatch, export_env) -> None:
-    # The bootstrap is not gated on the hosted-runtime env: a local run's
-    # framework and LLM spans need the exporter just as much as a deployment's.
-    # Whether one is installed is the bootstrap's own call, made from the
-    # endpoint and headers the environment resolves to.
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-    for name, value in export_env.items():
-        monkeypatch.setenv(name, value)
+def test_instrument_bootstraps_without_hosted_runtime_env(monkeypatch) -> None:
+    # GIVEN no MLOPS_DEPLOYMENT_ID / WORKLOAD_ID, WHEN instrument() runs, THEN it
+    # still asks the bootstrap: a local run's framework and LLM spans need the
+    # exporter just as much as a deployment's. Whether one is installed is the
+    # bootstrap's own call, made from the endpoint and headers it resolves.
     with patch(
         "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
     ) as mock:
         instrument()
     mock.assert_called_once()
+
+
+def test_instrument_installs_exporter_from_local_otlp_env(monkeypatch) -> None:
+    # GIVEN only the OTLP variables a local run sets, WHEN instrument() runs,
+    # THEN a real SDK provider is installed. This is the behaviour the gate
+    # removal exists for, so it is asserted end to end rather than mocked.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123",
+    )
+
+    instrument()
+
+    assert isinstance(trace.get_tracer_provider(), TracerProvider)
+    assert datarobot_otel.datarobot_otel_provider_installed() is True
+
+
+def test_instrument_installs_nothing_without_export_env() -> None:
+    # GIVEN nothing configuring OTel export, THEN instrument() leaves the global
+    # provider alone rather than installing an exporter nobody asked for.
+    instrument()
+
+    assert not isinstance(trace.get_tracer_provider(), TracerProvider)
+    assert datarobot_otel.datarobot_otel_provider_installed() is False

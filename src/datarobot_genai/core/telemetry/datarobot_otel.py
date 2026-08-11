@@ -84,6 +84,9 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
+            # Skip a malformed entry
+            if "=" not in header:
+                continue
             key, value = header.split("=", 1)
             key = key.strip()
             headers[_CANONICAL_HEADER_NAMES.get(key.lower(), key)] = value.strip()
@@ -114,7 +117,13 @@ def resolve_otel_traces_endpoint_from_env() -> str:
     base = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
     if not base:
         return ""
-    parsed = urllib.parse.urlsplit(base)
+    try:
+        parsed = urllib.parse.urlsplit(base)
+    except ValueError:
+        # Malformed enough that urlsplit rejects it (e.g. an unclosed IPv6
+        # bracket). Same reasoning as the header parse: never raise from here.
+        logger.warning("Ignoring unparseable DataRobot endpoint: %r", base)
+        return ""
     if not parsed.scheme or not parsed.netloc:
         return ""
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
