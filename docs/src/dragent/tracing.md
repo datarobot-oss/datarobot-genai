@@ -52,7 +52,7 @@ Fields:
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
 
-The API key and entity id come from the environment (see below), not from this block. To send a workflow's spans to a specific entity, set `extra_headers` — e.g. `{X-DataRobot-Entity-Id: experiment_container-<use-case-id>}` for a use case. Unknown keys in this block are silently ignored, so a misspelled one fails quietly.
+The API key and entity id come from the environment (see below), not from this block. To override the entity for this workflow only, set `extra_headers` — e.g. `{X-DataRobot-Entity-Id: experiment_container-<use-case-id>}` for a use case. The API key still comes from the environment, so `extra_headers` alone does not authenticate a local run; use `OTEL_EXPORTER_OTLP_HEADERS` for that. Unknown keys in this block are silently ignored, so a misspelled one fails quietly.
 
 Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are inherited from NAT's `BatchConfigMixin`; defaults are fine for most agents.
 
@@ -85,14 +85,14 @@ The export endpoint and auth headers are configured through the standard OpenTel
 | Variable | Description |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP base URL; `/v1/traces` is appended. Point it at `<host>/otel` (not `<host>/otel/v1/traces`) to hit the DataRobot ingest path. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Passed through as given, except that the two DataRobot names are folded to this casing and malformed entries are skipped with a warning. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Passed through as given; an entry that is not `key=value` is skipped. |
 
 When the OTLP vars are not set, the runtime **falls back** to deriving the endpoint and headers from the DataRobot deployment env (populated for you inside a deployment):
 
 | Fallback variable | Used for | Missing → |
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | `X-DataRobot-Api-Key` header | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` | `X-DataRobot-Entity-Id`, auto-prefixed `deployment-` or `workload-` (deployment wins) | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID`, `WORKLOAD_ID` or `DATAROBOT_USE_CASE_ID` | `X-DataRobot-Entity-Id`, auto-prefixed `deployment-`, `workload-` or `experiment_container-`. First one set wins, in that order. | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
 Optionally set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead). It does not affect routing: the ingest attributes spans by the `X-DataRobot-Entity-Id` header.
@@ -104,35 +104,35 @@ entity yourself through the standard OTLP variables. A use case is the natural t
 runs; the ingest knows one as an `experiment_container`:
 
 ```python
+from datarobot_genai.core.telemetry import trace_to_use_case
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+
+print(trace_to_use_case("My local runs"))  # reuses or creates that use case
+instrument_langgraph()
+```
+
+`trace_to_use_case` picks the use case, calls `instrument()`, and reports where spans went. In an
+agent's `register.py`, where the use case id comes from configuration rather than a name, set the
+variable it reads and call `instrument()` yourself:
+
+```python
 import os
-import urllib.parse
 
 from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
 
-if not (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_HEADERS")):
-    api_url = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.environ["DATAROBOT_ENDPOINT"]
-    host = urllib.parse.urlsplit(api_url)
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = urllib.parse.urlunsplit(
-        (host.scheme, host.netloc, "/otel", "", "")
-    )
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
-        f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
-        f"X-DataRobot-Entity-Id=experiment_container-<use-case-id>"
-    )
+os.environ["DATAROBOT_USE_CASE_ID"] = "<use-case-id>"
 
 instrument()
 instrument_langgraph()
 ```
 
-Both variables are set together or not at all, so the same code works unchanged once deployed
-(the platform supplies them) and a collector you configured yourself neither loses its endpoint nor
-receives your DataRobot credentials. `OTEL_SDK_DISABLED=true` turns export off.
-`datarobot_otel_provider_installed()` reports whether the DataRobot span processor was installed,
-which is worth asserting in a local smoke test since an unresolved variable is otherwise a silent
-no-op; it does not tell you the ingest accepted the spans, and it stays `True` under
-`OTEL_SDK_DISABLED`. For looking a use case up by name, or creating one, see
-[`quickstart.ipynb`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb).
+`DATAROBOT_USE_CASE_ID` is read only when neither a deployment nor a workload id is set, and
+`OTEL_EXPORTER_OTLP_HEADERS` outranks all three, so neither form overrides what a runtime already
+configured. The endpoint and API key come from `DATAROBOT_(PUBLIC_)ENDPOINT` and
+`DATAROBOT_API_TOKEN`, and `OTEL_SDK_DISABLED=true` stops this SDK path from exporting (the NAT
+exporter in `workflow.yaml` has its own switch). For looking a use case up by name, or creating one,
+see [`quickstart.ipynb`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb).
 
 View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
 

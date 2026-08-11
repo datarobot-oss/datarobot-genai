@@ -99,9 +99,8 @@ def instrument() -> None:
     # instrumentors patched below would emit spans through a no-op tracer
     # and nothing reaches DataRobot.
     #
-    # Unconditional: the bootstrap installs nothing unless the environment
-    # resolves to both an endpoint and headers, and it is idempotent, so this is
-    # a no-op wherever export is unconfigured or a host already set it up.
+    # Unconditional: the bootstrap installs nothing unless the environment resolves
+    # to an endpoint and headers, and it is idempotent.
     #
     # TODO (BUZZOK-31396): Call bootstrap from the deployment/notebook entrypoint instead of
     # here so notebook hosts that already install their own TracerProvider

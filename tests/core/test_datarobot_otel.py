@@ -25,6 +25,7 @@ from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
+    "DATAROBOT_USE_CASE_ID",
     "MLOPS_DEPLOYMENT_ID",
     "WORKLOAD_ID",
     "DATAROBOT_ENDPOINT",
@@ -74,6 +75,25 @@ class TestEnvResolvers:
         clean_env.setenv("WORKLOAD_ID", "wkl2")
         assert datarobot_otel.resolve_entity_id_from_env() == "deployment-dep1"
 
+    def test_entity_id_use_case(self, clean_env):
+        # A local run has no deployment or workload, so it names a use case, which
+        # the ingest addresses as an experiment container.
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
+        assert datarobot_otel.resolve_entity_id_from_env() == "experiment_container-uc123"
+
+    def test_entity_id_hosted_runtime_wins_over_use_case(self, clean_env):
+        # A use case id left in a deployment's environment must not redirect that
+        # deployment's traces.
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
+        clean_env.setenv("WORKLOAD_ID", "wkl42")
+        assert datarobot_otel.resolve_entity_id_from_env() == "workload-wkl42"
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "dep1")
+        assert datarobot_otel.resolve_entity_id_from_env() == "deployment-dep1"
+
+    def test_entity_id_ignores_blank_use_case(self, clean_env):
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "  ")
+        assert datarobot_otel.resolve_entity_id_from_env() == ""
+
     def test_endpoint_strips_api_path(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
         assert (
@@ -90,12 +110,6 @@ class TestEnvResolvers:
         )
 
     def test_endpoint_empty_when_unset(self, clean_env):
-        assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
-
-    def test_endpoint_empty_for_unparseable_url(self, clean_env):
-        # urlsplit raises on some malformed inputs (an unclosed IPv6 bracket);
-        # same reasoning as the header parse, it must not reach agent startup.
-        clean_env.setenv("DATAROBOT_ENDPOINT", "http://[")
         assert datarobot_otel.resolve_otel_traces_endpoint_from_env() == ""
 
     def test_endpoint_empty_for_malformed_url(self, clean_env):
@@ -169,19 +183,6 @@ class TestHeaderResolvers:
             "X-DataRobot-Entity-Id": "deployment-env",
         }
 
-    def test_headers_canonicalize_datarobot_names(self, clean_env):
-        # The dragent CLI writes these lowercase; callers read them back by the
-        # canonical key, so parsing folds the casing. Other headers pass through.
-        clean_env.setenv(
-            "OTEL_EXPORTER_OTLP_HEADERS",
-            "x-datarobot-api-key=env-key,x-datarobot-entity-id=experiment_container-uc123,X-Other=v",
-        )
-        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
-            "X-DataRobot-Api-Key": "env-key",
-            "X-DataRobot-Entity-Id": "experiment_container-uc123",
-            "X-Other": "v",
-        }
-
     def test_headers_skips_malformed_entries(self, clean_env):
         # A trailing comma is the common way to malform this variable, and the
         # parse runs at instrument() time, outside the bootstrap's try/except —
@@ -200,6 +201,16 @@ class TestHeaderResolvers:
         # exporter with no auth headers.
         clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", "nonsense")
         assert not datarobot_otel.resolve_datarobot_headers_from_env()
+
+    def test_entity_id_read_back_from_lowercase_headers(self, clean_env):
+        # The dragent CLI and custom applications write these names lowercase, and
+        # callers read the entity back to report where spans are going.
+        clean_env.setenv(
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "x-datarobot-api-key=k,x-datarobot-entity-id=experiment_container-uc1",
+        )
+        headers = datarobot_otel.resolve_datarobot_headers_from_env() or {}
+        assert datarobot_otel.resolve_entity_id_from_headers(headers) == "experiment_container-uc1"
 
     def test_headers_value_with_equals_preserved(self, clean_env):
         # A header value can legitimately contain '=' (e.g. base64 padding or

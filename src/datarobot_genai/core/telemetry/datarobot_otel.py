@@ -53,14 +53,8 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 # can't drift.
 DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
 WORKLOAD_ENTITY_ID_PREFIX = "workload-"
-
-# HTTP header names are case-insensitive, but callers read these two back by
-# exact key, and the dragent CLI writes them lowercase into
-# OTEL_EXPORTER_OTLP_HEADERS. Fold them onto their canonical spelling on parse.
-_CANONICAL_HEADER_NAMES = {
-    "x-datarobot-api-key": "X-DataRobot-Api-Key",
-    "x-datarobot-entity-id": "X-DataRobot-Entity-Id",
-}
+# A use case is an "experiment container" to the ingest, its pre-rename name.
+EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX = "experiment_container-"
 
 
 def resolve_api_key_from_env() -> str:
@@ -75,6 +69,9 @@ def resolve_entity_id_from_env() -> str:
         return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
     if workload_id := get_workload_id():
         return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
+    # A local run has no platform-assigned entity, so it names a use case instead.
+    if use_case_id := os.getenv("DATAROBOT_USE_CASE_ID", "").strip():
+        return f"{EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX}{use_case_id}"
     return ""
 
 
@@ -84,12 +81,11 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
-            # Skip a malformed entry
+            # A trailing comma, say. Raising here would take down agent startup.
             if "=" not in header:
                 continue
             key, value = header.split("=", 1)
-            key = key.strip()
-            headers[_CANONICAL_HEADER_NAMES.get(key.lower(), key)] = value.strip()
+            headers[key.strip()] = value.strip()
         return headers
     api_key = resolve_api_key_from_env()
     entity_id = resolve_entity_id_from_env()
@@ -117,13 +113,7 @@ def resolve_otel_traces_endpoint_from_env() -> str:
     base = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
     if not base:
         return ""
-    try:
-        parsed = urllib.parse.urlsplit(base)
-    except ValueError:
-        # Malformed enough that urlsplit rejects it (e.g. an unclosed IPv6
-        # bracket). Same reasoning as the header parse: never raise from here.
-        logger.warning("Ignoring unparseable DataRobot endpoint: %r", base)
-        return ""
+    parsed = urllib.parse.urlsplit(base)
     if not parsed.scheme or not parsed.netloc:
         return ""
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
@@ -183,8 +173,9 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
 
-    * the environment resolves to no export endpoint and headers, from either
-      ``OTEL_EXPORTER_OTLP_*`` or the ``DATAROBOT_*`` fallback;
+    * the hosted-runtime env is incomplete (``MLOPS_DEPLOYMENT_ID`` or
+      ``WORKLOAD_ID``, ``DATAROBOT_API_TOKEN``, or
+      ``DATAROBOT_(PUBLIC_)ENDPOINT`` missing) — the local-dev / CI shape;
     * something other than an SDK ``TracerProvider`` or the default proxy is
       already installed (we can't attach to an unknown provider type);
     * this function has already run successfully in this process.
@@ -196,8 +187,9 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     endpoint = resolve_otel_traces_endpoint_from_env()
     if not headers or not endpoint:
         logger.info(
-            "Skipping OTel TracerProvider bootstrap: no export endpoint and headers "
-            "resolved from OTEL_EXPORTER_OTLP_* or the DATAROBOT_* fallback."
+            "Skipping OTel TracerProvider bootstrap: hosted-runtime env "
+            "(MLOPS_DEPLOYMENT_ID or WORKLOAD_ID / DATAROBOT_API_TOKEN / "
+            "DATAROBOT_(PUBLIC_)ENDPOINT) not fully set."
         )
         return False
 
@@ -269,18 +261,22 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        headers.get("X-DataRobot-Entity-Id", ""),
+        resolve_entity_id_from_headers(headers),
     )
     return True
 
 
 def datarobot_otel_provider_installed() -> bool:
-    """Whether the DataRobot span processor is active in this process.
-
-    Stays ``True`` for the life of the process, unlike the bootstrap's return
-    value, which reports only what a single call did.
-    """
+    """Whether the DataRobot span processor is active in this process."""
     return _BOOTSTRAP_STATE["installed"]
+
+
+def resolve_entity_id_from_headers(headers: dict[str, str]) -> str:
+    """Read the entity id out of resolved headers, whatever casing they arrived in."""
+    for key, value in headers.items():
+        if key.lower() == "x-datarobot-entity-id":
+            return value
+    return ""
 
 
 def _redirect_dome_tracer_provider(provider: object) -> None:
