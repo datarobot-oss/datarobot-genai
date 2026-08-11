@@ -19,6 +19,7 @@ no-model codepaths.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -96,6 +97,54 @@ def test_generate_convert(tmp_path: Path) -> None:
 
     cases = json.loads(out_path.read_text())
     assert [c["id"] for c in cases] == ["c-001", "c-002"]
+
+
+def test_generate_rejects_non_positive_n(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.generate_main(
+            argv=["--agent-description", "test agent", "--n", "0"],
+            repo_root=tmp_path,
+        )
+    assert exc.value.code == 2
+
+
+def test_generate_rejects_negative_n_bad(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.generate_main(
+            argv=["--agent-description", "test agent", "--n-good", "1", "--n-bad", "-1"],
+            repo_root=tmp_path,
+        )
+    assert exc.value.code == 2
+
+
+def test_generate_rejects_zero_good_and_bad(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.generate_main(
+            argv=["--agent-description", "test agent", "--n-good", "0", "--n-bad", "0"],
+            repo_root=tmp_path,
+        )
+    assert exc.value.code == 2
+
+
+def test_generate_accepts_only_good_cases(tmp_path: Path) -> None:
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_ENDPOINT": "https://example.test/api/v2",
+                "DATAROBOT_API_TOKEN": "token",
+                "LLM_DEFAULT_MODEL": "azure/gpt-4",
+            },
+        ),
+        patch.object(cli.CaseGenerator, "generate", return_value=[]) as mock_generate,
+        patch.object(cli.CaseGenerator, "save", return_value=[]),
+    ):
+        cli.generate_main(
+            argv=["--agent-description", "test agent", "--n-good", "3", "--n-bad", "0"],
+            repo_root=tmp_path,
+        )
+    mock_generate.assert_called_once()
+    assert mock_generate.call_args.args[1:3] == (3, 0)
 
 
 # ---------------------------------------------------------------------------

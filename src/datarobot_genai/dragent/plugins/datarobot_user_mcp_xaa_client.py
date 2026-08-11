@@ -51,8 +51,8 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
         raise RuntimeError(
             "MCP auth server metadata declares no "
             f"`{CROSS_APPLICATION_ACCESS_METADATA_KEY}` block. Either configure "
-            "`cross_application_access` on the MCP client, or publish it in the MCP "
-            "server's oauth-config.yaml."
+            "`cross_application_access` on the MCP client, or publish it from the "
+            "MCP server's MCP_XAA_* settings."
         )
 
     missing = [key for key in ("token_exchange", "token_request") if key not in xaa_metadata]
