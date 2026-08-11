@@ -54,27 +54,23 @@ def test_instrument_idempotent() -> None:
     instrument()  # idempotent
 
 
-def test_instrument_bootstraps_without_hosted_runtime_env(monkeypatch) -> None:
-    # GIVEN no MLOPS_DEPLOYMENT_ID / WORKLOAD_ID, WHEN instrument() runs, THEN it
-    # still asks the bootstrap: a local run's framework and LLM spans need the
-    # exporter just as much as a deployment's. Whether one is installed is the
-    # bootstrap's own call, made from the endpoint and headers it resolves.
+def test_instrument_leaves_export_alone_without_a_runtime_or_a_use_case(monkeypatch) -> None:
+    # GIVEN neither a hosted runtime nor a named use case, THEN the bootstrap is not
+    # even asked, so no deployed component's behaviour changes.
     with patch(
         "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
     ) as mock:
         instrument()
-    mock.assert_called_once()
+    mock.assert_not_called()
 
 
-def test_instrument_installs_exporter_from_local_otlp_env(monkeypatch) -> None:
-    # GIVEN only the OTLP variables a local run sets, WHEN instrument() runs,
-    # THEN a real SDK provider is installed. This is the behaviour the gate
-    # removal exists for, so it is asserted end to end rather than mocked.
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
-    monkeypatch.setenv(
-        "OTEL_EXPORTER_OTLP_HEADERS",
-        "X-DataRobot-Api-Key=tok,X-DataRobot-Entity-Id=experiment_container-uc123",
-    )
+def test_instrument_installs_exporter_when_a_use_case_is_named(monkeypatch) -> None:
+    # GIVEN a local run that named a use case, WHEN instrument() runs, THEN a real
+    # SDK provider is installed. Asserted end to end rather than mocked, since this
+    # is the path local tracing depends on.
+    monkeypatch.setenv("DATAROBOT_USE_CASE_ID", "uc123")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
 
     instrument()
 

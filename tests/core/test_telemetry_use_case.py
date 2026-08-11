@@ -106,10 +106,8 @@ class TestTraceToUseCase:
             tracing = trace_to_use_case("Quickstart")
 
         use_case_api.list.assert_not_called()
-        assert tracing.exporting
-        assert tracing.entity_id == "custom_application-app9"
-        assert tracing.use_case_id == ""
-        assert "already set" in str(tracing)
+        assert not tracing.exporting
+        assert "points somewhere this run cannot use" in str(tracing)
 
     def test_reports_the_deployment_entity_when_one_outranks_the_use_case(self, clean_env):
         # GIVEN a use case id and a deployment id, THEN spans go to the deployment

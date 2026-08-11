@@ -49,10 +49,10 @@ Fields:
 |---|---|---|---|
 | `project` | yes | — | OTel `service.name` for spans emitted by this workflow. |
 | `endpoint` | no | `<DATAROBOT_(PUBLIC_)ENDPOINT>/otel/v1/traces` | Full OTLP/HTTP endpoint override. |
+| `datarobot_api_key` | no | `DATAROBOT_API_TOKEN` env var | Sent as the `X-DataRobot-Api-Key` header. |
+| `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header. Non-empty values must keep the `deployment-` prefix. |
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
-
-The API key and entity id come from the environment (see below), not from this block. To override the entity for this workflow only, set `extra_headers` — e.g. `{X-DataRobot-Entity-Id: experiment_container-<use-case-id>}` for a use case. The API key still comes from the environment, so `extra_headers` alone does not authenticate a local run; use `OTEL_EXPORTER_OTLP_HEADERS` for that. Unknown keys in this block are silently ignored, so a misspelled one fails quietly.
 
 Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are inherited from NAT's `BatchConfigMixin`; defaults are fine for most agents.
 
@@ -62,10 +62,10 @@ The core `instrument()` sets up HTTP-client, OpenAI SDK, and threading instrumen
 
 ```python
 from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+from datarobot_genai.langgraph.telemetry import instrument as langgraph_instrument
 
 instrument()  # HTTP clients + OpenAI SDK + OTel SDK bootstrap
-instrument_langgraph()  # framework auto-instrumentor spans
+langgraph_instrument()  # framework auto-instrumentor spans
 ```
 
 The per-framework helpers live alongside each framework package:
@@ -85,7 +85,7 @@ The export endpoint and auth headers are configured through the standard OpenTel
 | Variable | Description |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP base URL; `/v1/traces` is appended. Point it at `<host>/otel` (not `<host>/otel/v1/traces`) to hit the DataRobot ingest path. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Passed through as given; an entry that is not `key=value` is skipped. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` list sent as request headers, e.g. `X-DataRobot-Api-Key=<token>,X-DataRobot-Entity-Id=deployment-<id>`. Used verbatim; |
 
 When the OTLP vars are not set, the runtime **falls back** to deriving the endpoint and headers from the DataRobot deployment env (populated for you inside a deployment):
 
@@ -95,45 +95,25 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 | `MLOPS_DEPLOYMENT_ID`, `WORKLOAD_ID` or `DATAROBOT_USE_CASE_ID` | `X-DataRobot-Entity-Id`, auto-prefixed `deployment-`, `workload-` or `experiment_container-`. First one set wins, in that order. | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
-Optionally set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead). It does not affect routing: the ingest attributes spans by the `X-DataRobot-Entity-Id` header.
+Two caveats regardless of which path supplies the endpoint/headers:
+
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload, or when `DATAROBOT_USE_CASE_ID` names a use case for a local run (see below).
+- Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
 
 ## Local tracing
 
-Outside a DataRobot runtime there is no deployment or workload to attribute spans to, so name the
-entity yourself through the standard OTLP variables. A use case is the natural target for local
-runs; the ingest knows one as an `experiment_container`:
+A local run has no deployment or workload to attribute spans to, so it names a use case, which the
+ingest knows as an `experiment_container`:
 
 ```python
-from datarobot_genai.core.telemetry import trace_to_use_case
-from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+from datarobot_genai.core.telemetry.use_case import trace_to_use_case
 
 print(trace_to_use_case("My local runs"))  # reuses or creates that use case
-instrument_langgraph()
 ```
 
-`trace_to_use_case` picks the use case, calls `instrument()`, and reports where spans went. In an
-agent's `register.py`, where the use case id comes from configuration rather than a name, set the
-variable it reads and call `instrument()` yourself:
-
-```python
-import os
-
-from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
-
-os.environ["DATAROBOT_USE_CASE_ID"] = "<use-case-id>"
-
-instrument()
-instrument_langgraph()
-```
-
-`DATAROBOT_USE_CASE_ID` is read only when neither a deployment nor a workload id is set, and
-`OTEL_EXPORTER_OTLP_HEADERS` outranks all three, so neither form overrides what a runtime already
-configured. The endpoint and API key come from `DATAROBOT_(PUBLIC_)ENDPOINT` and
-`DATAROBOT_API_TOKEN`, and `OTEL_SDK_DISABLED=true` stops this SDK path from exporting (the NAT
-exporter in `workflow.yaml` has its own switch). For looking a use case up by name, or creating one,
-see [`quickstart.ipynb`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb).
-
+It picks the use case, calls `instrument()`, and reports where spans went; pass `use_case_id=` to
+choose one. Setting `DATAROBOT_USE_CASE_ID` yourself and calling `instrument()` does the same thing.
+`OTEL_EXPORTER_OTLP_HEADERS` still wins over both, so neither overrides what a runtime already set.
 View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
 
 ```bash
@@ -145,4 +125,4 @@ dr xp --entity-id <use-case-id>
 - **Data Exploration tab is empty**: Confirm the export is configured — `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` (primary) or the `DATAROBOT_*` fallback. Both span paths silently skip when neither supplies an endpoint and headers.
 - **NAT lifecycle spans appear but framework spans don't**: the framework `instrument()` (e.g. `datarobot_genai.langgraph.telemetry.instrument`) was not called, or was called after the framework imported. Move the call to the top of `register.py`.
 - **Framework or memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py` before the framework imports. The exporter bridges NAT context into the SDK and the bootstrap wraps the global `TracerProvider` so LangChain/LangGraph, HTTP `POST`, and memory spans share the active workflow trace.
-- **Spans land on the wrong entity**: `OTEL_EXPORTER_OTLP_HEADERS` wins over the `DATAROBOT_*` fallback, so a stale value there redirects everything. The bootstrap logs the entity it resolved (`DataRobot OTel span processor installed → ... (entity_id=...)`).
+- **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.

@@ -84,6 +84,8 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> UseCaseTracin
 
     instrument()
     if not datarobot_otel_provider_installed():
+        if not selected_id:
+            return UseCaseTracing(reason="OpenTelemetry here points somewhere this run cannot use")
         return UseCaseTracing(reason="DataRobot endpoint and credentials did not resolve")
 
     entity_id = resolve_entity_id_from_headers(resolve_datarobot_headers_from_env() or {})
