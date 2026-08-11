@@ -22,6 +22,7 @@ from datarobot_genai.drmcpbase.fastmcp_transforms import unfiltered_catalog_prov
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
 )
+from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
 from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
@@ -202,6 +203,15 @@ def register_routes(mcp: DataRobotMCP) -> None:
         deployment_id = request.path_params["deployment_id"]
         try:
             tool = await register_tool_for_deployment_id(deployment_id)
+            # Scope wiring attaches checks to the components that exist when it
+            # runs, so a component registered through this route carries none of
+            # them — no token floor, no tag rules — until wired. On a server
+            # that verifies tokens that would serve exactly this tool to the
+            # callers the floor exists to shut out. Re-wiring is idempotent and
+            # reuses the installed settings; every runtime mutation below does
+            # the same, removals included, so the published scopes stay derived
+            # from the components actually registered.
+            await wire_scopes(mcp)
             return JSONResponse(
                 status_code=HTTPStatus.CREATED,
                 content={
@@ -247,6 +257,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         try:
             deleted = await delete_registered_tool_deployment(deployment_id)
             if deleted is True:
+                await wire_scopes(mcp)  # see add_deployment
                 return JSONResponse(
                     status_code=HTTPStatus.OK,
                     content={
@@ -298,6 +309,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         try:
             deleted = await delete_registered_prompt_template(prompt_template_id)
             if deleted:
+                await wire_scopes(mcp)  # see add_deployment
                 return JSONResponse(
                     status_code=HTTPStatus.OK,
                     content={
@@ -327,6 +339,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
             prompt = await register_prompt_from_prompt_template_id_and_version(
                 prompt_template_id, prompt_template_version_id
             )
+            await wire_scopes(mcp)  # see add_deployment
             return JSONResponse(
                 status_code=HTTPStatus.CREATED,
                 content={
@@ -347,6 +360,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         """Refresh prompt templates."""
         try:
             await refresh_registered_prompt_template()
+            await wire_scopes(mcp)  # see add_deployment
             return JSONResponse(
                 status_code=HTTPStatus.OK,
                 content={"message": "Prompts refreshed successfully"},
