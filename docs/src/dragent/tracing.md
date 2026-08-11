@@ -80,7 +80,7 @@ All of these are idempotent — repeat calls are no-ops — and safe to keep in 
 
 ## Required environment
 
-The export endpoint and auth headers are configured through the standard OpenTelemetry env vars — this is the **primary** mechanism, and in practice every environment (deployments, notebooks, local, CI) relies on it. Both span paths (the NAT `datarobot_otelcollector` exporter and the `instrument()` SDK bootstrap) read them first.
+The export endpoint and auth headers are configured through the standard OpenTelemetry env vars — this is the **primary** mechanism, and in practice every environment (deployments, notebooks, local, CI) relies on it. They say *where* to export; what decides *whether* the SDK bootstrap runs is the caveat below. Both span paths (the NAT `datarobot_otelcollector` exporter and the `instrument()` SDK bootstrap) read them first.
 
 | Variable | Description |
 |---|---|

@@ -83,6 +83,7 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         for header in headers_list:
             # A trailing comma, say. Raising here would take down agent startup.
             if "=" not in header:
+                logger.warning("Ignoring malformed OTEL_EXPORTER_OTLP_HEADERS entry: %r", header)
                 continue
             key, value = header.split("=", 1)
             headers[key.strip()] = value.strip()

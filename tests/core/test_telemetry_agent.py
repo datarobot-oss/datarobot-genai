@@ -54,6 +54,18 @@ def test_instrument_idempotent() -> None:
     instrument()  # idempotent
 
 
+@pytest.mark.parametrize("runtime_env", ["MLOPS_DEPLOYMENT_ID", "WORKLOAD_ID"])
+def test_instrument_bootstraps_inside_a_hosted_runtime(monkeypatch, runtime_env) -> None:
+    # GIVEN a deployment or a workload, THEN the bootstrap is asked exactly as before:
+    # this is the behaviour that must not change.
+    monkeypatch.setenv(runtime_env, "abc123")
+    with patch(
+        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
+    ) as mock:
+        instrument()
+    mock.assert_called_once()
+
+
 def test_instrument_leaves_export_alone_without_a_runtime_or_a_use_case(monkeypatch) -> None:
     # GIVEN neither a hosted runtime nor a named use case, THEN the bootstrap is not
     # even asked, so no deployed component's behaviour changes.

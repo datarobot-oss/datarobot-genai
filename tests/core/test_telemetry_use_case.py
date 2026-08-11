@@ -107,7 +107,7 @@ class TestTraceToUseCase:
 
         use_case_api.list.assert_not_called()
         assert not tracing.exporting
-        assert "points somewhere this run cannot use" in str(tracing)
+        assert "OTEL_EXPORTER_OTLP_*" in str(tracing)
 
     def test_reports_the_deployment_entity_when_one_outranks_the_use_case(self, clean_env):
         # GIVEN a use case id and a deployment id, THEN spans go to the deployment
@@ -120,6 +120,47 @@ class TestTraceToUseCase:
         assert tracing.entity_id == "deployment-dep7"
         assert "dr xp" not in str(tracing)
         assert "deployment-dep7" in str(tracing)
+
+    def test_never_hands_datarobot_credentials_to_your_own_collector(self, clean_env):
+        # GIVEN OTEL_EXPORTER_OTLP_ENDPOINT pointing at a collector of the caller's
+        # own, THEN nothing is configured or created: exporting would post this
+        # account's API key to that host.
+        _datarobot_env(clean_env)
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+
+        with patch("datarobot.UseCase") as use_case_api:
+            tracing = trace_to_use_case("Quickstart")
+
+        use_case_api.list.assert_not_called()
+        use_case_api.create.assert_not_called()
+        assert not tracing.exporting
+        assert "OTEL_EXPORTER_OTLP_*" in str(tracing)
+
+    def test_creates_no_use_case_inside_a_deployment(self, clean_env):
+        # GIVEN a hosted runtime, THEN the platform already names the entity, so
+        # looking one up or creating one would only litter the account.
+        _datarobot_env(clean_env)
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "dep7")
+
+        with patch("datarobot.UseCase") as use_case_api:
+            tracing = trace_to_use_case("Quickstart")
+
+        use_case_api.list.assert_not_called()
+        use_case_api.create.assert_not_called()
+        assert tracing.entity_id == "deployment-dep7"
+
+    def test_says_to_restart_when_a_new_use_case_cannot_take_effect(self, clean_env):
+        # GIVEN tracing already installed for one use case, WHEN a different id is
+        # asked for, THEN say so: the exporter keeps the first entity for the life of
+        # the process, so printing a command for the new one would be a lie.
+        _datarobot_env(clean_env)
+        first = trace_to_use_case("Quickstart", use_case_id="uc-first")
+        assert first.entity_id == "experiment_container-uc-first"
+
+        second = trace_to_use_case("Quickstart", use_case_id="uc-second")
+
+        assert second.entity_id == "experiment_container-uc-first"
+        assert "restart" in str(second)
 
     def test_does_nothing_when_the_sdk_is_disabled(self, clean_env):
         # GIVEN the reader opted out, THEN no use case is created and nothing exports.
@@ -134,10 +175,10 @@ class TestTraceToUseCase:
         assert "OTEL_SDK_DISABLED" in str(tracing)
 
     def test_reports_missing_credentials_instead_of_exporting(self, clean_env):
-        # GIVEN a use case but no endpoint, THEN it reports rather than claiming success.
-        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-
-        tracing = trace_to_use_case("Quickstart")
+        # GIVEN a use case but no endpoint, THEN it reports rather than claiming
+        # success. The id is passed in so no DataRobot lookup is attempted: this
+        # suite must not reach the network.
+        tracing = trace_to_use_case("Quickstart", use_case_id="uc123")
 
         assert not tracing.exporting
         assert "did not resolve" in str(tracing)

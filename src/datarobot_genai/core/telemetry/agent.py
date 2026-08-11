@@ -102,7 +102,7 @@ def instrument() -> None:
     # and nothing reaches DataRobot.
     #
     # A hosted runtime is told which entity it is; a local run says so by naming a
-    # use case (see core.telemetry.trace_to_use_case). Anywhere else this stays off,
+    # use case (see core.telemetry.use_case.trace_to_use_case). Anywhere else this stays off,
     # so no deployed component's behaviour changes.
     #
     # TODO (BUZZOK-31396): Call bootstrap from the deployment/notebook entrypoint instead of
