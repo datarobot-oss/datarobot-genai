@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+
+## 0.27.5
+- CLI Validation for split cases for xp
+
 ## 0.27.4
 - `drmcpbase/fastmcp_transforms`: **search mode no longer pins category-derived tools into the listing.** Under `mode=search`, the allowlist previously pinned every matched tool — including names expanded from a category — so a session filtered by e.g. `x-datarobot-mcp-tools: dr_db` listed every tool in that category alongside `tool_search` / `call_tool`. That degenerated the session into tools mode: the model saw the full category surface and never called `tool_search` (inspector R48). Pinning now uses only `allowlist.explicit` (client-named tools and Tool Sets expansions, which name functions one by one). Category- and bucket-derived entries still scope the search *index* via `get_tool_catalog`; they just no longer appear in `tools/list`. Explicit pins and the post-search re-list flow (`x-datarobot-mcp-tools=<found names>`) are unchanged.
 
 ## 0.27.3
-
 - Added per-component OAuth scope enforcement (`drmcpbase/oauth_scopes.py`). A component's scope requirement can be declared in code with `require_scopes(...)` — exported from `datarobot_genai.drmcp` — or in configuration with one `MCP_OAUTH_TAG_SCOPES_<TAG>` variable per tag the component already declares. `MCP_OAUTH_SCOPE_SOURCE` selects which is read and **defaults to `both`**, so each simply applies wherever it is declared; set `code` or `tags` only to silence the other. Matching is a subset test — every required scope must be present, extra scopes in the token are not examined — and requirements stack with AND, so a component declared in both places requires the union. Nothing is any-of. On the serverless hosting path the platform delivers these variables as runtime parameters wrapped in a JSON envelope (`{"type": "string", "payload": ...}`); the envelope is unwrapped, so both spellings configure the same requirement rather than a garbled one.
 - **Import `require_scopes` from `datarobot_genai.drmcp`, not from `fastmcp.server.auth`.** FastMCP's version captures the scope names in a closure that cannot be read back, so they can never be published, and it returns `False` whenever `ctx.token` is `None` — which is every request on a gateway-authenticated deployment with no auth provider, hiding the component from *everyone*. Ours keeps the names readable and verifies the request's own bearer token, so it needs no auth provider and adds no 401 of its own.
 - `scopes_supported` is now **always derived** from the requirements actually enforced, and is no longer configurable. The server therefore cannot advertise a scope it does not check, and nobody maintains a second list by hand. `MCP_OAUTH_SCOPES_SUPPORTED` is removed, and `MCPOAuthProtectedResourceMetadataConfig.from_settings` accordingly takes `scopes_supported` as a list rather than a comma-string — its only source is the derived rules, so there is nothing to parse and callers never hand-join one.

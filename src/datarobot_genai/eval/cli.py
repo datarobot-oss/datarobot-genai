@@ -56,6 +56,22 @@ def _resolve_repo_root(repo_root: Path | None) -> Path:
     return repo_root if repo_root is not None else Path.cwd()
 
 
+def _positive_int(value: str) -> int:
+    """Argparse ``type`` that accepts only integers greater than zero."""
+    n = int(value)
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {n}")
+    return n
+
+
+def _non_negative_int(value: str) -> int:
+    """Argparse ``type`` that accepts zero or positive integers."""
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"must be greater than or equal to 0, got {n}")
+    return n
+
+
 def run_main(
     argv: Sequence[str] | None = None,
     repo_root: Path | None = None,
@@ -130,19 +146,19 @@ def generate_main(
 
     parser.add_argument(
         "--n",
-        type=int,
+        type=_positive_int,
         default=10,
         help="Total number of cases to generate (split evenly good/bad, default: 10)",
     )
     parser.add_argument(
         "--n-good",
-        type=int,
-        help="Number of good cases (overrides --n split)",
+        type=_non_negative_int,
+        help="Number of good cases (overrides --n split; 0 allowed for only-bad runs)",
     )
     parser.add_argument(
         "--n-bad",
-        type=int,
-        help="Number of bad cases (overrides --n split)",
+        type=_non_negative_int,
+        help="Number of bad cases (overrides --n split; 0 allowed for only-good runs)",
     )
     parser.add_argument(
         "--output",
@@ -200,6 +216,10 @@ def generate_main(
     # --- generation mode ---
     n_good = args.n_good if args.n_good is not None else args.n // 2
     n_bad = args.n_bad if args.n_bad is not None else args.n - n_good
+    if n_good < 0 or n_bad < 0:
+        parser.error("--n-good and --n-bad must be greater than or equal to 0")
+    if n_good + n_bad <= 0:
+        parser.error("must request at least one good or bad case")
     output_path = (
         Path(args.output) if args.output else repo_root / "user_datasets" / "generated_cases.json"
     )
