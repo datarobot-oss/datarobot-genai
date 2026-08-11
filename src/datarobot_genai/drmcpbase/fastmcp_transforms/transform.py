@@ -48,9 +48,10 @@ class DataRobotMCPCatalogTransform(CodeMode):
     catalog that the synthetic discovery/search tools read.  Modes only change
     presentation: ``tools`` lists the catalog directly, ``code``
     collapses it to discovery + execute meta-tools, ``search`` collapses it to
-    ``tool_search`` + ``call_tool`` (plus any allowlisted tools, pinned).
-    Synthetic mode-interface tools themselves are exempt from the caps — they
-    are the mode's UI, not catalog tools.
+    ``tool_search`` + ``call_tool`` (plus the EXPLICITLY named allowlist
+    entries, pinned — category-derived entries scope the search index without
+    being pinned).  Synthetic mode-interface tools themselves are exempt from
+    the caps — they are the mode's UI, not catalog tools.
     """
 
     def __init__(
@@ -101,10 +102,21 @@ class DataRobotMCPCatalogTransform(CodeMode):
         if ctx.mode is MCPRequestMode.CODE:
             raise NotImplementedError(_CODE_MODE_NOT_IMPLEMENTED_MSG)
         if ctx.mode is MCPRequestMode.SEARCH:
-            # Allowlisted tools stay pinned in the listing so a client that
-            # re-lists with `x-datarobot-mcp-tools=<found names>` gets their
-            # full definitions alongside the search interface.
-            pinned = filter_tools_by_allowlist(tools, allowlist) if allowlist is not None else []
+            # Only EXPLICITLY named tools stay pinned in the listing: pinning
+            # exists for the post-search re-list flow, where the client sends
+            # `x-datarobot-mcp-tools=<found names>` to get the full
+            # definitions of what tool_search returned (Tool Sets expansions
+            # count — a bundle names tool functions one by one). Category- and
+            # bucket-derived entries scope the search *index* instead
+            # (get_tool_catalog re-applies the full allowlist): expanding a
+            # category into pinned listings degenerated a filtered search
+            # session into tools mode — the model saw every tool of the
+            # category directly and never called tool_search (inspector R48).
+            pinned = (
+                [tool for tool in tools if tool.name in allowlist.explicit]
+                if allowlist is not None
+                else []
+            )
             return [*pinned, *self._build_search_mode_tools()]
         if allowlist is None:
             return tools
