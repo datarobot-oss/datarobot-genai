@@ -91,6 +91,25 @@ def test_instrument_installs_exporter_when_a_use_case_is_named(monkeypatch) -> N
     assert datarobot_otel.datarobot_otel_provider_installed() is True
 
 
+def test_instrument_ignores_a_use_case_when_the_platform_named_the_entity(monkeypatch) -> None:
+    # GIVEN a custom application, which the platform identifies through OTLP headers
+    # rather than a deployment id, THEN a stray use case id must not switch export on:
+    # the platform already decided whether this component exports, and to where.
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "x-datarobot-entity-id=custom_application-app9,x-datarobot-api-key=key",
+    )
+    monkeypatch.setenv("DATAROBOT_USE_CASE_ID", "uc123")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+
+    with patch(
+        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
+    ) as mock:
+        instrument()
+    mock.assert_not_called()
+
+
 def test_instrument_installs_nothing_without_export_env() -> None:
     # GIVEN nothing configuring OTel export, THEN instrument() leaves the global
     # provider alone rather than installing an exporter nobody asked for.

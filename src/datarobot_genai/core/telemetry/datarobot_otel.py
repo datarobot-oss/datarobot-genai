@@ -69,7 +69,7 @@ def resolve_entity_id_from_env() -> str:
         return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
     if workload_id := get_workload_id():
         return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
-    # A local run has no platform-assigned entity, so it names a use case instead.
+    # Nothing platform-assigned left, so a run that named a use case is attributed to it.
     if use_case_id := os.getenv("DATAROBOT_USE_CASE_ID", "").strip():
         return f"{EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX}{use_case_id}"
     return ""
