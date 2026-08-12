@@ -14,104 +14,68 @@
 
 """One call to attribute a local run's spans to a DataRobot use case.
 
-Deployments and workloads are told which entity they are by the platform. A
-notebook or a script is not, so it has to name one, and a use case is the
-natural home for local experiments. This wraps that decision -- which use case,
-and whether to touch the environment at all -- so callers do not reimplement it.
+The platform tells a deployment or workload which entity it is. A notebook or a
+script has to name one itself, and a use case is the natural home for local runs.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
 
 from datarobot_genai.core.runtime import is_hosted_runtime
 from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.core.telemetry.datarobot_otel import EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX
 from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
 from datarobot_genai.core.telemetry.datarobot_otel import datarobot_otel_entity_id
-from datarobot_genai.core.telemetry.datarobot_otel import datarobot_otel_provider_installed
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_api_key_from_env
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_otel_traces_endpoint_from_env
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class UseCaseTracing:
-    """The outcome of :func:`trace_to_use_case`, printable as a one-line summary."""
-
-    entity_id: str = ""
-    reason: str = ""
-
-    @property
-    def exporting(self) -> bool:
-        return bool(self.entity_id)
-
-    def __str__(self) -> str:
-        if not self.exporting:
-            return f"Traces are not being exported: {self.reason}."
-        if self.reason:
-            return f"Traces are going to {self.entity_id}: {self.reason}."
-        # Read the id back out of the entity so a second call prints the same line as
-        # the first. Only a use case has a `dr xp` view; a deployment or workload id in
-        # the environment outranks it and is reported as-is.
-        if self.entity_id.startswith(EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX):
-            use_case_id = self.entity_id.removeprefix(EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX)
-            return f"View traces with:   dr xp --entity-id {use_case_id}"
-        return f"Traces are going to {self.entity_id}."
+# A use case is an "experiment container" to the OTel ingest, its pre-rename name.
+ENTITY_PREFIX = "experiment_container-"
 
 
-def trace_to_use_case(default_name: str, use_case_id: str = "") -> UseCaseTracing:
-    """Export this process's spans to a DataRobot use case.
+def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
+    """Export this process's spans to a DataRobot use case, and return its id.
 
-    Uses ``use_case_id`` when given, else ``DATAROBOT_USE_CASE_ID`` or
-    ``DATAROBOT_DEFAULT_USE_CASE`` from the environment, else the use case named
-    ``default_name``, creating it on first use. Sets ``DATAROBOT_USE_CASE_ID`` to
-    whichever it picked, so the rest of the process agrees. Calls :func:`instrument`
-    for you; call the matching framework ``instrument()`` as well to collect
-    framework spans.
+    Takes ``use_case_id``, else ``DATAROBOT_USE_CASE_ID`` or
+    ``DATAROBOT_DEFAULT_USE_CASE``, else the use case named ``default_name``, created on
+    first use. Also call your framework's ``instrument()`` for framework spans.
 
-    Chooses nothing and creates nothing when the process is already pointed
-    somewhere: inside a deployment or workload the platform names the entity, and
-    an ``OTEL_EXPORTER_OTLP_*`` variable of your own means your collector, which
-    must not be handed DataRobot credentials. Both cases are reported rather than
-    overridden, so this is safe in code that also runs deployed.
-
-    A missing endpoint or API token comes back as a :class:`UseCaseTracing` that is
-    not ``exporting`` and says why, rather than as an exception.
+    Returns "" when spans are not going to a use case, having logged why: a deployment
+    or workload is named by the platform, and an ``OTEL_EXPORTER_OTLP_*`` of your own is
+    left alone. Never raises.
     """
     if reason := _skip_reason():
-        return UseCaseTracing(reason=reason)
+        logger.info("Not tracing to a use case: %s", reason)
+        return ""
 
-    wanted = use_case_id.strip() or _use_case_id_from_env()
-    already_tracing = datarobot_otel_provider_installed()
-    if not already_tracing and not is_hosted_runtime():
+    # DATAROBOT_DEFAULT_USE_CASE is what the app framework calls the same thing.
+    wanted = (
+        use_case_id.strip()
+        or os.getenv("DATAROBOT_USE_CASE_ID", "").strip()
+        or os.getenv("DATAROBOT_DEFAULT_USE_CASE", "").strip()
+    )
+    if not datarobot_otel_entity_id() and not is_hosted_runtime():
         try:
             selected = wanted or _use_case_id_by_name(default_name)
         except Exception as exc:  # noqa: BLE001 - reported, never raised at the caller
-            logger.info("Could not resolve a use case for tracing: %s", exc)
-            return UseCaseTracing(reason=f"no use case available ({exc})")
-        # So anything else in this process, and anything it spawns, agrees on the use case.
+            logger.warning("Not tracing: no use case available (%s)", exc)
+            return ""
+        # So the rest of the process, and anything it spawns, agrees on the use case.
         os.environ["DATAROBOT_USE_CASE_ID"] = selected
-        # Asked for here rather than left to instrument(), which only bootstraps a hosted
-        # runtime: a local run has no platform-assigned identity, so it has to name one.
-        bootstrap_otel_provider_for_datarobot(_entity(selected))
+        # instrument() only bootstraps a hosted runtime, so a local run asks here.
+        bootstrap_otel_provider_for_datarobot(f"{ENTITY_PREFIX}{selected}")
 
     instrument()
-    if not datarobot_otel_provider_installed():
-        return UseCaseTracing(reason="the OpenTelemetry provider could not be installed")
-
+    # Read back what was installed, so a repeat call reports where spans really go
+    # rather than what this call asked for.
     entity_id = datarobot_otel_entity_id()
-    if already_tracing and wanted and entity_id != _entity(wanted):
-        # The exporter was built with the earlier entity and keeps it for the life of
-        # the process, so a new id cannot take effect until the process restarts.
-        return UseCaseTracing(
-            entity_id=entity_id,
-            reason=f"already tracing into {entity_id}; restart to use {wanted}",
-        )
-    return UseCaseTracing(entity_id=entity_id)
+    if not entity_id.startswith(ENTITY_PREFIX):
+        logger.info("Not tracing to a use case; entity is %s", entity_id or "unset")
+        return ""
+    return entity_id.removeprefix(ENTITY_PREFIX)
 
 
 def _skip_reason() -> str:
@@ -119,29 +83,15 @@ def _skip_reason() -> str:
     if os.getenv("OTEL_SDK_DISABLED", "").strip().lower() == "true":
         return "OTEL_SDK_DISABLED is set"
     if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-        # Exporting here would send this account's API key to whatever that variable
-        # names. Leave the caller's own OpenTelemetry setup alone.
+        # Exporting would send this account's API key wherever that variable points.
         return (
             "OTEL_EXPORTER_OTLP_* is set, so this run leaves your OpenTelemetry "
             "configuration alone; unset it to trace into a use case instead"
         )
     if not (resolve_api_key_from_env() and resolve_otel_traces_endpoint_from_env()):
-        # Checked before any lookup, so a run that cannot export never creates a use
-        # case it would have no way to send spans to.
+        # Before any lookup, so a run that cannot export never creates a use case.
         return "DataRobot endpoint and credentials did not resolve"
     return ""
-
-
-def _entity(use_case_id: str) -> str:
-    return f"{EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX}{use_case_id}"
-
-
-def _use_case_id_from_env() -> str:
-    # DATAROBOT_DEFAULT_USE_CASE is what the app framework calls the same thing.
-    return (
-        os.getenv("DATAROBOT_USE_CASE_ID", "").strip()
-        or os.getenv("DATAROBOT_DEFAULT_USE_CASE", "").strip()
-    )
 
 
 def _use_case_id_by_name(default_name: str) -> str:

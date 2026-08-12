@@ -90,7 +90,7 @@ def test_instrument_never_bootstraps_outside_a_hosted_runtime(monkeypatch) -> No
     instrument()
 
     assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
-    assert datarobot_otel.datarobot_otel_provider_installed() is False
+    assert datarobot_otel.datarobot_otel_entity_id() == ""
 
 
 def test_instrument_installs_nothing_without_export_env() -> None:
@@ -99,4 +99,4 @@ def test_instrument_installs_nothing_without_export_env() -> None:
     instrument()
 
     assert not isinstance(trace.get_tracer_provider(), TracerProvider)
-    assert datarobot_otel.datarobot_otel_provider_installed() is False
+    assert datarobot_otel.datarobot_otel_entity_id() == ""

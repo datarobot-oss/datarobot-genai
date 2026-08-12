@@ -80,7 +80,7 @@ All of these are idempotent — repeat calls are no-ops — and safe to keep in 
 
 ## Required environment
 
-The export endpoint and auth headers are configured through the standard OpenTelemetry env vars — this is the **primary** mechanism, and in practice every environment (deployments, notebooks, local, CI) relies on it. They say *where* to export; what decides *whether* the SDK bootstrap runs is the caveat below. Both span paths (the NAT `datarobot_otelcollector` exporter and the `instrument()` SDK bootstrap) read them first.
+The export endpoint and auth headers are configured through the standard OpenTelemetry env vars — this is the **primary** mechanism, and in practice every environment (deployments, notebooks, local, CI) relies on it. Both span paths (the NAT `datarobot_otelcollector` exporter and the `instrument()` SDK bootstrap) read them first.
 
 | Variable | Description |
 |---|---|
@@ -97,26 +97,23 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 
 Two caveats regardless of which path supplies the endpoint/headers:
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload only. A local run opts in through `trace_to_use_case()` (see below); no environment variable switches it on.
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload; a local run opts in with `trace_to_use_case()` (below).
 - Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
 
 ## Local tracing
 
-A local run has no deployment or workload to attribute spans to, so it names a use case, which the
-ingest knows as an `experiment_container`:
+A local run has no deployment or workload to attribute spans to, so it names a use case instead:
 
 ```python
 from datarobot_genai.core.telemetry.use_case import trace_to_use_case
 
-print(trace_to_use_case("My local runs"))  # reuses or creates that use case
+use_case_id = trace_to_use_case("My local runs")  # reuses or creates that use case
 ```
 
-It picks the use case, installs the exporter, and reports where spans went; pass `use_case_id=` or set
-`DATAROBOT_USE_CASE_ID` to choose one. Also call your framework's `instrument()` for framework spans.
-It declines, rather than overriding, when the process is already pointed somewhere: inside a
-deployment or workload, or with an `OTEL_EXPORTER_OTLP_*` of your own, which must never be handed a
-DataRobot API key.
-View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
+Pass `use_case_id=` or set `DATAROBOT_USE_CASE_ID` to pick one, and call your framework's
+`instrument()` for framework spans. It returns `""` and logs why when spans are not going to a use
+case, such as inside a deployment or with an `OTEL_EXPORTER_OTLP_*` of your own. View them with the
+[`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
 
 ```bash
 dr xp --entity-id <use-case-id>

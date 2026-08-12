@@ -174,31 +174,23 @@ class TestHeaderResolvers:
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.resolve_datarobot_headers_from_env() is None
 
-    def test_headers_for_a_caller_supplied_entity(self, clean_env):
-        # How a local run identifies itself: as an argument, not an env var.
-        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        headers = datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123")
-        assert headers == {
-            "X-DataRobot-Api-Key": "tok",
-            "X-DataRobot-Entity-Id": "experiment_container-uc123",
-        }
-
-    def test_the_environment_wins_over_a_caller_supplied_entity(self, clean_env):
-        # A deployment id must outrank a use case a caller asks for, or a helper called
-        # from code that also runs deployed would redirect that deployment's traces.
+    def test_a_caller_supplied_entity_never_outranks_the_environment(self, clean_env):
+        # A deployment id must beat a use case a caller asks for, or a helper called from
+        # code that also runs deployed would redirect that deployment's traces.
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        headers = datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123")
+        headers = (
+            datarobot_otel.resolve_datarobot_headers_from_env()
+            or datarobot_otel._headers_for_entity("experiment_container-uc123")
+        )
         assert headers["X-DataRobot-Entity-Id"] == "deployment-abc123"
 
-    def test_no_api_key_for_a_use_case_pointed_at_another_collector(self, clean_env):
-        # A local run naming a use case, plus an endpoint of the caller's own: deriving
-        # headers would post this account's API key to a host DataRobot never named.
+    def test_no_api_key_for_a_caller_pointed_at_another_collector(self, clean_env):
+        # A run naming itself, plus an endpoint of its own: deriving headers would post
+        # this account's API key to a host DataRobot never named.
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
         clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-        assert (
-            datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123") is None
-        )
+        assert datarobot_otel._headers_for_entity("experiment_container-uc123") is None
 
     def test_a_deployment_still_reaches_its_own_collector(self, clean_env):
         # The guard above must not touch a hosted runtime: a deployment pointed at an
@@ -240,16 +232,6 @@ class TestHeaderResolvers:
         clean_env.setenv("OTEL_EXPORTER_OTLP_HEADERS", "nonsense")
         assert not datarobot_otel.resolve_datarobot_headers_from_env()
 
-    def test_entity_id_read_back_from_lowercase_headers(self, clean_env):
-        # The dragent CLI and custom applications write these names lowercase, and
-        # callers read the entity back to report where spans are going.
-        clean_env.setenv(
-            "OTEL_EXPORTER_OTLP_HEADERS",
-            "x-datarobot-api-key=k,x-datarobot-entity-id=experiment_container-uc1",
-        )
-        headers = datarobot_otel.resolve_datarobot_headers_from_env() or {}
-        assert datarobot_otel.resolve_entity_id_from_headers(headers) == "experiment_container-uc1"
-
     def test_headers_value_with_equals_preserved(self, clean_env):
         # A header value can legitimately contain '=' (e.g. base64 padding or
         # a token with '='). Splitting on the first '=' only must keep the
@@ -279,6 +261,14 @@ class TestBootstrapOtelProvider:
 
     def test_skips_when_api_key_only(self, clean_env):
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
+        assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
+
+    def test_skips_when_nothing_names_an_entity(self, clean_env):
+        # The local-dev shape: full credentials, but no deployment, workload, or caller
+        # naming itself. Exporting here would attribute spans to nothing.
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
 
@@ -421,18 +411,18 @@ class TestBootstrapOtelProvider:
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is provider_first
 
-    def test_provider_installed_reports_process_state(self, clean_env):
-        # Unlike the bootstrap's return value, which reports what one call did,
-        # this stays True for the process, which is what a caller needs to know before
-        # relying on its spans reaching DataRobot.
-        assert datarobot_otel.datarobot_otel_provider_installed() is False
+    def test_entity_id_reports_process_state(self, clean_env):
+        # Unlike the bootstrap's return value, which reports what one call did, this
+        # stays set for the process: what a caller needs before claiming its spans
+        # reach a given entity.
+        assert datarobot_otel.datarobot_otel_entity_id() == ""
 
         self._set_full_env(clean_env)
         datarobot_otel.bootstrap_otel_provider_for_datarobot()
-        assert datarobot_otel.datarobot_otel_provider_installed() is True
+        assert datarobot_otel.datarobot_otel_entity_id() == "deployment-abc123"
 
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
-        assert datarobot_otel.datarobot_otel_provider_installed() is True
+        assert datarobot_otel.datarobot_otel_entity_id() == "deployment-abc123"
 
     def test_attaches_processor_to_existing_sdk_provider(self, clean_env, monkeypatch):
         # Simulate a host that set up its own SDK provider before handing control
