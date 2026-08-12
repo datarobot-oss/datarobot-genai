@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 import pytest
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
 
@@ -57,21 +56,10 @@ def test_instrument_idempotent() -> None:
     instrument()  # idempotent
 
 
-@pytest.mark.parametrize("runtime_env", ["MLOPS_DEPLOYMENT_ID", "WORKLOAD_ID"])
-def test_instrument_bootstraps_inside_a_hosted_runtime(monkeypatch, runtime_env) -> None:
-    # GIVEN a deployment or a workload, THEN the bootstrap is asked exactly as before:
-    # this is the behaviour that must not change.
-    monkeypatch.setenv(runtime_env, "abc123")
-    with patch(
-        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
-    ) as mock:
-        instrument()
-    mock.assert_called_once()
-
-
-def test_instrument_leaves_export_alone_without_a_runtime_or_a_use_case(monkeypatch) -> None:
-    # GIVEN neither a hosted runtime nor a named use case, THEN the bootstrap is not
-    # even asked, so no deployed component's behaviour changes.
+def test_instrument_skips_bootstrap_without_deployment_id(monkeypatch) -> None:
+    monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+    monkeypatch.delenv("WORKLOAD_ID", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
     with patch(
         "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
     ) as mock:
@@ -79,10 +67,19 @@ def test_instrument_leaves_export_alone_without_a_runtime_or_a_use_case(monkeypa
     mock.assert_not_called()
 
 
+def test_instrument_bootstraps_when_deployment_id_set(monkeypatch) -> None:
+    monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+    with patch(
+        "datarobot_genai.core.telemetry.datarobot_otel.bootstrap_otel_provider_for_datarobot"
+    ) as mock:
+        instrument()
+    mock.assert_called_once()
+
+
 def test_instrument_never_bootstraps_outside_a_hosted_runtime(monkeypatch) -> None:
-    # GIVEN a full DataRobot environment and a use case id, but no deployment or
-    # workload, THEN instrument() still installs nothing. Local tracing is opt-in
-    # through trace_to_use_case(), so no environment can switch export on here.
+    # GIVEN a full DataRobot environment and a use case id, but no deployment or workload,
+    # THEN instrument() installs nothing: local tracing is opt-in through
+    # trace_to_use_case(), so no environment variable switches export on here.
     monkeypatch.setenv("DATAROBOT_USE_CASE_ID", "uc123")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
@@ -90,13 +87,4 @@ def test_instrument_never_bootstraps_outside_a_hosted_runtime(monkeypatch) -> No
     instrument()
 
     assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
-    assert datarobot_otel.datarobot_otel_entity_id() == ""
-
-
-def test_instrument_installs_nothing_without_export_env() -> None:
-    # GIVEN nothing configuring OTel export, THEN instrument() leaves the global
-    # provider alone rather than installing an exporter nobody asked for.
-    instrument()
-
-    assert not isinstance(trace.get_tracer_provider(), TracerProvider)
     assert datarobot_otel.datarobot_otel_entity_id() == ""

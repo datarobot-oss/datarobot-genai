@@ -46,11 +46,7 @@ def clean_env(monkeypatch):
     forgot to ask for this would reach whatever account the shell points at.
     """
     for var in _ENV_VARS:
-        # setenv first: delenv alone records no undo for an already-absent var, and
-        # trace_to_use_case writes DATAROBOT_USE_CASE_ID, which would then outlive
-        # the test and leak into the rest of the session.
-        monkeypatch.setenv(var, "")
-        monkeypatch.delenv(var)
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)

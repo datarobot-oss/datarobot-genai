@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
-# The entity the installed processor exports to, kept for callers that report it.
+# The entity the installed processor exports to.
 _BOOTSTRAP_ENTITY: dict[str, str] = {"id": ""}
 
 # The DataRobot OTel ingest expects entity ids (and deployment-derived service
@@ -78,8 +78,8 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
-            # A trailing comma, say. Raising here would take down agent startup.
-            # The entry is never logged: a bare token is a plausible way to get here.
+            # A trailing comma, say. Raising would take down agent startup, and the entry
+            # is never logged because a bare token is a plausible way to get here.
             if "=" not in header:
                 logger.warning("Ignoring a malformed OTEL_EXPORTER_OTLP_HEADERS entry")
                 continue

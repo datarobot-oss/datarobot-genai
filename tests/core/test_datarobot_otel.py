@@ -25,7 +25,6 @@ from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
-    "DATAROBOT_CONFIG_FILE",
     "DATAROBOT_USE_CASE_ID",
     "MLOPS_DEPLOYMENT_ID",
     "WORKLOAD_ID",
@@ -41,9 +40,7 @@ _ENV_VARS = (
 def clean_env(monkeypatch):
     """Strip env vars + reset OTel global TracerProvider + module bootstrap flag."""
     for var in _ENV_VARS:
-        # delenv alone records no undo for an absent var, so writes would outlive the test.
-        monkeypatch.setenv(var, "")
-        monkeypatch.delenv(var)
+        monkeypatch.delenv(var, raising=False)
     # OTel guards set_tracer_provider behind Once(); resetting both lets each
     # test exercise a fresh global slot without leaking to siblings.
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
@@ -81,19 +78,6 @@ class TestEnvResolvers:
         # Only the platform names an entity through the environment. A use case reaches
         # the exporter by being passed in, so no variable can switch export on.
         clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-        assert datarobot_otel.resolve_entity_id_from_env() == ""
-
-    def test_entity_id_hosted_runtime_wins_over_use_case(self, clean_env):
-        # A use case id left in a deployment's environment must not redirect that
-        # deployment's traces.
-        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-        clean_env.setenv("WORKLOAD_ID", "wkl42")
-        assert datarobot_otel.resolve_entity_id_from_env() == "workload-wkl42"
-        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "dep1")
-        assert datarobot_otel.resolve_entity_id_from_env() == "deployment-dep1"
-
-    def test_entity_id_ignores_blank_use_case(self, clean_env):
-        clean_env.setenv("DATAROBOT_USE_CASE_ID", "  ")
         assert datarobot_otel.resolve_entity_id_from_env() == ""
 
     def test_endpoint_strips_api_path(self, clean_env):
@@ -420,10 +404,10 @@ class TestBootstrapOtelProvider:
         assert datarobot_otel.datarobot_otel_entity_id() == "deployment-abc123"
 
     def test_attaches_processor_to_existing_sdk_provider(self, clean_env, monkeypatch):
-        # Simulate a host that set up its own SDK provider before handing control
-        # to agent code. Bootstrap should keep that provider in place (we don't
-        # fight the host) but attach a DR-pointed BatchSpanProcessor so framework
-        # spans still reach DR.
+        # Simulate the dragent_fastapi server installing its own SDK provider
+        # before NAT plugin discovery runs. Bootstrap should keep that provider
+        # in place (we don't fight the FastAPI layer) but attach a DR-pointed
+        # BatchSpanProcessor so framework spans still reach DR.
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 

@@ -14,8 +14,7 @@
 
 """One call to attribute a local run's spans to a DataRobot use case.
 
-The platform tells a deployment or workload which entity it is. A notebook or a
-script has to name one itself, and a use case is the natural home for local runs.
+The platform names a deployment or workload; a notebook or script has to name itself.
 """
 
 from __future__ import annotations
@@ -39,13 +38,9 @@ ENTITY_PREFIX = "experiment_container-"
 def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
     """Export this process's spans to a DataRobot use case, and return its id.
 
-    Takes ``use_case_id``, else ``DATAROBOT_USE_CASE_ID`` or
-    ``DATAROBOT_DEFAULT_USE_CASE``, else the use case named ``default_name``, created on
-    first use.
-
-    Returns "" when spans are not going to a use case, having logged why: a deployment
-    or workload is named by the platform, and an ``OTEL_EXPORTER_OTLP_*`` of your own is
-    left alone.
+    Takes ``use_case_id``, else ``DATAROBOT_USE_CASE_ID`` or ``DATAROBOT_DEFAULT_USE_CASE``,
+    else the use case named ``default_name``, created on first use. Returns "" with the
+    reason logged when spans are going elsewhere or nowhere.
     """
     if reason := _skip_reason():
         logger.warning("Not tracing to a use case: %s", reason)
@@ -67,8 +62,7 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
         bootstrap_otel_provider_for_datarobot(f"{ENTITY_PREFIX}{selected}")
 
     instrument()
-    # Read back what was installed, so a repeat call reports where spans really go
-    # rather than what this call asked for.
+    # Read back what was installed, so a repeat call reports where spans really go.
     entity_id = datarobot_otel_entity_id()
     if not entity_id.startswith(ENTITY_PREFIX):
         logger.warning("Not tracing to a use case; entity is %s", entity_id or "unset")
@@ -96,7 +90,6 @@ def _skip_reason() -> str:
 
 
 def _use_case_id_by_name(default_name: str) -> str:
-    # Imported here so the DataRobot client is only needed when a lookup happens.
     import datarobot as dr
 
     # `search` matches on part of a name, so compare the full name before reusing.
