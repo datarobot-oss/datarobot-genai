@@ -5,10 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.27.8
-- `core.telemetry`: `bootstrap_otel_provider_for_datarobot()` takes an optional `entity_id`, so a run the platform never identified can name itself and export. `instrument()` is unchanged: it still bootstraps inside a deployment or workload and nowhere else. The framework, LLM, HTTP, memory and moderation spans that a local run used to drop now reach DataRobot when it opts in.
-- `core.telemetry`: new `trace_to_use_case(default_name, use_case_id="")` starts local tracing in one call: it uses the use case id you pass, or reuses one of `default_name` and creates it on first use, installs the exporter, and returns the use case id spans are going to, or `""` with the reason logged.
-- `core.telemetry`: a malformed `OTEL_EXPORTER_OTLP_HEADERS` entry (a trailing comma, say) is skipped instead of raising out of `instrument()`.
-- Added a local tracing example to the quickstart notebook and documented it in the DRAgent tracing guide: spans attach to a use case, viewable with `dr xp`.
+- `core.telemetry`: new `trace_to_use_case()` attributes a local run's spans to a DataRobot use case and returns its id, viewable with `dr xp --entity-id <id>`. Example in the quickstart notebook.
+- `core.telemetry`: a malformed `OTEL_EXPORTER_OTLP_HEADERS` entry no longer raises out of `instrument()`.
 
 ## 0.27.7
 - `drtools/workload`: synced the workload tools with the Workload API MCP server's `datarobot-workload-api` skill alignment:

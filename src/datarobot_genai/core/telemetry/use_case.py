@@ -41,7 +41,7 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
 
     Takes ``use_case_id``, else ``DATAROBOT_USE_CASE_ID`` or
     ``DATAROBOT_DEFAULT_USE_CASE``, else the use case named ``default_name``, created on
-    first use. Also call your framework's ``instrument()`` for framework spans.
+    first use.
 
     Returns "" when spans are not going to a use case, having logged why: a deployment
     or workload is named by the platform, and an ``OTEL_EXPORTER_OTLP_*`` of your own is
@@ -60,7 +60,7 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
     if not datarobot_otel_entity_id() and not is_hosted_runtime():
         try:
             selected = wanted or _use_case_id_by_name(default_name)
-        except Exception as exc:  # noqa: BLE001 - reported, never raised at the caller
+        except Exception as exc:
             logger.warning("Not tracing: no use case available (%s)", exc)
             return ""
         # instrument() only bootstraps a hosted runtime, so a local run asks here.
