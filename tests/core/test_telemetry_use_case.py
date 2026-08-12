@@ -37,9 +37,13 @@ _ENV_VARS = (
 )
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    """Strip the env this reads, and reset the global provider + bootstrap flag."""
+    """Strip the env this reads, and reset the global provider + bootstrap flag.
+
+    Autouse: the function under test creates DataRobot resources, so a test that
+    forgot to ask for this would reach whatever account the shell points at.
+    """
     for var in _ENV_VARS:
         # setenv first: delenv alone records no undo for an already-absent var, and
         # trace_to_use_case writes DATAROBOT_USE_CASE_ID, which would then outlive
@@ -67,8 +71,31 @@ class TestTraceToUseCase:
 
         assert tracing.exporting
         assert tracing.entity_id == "experiment_container-uc123"
-        assert tracing.use_case_id == "uc123"
         assert "dr xp --entity-id uc123" in str(tracing)
+
+    def test_honours_a_use_case_id_already_in_the_environment(self, clean_env):
+        # GIVEN the caller exported the use case they want, THEN it is used as-is: a
+        # lookup would create a second use case and quietly export somewhere else.
+        _datarobot_env(clean_env)
+        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc-from-env")
+
+        with patch("datarobot.UseCase") as use_case_api:
+            tracing = trace_to_use_case("Quickstart")
+
+        use_case_api.list.assert_not_called()
+        use_case_api.create.assert_not_called()
+        assert tracing.entity_id == "experiment_container-uc-from-env"
+
+    def test_repeating_the_call_prints_the_same_command(self, clean_env):
+        # Re-running a notebook cell is the most common thing a reader does, and the
+        # `dr xp` command is the only output that matters.
+        _datarobot_env(clean_env)
+
+        first = trace_to_use_case("Quickstart", use_case_id="uc123")
+        second = trace_to_use_case("Quickstart", use_case_id="uc123")
+
+        assert "dr xp --entity-id uc123" in str(first)
+        assert str(second) == str(first)
 
     def test_looks_the_use_case_up_by_name_when_none_is_given(self, clean_env):
         # GIVEN no use case id from the caller, THEN one is looked up by exact name.
@@ -81,7 +108,7 @@ class TestTraceToUseCase:
             tracing = trace_to_use_case("Quickstart")
 
         use_case_api.create.assert_not_called()
-        assert tracing.use_case_id == "uc-found"
+        assert tracing.entity_id == "experiment_container-uc-found"
 
     def test_creates_the_use_case_when_the_name_is_not_found(self, clean_env):
         _datarobot_env(clean_env)
@@ -92,7 +119,7 @@ class TestTraceToUseCase:
             tracing = trace_to_use_case("Quickstart")
 
         use_case_api.create.assert_called_once_with(name="Quickstart")
-        assert tracing.use_case_id == "uc-new"
+        assert tracing.entity_id == "experiment_container-uc-new"
 
     def test_leaves_an_already_configured_environment_alone(self, clean_env):
         # GIVEN OTLP headers naming another entity (a codespace, a custom
@@ -175,11 +202,13 @@ class TestTraceToUseCase:
         assert "OTEL_SDK_DISABLED" in str(tracing)
 
     def test_reports_missing_credentials_instead_of_exporting(self, clean_env):
-        # GIVEN a use case but no endpoint, THEN it reports rather than claiming
-        # success. The id is passed in so no DataRobot lookup is attempted: this
-        # suite must not reach the network.
-        tracing = trace_to_use_case("Quickstart", use_case_id="uc123")
+        # GIVEN no endpoint, THEN it reports rather than claiming success, and creates
+        # nothing: a use case it could never send spans to is just account litter.
+        with patch("datarobot.UseCase") as use_case_api:
+            tracing = trace_to_use_case("Quickstart")
 
+        use_case_api.list.assert_not_called()
+        use_case_api.create.assert_not_called()
         assert not tracing.exporting
         assert "did not resolve" in str(tracing)
 

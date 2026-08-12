@@ -111,9 +111,10 @@ from datarobot_genai.core.telemetry.use_case import trace_to_use_case
 print(trace_to_use_case("My local runs"))  # reuses or creates that use case
 ```
 
-It picks the use case, calls `instrument()`, and reports where spans went; pass `use_case_id=` to
-choose one. Setting `DATAROBOT_USE_CASE_ID` yourself and calling `instrument()` does the same thing.
-`OTEL_EXPORTER_OTLP_HEADERS` still wins over both, so neither overrides what a runtime already set.
+It picks the use case, calls `instrument()`, and reports where spans went; pass `use_case_id=` or set
+`DATAROBOT_USE_CASE_ID` to choose one. Also call your framework's `instrument()` for framework spans.
+`OTEL_EXPORTER_OTLP_*` wins over both, so neither overrides what a runtime already set, and a local
+run pointed at a collector of its own is left alone rather than handed a DataRobot API key.
 View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
 
 ```bash

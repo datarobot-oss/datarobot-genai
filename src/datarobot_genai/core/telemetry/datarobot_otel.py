@@ -82,14 +82,22 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers: dict[str, str] = {}
         for header in headers_list:
             # A trailing comma, say. Raising here would take down agent startup.
+            # The entry is never logged: a bare token is a plausible way to get here.
             if "=" not in header:
-                logger.warning("Ignoring malformed OTEL_EXPORTER_OTLP_HEADERS entry: %r", header)
+                logger.warning("Ignoring a malformed OTEL_EXPORTER_OTLP_HEADERS entry")
                 continue
             key, value = header.split("=", 1)
             headers[key.strip()] = value.strip()
         return headers
     api_key = resolve_api_key_from_env()
     entity_id = resolve_entity_id_from_env()
+    if entity_id.startswith(EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX) and os.getenv(
+        "OTEL_EXPORTER_OTLP_ENDPOINT"
+    ):
+        # A local run that named a use case but points at a collector of its own:
+        # deriving headers here would post this account's API key to a host DataRobot
+        # never named. A runtime that wants both sets the headers too, handled above.
+        return None
     if api_key and entity_id:
         return {
             "X-DataRobot-Api-Key": api_key,

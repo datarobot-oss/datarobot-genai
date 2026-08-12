@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.27.8
 - `core.telemetry`: `instrument()` also installs the DataRobot span exporter when a local run names a use case through `DATAROBOT_USE_CASE_ID`, resolved as the `experiment_container-<id>` entity id. Deployments and workloads keep deciding as they did, and no other environment starts exporting. The framework, LLM, HTTP, memory and moderation spans that a local run used to drop now reach DataRobot.
 - `core.telemetry`: new `trace_to_use_case(default_name, use_case_id="")` starts local tracing in one call: it uses the use case id you pass, or reuses one of `default_name` and creates it on first use, calls `instrument()`, and reports where spans actually went rather than raising.
-- `core.telemetry`: a malformed `OTEL_EXPORTER_OTLP_HEADERS` entry (a trailing comma, say) is skipped instead of raising out of `instrument()` at `register.py` import.
+- `core.telemetry`: a malformed `OTEL_EXPORTER_OTLP_HEADERS` entry (a trailing comma, say) is skipped instead of raising out of `instrument()` at import time.
 - Added a local tracing example to the quickstart notebook and documented it in the DRAgent tracing guide: spans attach to a use case, viewable with `dr xp`.
 
 ## 0.27.7
