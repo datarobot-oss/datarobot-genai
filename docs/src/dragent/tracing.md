@@ -92,12 +92,12 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 | Fallback variable | Used for | Missing → |
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | `X-DataRobot-Api-Key` header | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID`, `WORKLOAD_ID` or `DATAROBOT_USE_CASE_ID` | `X-DataRobot-Entity-Id`, auto-prefixed `deployment-`, `workload-` or `experiment_container-`. First one set wins, in that order. | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID` | `X-DataRobot-Entity-Id` (auto-prefixed `deployment-<id>`) | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
 Two caveats regardless of which path supplies the endpoint/headers:
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload, or when `DATAROBOT_USE_CASE_ID` names a use case for a local run (see below).
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload only. A local run opts in through `trace_to_use_case()` (see below); no environment variable switches it on.
 - Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
 
 ## Local tracing
@@ -111,10 +111,11 @@ from datarobot_genai.core.telemetry.use_case import trace_to_use_case
 print(trace_to_use_case("My local runs"))  # reuses or creates that use case
 ```
 
-It picks the use case, calls `instrument()`, and reports where spans went; pass `use_case_id=` or set
+It picks the use case, installs the exporter, and reports where spans went; pass `use_case_id=` or set
 `DATAROBOT_USE_CASE_ID` to choose one. Also call your framework's `instrument()` for framework spans.
-`OTEL_EXPORTER_OTLP_*` wins over both, so neither overrides what a runtime already set, and a local
-run pointed at a collector of its own is left alone rather than handed a DataRobot API key.
+It declines, rather than overriding, when the process is already pointed somewhere: inside a
+deployment or workload, or with an `OTEL_EXPORTER_OTLP_*` of your own, which must never be handed a
+DataRobot API key.
 View the traces with the [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
 
 ```bash

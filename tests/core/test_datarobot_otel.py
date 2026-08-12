@@ -48,6 +48,7 @@ def clean_env(monkeypatch):
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
+    monkeypatch.setitem(datarobot_otel._BOOTSTRAP_ENTITY, "id", "")
     return monkeypatch
 
 
@@ -75,11 +76,11 @@ class TestEnvResolvers:
         clean_env.setenv("WORKLOAD_ID", "wkl2")
         assert datarobot_otel.resolve_entity_id_from_env() == "deployment-dep1"
 
-    def test_entity_id_use_case(self, clean_env):
-        # A local run has no deployment or workload, so it names a use case, which
-        # the ingest addresses as an experiment container.
+    def test_entity_id_ignores_a_use_case_in_the_environment(self, clean_env):
+        # Only the platform names an entity through the environment. A use case reaches
+        # the exporter by being passed in, so no variable can switch export on.
         clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-        assert datarobot_otel.resolve_entity_id_from_env() == "experiment_container-uc123"
+        assert datarobot_otel.resolve_entity_id_from_env() == ""
 
     def test_entity_id_hosted_runtime_wins_over_use_case(self, clean_env):
         # A use case id left in a deployment's environment must not redirect that
@@ -173,21 +174,31 @@ class TestHeaderResolvers:
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.resolve_datarobot_headers_from_env() is None
 
-    def test_headers_from_use_case_env(self, clean_env):
+    def test_headers_for_a_caller_supplied_entity(self, clean_env):
+        # How a local run identifies itself: as an argument, not an env var.
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+        headers = datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123")
+        assert headers == {
             "X-DataRobot-Api-Key": "tok",
             "X-DataRobot-Entity-Id": "experiment_container-uc123",
         }
+
+    def test_the_environment_wins_over_a_caller_supplied_entity(self, clean_env):
+        # A deployment id must outrank a use case a caller asks for, or a helper called
+        # from code that also runs deployed would redirect that deployment's traces.
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        headers = datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123")
+        assert headers["X-DataRobot-Entity-Id"] == "deployment-abc123"
 
     def test_no_api_key_for_a_use_case_pointed_at_another_collector(self, clean_env):
         # A local run naming a use case, plus an endpoint of the caller's own: deriving
         # headers would post this account's API key to a host DataRobot never named.
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc123")
         clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-        assert datarobot_otel.resolve_datarobot_headers_from_env() is None
+        assert (
+            datarobot_otel.resolve_datarobot_headers_from_env("experiment_container-uc123") is None
+        )
 
     def test_a_deployment_still_reaches_its_own_collector(self, clean_env):
         # The guard above must not touch a hosted runtime: a deployment pointed at an
@@ -356,14 +367,14 @@ class TestBootstrapOtelProvider:
         assert provider.resource.attributes["service.name"] == "my-pinned-service"
 
     @pytest.mark.parametrize(
-        ("entity_var", "entity_value", "expected_entity_id"),
+        ("entity_env", "entity_arg", "expected_entity_id"),
         [
-            ("MLOPS_DEPLOYMENT_ID", "abc123", "deployment-abc123"),
-            ("DATAROBOT_USE_CASE_ID", "uc123", "experiment_container-uc123"),
+            ({"MLOPS_DEPLOYMENT_ID": "abc123"}, "", "deployment-abc123"),
+            ({}, "experiment_container-uc123", "experiment_container-uc123"),
         ],
     )
     def test_exporter_endpoint_and_headers(
-        self, clean_env, monkeypatch, entity_var, entity_value, expected_entity_id
+        self, clean_env, monkeypatch, entity_env, entity_arg, expected_entity_id
     ):
         # Capture the OTLPSpanExporter constructor args so we can assert on
         # the endpoint + DR auth headers without making a real HTTP call.
@@ -390,8 +401,9 @@ class TestBootstrapOtelProvider:
 
         clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-        clean_env.setenv(entity_var, entity_value)
-        datarobot_otel.bootstrap_otel_provider_for_datarobot()
+        for var, value in entity_env.items():
+            clean_env.setenv(var, value)
+        datarobot_otel.bootstrap_otel_provider_for_datarobot(entity_arg)
 
         # The entity id is what routes spans to an entity, so assert it where it is
         # actually handed over: a local run's use case is as load-bearing as a

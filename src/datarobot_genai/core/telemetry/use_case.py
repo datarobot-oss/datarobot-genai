@@ -29,10 +29,10 @@ from dataclasses import dataclass
 from datarobot_genai.core.runtime import is_hosted_runtime
 from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.core.telemetry.datarobot_otel import EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX
+from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
+from datarobot_genai.core.telemetry.datarobot_otel import datarobot_otel_entity_id
 from datarobot_genai.core.telemetry.datarobot_otel import datarobot_otel_provider_installed
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_api_key_from_env
-from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
-from datarobot_genai.core.telemetry.datarobot_otel import resolve_entity_id_from_headers
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_otel_traces_endpoint_from_env
 
 logger = logging.getLogger(__name__)
@@ -89,16 +89,21 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> UseCaseTracin
     already_tracing = datarobot_otel_provider_installed()
     if not already_tracing and not is_hosted_runtime():
         try:
-            os.environ["DATAROBOT_USE_CASE_ID"] = wanted or _use_case_id_by_name(default_name)
+            selected = wanted or _use_case_id_by_name(default_name)
         except Exception as exc:  # noqa: BLE001 - reported, never raised at the caller
             logger.info("Could not resolve a use case for tracing: %s", exc)
             return UseCaseTracing(reason=f"no use case available ({exc})")
+        # So anything else in this process, and anything it spawns, agrees on the use case.
+        os.environ["DATAROBOT_USE_CASE_ID"] = selected
+        # Asked for here rather than left to instrument(), which only bootstraps a hosted
+        # runtime: a local run has no platform-assigned identity, so it has to name one.
+        bootstrap_otel_provider_for_datarobot(_entity(selected))
 
     instrument()
     if not datarobot_otel_provider_installed():
         return UseCaseTracing(reason="the OpenTelemetry provider could not be installed")
 
-    entity_id = resolve_entity_id_from_headers(resolve_datarobot_headers_from_env() or {})
+    entity_id = datarobot_otel_entity_id()
     if already_tracing and wanted and entity_id != _entity(wanted):
         # The exporter was built with the earlier entity and keeps it for the life of
         # the process, so a new id cannot take effect until the process restarts.

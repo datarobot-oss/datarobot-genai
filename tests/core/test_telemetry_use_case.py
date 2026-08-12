@@ -53,6 +53,7 @@ def clean_env(monkeypatch):
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
+    monkeypatch.setitem(datarobot_otel._BOOTSTRAP_ENTITY, "id", "")
     return monkeypatch
 
 

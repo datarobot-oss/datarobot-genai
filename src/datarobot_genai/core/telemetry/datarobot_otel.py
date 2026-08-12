@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
+# The entity the installed processor exports to, kept for callers that report it.
+_BOOTSTRAP_ENTITY: dict[str, str] = {"id": ""}
 
 # The DataRobot OTel ingest expects entity ids (and deployment-derived service
 # names) in the ``deployment-<id>`` or ``workload-<id>`` shape. Single source
@@ -69,13 +71,10 @@ def resolve_entity_id_from_env() -> str:
         return f"{DEPLOYMENT_ENTITY_ID_PREFIX}{deployment_id}"
     if workload_id := get_workload_id():
         return f"{WORKLOAD_ENTITY_ID_PREFIX}{workload_id}"
-    # Nothing platform-assigned left, so a run that named a use case is attributed to it.
-    if use_case_id := os.getenv("DATAROBOT_USE_CASE_ID", "").strip():
-        return f"{EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX}{use_case_id}"
     return ""
 
 
-def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
+def resolve_datarobot_headers_from_env(entity_id: str = "") -> dict[str, str] | None:
     # if OTEL_EXPORTER_OTLP_HEADERS are already set: do not override them
     if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
@@ -90,7 +89,10 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
             headers[key.strip()] = value.strip()
         return headers
     api_key = resolve_api_key_from_env()
-    entity_id = resolve_entity_id_from_env()
+    # What the platform assigned always wins. ``entity_id`` is a caller naming itself
+    # (see core.telemetry.use_case), which only a run the platform never identified can
+    # do, so no argument can redirect a deployment's or workload's traces.
+    entity_id = resolve_entity_id_from_env() or entity_id
     if entity_id.startswith(EXPERIMENT_CONTAINER_ENTITY_ID_PREFIX) and os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT"
     ):
@@ -154,7 +156,7 @@ def _resolve_service_name() -> str:
     return "datarobot-agent"
 
 
-def bootstrap_otel_provider_for_datarobot() -> bool:
+def bootstrap_otel_provider_for_datarobot(entity_id: str = "") -> bool:
     """Ensure framework auto-instrumentor spans reach the DataRobot OTel ingest.
 
     Sibling to (not replacing) the NAT-side ``datarobot_otelcollector`` exporter:
@@ -177,7 +179,8 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
       resource attributes, so the merge is safe.
 
     Entity identity is derived from ``MLOPS_DEPLOYMENT_ID`` or ``WORKLOAD_ID``
-    (deployment takes precedence).
+    (deployment takes precedence), or taken from ``entity_id`` when a caller
+    names itself -- a local run has no platform-assigned identity to derive.
 
     Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
@@ -192,7 +195,7 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     if _BOOTSTRAP_STATE["installed"]:
         return False
 
-    headers = resolve_datarobot_headers_from_env()
+    headers = resolve_datarobot_headers_from_env(entity_id)
     endpoint = resolve_otel_traces_endpoint_from_env()
     if not headers or not endpoint:
         logger.info(
@@ -266,11 +269,12 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         return False
 
     _BOOTSTRAP_STATE["installed"] = True
+    _BOOTSTRAP_ENTITY["id"] = resolve_entity_id_from_headers(headers)
     logger.info(
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        resolve_entity_id_from_headers(headers),
+        _BOOTSTRAP_ENTITY["id"],
     )
     return True
 
@@ -278,6 +282,11 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
 def datarobot_otel_provider_installed() -> bool:
     """Whether the DataRobot span processor is active in this process."""
     return _BOOTSTRAP_STATE["installed"]
+
+
+def datarobot_otel_entity_id() -> str:
+    """Return the entity the installed span processor exports to, else an empty string."""
+    return _BOOTSTRAP_ENTITY["id"]
 
 
 def resolve_entity_id_from_headers(headers: dict[str, str]) -> str:
