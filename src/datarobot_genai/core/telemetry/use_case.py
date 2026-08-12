@@ -54,7 +54,7 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
     )
     if not datarobot_otel_entity_id() and not is_hosted_runtime():
         try:
-            selected = wanted or _use_case_id_by_name(default_name)
+            selected = _resolve_use_case_id(wanted, default_name)
         except Exception as exc:
             logger.warning("Not tracing: no use case available (%s)", exc)
             return ""
@@ -89,9 +89,12 @@ def _skip_reason() -> str:
     return ""
 
 
-def _use_case_id_by_name(default_name: str) -> str:
+def _resolve_use_case_id(wanted: str, default_name: str) -> str:
     import datarobot as dr
 
+    if wanted:
+        # Confirm it exists, or `dr xp` is handed an id that resolves to nothing.
+        return str(dr.UseCase.get(wanted).id)
     # `search` matches on part of a name, so compare the full name before reusing.
     existing = [
         use_case

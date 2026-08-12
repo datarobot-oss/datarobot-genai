@@ -65,8 +65,23 @@ class TestTraceToUseCase:
         # that use case and its id comes back for the caller to display.
         _datarobot_env(clean_env)
 
-        assert trace_to_use_case("Quickstart", use_case_id="uc123") == "uc123"
+        with patch("datarobot.UseCase") as use_case_api:
+            use_case_api.get.return_value = type("UseCase", (), {"id": "uc123"})()
+            assert trace_to_use_case("Quickstart", use_case_id="uc123") == "uc123"
+
         assert datarobot_otel.datarobot_otel_entity_id() == "experiment_container-uc123"
+
+    def test_an_unknown_use_case_id_is_not_reported_as_working(self, clean_env):
+        # A typo in the id would otherwise print a confident `dr xp` command for an
+        # entity the CLI then rejects as not found.
+        _datarobot_env(clean_env)
+
+        with patch("datarobot.UseCase") as use_case_api:
+            use_case_api.get.side_effect = RuntimeError("404 not found")
+            assert trace_to_use_case("Quickstart", use_case_id="nope") == ""
+
+        use_case_api.create.assert_not_called()
+        assert datarobot_otel.datarobot_otel_entity_id() == ""
 
     def test_honours_a_use_case_id_already_in_the_environment(self, clean_env):
         # GIVEN the caller exported the use case they want, THEN it is used as-is: a
@@ -75,6 +90,7 @@ class TestTraceToUseCase:
         clean_env.setenv("DATAROBOT_USE_CASE_ID", "uc-from-env")
 
         with patch("datarobot.UseCase") as use_case_api:
+            use_case_api.get.return_value = type("UseCase", (), {"id": "uc-from-env"})()
             assert trace_to_use_case("Quickstart") == "uc-from-env"
 
         use_case_api.list.assert_not_called()
@@ -85,8 +101,10 @@ class TestTraceToUseCase:
         # asking for another use case must report the first, not the one it asked for.
         _datarobot_env(clean_env)
 
-        assert trace_to_use_case("Quickstart", use_case_id="uc-first") == "uc-first"
-        assert trace_to_use_case("Quickstart", use_case_id="uc-second") == "uc-first"
+        with patch("datarobot.UseCase") as use_case_api:
+            use_case_api.get.return_value = type("UseCase", (), {"id": "uc-first"})()
+            assert trace_to_use_case("Quickstart", use_case_id="uc-first") == "uc-first"
+            assert trace_to_use_case("Quickstart", use_case_id="uc-second") == "uc-first"
 
     def test_looks_the_use_case_up_by_name_when_none_is_given(self, clean_env):
         # GIVEN no use case id from the caller, THEN one is looked up by exact name.
