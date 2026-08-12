@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-import yaml
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD,
@@ -39,88 +38,39 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     XAATokenRequestParams,
 )
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import split_list_setting
+
+TRUSTED_ISSUER = "https://foo/bar/issuer"
+EXCHANGE_AUDIENCE = "https://foo/bar/token_exchange_audience"
+TOKEN_URL = "https://foo/bar/token"
+TOKEN_AUDIENCE = "https://foo/bar/token_request_audience"
+RESOURCE_URL = "https://foo/bar/mcp_resource_server"
 
 
 @pytest.fixture
-def mock_mcp_as_resource_server_url() -> str:
-    return "https://foo/bar/mcp_resource_server"
-
-
-@pytest.fixture
-def mock_authorization_server_urls() -> list[str]:
-    return ["https://foo/bar/authorization_server"]
-
-
-@pytest.fixture
-def mock_scopes_supported() -> list[str]:
-    return ["scope"]
-
-
-@pytest.fixture
-def mock_token_endpoint_auth_method() -> str:
-    return "private_key_jwt"
-
-
-@pytest.fixture
-def mock_token_exchange_trusted_issuer() -> str:
-    return "https://foo/bar/issuer"
-
-
-@pytest.fixture
-def mock_token_exchange_audience() -> str:
-    return "https://foo/bar/token_exchange_audience"
-
-
-@pytest.fixture
-def mock_token_request_token_url() -> str:
-    return "https://foo/bar/token"
-
-
-@pytest.fixture
-def mock_token_request_audience() -> str:
-    return "https://foo/bar/token_request_audience"
-
-
-@pytest.fixture
-def mock_token_request_scopes() -> list[str]:
-    return ["scope"]
-
-
-@pytest.fixture
-def cross_application_access_in_dict(
-    mock_token_endpoint_auth_method: str,
-    mock_token_exchange_trusted_issuer: str,
-    mock_token_exchange_audience: str,
-    mock_token_request_token_url: str,
-    mock_token_request_audience: str,
-    mock_token_request_scopes: list[str],
-) -> dict[str, Any]:
+def xaa_settings() -> dict[str, Any]:
     return {
-        "token_endpoint_auth_method": mock_token_endpoint_auth_method,
-        "token_exchange": {
-            "trusted_issuer": mock_token_exchange_trusted_issuer,
-            "audience": mock_token_exchange_audience,
-        },
-        "token_request": {
-            "token_url": mock_token_request_token_url,
-            "audience": mock_token_request_audience,
-            "scopes": mock_token_request_scopes,
-        },
+        "trusted_issuer": TRUSTED_ISSUER,
+        "exchange_audience": EXCHANGE_AUDIENCE,
+        "token_url": TOKEN_URL,
+        "token_audience": TOKEN_AUDIENCE,
+        "scopes": "scope",
     }
 
 
 @pytest.fixture
-def metadata_in_dict(
-    mock_mcp_as_resource_server_url: str,
-    mock_authorization_server_urls: list[str],
-    mock_scopes_supported: list[str],
-    cross_application_access_in_dict: dict[str, Any],
-) -> dict[str, Any]:
+def cross_application_access_in_dict() -> dict[str, Any]:
     return {
-        "resource": mock_mcp_as_resource_server_url,
-        "authorization_servers": mock_authorization_server_urls,
-        "scopes_supported": mock_scopes_supported,
-        "cross_application_access": cross_application_access_in_dict,
+        "token_endpoint_auth_method": DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD,
+        "token_exchange": {
+            "trusted_issuer": TRUSTED_ISSUER,
+            "audience": EXCHANGE_AUDIENCE,
+        },
+        "token_request": {
+            "token_url": TOKEN_URL,
+            "audience": TOKEN_AUDIENCE,
+            "scopes": ["scope"],
+        },
     }
 
 
@@ -135,118 +85,181 @@ class TestBaseDataClass:
         dataclass_object = DummyDataClassInheritingBaseDataClass(1, None)
         assert dataclass_object.to_dict_without_null_attribute() == {"attribute": 1}
 
-    def test_to_yaml_string(self) -> None:
-        dataclass_object = DummyDataClassInheritingBaseDataClass(1, None)
-        assert dataclass_object.to_yaml_string() == "attribute: 1\n"
+
+class TestSplitListSetting:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, None),
+            ("", None),
+            ("   ", None),
+            (",", None),
+            ("one", ["one"]),
+            (" one , two ,", ["one", "two"]),
+        ],
+    )
+    def test_split(self, value: str | None, expected: list[str] | None) -> None:
+        assert split_list_setting(value) == expected
 
 
 class TestCrossApplicationAccessMetadata:
-    @pytest.fixture
-    def metadata_without_token_request_audience(
-        self,
-        cross_application_access_in_dict: dict[str, Any],
-    ) -> dict[str, Any]:
-        cross_application_access_in_dict["token_request"].pop("audience")
-        return cross_application_access_in_dict
-
-    def test_load_from_dict(
-        self,
-        cross_application_access_in_dict: dict[str, Any],
-        mock_token_endpoint_auth_method: str,
-        mock_token_exchange_trusted_issuer: str,
-        mock_token_exchange_audience: str,
-        mock_token_request_token_url: str,
-        mock_token_request_audience: str,
-        mock_token_request_scopes: list[str],
-    ) -> None:
-        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
+    def test_from_settings(self, xaa_settings: dict[str, Any]) -> None:
+        metadata = CrossApplicationAccessMetadata.from_settings(**xaa_settings)
 
         assert isinstance(metadata, CrossApplicationAccessMetadata)
-        assert metadata.token_endpoint_auth_method == mock_token_endpoint_auth_method
+        assert metadata.token_endpoint_auth_method == DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
         token_exchange_params = metadata.token_exchange
         assert isinstance(token_exchange_params, XAATokenExchangeParams)
-        assert token_exchange_params.trusted_issuer == mock_token_exchange_trusted_issuer
-        assert token_exchange_params.audience == mock_token_exchange_audience
+        assert token_exchange_params.trusted_issuer == TRUSTED_ISSUER
+        assert token_exchange_params.audience == EXCHANGE_AUDIENCE
         token_request_params = metadata.token_request
         assert isinstance(token_request_params, XAATokenRequestParams)
-        assert token_request_params.token_url == mock_token_request_token_url
-        assert token_request_params.audience == mock_token_request_audience
-        assert token_request_params.scopes == mock_token_request_scopes
+        assert token_request_params.token_url == TOKEN_URL
+        assert token_request_params.audience == TOKEN_AUDIENCE
+        assert token_request_params.scopes == ["scope"]
 
-    def test_load_from_dict_without_token_request_audience(
-        self,
-        metadata_without_token_request_audience: dict[str, Any],
+    def test_from_settings_without_token_request_audience(
+        self, xaa_settings: dict[str, Any]
     ) -> None:
-        metadata = CrossApplicationAccessMetadata.from_dict(metadata_without_token_request_audience)
+        xaa_settings.pop("token_audience")
 
-        assert isinstance(metadata, CrossApplicationAccessMetadata)
+        metadata = CrossApplicationAccessMetadata.from_settings(**xaa_settings)
+
+        assert metadata is not None
         assert metadata.token_request.audience is None
 
-    def test_to_yaml_string(self, cross_application_access_in_dict: dict[str, Any]) -> None:
-        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
-        assert metadata.to_yaml_string() == yaml.safe_dump(cross_application_access_in_dict)
+    def test_from_settings_without_any_setting(self) -> None:
+        assert CrossApplicationAccessMetadata.from_settings() is None
+
+    #: Maps each required ``from_settings`` argument to the variable that sets it.
+    REQUIRED_ENV_NAMES = {
+        "trusted_issuer": "MCP_XAA_TRUSTED_ISSUER",
+        "exchange_audience": "MCP_XAA_EXCHANGE_AUDIENCE",
+        "token_url": "MCP_XAA_TOKEN_URL",
+        "scopes": "MCP_XAA_SCOPES",
+    }
+
+    @pytest.mark.parametrize(
+        "omitted",
+        ["trusted_issuer", "exchange_audience", "token_url", "scopes"],
+    )
+    def test_from_settings_drops_a_partial_block_naming_what_is_missing(
+        self,
+        xaa_settings: dict[str, Any],
+        omitted: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The deploy tooling rejects this up front; here it must not 500.
+
+        The warning names exactly the variable that is missing — the fix is
+        setting that one variable, so the message should say which.
+        """
+        xaa_settings.pop(omitted)
+
+        assert CrossApplicationAccessMetadata.from_settings(**xaa_settings) is None
+        assert "Incomplete Cross-Application Access settings" in caplog.text
+        assert self.REQUIRED_ENV_NAMES[omitted] in caplog.text
+        for present, env_name in self.REQUIRED_ENV_NAMES.items():
+            if present != omitted:
+                assert env_name not in caplog.text
+
+    def test_every_missing_setting_is_named_at_once(
+        self, xaa_settings: dict[str, Any], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """One warning lists the whole gap, not one variable per restart."""
+        xaa_settings.pop("token_url")
+        xaa_settings.pop("scopes")
+
+        assert CrossApplicationAccessMetadata.from_settings(**xaa_settings) is None
+        assert "MCP_XAA_TOKEN_URL" in caplog.text
+        assert "MCP_XAA_SCOPES" in caplog.text
+        assert "MCP_XAA_TRUSTED_ISSUER" not in caplog.text
 
     def test_token_endpoint_auth_method_defaults_when_omitted(
-        self,
-        cross_application_access_in_dict: dict[str, Any],
+        self, xaa_settings: dict[str, Any]
     ) -> None:
-        cross_application_access_in_dict.pop("token_endpoint_auth_method")
+        metadata = CrossApplicationAccessMetadata.from_settings(**xaa_settings)
 
-        metadata = CrossApplicationAccessMetadata.from_dict(cross_application_access_in_dict)
-
+        assert metadata is not None
         assert metadata.token_endpoint_auth_method == DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD
         assert DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD == "private_key_jwt"
 
+    def test_token_endpoint_auth_method_is_overridable(self, xaa_settings: dict[str, Any]) -> None:
+        metadata = CrossApplicationAccessMetadata.from_settings(
+            token_endpoint_auth_method="client_secret_jwt", **xaa_settings
+        )
+
+        assert metadata is not None
+        assert metadata.token_endpoint_auth_method == "client_secret_jwt"
+
 
 class TestMCPOAuthProtectedResourceMetadataConfig:
-    def test_load_from_dict(
-        self,
-        metadata_in_dict: dict[str, Any],
-        mock_mcp_as_resource_server_url: str,
-        mock_authorization_server_urls: list[str],
-        mock_scopes_supported: list[str],
-        cross_application_access_in_dict: dict[str, Any],
+    def test_from_settings(
+        self, xaa_settings: dict[str, Any], cross_application_access_in_dict: dict[str, Any]
     ) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            resource=RESOURCE_URL,
+            authorization_servers="https://as1,https://as2",
+            scopes_supported=["scope"],
+            xaa_trusted_issuer=xaa_settings["trusted_issuer"],
+            xaa_exchange_audience=xaa_settings["exchange_audience"],
+            xaa_token_url=xaa_settings["token_url"],
+            xaa_token_audience=xaa_settings["token_audience"],
+            xaa_scopes=xaa_settings["scopes"],
+        )
 
-        assert metadata.resource == mock_mcp_as_resource_server_url
-        assert metadata.authorization_servers == mock_authorization_server_urls
-        assert metadata.scopes_supported == mock_scopes_supported
-        assert isinstance(metadata.cross_application_access, CrossApplicationAccessMetadata)
+        assert metadata.resource == RESOURCE_URL
+        assert metadata.authorization_servers == ["https://as1", "https://as2"]
+        assert metadata.scopes_supported == ["scope"]
+        assert metadata.to_dict_without_null_attribute()["cross_application_access"] == (
+            cross_application_access_in_dict
+        )
 
-    def test_to_yaml_string(self, metadata_in_dict: dict[str, Any]) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
-        assert metadata.to_yaml_string() == yaml.safe_dump(metadata_in_dict)
-
-    def test_load_from_dict_with_only_cross_application_access(
-        self,
-        cross_application_access_in_dict: dict[str, Any],
+    def test_from_settings_with_only_cross_application_access(
+        self, xaa_settings: dict[str, Any], cross_application_access_in_dict: dict[str, Any]
     ) -> None:
         """resource/authorization_servers/scopes_supported have no logic behind them yet."""
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(
-            {"cross_application_access": cross_application_access_in_dict}
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            xaa_trusted_issuer=xaa_settings["trusted_issuer"],
+            xaa_exchange_audience=xaa_settings["exchange_audience"],
+            xaa_token_url=xaa_settings["token_url"],
+            xaa_token_audience=xaa_settings["token_audience"],
+            xaa_scopes=xaa_settings["scopes"],
         )
 
         assert metadata.resource is None
         assert metadata.authorization_servers is None
         assert metadata.scopes_supported is None
-        assert metadata.mcp_enable_unauthenticated_well_known_route is None
         assert metadata.to_dict_without_null_attribute() == {
             "cross_application_access": cross_application_access_in_dict
         }
 
-    def test_load_from_dict_with_empty_config(self) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict({})
+    def test_scopes_supported_blank_entries_are_dropped(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            scopes_supported=["mcp:tools:read", "  ", ""]
+        )
+
+        assert metadata.scopes_supported == ["mcp:tools:read"]
+
+    def test_no_scopes_publishes_no_scopes_supported(self) -> None:
+        """An empty list is an unset field, not an empty array in the document."""
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(scopes_supported=[])
+
+        assert metadata.scopes_supported is None
+
+    def test_from_settings_with_nothing_set(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings()
 
         assert metadata.cross_application_access is None
         assert metadata.to_dict_without_null_attribute() == {}
+        assert metadata.is_empty() is True
 
-    def test_load_from_dict_reads_unauthenticated_well_known_route_flag(self) -> None:
-        metadata = MCPOAuthProtectedResourceMetadataConfig.from_dict(
-            {"mcp_enable_unauthenticated_well_known_route": True}
+    def test_blank_settings_count_as_unset(self) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            resource="", authorization_servers="  "
         )
 
-        assert metadata.mcp_enable_unauthenticated_well_known_route is True
+        assert metadata.is_empty() is True
 
 
 class TestMCPOAuthProtectedResourceMetadata:
@@ -254,37 +267,58 @@ class TestMCPOAuthProtectedResourceMetadata:
     def admin_config(self) -> MCPOAuthProtectedResourceMetadataAdminConfig:
         return MCPOAuthProtectedResourceMetadataAdminConfig(["header"])
 
-    def test_build_publishes_custom_fields_with_x_prefix(
+    def test_build_publishes_registered_and_datarobot_fields(
         self,
-        metadata_in_dict: dict[str, Any],
+        xaa_settings: dict[str, Any],
         cross_application_access_in_dict: dict[str, Any],
         admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
     ) -> None:
-        metadata_in_dict["mcp_enable_unauthenticated_well_known_route"] = True
-        user_config = MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_dict)
+        user_config = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            resource=RESOURCE_URL,
+            xaa_trusted_issuer=xaa_settings["trusted_issuer"],
+            xaa_exchange_audience=xaa_settings["exchange_audience"],
+            xaa_token_url=xaa_settings["token_url"],
+            xaa_token_audience=xaa_settings["token_audience"],
+            xaa_scopes=xaa_settings["scopes"],
+        )
 
         served = MCPOAuthProtectedResourceMetadata.build(
             user_config, admin_config
         ).to_dict_without_null_attribute()
 
         # Registered RFC 9728 parameters keep their standard names.
-        assert served["resource"] == metadata_in_dict["resource"]
+        assert served["resource"] == RESOURCE_URL
         assert served["bearer_methods_supported"] == ["header"]
-        # cross_application_access is published unprefixed by design; the other
-        # DataRobot addition is x_-prefixed. The pre-rename name is gone.
+        # cross_application_access is published unprefixed by design, matching
+        # the agent-side config block. The pre-rename name is gone.
         assert served["cross_application_access"] == cross_application_access_in_dict
-        assert served["x_mcp_enable_unauthenticated_well_known_route"] is True
         assert "xaa_metadata" not in served
         assert "x_cross_application_access" not in served
+
+    def test_build_publishes_no_server_configuration_fields(
+        self,
+        admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
+    ) -> None:
+        """The document describes the resource, not how the server is routed."""
+        served = MCPOAuthProtectedResourceMetadata.build(
+            MCPOAuthProtectedResourceMetadataConfig(resource=RESOURCE_URL), admin_config
+        ).to_dict_without_null_attribute()
+
+        assert not [key for key in served if key.startswith("x_")]
         assert "mcp_enable_unauthenticated_well_known_route" not in served
 
     def test_build_omits_unset_optional_fields(
         self,
+        xaa_settings: dict[str, Any],
         cross_application_access_in_dict: dict[str, Any],
         admin_config: MCPOAuthProtectedResourceMetadataAdminConfig,
     ) -> None:
-        user_config = MCPOAuthProtectedResourceMetadataConfig.from_dict(
-            {"cross_application_access": cross_application_access_in_dict}
+        user_config = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            xaa_trusted_issuer=xaa_settings["trusted_issuer"],
+            xaa_exchange_audience=xaa_settings["exchange_audience"],
+            xaa_token_url=xaa_settings["token_url"],
+            xaa_token_audience=xaa_settings["token_audience"],
+            xaa_scopes=xaa_settings["scopes"],
         )
 
         served = MCPOAuthProtectedResourceMetadata.build(

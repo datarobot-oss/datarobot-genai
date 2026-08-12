@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "NeMo Evaluation Run Output",
-  "description": "Normalized output from a completed evaluation run. Written to <output_dir>/eval_results.json",
+  "description": "Normalized output from a completed evaluation run. Written to <output_dir>/eval_results.json (the latest-run pointer, rewritten every run) and, unless archiving is disabled, to a byte-identical per-run copy at <output_dir>/<pipeline>_<run_id>.json",
   "type": "object",
   "properties": {
     "run_id":       { "type": "string", "description": "Unique ID for this eval run (timestamp-based)" },

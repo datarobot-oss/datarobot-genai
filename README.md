@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/datarobot-oss/datarobot-genai">
-    <img src="docs/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
+    <img src="docs/src/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
   </a>
 </p>
 <h3 align="center">DataRobot GenAI Library</h3>
