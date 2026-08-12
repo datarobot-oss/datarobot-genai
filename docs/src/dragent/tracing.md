@@ -103,28 +103,22 @@ Two caveats regardless of which path supplies the endpoint/headers:
 ## Local tracing
 
 A notebook or script has no deployment or workload to attribute spans to, so name a use case, which
-the ingest addresses as an `experiment_container`:
+the ingest addresses as an `experiment_container`. The endpoint still comes from `DATAROBOT_ENDPOINT`:
 
 ```python
-import os
-
-from datarobot_genai.core.telemetry.agent import instrument
 from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
-from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
 
+use_case_id = "<a use case id>"
 os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
     f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
     f"X-DataRobot-Entity-Id=experiment_container-{use_case_id}"
 )
-
 bootstrap_otel_provider_for_datarobot()
-instrument()
-instrument_langgraph()
 ```
 
-The endpoint comes from `DATAROBOT_ENDPOINT`. View the traces with the
+Then call `instrument()` and the framework `instrument()` as above. View the traces with the
 [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html),
-after logging in to that terminal with `dr auth login`:
+after `dr auth login` in that terminal:
 
 ```bash
 dr xp --entity-id <use-case-id>
