@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.8
+- Fixed DataRobot logo image path for `README.md`.
+
 ## 0.27.7
 - `drtools/workload`: synced the workload tools with the Workload API MCP server's `datarobot-workload-api` skill alignment:
   - `artifact_get_build` now normalizes build-status variants (`completed`, `in-progress`, …) and annotates single-build responses with `deployable` and `status_guidance` — `BUILT` means built but **not yet pushed** to the registry and is not deployable; only `COMPLETED` is. `artifact_build_run_action(action='trigger')` responses now tell callers to wait for `COMPLETED`.
