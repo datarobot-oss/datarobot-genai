@@ -97,8 +97,32 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 
 Two caveats regardless of which path supplies the endpoint/headers:
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` being set, so set it (any value) even when you configure the export via `OTEL_EXPORTER_OTLP_*`.
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID`. Outside a deployment, call `bootstrap_otel_provider_for_datarobot()` yourself (see [Local tracing](#local-tracing)).
 - Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
+
+## Local tracing
+
+A notebook or script has no deployment or workload to attribute spans to, so name a use case, which
+the ingest addresses as an `experiment_container`. The endpoint still comes from `DATAROBOT_ENDPOINT`:
+
+```python
+from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
+
+use_case_id = "<a use case id>"
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+    f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
+    f"X-DataRobot-Entity-Id=experiment_container-{use_case_id}"
+)
+bootstrap_otel_provider_for_datarobot()
+```
+
+Then call `instrument()` and the framework `instrument()` as above. View the traces with the
+[`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html),
+after `dr auth login` in that terminal:
+
+```bash
+dr xp --entity-id <use-case-id>
+```
 
 ## Troubleshooting
 

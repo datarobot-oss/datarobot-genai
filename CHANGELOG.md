@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.9
+- Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
+
 ## 0.27.8
 - Fixed DataRobot logo image path for `README.md`.
 
