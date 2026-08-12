@@ -46,8 +46,6 @@ logger = logging.getLogger(__name__)
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
-# The entity the installed processor exports to.
-_BOOTSTRAP_ENTITY: dict[str, str] = {"id": ""}
 
 # The DataRobot OTel ingest expects entity ids (and deployment-derived service
 # names) in the ``deployment-<id>`` or ``workload-<id>`` shape. Single source
@@ -78,11 +76,6 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
         headers_list = os.environ["OTEL_EXPORTER_OTLP_HEADERS"].split(",")
         headers: dict[str, str] = {}
         for header in headers_list:
-            # A trailing comma, say. Raising would take down agent startup, and the entry
-            # is never logged because a bare token is a plausible way to get here.
-            if "=" not in header:
-                logger.warning("Ignoring a malformed OTEL_EXPORTER_OTLP_HEADERS entry")
-                continue
             key, value = header.split("=", 1)
             headers[key.strip()] = value.strip()
         return headers
@@ -94,14 +87,6 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
             "X-DataRobot-Entity-Id": entity_id,
         }
     return None
-
-
-def _headers_for_entity(entity_id: str) -> dict[str, str] | None:
-    """Auth headers for a run the platform never named, unless it has its own collector."""
-    api_key = resolve_api_key_from_env()
-    if not entity_id or not api_key or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        return None
-    return {"X-DataRobot-Api-Key": api_key, "X-DataRobot-Entity-Id": entity_id}
 
 
 def resolve_otel_traces_endpoint_from_env() -> str:
@@ -152,7 +137,7 @@ def _resolve_service_name() -> str:
     return "datarobot-agent"
 
 
-def bootstrap_otel_provider_for_datarobot(entity_id: str = "") -> bool:
+def bootstrap_otel_provider_for_datarobot() -> bool:
     """Ensure framework auto-instrumentor spans reach the DataRobot OTel ingest.
 
     Sibling to (not replacing) the NAT-side ``datarobot_otelcollector`` exporter:
@@ -175,8 +160,7 @@ def bootstrap_otel_provider_for_datarobot(entity_id: str = "") -> bool:
       resource attributes, so the merge is safe.
 
     Entity identity is derived from ``MLOPS_DEPLOYMENT_ID`` or ``WORKLOAD_ID``
-    (deployment takes precedence), else from ``entity_id`` for a caller the
-    platform never named.
+    (deployment takes precedence).
 
     Returns ``True`` when a processor was installed or attached by this call,
     ``False`` (silently) when:
@@ -191,8 +175,7 @@ def bootstrap_otel_provider_for_datarobot(entity_id: str = "") -> bool:
     if _BOOTSTRAP_STATE["installed"]:
         return False
 
-    # The platform's own identity always wins; entity_id is for a run it never named.
-    headers = resolve_datarobot_headers_from_env() or _headers_for_entity(entity_id)
+    headers = resolve_datarobot_headers_from_env()
     endpoint = resolve_otel_traces_endpoint_from_env()
     if not headers or not endpoint:
         logger.info(
@@ -266,19 +249,13 @@ def bootstrap_otel_provider_for_datarobot(entity_id: str = "") -> bool:
         return False
 
     _BOOTSTRAP_STATE["installed"] = True
-    _BOOTSTRAP_ENTITY["id"] = headers.get("X-DataRobot-Entity-Id", "")
     logger.info(
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        _BOOTSTRAP_ENTITY["id"],
+        headers["X-DataRobot-Entity-Id"],
     )
     return True
-
-
-def datarobot_otel_entity_id() -> str:
-    """Return the entity the installed span processor exports to, else an empty string."""
-    return _BOOTSTRAP_ENTITY["id"]
 
 
 def _redirect_dome_tracer_provider(provider: object) -> None:

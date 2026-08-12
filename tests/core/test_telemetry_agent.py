@@ -14,41 +14,7 @@
 
 from unittest.mock import patch
 
-import pytest
-from opentelemetry import trace
-from opentelemetry.trace import ProxyTracerProvider
-from opentelemetry.util._once import Once
-
-from datarobot_genai.core.telemetry import datarobot_otel
 from datarobot_genai.core.telemetry.agent import instrument
-
-_EXPORT_ENV_VARS = (
-    "MLOPS_DEPLOYMENT_ID",
-    "WORKLOAD_ID",
-    "DATAROBOT_API_TOKEN",
-    "DATAROBOT_ENDPOINT",
-    "DATAROBOT_PUBLIC_API_ENDPOINT",
-    "DATAROBOT_USE_CASE_ID",
-    "OTEL_EXPORTER_OTLP_ENDPOINT",
-    "OTEL_EXPORTER_OTLP_HEADERS",
-)
-
-
-@pytest.fixture(autouse=True)
-def no_ambient_otel_export(monkeypatch):
-    """Keep a developer's own DataRobot env from turning these into real exports.
-
-    ``instrument()`` installs the exporter whenever the environment resolves to
-    an endpoint and headers, which a working shell often does.
-    """
-    for var in _EXPORT_ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
-    # OTel guards set_tracer_provider behind Once(); resetting both (and the
-    # bootstrap flag) lets a test observe a fresh global slot.
-    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
-    monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
-    monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
-    monkeypatch.setitem(datarobot_otel._BOOTSTRAP_ENTITY, "id", "")
 
 
 def test_instrument_idempotent() -> None:
@@ -74,17 +40,3 @@ def test_instrument_bootstraps_when_deployment_id_set(monkeypatch) -> None:
     ) as mock:
         instrument()
     mock.assert_called_once()
-
-
-def test_instrument_never_bootstraps_outside_a_hosted_runtime(monkeypatch) -> None:
-    # GIVEN a full DataRobot environment and a use case id, but no deployment or workload,
-    # THEN instrument() installs nothing: local tracing is opt-in through
-    # trace_to_use_case(), so no environment variable switches export on here.
-    monkeypatch.setenv("DATAROBOT_USE_CASE_ID", "uc123")
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
-
-    instrument()
-
-    assert isinstance(trace.get_tracer_provider(), ProxyTracerProvider)
-    assert datarobot_otel.datarobot_otel_entity_id() == ""

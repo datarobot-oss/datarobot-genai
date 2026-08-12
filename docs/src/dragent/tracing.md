@@ -97,23 +97,34 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 
 Two caveats regardless of which path supplies the endpoint/headers:
 
-- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) runs inside a deployment or workload; a local run opts in with `trace_to_use_case()` (below).
+- The `instrument()` SDK bootstrap (framework / `datarobot_otel_conventions` spans) is gated on `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID`. Outside a deployment, call `bootstrap_otel_provider_for_datarobot()` yourself (see [Local tracing](#local-tracing)).
 - Optional: set `OTEL_SERVICE_NAME` to override the resource `service.name` used by the SDK bootstrap (the NAT exporter uses `project` from the YAML instead).
 
 ## Local tracing
 
-A local run has no deployment or workload to attribute spans to, so it names a use case instead:
+A notebook or script has no deployment or workload to attribute spans to, so name a use case, which
+the ingest addresses as an `experiment_container`:
 
 ```python
-from datarobot_genai.core.telemetry.use_case import trace_to_use_case
+import os
 
-use_case_id = trace_to_use_case("My local runs")  # reuses or creates that use case
+from datarobot_genai.core.telemetry.agent import instrument
+from datarobot_genai.core.telemetry.datarobot_otel import bootstrap_otel_provider_for_datarobot
+from datarobot_genai.langgraph.telemetry import instrument as instrument_langgraph
+
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+    f"X-DataRobot-Api-Key={os.environ['DATAROBOT_API_TOKEN']},"
+    f"X-DataRobot-Entity-Id=experiment_container-{use_case_id}"
+)
+
+bootstrap_otel_provider_for_datarobot()
+instrument()
+instrument_langgraph()
 ```
 
-Pass `use_case_id=` or set `DATAROBOT_USE_CASE_ID` to pick one, and call your framework's
-`instrument()` for framework spans. It returns `""` and logs why when spans are not going to a use
-case, such as inside a deployment or with an `OTEL_EXPORTER_OTLP_*` of your own. View them with the
-[`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html):
+The endpoint comes from `DATAROBOT_ENDPOINT`. View the traces with the
+[`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html),
+after logging in to that terminal with `dr auth login`:
 
 ```bash
 dr xp --entity-id <use-case-id>
