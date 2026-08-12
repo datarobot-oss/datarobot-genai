@@ -45,10 +45,10 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
 
     Returns "" when spans are not going to a use case, having logged why: a deployment
     or workload is named by the platform, and an ``OTEL_EXPORTER_OTLP_*`` of your own is
-    left alone. Never raises.
+    left alone.
     """
     if reason := _skip_reason():
-        logger.info("Not tracing to a use case: %s", reason)
+        logger.warning("Not tracing to a use case: %s", reason)
         return ""
 
     # DATAROBOT_DEFAULT_USE_CASE is what the app framework calls the same thing.
@@ -63,8 +63,6 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
         except Exception as exc:  # noqa: BLE001 - reported, never raised at the caller
             logger.warning("Not tracing: no use case available (%s)", exc)
             return ""
-        # So the rest of the process, and anything it spawns, agrees on the use case.
-        os.environ["DATAROBOT_USE_CASE_ID"] = selected
         # instrument() only bootstraps a hosted runtime, so a local run asks here.
         bootstrap_otel_provider_for_datarobot(f"{ENTITY_PREFIX}{selected}")
 
@@ -73,7 +71,7 @@ def trace_to_use_case(default_name: str, use_case_id: str = "") -> str:
     # rather than what this call asked for.
     entity_id = datarobot_otel_entity_id()
     if not entity_id.startswith(ENTITY_PREFIX):
-        logger.info("Not tracing to a use case; entity is %s", entity_id or "unset")
+        logger.warning("Not tracing to a use case; entity is %s", entity_id or "unset")
         return ""
     return entity_id.removeprefix(ENTITY_PREFIX)
 
@@ -82,7 +80,10 @@ def _skip_reason() -> str:
     """Why this process must not be pointed at a use case, or "" to go ahead."""
     if os.getenv("OTEL_SDK_DISABLED", "").strip().lower() == "true":
         return "OTEL_SDK_DISABLED is set"
-    if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+    if any(
+        key.startswith("OTEL_EXPORTER_OTLP_") and key.endswith(("ENDPOINT", "HEADERS"))
+        for key in os.environ
+    ):
         # Exporting would send this account's API key wherever that variable points.
         return (
             "OTEL_EXPORTER_OTLP_* is set, so this run leaves your OpenTelemetry "

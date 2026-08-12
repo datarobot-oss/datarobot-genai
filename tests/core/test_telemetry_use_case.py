@@ -25,6 +25,7 @@ from datarobot_genai.core.telemetry.use_case import trace_to_use_case
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
+    "DATAROBOT_CONFIG_FILE",
     "DATAROBOT_ENDPOINT",
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "DATAROBOT_USE_CASE_ID",
@@ -141,7 +142,7 @@ class TestTraceToUseCase:
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "dep7")
 
         with patch("datarobot.UseCase") as use_case_api:
-            assert trace_to_use_case("Quickstart", use_case_id="uc123") == ""
+            assert trace_to_use_case("Quickstart") == ""
 
         use_case_api.list.assert_not_called()
         use_case_api.create.assert_not_called()

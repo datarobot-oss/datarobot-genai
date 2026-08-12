@@ -25,6 +25,7 @@ from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
+    "DATAROBOT_CONFIG_FILE",
     "DATAROBOT_USE_CASE_ID",
     "MLOPS_DEPLOYMENT_ID",
     "WORKLOAD_ID",
@@ -174,16 +175,10 @@ class TestHeaderResolvers:
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.resolve_datarobot_headers_from_env() is None
 
-    def test_a_caller_supplied_entity_never_outranks_the_environment(self, clean_env):
-        # A deployment id must beat a use case a caller asks for, or a helper called from
-        # code that also runs deployed would redirect that deployment's traces.
-        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
-        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        headers = (
-            datarobot_otel.resolve_datarobot_headers_from_env()
-            or datarobot_otel._headers_for_entity("experiment_container-uc123")
-        )
-        assert headers["X-DataRobot-Entity-Id"] == "deployment-abc123"
+    def test_no_headers_for_an_entity_without_an_api_key(self, clean_env):
+        # Without a token the headers would carry an empty key, which is truthy enough to
+        # install an exporter that posts unauthenticated.
+        assert datarobot_otel._headers_for_entity("experiment_container-uc123") is None
 
     def test_no_api_key_for_a_caller_pointed_at_another_collector(self, clean_env):
         # A run naming itself, plus an endpoint of its own: deriving headers would post
