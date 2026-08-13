@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.10
+- `dragent/frontends/converters` + `core/chat/completions`: **non-streaming chat completions now return only the final assistant message.** A multi-node agent emits one assistant message per node, but a chat completion carries a single `content` string. `convert_dragent_event_response_to_str` joined every text delta in the run, so the recipe template's default two-node LangGraph graph (`researcher_node -> responder_node`) returned the researcher's notes glued onto the responder's answer with no separator — `"Paris"` came back as `"ParisParis"`. That converter is what the deployed dragent `/chat/completions` route uses, so it was unaffected by the earlier AG-UI boundary fix (BUZZOK-31531) to `langgraph/agent.py`, which only corrected the SDK helper's path. The rule now lives in one place, `core.chat.completions.final_assistant_text`, used by both: a `TextMessageStartEvent` (or a changed `message_id` on a delta, for chunk-only streams that emit no START) opens a new message and discards what preceded it. Single-message runs are unchanged. Also drops a tool-calling agent's pre-tool preamble in favour of its final answer, and makes moderation postscore evaluate the text the caller actually receives.
+
 ## 0.27.9
 - Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
 

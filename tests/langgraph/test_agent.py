@@ -40,6 +40,11 @@ from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
 
 from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
+from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_event_response_to_chat_response,
+)
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
@@ -849,6 +854,44 @@ async def test_langgraph_multinode_ambiguous_ids_emit_one_boundary_per_node() ->
     # ... and the stream is well-formed: no CONTENT before the first START.
     first_start = types.index(EventType.TEXT_MESSAGE_START)
     assert EventType.TEXT_MESSAGE_CONTENT not in types[:first_start]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message_id", ["", None, "shared-id"])
+async def test_langgraph_multinode_dragent_serving_path_returns_only_final_node(
+    message_id: str | None,
+) -> None:
+    """The deployed path, not just the SDK helper.
+
+    A registered agent yields one ``DRAgentEventResponse`` per AG-UI event; NAT
+    aggregates them and converts the result to a ``ChatResponse`` for the
+    non-streaming ``/chat/completions`` route. That converter used to join every text
+    delta, so it re-fused the two nodes even though the AG-UI stream marks the boundary
+    correctly -- which is why the reported "ParisParis" survived the earlier fix.
+    """
+    # GIVEN a two-node agent served the way the dragent frontend serves it
+    agent = _two_node_agent(message_id)
+    run_agent_input = RunAgentInput(
+        messages=[UserMessage(content="capital of France?", id="m0")],
+        tools=[],
+        forwarded_props={},
+        thread_id="t",
+        run_id="r",
+        state={},
+        context=[],
+    )
+
+    # WHEN the per-event responses are aggregated into a non-streaming chat response
+    responses = [
+        DRAgentEventResponse(events=[event], usage_metrics=usage_metrics)
+        async for event, _interactions, usage_metrics in agent.invoke(run_agent_input)
+    ]
+    chat_response = convert_dragent_event_response_to_chat_response(
+        aggregate_dragent_event_responses(responses)
+    )
+
+    # THEN the caller receives only the responder node's answer
+    assert chat_response.choices[0].message.content == "Paris"
 
 
 async def test_langgraph_invoke_supports_legacy_convert_input_override(run_agent_input) -> None:
