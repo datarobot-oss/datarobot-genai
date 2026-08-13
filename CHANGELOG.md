@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.12
+- `drmcpbase`/`drmcp` (MODEL-24094): added `CustomModelToolProvider` — serves `tool=tool`-tagged deployments as MCP tools at request time, so newly tagged deployments appear on the next `tools/list` without a server restart (per-user auth isolation via a token-scoped TTL cache). Extracted the shared `is_tool_tagged` discovery predicate (the deployments API ORs multi-tag filters; the AND re-check was duplicated between the startup batch registration and the async lister). New opt-in `MCP_SERVER_ENABLE_DEPLOYMENT_TOOL_PROVIDER` wires the provider into self-hosted drmcp servers along with a `refresh_deployment_tools` MCP tool that drops the caller's discovery caches on demand. Hot-path cost is bounded by per-user TTL caches (deployment listing 60s, built tools 10 min); static tools are unaffected.
+
 ## 0.27.9
 - Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
 
