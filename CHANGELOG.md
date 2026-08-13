@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.10
+- `drtools/cuopt`: **cuOpt deployment-as-tool panels glue** — new package with the reusable plumbing around calling a cuOpt NIM deployment (BPA's monolithic `cuopt_solve` MCP tool is retired, not ported; the NIM is a tool-tagged GPU deployment surfaced through dynamic tool discovery). Ships the cuOpt payload schemas registered under the `cuopt.*` namespace with the panels `SchemaRegistry` (11 schemas, discoverable via `list_panel_schemas`/`describe_panel_schema`), payload normalization (high-level `VRPData` → native cuOpt format, numeric bound coercion, LP/MIP/VRP problem-type inference), solution-table extraction (solver output → titled dataframes + summary text), solution → panels persistence through the shared `PanelStore` (Dataset tables as Parquet, summary Text, raw-solution Json, all written to `staging` with lineage to the input Json panel), and deployment resolution + call seam (`CUOPT_DEPLOYMENT_ID` env var/runtime param or `tool=tool` tag lookup; URL and auth built with the shared `get_deployment_base_url`/`build_deployment_auth_headers` helpers; cuOpt-specific async submit/poll protocol against the deployment's `directAccess/nim/cuopt` route). The high-level entry point `solve_with_cuopt_deployment(data, preview_only=...)` composes all of the above; BPA's wren-named facade delegates to it until the global-MCP cutover. Deliberately not an MCP tool and not registered in any MCP category; the deployment provisioning flow (NIM template → registered model → serverless GPU deployment) is an ops concern handled via agent-skills.
+
 ## 0.27.9
 - Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
 
