@@ -62,6 +62,38 @@ def test_vrp_data_to_native_latlng_coordinates() -> None:
     assert matrix[0][1] == pytest.approx(5.0)  # sqrt((6-2)^2 + (4-1)^2)
 
 
+def test_vrp_data_to_native_zero_demand_is_preserved() -> None:
+    # GIVEN a customer whose demand is explicitly 0 (e.g. a pure pickup stop)
+    # WHEN converting to native format
+    native = cp.vrp_data_to_native(
+        {
+            "depot": {"x": 0, "y": 0},
+            "customers": [
+                {"id": "A", "x": 3, "y": 4, "demand": 0},
+                {"id": "B", "x": 6, "y": 8},
+            ],
+        }
+    )
+
+    # THEN 0 survives; only a missing demand falls back to 1
+    assert native["task_data"]["demand"] == [[0, 1]]
+
+
+def test_vrp_data_to_native_zero_latlng_is_preserved() -> None:
+    # GIVEN nodes sitting on the equator / prime meridian, where a coordinate is 0.0
+    # WHEN converting to native format
+    native = cp.vrp_data_to_native(
+        {
+            "depot": {"lat": 0.0, "lng": 0.0},
+            "customers": [{"id": "A", "lat": 0.0, "lng": 5.0}],
+        }
+    )
+
+    # THEN the zeros are used as real coordinates rather than treated as absent
+    matrix = native["cost_matrix_data"]["data"]["0"]
+    assert matrix[0][1] == pytest.approx(5.0)
+
+
 def test_vrp_format_detection() -> None:
     # GIVEN payloads in high-level and native VRP shapes
     # WHEN/THEN each detector recognizes only its own shape

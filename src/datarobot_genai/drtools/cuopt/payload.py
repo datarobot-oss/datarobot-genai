@@ -69,8 +69,13 @@ def _get_coords(  # noqa: PLR0911 - one return per supported coordinate form
         x = node.get("x")
         y = node.get("y")
         if x is None or y is None:
-            lat = node.get("lat") or node.get("latitude")
-            lng = node.get("lng") or node.get("longitude")
+            # `or` would discard a legitimate 0.0 (equator / prime meridian).
+            lat = node.get("lat")
+            if lat is None:
+                lat = node.get("latitude")
+            lng = node.get("lng")
+            if lng is None:
+                lng = node.get("longitude")
             if lat is not None and lng is not None:
                 return (lng, lat)
             loc = node.get("location")
@@ -107,7 +112,8 @@ def vrp_data_to_native(data: VRPData | dict[str, Any]) -> dict[str, Any]:
         coords = _get_coords(customer)
         all_coords.append(coords)
         demand = customer.demand if isinstance(customer, VRPNode) else customer.get("demand", 1)
-        customer_demands.append(int(demand or 1))
+        # Only a missing demand defaults to 1; an explicit 0 is a valid demand.
+        customer_demands.append(int(demand) if demand is not None else 1)
         cust_id = customer.id if isinstance(customer, VRPNode) else customer.get("id", i + 1)
         task_ids.append(str(cust_id) if cust_id is not None else str(i + 1))
 
