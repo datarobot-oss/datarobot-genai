@@ -13,6 +13,13 @@ includes:
   lint:
     taskfile: ../.taskfiles/lint.yml
     flatten: true
+  # No cve-sync include here, deliberately. e2e-tests resolves its own uv.lock,
+  # and uv reads [tool.uv] only from the root of whatever it is resolving, so it
+  # genuinely does need its own residue. But `task cve-sync:*` in the root
+  # Taskfile now discovers every resolution root in the repo and covers all of
+  # them, this one included. A second include here would give two ways to do the
+  # same thing, and the one invoked from a subdirectory is the one that quietly
+  # misses the other roots.
 
 env:
   LLM: '{{.LLM | default "llmgw"}}'

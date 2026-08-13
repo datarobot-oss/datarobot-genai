@@ -50,6 +50,14 @@ class LLMConfig(BaseModel):
     nim_deployment_id: str | None = None
     use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
+    assume_native_tool_calling_when_unmapped: bool = Field(
+        default=False,
+        description=(
+            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
+            "still report native tool-calling support so CrewAI uses API tool_calls "
+            "instead of the ReAct text path."
+        ),
+    )
 
     def get_llm_type(self) -> LLMType:
         if self.use_datarobot_llm_gateway:
@@ -196,3 +204,8 @@ def default_llm_deployment_id() -> str | None:
 def default_nim_deployment_id() -> str | None:
     config = Config()
     return config.nim_deployment_id
+
+
+def default_assume_native_tool_calling_when_unmapped() -> bool:
+    config = Config()
+    return config.assume_native_tool_calling_when_unmapped

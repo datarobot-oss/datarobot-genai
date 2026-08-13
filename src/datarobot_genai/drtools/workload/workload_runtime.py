@@ -26,6 +26,7 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.core import tool_metadata
 from datarobot_genai.drtools.core.clients.datarobot_workload import WorkloadApiClient
 from datarobot_genai.drtools.core.utils import require_id
+from datarobot_genai.drtools.workload.build_status import raise_tool_error_for_workload_client_error
 
 # ------------------------------------------------------------------ #
 # workload_settings  (get when runtime omitted, update when provided) #
@@ -199,4 +200,4 @@ async def workload_artifact_replace(
     try:
         return client.create_workload_replacement(wid, payload)
     except ClientError as exc:
-        raise_tool_error_for_client_error(exc)
+        raise_tool_error_for_workload_client_error(exc)

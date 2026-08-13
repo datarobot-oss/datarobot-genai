@@ -16,8 +16,6 @@ from enum import Enum
 from enum import auto
 from typing import Any
 
-import yaml
-
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
 )
@@ -32,6 +30,24 @@ logger = logging.getLogger(__name__)
 
 
 class SupportedMethodsToSendBearerToken(Enum):
+    """How a client may present its bearer token to this resource server.
+
+    RFC 6750 defines three ways a client may present a bearer token: the
+    Authorization header, a form-encoded body parameter, and a URI query
+    parameter. RFC 9728 lets the resource server declare which of them it
+    actually accepts, so a client doesn't have to guess.
+
+    We accept the header and nothing else. The other two are discouraged by RFC
+    6750 itself — a query-string token ends up in access logs, proxy logs,
+    Referer headers and browser history; the body form constrains the content
+    type.
+
+    This is a declaration, not an enforcement point: nothing reads it inbound,
+    and the request side only ever looks at ``OAUTH_TOKEN_HEADERS``. Adding a
+    member here would change what is advertised without changing what is
+    accepted.
+    """
+
     HEADER = auto()
 
     def get_name_in_lower_case(self) -> str:
@@ -43,14 +59,16 @@ class SupportedMethodsToSendBearerToken(Enum):
 
 
 class MCPOAuthProtectedResourceMetadataManager:
-    def __init__(self, mcp_oauth_metadata: str | None = None) -> None:
-        self._mcp_oauth_metadata = mcp_oauth_metadata
+    def __init__(
+        self, metadata_config: MCPOAuthProtectedResourceMetadataConfig | None = None
+    ) -> None:
+        self._metadata_config = metadata_config
 
     def load_config(self) -> MCPOAuthProtectedResourceMetadataConfig | None:
-        if self._mcp_oauth_metadata:
-            metadata_in_json = yaml.safe_load(self._mcp_oauth_metadata)
-            return MCPOAuthProtectedResourceMetadataConfig.from_dict(metadata_in_json)
-        return None
+        """Return the configured metadata, or ``None`` when nothing was set."""
+        if self._metadata_config is None or self._metadata_config.is_empty():
+            return None
+        return self._metadata_config
 
     @staticmethod
     def get_admin_config() -> MCPOAuthProtectedResourceMetadataAdminConfig:

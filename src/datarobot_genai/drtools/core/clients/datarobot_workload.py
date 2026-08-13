@@ -355,6 +355,15 @@ class WorkloadApiClient:
             client.delete(f"artifactRepositories/{repository_id}")
 
     # ------------------------------------------------------------------ #
+    # OpenAPI spec                                                         #
+    # ------------------------------------------------------------------ #
+
+    def get_openapi_spec_text(self) -> str:
+        """GET /openapi.yaml — raw YAML text of the live Workload API spec."""
+        with request_user_dr_client() as client:
+            return client.get("openapi.yaml").text
+
+    # ------------------------------------------------------------------ #
     # Workload replacement (rolling update)                                #
     # ------------------------------------------------------------------ #
 
