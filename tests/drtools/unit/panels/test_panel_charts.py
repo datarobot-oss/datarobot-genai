@@ -33,6 +33,7 @@ import pytest
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.panels.models import Dataset
 from datarobot_genai.drmcputils.panels.models import Json
+from datarobot_genai.drmcputils.panels.models import Text
 from datarobot_genai.drmcputils.panels.store import PanelStore
 from datarobot_genai.drtools.panels import charts as charts_mod
 
@@ -151,20 +152,151 @@ async def test_create_chart_panel_temporal_columns_are_json_safe(
     ]
 
 
-async def test_create_chart_panel_custom_library(
+def _canned_vega_spec() -> dict[str, Any]:
+    return {
+        "mark": "bar",
+        "data": {"values": [{"a": "x", "b": 1}]},
+        "encoding": {
+            "x": {"field": "a", "type": "nominal"},
+            "y": {"field": "b", "type": "quantitative"},
+        },
+    }
+
+
+async def test_create_chart_panel_altair_stores_vega_spec(
     store: PanelStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # GIVEN a Dataset panel and a canned figure
+    # GIVEN a Dataset panel and a sandbox returning a Vega-Lite spec
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
+    _patch_execute(monkeypatch, _canned_vega_spec())
+
+    # WHEN creating an altair chart panel
+    result = await charts_mod.create_chart_panel(
+        panel_id=panel_id, code="_return = spec", title="C", chart_library="altair"
+    )
+
+    # THEN the blob carries the altair discriminator and the spec verbatim
+    assert result["chart_library"] == "altair"
+    payload = json.loads(await store.get_payload(result["id"]))
+    assert payload == {"format": "altair", "spec": _canned_vega_spec()}
+    # Unlike plotly, an altair spec must NOT be given a synthetic `layout` key.
+    assert "layout" not in payload["spec"]
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"mark": "bar"},
+        {"layer": []},
+        {"hconcat": []},
+        {"$schema": "https://vega.github.io/schema/vega-lite/v5.json"},
+        {"facet": {}, "spec": {}},
+    ],
+)
+async def test_create_chart_panel_altair_accepts_composite_specs(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch, spec: dict[str, Any]
+) -> None:
+    # GIVEN composite Vega-Lite shapes altair's .to_dict() can emit
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
+    _patch_execute(monkeypatch, spec)
+
+    # WHEN/THEN each is accepted and stored unchanged
+    result = await charts_mod.create_chart_panel(
+        panel_id=panel_id, code="_return = spec", title="C", chart_library="altair"
+    )
+    payload = json.loads(await store.get_payload(result["id"]))
+    assert payload == {"format": "altair", "spec": spec}
+
+
+async def test_create_chart_panel_altair_rejects_non_vega_dict(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # GIVEN a plotly figure returned while claiming chart_library='altair' — a dict,
+    # but not a Vega-Lite spec. Mislabelling must fail loudly rather than store an
+    # unrenderable altair panel.
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
+    _patch_execute(monkeypatch, {"data": [{"type": "bar"}], "layout": {}})
+
+    # WHEN/THEN creating the chart panel raises naming Vega-Lite
+    with pytest.raises(ToolError) as exc:
+        await charts_mod.create_chart_panel(
+            panel_id=panel_id, code="_return = f", title="C", chart_library="altair"
+        )
+    assert "Vega-Lite" in str(exc.value)
+
+
+async def test_create_chart_panel_folium_stores_html_payload(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # GIVEN a sandbox returning rendered leaflet HTML
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"lat": [40.7]}))
+    html = "<html><head></head><body><div id='map'></div></body></html>"
+    _patch_execute(monkeypatch, html)
+
+    # WHEN creating a folium chart panel
+    result = await charts_mod.create_chart_panel(
+        panel_id=panel_id,
+        code="_return = m.get_root().render()",
+        title="Map",
+        chart_library="folium",
+    )
+
+    # THEN folium's discriminator is "html", NOT "folium" — the frontend switches on it
+    assert result["chart_library"] == "folium"
+    payload = json.loads(await store.get_payload(result["id"]))
+    assert payload == {"format": "html", "html": html}
+
+
+@pytest.mark.parametrize("value", [{"data": []}, "", "   ", 42])
+async def test_create_chart_panel_folium_requires_html_string(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch, value: Any
+) -> None:
+    # GIVEN a folium run returning anything but a non-empty HTML string
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
+    _patch_execute(monkeypatch, value)
+
+    # WHEN/THEN it raises, pointing at the correct render call
+    with pytest.raises(ToolError) as exc:
+        await charts_mod.create_chart_panel(
+            panel_id=panel_id, code="_return = m", title="M", chart_library="folium"
+        )
+    assert "get_root().render()" in str(exc.value)
+
+
+async def test_create_chart_panel_folium_missing_in_image_names_the_override(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # GIVEN a sandbox image without folium — the one failure mode with a deployment
+    # fix rather than a code fix, so the error must point at DR_MCP_SANDBOX_IMAGE
+    # instead of telling the agent to fix `code`.
+    panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
+    _patch_execute(
+        monkeypatch,
+        None,
+        stderr="Traceback ...\nModuleNotFoundError: No module named 'folium'",
+    )
+
+    # WHEN/THEN the error names the image override
+    with pytest.raises(ToolError) as exc:
+        await charts_mod.create_chart_panel(
+            panel_id=panel_id, code="import folium", title="M", chart_library="folium"
+        )
+    assert "DR_MCP_SANDBOX_IMAGE" in str(exc.value)
+
+
+async def test_create_chart_panel_rejects_unknown_library(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # GIVEN a chart_library outside the supported set
     panel_id = await _make_dataset_panel(store, pl.DataFrame({"x": [1]}))
     _patch_execute(monkeypatch, _canned_figure())
 
-    # WHEN creating a chart panel with a non-default chart library label
-    result = await charts_mod.create_chart_panel(
-        panel_id=panel_id, code="_return = f", title="C", chart_library="altair"
-    )
-
-    # THEN the label is stored on the panel
-    assert result["chart_library"] == "altair"
+    # WHEN/THEN it is rejected by name rather than silently stored
+    with pytest.raises(ToolError) as exc:
+        await charts_mod.create_chart_panel(
+            panel_id=panel_id, code="_return = f", title="C", chart_library="bokeh"
+        )
+    assert "bokeh" in str(exc.value)
 
 
 async def test_create_chart_panel_defaults_missing_layout(
@@ -223,14 +355,39 @@ async def test_create_chart_panel_non_dict_raises(
         await charts_mod.create_chart_panel(panel_id=panel_id, code="_return = []", title="X")
 
 
-async def test_create_chart_panel_non_dataset_source_raises(
+async def test_create_chart_panel_json_source_binds_data(
     store: PanelStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # GIVEN a non-Dataset source panel
+    # GIVEN a Json source panel — folium's GeoJSON input path (the wren original
+    # accepted a JsonRef here for the same reason)
+    geojson = {"type": "FeatureCollection", "features": []}
+    created = await store.create(Json(title="j", data=geojson), source="staging")
+    assert created.id is not None
+    captured = _patch_execute(monkeypatch, "<html></html>")
+
+    # WHEN charting from it
+    result = await charts_mod.create_chart_panel(
+        panel_id=created.id,
+        code="_return = m.get_root().render()",
+        title="Map",
+        chart_library="folium",
+    )
+
+    # THEN its inline data is bound as `data`, with no `df`/rows binding
+    assert captured["inputs"] == {"data": geojson}
+    assert captured["code"].startswith(charts_mod._JSON_CHART_PREAMBLE)
+    assert result["parents"] == [created.id]
+
+
+async def test_create_chart_panel_text_source_raises(
+    store: PanelStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # GIVEN a source panel that is neither Dataset nor Json — nothing chartable to bind
     _patch_execute(monkeypatch, _canned_figure())
-    created = await store.create(Json(title="j", data={"k": 1}), source="staging")
+    created = await store.create(Text(title="t", text="hi"), source="staging")
     assert created.id is not None
 
-    # WHEN/THEN creating the chart panel raises
-    with pytest.raises(ToolError):
+    # WHEN/THEN creating the chart panel raises, naming both supported types
+    with pytest.raises(ToolError) as exc:
         await charts_mod.create_chart_panel(panel_id=created.id, code="_return = f", title="X")
+    assert "Dataset" in str(exc.value) and "Json" in str(exc.value)
