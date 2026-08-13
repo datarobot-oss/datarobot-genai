@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.13
+- `test_utils.test_interactive`: connect to ANY MCP server — `--url` / `--model` / repeatable `--header KEY=VALUE` flags, automatic `x-datarobot-api-token` header so DataRobot directAccess deployments authenticate, and per-prompt round-trip timing.
+- `test_utils.otel_traces` (new): fetch + pretty-print a deployed MCP server's OTEL traces (`/api/v2/otel/deployment/{id}/traces/`); `traces [n]` / `trace <traceId>` commands in the interactive client show recent traces and per-span trees with durations. The trace API base is derived from the MCP server URL (`api_base_from_url`), so pointing `--url` at one cluster no longer fetches traces from whatever `DATAROBOT_ENDPOINT` names.
+
 ## 0.27.9
 - Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
 
