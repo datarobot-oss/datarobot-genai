@@ -62,8 +62,6 @@ from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import (
     assemble_deployment_tool_config,
 )
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import build_deployment_auth_headers
-from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import get_deployment_base_url
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.metadata import (
     _is_datarobot_structured_prediction,
 )
@@ -72,6 +70,8 @@ from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCatego
 from datarobot_genai.drmcpbase.dynamic_tools.external_tool import _external_tool_callable_factory
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_category_disabled_for_request
 from datarobot_genai.drmcpbase.feature_flags import check_mcp_tools_gallery_support
+from datarobot_genai.drmcputils.deployment import build_deployment_auth_headers
+from datarobot_genai.drmcputils.deployment import get_deployment_base_url
 
 logger = logging.getLogger(__name__)
 
