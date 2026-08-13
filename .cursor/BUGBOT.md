@@ -155,3 +155,7 @@ Each breacking change requires:
 ## 0.22.0
 - *Breaking change*:
 ```
+
+## Adding new subpackage
+
+Adding a new subpackage to the library requires a TECHLEAD sign-off from @tsdaemon.

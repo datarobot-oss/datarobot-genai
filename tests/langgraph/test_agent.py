@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import uuid
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from functools import cached_property
 from typing import Any
 from unittest.mock import AsyncMock
@@ -37,10 +39,21 @@ from langgraph.graph.message import MessagesState
 from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
 
+from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
 from datarobot_genai.langgraph.agent import INTERRUPT_CONFIRMATION_AGUI_TOOL_NAME
 from datarobot_genai.langgraph.agent import LANGGRAPH_RESUME_STATE_KEY
 from datarobot_genai.langgraph.agent import LangGraphAgent
 from datarobot_genai.langgraph.agent import datarobot_agent_class_from_langgraph
+
+
+def _noop_mcp_tools_factory() -> Any:
+    """Async context manager factory that yields no MCP tools (unit tests)."""
+
+    @asynccontextmanager
+    async def _ctx() -> AsyncGenerator[list[Any], None]:
+        yield []
+
+    return _ctx()
 
 
 @pytest.fixture
@@ -717,6 +730,127 @@ async def test_langgraph_non_streaming(run_agent_input):
     assert usage_metrics["completion_tokens"] == 100
 
 
+def _two_node_agent(message_id: str | None) -> LangGraphAgent:
+    """Build a researcher -> responder graph where both nodes surface their message
+    with ``message_id`` (the default recipe-template shape: one ``.invoke()`` per node).
+
+    Reproduces BUZZOK-31531. Text boundaries used to key on ``message.id`` alone:
+
+    - ``message_id=""`` -> the ``updates`` reset (guarded by a truthy id) never
+      fires and ``"" != ""`` emits no boundary, so the non-streaming wrapper
+      silently fused both nodes' text into one response (the reported symptom).
+    - ``message_id=None`` -> no boundary event is emitted at all, so a
+      ``TextMessageContentEvent`` is built with ``message_id=None`` and the stream
+      raises a validation error (``message_id`` is a required ``str``).
+    """
+
+    class _Agent(LangGraphAgent):
+        @cached_property
+        def workflow(self) -> StateGraph[MessagesState]:
+            async def mock_stream_generator() -> Any:
+                # researcher_node streams research notes
+                yield (
+                    (),
+                    "messages",
+                    (
+                        AIMessageChunk(content="- Paris is the capital of France", id=message_id),
+                        {"langgraph_node": "researcher_node"},
+                    ),
+                )
+                yield (
+                    (),
+                    "updates",
+                    {"researcher_node": {"messages": [AIMessage(content="notes", id=message_id)]}},
+                )
+                # responder_node streams the final answer
+                yield (
+                    (),
+                    "messages",
+                    (
+                        AIMessageChunk(content="Paris", id=message_id),
+                        {"langgraph_node": "responder_node"},
+                    ),
+                )
+                yield (
+                    (),
+                    "updates",
+                    {"responder_node": {"messages": [AIMessage(content="Paris", id=message_id)]}},
+                )
+
+            return Mock(
+                compile=Mock(return_value=Mock(astream=Mock(return_value=mock_stream_generator())))
+            )
+
+        @property
+        def prompt_template(self) -> ChatPromptTemplate:
+            return ChatPromptTemplate.from_messages([{"role": "user", "content": "{topic}"}])
+
+        @property
+        def langgraph_config(self) -> dict[str, Any]:
+            return {}
+
+    return _Agent()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message_id",
+    [
+        pytest.param("", id="empty-string-id"),  # reported symptom: silent concatenation
+        pytest.param(None, id="null-id"),  # related symptom: malformed-stream crash
+    ],
+)
+async def test_langgraph_multinode_ambiguous_ids_return_only_final_node(
+    message_id: str | None,
+) -> None:
+    # GIVEN a two-node agent whose nodes surface messages with an empty/null id
+    agent = _two_node_agent(message_id)
+
+    # WHEN the non-streaming chat-completion path reassembles the response -- the
+    # exact bytes the eval harness and a direct non-streaming curl receive
+    response, _pipeline, _usage = await agent_chat_completion_wrapper(
+        agent,
+        {"messages": [{"role": "user", "content": "capital of France?"}], "stream": False},
+        _noop_mcp_tools_factory,
+    )
+
+    # THEN only the final responder_node answer survives; the researcher notes are
+    # not concatenated in front of it.
+    assert response == "Paris"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_multinode_ambiguous_ids_emit_one_boundary_per_node() -> None:
+    # GIVEN a two-node agent whose nodes both use an empty message id
+    agent = _two_node_agent("")
+
+    # WHEN streaming its AG-UI events
+    types: list[EventType] = []
+    starts: list[str] = []
+    async for event, _interactions, _metrics in agent.invoke(
+        RunAgentInput(
+            messages=[UserMessage(content="capital of France?", id="m0")],
+            tools=[],
+            forwarded_props={},
+            thread_id="t",
+            run_id="r",
+            state={},
+            context=[],
+        )
+    ):
+        if isinstance(event, BaseEvent):
+            types.append(event.type)
+            if event.type == EventType.TEXT_MESSAGE_START:
+                starts.append(event.message_id)
+
+    # THEN each node opens its own text message with a distinct, non-empty id ...
+    assert len(starts) == 2
+    assert starts[0] and starts[1] and starts[0] != starts[1]
+    # ... and the stream is well-formed: no CONTENT before the first START.
+    first_start = types.index(EventType.TEXT_MESSAGE_START)
+    assert EventType.TEXT_MESSAGE_CONTENT not in types[:first_start]
+
+
 async def test_langgraph_invoke_supports_legacy_convert_input_override(run_agent_input) -> None:
     # GIVEN a subclass overriding convert_input_message with the original signature
     agent = LegacyOverrideLangGraphAgent()
@@ -827,8 +961,8 @@ def test_create_pipeline_interactions_from_events_filters_tool_messages() -> Non
 
 
 def test_create_pipeline_interactions_handles_list_content_with_thinking() -> None:
-    # AIMessage with list-form content (thinking + text) previously crashed ragas
-    # with TypeError("AIMessage content must be a string, got list").
+    # AIMessage with list-form content (thinking + text) would fail the string-only
+    # message schema with TypeError("AIMessage content must be a string, got list").
     ai_with_thinking = AIMessage(
         content=[
             {"type": "thinking", "thinking": "let me think about it"},
@@ -843,7 +977,7 @@ def test_create_pipeline_interactions_handles_list_content_with_thinking() -> No
     sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
 
     assert sample is not None
-    # Thinking content is stripped before ragas validates; only the text portion remains.
+    # Thinking content is stripped before the message is built; only the text portion remains.
     serialized = " ".join(str(getattr(m, "content", "")) for m in sample.user_input)
     assert "let me think about it" not in serialized
     assert "here is the answer" in serialized
@@ -1007,3 +1141,38 @@ async def test_stream_reasoning_content_kwarg_emits_reasoning_chunks(run_agent_i
 
     text_deltas = [e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT]
     assert text_deltas == ["answer"]
+
+
+class AbortingLangGraphAgent(SimpleLangGraphAgent):
+    """LangGraph agent whose graph stream opens a text message then fails mid-run."""
+
+    @cached_property
+    def workflow(self) -> Any:
+        async def mock_stream_generator():  # type: ignore[no-untyped-def]
+            yield (
+                "final_agent",
+                "messages",
+                (AIMessageChunk(content="half a thought", id="222"), {}),
+            )
+            raise ValueError("boom")
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
+        return Mock(compile=Mock(return_value=mock_graph_stream))
+
+
+async def test_langgraph_invoke_frames_midstream_error_as_run_error(
+    run_agent_input: RunAgentInput,
+) -> None:
+    # GIVEN a graph that opens a text message then raises mid-stream
+    agent = AbortingLangGraphAgent()
+
+    # WHEN the agent is invoked
+    events = [e[0] async for e in agent.invoke(run_agent_input)]
+
+    # THEN the run ends with a terminal RUN_ERROR instead of raising
+    assert events[-1].type == EventType.RUN_ERROR
+    assert "boom" in events[-1].message
+    # AND any opened text segment was closed before the error
+    starts = [e for e in events if e.type == EventType.TEXT_MESSAGE_START]
+    ends = [e for e in events if e.type == EventType.TEXT_MESSAGE_END]
+    assert len(starts) == len(ends)

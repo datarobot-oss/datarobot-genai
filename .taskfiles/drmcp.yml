@@ -86,6 +86,7 @@ tasks:
   drmcp-unit:
     desc: "Run DR MCP Library unit tests"
     cmds:
+      - task: drmcp-install
       - rm -rf .coverage .coverage.xml htmlcov
       - echo "Running DR MCP Library unit tests"
       - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/unit/{{end}} --cov=datarobot_genai.drmcp --cov-report=xml --cov-report=html --cov-report=term-missing -s -vv
@@ -94,8 +95,11 @@ tasks:
   drmcp-integration:
     desc: "Run DR MCP Library integration tests"
     cmds:
+      - task: drmcp-install
       - echo "Running DR MCP Library integration tests"
-      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -s -vv
+      # loadfile: tests from one file stay on one worker, so each worker reuses its
+      # shared MCP server subprocess instead of every worker spawning every config.
+      - uv run pytest {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}tests/drmcp/integration/{{end}} -n auto --dist loadfile -s -vv
     silent: true
 
   drmcp-acceptance:

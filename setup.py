@@ -24,17 +24,16 @@ from setuptools import setup
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
-    "datarobot>=3.17.0,<4.0.0",
+    "datarobot[core]>=3.17.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
-    "ragas>=0.4.3,<0.5.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
     "opentelemetry-instrumentation-requests>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.2.33,<12.0.0",
+    "datarobot-moderations[all]>=11.2.47,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -77,7 +76,7 @@ llamaindex = core + [
     "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
 ]
 
-nat = core + [
+dragent = core + [
     "nvidia-nat==1.7.0",
     "nvidia-nat-a2a==1.7.0",
     "nvidia-nat-opentelemetry==1.7.0",
@@ -85,13 +84,9 @@ nat = core + [
     "nvidia-nat-mcp==1.7.0",
     "anyio==4.11.0",
     "mem0ai>=1.0.4,<2.0.0",
+    "starlette>=1.0.1",  # CVE fix
+    "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
 ]
-
-dragent = nat + [
-    "starlette>=1.0.1",
-]
-
-# Eventually NAT will be merged into dragent
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
@@ -175,7 +170,6 @@ extras_require = {
     "crewai": crewai,
     "langgraph": langgraph,
     "llamaindex": llamaindex,
-    "nat": nat,
     "auth": auth,
     "eval": eval_deps,
     "drmcpbase": drmcpbase,

@@ -33,9 +33,18 @@ _EXPECTED_TOOLS = {
     "create_text_panel",
     "create_json_panel",
     "delete_panel",
+    "move_panel",
     "create_dataset_panel_from_connector",
     "transform_panel",
     "filter_panel",
+    "create_dataset_panel_from_catalog",
+    "upload_dataset_panel_to_catalog",
+    "query_datasets_to_panel",
+    "get_prediction_history",
+    "get_autopilot_status",
+    "predict_with_deployment",
+    "apply_what_if",
+    "get_time_series_scoring_dataset_panel",
 }
 
 _EXPECTED_RESOURCE_TEMPLATES = {

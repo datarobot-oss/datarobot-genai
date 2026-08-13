@@ -74,6 +74,8 @@ _ENABLED_CATEGORIES = {
     "dr_web_search_tavily",
     "dr_documentation",
     "dr_vdb",
+    "dr_file",
+    "dr_workload",
 }
 
 
@@ -91,9 +93,9 @@ class TestExcludedSurface:
             }
         )
 
-    def test_files_workload_panels_excluded(self, names: set[str]) -> None:
-        # Not registered in global-mcp yet → not advertised (incl. file_upload).
-        assert not (names & {"file_import", "file_upload", "workload_list", "list_panels"})
+    def test_panels_and_file_upload_excluded(self, names: set[str]) -> None:
+        # Panels not registered in global-mcp yet; file_upload needs local disk access.
+        assert not (names & {"file_upload", "list_panels"})
 
     def test_hosted_and_placeholder_categories_excluded(self, categories: set[str]) -> None:
         assert not (categories & {"dr_dynamic_tools", "dr_proxied_user_mcp", "dr_mcpapps"})
@@ -119,6 +121,15 @@ class TestIncludedSurface:
             "search_datarobot_agentic_docs",
             "vdb_list",
         } <= names
+
+    def test_files_workload_included(self, names: set[str]) -> None:
+        assert {
+            "file_import",
+            "file_list",
+            "workload_list",
+            "artifact_get",
+        } <= names
+        assert "file_upload" not in names
 
 
 class TestMcpUrl:

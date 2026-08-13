@@ -26,6 +26,7 @@ from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMConfig
+from datarobot_genai.core.config import default_assume_native_tool_calling_when_unmapped
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
@@ -69,9 +70,13 @@ class DataRobotLLMComponentModelConfig(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
+    assume_native_tool_calling_when_unmapped: bool = Field(
+        default_factory=default_assume_native_tool_calling_when_unmapped,
+        description=(
+            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
+            "still report native tool-calling support so CrewAI uses API tool_calls "
+            "instead of the ReAct text path."
+        ),
     )
 
 
@@ -114,10 +119,6 @@ class DataRobotLLMDeploymentModelConfig(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
-    )
 
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
@@ -141,6 +142,14 @@ class DataRobotNIMModelConfig(DataRobotReasoningMixin, NIMModelConfig, name="dat
     nim_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
+    )
+    assume_native_tool_calling_when_unmapped: bool = Field(
+        default_factory=default_assume_native_tool_calling_when_unmapped,
+        description=(
+            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
+            "still report native tool-calling support so CrewAI uses API tool_calls "
+            "instead of the ReAct text path."
+        ),
     )
 
 

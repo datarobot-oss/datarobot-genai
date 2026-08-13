@@ -63,9 +63,43 @@ def test_config_defaults() -> None:
         assert config.tool_config.enable_vdb_tools is False
         assert config.tool_config.enable_code_execution_tools is False
         assert config.tool_config.enable_optimization_tools is False
-
+        assert config.mcp_enable_unauthenticated_well_known_route is False
         # Clean up the cached config after the test
         config_module._config = None
+
+
+class TestUnauthenticatedWellKnownRouteConfig:
+    """Test mcp_enable_unauthenticated_well_known_route configuration."""
+
+    def test_default_is_false(self) -> None:
+        with patch.dict(os.environ, clear=True):
+            config_module._config = None
+            config = MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            assert config.mcp_enable_unauthenticated_well_known_route is False
+            config_module._config = None
+
+    @pytest.mark.parametrize("env_value,expected", [("true", True), ("false", False)])
+    def test_setting_via_env_var(self, env_value: str, expected: bool) -> None:
+        with patch.dict(
+            os.environ,
+            {"MCP_ENABLE_UNAUTHENTICATED_WELL_KNOWN_ROUTE": env_value},
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.mcp_enable_unauthenticated_well_known_route is expected
+
+    def test_setting_via_runtime_param_env_var(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "MLOPS_RUNTIME_PARAM_MCP_ENABLE_UNAUTHENTICATED_WELL_KNOWN_ROUTE": (
+                    '{"type":"boolean","payload":true}'
+                ),
+            },
+            clear=False,
+        ):
+            config = MCPServerConfig()
+            assert config.mcp_enable_unauthenticated_well_known_route is True
 
 
 class TestDuplicateBehavior:

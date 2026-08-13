@@ -90,7 +90,7 @@ def _list_browse_hint(
     ),
     display_name="Files — List",
     description_ui=(
-        "Browses the DataRobot filesystem, listing catalog items or directory "
+        "Browses the DataRobot filesystem, listing catalog directories and their "
         "contents with optional glob or recursive matching."
     ),
 )

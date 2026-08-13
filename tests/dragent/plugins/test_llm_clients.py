@@ -140,13 +140,16 @@ async def test_datarobot_llm_deployment_langchain_with_identity_token():
         llm_deployment_id="123",
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-        assert isinstance(llm, BaseChatModel)
-        assert llm.extra_headers == {"X-DataRobot-Identity-Token": "identity-token-123"}
+    with patch(
+        "datarobot_genai.dragent.plugins.llm_clients.extract_headers_from_context",
+        return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+    ):
+        async with WorkflowBuilder() as builder:
+            await builder.add_llm("datarobot_llm", llm_config)
+            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+            assert isinstance(llm, BaseChatModel)
+            assert llm.extra_headers == {"X-DataRobot-Identity-Token": "identity-token-123"}
 
 
 async def test_datarobot_nim_langchain():
@@ -195,14 +198,20 @@ async def test_datarobot_llm_component_langchain(
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="anthropic/claude-3",
             use_datarobot_llm_gateway=use_datarobot_llm_gateway,
-            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
             llm_deployment_id=llm_deployment_id,
             nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
-        async with WorkflowBuilder() as builder:
-            await builder.add_llm("datarobot_llm", llm_config)
-            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+        identity_patch = patch(
+            "datarobot_genai.dragent.plugins.llm_clients.extract_headers_from_context",
+            return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+        )
+        with identity_patch:
+            async with WorkflowBuilder() as builder:
+                await builder.add_llm("datarobot_llm", llm_config)
+                llm = await builder.get_llm(
+                    "datarobot_llm", wrapper_type=LLMFrameworkEnum.LANGCHAIN
+                )
 
         assert isinstance(llm, ChatLiteLLM)
         assert llm.temperature == 0.2

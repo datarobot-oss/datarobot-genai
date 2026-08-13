@@ -72,9 +72,8 @@ async def test_create_dataset_panel_from_connector(
         "sql": "SELECT region, rev FROM sales WHERE rev > 5",
     }
     # The Parquet payload was stored and is readable back as the queried rows.
-    payload_id = created["payload_files_id"]
-    assert payload_id is not None
-    frame = pl.read_parquet(io.BytesIO(blobs.blobs[payload_id][0]))
+    assert created["payload_files_id"] is not None
+    frame = pl.read_parquet(io.BytesIO(blobs.container[created["payload_path"]]))
     assert frame.to_dicts() == rows
 
 
@@ -106,7 +105,7 @@ async def test_create_dataset_panel_empty_query_keeps_column_schema(
         datastore_id="ds-1", sql="SELECT 1", title="Empty", source="staging"
     )
     assert created["columns"] == ["region", "rev"]
-    payload = await blobs.get(created["payload_files_id"])
+    payload = await blobs.get(created["payload_path"])
     frame = pl.read_parquet(io.BytesIO(payload))
     assert frame.columns == ["region", "rev"]
     assert frame.height == 0

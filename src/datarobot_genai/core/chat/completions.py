@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 from uuid import uuid4
@@ -22,6 +25,7 @@ from uuid import uuid4
 from ag_ui.core import AssistantMessage
 from ag_ui.core import Message
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
@@ -33,12 +37,14 @@ from ag_ui.core import UserMessage
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from openai.types.chat import CompletionCreateParams
-from ragas import MultiTurnSample
 
 from datarobot_genai.core.agents import InvokeReturn
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents.base import BaseAgent
 from datarobot_genai.core.agents.base import UsageMetrics
+
+if TYPE_CHECKING:
+    from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +228,8 @@ async def agent_chat_completion_wrapper(
                     received_run_finished = True
                     pipeline_interactions = iter_interactions
                     usage_metrics = iter_metrics
+                elif isinstance(event, RunErrorEvent):
+                    raise RuntimeError(event.message)
 
             if not received_run_finished:
                 logger.warning("Agent stream ended without RunFinishedEvent")

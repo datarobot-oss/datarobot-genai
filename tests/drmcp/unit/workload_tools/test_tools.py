@@ -30,6 +30,7 @@ from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drtools.workload import artifact_builds
 from datarobot_genai.drtools.workload import artifact_repositories
 from datarobot_genai.drtools.workload import artifacts
+from datarobot_genai.drtools.workload import openapi_spec
 from datarobot_genai.drtools.workload import workload_observability
 from datarobot_genai.drtools.workload import workload_runtime
 from datarobot_genai.drtools.workload import workloads
@@ -362,6 +363,27 @@ async def test_workload_create_client_error(patched_dr_client: MagicMock) -> Non
     with pytest.raises(ToolError) as exc_info:
         await workloads.workload_create(payload={"name": "wl", "artifactId": "art-1"})
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+@pytest.mark.asyncio
+async def test_workload_create_422_runtime_image_uri_adds_built_hint(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN the API rejects the create because the artifact image was never pushed
+    patched_dr_client.post.side_effect = ClientError(
+        "422: {'detail': 'runtime_image_uri should be a valid string, got None'}",
+        status_code=422,
+        json={},
+    )
+
+    # WHEN creating a workload on the not-yet-pushed artifact
+    with pytest.raises(ToolError) as exc_info:
+        await workloads.workload_create(payload={"name": "wl", "artifactId": "art-1"})
+
+    # THEN the error explains the BUILT-vs-COMPLETED cause and how to recover
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+    assert "BUILT" in str(exc_info.value)
+    assert "COMPLETED" in str(exc_info.value)
 
 
 # ------------------------------------------------------------------ #
@@ -1294,6 +1316,72 @@ async def test_artifact_build_get_with_logs(patched_dr_client: MagicMock) -> Non
 
 
 @pytest.mark.asyncio
+async def test_artifact_build_get_built_status_is_not_deployable(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a build whose image was built but not yet pushed to the registry
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "bld-xyz", "status": "BUILT"}
+    )
+
+    # WHEN reading the single build
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="bld-xyz")
+
+    # THEN it is flagged as not deployable, with guidance to wait for COMPLETED
+    assert result["deployable"] is False
+    assert "NOT deployable" in result["status_guidance"]
+    assert "COMPLETED" in result["status_guidance"]
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_get_normalizes_lowercase_dash_variants(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a Code-to-Workload-style build reporting a lowercase/dash-cased status
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "bld-xyz", "status": "in-progress"}
+    )
+
+    # WHEN reading the single build
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="bld-xyz")
+
+    # THEN the variant is recognized and annotated like IN_PROGRESS
+    assert result["deployable"] is False
+    assert "in progress" in result["status_guidance"].lower()
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_get_completed_is_deployable(patched_dr_client: MagicMock) -> None:
+    # GIVEN a build that was built AND pushed to the registry
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "bld-xyz", "status": "completed"}
+    )
+
+    # WHEN reading the single build
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="bld-xyz")
+
+    # THEN it is flagged deployable
+    assert result["deployable"] is True
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_get_unknown_status_left_unannotated(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a build with a status outside the known progression
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {"id": "bld-xyz", "status": "success"}
+    )
+
+    # WHEN reading the single build
+    result = await artifact_builds.artifact_get_build(artifact_id="art-abc", build_id="bld-xyz")
+
+    # THEN no deployability claims are invented for it
+    assert "deployable" not in result
+    assert "status_guidance" not in result
+
+
+@pytest.mark.asyncio
 async def test_artifact_build_get_empty_artifact_id_raises() -> None:
     with pytest.raises(ToolError) as exc_info:
         await artifact_builds.artifact_get_build(artifact_id="")
@@ -1325,6 +1413,23 @@ async def test_artifact_build_action_trigger(patched_dr_client: MagicMock) -> No
 
     patched_dr_client.post.assert_called_once_with("artifacts/art-abc/builds")
     assert result["buildIds"] == ["bld-new"]
+
+
+@pytest.mark.asyncio
+async def test_artifact_build_action_trigger_notes_wait_for_completed(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a draft artifact whose build can be triggered
+    patched_dr_client.post.return_value = MagicMock(json=lambda: {"buildIds": ["bld-new"]})
+
+    # WHEN triggering the build
+    result = await artifact_builds.artifact_build_run_action(
+        artifact_id="art-abc", action="trigger"
+    )
+
+    # THEN the response tells the caller to wait for COMPLETED (BUILT is not deployable)
+    assert "COMPLETED" in result["note"]
+    assert "BUILT" in result["note"]
 
 
 @pytest.mark.asyncio
@@ -1442,3 +1547,157 @@ async def test_artifact_repository_delete_conflict(patched_dr_client: MagicMock)
     with pytest.raises(ToolError) as exc_info:
         await artifact_repositories.artifact_repository_delete(repository_id="repo-in-use")
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+# ================================================================== #
+# read_openapi_spec                                                   #
+# ================================================================== #
+
+_SPEC_YAML = """\
+openapi: 3.1.0
+info:
+  title: Workload API
+  version: 2.0.0
+paths:
+  /workloads:
+    get:
+      operationId: listWorkloads
+      summary: List workloads
+    post:
+      operationId: createWorkload
+      summary: Create a workload
+  /artifacts:
+    get:
+      operationId: listArtifacts
+      summary: List artifacts
+components:
+  schemas:
+    CreateWorkloadRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        replicaCount:
+          type: integer
+    WorkloadResponse:
+      type: object
+      properties:
+        id:
+          type: string
+"""
+
+
+@pytest.fixture
+def spec_client(patched_dr_client: MagicMock) -> Iterator[MagicMock]:
+    """Serve the sample spec through the patched REST client, resetting the module cache."""
+    openapi_spec._spec_cache.clear()
+    patched_dr_client.get.return_value = MagicMock(text=_SPEC_YAML)
+    yield patched_dr_client
+    openapi_spec._spec_cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_overview(spec_client: MagicMock) -> None:
+    # GIVEN the live spec is reachable
+    # WHEN querying with no arguments
+    result = await openapi_spec.read_openapi_spec()
+
+    # THEN an overview with counts and usage guidance is returned
+    spec_client.get.assert_called_once_with("openapi.yaml")
+    assert result["title"] == "Workload API"
+    assert result["endpoint_count"] == 2
+    assert result["schema_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_caches_per_process(spec_client: MagicMock) -> None:
+    # GIVEN the spec was already fetched once
+    await openapi_spec.read_openapi_spec()
+
+    # WHEN querying again
+    await openapi_spec.read_openapi_spec(section="schemas")
+
+    # THEN the spec endpoint is only hit once
+    assert spec_client.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_schema_lookup(spec_client: MagicMock) -> None:
+    result = await openapi_spec.read_openapi_spec(schema_name="CreateWorkloadRequest")
+
+    assert result["schema_name"] == "CreateWorkloadRequest"
+    assert "replicaCount" in result["definition"]
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_schema_lookup_case_insensitive(spec_client: MagicMock) -> None:
+    result = await openapi_spec.read_openapi_spec(schema_name="createworkloadrequest")
+
+    assert result["schema_name"] == "CreateWorkloadRequest"
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_schema_not_found_suggests_similar(
+    spec_client: MagicMock,
+) -> None:
+    # WHEN looking up a schema name that only partially matches
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_spec.read_openapi_spec(schema_name="Workload")
+
+    # THEN the error names similar schemas so the caller can self-correct
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "CreateWorkloadRequest" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_path_lookup(spec_client: MagicMock) -> None:
+    # WHEN inspecting a path, with or without the leading slash
+    result = await openapi_spec.read_openapi_spec(path="workloads")
+
+    assert result["path"] == "/workloads"
+    assert "listWorkloads" in result["definition"]
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_path_not_found_raises(spec_client: MagicMock) -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_spec.read_openapi_spec(path="/nonexistent")
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_search(spec_client: MagicMock) -> None:
+    result = await openapi_spec.read_openapi_spec(search="replica")
+
+    assert result["fields"] == ["CreateWorkloadRequest.replicaCount"]
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_sections(spec_client: MagicMock) -> None:
+    schemas = await openapi_spec.read_openapi_spec(section="schemas")
+    paths = await openapi_spec.read_openapi_spec(section="paths")
+
+    assert schemas["schemas"] == ["CreateWorkloadRequest", "WorkloadResponse"]
+    assert paths["paths"]["/workloads"] == ["GET", "POST"]
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_invalid_section_raises() -> None:
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_spec.read_openapi_spec(section="all")
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+
+
+@pytest.mark.asyncio
+async def test_read_openapi_spec_fetch_error(patched_dr_client: MagicMock) -> None:
+    # GIVEN the spec endpoint is unreachable and nothing is cached
+    openapi_spec._spec_cache.clear()
+    patched_dr_client.get.side_effect = ClientError("503", status_code=503, json={})
+
+    # WHEN querying the spec
+    with pytest.raises(ToolError) as exc_info:
+        await openapi_spec.read_openapi_spec()
+
+    # THEN the upstream failure is surfaced as a tool error
+    assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+    openapi_spec._spec_cache.clear()
