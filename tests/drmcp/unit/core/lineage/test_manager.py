@@ -17,22 +17,12 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    PromptInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    ResourceInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfPromptInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfResourceInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    TypeOfToolInUserMCPServerDeployment,
-)
+from datarobot.models.user_mcp_server_deployment import PromptInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ResourceInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfPromptInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfResourceInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import TypeOfToolInUserMCPServerDeployment
 
 from datarobot_genai.drmcp.core.lineage.entities import MCPPromptMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata

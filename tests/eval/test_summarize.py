@@ -40,7 +40,7 @@ def _minimal_results(
         "summary": {
             "scored_cases": scored,
             "inconclusive_cases": inconclusive,
-            "mean_quality_score": 1.0,
+            "mean_score": 1.0,
             "pass_rate": 1.0,
             "good_case_pass_rate": 1.0,
             "bad_case_pass_rate": 1.0,
@@ -49,13 +49,15 @@ def _minimal_results(
         "cases": [
             {
                 "id": "good-001",
+                "benchmark": "answer_quality",
                 "input": "question",
                 "expected_behavior": "good",
                 "agent_response": "answer",
-                "quality_score": 1.0,
-                "judge_reason": "judge grade: 5",
+                "has_judge": True,
+                "score": 1.0,
                 "passed": True,
-                "answer_match_score": None,
+                "reason": "judge grade: 5",
+                "judge_grade": "5",
                 "notes": "",
                 "source": "",
             }

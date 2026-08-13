@@ -25,11 +25,13 @@ class StubRestResponse:
         text: str | None = None,
         content: bytes | None = None,
         status_code: int = 200,
+        headers: dict[str, str] | None = None,
     ):
         self._data = data or {}
         self._text = text
         self._content = content
         self.status_code = status_code
+        self.headers = headers or {}
 
     def json(self) -> dict[str, Any]:
         return self._data

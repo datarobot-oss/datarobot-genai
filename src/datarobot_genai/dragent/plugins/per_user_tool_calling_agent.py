@@ -21,9 +21,12 @@ the name ``per_user_tool_calling_agent`` using ``register_per_user_function`` so
 that per-user function groups can be used while still benefiting from OpenAI-style
 structured tool calling (``bind_tools``).
 
-NAT 1.6 added a ``stream_fn`` that yields ``ChatResponseChunk``.  We wrap it
-using ``DRAgentNestedReasoningStepAdaptor.process_chunks()`` to produce
-``DRAgentEventResponse`` with valid AG-UI event sequences.
+NAT 1.6 added a ``stream_fn`` that yields ``ChatResponseChunk`` (and a ``single_fn`` that
+returns ``str``).  This wrapper leaves that native output untouched; the
+``datarobot_dragent_normalization`` middleware converts it into ``DRAgentEventResponse`` with
+valid AG-UI event sequences.  Declare that middleware on this function (in the ``workflow`` block
+when this agent is the workflow, or on the inner function when it is a memory wrapper's
+``inner_agent_name``).
 """
 
 import uuid
@@ -37,13 +40,10 @@ from langgraph.pregel._messages import _state_values
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
-from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import ChatResponse
+from nat.data_models.api_server import ChatResponseChunk
 from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
-
-from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
-from datarobot_genai.dragent.frontends.stream_converter import convert_chunks_to_agui_events
 
 # Workaround: prior assistant messages from chat history were leaking back into
 # the response stream as a single trailing mega-chunk after the new response.
@@ -101,32 +101,16 @@ class PerUserToolCallAgentWorkflowConfig(
 async def _per_user_tool_calling_agent(
     config: PerUserToolCallAgentWorkflowConfig, builder: Any
 ) -> AsyncGenerator[Any, None]:
-    """Wrap the original tool_calling_agent with AG-UI stream conversion."""
-    from nat.builder.function_info import FunctionInfo  # noqa: PLC0415
+    """Re-register tool_calling_agent as a per-user function, unwrapped.
 
+    The native ``FunctionInfo`` (``single_fn -> str``, ``stream_fn -> ChatResponseChunk``) is
+    yielded as-is; the ``datarobot_dragent_normalization`` middleware converts that output into
+    ``DRAgentEventResponse``.
+    """
     original_gen = tool_calling_agent_workflow.__wrapped__(config, builder)
     try:
-        fn_info: FunctionInfo = await original_gen.__anext__()
-
-        if fn_info.stream_fn is None:
-            yield fn_info
-            return
-
-        original_stream_fn = fn_info.stream_fn
-
-        async def wrapped_stream(
-            chat_request_or_message: ChatRequestOrMessage,
-        ) -> AsyncGenerator[DRAgentEventResponse, None]:
-            async for event in convert_chunks_to_agui_events(
-                original_stream_fn(chat_request_or_message)
-            ):
-                yield event
-
-        yield FunctionInfo.create(
-            single_fn=fn_info.single_fn,
-            stream_fn=wrapped_stream,
-            description=fn_info.description,
-        )
+        fn_info = await original_gen.__anext__()
+        yield fn_info
     finally:
         await original_gen.aclose()
 
@@ -135,5 +119,6 @@ register_per_user_function(
     config_type=PerUserToolCallAgentWorkflowConfig,
     input_type=ChatRequest,
     single_output_type=ChatResponse,
+    streaming_output_type=ChatResponseChunk,
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )(_per_user_tool_calling_agent)

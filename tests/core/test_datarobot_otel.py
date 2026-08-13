@@ -26,6 +26,7 @@ from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
     "MLOPS_DEPLOYMENT_ID",
+    "WORKLOAD_ID",
     "DATAROBOT_ENDPOINT",
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "OTEL_SERVICE_NAME",
@@ -61,6 +62,15 @@ class TestEnvResolvers:
 
     def test_entity_id_empty_when_unset(self, clean_env):
         assert datarobot_otel.resolve_entity_id_from_env() == ""
+
+    def test_entity_id_workload(self, clean_env):
+        clean_env.setenv("WORKLOAD_ID", "wkl42")
+        assert datarobot_otel.resolve_entity_id_from_env() == "workload-wkl42"
+
+    def test_entity_id_deployment_wins_over_workload(self, clean_env):
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "dep1")
+        clean_env.setenv("WORKLOAD_ID", "wkl2")
+        assert datarobot_otel.resolve_entity_id_from_env() == "deployment-dep1"
 
     def test_endpoint_strips_api_path(self, clean_env):
         clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
@@ -120,8 +130,16 @@ class TestHeaderResolvers:
             "X-DataRobot-Entity-Id": "deployment-abc123",
         }
 
+    def test_headers_from_workload_env(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("WORKLOAD_ID", "wkl42")
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Api-Key": "tok",
+            "X-DataRobot-Entity-Id": "workload-wkl42",
+        }
+
     def test_headers_none_when_env_unset(self, clean_env):
-        # Both DATAROBOT_API_TOKEN and MLOPS_DEPLOYMENT_ID must be set; otherwise
+        # Both DATAROBOT_API_TOKEN and an entity ID must be set; otherwise
         # the resolver returns None so callers can skip auth header injection.
         assert datarobot_otel.resolve_datarobot_headers_from_env() is None
 
@@ -219,6 +237,25 @@ class TestBootstrapOtelProvider:
         registered = getattr(active, "_span_processors", (active,))
         assert any(isinstance(p, SimpleSpanProcessor) for p in registered)
         assert not any(isinstance(p, BatchSpanProcessor) for p in registered)
+
+    def test_installs_provider_with_workload_env(self, clean_env):
+        clean_env.setenv("WORKLOAD_ID", "wkl42")
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is True
+
+        provider = trace.get_tracer_provider()
+        assert isinstance(provider, TracerProvider)
+        attrs = provider.resource.attributes
+        assert attrs["service.name"] == "workload-wkl42"
+
+    def test_service_name_deployment_wins_over_workload(self, clean_env):
+        self._set_full_env(clean_env)
+        clean_env.setenv("WORKLOAD_ID", "wkl99")
+        datarobot_otel.bootstrap_otel_provider_for_datarobot()
+
+        provider = trace.get_tracer_provider()
+        assert provider.resource.attributes["service.name"] == "deployment-abc123"
 
     def test_explicit_otel_service_name_wins(self, clean_env):
         self._set_full_env(clean_env)

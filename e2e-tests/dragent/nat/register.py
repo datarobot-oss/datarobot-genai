@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from datarobot_genai.core.telemetry.agent import instrument
-from datarobot_genai.nat.tool import nat_tool
+from datarobot_genai.dragent.tool import nat_tool
 
 from dragent.tool import generate_objectid
 

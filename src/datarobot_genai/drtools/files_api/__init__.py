@@ -18,5 +18,3 @@ Tools operate over ``dr://<catalog_item_id>/path`` and are backed by
 :class:`datarobot_genai.drmcputils.files.file_system_store.DataRobotFileSystemStore`.
 They are registered by drmcp when ``enable_files_api_tools`` is set.
 """
-
-GLOBAL_MCP_ENABLED: bool = False

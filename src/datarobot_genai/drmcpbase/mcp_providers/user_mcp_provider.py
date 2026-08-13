@@ -42,6 +42,7 @@ from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestCon
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
 from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_category_disabled_for_request
 from datarobot_genai.drmcpbase.feature_flags import check_mcp_tools_gallery_support
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,13 @@ class UserMCPProvider(Provider):
 
     async def _list_tools(self) -> Sequence[Tool]:
         tools: list[Tool] = []
+
+        if is_category_disabled_for_request(DataRobotMCPToolCategory.PROXIED_USER_MCP.name):
+            # Per-request gate (x-datarobot-mcp-enable-proxy: false): skip the whole
+            # user-MCP expansion — the entitlement check, the deployment listing and
+            # the per-deployment fan-out — not just the final listing.
+            logger.debug("Proxied user-MCP tools are disabled for this request; skipping fan-out.")
+            return tools
 
         if await check_mcp_tools_gallery_support(self.datarobot_api_client):
             results = await asyncio.gather(

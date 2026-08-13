@@ -23,5 +23,3 @@ Import directly from the submodules (e.g. :mod:`~datarobot_genai.drmcputils.pane
 :mod:`~datarobot_genai.drmcputils.panels.store`); this package intentionally re-exports
 nothing to avoid a public-API compatibility surface.
 """
-
-GLOBAL_MCP_ENABLED: bool = False

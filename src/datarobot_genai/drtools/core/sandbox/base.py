@@ -32,12 +32,34 @@ from pydantic import Field
 class SandboxError(Exception):
     """Base error raised when sandboxed execution fails.
 
-    Subclassed by :class:`SandboxTimeout` for the specific timeout case.
+    Subclassed by :class:`SandboxTimeout` (timeout) and
+    :class:`SandboxInfraError` (provisioning/transport failure).
+
+    Carries optional structured detail so observability can classify the
+    failure without re-parsing the message string: ``exit_code`` (the
+    container/process exit status, e.g. ``137`` for an OOM kill) and
+    ``stderr`` (captured standard error, scanned for OOM/timeout markers).
     """
+
+    def __init__(
+        self, message: str = "", *, exit_code: int | None = None, stderr: str = ""
+    ) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.stderr = stderr
 
 
 class SandboxTimeout(SandboxError):  # noqa: N818  # public API name; "Timeout" intentional
     """Raised when sandboxed execution exceeds the configured timeout."""
+
+
+class SandboxInfraError(SandboxError):  # noqa: N818  # mirrors SandboxError naming
+    """Raised when the sandbox cannot be provisioned or reached.
+
+    Distinguishes an infrastructure/transport failure *before* user code runs
+    (image pull failure, workload-api unreachable) from a user-code failure, so
+    the two are not conflated in the failure taxonomy.
+    """
 
 
 @dataclass

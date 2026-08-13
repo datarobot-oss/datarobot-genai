@@ -67,11 +67,15 @@ async def list_panels(
     _require_mcp_sandbox()
     limit, note = clamp_limit(limit)
     offset = max(offset, 0)
-    panels = await _get_store().list(source=source, limit=limit, offset=offset)
+    store = _get_store()
+    panels = await store.list(source=source, limit=limit, offset=offset)
     results: dict[str, Any] = {
         "panels": [p.model_dump(mode="json") for p in panels],
         "count": len(panels),
         "source": source,
+        # The conversation the listing is scoped to (from the request's
+        # x-datarobot-conversation-id header); None = unscoped global view.
+        "conversation_id": store.conversation_id,
     }
     return merge_pagination_metadata(results, {}, note, offset=offset, limit=limit)
 
@@ -245,6 +249,31 @@ async def validate_panel_data(
             "hint": f"Use describe_panel_schema('{schema_name}') to see required fields.",
         }
     return {"valid": True, "normalized_data": normalized}
+
+
+@tool_metadata(
+    tags={"panels", "write", "move", "daria"},
+    description=(
+        "[Panels—move] Move a panel between sources (e.g. promote 'staging' to 'main') by "
+        "retagging it in place. The panel id is preserved, so existing references stay valid."
+    ),
+    display_name="Panels — Move",
+    description_ui=(
+        "Moves a panel between sources (e.g. promotes staging to main) while preserving its id."
+    ),
+)
+async def move_panel(
+    *,
+    panel_id: Annotated[str, "The ID of the panel to move."],
+    to_source: Annotated[str, "Destination source ('main' or 'staging')."] = DEFAULT_SOURCE,
+) -> dict[str, Any]:
+    _require_mcp_sandbox()
+    if not panel_id:
+        raise ToolError("panel_id must be provided", kind=ToolErrorKind.VALIDATION)
+    if not to_source:
+        raise ToolError("to_source must be provided", kind=ToolErrorKind.VALIDATION)
+    panel = await _get_store().move(panel_id, to_source=to_source)
+    return {"moved": True, "to_source": to_source, "panel": panel.model_dump(mode="json")}
 
 
 @tool_metadata(

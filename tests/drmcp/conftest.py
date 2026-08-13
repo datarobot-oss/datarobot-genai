@@ -27,6 +27,7 @@ from datarobot.context import Context as DRContext
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubDeployment
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubModel
 from datarobot_genai.drmcp.test_utils.stubs.dr_client_stubs import StubProject
+from datarobot_genai.drmcputils import credentials as credentials_module
 from datarobot_genai.drmcputils.credentials import get_credentials
 from tests.drmcp.stub_credentials import STUB_DATAROBOT_API_TOKEN
 from tests.drmcp.stub_credentials import force_stub_datarobot_credentials_env
@@ -62,6 +63,7 @@ def _make_dr_client() -> Any:
     # Integration tests enable stub mode so credentials from a developer's .env are never used.
     if os.environ.get("MCP_USE_CLIENT_STUBS", "false").lower() == "true":
         force_stub_datarobot_credentials_env()
+        credentials_module._credentials = None
     elif not os.environ.get("DATAROBOT_API_TOKEN"):
         raise ValueError("Tests need DATAROBOT_API_TOKEN environment variable set.")
     creds = get_credentials()

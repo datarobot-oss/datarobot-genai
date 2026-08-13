@@ -20,11 +20,13 @@ lives in the shared base rather than in either consumer.
 
 import logging
 
+from datarobot_genai.drmcputils.auth import get_request_headers
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.feature_flags import FeatureFlag
 from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.panels.store import CONVERSATION_ID_HEADER
 from datarobot_genai.drmcputils.panels.store import PanelStore
 
 logger = logging.getLogger(__name__)
@@ -51,5 +53,17 @@ def _require_mcp_sandbox() -> None:
         )
 
 
+def _request_conversation_id() -> str | None:
+    """Return the conversation id carried by the current request, if any.
+
+    Read from the ``x-datarobot-conversation-id`` header (the same header the
+    previous panel-library MCP server used), injected per request via
+    :func:`datarobot_genai.drmcputils.auth.set_request_headers`. Consumers
+    without conversations simply omit the header and get an unscoped store.
+    """
+    return get_request_headers().get(CONVERSATION_ID_HEADER)
+
+
 def _get_store() -> PanelStore:
-    return PanelStore(DataRobotFilesBlobStore())
+    """Build a per-request panel store, conversation-scoped when the request carries one."""
+    return PanelStore(DataRobotFilesBlobStore(), conversation_id=_request_conversation_id())

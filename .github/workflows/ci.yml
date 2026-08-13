@@ -78,7 +78,7 @@ jobs:
     strategy:
       matrix:
         python-version: [ '3.11', '3.12', '3.13' ]
-        module: [ 'core', 'crewai', 'langgraph', 'llamaindex', 'drmcpbase', 'drmcputils', 'drmcp', 'nat', 'dragent', 'eval']
+        module: [ 'core', 'crewai', 'langgraph', 'llamaindex', 'drmcpbase', 'drmcputils', 'drmcp', 'dragent', 'eval']
     permissions:
       contents: read
       pull-requests: read

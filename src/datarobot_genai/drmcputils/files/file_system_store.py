@@ -71,6 +71,15 @@ FILE_IMPORT_TERMINAL_FAILURE_PREFIXES = ("error", "abort")
 OverwriteStrategyName = Literal["rename", "replace", "skip", "error"]
 
 
+class DirectoryNotEmptyError(Exception):
+    """Raised by :meth:`FileSystemStore.delete` for a non-recursive delete of a non-empty directory.
+
+    Distinct from the silent no-op for an already-missing path: that case has nothing to
+    signal, while this one represents a real guard rejecting the request, which callers
+    should surface rather than report as a successful deletion.
+    """
+
+
 def normalize_status_location(status_id: str) -> str:
     """Return a relative API route for ``status/<id>/`` from a bare id, route, or URL."""
     cleaned = status_id.strip()
@@ -214,17 +223,33 @@ class FileSystemStore(Protocol):
     async def delete(
         self, path: str, *, recursive: bool = False, maxdepth: int | None = None
     ) -> None:
-        """Delete file(s) or director(ies) at ``path`` (silent if absent)."""
+        """Delete file(s) or director(ies) at ``path`` (silent if absent).
+
+        Raises :class:`DirectoryNotEmptyError` if ``recursive`` is ``False`` and ``path`` is
+        an existing, non-empty directory (nothing is deleted in that case).
+        """
         ...
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
         """Copy ``source`` to ``dest`` within the filesystem."""
         ...
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
         """Move/rename ``source`` to ``dest`` within the filesystem."""
         ...
@@ -386,17 +411,63 @@ class DataRobotFileSystemStore:
     async def delete(
         self, path: str, *, recursive: bool = False, maxdepth: int | None = None
     ) -> None:
-        await self._run(lambda fs: fs.rm(path, recursive=recursive, maxdepth=maxdepth))
+        def _call(fs: Any) -> None:
+            if not recursive:
+                try:
+                    info = fs.info(path)
+                except FileNotFoundError:
+                    info = None
+                if (
+                    info is not None
+                    and info.get("type") == "directory"
+                    and fs.ls(path, detail=False)
+                ):
+                    raise DirectoryNotEmptyError(
+                        f"{path!r} is a non-empty directory; pass recursive=True to delete it."
+                    )
+            fs.rm(path, recursive=recursive, maxdepth=maxdepth)
+
+        await self._run(_call)
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
-        await self._run(lambda fs: fs.copy(source, dest, recursive=recursive, maxdepth=maxdepth))
+        strategy = overwrite_strategy_from_name(overwrite)
+        await self._run(
+            lambda fs: fs.copy(
+                source,
+                dest,
+                recursive=recursive,
+                maxdepth=maxdepth,
+                overwrite_strategy=strategy,
+            )
+        )
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: OverwriteStrategyName = "rename",
     ) -> None:
-        await self._run(lambda fs: fs.mv(source, dest, recursive=recursive, maxdepth=maxdepth))
+        strategy = overwrite_strategy_from_name(overwrite)
+        await self._run(
+            lambda fs: fs.mv(
+                source,
+                dest,
+                recursive=recursive,
+                maxdepth=maxdepth,
+                overwrite_strategy=strategy,
+            )
+        )
 
     async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:
         return await self._run(

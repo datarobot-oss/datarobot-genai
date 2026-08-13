@@ -33,6 +33,7 @@ from datarobot.errors import ClientError
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 from datarobot_genai.drmcputils.files.file_system_store import DataRobotFileSystemStore
+from datarobot_genai.drmcputils.files.file_system_store import DirectoryNotEmptyError
 from datarobot_genai.drmcputils.files.file_system_store import FileEntry
 from datarobot_genai.drmcputils.files.file_system_store import FileSystemStore
 from datarobot_genai.drmcputils.files.file_system_store import extract_status_id
@@ -97,12 +98,33 @@ class FakeFS:
         self.recorded = ("rm", path, recursive, maxdepth)
         return self._resolve("rm", None)
 
-    def copy(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
-        self.recorded = ("copy", path1, path2, recursive, maxdepth)
+    def copy(
+        self,
+        path1: str,
+        path2: str,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        self.recorded = (
+            "copy",
+            path1,
+            path2,
+            recursive,
+            maxdepth,
+            kwargs.get("overwrite_strategy"),
+        )
         return self._resolve("copy", None)
 
-    def mv(self, path1: str, path2: str, recursive: bool = False, maxdepth: Any = None) -> Any:
-        self.recorded = ("mv", path1, path2, recursive, maxdepth)
+    def mv(
+        self,
+        path1: str,
+        path2: str,
+        recursive: bool = False,
+        maxdepth: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        self.recorded = ("mv", path1, path2, recursive, maxdepth, kwargs.get("overwrite_strategy"))
         return self._resolve("mv", None)
 
     def clone_catalog_item_dir(self, path_or_id: str, files_to_omit: Any = None) -> Any:
@@ -285,10 +307,61 @@ async def test_delete_copy_move_delegate() -> None:
     store, fs = _store_and_fs()
     await store.delete("dr://abc/x", recursive=True, maxdepth=2)
     assert fs.recorded == ("rm", "dr://abc/x", True, 2)
-    await store.copy("dr://abc/a", "dr://abc/b", recursive=True)
-    assert fs.recorded == ("copy", "dr://abc/a", "dr://abc/b", True, None)
-    await store.move("dr://abc/a", "dr://abc/b")
-    assert fs.recorded == ("mv", "dr://abc/a", "dr://abc/b", False, None)
+    await store.copy("dr://abc/a", "dr://abc/b", recursive=True, overwrite="replace")
+    assert fs.recorded == (
+        "copy",
+        "dr://abc/a",
+        "dr://abc/b",
+        True,
+        None,
+        FilesOverwriteStrategy.REPLACE,
+    )
+    await store.move("dr://abc/a", "dr://abc/b", overwrite="skip")
+    assert fs.recorded == (
+        "mv",
+        "dr://abc/a",
+        "dr://abc/b",
+        False,
+        None,
+        FilesOverwriteStrategy.SKIP,
+    )
+
+
+async def test_delete_non_recursive_non_empty_directory_raises() -> None:
+    store, fs = _store_and_fs(
+        info={"name": "abc/dir", "type": "directory", "size": 0},
+        ls=[{"name": "abc/dir/x.txt", "type": "file", "size": 1}],
+    )
+    with pytest.raises(DirectoryNotEmptyError):
+        await store.delete("dr://abc/dir")
+    assert not hasattr(fs, "recorded")
+
+
+async def test_delete_non_recursive_empty_directory_proceeds() -> None:
+    store, fs = _store_and_fs(info={"name": "abc/", "type": "directory", "size": 0}, ls=[])
+    await store.delete("dr://abc/")
+    assert fs.recorded == ("rm", "dr://abc/", False, None)
+
+
+async def test_delete_non_recursive_file_proceeds() -> None:
+    store, fs = _store_and_fs(info={"name": "abc/x.txt", "type": "file", "size": 5})
+    await store.delete("dr://abc/x.txt")
+    assert fs.recorded == ("rm", "dr://abc/x.txt", False, None)
+
+
+async def test_delete_non_recursive_missing_path_is_silent_noop() -> None:
+    store, fs = _store_and_fs(info=FileNotFoundError("nope"))
+    await store.delete("dr://abc/missing")
+    assert fs.recorded == ("rm", "dr://abc/missing", False, None)
+
+
+async def test_delete_recursive_skips_non_empty_directory_check() -> None:
+    store, fs = _store_and_fs(
+        info={"name": "abc/dir", "type": "directory", "size": 0},
+        ls=[{"name": "abc/dir/x.txt", "type": "file", "size": 1}],
+    )
+    await store.delete("dr://abc/dir", recursive=True)
+    assert fs.recorded == ("rm", "dr://abc/dir", True, None)
 
 
 async def test_clone_returns_new_catalog_id() -> None:

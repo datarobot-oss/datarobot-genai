@@ -18,6 +18,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from datarobot_genai import __version__
+from datarobot_genai.drmcpbase.fastmcp_transforms import unfiltered_catalog_provider
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
+    MCPOAuthProtectedResourceMetadataManager,
+)
+from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
 from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
@@ -30,6 +35,7 @@ from .dynamic_tools.deployment.controllers import get_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
 from .feature_flags import FeatureFlag
 from .mcp_instance import DataRobotMCP
+from .oauth_metadata import build_protected_resource_metadata_config
 from .routes_utils import prefix_mount_path
 from .tool_config import TOOL_CONFIGS
 from .tool_config import ToolType
@@ -53,6 +59,12 @@ async def _tools_gallery_enabled(_request: Request) -> bool:
 
 def register_routes(mcp: DataRobotMCP) -> None:
     """Register all routes with the MCP server."""
+    # The describe-the-server routes must report the same catalog to every caller, so
+    # they read it through this rather than `mcp.list_tools()`: the catalog transform
+    # would otherwise narrow them by the caller's own x-datarobot-mcp-* session headers,
+    # and reject `mode=code` outright.
+    unfiltered_catalog = unfiltered_catalog_provider(mcp)
+
     # Shared toolGallery routes (also exposed by global-mcp), mounted under this
     # server's configured prefix and gated behind ENABLE_MCP_TOOLS_GALLERY_SUPPORT.
     register_tool_gallery_routes(
@@ -60,6 +72,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         base_path=prefix_mount_path("/toolGallery"),
         gate=_tools_gallery_enabled,
         ui_metadata_provider=get_tool_ui_metadata,
+        catalog_provider=unfiltered_catalog,
     )
 
     @mcp.custom_route(prefix_mount_path("/"), methods=["GET"])
@@ -76,12 +89,22 @@ def register_routes(mcp: DataRobotMCP) -> None:
     async def get_metadata(_: Request) -> JSONResponse:
         """Get metadata about tools, prompts, resources, and system configuration."""
         try:
-            # Get tools with tags
-            tools = await mcp.list_tools()
+            # Get tools with tags. ``toolCategory`` is the registrar's
+            # ``meta.tool_category`` marker (USER_TOOL / BUILT_IN_TOOL /
+            # USER_TOOL_DEPLOYMENT / …; None when unmarked) — additive so UIs
+            # can distinguish user-authored tools from taxonomy/dynamic ones.
+            #
+            # Unfiltered, like the sibling gallery routes: this route describes the
+            # server. Reading `mcp.list_tools()` directly let the caller's session
+            # headers reshape it — `mode=search` reported two tools, `mode=code` 500'd,
+            # and once a present `x-datarobot-mcp-toolsets` header became a hard cap
+            # (user-mcp registers no expander) it reported no tools at all.
+            tools = await unfiltered_catalog()
             tools_metadata = [
                 {
                     "name": tool.name,
                     "tags": sorted(list(get_tool_tags(tool))),
+                    "toolCategory": (getattr(tool, "meta", None) or {}).get("tool_category"),
                 }
                 for tool in tools
             ]
@@ -180,6 +203,15 @@ def register_routes(mcp: DataRobotMCP) -> None:
         deployment_id = request.path_params["deployment_id"]
         try:
             tool = await register_tool_for_deployment_id(deployment_id)
+            # Scope wiring attaches checks to the components that exist when it
+            # runs, so a component registered through this route carries none of
+            # them — no token floor, no tag rules — until wired. On a server
+            # that verifies tokens that would serve exactly this tool to the
+            # callers the floor exists to shut out. Re-wiring is idempotent and
+            # reuses the installed settings; every runtime mutation below does
+            # the same, removals included, so the published scopes stay derived
+            # from the components actually registered.
+            await wire_scopes(mcp)
             return JSONResponse(
                 status_code=HTTPStatus.CREATED,
                 content={
@@ -225,6 +257,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         try:
             deleted = await delete_registered_tool_deployment(deployment_id)
             if deleted is True:
+                await wire_scopes(mcp)  # see add_deployment
                 return JSONResponse(
                     status_code=HTTPStatus.OK,
                     content={
@@ -276,6 +309,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         try:
             deleted = await delete_registered_prompt_template(prompt_template_id)
             if deleted:
+                await wire_scopes(mcp)  # see add_deployment
                 return JSONResponse(
                     status_code=HTTPStatus.OK,
                     content={
@@ -305,6 +339,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
             prompt = await register_prompt_from_prompt_template_id_and_version(
                 prompt_template_id, prompt_template_version_id
             )
+            await wire_scopes(mcp)  # see add_deployment
             return JSONResponse(
                 status_code=HTTPStatus.CREATED,
                 content={
@@ -325,6 +360,7 @@ def register_routes(mcp: DataRobotMCP) -> None:
         """Refresh prompt templates."""
         try:
             await refresh_registered_prompt_template()
+            await wire_scopes(mcp)  # see add_deployment
             return JSONResponse(
                 status_code=HTTPStatus.OK,
                 content={"message": "Prompts refreshed successfully"},
@@ -333,4 +369,21 @@ def register_routes(mcp: DataRobotMCP) -> None:
             return JSONResponse(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 content={"error": f"Failed to refresh prompt templates: {str(e)}"},
+            )
+
+    @mcp.custom_route(prefix_mount_path("/.well-known/oauth-protected-resource"), methods=["GET"])
+    async def oauth_protected_resource_metadata(_: Request) -> JSONResponse:
+        manager = MCPOAuthProtectedResourceMetadataManager(
+            build_protected_resource_metadata_config()
+        )
+        api_response = manager.get_protected_resource_metadata_api_response()
+        if api_response:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content=api_response,
+            )
+        else:
+            return JSONResponse(
+                status_code=HTTPStatus.NOT_IMPLEMENTED,
+                content={"error": "OAuth Protected Resource Metadata Not Implemented"},
             )

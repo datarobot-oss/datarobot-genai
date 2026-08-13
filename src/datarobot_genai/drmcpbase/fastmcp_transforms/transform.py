@@ -17,30 +17,110 @@ from collections.abc import Sequence
 from typing import Any
 
 from fastmcp.experimental.transforms.code_mode import CodeMode
+from fastmcp.server.context import Context
 from fastmcp.server.transforms import GetToolNext
 from fastmcp.tools import Tool
 from fastmcp.utilities.versions import VersionSpec
 
+from datarobot_genai.drmcpbase.fastmcp_transforms.tool_search import LexicalToolSearchBackend
+from datarobot_genai.drmcpbase.fastmcp_transforms.tool_search import ToolSearchBackend
+from datarobot_genai.drmcpbase.fastmcp_transforms.tool_search import build_call_tool_proxy
+from datarobot_genai.drmcpbase.fastmcp_transforms.tool_search import build_tool_search_tool
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestContext
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import MCPRequestMode
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import effective_tool_allowlist
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_allowlist
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import filter_tools_by_category_gates
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import get_request_context
-from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_name_allowed
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_allowed
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_tool_category_disabled
 
 logger = logging.getLogger(__name__)
 
+_CODE_MODE_NOT_IMPLEMENTED_MSG = "Code mode is not implemented yet"
+
 
 class DataRobotMCPCatalogTransform(CodeMode):
+    """Per-request catalog shaping: category gates, tool allowlist, and modes.
+
+    Enforcement contract — gates and the tool allowlist are hard caps applied
+    in **every** mode, to listing, resolution (and therefore calling), and the
+    catalog that the synthetic discovery/search tools read.  Modes only change
+    presentation: ``tools`` lists the catalog directly, ``code``
+    collapses it to discovery + execute meta-tools, ``search`` collapses it to
+    ``tool_search`` + ``call_tool`` (plus the EXPLICITLY named allowlist
+    entries, pinned — category-derived entries scope the search index without
+    being pinned).  Synthetic mode-interface tools themselves are exempt from
+    the caps — they are the mode's UI, not catalog tools.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_search_backend: ToolSearchBackend | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._tool_search_backend = tool_search_backend or LexicalToolSearchBackend()
+        self._built_search_mode_tools: list[Tool] | None = None
+
     def _request_context(self) -> MCPRequestContext:
         return get_request_context()
 
+    def _build_search_mode_tools(self) -> list[Tool]:
+        if self._built_search_mode_tools is None:
+            self._built_search_mode_tools = [
+                build_tool_search_tool(self.get_tool_catalog, self._tool_search_backend),
+                build_call_tool_proxy(),
+            ]
+        return self._built_search_mode_tools
+
+    async def get_tool_catalog(
+        self, ctx: Context, *, run_middleware: bool = True
+    ) -> Sequence[Tool]:
+        """Fetch the real catalog *as this request may see it*.
+
+        The base implementation bypasses this transform entirely, so the
+        synthetic discovery/search/execute tools that read it would otherwise
+        see (and leak) gated and non-allowlisted tools.  Re-apply both caps
+        here — this is the single choke point for every synthetic-tool path.
+        """
+        tools = await super().get_tool_catalog(ctx, run_middleware=run_middleware)
+        request_ctx = self._request_context()
+        tools = filter_tools_by_category_gates(tools, request_ctx.disabled_categories)
+        allowlist = await effective_tool_allowlist(request_ctx)
+        if allowlist is not None:
+            tools = filter_tools_by_allowlist(tools, allowlist)
+        return tools
+
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         ctx = self._request_context()
-        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
-            return await super().transform_tools(tools)
-        if ctx.tool_allowlist is None:
+        # Category gates run first — precedence: gates → mode → allowlist.  A tool
+        # in a disabled category stays hidden even when allowlisted.
+        tools = filter_tools_by_category_gates(tools, ctx.disabled_categories)
+        allowlist = await effective_tool_allowlist(ctx)
+        if ctx.mode is MCPRequestMode.CODE:
+            raise NotImplementedError(_CODE_MODE_NOT_IMPLEMENTED_MSG)
+        if ctx.mode is MCPRequestMode.SEARCH:
+            # Only EXPLICITLY named tools stay pinned in the listing: pinning
+            # exists for the post-search re-list flow, where the client sends
+            # `x-datarobot-mcp-tools=<found names>` to get the full
+            # definitions of what tool_search returned (Tool Sets expansions
+            # count — a bundle names tool functions one by one). Category- and
+            # bucket-derived entries scope the search *index* instead
+            # (get_tool_catalog re-applies the full allowlist): expanding a
+            # category into pinned listings degenerated a filtered search
+            # session into tools mode — the model saw every tool of the
+            # category directly and never called tool_search (inspector R48).
+            pinned = (
+                [tool for tool in tools if tool.name in allowlist.explicit]
+                if allowlist is not None
+                else []
+            )
+            return [*pinned, *self._build_search_mode_tools()]
+        if allowlist is None:
             return tools
-        return filter_tools_by_allowlist(tools, ctx.tool_allowlist)
+        return filter_tools_by_allowlist(tools, allowlist)
 
     async def get_tool(
         self,
@@ -50,13 +130,40 @@ class DataRobotMCPCatalogTransform(CodeMode):
         version: VersionSpec | None = None,
     ) -> Tool | None:
         ctx = self._request_context()
-        if ctx.mode is MCPRequestMode.CODE_EXECUTE:
-            return await super().get_tool(name, call_next, version=version)
-        if ctx.tool_allowlist is not None and not is_tool_name_allowed(name, ctx.tool_allowlist):
+        # Mode-interface (synthetic) tools resolve first: they carry no category
+        # meta and are exempt from the allowlist — without them the mode itself
+        # would be unusable under an allowlist.
+        if ctx.mode is MCPRequestMode.SEARCH:
+            for search_tool in self._build_search_mode_tools():
+                if search_tool.name == name:
+                    return search_tool
+        elif ctx.mode is MCPRequestMode.CODE:
+            raise NotImplementedError(_CODE_MODE_NOT_IMPLEMENTED_MSG)
+        allowlist = await effective_tool_allowlist(ctx)
+        # Catalog tools: the allowlist is a hard cap in every mode.  (H5: the
+        # code-mode path used to skip it, so switching the mode header made
+        # every non-allowlisted tool resolvable and callable again.)
+        #
+        # `may_admit_name` is the half of the decision a name alone can settle, so a
+        # hopeless name never costs a resolution.  It says "keep going", not
+        # "allowed": whether a derived name or a bucket admits THIS tool depends on
+        # its marker, which needs the tool itself.
+        if allowlist is not None and not allowlist.may_admit_name(name):
             return None
-        return await call_next(name, version=version)
+        tool = await call_next(name, version=version)
+        if tool is None:
+            return None
+        if allowlist is not None and not is_tool_allowed(tool, allowlist):
+            return None
+        # Category gates apply in every mode: a tool in a disabled category is not
+        # resolvable — and therefore not callable — for this request.
+        if is_tool_category_disabled(tool, ctx.disabled_categories):
+            return None
+        return tool
 
 
-def register_mcp_catalog_transform(mcp: Any) -> None:
-    mcp.add_transform(DataRobotMCPCatalogTransform())
+def register_mcp_catalog_transform(
+    mcp: Any, *, tool_search_backend: ToolSearchBackend | None = None
+) -> None:
+    mcp.add_transform(DataRobotMCPCatalogTransform(tool_search_backend=tool_search_backend))
     logger.info("DataRobot MCP catalog transform registered successfully")

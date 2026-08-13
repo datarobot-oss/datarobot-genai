@@ -82,6 +82,25 @@ AGENT=llamaindex LLM=external task test-dragent
 
 Tests vary by agent and LLM context; some cases are skipped or interpreted differently depending on configuration.
 
+## DataRobot Memory Service
+
+PR and push runs use [cases/pr-tests.yaml](cases/pr-tests.yaml):
+
+- `memory` — `test_memory.py`, `test_tools.py`, and `test_streaming.py` with `workflow-memory.yaml` and ephemeral MemorySpace provisioning.
+
+The separate [cases/memory.yaml](cases/memory.yaml) case is for **manual** runs only: it exercises the full `./dragent_tests` suite against each agent wrapped with `streaming_memory_agent` and `dr_mem0_memory`.
+
+```shell
+# PR/push (via pr-tests.yaml — also what CI runs on pull_request):
+task cases-run -- pr-tests.yaml --case memory AGENT=nat
+
+# Full memory matrix (manual / workflow_dispatch only):
+task cases-run -- memory.yaml
+task cases-ci -- memory.yaml
+```
+
+When iterating with `--no-server`, export `AGENT_MEMORY_SPACE_ID` yourself before starting dragent (the runner skips provisioning in that mode unless the variable is already set).
+
 ## Trigger a custom matrix in CI
 
 The `E2E Tests` workflow accepts `workflow_dispatch` with a `case_file` input (defaults to `pr-tests.yaml`). Pick any file under `e2e-tests/cases/` to fire that whole matrix without changeset-based filtering.

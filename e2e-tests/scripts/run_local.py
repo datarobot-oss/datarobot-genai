@@ -155,6 +155,66 @@ def _stop_server(proc: subprocess.Popen[bytes]) -> None:
         proc.wait(timeout=SERVER_GRACE_S)
 
 
+def _should_provision_memory_space(env: dict[str, str]) -> bool:
+    return env.get("E2E_PROVISION_MEMORY_SPACE", "").lower() == "true"
+
+
+def _provision_memory_space(
+    env: dict[str, str],
+    *,
+    no_server: bool,
+) -> tuple[dict[str, str], str | None]:
+    """Create an ephemeral MemorySpace when the case requests it.
+
+    Returns the updated env (with ``AGENT_MEMORY_SPACE_ID``) and the space id
+    for cleanup, or ``(env, None)`` when provisioning is disabled.
+
+    With ``no_server``, provisioning is skipped — the dragent process is
+    started in another shell and must already have ``AGENT_MEMORY_SPACE_ID``
+    in its environment.
+    """
+    if not _should_provision_memory_space(env):
+        return env, None
+    if no_server:
+        return env, None
+    if env.get("AGENT_MEMORY_SPACE_ID"):
+        # Caller supplied a space — do not create or delete it.
+        return env, None
+
+    print(">>> provisioning DataRobot MemorySpace", file=sys.stderr)
+    result = subprocess.run(
+        ["uv", "run", "python", "scripts/memory_space.py", "create"],
+        cwd=str(E2E_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"MemorySpace provisioning failed: {detail}")
+
+    space_id = result.stdout.strip()
+    if not space_id:
+        raise RuntimeError("MemorySpace provisioning returned an empty id")
+
+    updated = dict(env)
+    updated["AGENT_MEMORY_SPACE_ID"] = space_id
+    return updated, space_id
+
+
+def _cleanup_memory_space(env: dict[str, str], space_id: str | None) -> None:
+    if space_id is None:
+        return
+    print(f">>> deleting DataRobot MemorySpace {space_id}", file=sys.stderr)
+    subprocess.run(
+        ["uv", "run", "python", "scripts/memory_space.py", "delete", space_id],
+        cwd=str(E2E_ROOT),
+        env=env,
+        check=False,
+    )
+
+
 def _apply_override(combo: Combination) -> Path | None:
     """Copy the combo's WORKFLOW_FILE from dragent/overrides into the agent dir.
 
@@ -191,6 +251,7 @@ def _run_one(
     no_server: bool,
 ) -> ComboResult:
     env = _build_env(combo)
+    memory_space_id: str | None = None
 
     # Materialize the workflow overlay in use next to the agent's workflow.yaml
     # so its relative ``base: workflow.yaml`` resolves; removed again below.
@@ -198,6 +259,11 @@ def _run_one(
 
     server: subprocess.Popen[bytes] | None = None
     try:
+        try:
+            env, memory_space_id = _provision_memory_space(env, no_server=no_server)
+        except RuntimeError as exc:
+            return ComboResult(combo.name, "FAIL", str(exc))
+
         if not no_server:
             server = _start_server(combo, env)
             if not _wait_for_health():
@@ -216,6 +282,7 @@ def _run_one(
     finally:
         if server is not None:
             _stop_server(server)
+        _cleanup_memory_space(env, memory_space_id)
         if override_copy is not None:
             override_copy.unlink(missing_ok=True)
 

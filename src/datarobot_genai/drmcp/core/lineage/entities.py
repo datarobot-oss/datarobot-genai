@@ -16,13 +16,9 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TypeVar
 
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    PromptInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import (
-    ResourceInUserMCPServerDeployment,
-)
-from datarobot._experimental.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import PromptInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ResourceInUserMCPServerDeployment
+from datarobot.models.user_mcp_server_deployment import ToolInUserMCPServerDeployment
 from fastmcp.prompts import Prompt as FastMCPPrompt
 from fastmcp.resources import Resource as FastMCPResource
 from fastmcp.tools import Tool as FastMCPTool

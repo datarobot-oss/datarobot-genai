@@ -28,6 +28,7 @@ from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 
 
 def _wrap_bare_text_blocks(
@@ -59,6 +60,7 @@ def _wrap_bare_text_blocks(
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
 
+    config.pop("assume_native_tool_calling_when_unmapped", None)
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
     else:
@@ -89,16 +91,16 @@ def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
 
 
 def get_datarobot_gateway_llm(
-    model_name: str | None = None, parameters: dict | None = None, streaming: bool = True
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    streaming: bool = True,
+    reasoning: bool = False,
 ) -> BaseChatModel:
     config = {
         "api_key": default_api_key(),
         "api_base": default_datarobot_llm_gateway_url(),
         "streaming": streaming,
     }
-
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -107,6 +109,9 @@ def get_datarobot_gateway_llm(
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _create_datarobot_chat_litellm(config)
 
@@ -116,19 +121,21 @@ def get_datarobot_deployment_llm(
     model_name: str | None = None,
     parameters: dict | None = None,
     streaming: bool = True,
+    reasoning: bool = False,
 ) -> BaseChatModel:
     config = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(deployment_id),
         "streaming": streaming,
     }
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name() or DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _create_datarobot_chat_litellm(config)
 
@@ -138,14 +145,13 @@ def get_datarobot_nim_llm(
     model_name: str | None = None,
     parameters: dict | None = None,
     streaming: bool = True,
+    reasoning: bool = False,
 ) -> BaseChatModel:
     config: dict[str, Any] = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(nim_deployment_id),
         "streaming": streaming,
     }
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -154,18 +160,22 @@ def get_datarobot_nim_llm(
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _create_datarobot_chat_litellm(config)
 
 
 def get_external_llm(
-    model_name: str | None = None, parameters: dict | None = None, streaming: bool = True
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    streaming: bool = True,
+    reasoning: bool = False,
 ) -> BaseChatModel:
     config: dict[str, Any] = {
         "streaming": streaming,
     }
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -173,6 +183,9 @@ def get_external_llm(
 
     model_name = model_name.removeprefix("datarobot/")
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
     return _create_datarobot_chat_litellm(config)
 
@@ -228,22 +241,32 @@ def get_router_llm(
 
 
 def get_llm(
-    model_name: str | None = None, parameters: dict | None = None, streaming: bool = True
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    streaming: bool = True,
+    reasoning: bool = False,
 ) -> BaseChatModel:
     config = Config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
-        return get_datarobot_gateway_llm(model_name, parameters, streaming)
+        return get_datarobot_gateway_llm(model_name, parameters, streaming, reasoning)
     elif llm_type == LLMType.DEPLOYMENT:
         return get_datarobot_deployment_llm(
             config.llm_deployment_id,  # type: ignore[arg-type]
             model_name,
             parameters,
             streaming,
+            reasoning,
         )
     elif llm_type == LLMType.NIM:
-        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters, streaming)  # type: ignore[arg-type]
+        return get_datarobot_nim_llm(
+            config.nim_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            streaming,
+            reasoning,
+        )
     elif llm_type == LLMType.EXTERNAL:
-        return get_external_llm(model_name, parameters, streaming)
+        return get_external_llm(model_name, parameters, streaming, reasoning)
     else:
         raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {config}")

@@ -295,9 +295,15 @@ class InMemoryFileSystemStore:
             )
 
     async def copy(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: str = "rename",
     ) -> None:
-        del maxdepth
+        del maxdepth, overwrite
         src = _strip_protocol(source)
         dst = _strip_protocol(dest)
         if src in self._files:
@@ -311,9 +317,15 @@ class InMemoryFileSystemStore:
                     self._files[f"{dst.rstrip('/')}/{rel}"] = data
 
     async def move(
-        self, source: str, dest: str, *, recursive: bool = False, maxdepth: int | None = None
+        self,
+        source: str,
+        dest: str,
+        *,
+        recursive: bool = False,
+        maxdepth: int | None = None,
+        overwrite: str = "rename",
     ) -> None:
-        await self.copy(source, dest, recursive=recursive, maxdepth=maxdepth)
+        await self.copy(source, dest, recursive=recursive, maxdepth=maxdepth, overwrite=overwrite)
         await self.delete(source, recursive=recursive)
 
     async def clone(self, path_or_id: str, *, files_to_omit: list[str] | None = None) -> str:

@@ -42,6 +42,22 @@ functions:
   generate_objectid:
     _type: generate_objectid
     description: A tool that generates an object ID for a deployment.
+  nat_agent:
+    _type: per_user_tool_calling_agent
+    llm_name: datarobot_llm
+    # Normalization is innermost so it converts the agent's native ChatResponseChunk / str
+    # output into DRAgentEventResponse before the outer streaming_memory_agent middleware runs.
+    middleware:
+      - datarobot_dragent_normalization
+    tool_names:
+      - planner
+      - writer
+      - mcp_tools
+      - generate_objectid
+    system_prompt: |
+      Call planner, then writer. Return writer's output.
+      If asked to generate an object ID, call generate_objectid and return its exact result.
+    verbose: true
 
 llms:
   datarobot_llm:
@@ -76,20 +92,27 @@ middleware:
       timeout_sec: 60
   datarobot_otel_conventions:
     _type: datarobot_otel_conventions
+  datarobot_dragent_normalization:
+    _type: datarobot_dragent_normalization
 
+
+memory:
+  mem0_memory:
+    _type: dr_mem0_memory
 
 workflow:
-  _type: per_user_tool_calling_agent
+  # When memory is not configured streaming_memory_agent is a passthrough so it is safe to use
+  # unconditionally.
+  _type: streaming_memory_agent
+  inner_agent_name: nat_agent
+  memory_name: mem0_memory
   llm_name: datarobot_llm
+  description: NAT agent with automatic memory capture and retrieval
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
-  tool_names:
-    - planner
-    - writer
-    - mcp_tools
-    - generate_objectid
-  system_prompt: |
-    Call planner, then writer. Return writer's output.
-    If asked to generate an object ID, call generate_objectid and return its exact result.
-  verbose: true
+  save_ai_messages_to_memory: false
+  search_params:
+    top_k: 5
+  add_params:
+    async_mode: false

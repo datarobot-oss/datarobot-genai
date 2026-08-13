@@ -20,6 +20,8 @@ import importlib
 import logging
 import os
 
+from datarobot_genai.core.runtime import is_hosted_runtime
+
 # Suppress the "Attempting to instrument while already instrumented" warning
 logging.getLogger("opentelemetry.instrumentation.instrumentor").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -46,7 +48,8 @@ def _instrument_http_clients() -> None:
     try:
         requests_module = importlib.import_module("opentelemetry.instrumentation.requests")
         requests_instrumentor = getattr(requests_module, "RequestsInstrumentor")
-        requests_instrumentor().instrument()
+        # Don't trace the OTel exporter's own POST to the collector
+        requests_instrumentor().instrument(excluded_urls="otel/v1/traces")
     except Exception as e:
         logger.debug(f"requests instrumentation skipped: {e}")
     try:
@@ -82,8 +85,13 @@ def instrument() -> None:
     Also disables telemetry for some third-party libraries to avoid duplicate/undesired tracking.
     """
     # Some libraries collect telemetry data by default. Disable that.
-    os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+
+    # Keep each request on its own trace: NAT's Runner otherwise leaks the first
+    # request's trace into later ones. See patch_nat_runner_context_isolation.
+    from .nat_context import patch_nat_runner_context_isolation
+
+    patch_nat_runner_context_isolation()
 
     # Install a global OTel TracerProvider pointed at the DataRobot OTel
     # ingest before any instrumentor patches a framework. NAT's
@@ -97,7 +105,7 @@ def instrument() -> None:
     # here so notebook hosts that already install their own TracerProvider
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
-    if os.getenv("MLOPS_DEPLOYMENT_ID"):
+    if is_hosted_runtime():
         from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()

@@ -2,7 +2,7 @@ cases:
   - name: llm-gateway-sonnet
     env:
       LLM: llmgw
-      WORKFLOW_FILE: workflow-reasoning-sonnet.yaml
+      WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
@@ -18,7 +18,7 @@ cases:
   - name: llm-gateway-opus
     env:
       LLM: llmgw
-      WORKFLOW_FILE: workflow-reasoning-opus.yaml
+      WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
@@ -33,7 +33,7 @@ cases:
   - name: llm-gateway-gemini
     env:
       LLM: llmgw
-      WORKFLOW_FILE: workflow-reasoning-gemini.yaml
+      WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:
@@ -48,7 +48,7 @@ cases:
   - name: llm-gateway-openai
     env:
       LLM: llmgw
-      WORKFLOW_FILE: workflow-reasoning-openai.yaml
+      WORKFLOW_FILE: workflow.yaml
     tests:
       - ./dragent_tests  # all tests indiscriminately
     matrix:

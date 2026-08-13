@@ -57,17 +57,36 @@ middleware:
     _type: datarobot_otel_conventions
 
 
+functions:
+  crewai_agent:
+    _type: crewai_agent
+    llm_name: datarobot_llm
+    description: CrewAI planner/writer agent
+    max_iter: 5  # cap the ReAct act-loop so a runaway can't stall the stream past the 60s httpx read timeout
+    max_rpm: 30
+    max_execution_time: 600
+    allow_delegation: false
+    max_retry_limit: 2
+    reasoning: false
+    max_reasoning_attempts: 1
+
+memory:
+  mem0_memory:
+    _type: dr_mem0_memory
+
 workflow:
-  _type: crewai_agent
+  # When memory is not configured streaming_memory_agent is a passthrough so it is safe to use
+  # unconditionally.
+  _type: streaming_memory_agent
+  inner_agent_name: crewai_agent
+  memory_name: mem0_memory
   llm_name: datarobot_llm
-  description: CrewAI planner/writer agent
+  description: CrewAI planner/writer agent with automatic memory capture and retrieval
   middleware:
     - datarobot_guardrails
     - datarobot_otel_conventions
-  max_iter: 5  # cap the ReAct act-loop so a runaway can't stall the stream past the 60s httpx read timeout
-  max_rpm: 30
-  max_execution_time: 600
-  allow_delegation: false
-  max_retry_limit: 2
-  reasoning: false
-  max_reasoning_attempts: 1
+  save_ai_messages_to_memory: false
+  search_params:
+    top_k: 5
+  add_params:
+    async_mode: false

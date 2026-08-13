@@ -30,15 +30,18 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GenAi
 from opentelemetry.trace import SpanKind
 from opentelemetry.trace.status import Status
 from opentelemetry.trace.status import StatusCode
+from pydantic import PrivateAttr
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
+from datarobot_genai.core.config import default_assume_native_tool_calling_when_unmapped
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 from datarobot_genai.core.model_info import get_model_info
 
 
@@ -67,6 +70,18 @@ def _sanitize_tool_schema(node: Any) -> Any:
     if isinstance(node, list):
         return [_sanitize_tool_schema(item) for item in node]
     return node
+
+
+def _strip_strict_flags(tools: list[Any]) -> list[Any]:
+    """Drop crewai's per-tool ``strict: True`` (bedrock caps strict tools at 20).
+
+    Strips the function-level flag only, never a tool *parameter* named ``strict``.
+    """
+    for tool in tools:
+        function = tool.get("function")
+        if isinstance(function, dict):
+            function.pop("strict", None)
+    return tools
 
 
 # Instrumentation scope name; matches the CrewAI instrumentor so these spans
@@ -113,12 +128,16 @@ class LitellmStopWordLLM(LLM):
     the underlying API silently ignores the stop parameter.
     """
 
+    _assume_native_tool_calling_when_unmapped: bool = PrivateAttr(default=False)
+
     def __new__(cls, *args: Any, **kwargs: Any) -> "LitellmStopWordLLM":
         return object.__new__(cls)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        assume_native = kwargs.pop("assume_native_tool_calling_when_unmapped", False)
         super().__init__(*args, **kwargs)
         self.is_litellm = True
+        self._assume_native_tool_calling_when_unmapped = assume_native
 
     def _collect_chunk(
         self,
@@ -201,6 +220,33 @@ class LitellmStopWordLLM(LLM):
         """CrewAI's native loop calls us with ``tools`` set and ``available_functions=None``."""
         return bool(kwargs.get("tools")) and kwargs.get("available_functions") is None
 
+    def _apply_stream_options_for_request(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Attach ``stream_options`` only when ``stream`` is enabled on this request.
+
+        Azure/OpenAI-compatible gateways reject ``stream_options`` unless ``stream=true``.
+        CrewAI stores unknown kwargs in ``additional_params``, so a persisted
+        ``stream_options`` would otherwise leak into non-streaming ``litellm.completion`` calls.
+        """
+        if params.get("stream"):
+            params.setdefault("stream_options", {"include_usage": True})
+        else:
+            params.pop("stream_options", None)
+        return params
+
+    def _prepare_completion_params(
+        self,
+        messages: str | list[Any],
+        tools: list[dict[str, Any]] | None = None,
+        skip_file_processing: bool = False,
+    ) -> dict[str, Any]:
+        params = super()._prepare_completion_params(
+            messages, tools, skip_file_processing=skip_file_processing
+        )
+        # Stop words are enforced client-side via ``_apply_stop_words``; many Azure models
+        # reject the wire ``stop`` parameter (and CrewAI's native tool path bypasses its retry).
+        params.pop("stop", None)
+        return self._apply_stream_options_for_request(params)
+
     def call(self, *args: Any, **kwargs: Any) -> Any:
         """Stream and return native tool calls ourselves — CrewAI's handler drops them.
 
@@ -210,9 +256,10 @@ class LitellmStopWordLLM(LLM):
             import litellm  # noqa: PLC0415
 
             with _llm_span(self.model):
-                tools = _sanitize_tool_schema(kwargs["tools"])
+                tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
+                params = self._apply_stream_options_for_request(params)
                 call_id = str(uuid.uuid4())
                 text: list[str] = []
                 tool_calls: list[Any] = []
@@ -254,9 +301,10 @@ class LitellmStopWordLLM(LLM):
             import litellm  # noqa: PLC0415
 
             with _llm_span(self.model):
-                tools = _sanitize_tool_schema(kwargs["tools"])
+                tools = _strip_strict_flags(_sanitize_tool_schema(kwargs["tools"]))
                 params = self._prepare_completion_params(args[0], tools)
                 params["stream"] = True
+                params = self._apply_stream_options_for_request(params)
                 call_id = str(uuid.uuid4())
                 text: list[str] = []
                 tool_calls: list[Any] = []
@@ -281,25 +329,43 @@ class LitellmStopWordLLM(LLM):
 
     def supports_function_calling(self) -> bool:
         supported = _model_supports_tool_calling(self.model)
-        return supported if supported is not None else super().supports_function_calling()
+        if supported is not None:
+            return supported
+        # LiteLLM has no catalog entry for many NIM-served models (e.g. gpt-oss-20b),
+        # so litellm.utils.supports_function_calling() returns False and CrewAI falls
+        # back to ReAct. NIM LLMs are created with assume_native_tool_calling_when_unmapped.
+        if self._assume_native_tool_calling_when_unmapped:
+            return True
+        return super().supports_function_calling()
 
 
-def _crewai_model_factory(config: dict) -> LLM:
-    config["stream_options"] = config.get("stream_options", {"include_usage": True})
+def _crewai_model_factory(config: dict[str, Any]) -> LLM:
+    # ``stream_options`` is applied per litellm request in LitellmStopWordLLM (only when
+    # ``stream=true``). Do not persist it in ``additional_params`` — Azure gateways reject it
+    # on non-streaming calls.
+    config.pop("stream_options", None)
+    if config.get("stream") is not False:
+        config.setdefault("stream", True)
     # Strip NAT-internal keys that cause "extra inputs" errors in litellm.
     # Multiple config types (Deployment, Component, Litellm) flow through here.
     config.pop("verify_ssl", None)
-    return LitellmStopWordLLM(**config)
+    assume_native = config.pop("assume_native_tool_calling_when_unmapped", False)
+    llm = LitellmStopWordLLM(
+        **config,
+        assume_native_tool_calling_when_unmapped=assume_native,
+    )
+    return llm
 
 
-def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_datarobot_gateway_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = {
         "api_key": default_api_key(),
         "api_base": default_datarobot_llm_gateway_url(),
     }
-
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -308,40 +374,48 @@ def get_datarobot_gateway_llm(model_name: str | None = None, parameters: dict | 
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
 
     return _crewai_model_factory(config)
 
 
 def get_datarobot_deployment_llm(
-    deployment_id: str, model_name: str | None = None, parameters: dict | None = None
+    deployment_id: str,
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
 ) -> LLM:
     config = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(deployment_id),
     }
 
-    if parameters:
-        config.update(parameters)
-
     model_name = model_name or default_model_name() or DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
     return _crewai_model_factory(config)
 
 
 def get_datarobot_nim_llm(
-    nim_deployment_id: str, model_name: str | None = None, parameters: dict | None = None
+    nim_deployment_id: str,
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
 ) -> LLM:
-    config = {
+    config: dict[str, Any] = {
         "api_key": default_api_key(),
         "api_base": default_deployment_url(nim_deployment_id),
     }
-
-    if parameters:
-        config.update(parameters)
 
     model_name = model_name or default_model_name()
     if model_name is None:
@@ -350,23 +424,36 @@ def get_datarobot_nim_llm(
     if not model_name.startswith("datarobot/"):
         model_name = "datarobot/" + model_name
 
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
+    if "assume_native_tool_calling_when_unmapped" not in config:
+        config["assume_native_tool_calling_when_unmapped"] = (
+            default_assume_native_tool_calling_when_unmapped()
+        )
     return _crewai_model_factory(config)
 
 
-def get_external_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_external_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = {
         # Everything else is loaded from the environment by LiteLLM
     }
 
-    if parameters:
-        config.update(parameters)
     model_name = model_name or default_model_name()
     if model_name is None:
         raise ValueError("Model name is required")
 
     model_name = model_name.removeprefix("datarobot/")
+    config.update(
+        apply_reasoning_to_parameters(parameters, reasoning=reasoning, model_name=model_name)
+    )
     config["model"] = model_name
+    config.pop("assume_native_tool_calling_when_unmapped", None)
 
     return _crewai_model_factory(config)
 
@@ -486,16 +573,30 @@ def get_router_llm(
     return RouterLitellmOnlyLLM(model="datarobot-router")
 
 
-def get_llm(model_name: str | None = None, parameters: dict | None = None) -> LLM:
+def get_llm(
+    model_name: str | None = None,
+    parameters: dict | None = None,
+    reasoning: bool = False,
+) -> LLM:
     config = Config()
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
-        return get_datarobot_gateway_llm(model_name, parameters)
+        return get_datarobot_gateway_llm(model_name, parameters, reasoning)
     elif llm_type == LLMType.DEPLOYMENT:
-        return get_datarobot_deployment_llm(config.llm_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+        return get_datarobot_deployment_llm(
+            config.llm_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            reasoning,
+        )
     elif llm_type == LLMType.NIM:
-        return get_datarobot_nim_llm(config.nim_deployment_id, model_name, parameters)  # type: ignore[arg-type]
+        return get_datarobot_nim_llm(
+            config.nim_deployment_id,  # type: ignore[arg-type]
+            model_name,
+            parameters,
+            reasoning,
+        )
     elif llm_type == LLMType.EXTERNAL:
-        return get_external_llm(model_name, parameters)
+        return get_external_llm(model_name, parameters, reasoning)
     else:
         raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {config}")

@@ -241,6 +241,21 @@ class TestMCPFilesApiMutationsIntegration:
             assert data["catalog_id"]
             assert data["path"] == f"dr://{data['catalog_id']}/"
 
+    async def test_file_manage_delete_non_empty_dir_without_recursive_rejected(self) -> None:
+        """Regression for MODEL-24055: a rejected delete must not report success."""
+        async with integration_test_mcp_session(
+            server_params=_files_api_server_params()
+        ) as session:
+            data_dir = f"dr://{STUB_CATALOG_ID}/data/"
+            result = await session.call_tool("file_manage", {"action": "delete", "path": data_dir})
+            error_text = _parse_error(result)
+            assert "recursive" in error_text.lower()
+
+            # Nothing was actually deleted.
+            listing = _parse_result(await session.call_tool("file_list", {"path": data_dir}))
+            file_names = {e["name"].split("/")[-1] for e in listing["entries"]}
+            assert "employees.csv" in file_names
+
     async def test_file_manage_copy(self) -> None:
         async with integration_test_mcp_session(
             server_params=_files_api_server_params()
@@ -287,6 +302,35 @@ class TestMCPFilesApiMutationsIntegration:
             clone_path = f"dr://{data['catalog_id']}/notes.txt"
             read_data = _parse_result(await session.call_tool("file_read", {"path": clone_path}))
             assert "hello world" in read_data["content"]
+
+    async def test_file_manage_clone_with_files_to_omit(self) -> None:
+        """Regression for MODEL-24056: files_to_omit must accept a real list argument."""
+        async with integration_test_mcp_session(
+            server_params=_files_api_server_params()
+        ) as session:
+            tools = await session.list_tools()
+            file_manage_tool = next(t for t in tools.tools if t.name == "file_manage")
+            files_to_omit_schema = file_manage_tool.inputSchema["properties"]["files_to_omit"]
+            variants = files_to_omit_schema.get("anyOf", [files_to_omit_schema])
+            assert any(v.get("type") == "array" for v in variants)
+
+            data = _parse_result(
+                await session.call_tool(
+                    "file_manage",
+                    {
+                        "action": "clone",
+                        "path": f"dr://{STUB_CATALOG_ID}/",
+                        "files_to_omit": ["notes.txt"],
+                    },
+                )
+            )
+            assert data["cloned"] is True
+            omitted_path = f"dr://{data['catalog_id']}/notes.txt"
+            kept_path = f"dr://{data['catalog_id']}/data/employees.csv"
+            omitted_result = await session.call_tool("file_read", {"path": omitted_path})
+            assert getattr(omitted_result, "isError", False)
+            kept_data = _parse_result(await session.call_tool("file_read", {"path": kept_path}))
+            assert "Alice" in kept_data["content"]
 
     async def test_file_upload_from_local(self, tmp_path: Path) -> None:
         local_file = tmp_path / "upload.txt"

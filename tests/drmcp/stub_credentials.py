@@ -30,3 +30,16 @@ def force_stub_datarobot_credentials_env() -> None:
     """Set stub DATAROBOT_* env (integration tests must not use .env credentials)."""
     os.environ["DATAROBOT_API_TOKEN"] = STUB_DATAROBOT_API_TOKEN
     os.environ["DATAROBOT_ENDPOINT"] = STUB_DATAROBOT_ENDPOINT
+
+
+def reset_credentials_cache() -> None:
+    """Drop the cached ToolsAuthCredentials singleton so env changes take effect."""
+    from datarobot_genai.drmcputils import credentials
+
+    credentials._credentials = None
+
+
+def configure_integration_stub_credentials() -> None:
+    """Apply stub DATAROBOT_* env and refresh the credentials singleton."""
+    force_stub_datarobot_credentials_env()
+    reset_credentials_cache()
