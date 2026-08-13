@@ -133,9 +133,6 @@ override-dependencies = [
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }
 
-
-
-
 [tool.mypy]
 disallow_untyped_defs = true
 disable_error_code = ["import-untyped"]
