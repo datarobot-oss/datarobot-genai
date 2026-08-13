@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
+
 from datarobot_genai.drmcp.test_utils import otel_traces
 
 
@@ -25,6 +27,24 @@ class TestDeploymentIdFromUrl:
 
     def test_none(self) -> None:
         assert otel_traces.deployment_id_from_url(None) is None
+
+
+class TestApiBaseFromUrl:
+    def test_direct_access_url(self) -> None:
+        url = "https://staging.datarobot.com/api/v2/deployments/6a39fdf6e42e193c806d7587/directAccess/mcp"
+        assert otel_traces.api_base_from_url(url) == "https://staging.datarobot.com/api/v2"
+
+    def test_ignores_environment_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A --url on one cluster must not fetch traces from another."""
+        monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
+        url = "https://staging.datarobot.com/api/v2/deployments/6a39fdf6e42e193c806d7587/directAccess/mcp"
+        assert otel_traces.api_base_from_url(url) == "https://staging.datarobot.com/api/v2"
+
+    def test_local_url(self) -> None:
+        assert otel_traces.api_base_from_url("http://localhost:8652/mcp/") is None
+
+    def test_none(self) -> None:
+        assert otel_traces.api_base_from_url(None) is None
 
 
 class TestFormatTracesTable:

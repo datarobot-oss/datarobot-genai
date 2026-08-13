@@ -77,8 +77,16 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _handle_traces_command(user_input: str, deployment_id: str | None) -> bool:
+def _handle_traces_command(
+    user_input: str,
+    deployment_id: str | None,
+    datarobot_endpoint: str | None = None,
+) -> bool:
     """Handle the local ``traces [n]`` / ``trace <id>`` commands.
+
+    ``datarobot_endpoint`` is the API base the trace calls should target; it is
+    derived from the MCP server URL so ``--url`` and trace fetches stay on the
+    same cluster.
 
     Returns True when the input was one of those commands (already handled),
     False when it should go to the LLM instead.
@@ -96,11 +104,15 @@ def _handle_traces_command(user_input: str, deployment_id: str | None) -> bool:
 
     try:
         if parts[0].lower() == "trace" and len(parts) > 1:
-            detail = otel_traces.fetch_trace(deployment_id, parts[1])
+            detail = otel_traces.fetch_trace(
+                deployment_id, parts[1], datarobot_endpoint=datarobot_endpoint
+            )
             print(otel_traces.format_trace_tree(detail))
         else:
             limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 10
-            traces = otel_traces.fetch_traces(deployment_id, limit=limit)
+            traces = otel_traces.fetch_traces(
+                deployment_id, limit=limit, datarobot_endpoint=datarobot_endpoint
+            )
             print(otel_traces.format_traces_table(traces))
             print("\n(use 'trace <traceId>' to see a trace's span tree)")
     except Exception as exc:  # noqa: BLE001 - diagnostics command, never fatal
@@ -167,6 +179,9 @@ async def test_mcp_interactive(args: argparse.Namespace | None = None) -> None:
         headers[key] = value
 
     deployment_id = otel_traces.deployment_id_from_url(mcp_server_url)
+    # Follow --url for trace fetches too; falling back to DATAROBOT_ENDPOINT
+    # would point them at a different cluster than the MCP traffic.
+    trace_api_base = otel_traces.api_base_from_url(mcp_server_url) or datarobot_endpoint
 
     print(f"🔗 Connecting to MCP server at: {mcp_server_url}")
 
@@ -238,7 +253,7 @@ async def test_mcp_interactive(args: argparse.Namespace | None = None) -> None:
                         print("\n👋 Goodbye!")
                         break
 
-                    if _handle_traces_command(user_input, deployment_id):
+                    if _handle_traces_command(user_input, deployment_id, trace_api_base):
                         print("\n" + "=" * 60)
                         continue
 

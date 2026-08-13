@@ -54,6 +54,21 @@ def deployment_id_from_url(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+def api_base_from_url(url: str | None) -> str | None:
+    """Extract the DataRobot API base from a directAccess MCP URL, else ``None``.
+
+    The trace API lives on the same host and path prefix as the deployment the
+    MCP traffic went to, so deriving it from the server URL keeps trace fetches
+    on that cluster instead of whatever ``DATAROBOT_ENDPOINT`` happens to name.
+    """
+    if not url:
+        return None
+    match = _DEPLOYMENT_URL_RE.search(url)
+    if not match:
+        return None
+    return url[: match.start()].rstrip("/") or None
+
+
 def _api_base(datarobot_endpoint: str | None = None) -> str:
     endpoint = datarobot_endpoint or os.environ.get("DATAROBOT_ENDPOINT", "")
     return endpoint.rstrip("/")
