@@ -63,7 +63,7 @@ def test_get_datarobot_gateway_llm_returns_crewai_llm() -> None:
     assert llm.api_base == "https://example.test/genai/llmgw"
     assert llm.api_key == "sk-test-key"
     assert llm.is_litellm is True
-    assert llm.additional_params == {"stream_options": {"include_usage": True}}
+    assert llm.additional_params == {}
 
 
 def test_get_datarobot_gateway_llm_adds_datarobot_model_prefix_when_missing() -> None:
@@ -90,9 +90,7 @@ def test_get_datarobot_deployment_llm_appends_chat_completions_to_api_base() -> 
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
     assert llm.api_base == ("https://example.test/deployments/dep-abc-123/chat/completions")
-    assert llm.additional_params == {
-        "stream_options": {"include_usage": True},
-    }
+    assert llm.additional_params == {}
 
 
 def test_get_datarobot_deployment_llm_merges_parameters() -> None:
@@ -144,9 +142,7 @@ def test_get_external_llm_returns_crewai_llm() -> None:
     assert llm.api_base is None
     assert llm.api_key is None
     assert llm.is_litellm is True
-    assert llm.additional_params == {
-        "stream_options": {"include_usage": True},
-    }
+    assert llm.additional_params == {}
     assert llm.model == "default-model"
 
 
@@ -242,6 +238,30 @@ def test_litellm_stop_word_llm_is_litellm_subclass() -> None:
     llm = LitellmStopWordLLM(model="openai/gpt-4o")
     assert isinstance(llm, LLM)
     assert llm.is_litellm is True
+
+
+def test_litellm_stop_word_llm_prepare_params_omits_stream_options_when_not_streaming() -> None:
+    llm = LitellmStopWordLLM(
+        model="openai/gpt-4o",
+        stream=False,
+        stream_options={"include_usage": True},
+    )
+    params = llm._prepare_completion_params("hello")
+    assert params["stream"] is False
+    assert "stream_options" not in params
+
+
+def test_litellm_stop_word_llm_prepare_params_adds_stream_options_when_streaming() -> None:
+    llm = LitellmStopWordLLM(model="openai/gpt-4o", stream=True)
+    params = llm._prepare_completion_params("hello")
+    assert params["stream"] is True
+    assert params["stream_options"] == {"include_usage": True}
+
+
+def test_litellm_stop_word_llm_prepare_params_omits_stop_for_client_side_truncation() -> None:
+    llm = LitellmStopWordLLM(model="openai/gpt-4o", stop=["\nObservation:"])
+    params = llm._prepare_completion_params("hello")
+    assert "stop" not in params
 
 
 def test_litellm_stop_word_llm_call_applies_stop_words(
@@ -605,6 +625,40 @@ class TestFormatMessagesForProvider:
         result = llm._format_messages_for_provider(messages)
         assert result[-1] == {"role": "user", "content": "Please continue."}
         assert result[-2] == {"role": "assistant", "content": "I'll use the tool now."}
+
+
+def test_nim_llm_assumes_tool_calling_when_litellm_unmapped() -> None:
+    """NIM LLMs should use native tool calling when litellm has no catalog entry."""
+    llm = crewai_llm.get_datarobot_nim_llm(
+        "nim-1",
+        "datarobot/openai/gpt-oss-20b",
+        {"assume_native_tool_calling_when_unmapped": True},
+    )
+    assert llm.api_base == "https://example.test/deployments/nim-1/chat/completions"
+    assert llm._assume_native_tool_calling_when_unmapped is True
+    with patch.object(crewai_llm, "_model_supports_tool_calling", return_value=None):
+        assert llm.supports_function_calling() is True
+
+
+def test_nim_llm_defaults_assume_native_tool_calling_to_false() -> None:
+    with patch.object(
+        crewai_llm,
+        "default_assume_native_tool_calling_when_unmapped",
+        return_value=False,
+    ):
+        llm = crewai_llm.get_datarobot_nim_llm("nim-1", "datarobot/openai/gpt-oss-20b")
+    assert llm._assume_native_tool_calling_when_unmapped is False
+
+
+def test_deployment_llm_does_not_assume_tool_calling_when_litellm_unmapped() -> None:
+    """Non-NIM deployments defer to litellm when the model is unmapped."""
+    llm = crewai_llm.get_datarobot_deployment_llm("dep-1", "datarobot/openai/gpt-oss-20b")
+    assert llm._assume_native_tool_calling_when_unmapped is False
+    with (
+        patch.object(crewai_llm, "_model_supports_tool_calling", return_value=None),
+        patch.object(LLM, "supports_function_calling", return_value=False),
+    ):
+        assert llm.supports_function_calling() is False
 
 
 def test_gateway_llm_derives_function_calling_from_tool_choice() -> None:

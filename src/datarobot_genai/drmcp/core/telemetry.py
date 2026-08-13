@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from collections.abc import Iterator
 from collections.abc import Mapping
@@ -57,6 +58,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from datarobot_genai.drmcpbase.datarobot_otel_metrics import bootstrap_metrics_provider
+from datarobot_genai.drmcpbase.tool_metrics import record_tool_call
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .config import get_config
@@ -127,15 +129,18 @@ class OpenTelemetryMiddleware(Middleware):
                     "mcp.method.name": "tools/call",
                 }
             )
+            started = time.perf_counter()
             try:
                 result = await call_next(context)
                 span.set_status(Status(StatusCode.OK))
+                record_tool_call(tool_name, time.perf_counter() - started, None)
                 return result
 
             except Exception as e:
                 span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
+                record_tool_call(tool_name, time.perf_counter() - started, e)
                 raise
 
 

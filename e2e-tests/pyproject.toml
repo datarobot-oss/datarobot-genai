@@ -52,20 +52,6 @@ base_agent = "dragent.base.register"
 
 [tool.uv]
 package = true
-override-dependencies = [
-    "crewai[litellm]>=1.11.0",
-    "litellm>=1.91.1,<2.0.0",
-    "ag-ui-protocol==0.1.15",
-    # Align the whole OpenTelemetry stack at the latest release train (core 1.43.x /
-    # instrumentation 0.64b0) so the traceloop instrumentors (crewai/langchain/llamaindex
-    # 0.62.1) resolve. Keep in sync with the root project's [tool.uv].override-dependencies.
-    "opentelemetry-api>=1.43.0,<2.0.0",
-    "opentelemetry-sdk>=1.43.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.43.0,<2.0.0",
-    "opentelemetry-instrumentation>=0.64b0,<0.65",
-]
 exclude-dependencies = [
     "annoy",                    # nemoguardrails ANN index; sdist -march=native build SIGILLs on non-AVX-512 runners (BUZZOK-31265)
     "llama-index-llms-azure-openai",
@@ -88,6 +74,59 @@ exclude-dependencies = [
     # llama-index / mem0ai bloat
     "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
 ]
+# cve-sync:begin
+constraint-dependencies = [
+    "pip>=26.1.2",
+    "pdfminer.six>=20251230",
+    "aiohttp>=3.14.3",
+    "openai>=2.30.0",
+    "langchain>=1.3.9",
+    "langsmith>=0.8.18",
+    "nltk>=3.10.0",
+    "langgraph-checkpoint>=4.1.1",
+    "starlette>=1.3.1",
+    "python-multipart>=0.0.31",
+    "joserfc>=1.6.8",
+    "soupsieve>=2.8.4",
+    "pypdf>=6.14.2",
+    "pyarrow>=23.0.1",
+    "pillow>=12.3.0",
+    "banks>=2.4.2",
+    "bleach>=6.4.0",
+    "idna>=3.15",
+    "jupyter-server>=2.20.0",
+    "jupyterlab>=4.5.10",
+    "langchain-classic>=1.0.7",
+    "langchain-openai>=1.1.14",
+    "langchain-text-splitters>=1.1.2",
+    "mistune>=3.3.0",
+    "notebook>=7.5.6",
+    "pyasn1>=0.6.4",
+    "pygments>=2.20.0",
+    "pytest>=9.0.3",
+    "requests>=2.33.0",
+    "setuptools>=83.0.0",
+    "tornado>=6.5.7",
+    "transformers>=5.5.0",
+    "urllib3>=2.7.0",
+]
+override-dependencies = [
+    "crewai>=1.11.0",
+    "cryptography>=50.0.0",
+    "PyJWT>=2.13.0",
+    "litellm>=1.91.1,<2.0.0",
+    "python-dotenv>=1.2.2,<2.0.0",
+    "opentelemetry-api>=1.43.0,<2.0.0",
+    "opentelemetry-sdk>=1.43.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.43.0,<2.0.0",
+    "opentelemetry-instrumentation>=0.64b0,<0.65",
+    "click>=8.3.3",
+    "json-repair>=0.60.1",
+    "mcp>=1.28.1",
+]
+# cve-sync:end
 
 [tool.uv.sources]
 datarobot-genai = { path = "../", editable = true }

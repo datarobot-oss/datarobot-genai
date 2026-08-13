@@ -13,12 +13,17 @@
 # limitations under the License.
 import re
 
+import pytest
+
 from datarobot_genai.eval.utils import make_run_id
+from datarobot_genai.eval.utils import resolve_archive_name
+
+_RUN_ID_RE = r"^\d{8}_\d{6}_\d{6}$"
 
 
 def test_make_run_id_format() -> None:
     run_id = make_run_id()
-    assert re.match(r"^\d{8}_\d{6}$", run_id), f"unexpected format: {run_id}"
+    assert re.match(_RUN_ID_RE, run_id), f"unexpected format: {run_id}"
 
 
 def test_make_run_id_is_string() -> None:
@@ -26,9 +31,59 @@ def test_make_run_id_is_string() -> None:
 
 
 def test_make_run_id_unique() -> None:
-    # Two calls in the same second may collide, but calling twice should
-    # produce strings of the correct form — uniqueness is best-effort.
+    # The run ID names the archived results file, so two runs starting in the
+    # same second must not collide. Microsecond precision makes that practical.
     a = make_run_id()
     b = make_run_id()
-    assert re.match(r"^\d{8}_\d{6}$", a)
-    assert re.match(r"^\d{8}_\d{6}$", b)
+    assert a != b
+    assert re.match(_RUN_ID_RE, a)
+    assert re.match(_RUN_ID_RE, b)
+
+
+def test_make_run_id_sorts_chronologically() -> None:
+    # Consumers listing the output directory order runs by filename.
+    assert make_run_id() < make_run_id()
+
+
+# ---------------------------------------------------------------------------
+# resolve_archive_name
+# ---------------------------------------------------------------------------
+
+
+def test_archive_name_defaults_to_pipeline_and_run_id() -> None:
+    name = resolve_archive_name(None, "answer_quality.yaml", "20260601_120000_000001")
+    assert name == "answer_quality_20260601_120000_000001.json"
+
+
+def test_archive_name_default_strips_pipeline_directory() -> None:
+    # The pipeline argument is a path relative to user_pipelines/; only its stem
+    # may reach the filename, so the archive cannot escape the output directory.
+    name = resolve_archive_name(None, "nested/answer_quality.yaml", "20260601_120000_000001")
+    assert name == "answer_quality_20260601_120000_000001.json"
+
+
+def test_archive_name_explicit_override() -> None:
+    assert resolve_archive_name("baseline.json", "p.yaml", "rid") == "baseline.json"
+
+
+def test_archive_name_appends_json_suffix() -> None:
+    assert resolve_archive_name("baseline", "p.yaml", "rid") == "baseline.json"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["../escape", "sub/dir/name", "/absolute/name", ".hidden"],
+)
+def test_archive_name_rejects_non_bare_filenames(bad: str) -> None:
+    with pytest.raises(ValueError, match="bare filename"):
+        resolve_archive_name(bad, "p.yaml", "rid")
+
+
+@pytest.mark.parametrize("reserved", ["eval_results.json", "eval_status.json"])
+def test_archive_name_rejects_reserved_names(reserved: str) -> None:
+    with pytest.raises(ValueError, match="reserved"):
+        resolve_archive_name(reserved, "p.yaml", "rid")
+
+
+def test_archive_name_empty_override_falls_back_to_default() -> None:
+    assert resolve_archive_name("", "p.yaml", "rid") == "p_rid.json"
