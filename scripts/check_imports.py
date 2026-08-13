@@ -62,10 +62,14 @@ def load_config(base_dir: Path) -> dict[str, Any]:
 class ImportChecker(ast.NodeVisitor):
     """AST visitor to check import statements."""
 
-    def __init__(self, filepath: Path, config: dict[str, Any]):
+    def __init__(self, filepath: Path, config: dict[str, Any], *, is_test: bool = False):
         self.filepath = filepath
         self.errors: list[tuple[int, str]] = []
         parts = filepath.parts
+        # Tests are checked for SUBPACKAGE layering only. Reaching sideways into
+        # `core` is an architecture rule for shipped code; a test doing it is just
+        # using a helper its own CI job installs.
+        self.is_test = is_test
         self.is_drtools = "drtools" in parts
         self.is_drmcp = "drmcp" in parts and "drmcpbase" not in parts
         self.is_drmcpbase = "drmcpbase" in parts
@@ -114,6 +118,8 @@ class ImportChecker(ast.NodeVisitor):
             return
         subpackage = parts[1]
         if subpackage in allowed_local:
+            return
+        if self.is_test and subpackage not in ("drtools", "drmcp", "drmcpbase", "drmcputils"):
             return
         # Shared agent-core auth primitives are the one allowed reach into core.
         # The exception lives with drmcputils (which now owns auth.py); drtools no
@@ -176,14 +182,16 @@ class ImportChecker(ast.NodeVisitor):
             )
 
 
-def check_file(filepath: Path, config: dict[str, Any]) -> list[tuple[int, str]]:
+def check_file(
+    filepath: Path, config: dict[str, Any], *, is_test: bool = False
+) -> list[tuple[int, str]]:
     """Check a single Python file for import violations."""
     try:
         with open(filepath, encoding="utf-8") as f:
             content = f.read()
 
         tree = ast.parse(content, filename=str(filepath))
-        checker = ImportChecker(filepath, config)
+        checker = ImportChecker(filepath, config, is_test=is_test)
         checker.visit(tree)
         return checker.errors
     except Exception as e:
@@ -199,13 +207,17 @@ def main():
 
     all_errors = []
 
-    for subpackage in ("drtools", "drmcp", "drmcpbase", "drmcputils"):
-        package_dir = src_dir / subpackage
-        if package_dir.exists():
-            for py_file in package_dir.rglob("*.py"):
-                errors = check_file(py_file, config)
-                if errors:
-                    all_errors.append((py_file, errors))
+    # Tests obey the same layering. A test that reaches up a layer drags that layer's
+    # dependencies into a job that does not install them: tests/drmcpbase importing
+    # drmcp pulled in `openai` (via drmcp's __init__) and the module failed to collect.
+    for root in (src_dir, base_dir / "tests"):
+        for subpackage in ("drtools", "drmcp", "drmcpbase", "drmcputils"):
+            package_dir = root / subpackage
+            if package_dir.exists():
+                for py_file in package_dir.rglob("*.py"):
+                    errors = check_file(py_file, config, is_test=root.name == "tests")
+                    if errors:
+                        all_errors.append((py_file, errors))
 
     if all_errors:
         print("❌ Import violations found:\n")

@@ -16,9 +16,13 @@
 from typing import Any
 
 from ag_ui.core import Event
+from ag_ui.core import RunErrorEvent
 from nat.data_models.api_server import ChatResponseChunk
 from nat.data_models.api_server import ResponseBaseModelOutput
 from pydantic import Field
+
+from datarobot_genai.core.agents import RUN_ERROR_CODE
+from datarobot_genai.core.agents import default_usage_metrics
 
 
 class DRAgentEventResponse(ResponseBaseModelOutput):
@@ -32,4 +36,12 @@ class DRAgentEventResponse(ResponseBaseModelOutput):
             "Serialized guard pipeline output (scores, token counts, etc.) "
             "when moderation is enabled."
         ),
+    )
+
+
+def run_error_response(message: str, *, code: str = RUN_ERROR_CODE) -> DRAgentEventResponse:
+    """Terminal AG-UI ``RUN_ERROR`` response, so a run can end in-band instead of raising."""
+    return DRAgentEventResponse(
+        events=[RunErrorEvent(message=message, code=code)],
+        usage_metrics=default_usage_metrics(),
     )

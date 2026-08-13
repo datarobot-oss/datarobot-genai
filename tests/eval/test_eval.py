@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from datarobot_genai.eval.eval import EvalRunner
 
@@ -51,7 +55,12 @@ _NORMALIZED_RESULTS: dict[str, Any] = {
 }
 
 
-def _make_runner(tmp_path: Path, dataset_path: Path | None = None) -> EvalRunner:
+def _make_runner(
+    tmp_path: Path,
+    dataset_path: Path | None = None,
+    output_name: str | None = None,
+    archive: bool = True,
+) -> EvalRunner:
     if dataset_path is None:
         p = tmp_path / "cases.json"
         p.write_text(json.dumps([{"id": "c-001", "input": "hello", "expected_behavior": "good"}]))
@@ -61,7 +70,32 @@ def _make_runner(tmp_path: Path, dataset_path: Path | None = None) -> EvalRunner
         pipeline="test.yaml",
         dataset=str(dataset_path),
         repo_root=tmp_path,
+        output_name=output_name,
+        archive=archive,
     )
+
+
+@contextmanager
+def _patched_success() -> Iterator[None]:
+    """Stub out every external step of a run so it reaches the output writes."""
+    with (
+        patch("datarobot_genai.eval.eval.validate_inputs", return_value=[]),
+        patch("datarobot_genai.eval.eval.load_pipeline", return_value=_PIPELINE_CFG),
+        patch("datarobot_genai.eval.eval.preflight_judge"),
+        patch("datarobot_genai.eval.eval.run_byob"),
+        patch(
+            "datarobot_genai.eval.eval.normalize_output",
+            return_value=_NORMALIZED_RESULTS,
+        ),
+    ):
+        yield
+
+
+def _archives(tmp_path: Path) -> list[str]:
+    """List result files in output/, excluding the fixed 'latest' pointers."""
+    fixed = {"eval_results.json", "eval_status.json"}
+    out = tmp_path / "output"
+    return sorted(p.name for p in out.glob("*.json") if p.name not in fixed)
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +306,92 @@ def test_run_not_left_running_when_results_write_fails(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Per-run archive copy
+# ---------------------------------------------------------------------------
+
+
+def test_run_writes_archive_named_after_pipeline(tmp_path: Path) -> None:
+    runner = _make_runner(tmp_path)
+    with _patched_success():
+        runner.run()
+    archives = _archives(tmp_path)
+    assert len(archives) == 1
+    assert archives[0].startswith("test_")
+    assert archives[0].endswith(".json")
+
+
+def test_archive_content_matches_latest_pointer(tmp_path: Path) -> None:
+    # Both files are written from one serialization, so they can never disagree
+    # about what the run produced.
+    runner = _make_runner(tmp_path)
+    with _patched_success():
+        runner.run()
+    latest = (tmp_path / "output" / "eval_results.json").read_text()
+    archived = (tmp_path / "output" / _archives(tmp_path)[0]).read_text()
+    assert latest == archived
+
+
+def test_successive_runs_do_not_overwrite_each_other(tmp_path: Path) -> None:
+    # The whole point of the feature: run the same pipeline twice and keep both.
+    runner = _make_runner(tmp_path)
+    with _patched_success():
+        runner.run()
+        runner.run()
+    assert len(_archives(tmp_path)) == 2
+
+
+def test_run_honors_explicit_output_name(tmp_path: Path) -> None:
+    runner = _make_runner(tmp_path, output_name="baseline")
+    with _patched_success():
+        runner.run()
+    assert _archives(tmp_path) == ["baseline.json"]
+
+
+def test_no_archive_writes_only_the_pointer(tmp_path: Path) -> None:
+    runner = _make_runner(tmp_path, archive=False)
+    with _patched_success():
+        runner.run()
+    assert _archives(tmp_path) == []
+    assert (tmp_path / "output" / "eval_results.json").exists()
+
+
+@pytest.mark.parametrize("bad", ["../escape", "sub/name", "eval_results.json"])
+def test_invalid_output_name_fails_validation(tmp_path: Path, bad: str) -> None:
+    # A bad name is an input error: exit 1 with a failed status, and the
+    # evaluation itself never runs.
+    runner = _make_runner(tmp_path, output_name=bad)
+    with _patched_success() as _, patch("datarobot_genai.eval.eval.run_byob") as run_byob:
+        assert runner.run() == 1
+    run_byob.assert_not_called()
+    status = json.loads((tmp_path / "output" / "eval_status.json").read_text())
+    assert status["status"] == "failed"
+
+
+def test_invalid_output_name_does_not_clobber_previous_results(tmp_path: Path) -> None:
+    runner = _make_runner(tmp_path)
+    with _patched_success():
+        runner.run()
+    before = (tmp_path / "output" / "eval_results.json").read_text()
+
+    bad_runner = _make_runner(tmp_path, output_name="../escape")
+    with _patched_success():
+        assert bad_runner.run() == 1
+    assert (tmp_path / "output" / "eval_results.json").read_text() == before
+
+
+def test_dry_run_reports_archive_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = _make_runner(tmp_path)
+    with (
+        patch("datarobot_genai.eval.eval.validate_inputs", return_value=[]),
+        patch("datarobot_genai.eval.eval.load_pipeline", return_value=_PIPELINE_CFG),
+    ):
+        runner.run(dry_run=True)
+    out = capsys.readouterr().out
+    assert "archive: output/test_" in out
+    assert not (tmp_path / "output").exists()
+
+
+# ---------------------------------------------------------------------------
 # EvalRunner path derivation
 # ---------------------------------------------------------------------------
 
@@ -280,3 +400,9 @@ def test_runner_paths_derived_from_repo_root(tmp_path: Path) -> None:
     runner = EvalRunner("http://x", "p.yaml", "d.json", repo_root=tmp_path)
     assert runner.pipelines_dir == tmp_path / "user_pipelines"
     assert runner.output_dir == tmp_path / "output"
+
+
+def test_runner_archives_by_default(tmp_path: Path) -> None:
+    runner = EvalRunner("http://x", "p.yaml", "d.json", repo_root=tmp_path)
+    assert runner.archive is True
+    assert runner.output_name is None

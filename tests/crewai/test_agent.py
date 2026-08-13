@@ -29,6 +29,7 @@ from ag_ui.core import ReasoningMessageEndEvent
 from ag_ui.core import ReasoningMessageStartEvent
 from ag_ui.core import ReasoningStartEvent
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import RunFinishedEvent
 from ag_ui.core import RunStartedEvent
 from ag_ui.core import StepFinishedEvent
@@ -729,12 +730,9 @@ async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
     agent._crew_for_test = CrewForTest(_AbortingStream())
 
     # WHEN the stream aborts mid-run
-    events = []
-    with pytest.raises(RuntimeError, match="boom"):
-        async for e, _, _ in agent.invoke(run_agent_input):
-            events.append(e)
+    events = [e async for e, _, _ in agent.invoke(run_agent_input)]
 
-    # THEN every opened step and message was closed before the error propagated
+    # THEN every opened step and message was closed before the terminal error
     starts = [e for e in events if isinstance(e, StepStartedEvent)]
     finishes = [e for e in events if isinstance(e, StepFinishedEvent)]
     text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
@@ -743,13 +741,12 @@ async def test_invoke_streaming_closes_open_step_and_message_when_stream_aborts(
     assert [s.step_name for s in finishes] == ["Planner"]  # step closed on abort
     assert len(text_starts) == len(text_ends) == 1  # message closed on abort
 
-    # AND the partial stream is well-formed AND still accepts a terminal event -- nothing is left
-    # open. validate_sequence rejects RUN_FINISHED while a step/message is active, so appending it
-    # is what proves finish() closed the step on abort (balanced counts would pass even with
-    # STEP_FINISHED emitted before TEXT_MESSAGE_END).
+    # AND the agent owns its lifecycle: the run ends with a terminal RUN_ERROR carrying the
+    # failure instead of raising (an unframed exception would surface downstream as a dropped
+    # NAT error). The partial stream stays well-formed -- nothing left open before the error.
+    assert isinstance(events[-1], RunErrorEvent)
+    assert "boom" in events[-1].message
     validate_sequence(events)
-    terminal = RunFinishedEvent(thread_id=run_agent_input.thread_id, run_id=run_agent_input.run_id)
-    validate_sequence([*events, terminal])
     assert events.index(text_ends[0]) < events.index(finishes[0])  # message closed before its step
 
 

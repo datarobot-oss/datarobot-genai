@@ -95,10 +95,12 @@ This is the simplest setup — no agent card extensions or multi-step flows
 involved.
 
 > **Important:** `datarobot_api_key` is the default authentication mechanism
-> for DataRobot-hosted agents. However, when the remote agent card declares a 
-> specific mechanism (e.g. OAuth2 via `cross_application_access`), security-scheme 
-> negotiation validates and requires a matching auth provider on the client side. 
-> Use `okta_cross_app_access` (Option 2) for OAuth2-protected agents. 
+> for DataRobot-hosted agents. Every agent card includes `securitySchemes`; agents
+> without explicit OAuth configuration advertise HTTP Bearer auth (`bearerAuth`)
+> for DataRobot API tokens. When the remote agent card declares OAuth2 via
+> `cross_application_access`, security-scheme negotiation validates and requires a
+> matching auth provider on the client side. Use `okta_cross_app_access` (Option 2)
+> for OAuth2-protected agents.
 
 ## Option 2: Okta cross-application access (XAA)
 
@@ -161,6 +163,10 @@ general:
       external:
         id: "my-agent-id"       # Emitted as urn:datarobot:agent:identity:external
         url: "https://my-agent-id.example.com/a2a/"  # Overrides the auto-generated card URL
+
+      # Optional: per-agent opt-in for unauthenticated agent-card access
+      # (also requires platform-level opt-in per cluster)
+      enable_unauthenticated_well_known_route: true
 
 # Client-side: call a remote XAA-protected agent
 function_groups:
@@ -230,6 +236,24 @@ identity metadata and the agent card URL.
 |-------|---------|
 | `external.id` | Catalog discovery identifier. Emitted as the `urn:datarobot:agent:identity:external` extension on the agent card. |
 | `external.url` | Overrides the auto-generated agent card endpoint URL. Used as-is — no normalization is applied. |
+
+### Server-side configuration reference: `enable_unauthenticated_well_known_route`
+
+Unauthenticated access to `GET /.well-known/agent-card.json` requires two
+independent opt-ins:
+
+1. Platform (per cluster) — cluster administrators enable routing of
+   unauthenticated traffic to agents. This is configured outside `workflow.yaml`.
+2. Agent (per deployment) — set `enable_unauthenticated_well_known_route:
+   true` under `general.front_end.a2a` in the agent's `workflow.yaml`.
+
+Both must be enabled for anonymous callers to reach the agent card endpoint.
+The agent-side flag is enforced by the A2A server in this library; platform
+routing is enforced before the request reaches the agent process.
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive 401. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 

@@ -15,11 +15,13 @@
 from __future__ import annotations
 
 import abc
+import functools
 import json
 import logging
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
@@ -30,8 +32,11 @@ from typing import TypeVar
 
 from ag_ui.core import Event
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
+from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import UserMessage
 
+from datarobot_genai.core.agents.events import track_open_text
 from datarobot_genai.core.agents.history import NormalizedHistoryMessage
 from datarobot_genai.core.agents.history import build_history_summary_from_messages
 from datarobot_genai.core.agents.history import drop_unpaired_boundary_tool_turns
@@ -332,3 +337,35 @@ def default_usage_metrics() -> UsageMetrics:
         "prompt_tokens": 0,
         "total_tokens": 0,
     }
+
+
+# Client-facing ``code`` on a terminal AG-UI ``RunErrorEvent``.
+RUN_ERROR_CODE = "RUN_ERROR"
+
+
+def frame_agent_errors(invoke: Callable[..., InvokeReturn]) -> Callable[..., InvokeReturn]:
+    """Turn a mid-run exception in an agent ``invoke`` into a terminal ``RUN_ERROR`` event.
+
+    The agent owns its AG-UI lifecycle: rather than raise (which surfaces downstream as an
+    unframed NAT error that SSE clients silently drop), close any open text segments and
+    yield a terminal ``RunErrorEvent``. Decorate each framework's ``invoke`` with this.
+    """
+
+    @functools.wraps(invoke)
+    async def wrapper(self: Any, run_agent_input: RunAgentInput) -> InvokeReturn:
+        open_text_ids: set[str] = set()
+        try:
+            async for event, interactions, usage in invoke(self, run_agent_input):
+                track_open_text(open_text_ids, event)
+                yield event, interactions, usage
+        except Exception as exc:
+            logger.exception("Agent run failed; ending stream with RUN_ERROR")
+            for message_id in open_text_ids:
+                yield TextMessageEndEvent(message_id=message_id), None, default_usage_metrics()
+            yield (
+                RunErrorEvent(message=str(exc), code=RUN_ERROR_CODE),
+                None,
+                default_usage_metrics(),
+            )
+
+    return wrapper
