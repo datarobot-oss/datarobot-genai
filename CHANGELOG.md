@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.11
+- `drtools/panels`: new `create_chart_panel` tool (ported from wren-mcp) — runs LLM-authored Python charting code in the isolated DataRobot workload sandbox (`execute_code`) over a source Dataset panel bound as a polars DataFrame `df`, validates the returned Plotly figure JSON, and persists it as a Chart panel. The stored blob follows the frozen BPA frontend contract `{"format": "plotly", "spec": <figure-json>}` with `content_type="application/json"`. Registered under the `dr_panels` MCP tool category.
+
 ## 0.27.9
 - Added a local tracing example to the quickstart notebook and the DRAgent tracing guide.
 

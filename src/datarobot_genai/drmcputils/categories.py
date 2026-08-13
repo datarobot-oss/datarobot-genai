@@ -272,6 +272,7 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "preview_dataset_panel",
             "transform_panel",
             "filter_panel",
+            "create_chart_panel",
             "create_dataset_panel_from_catalog",
             "upload_dataset_panel_to_catalog",
             "query_datasets_to_panel",

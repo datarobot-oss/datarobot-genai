@@ -37,6 +37,7 @@ _EXPECTED_TOOLS = {
     "create_dataset_panel_from_connector",
     "transform_panel",
     "filter_panel",
+    "create_chart_panel",
     "create_dataset_panel_from_catalog",
     "upload_dataset_panel_to_catalog",
     "query_datasets_to_panel",
