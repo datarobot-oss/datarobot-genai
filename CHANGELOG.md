@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.14
+- `drtools/predictive`: `catalog_list_datastores` now requests `type=all` from `GET externalDataStores/` (the API defaults to JDBC-only and returns `[]` when the user only has native-database or connector stores). Agents listing connections no longer report none connected. Optional `datastore_type` still filters (`jdbc`, `dr-database-v1`, `dr-connector-v1`, `databases`); each row includes `type`.
+
 ## 0.27.13
 - `drmcp/core/telemetry`: MCP server startup no longer blocks on unreachable OTLP endpoints — span export uses ``BatchSpanProcessor`` (background thread) instead of ``SimpleSpanProcessor`` (synchronous export on every span end).
 
