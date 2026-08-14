@@ -49,6 +49,23 @@ def _make_config(**overrides: object) -> Config:
     return Config.model_construct(**defaults)
 
 
+def test_config_reads_memory_component_runtime_parameters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN the fixed runtime parameters exported by af-component-memory.
+    monkeypatch.setenv("MEM0_API_KEY", "mem0-key")
+    monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "memory-space-id")
+    monkeypatch.setenv("AGENT_MEMORY_TTL_DAYS", "30")
+
+    # WHEN the shared application config is loaded.
+    config = Config()
+
+    # THEN all memory settings are available to runtime integrations.
+    assert config.mem0_api_key == "mem0-key"
+    assert config.agent_memory_space_id == "memory-space-id"
+    assert config.agent_memory_ttl_days == 30
+
+
 # --- get_max_history_messages_default (existing tests, preserved) ---
 
 

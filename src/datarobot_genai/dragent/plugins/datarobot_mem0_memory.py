@@ -44,7 +44,6 @@ from datetime import datetime
 from datetime import timedelta
 from typing import Any
 
-from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
 from nat.builder.context import Context
 from nat.cli.register_workflow import register_memory
@@ -55,22 +54,11 @@ from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
+from datarobot_genai.core.config import Config
 from datarobot_genai.core.telemetry.memory import trace_memory_operation
 from datarobot_genai.core.telemetry.memory import truncate_memory_text
 
 logger = logging.getLogger(__name__)
-
-
-class Config(DataRobotAppFrameworkBaseSettings):
-    """
-    Finds variables in the priority order of: env
-    variables (including Runtime Parameters), .env, file_secrets, then
-    Pulumi output variables.
-    """
-
-    mem0_api_key: str | None = None
-    agent_memory_space_id: str | None = None
-    agent_memory_ttl_days: int | None = None
 
 
 def _get_default_memory_backend_config() -> Config:
