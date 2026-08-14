@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.14
+- `drtools/core/sandbox`: a partially flushed OTEL log stream is no longer mistaken for a run that produced no result marker. The wait previously stopped as soon as two consecutive reads returned identical stdout, which — with reads 0.5s apart and remaining lines ~0.4s behind — abandoned the wait about a second in and reported `no result marker in logs` for workloads that had actually succeeded. Stdout must now stay unchanged for a quiet window (5s) before the run is declared markerless, so genuine crashes still fail fast instead of waiting out the full budget.
+
 ## 0.27.12
 - `drtools/core/sandbox`: workload scheduling and image-pull time no longer consume the caller's `timeout_s` (which bounds user code, enforced in-container). A separate `provisioning_timeout_s` allowance (default 300s, constructor-tunable) bounds the infra wait — a cold node's first pull of the sandbox image (60-90s) used to surface as `SandboxTimeout` before user code ever ran.
 - `drtools/core/sandbox`: a workload marked terminal-failure by a transient `ErrImagePull` (k8s retries the pull and the container then runs) no longer fails with "no result marker in logs"; on failure statuses the marker wait extends to the remaining overall budget instead of the fixed 30s flush budget.
