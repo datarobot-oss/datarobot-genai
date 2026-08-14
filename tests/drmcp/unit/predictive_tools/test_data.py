@@ -426,7 +426,7 @@ async def test_catalog_list_datastores_success() -> None:
         assert result["limit"] == 10
         assert "next" in result
         mock_rest.get.assert_called_once_with(
-            "externalDataStores/", params={"offset": 0, "limit": 10}
+            "externalDataStores/", params={"offset": 0, "limit": 10, "type": "all"}
         )
 
 
@@ -463,7 +463,9 @@ async def test_catalog_list_datastores_serializes_params_from_response() -> None
         assert result["datastores"][0]["params"] == expected
         assert "offset" not in result
         assert result["limit"] == 100
-        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 100})
+        mock_rest.get.assert_called_once_with(
+            "externalDataStores/", params={"limit": 100, "type": "all"}
+        )
 
 
 @pytest.mark.asyncio
@@ -493,7 +495,7 @@ async def test_catalog_list_datastores_pagination_total_count_from_api() -> None
         assert result["total_count"] == 42
         assert result["previous"] == "https://api/prev"
         mock_rest.get.assert_called_once_with(
-            "externalDataStores/", params={"offset": 5, "limit": 1}
+            "externalDataStores/", params={"offset": 5, "limit": 1, "type": "all"}
         )
 
 
@@ -508,7 +510,44 @@ async def test_catalog_list_datastores_clamps_limit_above_max() -> None:
         result = await data.catalog_list_datastores(limit=1001)
         assert result["limit"] == 100
         assert "Limit cannot exceed 100" in (result.get("note") or "")
-        mock_rest.get.assert_called_once_with("externalDataStores/", params={"limit": 100})
+        mock_rest.get.assert_called_once_with(
+            "externalDataStores/", params={"limit": 100, "type": "all"}
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_get_client_context_with_token_from_request_header")
+async def test_catalog_list_datastores_passes_datastore_type() -> None:
+    """GIVEN a datastore_type filter WHEN listing THEN the API type query param is set."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "conn1",
+                "canonicalName": "Jira",
+                "type": "dr-connector-v1",
+                "creatorId": "user1",
+                "params": {},
+            }
+        ],
+    }
+    mock_rest = MagicMock()
+    mock_rest.get.return_value = mock_response
+    with patch.object(dr.client, "get_client", return_value=mock_rest):
+        result = await data.catalog_list_datastores(datastore_type="dr-connector-v1")
+        assert result["count"] == 1
+        assert result["datastores"][0]["type"] == "dr-connector-v1"
+        mock_rest.get.assert_called_once_with(
+            "externalDataStores/", params={"limit": 100, "type": "dr-connector-v1"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_catalog_list_datastores_rejects_unknown_datastore_type() -> None:
+    """GIVEN an invalid datastore_type WHEN listing THEN a validation error is raised."""
+    with pytest.raises(ToolError, match="datastore_type must be one of") as exc_info:
+        await data.catalog_list_datastores(datastore_type="not-a-type")
+    assert exc_info.value.kind == ToolErrorKind.VALIDATION
 
 
 @pytest.mark.asyncio
