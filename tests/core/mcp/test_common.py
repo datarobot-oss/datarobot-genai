@@ -1197,7 +1197,7 @@ class TestMCPConfig:
     # ------------------------------------------------------------------
 
     def test_mcp_config_with_workload_id(self, agent_auth_context_data):
-        """Workload mode builds an /endpoints/workloads/{id}/mcp URL."""
+        """Workload mode builds an /api/v2/endpoints/workloads/{id}/mcp URL."""
         workload_id = "6a6b3d359e6b2c11158c2a13"
         api_base = "https://app.datarobot.com"
         api_key = "test-api-key"
@@ -1220,7 +1220,7 @@ class TestMCPConfig:
             assert config.server_config is not None
             assert (
                 config.server_config["url"]
-                == f"{api_base}/endpoints/workloads/{workload_id}/mcp"
+                == f"{api_base}/api/v2/endpoints/workloads/{workload_id}/mcp"
             )
             assert config.server_config["transport"] == "streamable-http"
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
@@ -1230,25 +1230,32 @@ class TestMCPConfig:
             decoded = config.auth_context_handler.decode(jwt_token)
             assert decoded == agent_auth_context_data
 
-    def test_mcp_config_workload_url_no_api_v2_prefix(self):
-        """Workload URL is served at the root, not under /api/v2."""
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://app.datarobot.com",
+            "https://app.datarobot.com/",
+            "https://app.datarobot.com/api/v2",
+            "https://app.datarobot.com/api/v2/",
+            "https://staging.datarobot.com/api/v2",
+        ],
+    )
+    def test_mcp_config_workload_url_includes_api_v2(self, endpoint):
+        """Missing /api/v2 is appended; an existing suffix is not doubled."""
         workload_id = "a" * 24
         with patch.dict(
             os.environ,
             {
                 "MCP_WORKLOAD_ID": workload_id,
-                "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                "DATAROBOT_ENDPOINT": endpoint,
                 "DATAROBOT_API_TOKEN": "tok",
             },
             clear=True,
         ):
-            config = MCPConfig()
-            # The URL builder passes the endpoint through unchanged; /api/v2 stays
-            # if the caller provided it. What must NOT happen is that we auto-add
-            # /api/v2 (as the deployment branch does).
-            url = config.server_config["url"]
-            assert url.count("/api/v2") <= 1
-            assert url.endswith(f"/endpoints/workloads/{workload_id}/mcp")
+            url = MCPConfig().server_config["url"]
+            host = endpoint.rstrip("/").removesuffix("/api/v2")
+            assert url == f"{host}/api/v2/endpoints/workloads/{workload_id}/mcp"
+            assert url.count("/api/v2") == 1
 
     def test_workload_conflicts_with_deployment_id(self):
         """Workload ID alongside a deployment ID must raise — no silent preference."""

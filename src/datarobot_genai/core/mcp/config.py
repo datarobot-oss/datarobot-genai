@@ -206,9 +206,13 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                     "When using a DataRobot workload MCP, datarobot_api_token must be set."
                 )
 
+            base_url = self.datarobot_endpoint.rstrip("/")
+            if not base_url.endswith("/api/v2"):
+                base_url = f"{base_url}/api/v2"
+
             # cast: kind == "workload" guarantees the workload ID is set
             url = build_workload_mcp_url(
-                self.datarobot_endpoint,
+                base_url,
                 cast(str, self.mcp_workload_id),
             )
             headers = self._build_authenticated_headers()
