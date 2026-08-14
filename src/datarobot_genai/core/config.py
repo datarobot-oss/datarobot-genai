@@ -128,6 +128,11 @@ class Config(LLMConfig, DataRobotAppFrameworkBaseSettings):
 
     datarobot_endpoint: str = "https://app.datarobot.com/api/v2"
 
+    # Fixed runtime parameter names supplied by af-component-memory.
+    mem0_api_key: str | None = None
+    agent_memory_space_id: str | None = None
+    agent_memory_ttl_days: int | None = None
+
     max_history_messages: int = Field(
         default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
     )
