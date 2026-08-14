@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.27.13
+- `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.
+
 ## 0.27.12
 - `drtools/core/sandbox`: workload scheduling and image-pull time no longer consume the caller's `timeout_s` (which bounds user code, enforced in-container). A separate `provisioning_timeout_s` allowance (default 300s, constructor-tunable) bounds the infra wait — a cold node's first pull of the sandbox image (60-90s) used to surface as `SandboxTimeout` before user code ever ran.
 - `drtools/core/sandbox`: a workload marked terminal-failure by a transient `ErrImagePull` (k8s retries the pull and the container then runs) no longer fails with "no result marker in logs"; on failure statuses the marker wait extends to the remaining overall budget instead of the fixed 30s flush budget.
