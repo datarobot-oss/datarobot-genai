@@ -18,8 +18,11 @@ The `task cases-*` commands below all run through Task, so they pick up the dote
 Some tests require additional resources deployed in DataRobot. They are injected as environment variables. Make sure to include said variables before running a specific test case.
 
 ```
-# Necessary for all tests using an MCP server
+# Necessary for all tests using an MCP server — pick one method:
+#   custom-model deployment → set MCP_DEPLOYMENT_ID
+#   workload API deployment → set MCP_WORKLOAD_ID
 MCP_DEPLOYMENT_ID=
+MCP_WORKLOAD_ID=
 
 # Necessary for configurations using DataRobot Deployment as LLM
 LLM_DEPLOYMENT_ID=

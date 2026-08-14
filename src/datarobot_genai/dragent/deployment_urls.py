@@ -129,6 +129,27 @@ def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
     return f"{base}/endpoints/workloads/{workload_id}/{WORKLOAD_A2A_PATH}/"
 
 
+def build_workload_mcp_url(endpoint: str, workload_id: str) -> str:
+    """Construct the MCP URL for a DataRobot workload.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot API endpoint base URL, e.g. ``https://app.datarobot.com/api/v2``.
+        A trailing slash is stripped before composing the URL.
+    workload_id:
+        The DataRobot workload ID.
+
+    Returns
+    -------
+    str
+        A URL of the form
+        ``{endpoint}/endpoints/workloads/{workload_id}/mcp``.
+    """
+    base = endpoint.removesuffix("/")
+    return f"{base}/endpoints/workloads/{workload_id}/mcp"
+
+
 def build_workload_agent_card_url(endpoint: str, workload_id: str) -> str:
     """Construct the agent card URL for a DataRobot workload.
 

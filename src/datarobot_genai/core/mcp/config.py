@@ -23,6 +23,7 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import field_validator
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
+from datarobot_genai.dragent.deployment_urls import build_workload_mcp_url
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     external_mcp_headers: str | None = None
     external_mcp_transport: Literal["sse", "streamable-http"] = "streamable-http"
     mcp_deployment_id: str | None = None
+    mcp_workload_id: str | None = None
     datarobot_endpoint: str | None = None
     datarobot_api_token: str | None = None
     authorization_context: dict[str, Any] | None = None
@@ -79,6 +81,21 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
 
         return candidate
 
+    @field_validator("mcp_workload_id", mode="before")
+    @classmethod
+    def validate_mcp_workload_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        candidate = value.strip()
+
+        if not re.fullmatch(r"[0-9a-fA-F]{24}", candidate):
+            msg = "mcp_workload_id must be a valid 24-character hex ID"
+            logger.warning(msg)
+            return None
+
+        return candidate
+
     @field_validator("mcp_server_port", mode="after")
     @classmethod
     def validate_mcp_server_port(cls, value: int | None) -> int | None:
@@ -111,11 +128,25 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             self._server_config = self._build_server_config()
         return self._server_config
 
-    def _config_kind(self) -> Literal["deployment", "external", "local"] | None:
+    def _config_kind(self) -> Literal["workload", "deployment", "external", "local"] | None:
         """Single source of truth for which MCP server config is active.
 
-        Precedence: deployment > external > local.
+        Workload mode (mcp_workload_id) is detected directly and does not
+        compete on precedence: if it is configured alongside a deployment or
+        external URL, ``ValueError`` is raised so the caller must pick one
+        deployment method explicitly.
+
+        When workload mode is not in play, the legacy precedence applies:
+        deployment > external > local.
         """
+        if self.mcp_workload_id:
+            if self.mcp_deployment_id or self.external_mcp_url:
+                raise ValueError(
+                    "Ambiguous MCP configuration: mcp_workload_id cannot be "
+                    "combined with mcp_deployment_id or external_mcp_url. "
+                    "Configure exactly one deployment method."
+                )
+            return "workload"
         if self.mcp_deployment_id:
             return "deployment"
         if self.external_mcp_url:
@@ -163,6 +194,32 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             or None if not configured.
         """
         kind = self._config_kind()
+
+        if kind == "workload":
+            # DataRobot workload MCP - requires authentication
+            if self.datarobot_endpoint is None:
+                raise ValueError(
+                    "When using a DataRobot workload MCP, datarobot_endpoint must be set."
+                )
+            if self.datarobot_api_token is None:
+                raise ValueError(
+                    "When using a DataRobot workload MCP, datarobot_api_token must be set."
+                )
+
+            # cast: kind == "workload" guarantees the workload ID is set
+            url = build_workload_mcp_url(
+                self.datarobot_endpoint,
+                cast(str, self.mcp_workload_id),
+            )
+            headers = self._build_authenticated_headers()
+
+            logger.info(f"Using DataRobot workload MCP: {url}")
+
+            return {
+                "url": url,
+                "transport": "streamable-http",
+                "headers": headers,
+            }
 
         if kind == "deployment":
             # DataRobot deployment ID - requires authentication

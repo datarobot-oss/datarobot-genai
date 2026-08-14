@@ -1191,3 +1191,173 @@ class TestMCPConfig:
             config = MCPConfig(mcp_server_port=8080)
             # External should take priority over localhost
             assert config.server_config["url"] == external_url
+
+    # ------------------------------------------------------------------
+    # Workload MCP mode (mcp_workload_id)
+    # ------------------------------------------------------------------
+
+    def test_mcp_config_with_workload_id(self, agent_auth_context_data):
+        """Workload mode builds an /endpoints/workloads/{id}/mcp URL."""
+        workload_id = "6a6b3d359e6b2c11158c2a13"
+        api_base = "https://app.datarobot.com"
+        api_key = "test-api-key"
+        secret_key = "my-secret-key"
+
+        set_authorization_context(agent_auth_context_data)
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": workload_id,
+                "DATAROBOT_ENDPOINT": api_base,
+                "DATAROBOT_API_TOKEN": api_key,
+                "SESSION_SECRET_KEY": secret_key,
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.mcp_workload_id == workload_id
+            assert config.server_config is not None
+            assert (
+                config.server_config["url"]
+                == f"{api_base}/endpoints/workloads/{workload_id}/mcp"
+            )
+            assert config.server_config["transport"] == "streamable-http"
+            assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
+
+            # Auth-context header propagates the same way as deployment mode.
+            jwt_token = config.server_config["headers"]["X-DataRobot-Authorization-Context"]
+            decoded = config.auth_context_handler.decode(jwt_token)
+            assert decoded == agent_auth_context_data
+
+    def test_mcp_config_workload_url_no_api_v2_prefix(self):
+        """Workload URL is served at the root, not under /api/v2."""
+        workload_id = "a" * 24
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": workload_id,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            # The URL builder passes the endpoint through unchanged; /api/v2 stays
+            # if the caller provided it. What must NOT happen is that we auto-add
+            # /api/v2 (as the deployment branch does).
+            url = config.server_config["url"]
+            assert url.count("/api/v2") <= 1
+            assert url.endswith(f"/endpoints/workloads/{workload_id}/mcp")
+
+    def test_workload_conflicts_with_deployment_id(self):
+        """Workload ID alongside a deployment ID must raise — no silent preference."""
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "MCP_DEPLOYMENT_ID": "c" * 24,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            with pytest.raises(ValueError, match="Ambiguous MCP configuration"):
+                config.server_config
+
+    def test_workload_conflicts_with_external_url(self):
+        """Workload ID alongside EXTERNAL_MCP_URL must raise — no silent preference."""
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "EXTERNAL_MCP_URL": "https://external.example/mcp",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            with pytest.raises(ValueError, match="Ambiguous MCP configuration"):
+                config.server_config
+
+    def test_invalid_workload_id_normalized_to_none(self):
+        """Invalid workload IDs should return None and log a warning (like deployment_id)."""
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "short-id",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.mcp_workload_id is None
+            # With no valid workload / deployment / external / local, nothing to configure.
+            assert config.server_config is None
+
+    def test_workload_id_whitespace_trim(self):
+        """Whitespace around a valid workload ID is stripped."""
+        workload_id = "a" * 24
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": f"  {workload_id}  ",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            assert config.mcp_workload_id == workload_id
+
+    @pytest.mark.parametrize(
+        "missing_env, expected_error_message",
+        [
+            pytest.param(
+                {"DATAROBOT_ENDPOINT": "https://app.datarobot.com"},
+                "When using a DataRobot workload MCP, datarobot_api_token must be set.",
+                id="with-endpoint",
+            ),
+            pytest.param(
+                {"DATAROBOT_API_TOKEN": "tok"},
+                "When using a DataRobot workload MCP, datarobot_endpoint must be set.",
+                id="with-api-key",
+            ),
+        ],
+    )
+    def test_workload_missing_endpoint_or_token_raises(self, missing_env, expected_error_message):
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                **missing_env,
+            },
+            clear=True,
+        ):
+            config = MCPConfig()
+            with pytest.raises(ValueError, match=expected_error_message):
+                config.server_config
+
+    def test_workload_with_forwarded_headers(self):
+        """Forwarded headers propagate in workload mode (same as deployment mode)."""
+        forwarded_headers = {
+            "x-datarobot-api-key": "scoped-token-42",
+            "x-custom-header": "custom-value",
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            config = MCPConfig(forwarded_headers=forwarded_headers)
+            headers = config.server_config["headers"]
+            assert headers["x-datarobot-api-key"] == "scoped-token-42"
+            assert headers["x-custom-header"] == "custom-value"
+            assert headers["Authorization"] == "Bearer tok"

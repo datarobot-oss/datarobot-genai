@@ -24,8 +24,12 @@ Practical rule: **merge** platform tools with yours wherever you bind tools to t
 
 ## Configuration outside the repo
 
-MCP server URL and credentials come from **your deployment / environment** (MCP deployment id, external MCP URL, etc.), not from the LangGraph `workflow.yaml` in the minimal sample. The NAT workflow example adds **`function_groups`** in YAML instead; see [nat/mcp.md](../nat/mcp.md).
+MCP server URL and credentials come from **your deployment / environment**, not from the LangGraph `workflow.yaml` in the minimal sample. The NAT workflow example adds **`function_groups`** in YAML instead; see [nat/mcp.md](../nat/mcp.md).
+Pick exactly one of the following deployment methods — mixing them raises `ValueError`:
+- **Custom model MCP deployment:** set `MCP_DEPLOYMENT_ID`.
+- **Workload API MCP deployment:** set `MCP_WORKLOAD_ID`.
+- **External MCP server:** set `EXTERNAL_MCP_URL` (and optionally `EXTERNAL_MCP_HEADERS`, `EXTERNAL_MCP_TRANSPORT`).
 
 ## Automated tests
 
-`e2e-tests/dragent_tests/test_mcp.py` exercises MCP tool calls when **`MCP_DEPLOYMENT_ID`** and a tool-capable agent are configured.
+`e2e-tests/dragent_tests/test_mcp.py` exercises MCP tool calls when either **`MCP_DEPLOYMENT_ID`** or **`MCP_WORKLOAD_ID`** is set and a tool-capable agent is configured.

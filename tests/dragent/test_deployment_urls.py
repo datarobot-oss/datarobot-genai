@@ -27,6 +27,7 @@ from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
+from datarobot_genai.dragent.deployment_urls import build_workload_mcp_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 
@@ -138,6 +139,36 @@ class TestBuildWorkloadAgentCardUrl:
     )
     def test_builds_correct_url(self, endpoint, workload_id, expected):
         assert build_workload_agent_card_url(endpoint, workload_id) == expected
+
+
+class TestBuildWorkloadMcpUrl:
+    @pytest.mark.parametrize(
+        "endpoint,workload_id,expected",
+        [
+            (
+                "https://app.datarobot.com",
+                "6a6b3d359e6b2c11158c2a13",
+                "https://app.datarobot.com/endpoints/workloads/6a6b3d359e6b2c11158c2a13/mcp",
+            ),
+            (
+                "https://app.datarobot.com/",
+                "abc123",
+                "https://app.datarobot.com/endpoints/workloads/abc123/mcp",
+            ),
+            (
+                "https://hadr-workload-01.k8s.int.datarobot.com",
+                "wl-999",
+                "https://hadr-workload-01.k8s.int.datarobot.com/endpoints/workloads/wl-999/mcp",
+            ),
+        ],
+    )
+    def test_builds_correct_url(self, endpoint, workload_id, expected):
+        assert build_workload_mcp_url(endpoint, workload_id) == expected
+
+    @pytest.mark.parametrize("workload_id", ["wl1", "abc-123", "0" * 24])
+    def test_workload_id_appears_verbatim_in_path(self, workload_id):
+        url = build_workload_mcp_url("https://app.datarobot.com", workload_id)
+        assert url.endswith(f"/endpoints/workloads/{workload_id}/mcp")
 
 
 class TestResolveDataRobotEndpoint:
