@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.28.1
 - `drmcp/core`: Added an MCP middleware which performs general OAuth claim validation.
-- `core/utils/auth.py`: Added JWTTokenClaimsValidator which performs validations on claims in JWT token.
+- `drmcputils/auth.py`: Added JWTTokenClaimsValidator which performs validations on claims in JWT token.
 
 ## 0.28.0
 - `core/config`: **`LLMConfig` and `LLMType` now come from `datarobot.core.config`** rather than being defined here, and are re-exported from `datarobot_genai.core.config` along with `deployment_url` and `llm_gateway_url`. Existing imports from `datarobot_genai.core.config` keep working. The routing logic (`get_llm_type`, `to_litellm_params`) moved with them, so there is one definition of "how a DataRobot LLM config becomes litellm params" shared by genai and the rest of the DataRobot Python ecosystem instead of a copy in each.

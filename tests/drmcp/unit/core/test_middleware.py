@@ -27,11 +27,11 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from datarobot_genai.core.exceptions import AudienceClaimValidationError
-from datarobot_genai.core.utils.auth import JWTTokenClaimsValidator
 from datarobot_genai.drmcp.core.middleware import ErrorResponse
 from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import is_exempt_from_validation
+from datarobot_genai.drmcputils.auth import JWTTokenClaimsValidator
+from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 
 
 async def _ok_response(_request: Request) -> PlainTextResponse:
