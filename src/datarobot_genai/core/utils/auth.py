@@ -503,5 +503,5 @@ class JWTTokenClaimsValidator:
                 "no valid JWT token in inbound request"
             )
 
-        if not self.claims.contain_expected_audience(expected_audience_claim):
+        if not self.claims.contain_expected_audience(expected_audience_claim):  # type: ignore[union-attr]
             raise AudienceClaimValidationError("Authorization audience claim validation failed")
