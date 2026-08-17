@@ -409,9 +409,8 @@ def prepare_identity_header(forwarded_headers: dict[str, str]) -> dict[str, str]
 
 @dataclass
 class AuthorizationClaims:
-    audience: str | list[str] = (
-        None  # RFC-7519: aud can be a single string or a list (case sensitive)
-    )
+    # RFC-7519: aud can be a single string or a list (case sensitive); None when absent.
+    audience: str | list[str] | None = None
 
     @classmethod
     def from_jwt_payload_partition(cls, jwt_payload_dict: dict[str, Any]) -> "AuthorizationClaims":
@@ -423,11 +422,9 @@ class AuthorizationClaims:
         return isinstance(self.audience, list)
 
     def contain_expected_audience(self, expected_audience: str) -> bool:
-        return (
-            expected_audience in self.audience
-            if self.audience_is_a_list()
-            else expected_audience == self.audience
-        )
+        if isinstance(self.audience, list):
+            return expected_audience in self.audience
+        return expected_audience == self.audience
 
 
 class JWTTokenClaimsValidator:
