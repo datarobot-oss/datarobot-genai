@@ -14,8 +14,10 @@
 import binascii
 import os
 import random
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import aiohttp
@@ -30,10 +32,13 @@ from datarobot.auth.users import User
 from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot.models.genai.agent.auth import set_authorization_context
 
+from datarobot_genai.core.exceptions import AudienceClaimValidationError
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import AuthlibTokenRetriever
+from datarobot_genai.core.utils.auth import AuthorizationClaims
 from datarobot_genai.core.utils.auth import DatarobotTokenRetriever
+from datarobot_genai.core.utils.auth import JWTTokenClaimsValidator
 from datarobot_genai.core.utils.auth import OAuthConfig
 from datarobot_genai.core.utils.auth import create_token_retriever
 
@@ -1057,3 +1062,309 @@ class TestAsyncOAuthTokenProviderWithAuthlib:
             identity = call_args[0][0]
             assert identity.id == "id2"
             assert identity.provider_type == "microsoft"
+
+
+class TestAuthorizationClaims:
+    @pytest.mark.parametrize(
+        "aud_value, is_list",
+        [
+            (["aud"], True),
+            (["aud_1", "aud_2"], True),
+            ([None], True),
+            ("aud", False),
+            (None, False),
+        ],
+        ids=str,
+    )
+    def test_audience_is_a_list(self, aud_value: str | list[str] | None, is_list: bool) -> None:
+        claims = AuthorizationClaims.from_jwt_payload_partition({"aud": aud_value})
+        assert claims.audience_is_a_list() is is_list
+
+    @pytest.mark.parametrize(
+        "aud_value, contain_expected_audience",
+        [
+            (["expected_aud"], True),
+            (["unexpected_aud"], False),
+            ("expected_aud", True),
+            ("unexpected_aud", False),
+        ],
+        ids=str,
+    )
+    def test_contain_expected_audience(
+        self, aud_value: str | list[str], contain_expected_audience: bool
+    ) -> None:
+        claims = AuthorizationClaims.from_jwt_payload_partition({"aud": aud_value})
+        assert claims.contain_expected_audience("expected_aud") is contain_expected_audience
+
+
+class TestJWTTokenClaimsValidator:
+    @pytest.fixture
+    def mock_claims_validator_get_claims_from_jwt_token(self) -> Iterator[Mock]:
+        with patch.object(
+            JWTTokenClaimsValidator,
+            "get_claims_from_jwt_token",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_claims_validator_get_bearer_token_header(self) -> Iterator[Mock]:
+        with patch.object(
+            JWTTokenClaimsValidator,
+            "get_bearer_token_header",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_claims_validator_get_bearer_token_value(self) -> Iterator[Mock]:
+        with patch.object(
+            JWTTokenClaimsValidator,
+            "get_bearer_token_value",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_claims_validator_is_jwt_decode(self) -> Iterator[Mock]:
+        with patch.object(JWTTokenClaimsValidator, "is_jwt_token") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_claims_validator_get_jwt_payload_without_signature_verification(
+        self,
+    ) -> Iterator[Mock]:
+        with patch.object(
+            JWTTokenClaimsValidator, "get_jwt_payload_without_signature_verification"
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_claims_validator_has_valid_claims(self) -> Iterator[Mock]:
+        with patch.object(JWTTokenClaimsValidator, "has_valid_claims") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_jwt_get_unverified_header(self) -> Iterator[Mock]:
+        with patch.object(jwt, "get_unverified_header") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_jwt_decode(self) -> Iterator[Mock]:
+        with patch.object(jwt, "decode") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_from_jwt_payload_partition(self) -> Iterator[Mock]:
+        with patch.object(AuthorizationClaims, "from_jwt_payload_partition") as mock_func:
+            yield mock_func
+
+    def test_init(self, mock_claims_validator_get_claims_from_jwt_token: Mock) -> None:
+        mock_http_request_header_name = Mock()
+        mock_http_request_header = Mock()
+        validator = JWTTokenClaimsValidator(mock_http_request_header_name, mock_http_request_header)
+
+        assert validator.http_header_name_of_jwt_token == mock_http_request_header_name
+        mock_claims_validator_get_claims_from_jwt_token.assert_called_once_with(
+            mock_http_request_header_name, mock_http_request_header
+        )
+        assert validator.claims == mock_claims_validator_get_claims_from_jwt_token.return_value
+
+    @pytest.mark.parametrize(
+        "get_claims_result,has_valid_claims",
+        [(Mock(), True), (None, False)],
+        ids=str,
+    )
+    def test_check_validity_of_claims(
+        self,
+        get_claims_result: Mock | None,
+        has_valid_claims: bool,
+        mock_claims_validator_get_claims_from_jwt_token: Mock,
+    ) -> None:
+        mock_claims_validator_get_claims_from_jwt_token.return_value = get_claims_result
+
+        mock_http_request_header = Mock()
+        validator = JWTTokenClaimsValidator(Mock(), mock_http_request_header)
+
+        assert validator.has_valid_claims() is has_valid_claims
+
+    @pytest.mark.parametrize(
+        "token_header_schema",
+        ["bearer", "Bearer"],
+        ids=str,
+    )
+    def test_get_bearer_token_value(self, token_header_schema: str) -> None:
+        expected_token_value = "adfad adfada"
+        token_value = JWTTokenClaimsValidator.get_bearer_token_value(
+            f"{token_header_schema} {expected_token_value}"
+        )
+        assert token_value == expected_token_value
+
+    @pytest.mark.parametrize(
+        "invalid_token_header_schema",
+        ["_earer", "adfafd"],
+        ids=str,
+    )
+    def test_get_bearer_token_value_returns_null_if_header_schema_invalid(
+        self, invalid_token_header_schema: str
+    ) -> None:
+        assert not JWTTokenClaimsValidator.get_bearer_token_value(
+            f"{invalid_token_header_schema} afdsafsa"
+        )
+
+    def test_is_jwt_token(
+        self,
+        mock_jwt_get_unverified_header: Mock,
+    ) -> None:
+        mock_token = Mock()
+        output = JWTTokenClaimsValidator.is_jwt_token(mock_token)
+
+        mock_jwt_get_unverified_header.assert_called_once_with(mock_token)
+        assert output is True
+
+    def test_is_jwt_token_fails(
+        self,
+        mock_jwt_get_unverified_header: Mock,
+    ) -> None:
+        mock_jwt_get_unverified_header.side_effect = jwt.exceptions.DecodeError
+
+        mock_token = Mock()
+        assert JWTTokenClaimsValidator.is_jwt_token(mock_token) is False
+
+    @pytest.mark.parametrize(
+        "header_name",
+        ["authorization", "Authorization", "AUTHORIZATION"],
+        ids=str,
+    )
+    def test_get_bearer_token_header_header_name_arg_is_case_insensitive(
+        self, header_name: str
+    ) -> None:
+        token_value = "afdaf"
+        headers = {header_name: token_value}
+        assert JWTTokenClaimsValidator.get_bearer_token_header(header_name, headers) == token_value
+
+    def test_get_bearer_token_header_returns_null_if_absent(self) -> None:
+        assert JWTTokenClaimsValidator.get_bearer_token_header(Mock(), {}) is None
+
+    def test_get_jwt_payload_without_signature_verification(self, mock_jwt_decode: Mock) -> None:
+        mock_jwt_token_value = Mock()
+        output = JWTTokenClaimsValidator.get_jwt_payload_without_signature_verification(
+            mock_jwt_token_value
+        )
+
+        mock_jwt_decode.assert_called_once_with(
+            mock_jwt_token_value,
+            options={"verify_signature": False},
+        )
+        assert output == mock_jwt_decode.return_value
+
+    def test_get_claims(
+        self,
+        mock_from_jwt_payload_partition: Mock,
+        mock_claims_validator_get_bearer_token_header: Mock,
+        mock_claims_validator_get_bearer_token_value: Mock,
+        mock_claims_validator_is_jwt_decode: Mock,
+        mock_claims_validator_get_jwt_payload_without_signature_verification: Mock,
+    ) -> None:
+        mock_header_name = Mock()
+        mock_header = Mock()
+        validator = JWTTokenClaimsValidator(mock_header_name, mock_header)
+
+        mock_claims_validator_get_bearer_token_header.assert_called_once_with(
+            mock_header_name, mock_header
+        )
+        mock_claims_validator_get_bearer_token_value.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_header.return_value,
+        )
+        mock_claims_validator_is_jwt_decode.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_value.return_value,
+        )
+        mock_claims_validator_get_jwt_payload_without_signature_verification.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_value.return_value,
+        )
+        mock_from_jwt_payload_partition.assert_called_once_with(
+            mock_claims_validator_get_jwt_payload_without_signature_verification.return_value,
+        )
+        assert validator.claims is mock_from_jwt_payload_partition.return_value
+
+    def test_get_claims_returns_null_if_no_jwt_bearer_token_header_found(
+        self,
+        mock_claims_validator_get_bearer_token_header: Mock,
+    ) -> None:
+        mock_claims_validator_get_bearer_token_header.return_value = None
+
+        assert JWTTokenClaimsValidator.get_claims_from_jwt_token(Mock(), Mock()) is None
+
+    def test_get_claims_returns_null_if_jwt_bearer_token_header_value_is_invalid(
+        self,
+        mock_claims_validator_get_bearer_token_header: Mock,
+        mock_claims_validator_get_bearer_token_value: Mock,
+    ) -> None:
+        mock_claims_validator_get_bearer_token_value.return_value = None
+
+        mock_header_name = Mock()
+        mock_header = Mock()
+        assert (
+            JWTTokenClaimsValidator.get_claims_from_jwt_token(mock_header_name, mock_header) is None
+        )
+
+        mock_claims_validator_get_bearer_token_header.assert_called_once_with(
+            mock_header_name, mock_header
+        )
+        mock_claims_validator_get_bearer_token_value.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_header.return_value,
+        )
+
+    def test_get_claims_returns_null_if_jwt_content_is_malformed(
+        self,
+        mock_claims_validator_get_bearer_token_header: Mock,
+        mock_claims_validator_get_bearer_token_value: Mock,
+        mock_claims_validator_is_jwt_decode: Mock,
+    ) -> None:
+        mock_claims_validator_is_jwt_decode.return_value = False
+
+        mock_header_name = Mock()
+        mock_header = Mock()
+        assert (
+            JWTTokenClaimsValidator.get_claims_from_jwt_token(mock_header_name, mock_header) is None
+        )
+
+        mock_claims_validator_get_bearer_token_header.assert_called_once_with(
+            mock_header_name, mock_header
+        )
+        mock_claims_validator_get_bearer_token_value.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_header.return_value,
+        )
+        mock_claims_validator_is_jwt_decode.assert_called_once_with(
+            mock_claims_validator_get_bearer_token_value.return_value,
+        )
+
+    def test_validate_audience_claim_passes_when_audience_matches(
+        self,
+        mock_claims_validator_get_claims_from_jwt_token: Mock,
+    ) -> None:
+        mock_claims_validator_get_claims_from_jwt_token.return_value = AuthorizationClaims(
+            audience="expected-aud",
+        )
+
+        validator = JWTTokenClaimsValidator(Mock(), Mock())
+        validator.validate_audience_claim("expected-aud")
+
+    def test_validate_audience_claim_fails_when_audience_mismatches(
+        self,
+        mock_claims_validator_get_claims_from_jwt_token: Mock,
+    ) -> None:
+        mock_claims_validator_get_claims_from_jwt_token.return_value = AuthorizationClaims(
+            audience="other-aud",
+        )
+
+        validator = JWTTokenClaimsValidator(Mock(), Mock())
+        with pytest.raises(AudienceClaimValidationError):
+            validator.validate_audience_claim("expected-aud")
+
+    def test_validate_audience_claim_fails_if_no_valid_claim(
+        self,
+        mock_claims_validator_get_claims_from_jwt_token: Mock,
+    ) -> None:
+        mock_claims_validator_get_claims_from_jwt_token.return_value = None
+
+        validator = JWTTokenClaimsValidator(Mock(), Mock())
+        with pytest.raises(AudienceClaimValidationError):
+            validator.validate_audience_claim("expected-aud")
