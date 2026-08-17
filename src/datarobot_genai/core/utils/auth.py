@@ -449,10 +449,15 @@ class JWTTokenClaimsValidator:
         return None
 
     @staticmethod
-    def get_bearer_token_value(bearer_token_header: str) -> str | None:
+    def get_bearer_token_value(
+        bearer_token_header: str,
+        bearer_token_header_can_be_missing: bool = True,
+    ) -> str | None:
         schema, _, value = bearer_token_header.partition(" ")
         if schema.lower() == "bearer":
             return value
+        elif bearer_token_header_can_be_missing:
+            return bearer_token_header
         else:
             return None
 

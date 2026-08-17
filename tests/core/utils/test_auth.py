@@ -1197,16 +1197,24 @@ class TestJWTTokenClaimsValidator:
         )
         assert token_value == expected_token_value
 
+    def test_get_bearer_token_value_if_without_bearer_header_schema(self) -> None:
+        token_without_schema = "afdsafsa"
+        assert (
+            JWTTokenClaimsValidator.get_bearer_token_value(token_without_schema)
+            == token_without_schema
+        )
+
     @pytest.mark.parametrize(
         "invalid_token_header_schema",
         ["_earer", "adfafd"],
         ids=str,
     )
-    def test_get_bearer_token_value_returns_null_if_header_schema_invalid(
+    def test_get_bearer_token_value_returns_null_if_bearer_header_schema_invalid(
         self, invalid_token_header_schema: str
     ) -> None:
         assert not JWTTokenClaimsValidator.get_bearer_token_value(
-            f"{invalid_token_header_schema} afdsafsa"
+            f"{invalid_token_header_schema} afdsafsa",
+            bearer_token_header_can_be_missing=False,
         )
 
     def test_is_jwt_token(
@@ -1237,8 +1245,13 @@ class TestJWTTokenClaimsValidator:
         self, header_name: str
     ) -> None:
         token_value = "afdaf"
-        headers = {header_name: token_value}
-        assert JWTTokenClaimsValidator.get_bearer_token_header(header_name, headers) == token_value
+        headers_with_lower_case_key = {"authorization": token_value}
+        assert (
+            JWTTokenClaimsValidator.get_bearer_token_header(
+                header_name, headers_with_lower_case_key
+            )
+            == token_value
+        )
 
     def test_get_bearer_token_header_returns_null_if_absent(self) -> None:
         assert JWTTokenClaimsValidator.get_bearer_token_header(Mock(), {}) is None
