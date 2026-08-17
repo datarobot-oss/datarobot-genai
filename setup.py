@@ -99,6 +99,7 @@ auth = [
   "httpx>=0.28.1,<1.0.0",
   "pyjwt[crypto]>=2.12.0,<3.0.0",
   "okta-client-python>=0.2.0,<1.0.0",
+  "pydantic-settings>=2.1.0,<3.0.0",  # needed transitively by datarobot.core.config
 ]
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
