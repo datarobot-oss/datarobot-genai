@@ -14,6 +14,7 @@
 
 
 import contextvars
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -26,13 +27,14 @@ from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
-from datarobot_genai.core.utils.auth import logger
 from datarobot_genai.drmcputils.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
 from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
+
+logger = logging.getLogger(__name__)
 
 # Context variable for request headers. Set by RequestHeadersMiddleware for every
 # HTTP request so drtools clients can resolve the API token in custom routes and tools.
