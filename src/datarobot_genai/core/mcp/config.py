@@ -201,7 +201,11 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         return value
 
     def _authorization_bearer_header(self) -> dict[str, str]:
-        """Return Authorization header with Bearer token or empty dict."""
+        """Return the token-bearing headers, or empty dict.
+
+        A token already forwarded from the inbound request is left alone — it is
+        the caller's own scoped token and outranks the service one.
+        """
         if not self.datarobot_api_token:
             return {}
         auth = (
@@ -209,7 +213,14 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             if self.datarobot_api_token.startswith("Bearer ")
             else f"Bearer {self.datarobot_api_token}"
         )
-        return {"Authorization": auth}
+        headers = {"Authorization": auth}
+
+        forwarded_names = {name.lower() for name in (self.forwarded_headers or {})}
+        if self._config_kind() == "workload" and "x-datarobot-api-key" not in forwarded_names:
+            headers["x-datarobot-api-key"] = self.datarobot_api_token.removeprefix(
+                "Bearer "
+            ).strip()
+        return headers
 
     @property
     def auth_context_handler(self) -> AuthContextHeaderHandler:

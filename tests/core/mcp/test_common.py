@@ -1378,7 +1378,12 @@ class TestMCPConfig:
                 config.server_config
 
     def test_workload_with_forwarded_headers(self, workload_endpoint):
-        """Forwarded headers propagate in workload mode (same as deployment mode)."""
+        """A forwarded scoped token is not replaced by the service one.
+
+        It is the caller's own identity, and it outranks ``Authorization`` on the
+        MCP server's header precedence, so minting over it would execute every
+        user's tool calls as the service account.
+        """
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-42",
             "x-custom-header": "custom-value",
@@ -1397,6 +1402,68 @@ class TestMCPConfig:
             assert headers["x-datarobot-api-key"] == "scoped-token-42"
             assert headers["x-custom-header"] == "custom-value"
             assert headers["Authorization"] == "Bearer tok"
+
+    def test_workload_sends_the_token_in_both_headers(self, workload_endpoint):
+        """GIVEN a workload MCP server, reached through the API gateway.
+
+        WHEN the request headers are built,
+        THEN the token goes out in ``Authorization`` *and* ``x-datarobot-api-key``:
+        the gateway consumes the former to authenticate the caller, so without the
+        latter the MCP application behind it sees no token and rejects the call
+        with "DataRobot API token not found in headers".
+        """
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            headers = MCPConfig().server_config["headers"]
+        assert headers["Authorization"] == "Bearer tok"
+        assert headers["x-datarobot-api-key"] == "tok"
+
+    def test_workload_api_key_header_carries_the_bare_token(self, workload_endpoint):
+        # GIVEN a token already spelled with the Bearer prefix
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "Bearer tok",
+            },
+            clear=True,
+        ):
+            headers = MCPConfig().server_config["headers"]
+        # THEN Authorization keeps it and the api-key header carries the token alone
+        assert headers["Authorization"] == "Bearer tok"
+        assert headers["x-datarobot-api-key"] == "tok"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            pytest.param({"MCP_DEPLOYMENT_ID": "c" * 24}, id="deployment"),
+            pytest.param({"MCP_SERVER_PORT": "9000"}, id="local"),
+        ],
+    )
+    def test_only_workloads_get_the_extra_api_key_header(self, env):
+        """A deployment and a local server are reached directly, with no gateway
+        consuming ``Authorization``, so they need only the one token header.
+        """
+        with patch.dict(
+            os.environ,
+            {
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+                **env,
+            },
+            clear=True,
+        ):
+            headers = MCPConfig().server_config["headers"]
+        assert headers["Authorization"] == "Bearer tok"
+        assert "x-datarobot-api-key" not in headers
 
 
 class TestLookupWorkloadEndpoint:
