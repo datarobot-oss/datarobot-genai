@@ -55,11 +55,6 @@ datarobot_genai = [
 [tool.uv]
 package = true
 exclude-dependencies = [
-  # We depend on datarobot-early-access, which ships the same `datarobot` package.
-  # datarobot-moderations and datarobot-predict both require the stable `datarobot`;
-  # installing both writes two copies over the same directory, so drop the stable one
-  # and let early access satisfy it. Remove this when we move back to stable datarobot.
-  "datarobot",
   "uv",                       # package manager bundled by crewai; runtime unnecessary
   "langchain-milvus",         # Milvus vector DB adapter pulled in by nvidia-nat-langchain; not used
   "pymilvus",                 # Milvus client pulled in by langchain-milvus; not used
