@@ -114,9 +114,6 @@ def lookup_workload_endpoint(
     if status == _WORKLOAD_RUNNING_STATUS:
         _WORKLOAD_ENDPOINT_CACHE[cache_key] = resolved
     else:
-        # Not settled yet: on a cluster that advertises the Covalent-reported
-        # inference endpoint, this is the prediction-gateway URL standing in until
-        # the workload is scheduled — usable now, wrong to remember.
         logger.info(
             "Workload %s is %r, so its endpoint is not cached; it will be resolved again.",
             workload_id,
