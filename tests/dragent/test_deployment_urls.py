@@ -190,16 +190,16 @@ class TestWorkloadMcpUrlFromEndpoint:
         [
             pytest.param(
                 # Predictions API Gateway cluster (Envoy disabled for workloads).
-                "https://staging.datarobot.com/api/v2/endpoints/workloads/6a7dc664aa1abe1106cdc897/",
-                "https://staging.datarobot.com/api/v2/endpoints/workloads/"
+                "https://test.datarobot.com/api/v2/endpoints/workloads/6a7dc664aa1abe1106cdc897/",
+                "https://test.datarobot.com/api/v2/endpoints/workloads/"
                 "6a7dc664aa1abe1106cdc897/mcp",
-                id="predictions-gateway",
+                id="pred-gateway",
             ),
             pytest.param(
                 # No trailing slash on the reported endpoint.
-                "https://hadr-workload-01.k8s.int.datarobot.com/workloads/wl-999",
-                "https://hadr-workload-01.k8s.int.datarobot.com/workloads/wl-999/mcp",
-                id="no-trailing-slash",
+                "https://test.datarobot.com/workloads/wl-999",
+                "https://test.datarobot.com/workloads/wl-999/mcp",
+                id="outpost",
             ),
         ],
     )
