@@ -24,13 +24,7 @@ Practical rule: **merge** platform tools with yours wherever you bind tools to t
 
 ## Configuration outside the repo
 
-MCP server URL and credentials come from **your deployment / environment**, not from the LangGraph `workflow.yaml` in the minimal sample. The NAT workflow example adds **`function_groups`** in YAML instead; see [nat/mcp.md](../nat/mcp.md).
-Pick exactly one of the following deployment methods — mixing them raises `ValueError`:
-- **Custom model MCP deployment:** set `MCP_DEPLOYMENT_ID`.
-- **Workload API MCP deployment:** set `MCP_WORKLOAD_ID`.
-- **External MCP server:** set `EXTERNAL_MCP_URL` (and optionally `EXTERNAL_MCP_HEADERS`, `EXTERNAL_MCP_TRANSPORT`).
-
-With `MCP_WORKLOAD_ID`, the agent asks the platform where that workload is served (`GET /api/v2/workloads/<id>/`) and appends `/mcp` to the endpoint it reports, so the same variable works whether your cluster routes workloads through different API Gateway. The agent's API token therefore needs read access to the workload. If the lookup cannot answer, the agent runs without MCP tools and logs a warning. Then, no URL is guessed, because a composed one would be wrong on some clusters. Use `EXTERNAL_MCP_URL` to address a workload directly instead.
+MCP server URL and credentials come from **your deployment / environment**, not from the LangGraph `workflow.yaml` in the minimal sample. The NAT workflow example adds **`function_groups`** in YAML instead; see [nat/mcp.md](../nat/mcp.md). With `MCP_WORKLOAD_ID`, the agent asks the platform where that workload is served (`GET /api/v2/workloads/<id>/`) and appends `/mcp` to the endpoint it reports, so the same variable works whether your cluster routes workloads through different API Gateway. The agent's API token therefore needs read access to the workload. If the lookup cannot answer, the agent runs without MCP tools and logs a warning. Then, no URL is guessed, because a composed one would be wrong on some clusters. Use `EXTERNAL_MCP_URL` to address a workload directly instead.
 
 ## Automated tests
 
