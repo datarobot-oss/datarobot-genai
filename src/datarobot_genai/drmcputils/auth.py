@@ -448,3 +448,5 @@ class JWTTokenClaimsValidator:
 
         if not self.claims.contain_expected_audience(expected_audience_claim):  # type: ignore[union-attr]
             raise AudienceClaimValidationError("Authorization audience claim validation failed")
+
+        logger.info("Audience claim validation succeeded.")

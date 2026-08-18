@@ -58,6 +58,15 @@ class TestAuthorizationClaims:
 
 class TestJWTTokenClaimsValidator:
     @pytest.fixture
+    def module_under_test(self) -> str:
+        return "datarobot_genai.drmcputils.auth"
+
+    @pytest.fixture
+    def mock_logger(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.logger") as mock_logger:
+            yield mock_logger
+
+    @pytest.fixture
     def mock_claims_validator_get_claims_from_jwt_token(self) -> Iterator[Mock]:
         with patch.object(
             JWTTokenClaimsValidator,
@@ -311,6 +320,7 @@ class TestJWTTokenClaimsValidator:
     def test_validate_audience_claim_passes_when_audience_matches(
         self,
         mock_claims_validator_get_claims_from_jwt_token: Mock,
+        mock_logger: Mock,
     ) -> None:
         mock_claims_validator_get_claims_from_jwt_token.return_value = AuthorizationClaims(
             audience="expected-aud",
@@ -318,6 +328,23 @@ class TestJWTTokenClaimsValidator:
 
         validator = JWTTokenClaimsValidator(Mock(), Mock())
         validator.validate_audience_claim("expected-aud")
+        mock_logger.info.assert_called_once_with("Audience claim validation succeeded.")
+
+    def test_validate_audience_claim_ignored_when_no_expected_audience_is_provided(
+        self,
+        mock_claims_validator_get_claims_from_jwt_token: Mock,
+        mock_logger: Mock,
+    ) -> None:
+        mock_claims_validator_get_claims_from_jwt_token.return_value = AuthorizationClaims(
+            audience="expected-aud",
+        )
+
+        validator = JWTTokenClaimsValidator(Mock(), Mock())
+        validator.validate_audience_claim(None)
+        mock_logger.info.assert_called_once_with(
+            "Authorization audience claim validation is not executed. "
+            "There is no expected audience claim provided."
+        )
 
     def test_validate_audience_claim_fails_when_audience_mismatches(
         self,

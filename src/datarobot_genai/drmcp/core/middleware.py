@@ -99,22 +99,34 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
     validator that is triggered on each inbound FastMCP server request.
     """
 
+    HTTP_HEADER_TO_VALIDATE = "x-datarobot-external-access-token"
+
     @staticmethod
     def get_expected_audience_claim() -> str | None:
         mcp_server_config = get_config()
         return mcp_server_config.mcp_xaa_token_audience
+
+    @classmethod
+    def has_header_to_validate(cls, request: Request) -> bool:
+        return cls.HTTP_HEADER_TO_VALIDATE in request.headers
+
+    @classmethod
+    def to_execute_validation(cls, request: Request) -> bool:
+        return not is_exempt_from_validation(request.url.path) and cls.has_header_to_validate(
+            request
+        )
 
     async def dispatch(
         self,
         request: Request,
         call_next: Any,
     ) -> Response:
-        if is_exempt_from_validation(request.url.path):
+        if not self.to_execute_validation(request):
             return await call_next(request)
 
         try:
             claims_validator = JWTTokenClaimsValidator(
-                "x-datarobot-external-access-token",
+                self.HTTP_HEADER_TO_VALIDATE,
                 request.headers,
             )
             claims_validator.validate_audience_claim(self.get_expected_audience_claim())
@@ -127,5 +139,4 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
             logger.info(error_message)
             return ErrorResponse.INVALID_JWT_TOKEN.to_starlette_response(error_message)
 
-        logger.info("General OAuth claim validation succeeded.")
         return await call_next(request)

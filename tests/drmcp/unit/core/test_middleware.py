@@ -93,6 +93,22 @@ class TestGeneralOAuthClaimValidationMiddleware:
         ) as mock_func:
             yield mock_func
 
+    @pytest.fixture
+    def mock_has_header_to_validate(self, module_under_test: str) -> Iterator[Mock]:
+        with patch.object(
+            GeneralOAuthClaimValidationMiddleware,
+            "has_header_to_validate",
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_to_execute_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch.object(
+            GeneralOAuthClaimValidationMiddleware,
+            "to_execute_validation",
+        ) as mock_func:
+            yield mock_func
+
     def test_get_expected_audience_claim(self, mock_get_config: Mock) -> None:
         output = GeneralOAuthClaimValidationMiddleware.get_expected_audience_claim()
 
@@ -113,12 +129,32 @@ class TestGeneralOAuthClaimValidationMiddleware:
     ) -> None:
         assert is_exempt_from_validation(f"/.well-known/{well_known_sub_path}")
 
-    def test_bypasses_validation_if_route_is_exempted(
+    @pytest.mark.parametrize(
+        "has_header_to_validate,to_exempt_from_validation,to_execute_validation",
+        [(True, False, True), (True, True, False), (False, False, False), (False, True, False)],
+        ids=str,
+    )
+    def test_to_execute_validation(
         self,
+        has_header_to_validate: bool,
+        to_exempt_from_validation: bool,
+        to_execute_validation: bool,
+        mock_has_header_to_validate: Mock,
         mock_is_exempt_from_validation: Mock,
+    ) -> None:
+        mock_has_header_to_validate.return_value = has_header_to_validate
+        mock_is_exempt_from_validation.return_value = to_exempt_from_validation
+
+        mock_request = Mock()
+        output = GeneralOAuthClaimValidationMiddleware.to_execute_validation(mock_request)
+        assert output is to_execute_validation
+
+    def test_bypasses_validation(
+        self,
+        mock_to_execute_validation: Mock,
         mock_validate_audience_claim: Mock,
     ) -> None:
-        mock_is_exempt_from_validation.return_value = True
+        mock_to_execute_validation.return_value = False
 
         client = TestClient(mock_app())
         response = client.get("/")
