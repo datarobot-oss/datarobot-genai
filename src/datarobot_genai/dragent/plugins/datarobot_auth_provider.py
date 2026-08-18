@@ -14,7 +14,6 @@
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.authentication.api_key.api_key_auth_provider import APIKeyAuthProvider
 from nat.authentication.api_key.api_key_auth_provider_config import APIKeyAuthProviderConfig
 from nat.authentication.interfaces import AuthProviderBase
@@ -27,24 +26,20 @@ from nat.data_models.common import SerializableSecretStr
 from pydantic import Field
 from pydantic import SecretStr
 
+from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.dragent.context import extract_authorization_from_context
 from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
 
 
-class Config(DataRobotAppFrameworkBaseSettings):
-    """
-    Finds variables in the priority order of: env
-    variables (including Runtime Parameters), .env, file_secrets, then
-    Pulumi output variables.
-    """
-
-    datarobot_api_token: str | None = None
-
-
 def _get_default_api_token() -> SecretStr | None:
-    """Get the default API token from environment, wrapped in SecretStr for proper serialization."""
-    if datarobot_api_token := Config().datarobot_api_token:
+    """Get the default API token, wrapped in SecretStr for proper serialization.
+
+    Resolved off the global app config (``resolve_config().resolve_datarobot_api_token()``)
+    rather than a local settings class, so an app that registers its own config
+    supplies the token here too.
+    """
+    if datarobot_api_token := default_api_key():
         return SecretStr(datarobot_api_token)
     return None
 

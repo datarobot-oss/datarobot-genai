@@ -86,7 +86,7 @@ async def datarobot_nim_crewai(
 
     config = prepare_llm_parameters(llm_config)
     client = get_datarobot_nim_llm(
-        llm_config.nim_deployment_id,
+        llm_config.llm_nim_deployment_id,
         llm_config.model_name,
         config,
     )
@@ -120,7 +120,7 @@ async def datarobot_llm_component_crewai(
         )
     elif llm_type == LLMType.NIM:
         client = get_datarobot_nim_llm(
-            llm_config.nim_deployment_id,  # type: ignore[arg-type]
+            llm_config.llm_nim_deployment_id,  # type: ignore[arg-type]
             llm_config.model_name,
             config,
         )
