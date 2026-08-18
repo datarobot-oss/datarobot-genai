@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from collections.abc import Iterable
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
@@ -108,6 +109,63 @@ def backfill_model(current: str | None, fallback: str | None) -> str | None:
     if fallback and current in (None, "unknown-model"):
         return fallback
     return current
+
+
+class FinalAssistantTextAccumulator:
+    """Reassemble assistant text from AG-UI events, keeping only the *final* message.
+
+    A chat completion carries a single ``content`` string, so a run that produced more
+    than one assistant message has to collapse to one of them. The one the caller asked
+    for is the last: in a multi-node LangGraph graph (the recipe template's
+    ``researcher_node -> responder_node`` shape) every node emits its own assistant
+    message, but only the responder's is the answer. Concatenating them yields the
+    reported ``"ParisParis"`` corruption. The same rule drops a tool-calling agent's
+    pre-tool preamble in favour of its final answer.
+
+    A message boundary is either an explicit ``TextMessageStartEvent`` or a change of
+    ``message_id`` on a delta (chunk-only streams never emit a START). Streams with a
+    single message are unaffected: every delta lands in the same message.
+    """
+
+    # Distinct from ``None``, which is a legitimate ``TextMessageChunkEvent.message_id``.
+    _UNSET = object()
+
+    def __init__(self) -> None:
+        self._text = ""
+        self._message_id: Any = self._UNSET
+
+    def add(self, event: Any) -> None:
+        """Feed one AG-UI event; non-text events are ignored."""
+        if isinstance(event, TextMessageStartEvent):
+            self._begin(event.message_id)
+        elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
+            message_id = getattr(event, "message_id", None)
+            if self._message_id is self._UNSET:
+                self._message_id = message_id
+            elif message_id is not None and message_id != self._message_id:
+                self._begin(message_id)
+            # ``TextMessageChunkEvent.delta`` is optional.
+            self._text += event.delta or ""
+
+    def _begin(self, message_id: str | None) -> None:
+        self._text = ""
+        self._message_id = message_id
+
+    @property
+    def text(self) -> str:
+        """The text of the most recently opened assistant message."""
+        return self._text
+
+
+def final_assistant_text(events: Iterable[Any]) -> str:
+    """Return the final assistant message's text from a complete AG-UI event sequence.
+
+    See :class:`FinalAssistantTextAccumulator` for why earlier messages are discarded.
+    """
+    accumulator = FinalAssistantTextAccumulator()
+    for event in events:
+        accumulator.add(event)
+    return accumulator.text
 
 
 def convert_chat_completion_params_to_run_agent_input(
@@ -212,19 +270,16 @@ async def agent_chat_completion_wrapper(
     else:
         async with mcp_tools_factory() as mcp_tools:
             agent.set_tools(_merge_mcp_tools_with_agent_tools(mcp_tools, agent))
-            final_response = ""
+            # When we work in non-streaming mode, we only send back the final message.
+            # It is because of limitation of completions interface we can not send back the
+            # intermediate messages.
+            response_text = FinalAssistantTextAccumulator()
             pipeline_interactions = None
             usage_metrics = default_usage_metrics()
             received_run_finished = False
             async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
-                # When we work in non-streaming mode, we only send back the final message
-                # It is because of limitation of completions interface we can not send back the
-                # intermediate messages
-                if isinstance(event, TextMessageStartEvent):
-                    final_response = ""
-                elif isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)):
-                    final_response += event.delta
-                elif isinstance(event, RunFinishedEvent):
+                response_text.add(event)
+                if isinstance(event, RunFinishedEvent):
                     received_run_finished = True
                     pipeline_interactions = iter_interactions
                     usage_metrics = iter_metrics
@@ -234,4 +289,4 @@ async def agent_chat_completion_wrapper(
             if not received_run_finished:
                 logger.warning("Agent stream ended without RunFinishedEvent")
 
-            return final_response, pipeline_interactions, usage_metrics
+            return response_text.text, pipeline_interactions, usage_metrics

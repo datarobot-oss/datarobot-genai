@@ -180,6 +180,30 @@ def test_setup_otel_env_variables_deployment_shape_runtime_params() -> None:
         assert exporter._endpoint == collector_base + "/v1/metrics"
 
 
+def test_setup_otel_exporter_uses_batch_span_processor() -> None:
+    """Span export must be async so startup is not blocked by OTLP timeouts."""
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    provider = TracerProvider()
+
+    with (
+        patch(
+            "datarobot_genai.drmcp.core.telemetry.trace.get_tracer_provider",
+            return_value=provider,
+        ),
+        patch(
+            "datarobot_genai.drmcp.core.telemetry.OTLPSpanExporter",
+            return_value=MagicMock(),
+        ),
+    ):
+        telemetry._setup_otel_exporter()
+
+    active = provider._active_span_processor
+    registered = getattr(active, "_span_processors", (active,))
+    assert any(isinstance(p, BatchSpanProcessor) for p in registered)
+
+
 def test_initialize_telemetry_proceeds_with_config_headers() -> None:
     """initialize_telemetry should NOT skip when otel_exporter_otlp_headers is set
     in Config, even if otel_entity_id is empty.

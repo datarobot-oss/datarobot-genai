@@ -58,6 +58,31 @@ _LOG: dict[str, Any] = {
     "timestamp": "2026-01-01T00:00:00Z",
 }
 
+_OPENAPI_YAML = """\
+openapi: 3.1.0
+info:
+  title: Stub Workload API
+  version: 1.0.0
+paths:
+  /workloads:
+    get:
+      operationId: listWorkloads
+      summary: List workloads
+    post:
+      operationId: createWorkload
+      summary: Create a workload
+components:
+  schemas:
+    CreateWorkloadRequest:
+      type: object
+      description: Payload to create a workload.
+      properties:
+        name:
+          type: string
+        replicaCount:
+          type: integer
+"""
+
 
 def _params_dict(params: dict[str, Any] | list[tuple[str, Any]] | None) -> dict[str, Any]:
     if params is None:
@@ -182,6 +207,8 @@ def workload_stub_get(
             return response
     if url.startswith("otel/workload/") and "/logs/" in url:
         return StubRestResponse(_paginate([_LOG], p))
+    if url.rstrip("/") == "openapi.yaml":
+        return StubRestResponse(text=_OPENAPI_YAML)
     return None
 
 

@@ -564,6 +564,31 @@ class TestSearchMode:
         assert names == {"add", "tool_search", "call_tool"}
 
     @pytest.mark.asyncio
+    async def test_category_derived_entries_scope_without_pinning(self, mock_context: Mock) -> None:
+        # GIVEN a search session filtered by a category (the header expanded it
+        # to derived names, not client-named tools)
+        mock_context.return_value = MCPRequestContext(
+            mode=MCPRequestMode.SEARCH,
+            tool_allowlist=ToolAllowlist(derived=frozenset({"add"})),
+        )
+        mcp = self.make_server()
+
+        # THEN the listing stays the bare search interface — pinning the
+        # category's tools would degenerate the session into tools mode
+        names = {t.name for t in await mcp.list_tools(run_middleware=False)}
+        assert names == {"tool_search", "call_tool"}
+
+        # AND the search index is scoped to the category…
+        found = await mcp.call_tool("tool_search", {"query": "add two numbers"})
+        assert "add" in found.content[0].text
+        missed = await mcp.call_tool("tool_search", {"query": "say hello greeting"})
+        assert "greet" not in missed.content[0].text
+
+        # AND a found tool is still callable through the proxy
+        result = await mcp.call_tool("call_tool", {"name": "add", "arguments": {"a": 1, "b": 2}})
+        assert "3" in result.content[0].text
+
+    @pytest.mark.asyncio
     async def test_tool_search_finds_matching_tools(self, mock_context: Mock) -> None:
         mcp = self.make_server()
 

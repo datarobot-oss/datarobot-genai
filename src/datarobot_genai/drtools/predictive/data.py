@@ -40,6 +40,19 @@ logger = logging.getLogger(__name__)
 # we stay just under it.
 _PREVIEW_QUERY_MAX_ROWS = 9999
 
+# GET externalDataStores/ with no `type` defaults to JDBC-only and returns [] when
+# the user only has native-database or connector stores. `all` returns every kind.
+_DATASTORE_LIST_TYPE_ALL = "all"
+_DATASTORE_LIST_TYPES = frozenset(
+    {
+        "all",
+        "databases",
+        "dr-connector-v1",
+        "dr-database-v1",
+        "jdbc",
+    }
+)
+
 
 def _serialize_datastore_params(params: Any) -> dict[str, Any]:
     """Return JSON-serializable params; DataRobot SDK uses DataStoreParameters, not a dict."""
@@ -258,7 +271,8 @@ async def catalog_get_preview(
     tags={"predictive", "data", "read", "datastore", "list", "daria"},
     description=(
         "[Datastore—list connections] Use when the user works with saved external connections "
-        "(DB, warehouse, bucket, etc.) and needs datastore IDs. Read-only. Not AI Catalog "
+        "(DB, warehouse, bucket, etc.) and needs datastore IDs. Returns JDBC, native-database, "
+        "and connector stores together. Read-only. Not AI Catalog "
         "datasets (catalog_list_datasets), not modeling projects. "
         "Next step: catalog_browse_datastore "
         "or catalog_query_datastore."
@@ -278,16 +292,29 @@ async def catalog_list_datastores(
             "use offset to page."
         ),
     ] = PAGINATION_MAX,
+    datastore_type: Annotated[
+        str,
+        (
+            "Connection kind to list. Default 'all' (JDBC, native database, and connectors). "
+            "Also: 'jdbc', 'dr-database-v1', 'dr-connector-v1', 'databases'."
+        ),
+    ] = _DATASTORE_LIST_TYPE_ALL,
 ) -> dict[str, Any]:
     if offset is not None and offset < 0:
         raise ToolError("offset must be non-negative", kind=ToolErrorKind.VALIDATION)
+    if datastore_type not in _DATASTORE_LIST_TYPES:
+        allowed = ", ".join(sorted(_DATASTORE_LIST_TYPES))
+        raise ToolError(
+            f"datastore_type must be one of: {allowed}",
+            kind=ToolErrorKind.VALIDATION,
+        )
 
     limit, message = clamp_limit(limit)
 
     with ThreadSafeDataRobotClient().request_user_client():
         rest_client = dr.client.get_client()
 
-        params: dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit, "type": datastore_type}
         if offset is not None:
             params["offset"] = offset
         try:
@@ -304,6 +331,7 @@ async def catalog_list_datastores(
                 {
                     "id": ds.get("id", ""),
                     "canonical_name": ds.get("canonicalName", ""),
+                    "type": ds.get("type", ""),
                     "creator_id": ds.get("creatorId", ""),
                     "params": _serialize_datastore_params(ds.get("params", {})),
                 }

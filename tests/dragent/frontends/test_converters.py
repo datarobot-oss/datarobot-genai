@@ -478,6 +478,71 @@ def test_convert_dragent_event_response_to_str_empty_events() -> None:
     assert result == ""
 
 
+def test_convert_dragent_event_response_to_str_keeps_only_final_message() -> None:
+    """Reproduces the multi-node concatenation reported against the recipe template.
+
+    The two-node LangGraph graph (``researcher_node -> responder_node``) emits one
+    assistant message per node. Joining every delta returned the notes glued onto the
+    answer ("ParisParis"); only the responder's message is the answer.
+    """
+    # GIVEN an aggregated response carrying two complete assistant messages
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageStartEvent(message_id="researcher"),
+            TextMessageContentEvent(message_id="researcher", delta="- Paris is the capital"),
+            TextMessageEndEvent(message_id="researcher"),
+            TextMessageStartEvent(message_id="responder"),
+            TextMessageContentEvent(message_id="responder", delta="Paris"),
+            TextMessageEndEvent(message_id="responder"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN only the final message survives
+    assert result == "Paris"
+
+
+def test_convert_dragent_event_response_to_str_treats_id_change_as_boundary() -> None:
+    # GIVEN chunk-only text deltas (no START boundary) spanning two message ids
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageChunkEvent(message_id="m1", delta="notes"),
+            TextMessageChunkEvent(message_id="m2", delta="ans"),
+            TextMessageChunkEvent(message_id="m2", delta="wer"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN the id change is treated as a message boundary
+    assert result == "answer"
+
+
+def test_convert_dragent_event_response_to_str_keeps_final_answer_after_tool_call() -> None:
+    # GIVEN an agent that emitted a preamble, called a tool, then answered
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageStartEvent(message_id="m1"),
+            TextMessageContentEvent(message_id="m1", delta="Let me look that up."),
+            TextMessageEndEvent(message_id="m1"),
+            ToolCallStartEvent(tool_call_id="t1", tool_call_name="lookup", parent_message_id="m1"),
+            ToolCallEndEvent(tool_call_id="t1"),
+            TextMessageStartEvent(message_id="m2"),
+            TextMessageContentEvent(message_id="m2", delta="404"),
+            TextMessageEndEvent(message_id="m2"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN the pre-tool preamble is dropped in favour of the final answer
+    assert result == "404"
+
+
 # --- convert_dragent_event_response_to_chat_response_chunk ---
 
 

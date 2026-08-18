@@ -23,6 +23,7 @@ from datarobot_genai.eval.output import normalize_output
 from datarobot_genai.eval.runner import run_byob
 from datarobot_genai.eval.status import write_status
 from datarobot_genai.eval.utils import make_run_id
+from datarobot_genai.eval.utils import resolve_archive_name
 from datarobot_genai.eval.validation import load_pipeline
 from datarobot_genai.eval.validation import preflight_judge
 from datarobot_genai.eval.validation import validate_inputs
@@ -35,6 +36,11 @@ class EvalRunner:
     ``output/``. It is required: this class ships inside the installed package,
     so there is no meaningful filesystem default — the caller (the component's
     CLI wrapper) supplies its own location.
+
+    A successful run writes its results twice: to the fixed
+    ``output/eval_results.json`` pointer, and to a per-run archive whose name
+    defaults to ``<pipeline>_<run_id>.json``. Set ``archive=False`` for the
+    pointer alone, or ``output_name`` to choose the archive's filename.
     """
 
     def __init__(
@@ -43,11 +49,15 @@ class EvalRunner:
         pipeline: str,
         dataset: str,
         repo_root: Path,
+        output_name: str | None = None,
+        archive: bool = True,
     ) -> None:
         self.endpoint = endpoint
         self.pipeline = pipeline
         self.dataset = dataset
         self.repo_root = repo_root
+        self.output_name = output_name
+        self.archive = archive
         self.pipelines_dir = self.repo_root / "user_pipelines"
         self.output_dir = self.repo_root / "output"
 
@@ -78,13 +88,26 @@ class EvalRunner:
     def _execute(self, run_id: str, dry_run: bool = False) -> int:
         # 1. Validate
         print("Validating inputs...")
-        errors = validate_inputs(
-            self.endpoint,
-            self.pipeline,
-            self.dataset,
-            self.pipelines_dir,
-            self.repo_root,
+        # Copied rather than appended to in place: the list belongs to the
+        # caller, and this method may run more than once per process.
+        errors = list(
+            validate_inputs(
+                self.endpoint,
+                self.pipeline,
+                self.dataset,
+                self.pipelines_dir,
+                self.repo_root,
+            )
         )
+        # Resolved during validation so a bad --output-name is reported as an
+        # input error (exit 1) before any expensive work, rather than surfacing
+        # from the top-level guard after the evaluation has already run.
+        archive_name: str | None = None
+        try:
+            if self.archive:
+                archive_name = resolve_archive_name(self.output_name, self.pipeline, run_id)
+        except ValueError as exc:
+            errors.append(str(exc))
         if errors:
             print("Validation failed:", file=sys.stderr)
             for e in errors:
@@ -112,7 +135,9 @@ class EvalRunner:
                 print(f"  judge:   {judge['model_id']} @ {judge['url']}")
             else:
                 print("  judge:   none (judge-free benchmark)")
-            print("  output → output/eval_results.json")
+            print("  output:  output/eval_results.json")
+            if archive_name:
+                print(f"  archive: output/{archive_name}")
             return 0
 
         # Preflight the judge before doing anything expensive. Catches missing /
@@ -198,14 +223,21 @@ class EvalRunner:
             print(f"ERROR normalizing output: {e}", file=sys.stderr)
             return 3
 
-        # 6. Write to fixed output locations (external CLI relies on these paths)
-        self.output_dir.mkdir(exist_ok=True)
-        (self.output_dir / "eval_results.json").write_text(json.dumps(normalized, indent=2))
+        # 6. Write to fixed output locations (external CLI relies on these paths),
+        # plus this run's archive copy. Both come from one serialization so the
+        # pointer and the archive can never disagree about what the run produced.
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(normalized, indent=2)
+        (self.output_dir / "eval_results.json").write_text(payload)
+        if archive_name:
+            (self.output_dir / archive_name).write_text(payload)
         write_status("complete", run_id, self.pipeline, self.endpoint, self.output_dir)
 
         s = normalized["summary"]
         print("\nStatus: complete")
         print("Results: output/eval_results.json")
+        if archive_name:
+            print(f"Saved results to output/{archive_name}")
         print(f"  Total cases:        {normalized['total_cases']}")
         print(f"  Scored / inconcl.:  {s['scored_cases']} / {s['inconclusive_cases']}")
         print(f"  Mean score:         {s['mean_score']}")
