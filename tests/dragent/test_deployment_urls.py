@@ -25,10 +25,13 @@ from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import _DEFAULT_DATAROBOT_ENDPOINT
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
+from datarobot_genai.dragent.deployment_urls import build_deployment_mcp_url
+from datarobot_genai.dragent.deployment_urls import build_local_mcp_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
-from datarobot_genai.dragent.deployment_urls import build_workload_mcp_url
+from datarobot_genai.dragent.deployment_urls import normalize_api_v2_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
+from datarobot_genai.dragent.deployment_urls import workload_mcp_url_from_endpoint
 
 
 class TestBuildDeploymentA2aUrl:
@@ -141,34 +144,85 @@ class TestBuildWorkloadAgentCardUrl:
         assert build_workload_agent_card_url(endpoint, workload_id) == expected
 
 
-class TestBuildWorkloadMcpUrl:
+class TestNormalizeApiV2Endpoint:
     @pytest.mark.parametrize(
-        "endpoint,workload_id,expected",
+        "endpoint",
+        [
+            "https://app.datarobot.com",
+            "https://app.datarobot.com/",
+            "https://app.datarobot.com/api/v2",
+            "https://app.datarobot.com/api/v2/",
+        ],
+    )
+    def test_endpoint_ends_with_exactly_one_api_v2(self, endpoint):
+        # GIVEN an endpoint spelled with or without /api/v2 and a trailing slash
+        # WHEN it is normalized
+        normalized = normalize_api_v2_endpoint(endpoint)
+        # THEN it carries the suffix exactly once, with no trailing slash
+        assert normalized == "https://app.datarobot.com/api/v2"
+        assert normalized.count("/api/v2") == 1
+
+
+class TestBuildDeploymentMcpUrl:
+    @pytest.mark.parametrize(
+        "endpoint,deployment_id,expected",
         [
             (
                 "https://app.datarobot.com",
                 "6a6b3d359e6b2c11158c2a13",
-                "https://app.datarobot.com/endpoints/workloads/6a6b3d359e6b2c11158c2a13/mcp",
+                "https://app.datarobot.com/api/v2/deployments/"
+                "6a6b3d359e6b2c11158c2a13/directAccess/mcp",
             ),
             (
-                "https://app.datarobot.com/",
+                "https://app.datarobot.com/api/v2/",
                 "abc123",
-                "https://app.datarobot.com/endpoints/workloads/abc123/mcp",
-            ),
-            (
-                "https://hadr-workload-01.k8s.int.datarobot.com",
-                "wl-999",
-                "https://hadr-workload-01.k8s.int.datarobot.com/endpoints/workloads/wl-999/mcp",
+                "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/mcp",
             ),
         ],
     )
-    def test_builds_correct_url(self, endpoint, workload_id, expected):
-        assert build_workload_mcp_url(endpoint, workload_id) == expected
+    def test_builds_correct_url(self, endpoint, deployment_id, expected):
+        assert build_deployment_mcp_url(endpoint, deployment_id) == expected
 
-    @pytest.mark.parametrize("workload_id", ["wl1", "abc-123", "0" * 24])
-    def test_workload_id_appears_verbatim_in_path(self, workload_id):
-        url = build_workload_mcp_url("https://app.datarobot.com", workload_id)
-        assert url.endswith(f"/endpoints/workloads/{workload_id}/mcp")
+
+class TestWorkloadMcpUrlFromEndpoint:
+    @pytest.mark.parametrize(
+        "workload_endpoint,expected",
+        [
+            pytest.param(
+                # Predictions API Gateway cluster (Envoy disabled for workloads).
+                "https://staging.datarobot.com/api/v2/endpoints/workloads/6a7dc664aa1abe1106cdc897/",
+                "https://staging.datarobot.com/api/v2/endpoints/workloads/"
+                "6a7dc664aa1abe1106cdc897/mcp",
+                id="predictions-gateway",
+            ),
+            pytest.param(
+                # No trailing slash on the reported endpoint.
+                "https://hadr-workload-01.k8s.int.datarobot.com/workloads/wl-999",
+                "https://hadr-workload-01.k8s.int.datarobot.com/workloads/wl-999/mcp",
+                id="no-trailing-slash",
+            ),
+        ],
+    )
+    def test_appends_mcp_path_to_the_reported_endpoint(self, workload_endpoint, expected):
+        # GIVEN the endpoint the platform reports for a workload
+        # WHEN the MCP path is appended
+        # THEN the URL is correct under either routing mode, because the platform
+        # already applied whichever Host and prefix the workload is served from
+        assert workload_mcp_url_from_endpoint(workload_endpoint) == expected
+
+    def test_path_is_overridable(self):
+        assert (
+            workload_mcp_url_from_endpoint("https://host.example/workloads/wl-1/", path="a2a")
+            == "https://host.example/workloads/wl-1/a2a"
+        )
+
+
+class TestBuildLocalMcpUrl:
+    def test_builds_localhost_url(self):
+        assert build_local_mcp_url(9000) == "http://localhost:9000/mcp"
+
+    def test_host_is_overridable(self):
+        assert build_local_mcp_url(9000, host="127.0.0.1") == "http://127.0.0.1:9000/mcp"
 
 
 class TestResolveDataRobotEndpoint:

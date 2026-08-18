@@ -18,10 +18,25 @@ from http import HTTPStatus
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import httpx
 import pytest
+import respx
 from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp.config import clear_workload_endpoint_cache
+from datarobot_genai.core.mcp.config import lookup_workload_endpoint
+
+WORKLOAD_ID = "6a6b3d359e6b2c11158c2a13"
+API_ENDPOINT = "https://test.datarobot.com/api/v2"
+LOOKUP_URL = f"{API_ENDPOINT}/workloads/{WORKLOAD_ID}/"
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    clear_workload_endpoint_cache()
+    yield
+    clear_workload_endpoint_cache()
 
 
 class TestMCPConfig:
@@ -1196,12 +1211,37 @@ class TestMCPConfig:
     # Workload MCP mode (mcp_workload_id)
     # ------------------------------------------------------------------
 
-    def test_mcp_config_with_workload_id(self, agent_auth_context_data):
-        """Workload mode builds an /api/v2/endpoints/workloads/{id}/mcp URL."""
+    @pytest.fixture
+    def unresolvable_workload_endpoint(self):
+        """Make the Workload API lookup answer nothing.
+
+        Also keeps these tests off the network: without a stub the lookup would
+        really call ``{DATAROBOT_ENDPOINT}/api/v2/workloads/<id>/``.
+        """
+        with patch(
+            "datarobot_genai.core.mcp.config.lookup_workload_endpoint", return_value=None
+        ) as lookup:
+            yield lookup
+
+    @pytest.fixture
+    def workload_endpoint(self):
+        """Report a workload served from a per-enclave host, with no /api/v2 prefix."""
+        with patch(
+            "datarobot_genai.core.mcp.config.lookup_workload_endpoint",
+            return_value=f"https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+        ) as lookup:
+            yield lookup
+
+    def test_mcp_config_with_workload_id(self, agent_auth_context_data, workload_endpoint):
+        """GIVEN a cluster that serves workloads through the inference endpoint.
+
+        WHEN the MCP server is addressed by workload ID,
+        THEN the URL is the endpoint the platform reports plus ``/mcp`` and the credentials
+        match custom-model deployment mode.
+        """
         workload_id = "6a6b3d359e6b2c11158c2a13"
-        api_base = "https://app.datarobot.com"
+        api_base = "https://test.datarobot.com"
         api_key = "test-api-key"
-        secret_key = "my-secret-key"
 
         set_authorization_context(agent_auth_context_data)
 
@@ -1211,16 +1251,15 @@ class TestMCPConfig:
                 "MCP_WORKLOAD_ID": workload_id,
                 "DATAROBOT_ENDPOINT": api_base,
                 "DATAROBOT_API_TOKEN": api_key,
-                "SESSION_SECRET_KEY": secret_key,
+                "SESSION_SECRET_KEY": "my-secret-key",
             },
             clear=True,
         ):
             config = MCPConfig()
             assert config.mcp_workload_id == workload_id
             assert config.server_config is not None
-            assert (
-                config.server_config["url"]
-                == f"{api_base}/api/v2/endpoints/workloads/{workload_id}/mcp"
+            assert config.server_config["url"] == (
+                f"https://test.datarobot.com/workloads/{workload_id}/mcp"
             )
             assert config.server_config["transport"] == "streamable-http"
             assert config.server_config["headers"]["Authorization"] == f"Bearer {api_key}"
@@ -1230,64 +1269,54 @@ class TestMCPConfig:
             decoded = config.auth_context_handler.decode(jwt_token)
             assert decoded == agent_auth_context_data
 
+        # The lookup is asked at the API host, which is not the workload's host.
+        assert workload_endpoint.call_args.args == (workload_id,)
+        assert workload_endpoint.call_args.kwargs["endpoint"] == api_base
+        assert workload_endpoint.call_args.kwargs["token"] == api_key
+
+    def test_unresolvable_workload_means_no_mcp_server(self, unresolvable_workload_endpoint):
+        """GIVEN a workload whose endpoint the platform will not report."""
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_WORKLOAD_ID": "a" * 24,
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
+                "DATAROBOT_API_TOKEN": "tok",
+            },
+            clear=True,
+        ):
+            assert MCPConfig().server_config is None
+
     @pytest.mark.parametrize(
-        "endpoint",
+        "other_env",
         [
-            "https://app.datarobot.com",
-            "https://app.datarobot.com/",
-            "https://app.datarobot.com/api/v2",
-            "https://app.datarobot.com/api/v2/",
-            "https://staging.datarobot.com/api/v2",
+            pytest.param({"MCP_DEPLOYMENT_ID": "c" * 24}, id="deployment"),
+            pytest.param({"EXTERNAL_MCP_URL": "https://external.example/mcp"}, id="external"),
+            pytest.param({"MCP_SERVER_PORT": "9000"}, id="local"),
         ],
     )
-    def test_mcp_config_workload_url_includes_api_v2(self, endpoint):
-        """Missing /api/v2 is appended; an existing suffix is not doubled."""
-        workload_id = "a" * 24
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_WORKLOAD_ID": workload_id,
-                "DATAROBOT_ENDPOINT": endpoint,
-                "DATAROBOT_API_TOKEN": "tok",
-            },
-            clear=True,
-        ):
-            url = MCPConfig().server_config["url"]
-            host = endpoint.rstrip("/").removesuffix("/api/v2")
-            assert url == f"{host}/api/v2/endpoints/workloads/{workload_id}/mcp"
-            assert url.count("/api/v2") == 1
+    def test_workload_takes_precedence_over_other_addresses(self, other_env, workload_endpoint):
+        """GIVEN a workload ID alongside another address source.
 
-    def test_workload_conflicts_with_deployment_id(self):
-        """Workload ID alongside a deployment ID must raise — no silent preference."""
+        One set of environment variables resolves one server, so precedence picks —
+        it does not raise. Co-occurrence is usually intentional: a developer's .env
+        keeps its own address while infra injects the deployed one as a runtime
+        parameter, which is what lets one .env work on a laptop and in production.
+        """
         with patch.dict(
             os.environ,
             {
-                "MCP_WORKLOAD_ID": "a" * 24,
-                "MCP_DEPLOYMENT_ID": "c" * 24,
+                "MCP_WORKLOAD_ID": WORKLOAD_ID,
                 "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
                 "DATAROBOT_API_TOKEN": "tok",
+                **other_env,
             },
             clear=True,
         ):
-            config = MCPConfig()
-            with pytest.raises(ValueError, match="Ambiguous MCP configuration"):
-                config.server_config
-
-    def test_workload_conflicts_with_external_url(self):
-        """Workload ID alongside EXTERNAL_MCP_URL must raise — no silent preference."""
-        with patch.dict(
-            os.environ,
-            {
-                "MCP_WORKLOAD_ID": "a" * 24,
-                "EXTERNAL_MCP_URL": "https://external.example/mcp",
-                "DATAROBOT_ENDPOINT": "https://app.datarobot.com",
-                "DATAROBOT_API_TOKEN": "tok",
-            },
-            clear=True,
-        ):
-            config = MCPConfig()
-            with pytest.raises(ValueError, match="Ambiguous MCP configuration"):
-                config.server_config
+            assert (
+                MCPConfig().server_config["url"]
+                == f"https://test.datarobot.com/workloads/{WORKLOAD_ID}/mcp"
+            )
 
     def test_invalid_workload_id_normalized_to_none(self):
         """Invalid workload IDs should return None and log a warning (like deployment_id)."""
@@ -1348,7 +1377,7 @@ class TestMCPConfig:
             with pytest.raises(ValueError, match=expected_error_message):
                 config.server_config
 
-    def test_workload_with_forwarded_headers(self):
+    def test_workload_with_forwarded_headers(self, workload_endpoint):
         """Forwarded headers propagate in workload mode (same as deployment mode)."""
         forwarded_headers = {
             "x-datarobot-api-key": "scoped-token-42",
@@ -1368,3 +1397,204 @@ class TestMCPConfig:
             assert headers["x-datarobot-api-key"] == "scoped-token-42"
             assert headers["x-custom-header"] == "custom-value"
             assert headers["Authorization"] == "Bearer tok"
+
+
+class TestLookupWorkloadEndpoint:
+    @respx.mock
+    def test_returns_the_endpoint_the_platform_reports(self):
+        # GIVEN a cluster that serves workloads, so the
+        # workload's host differs from the API host
+        route = respx.get(LOOKUP_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "status": "running",
+                    "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+                },
+            )
+        )
+        # WHEN the endpoint is looked up
+        resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # THEN the platform's answer is used verbatim, host and prefix included
+        assert resolved == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
+        assert route.called
+
+    @respx.mock
+    def test_endpoint_is_normalized_before_the_lookup(self):
+        # GIVEN DATAROBOT_ENDPOINT spelled without /api/v2
+        route = respx.get(LOOKUP_URL).mock(
+            return_value=httpx.Response(
+                200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
+            )
+        )
+        # WHEN the endpoint is looked up
+        lookup_workload_endpoint(
+            WORKLOAD_ID,
+            endpoint="https://test.datarobot.com/",
+            token="tok",
+        )
+        # THEN the request still goes to /api/v2/workloads/<id>/
+        assert route.called
+
+    @respx.mock
+    def test_bearer_token_is_sent_once(self):
+        # GIVEN a token that already carries the Bearer prefix
+        route = respx.get(LOOKUP_URL).mock(
+            return_value=httpx.Response(
+                200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
+            )
+        )
+        # WHEN the endpoint is looked up
+        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="Bearer tok")
+        # THEN the prefix is not doubled
+        assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
+
+    @respx.mock
+    def test_running_workloads_answer_is_cached(self):
+        # GIVEN a running workload whose endpoint has been resolved once
+        route = respx.get(LOOKUP_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "status": "running",
+                    "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+                },
+            )
+        )
+        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # WHEN it is looked up again
+        second_lookup = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # THEN the platform is asked only once — a running workload's route is settled
+        assert second_lookup == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
+        assert route.call_count == 1
+
+    @pytest.mark.parametrize("status", ["submitted", "provisioning", "launching", "suspended"])
+    @respx.mock
+    def test_a_workload_that_is_not_running_is_not_cached(self, status):
+        """GIVEN a workload that has not been scheduled yet.
+
+        On a cluster that advertises the Covalent-reported inference endpoint, the
+        API answers with the prediction-gateway URL until the workload is scheduled
+        — the wrong route there. Remembering it would pin the agent to it for the
+        life of the process, so the answer is used but not cached.
+        """
+        gateway_url = f"https://app.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
+        route = respx.get(LOOKUP_URL).mock(
+            side_effect=[
+                httpx.Response(200, json={"status": status, "endpoint": gateway_url}),
+                httpx.Response(
+                    200,
+                    json={
+                        "status": "running",
+                        "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+                    },
+                ),
+            ]
+        )
+        # WHEN it is looked up while starting, and again once it is running
+        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") == (
+            gateway_url
+        )
+        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") == (
+            "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
+        )
+        # THEN the stale answer was re-resolved rather than kept
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_a_different_api_endpoint_is_looked_up_separately(self):
+        # GIVEN the same workload ID resolved against two clusters
+        respx.get(LOOKUP_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "status": "running",
+                    "endpoint": f"https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+                },
+            )
+        )
+        other = respx.get(f"https://other.datarobot.com/api/v2/workloads/{WORKLOAD_ID}/").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "status": "running",
+                    "endpoint": (
+                        f"https://other.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
+                    ),
+                },
+            )
+        )
+        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # WHEN the second cluster is asked
+        resolved = lookup_workload_endpoint(
+            WORKLOAD_ID, endpoint="https://other.datarobot.com/api/v2", token="tok"
+        )
+        # THEN the cache does not leak one cluster's answer into the other
+        assert other.called
+        assert resolved == f"https://other.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            pytest.param(httpx.Response(403, json={"message": "no permission"}), id="forbidden"),
+            pytest.param(httpx.Response(404, json={"message": "not found"}), id="not-found"),
+            pytest.param(httpx.Response(500, text="boom"), id="server-error"),
+            pytest.param(httpx.Response(200, text="not json"), id="non-json-body"),
+        ],
+    )
+    @respx.mock
+    def test_unreadable_workload_yields_no_answer(self, response, caplog):
+        # GIVEN a lookup the platform will not answer
+        respx.get(LOOKUP_URL).mock(return_value=response)
+        # WHEN the endpoint is looked up
+        with caplog.at_level("WARNING"):
+            resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # THEN the caller is told nothing was resolved, and what to do about it
+        assert resolved is None
+        assert "may read the workload" in caplog.text
+
+    @respx.mock
+    def test_transport_error_yields_no_answer(self, caplog):
+        # GIVEN an unreachable API host
+        respx.get(LOOKUP_URL).mock(side_effect=httpx.ConnectError("unreachable"))
+        # WHEN the endpoint is looked up
+        with caplog.at_level("WARNING"):
+            assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") is None
+        assert "Could not read the endpoint of workload" in caplog.text
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param({"status": "stopped"}, id="missing"),
+            pytest.param({"status": "stopped", "endpoint": None}, id="null"),
+            pytest.param({"status": "stopped", "endpoint": "   "}, id="blank"),
+        ],
+    )
+    @respx.mock
+    def test_workload_without_an_endpoint_yields_no_answer(self, payload, caplog):
+        # GIVEN a workload that is not serving yet, so it has no endpoint
+        respx.get(LOOKUP_URL).mock(return_value=httpx.Response(200, json=payload))
+        # WHEN the endpoint is looked up
+        with caplog.at_level("WARNING"):
+            resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # THEN nothing is invented, and the log says it may not be running
+        assert resolved is None
+        assert "may not be running yet" in caplog.text
+
+    @respx.mock
+    def test_a_failed_lookup_is_not_cached(self):
+        # GIVEN a lookup that fails once and then succeeds
+        route = respx.get(LOOKUP_URL).mock(
+            side_effect=[
+                httpx.Response(503, text="unavailable"),
+                httpx.Response(
+                    200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
+                ),
+            ]
+        )
+        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") is None
+        # WHEN it is retried
+        resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
+        # THEN the transient failure was not remembered
+        assert resolved == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
+        assert route.call_count == 2

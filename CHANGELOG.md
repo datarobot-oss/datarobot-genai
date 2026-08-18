@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.27.13
-- `core.mcp`: `MCPConfig` now accepts `mcp_workload_id` (env `MCP_WORKLOAD_ID`) to connect to a Workload API MCP server at `{DATAROBOT_ENDPOINT}/endpoints/workloads/{id}/mcp` (MODEL-24379). Auth headers match custom-model deployment mode (Bearer token, authorization-context JWT, forwarded headers). Workload mode is mutually exclusive with `mcp_deployment_id` and `external_mcp_url` — mixing them raises `ValueError` rather than silently preferring one.
+- `core.mcp`: `MCPConfig` now accepts `mcp_workload_id` (env `MCP_WORKLOAD_ID`) to connect to a Workload API MCP server (MODEL-24379), with the same auth headers as custom-model deployment mode, and mutually exclusive with `mcp_deployment_id` / `external_mcp_url`. Its URL comes only from the platform (`GET /api/v2/workloads/<id>/` → `endpoint` + `/mcp`), never from a URL template, because Envoy-fronted clusters serve workloads from a per-enclave Host that `DATAROBOT_ENDPOINT` cannot derive; if the lookup cannot answer, the agent gets no MCP server rather than a guessed URL. MCP URL construction moves to `dragent/deployment_urls`.
 
 ## 0.27.12
 - `drtools/core/sandbox`: workload scheduling and image-pull time no longer consume the caller's `timeout_s` (which bounds user code, enforced in-container). A separate `provisioning_timeout_s` allowance (default 300s, constructor-tunable) bounds the infra wait — a cold node's first pull of the sandbox image (60-90s) used to surface as `SandboxTimeout` before user code ever ran.
