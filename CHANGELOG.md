@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.28.1
+- `drmcp/core`: Added an MCP middleware which performs general OAuth claim validation.
+- `drmcputils/auth.py`: Added JWTTokenClaimsValidator which performs validations on claims in JWT token.
+
 ## 0.28.0
 - `core/config`: **`LLMConfig` and `LLMType` now come from `datarobot.core.config`** rather than being defined here, and are re-exported from `datarobot_genai.core.config` along with `deployment_url` and `llm_gateway_url`. Existing imports from `datarobot_genai.core.config` keep working. The routing logic (`get_llm_type`, `to_litellm_params`) moved with them, so there is one definition of "how a DataRobot LLM config becomes litellm params" shared by genai and the rest of the DataRobot Python ecosystem instead of a copy in each.
 - **Per-LLM settings are namespaced by their instance name (breaking).** A global config can describe any number of LLM instances, and each instance's routing fields are read under its own prefix. The default instance is named `llm`, so for the fields that were previously global: `USE_DATAROBOT_LLM_GATEWAY` becomes `LLM_USE_DATAROBOT_LLM_GATEWAY`, and `NIM_DEPLOYMENT_ID` becomes `LLM_NIM_DEPLOYMENT_ID`. `LLM_DEPLOYMENT_ID` and `LLM_DEFAULT_MODEL` already carried the prefix and are unchanged, as are `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN`, which are shared by every instance. The same rename applies to the `workflow.yaml` fields on `datarobot-llm-component`, `datarobot-nim`, and the router's `primary` / `fallbacks` entries: `use_datarobot_llm_gateway` becomes `llm_use_datarobot_llm_gateway`, `nim_deployment_id` becomes `llm_nim_deployment_id`. **Rename these in `workflow.yaml` when you upgrade:** unknown keys are ignored there, so an unrenamed field does not fail, it silently reverts to its default (gateway on, no NIM deployment). For the two environment variables, `datarobot.core` reads the old bare names as a fallback when the namespaced field was not set explicitly, warns when it does, and drops that bridge in 3.21.
