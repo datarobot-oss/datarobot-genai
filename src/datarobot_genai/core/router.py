@@ -72,10 +72,32 @@ def build_litellm_router(
     """
     import litellm
 
+    from datarobot_genai.core.config import resolve_config
+
+    # The router's primary/fallbacks are parsed straight from workflow.yaml with the
+    # two globals unset, so fill the endpoint and API token from the ambient global
+    # config before rendering. Core's LLMConfig.to_litellm_params is self-contained
+    # (it never reaches back into genai), so this hydration is what supplies them.
+    global_config = resolve_config()
+    endpoint = global_config.resolve_datarobot_endpoint()
+    token = global_config.resolve_datarobot_api_token()
+
+    def _hydrate(cfg: LLMConfig) -> LLMConfig:
+        return cfg.model_copy(
+            update={
+                "datarobot_endpoint": (
+                    cfg.datarobot_endpoint if cfg.datarobot_endpoint is not None else endpoint
+                ),
+                "datarobot_api_token": (
+                    cfg.datarobot_api_token if cfg.datarobot_api_token is not None else token
+                ),
+            }
+        )
+
     model_list = [
-        {"model_name": "primary", "litellm_params": primary.to_litellm_params()},
+        {"model_name": "primary", "litellm_params": _hydrate(primary).to_litellm_params()},
         *[
-            {"model_name": f"fallback_{i}", "litellm_params": c.to_litellm_params()}
+            {"model_name": f"fallback_{i}", "litellm_params": _hydrate(c).to_litellm_params()}
             for i, c in enumerate(fallbacks)
         ],
     ]

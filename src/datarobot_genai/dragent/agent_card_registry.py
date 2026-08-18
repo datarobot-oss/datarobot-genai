@@ -47,6 +47,7 @@ from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
 
+from datarobot_genai.core.config import resolve_config
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
 
 logger = logging.getLogger(__name__)
@@ -68,15 +69,19 @@ DuplicateStrategy = Literal["first", "last", "error"]
 
 
 class DataRobotRegistrySettings(DataRobotAppFrameworkBaseSettings):
-    """DataRobot connection settings for the central agent card registry.
+    """DataRobot endpoint setting for the central agent card registry.
 
-    Loads ``DATAROBOT_API_TOKEN`` and ``DATAROBOT_ENDPOINT`` from env vars
-    (including Runtime Parameters), ``.env``, file secrets, or Pulumi config
-    using the standard :class:`DataRobotAppFrameworkBaseSettings` priority
-    chain.
+    Loads ``DATAROBOT_ENDPOINT`` from env vars (including Runtime Parameters),
+    ``.env``, file secrets, or Pulumi config using the standard
+    :class:`DataRobotAppFrameworkBaseSettings` priority chain.
+
+    Deliberately *not* read through ``resolve_config().resolve_datarobot_endpoint()``:
+    that resolver substitutes the public ``app.datarobot.com`` default when nothing
+    is configured, and this lookup sends the API token to whatever host it resolves,
+    so an unset endpoint has to stay distinguishable from a configured one. The API
+    token itself does come from the global config; see :func:`_resolve_settings`.
     """
 
-    datarobot_api_token: str | None = None
     datarobot_endpoint: str | None = None
 
 
@@ -128,7 +133,7 @@ def _resolve_settings(
 ) -> tuple[str, str]:
     """Return validated ``(api_token, endpoint)`` from explicit values or settings."""
     settings = DataRobotRegistrySettings()
-    resolved_token = api_token or settings.datarobot_api_token
+    resolved_token = api_token or resolve_config().resolve_datarobot_api_token()
     if not resolved_token:
         raise AgentCardRegistryError(
             "DataRobot API token is required for agent card registry lookup. "
