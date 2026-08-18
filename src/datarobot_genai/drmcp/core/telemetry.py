@@ -45,7 +45,7 @@ from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 from opentelemetry.trace import SpanKind
@@ -191,9 +191,9 @@ def _setup_otel_env_variables() -> None:
 
 
 def _setup_otel_exporter() -> None:
-    """Set up OpenTelemetry exporter with SimpleSpanProcessor."""
+    """Set up OpenTelemetry exporter with BatchSpanProcessor."""
     otlp_exporter = OTLPSpanExporter()
-    span_processor = SimpleSpanProcessor(otlp_exporter)
+    span_processor = BatchSpanProcessor(otlp_exporter)
     provider = trace.get_tracer_provider()
     # mypy: TracerProvider has add_span_processor at runtime; typing may lag
     if hasattr(provider, "add_span_processor"):
