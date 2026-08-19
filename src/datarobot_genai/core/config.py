@@ -159,8 +159,10 @@ def _validate_global_config(config: object) -> None:
         )
 
 
-def _apply_legacy_llm_params(config: Config, name: str) -> None:
+def apply_legacy_llm_params(config: Config, name: str) -> None:
     """Pre-rename parameter shim logic until datarobot>=3.19 ships.
+
+    !!! REMOVE WHEN datarobot>=3.19 SHIPS !!!
 
     Fill ``{name}_*`` fields from the pre-rename bare names, warning when used.
 
@@ -223,10 +225,10 @@ def resolve_config() -> Config:
             # above); genai resolves everything off it through its resolve_* methods.
             # Cast to Config for typing since genai cannot import the app's class.
             app_config = cast(Config, provided)
-            _apply_legacy_llm_params(app_config, registered_default_llm_name())
+            apply_legacy_llm_params(app_config, registered_default_llm_name())
             return app_config
     config = Config()
-    _apply_legacy_llm_params(config, registered_default_llm_name())
+    apply_legacy_llm_params(config, registered_default_llm_name())
     return config
 
 
