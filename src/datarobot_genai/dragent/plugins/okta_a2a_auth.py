@@ -112,6 +112,9 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import SecretStr
 
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+from datarobot_genai.dragent.inbound_token import TOKEN_HEADERS
+from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 
 try:
@@ -330,23 +333,6 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
     entries needed for credentials.
     """
 
-    okta_token_header: str = Field(
-        default="x-datarobot-external-access-token",
-        description=(
-            "Incoming header carrying the caller's Okta access token. "
-            "Forwarded as Bearer for discovery; used as subject token in Step 1. "
-            "Matched case-insensitively."
-        ),
-    )
-    fallback_token_headers: list[str] = Field(
-        default=["authorization"],
-        description=(
-            "Fallback headers to try (in order) when ``okta_token_header`` is absent. "
-            "Useful for local development without an API gateway that remaps "
-            "``Authorization`` → ``x-datarobot-external-access-token``. "
-            "If the value starts with 'Bearer ', the prefix is stripped automatically."
-        ),
-    )
     principal_id: str | None = Field(
         default_factory=_get_default_principal_id,
         description=(
@@ -635,7 +621,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
 
     async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
         token = self._extract_token()
-        logger.info("Forwarding token from '%s' for discovery", self.config.okta_token_header)
+        logger.info("Forwarding token from '%s' for discovery", OAUTH_ACCESS_TOKEN_HEADER)
         return {"Authorization": f"Bearer {token}"}
 
     def set_agent_card(self, card: AgentCard) -> None:
@@ -656,9 +642,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         )
 
     def get_non_forwardable_header_keys(self) -> set[str]:
-        excluded_header_keys = {self.config.okta_token_header.lower()}
-        excluded_header_keys.update(header.lower() for header in self.config.fallback_token_headers)
-        return excluded_header_keys
+        """Token carriers are never forwarded; downstream agents get an exchanged token."""
+        return set(TOKEN_HEADERS)
 
     def get_forwardable_x_datarobot_headers_from_inbound_request(self) -> list[HeaderCred]:
         headers: dict[str, str] = Context.get().metadata.headers or {}
@@ -704,29 +689,21 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         return AuthResult(credentials=auth_request_credentials)
 
     def _extract_token(self) -> str:
-        """Extract the access token from NAT request context headers.
+        """Extract the caller's IdP access token from NAT request context headers.
 
-        Tries ``okta_token_header`` first, then each ``fallback_token_headers``
-        entry (stripping ``Bearer `` prefix if present).
+        Uses ``inbound_token.find_idp_token``, the same function audience validation uses, so
+        this cannot exchange a token from a header the validator never inspected.
         """
         headers: dict[str, str] = Context.get().metadata.headers or {}
 
-        token = headers.get(self.config.okta_token_header.lower())
-        if token:
+        token = find_idp_token(headers)
+        if token is not None:
             return token
 
-        for fallback in self.config.fallback_token_headers:
-            value = headers.get(fallback.lower())
-            if value:
-                if value.lower().startswith("bearer "):
-                    value = value[len("bearer ") :]
-                logger.debug("Using fallback header '%s'", fallback)
-                return value
-
         raise RuntimeError(
-            f"Header '{self.config.okta_token_header}' not found in request context "
-            f"(also tried fallbacks: {self.config.fallback_token_headers}). "
-            "The access token must be forwarded with every agent call."
+            f"No IdP access token in request context (looked in "
+            f"{sorted(TOKEN_HEADERS)}). The access token must be forwarded with every "
+            f"agent call."
         )
 
 

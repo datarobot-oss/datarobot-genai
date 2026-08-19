@@ -36,6 +36,7 @@ from datarobot_genai.core.utils.logging import setup_logging
 from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
+from .claim_validation import GeneralOAuthClaimValidationMiddleware
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
 from .session import headers_from_a2a_state
@@ -166,6 +167,41 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         if self.front_end_config.a2a:
             await self._add_a2a_routes(app, builder, self.front_end_config.a2a)
 
+    def _resolve_expected_audience(self) -> str | None:
+        """Audience an inbound token must carry: the one callers obtain through the
+        cross-application-access flow this agent advertises.
+
+        Derived from existing config rather than a new ``workflow.yaml`` field.  ``None``
+        disables validation -- XAA not configured, or its audience unset.
+        """
+        # getattr, not attribute access: build_app() consults this for any worker, and a
+        # worker built on NAT's vanilla FastApiFrontEndConfig has no `a2a` field at all.
+        a2a = getattr(self.front_end_config, "a2a", None)
+        if a2a is None or a2a.cross_application_access is None:
+            return None
+        return a2a.cross_application_access.token_request.audience
+
+    def _add_audience_validation_middleware(self, app: FastAPI) -> None:
+        """Install the audience check on the served app.  See ``claim_validation`` for scope.
+
+        One instance covers ``/a2a`` too: Starlette keeps the mount prefix in
+        ``scope["path"]``, so the outer middleware sees A2A traffic.
+
+        Must run here, not from ``add_routes``: NAT calls that from inside the lifespan, by
+        which point Starlette has frozen the middleware stack and ``add_middleware`` raises.
+        """
+        expected_audience = self._resolve_expected_audience()
+        if not expected_audience:
+            logger.info(
+                "Inbound audience validation disabled "
+                "(a2a.cross_application_access.token_request.audience is not set)"
+            )
+            return
+        app.add_middleware(
+            GeneralOAuthClaimValidationMiddleware, expected_audience=expected_audience
+        )
+        logger.info("Inbound audience validation enabled")
+
     async def _add_a2a_routes(
         self, app: FastAPI, builder: WorkflowBuilder, a2a_config: A2AFrontEndConfig
     ) -> None:
@@ -226,6 +262,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
         # NAT 1.6 no longer calls self.add_health_route() so we register here.
         self._register_health_routes(app)
+
+        self._add_audience_validation_middleware(app)
 
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.

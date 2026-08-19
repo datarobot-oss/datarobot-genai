@@ -37,7 +37,10 @@ from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from pydantic import SecretStr
+from pydantic import ValidationError
 
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.plugins.okta_a2a_auth import ApiTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
@@ -51,6 +54,8 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import _get_token_exchange_im
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _make_client_assertion
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _parse_cross_app_params
 from datarobot_genai.dragent.plugins.okta_a2a_auth import get_token_exchange
+
+from ..helpers import make_jwt
 
 _MODULE = "datarobot_genai.dragent.plugins.okta_a2a_auth"
 
@@ -162,6 +167,12 @@ class TestDiscovery:
 
 
 class TestFallbackHeaders:
+    """The `authorization` fallback, for local runs with no gateway in front.
+
+    Carriers come from ``dragent.inbound_token``, shared with audience validation, so this
+    cannot exchange a token from a header the validator never inspected.
+    """
+
     @pytest.fixture
     def provider(self):
         return OAuth2CrossApplicationAccessOAuth2AuthProvider(
@@ -169,36 +180,108 @@ class TestFallbackHeaders:
         )
 
     async def test_authorization_fallback(self, provider):
+        """GIVEN a JWT in `authorization` and no primary header THEN it is used."""
+        token = make_jwt(sub="user-1")
         with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {
-                "authorization": "Bearer fallback-token-123"
-            }
+            mock_ctx.get.return_value.metadata.headers = {"authorization": f"Bearer {token}"}
             headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": "Bearer fallback-token-123"}
+        assert headers == {"Authorization": f"Bearer {token}"}
 
     async def test_primary_takes_precedence(self, provider):
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-external-access-token": "primary-token",
-                "authorization": "Bearer fallback-token",
+                OAUTH_ACCESS_TOKEN_HEADER: "primary-token",
+                "authorization": f"Bearer {make_jwt(sub='fallback')}",
             }
             headers = await provider.authenticate_for_discovery()
         assert headers == {"Authorization": "Bearer primary-token"}
 
     async def test_strips_bearer_prefix_case_insensitive(self, provider):
+        token = make_jwt(sub="user-1")
         with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"authorization": "BEARER my-token"}
+            mock_ctx.get.return_value.metadata.headers = {"authorization": f"BEARER {token}"}
             headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": "Bearer my-token"}
+        assert headers == {"Authorization": f"Bearer {token}"}
 
-    async def test_fallback_disabled_when_empty_list(self):
+    async def test_opaque_value_in_authorization_is_not_exchanged(self, provider):
+        """GIVEN a DataRobot API token in `authorization` THEN it is not read as an IdP token.
+
+        Exchanging it would send the wrong credential to the identity provider, and audience
+        validation cannot check a non-JWT anyway.
+        """
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                "authorization": "Bearer NjRiYWE1Njk5NmZiMzZlM2VlZWVmYzQ0"
+            }
+            with pytest.raises(RuntimeError, match="No IdP access token"):
+                await provider.authenticate_for_discovery()
+
+    async def test_opaque_value_in_the_dedicated_header_is_still_accepted(self, provider):
+        """GIVEN an opaque token in the dedicated header THEN it is used.
+
+        That header carries nothing else, and some authorization servers issue opaque tokens.
+        """
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {
+                OAUTH_ACCESS_TOKEN_HEADER: "opaque-okta-token"
+            }
+            headers = await provider.authenticate_for_discovery()
+        assert headers == {"Authorization": "Bearer opaque-okta-token"}
+
+    async def test_no_carrier_present_raises(self, provider):
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"x-unrelated": "value"}
+            with pytest.raises(RuntimeError, match="No IdP access token"):
+                await provider.authenticate_for_discovery()
+
+    async def test_fallback_is_not_configurable(self):
+        """GIVEN a workflow.yaml setting the former field THEN config fails loudly.
+
+        Configurable carriers let the exchanged set drift from the validated set.
+        """
+        with pytest.raises(ValidationError, match="fallback_token_headers"):
+            OAuth2CrossApplicationAccessAuthProviderConfig(
+                fallback_token_headers=["x-my-own-header"]  # type: ignore[call-arg]
+            )
+
+
+class TestPrimaryTokenHeaderIsFixed:
+    """The primary header is the gateway's choice, so it is not configurable.
+
+    Overriding the former ``okta_token_header`` could only break the agent or hide a token
+    from audience validation.
+    """
+
+    def test_okta_token_header_field_is_gone(self):
+        """GIVEN a workflow.yaml that still sets it THEN config fails loudly, not silently."""
+        with pytest.raises(ValidationError, match="okta_token_header"):
+            OAuth2CrossApplicationAccessAuthProviderConfig(
+                okta_token_header="x-custom-header"  # type: ignore[call-arg]
+            )
+
+    async def test_token_is_read_from_the_shared_constant(self):
+        """GIVEN a token in the shared header THEN the provider reads it.
+
+        Via the constant, so this fails if the two sides stop naming the same header.
+        """
         provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
-            config=OAuth2CrossApplicationAccessAuthProviderConfig(fallback_token_headers=[])
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
         )
         with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"authorization": "Bearer token"}
-            with pytest.raises(RuntimeError, match="x-datarobot-external-access-token"):
-                await provider.authenticate_for_discovery()
+            mock_ctx.get.return_value.metadata.headers = {
+                OAUTH_ACCESS_TOKEN_HEADER: "token-from-gateway"
+            }
+            headers = await provider.authenticate_for_discovery()
+        assert headers == {"Authorization": "Bearer token-from-gateway"}
+
+    def test_both_carriers_are_excluded_from_forwarding(self):
+        """The provider must not forward either token carrier on to downstream agents."""
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+        excluded = provider.get_non_forwardable_header_keys()
+        assert OAUTH_ACCESS_TOKEN_HEADER in excluded
+        assert OAUTH_ACCESS_TOKEN_FALLBACK_HEADER in excluded
 
 
 # ---------------------------------------------------------------------------

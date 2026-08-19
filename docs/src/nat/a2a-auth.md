@@ -189,7 +189,6 @@ workflow:
 authentication:
   okta_auth:
     _type: okta_cross_app_access
-    # okta_token_header: "x-custom-header"  # Optional: override default header name
 ```
 
 ### How it works
@@ -197,7 +196,7 @@ authentication:
 The XAA flow operates in two steps:
 
 1. **Token Exchange (RFC 8693)** — The caller's incoming Okta access token
-   (from the `okta_token_header`) is exchanged for an ID-JAG (Identity
+   (from `x-datarobot-external-access-token`) is exchanged for an ID-JAG (Identity
    Assertion Authorization Grant) via the org-level Authorization Server
    (`token_exchange.trusted_issuer`).
 
@@ -219,13 +218,39 @@ on the A2A agent card.
 | `token_exchange.trusted_issuer` | Yes | — | Org-level Authorization Server issuer URL. |
 | `token_exchange.audience` | Yes | — | Resource AS base URL (where ID-JAG is fetched from). |
 | `token_request.token_url` | Yes | — | Token endpoint of the resource AS. |
-| `token_request.audience` | Yes | — | Final resource identifier for the agent. |
+| `token_request.audience` | Yes | — | Final resource identifier for the agent. Advertised on the agent card **and enforced on inbound requests** — see below. |
 | `token_request.scopes` | No | `["read_data"]` | Scopes the caller must request. |
 
 > **Note:** `grant_type` URNs are injected automatically by the generator — do not
 > set them in `workflow.yaml`. The agent card will always contain
 > `urn:ietf:params:oauth:grant-type:token-exchange` (Step 1) and
 > `urn:ietf:params:oauth:grant-type:jwt-bearer` (Step 2).
+
+#### Inbound audience validation
+
+The serving agent **enforces** `token_request.audience`, not just publishes it. The gateway
+validates an incoming JWT and forwards it as-is, so without this a token minted for a
+*different* agent would be accepted and exchanged here. It is an audience check, not an
+authentication check: a caller with no IdP token — using a DataRobot API token, Option 1 above
+— passes through.
+
+| Condition | Result |
+|---|---|
+| `aud` contains `token_request.audience` | Proceeds |
+| `aud` does not | `401 {"detail": "Authorization audience claim validation failed"}` |
+| Present but not a decodable JWT | `422 {"detail": "Malformed authorization token: ..."}` |
+| No IdP token | Proceeds |
+
+The token is read from `x-datarobot-external-access-token` (bare or `Bearer`-prefixed), then
+`Bearer` `authorization` for local runs with no gateway. Because `authorization` also carries
+DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
+
+- Applies to **every route**, not just `/a2a`.
+- Signature, issuer and expiry are **not** re-verified — the gateway owns that.
+- Agent-card discovery is exempt, so `enable_unauthenticated_well_known_route` stays
+  authoritative for what an unauthenticated caller sees.
+- Disabled when `token_request.audience` or `cross_application_access` is unset; logged at startup.
+- Audience comparison is exact — no case or trailing-slash leniency.
 
 ### Server-side configuration reference: `external`
 
@@ -262,9 +287,15 @@ remote XAA-protected agent.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `okta_token_header` | `x-datarobot-external-access-token` | Incoming request header carrying the caller's Okta access token. |
 | `principal_id` | `IDP_AGENT_ID` env var | Okta AI agent principal ID. |
 | `private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` env var | Base64-encoded or raw-JSON private JWK. |
+
+> **The incoming token headers are not configurable.** The access token is read from
+> `x-datarobot-external-access-token`, falling back to `Bearer` `authorization` for local runs
+> with no gateway. That set lives in `dragent/inbound_token.py` and is shared with inbound
+> audience validation, so the agent cannot exchange a token from a header validation did not
+> inspect. A `workflow.yaml` still setting the former `okta_token_header` or
+> `fallback_token_headers` fields fails at startup; delete those lines.
 
 ### Agent card mapping
 
@@ -298,7 +329,9 @@ in `securitySchemes`, while flow-specific parameters go in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
-| `RuntimeError: Header 'x-datarobot-external-access-token' not found` | The incoming request doesn't carry the Okta token. | Ensure the upstream caller forwards the Okta access token in the expected header. |
+| `401 Authorization audience claim validation failed` | The token was issued for a different resource. | Request a token whose `aud` matches the serving agent's `token_request.audience`. |
+| `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
+| `RuntimeError: No IdP access token in request context` | Neither carrier header holds a token. | Forward the Okta token in `x-datarobot-external-access-token`, or `authorization: Bearer <jwt>` locally. A non-JWT in `authorization` is ignored, since that header also carries DataRobot API tokens. |
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
 | `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |

@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## 0.28.2
+- `dragent/frontends`: **an inbound IdP access token is now rejected unless its `aud` claim names this agent** — `401`, or `422` if the value is not a decodable JWT. The gateway validates that a JWT is signed and trusted but forwards it as-is, so a token minted for another agent was accepted and exchanged. The audience comes from the existing `a2a.cross_application_access.token_request.audience` (no new `workflow.yaml` field); unset disables the check, logged at startup.
+- **An audience check, not authentication**: a request with no IdP token passes through, since an agent may be called with a DataRobot API token instead. Signature, issuer and expiry are not re-verified. Agent-card discovery is exempt, leaving `enable_unauthenticated_well_known_route` authoritative there.
+- **Every route, not just `/a2a`** — NAT copies inbound headers into the workflow context on every route and the XAA provider reads the token from there, so scoping the check to A2A would leave the same token usable via `/chat/completions`.
+- **Token headers now have one definition** (`dragent/inbound_token.py`), shared with the XAA provider so the validated and exchanged sets cannot drift: `x-datarobot-external-access-token`, then `authorization` for local runs. The latter also carries DataRobot API tokens, so a value there counts only if it decodes as a JWT.
+- **Breaking (unreleased):** `okta_token_header` and `fallback_token_headers` are removed from `okta_cross_app_access` — the gateway picks the header, so overriding it could only break the agent or hide a token from the check. A `workflow.yaml` setting either fails at startup; delete the line.
+
 ## 0.28.1
 - `core.mcp`: `MCPConfig` now accepts `mcp_workload_id` (env `MCP_WORKLOAD_ID`) to connect to a Workload API MCP server (MODEL-24379), with the same auth headers as custom-model deployment mode, and mutually exclusive with `mcp_deployment_id` / `external_mcp_url`. Its URL comes only from the platform (`GET /api/v2/workloads/<id>/` → `endpoint` + `/mcp`), never from a URL template, because Envoy-fronted clusters serve workloads from a per-enclave Host that `DATAROBOT_ENDPOINT` cannot derive; if the lookup cannot answer, the agent gets no MCP server rather than a guessed URL. MCP URL construction moves to `dragent/deployment_urls`.
 
