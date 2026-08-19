@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any
 from typing import cast
@@ -22,6 +23,7 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import deployment_url
+from datarobot.core.config import getenv
 from datarobot.core.config import llm_gateway_url
 from pydantic import Field
 
@@ -157,6 +159,71 @@ def _validate_global_config(config: object) -> None:
         )
 
 
+# Pre-rename parameter shim logic until datarobot>=3.19 ships.
+#
+# Scope is deliberately two fields on ONE namespace. Both conditions matter:
+#
+# 1. The default instance only. The bare names predate multi-instance config, so they
+#    describe the app's one LLM. A second instance must never inherit them, which is
+#    why this runs from resolve_config() against registered_default_llm_name() rather
+#    than inside resolve_llm_config(), where any caller-supplied name would pick them up.
+# 2. Only if `name` really is an LLM namespace. A name is one when the config declares
+#    its identity fields; without that check a mis-registered default name would have
+#    {name}_nim_deployment_id invented on a config that has no LLM under that name.
+#
+# Not restricted to the literal "llm" prefix on purpose. Pre-rename, af-component-llm
+# exported {NAME}_DEPLOYMENT_ID and {NAME}_DEFAULT_MODEL namespaced but
+# USE_DATAROBOT_LLM_GATEWAY bare, so an app whose component is named anything other
+# than "llm" is exactly the case this bridges. Hardcoding "llm" would silently route
+# those apps to the gateway, which is the bug this is here to prevent.
+_LLM_NAMESPACE_MARKERS = ("deployment_id", "default_model", "nim_deployment_id")
+
+
+def _is_llm_namespace(config: Config, name: str) -> bool:
+    """Report whether ``name`` denotes an LLM instance the config actually declares."""
+    declared = type(config).model_fields
+    return any(f"{name}_{marker}" in declared for marker in _LLM_NAMESPACE_MARKERS)
+
+
+def _apply_legacy_llm_params(config: Config, name: str) -> None:
+    """Fill ``{name}_*`` fields from the pre-rename bare names, warning when used.
+
+    Only fields the config did not set explicitly are touched, so a namespaced value
+    always wins over a legacy one. Touches at most the two fields below, on the single
+    default instance, and nothing at all when ``name`` is not an LLM namespace.
+    """
+    if not _is_llm_namespace(config, name):
+        return
+
+    legacy_llm_params: dict[str, tuple[str, bool]] = {
+        # namespaced suffix -> (pre-rename bare name, needs bool coercion)
+        "nim_deployment_id": ("NIM_DEPLOYMENT_ID", False),
+        "use_datarobot_llm_gateway": ("USE_DATAROBOT_LLM_GATEWAY", True),
+    }
+
+    for suffix, (legacy_name, is_bool) in legacy_llm_params.items():
+        field = f"{name}_{suffix}"
+        if field in config.model_fields_set:
+            continue
+        raw = getenv(legacy_name)
+        if raw is None:
+            continue
+        value: object = raw
+        if is_bool and not isinstance(raw, bool):
+            value = str(raw).strip().lower() in {"1", "true", "yes", "on"}
+        warnings.warn(
+            f"{legacy_name} is deprecated and will stop being read in a future release. "
+            f"Rename it to {field.upper()}.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        # Bypasses pydantic validation on purpose: `field` is often not declared on
+        # this class at all (the old template had no per-instance NIM field), and a
+        # plain setattr rejects a name that is not a model field.
+        object.__setattr__(config, field, value)
+        config.model_fields_set.add(field)
+
+
 def resolve_config() -> Config:
     """Return the single GLOBAL application config.
 
@@ -174,8 +241,12 @@ def resolve_config() -> Config:
             # provided is a DataRobotAppFrameworkBaseSettings subclass (validated
             # above); genai resolves everything off it through its resolve_* methods.
             # Cast to Config for typing since genai cannot import the app's class.
-            return cast(Config, provided)
-    return Config()
+            app_config = cast(Config, provided)
+            _apply_legacy_llm_params(app_config, registered_default_llm_name())
+            return app_config
+    config = Config()
+    _apply_legacy_llm_params(config, registered_default_llm_name())
+    return config
 
 
 def registered_default_llm_name() -> str:
