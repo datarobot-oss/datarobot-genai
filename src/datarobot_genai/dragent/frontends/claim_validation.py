@@ -110,7 +110,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
 
         token = find_idp_token(request.headers)
         if token is None:
-            return None  # caller may hold a DataRobot API token; not ours to judge
+            return None  # No claim validation When using standard datarobot api tokens
 
         try:
             audience = _audience_claim(token)
