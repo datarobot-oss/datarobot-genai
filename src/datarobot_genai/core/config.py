@@ -159,40 +159,21 @@ def _validate_global_config(config: object) -> None:
         )
 
 
-# Pre-rename parameter shim logic until datarobot>=3.19 ships.
-#
-# Scope is deliberately two fields on ONE namespace. Both conditions matter:
-#
-# 1. The default instance only. The bare names predate multi-instance config, so they
-#    describe the app's one LLM. A second instance must never inherit them, which is
-#    why this runs from resolve_config() against registered_default_llm_name() rather
-#    than inside resolve_llm_config(), where any caller-supplied name would pick them up.
-# 2. Only if `name` really is an LLM namespace. A name is one when the config declares
-#    its identity fields; without that check a mis-registered default name would have
-#    {name}_nim_deployment_id invented on a config that has no LLM under that name.
-#
-# Not restricted to the literal "llm" prefix on purpose. Pre-rename, af-component-llm
-# exported {NAME}_DEPLOYMENT_ID and {NAME}_DEFAULT_MODEL namespaced but
-# USE_DATAROBOT_LLM_GATEWAY bare, so an app whose component is named anything other
-# than "llm" is exactly the case this bridges. Hardcoding "llm" would silently route
-# those apps to the gateway, which is the bug this is here to prevent.
-_LLM_NAMESPACE_MARKERS = ("deployment_id", "default_model", "nim_deployment_id")
-
-
-def _is_llm_namespace(config: Config, name: str) -> bool:
-    """Report whether ``name`` denotes an LLM instance the config actually declares."""
-    declared = type(config).model_fields
-    return any(f"{name}_{marker}" in declared for marker in _LLM_NAMESPACE_MARKERS)
-
-
 def _apply_legacy_llm_params(config: Config, name: str) -> None:
-    """Fill ``{name}_*`` fields from the pre-rename bare names, warning when used.
+    """Pre-rename parameter shim logic until datarobot>=3.19 ships.
+
+    Fill ``{name}_*`` fields from the pre-rename bare names, warning when used.
 
     Only fields the config did not set explicitly are touched, so a namespaced value
     always wins over a legacy one. Touches at most the two fields below, on the single
     default instance, and nothing at all when ``name`` is not an LLM namespace.
     """
-    if not _is_llm_namespace(config, name):
+    declared = type(config).model_fields
+
+    if not any(
+        f"{name}_{marker}" in declared
+        for marker in ("deployment_id", "default_model", "nim_deployment_id")
+    ):
         return
 
     legacy_llm_params: dict[str, tuple[str, bool]] = {
