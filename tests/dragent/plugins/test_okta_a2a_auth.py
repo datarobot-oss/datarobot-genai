@@ -16,6 +16,7 @@
 
 import base64
 import json
+import logging
 from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
@@ -234,30 +235,96 @@ class TestFallbackHeaders:
             with pytest.raises(RuntimeError, match="No IdP access token"):
                 await provider.authenticate_for_discovery()
 
-    async def test_fallback_is_not_configurable(self):
-        """GIVEN a workflow.yaml setting the former field THEN config fails loudly.
 
-        Configurable carriers let the exchanged set drift from the validated set.
+class TestDeprecatedHeaderOverrides:
+    """The carrier set is fixed, so these two fields are retired.
+
+    A value equal to the old default still describes what happens, so it is accepted with a
+    warning. Anything else changed meaning and is rejected -- ignoring it would leave the
+    config lying, and `fallback_token_headers: []` used to *disable* the fallback, so
+    accepting it would quietly switch it back on.
+    """
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"okta_token_header": OAUTH_ACCESS_TOKEN_HEADER},
+            {"fallback_token_headers": [OAUTH_ACCESS_TOKEN_FALLBACK_HEADER]},
+        ],
+    )
+    def test_value_matching_current_behaviour_is_accepted_with_a_warning(self, caplog, kwargs):
+        """GIVEN the old default THEN it loads and warns rather than breaking the agent."""
+        with caplog.at_level(logging.WARNING):
+            OAuth2CrossApplicationAccessAuthProviderConfig(**kwargs)
+        field = next(iter(kwargs))
+        assert field in caplog.text
+        assert "deprecated" in caplog.text
+
+    def test_no_warning_when_neither_field_is_set(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            OAuth2CrossApplicationAccessAuthProviderConfig()
+        assert "deprecated" not in caplog.text
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"okta_token_header": "x-my-own-header"},
+            {"fallback_token_headers": []},
+            {"fallback_token_headers": ["x-my-own-header"]},
+        ],
+    )
+    def test_divergent_value_is_rejected(self, kwargs):
+        """GIVEN a value the agent no longer honours THEN startup fails with what to do.
+
+        Fails closed: reading an uninspected header would exchange a token audience
+        validation never checked. `[]` is in here because it used to disable the fallback.
         """
-        with pytest.raises(ValidationError, match="fallback_token_headers"):
-            OAuth2CrossApplicationAccessAuthProviderConfig(
-                fallback_token_headers=["x-my-own-header"]  # type: ignore[call-arg]
+        field = next(iter(kwargs))
+        with pytest.raises(ValidationError, match="no longer configurable"):
+            OAuth2CrossApplicationAccessAuthProviderConfig(**kwargs)
+        with pytest.raises(ValidationError, match=field):
+            OAuth2CrossApplicationAccessAuthProviderConfig(**kwargs)
+
+    async def test_accepted_override_does_not_change_extraction(self):
+        """GIVEN the accepted override THEN the carrier set is still the fixed one.
+
+        The invariant test: fails if anyone wires the field back into extraction without
+        teaching audience validation about it.
+        """
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(
+                okta_token_header=OAUTH_ACCESS_TOKEN_HEADER
             )
+        )
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {"x-my-own-header": "tok"}
+            with pytest.raises(RuntimeError, match="No IdP access token"):
+                await provider.authenticate_for_discovery()
+
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {OAUTH_ACCESS_TOKEN_HEADER: "tok"}
+            headers = await provider.authenticate_for_discovery()
+        assert headers == {"Authorization": "Bearer tok"}
+
+    async def test_runtime_error_names_the_ignored_override(self):
+        """GIVEN an override is configured THEN the runtime error says it was ignored.
+
+        Otherwise an operator sees their own header in workflow.yaml and concludes the
+        library is broken.
+        """
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(
+                okta_token_header=OAUTH_ACCESS_TOKEN_HEADER
+            )
+        )
+        with patch(f"{_MODULE}.Context") as mock_ctx:
+            mock_ctx.get.return_value.metadata.headers = {}
+            with pytest.raises(RuntimeError, match="okta_token_header override"):
+                await provider.authenticate_for_discovery()
 
 
 class TestPrimaryTokenHeaderIsFixed:
-    """The primary header is the gateway's choice, so it is not configurable.
-
-    Overriding the former ``okta_token_header`` could only break the agent or hide a token
-    from audience validation.
-    """
-
-    def test_okta_token_header_field_is_gone(self):
-        """GIVEN a workflow.yaml that still sets it THEN config fails loudly, not silently."""
-        with pytest.raises(ValidationError, match="okta_token_header"):
-            OAuth2CrossApplicationAccessAuthProviderConfig(
-                okta_token_header="x-custom-header"  # type: ignore[call-arg]
-            )
+    """The primary header is the gateway's choice, so it is not configurable."""
 
     async def test_token_is_read_from_the_shared_constant(self):
         """GIVEN a token in the shared header THEN the provider reads it.
