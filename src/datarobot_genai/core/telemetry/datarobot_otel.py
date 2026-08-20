@@ -35,6 +35,7 @@ import os
 import urllib.parse
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
 
