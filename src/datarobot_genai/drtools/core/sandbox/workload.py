@@ -83,15 +83,23 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
-# How long a container's stdout must stay byte-identical before we conclude it
-# produced no result marker. A duration, not a poll count: OTEL delivers stdout
-# line by line with lag, so back-to-back identical reads prove only that the
-# next line hasn't landed *yet*. On staging the runner's "RLIMIT_NPROC" line
-# arrived ~0.4s ahead of the marker, and two reads 0.5s apart were enough to
-# wrongly declare the run markerless. This window bounds both sides: genuine
-# crashes still report in ~5s rather than waiting out the full budget, and a
-# flush an order of magnitude slower than observed is still caught.
-_STABLE_OUTPUT_QUIET_S = 5.0
+# How long output must stay unchanged before we conclude no result marker is
+# coming. Applied asymmetrically (see _fetch_logs), because "no output at all"
+# and "some output, marker not yet flushed" are different situations:
+#
+# * EMPTY output — the container may never have started (e.g. an image pull that
+#   never recovered). Nothing is in flight, so a short window is enough.
+# * NON-EMPTY output — the container started, and the image runner prints its
+#   result marker *after* its try/except BaseException/finally
+#   (datarobot-user-models, dr_mcp_execute_sandbox_minimal/runner.py), so a
+#   marker is emitted on every path that reaches it: normal return, user
+#   exception, SystemExit, and the in-process timeout. Output therefore means a
+#   marker is still coming, and how long the OTEL collector takes to flush it is
+#   not something we can bound from here. Wait, and give up only after a long
+#   stillness — that covers the one genuine no-marker case with output, a
+#   container SIGKILLed before reaching the print.
+_STABLE_OUTPUT_EMPTY_QUIET_S = 5.0
+_STABLE_OUTPUT_NONEMPTY_QUIET_S = 30.0
 
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
 # computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
@@ -430,21 +438,28 @@ class DataRobotWorkloadSandbox:
                 break
             if time.monotonic() > deadline:
                 break
-            # No marker yet. If OTEL output has arrived and then stayed
-            # completely still for _STABLE_OUTPUT_QUIET_S, the run produced no
-            # marker (a genuine failure/crash) — stop rather than waiting out
-            # the full budget.
+            # No marker yet. Decide whether one is still coming.
             #
-            # The quiet window is what makes this safe. A partially flushed
-            # stdout looks exactly like a complete one, so "unchanged since the
-            # last read" proves nothing when reads are ~0.5s apart and the
-            # remaining lines are ~0.4s behind — that is precisely how a
-            # succeeded run got reported as "no result marker in logs".
+            # Keyed on whether the container produced ANY output, not on how
+            # long output has been still. Output means the runner is executing,
+            # and it prints the marker after its own finally — so a marker is in
+            # flight and the only question is collector latency, which we cannot
+            # bound from here. Waiting on stillness alone is what made a
+            # succeeded run report "no result marker": stdout sat unchanged at
+            # the runner's first line while the marker was still being flushed,
+            # and ERROR-level records (which route to stderr) kept arriving, so
+            # the stream was demonstrably alive while `stdout` looked frozen.
             now = time.monotonic()
             if stdout != prev_stdout:
                 prev_stdout = stdout
                 stdout_settled_at = now
-            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_QUIET_S:
+                continue_waiting = True
+            else:
+                quiet_budget = (
+                    _STABLE_OUTPUT_NONEMPTY_QUIET_S if stdout else _STABLE_OUTPUT_EMPTY_QUIET_S
+                )
+                continue_waiting = now - stdout_settled_at < quiet_budget
+            if not continue_waiting:
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)
