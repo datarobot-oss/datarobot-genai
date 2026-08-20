@@ -24,10 +24,9 @@ from setuptools import setup
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
-    # Early access, not the stable release: datarobot.core.config.LLMConfig / LLMType,
-    # which datarobot_genai.core.config now consumes instead of redefining, is still
-    # changing between stable releases. Move back to datarobot[core] once it settles.
-    "datarobot-early-access[core]>=3.19.0.2026.8.10,<4.0.0",
+    # datarobot.core.config's LLMConfig / LLMType / resolve_llm_config, which
+    # datarobot_genai.core.config consumes instead of redefining, ship in stable 3.18.0.
+    "datarobot[core]>=3.18.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
@@ -36,7 +35,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.2.47,<12.0.0",
+    "datarobot-moderations[all]>=11.3.3,<12.0.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -93,7 +92,7 @@ dragent = core + [
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot-early-access[auth]>=3.19.0.2026.8.10,<4.0.0",
+  "datarobot[auth]>=3.18.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
@@ -104,7 +103,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot-early-access[fs]>=3.19.0.2026.8.10,<4.0.0",
+    "datarobot[fs]>=3.18.0,<4.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.

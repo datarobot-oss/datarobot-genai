@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from unittest.mock import patch
 
 import pytest
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
 from datarobot_genai.core import config as config_mod
 from datarobot_genai.core.config import DEFAULT_MAX_HISTORY_MESSAGES
@@ -437,8 +439,36 @@ def test_registered_default_instance_name_is_used_when_resolving(
     instance's namespace, which the bare legacy fallback then targets.
     """
     monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
-    register_config_provider(lambda: _config_fields_set(set()), default_llm_name="myagent")
+
+    # A real app registering "myagent" declares that instance's fields, the way the
+    # rendered template does. The bridge keys off those declarations to decide the
+    # name is an LLM namespace at all, so the stand-in has to carry them.
+    class MyAgentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        myagent_deployment_id: str | None = None
+        myagent_default_model: str = "datarobot/azure/gpt-5-mini-2025-08-07"
+
+    register_config_provider(MyAgentConfig, default_llm_name="myagent")
     assert registered_default_llm_name() == "myagent"
     with pytest.warns(Warning):
         result = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     assert result.llm_nim_deployment_id == "legacy-nim"
+
+
+def test_legacy_fallback_skipped_when_name_is_not_an_llm_namespace(
+    clear_legacy_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A registered default name that declares no LLM fields is left alone.
+
+    Without this the bridge would invent ``{name}_nim_deployment_id`` on any config
+    whose default name happens not to describe an LLM.
+    """
+    monkeypatch.setenv("MLOPS_RUNTIME_PARAM_NIM_DEPLOYMENT_ID", "legacy-nim")
+
+    class NoLLMConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        agent_port: int = 8842
+
+    register_config_provider(NoLLMConfig, default_llm_name="agent")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any deprecation warning here is a failure
+        config = resolve_config()
+    assert not hasattr(config, "agent_nim_deployment_id")

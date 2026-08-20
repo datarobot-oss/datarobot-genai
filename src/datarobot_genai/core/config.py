@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any
 from typing import cast
@@ -22,6 +23,7 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import deployment_url
+from datarobot.core.config import getenv
 from datarobot.core.config import llm_gateway_url
 from pydantic import Field
 
@@ -157,6 +159,54 @@ def _validate_global_config(config: object) -> None:
         )
 
 
+def apply_legacy_llm_params(config: Config, name: str) -> None:
+    """Pre-rename parameter shim logic until datarobot>=3.19 ships.
+
+    !!! REMOVE WHEN datarobot>=3.19 SHIPS !!!
+
+    Fill ``{name}_*`` fields from the pre-rename bare names, warning when used.
+
+    Only fields the config did not set explicitly are touched, so a namespaced value
+    always wins over a legacy one. Touches at most the two fields below, on the single
+    default instance, and nothing at all when ``name`` is not an LLM namespace.
+    """
+    declared = type(config).model_fields
+
+    if not any(
+        f"{name}_{marker}" in declared
+        for marker in ("deployment_id", "default_model", "nim_deployment_id")
+    ):
+        return
+
+    legacy_llm_params: dict[str, tuple[str, bool]] = {
+        # namespaced suffix -> (pre-rename bare name, needs bool coercion)
+        "nim_deployment_id": ("NIM_DEPLOYMENT_ID", False),
+        "use_datarobot_llm_gateway": ("USE_DATAROBOT_LLM_GATEWAY", True),
+    }
+
+    for suffix, (legacy_name, is_bool) in legacy_llm_params.items():
+        field = f"{name}_{suffix}"
+        if field in config.model_fields_set:
+            continue
+        raw = getenv(legacy_name)
+        if raw is None:
+            continue
+        value: object = raw
+        if is_bool and not isinstance(raw, bool):
+            value = str(raw).strip().lower() in {"1", "true", "yes", "on"}
+        warnings.warn(
+            f"{legacy_name} is deprecated and will stop being read in a future release. "
+            f"Rename it to {field.upper()}.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        # Bypasses pydantic validation on purpose: `field` is often not declared on
+        # this class at all (the old template had no per-instance NIM field), and a
+        # plain setattr rejects a name that is not a model field.
+        object.__setattr__(config, field, value)
+        config.model_fields_set.add(field)
+
+
 def resolve_config() -> Config:
     """Return the single GLOBAL application config.
 
@@ -174,8 +224,12 @@ def resolve_config() -> Config:
             # provided is a DataRobotAppFrameworkBaseSettings subclass (validated
             # above); genai resolves everything off it through its resolve_* methods.
             # Cast to Config for typing since genai cannot import the app's class.
-            return cast(Config, provided)
-    return Config()
+            app_config = cast(Config, provided)
+            apply_legacy_llm_params(app_config, registered_default_llm_name())
+            return app_config
+    config = Config()
+    apply_legacy_llm_params(config, registered_default_llm_name())
+    return config
 
 
 def registered_default_llm_name() -> str:
