@@ -25,6 +25,7 @@ Key options:
 | `--config_file` | Path to the workflow YAML config. Falls back to `DRAGENT_CONFIG_FILE` env var. |
 | `--port` | Port to bind the server to. Falls back to `AGENT_PORT` env var. |
 | `--reload` | Enable auto-reload for development (`true`/`false`). |
+| `--use_gunicorn` | Serve under gunicorn (used in DataRobot deployments). Worker timeout defaults to 600s; override with the `AGENT_GUNICORN_WORKER_TIMEOUT` env var / runtime parameter. |
 | `--a2a` | Expose the agent via the Agent2Agent protocol (endpoints mounted under `/a2a/`). |
 | `--override` | Override config values using dot notation (e.g., `--override llms.nim_llm.temperature 0.7`). |
 

@@ -11,11 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
+from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
 
+from datarobot_genai.drmcp.test_utils.mcp_utils_integration import aclose_shared_stdio_sessions
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_NO_VARS
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_NO_VARS_TEXT
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERSION_WITH_VARS
@@ -23,9 +27,35 @@ from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_VERS
 from datarobot_genai.drmcp.test_utils.stubs.prompt_stubs import STUB_PROMPT_WITHOUT_VERSION
 from tests.drmcp.integration.helper import get_or_create_prompt_template
 from tests.drmcp.integration.helper import get_or_create_prompt_template_version
+from tests.drmcp.stub_credentials import configure_integration_stub_credentials
 
-# Integration tests must not pick up DATAROBOT_* from .env; acceptance tests load .env
+# Integration tests must not pick up DATAROBOT_* from .env; acceptance tests load .env.
+# Configure stub credentials at import time so session fixtures (e.g. dr_client) and
+# per-module fixtures (e.g. datarobot_endpoint) never cache an empty singleton first.
 os.environ["MCP_USE_CLIENT_STUBS"] = "true"
+configure_integration_stub_credentials()
+
+_INTEGRATION_DIR = Path(__file__).parent
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # Run every integration test on one session-scoped event loop so the shared MCP
+    # stdio sessions (one server subprocess per env configuration, see
+    # mcp_utils_integration) stay usable across tests. Prepended (append=False) so it
+    # wins over module/class-level asyncio markers as the closest marker.
+    session_loop_marker = pytest.mark.asyncio(loop_scope="session")
+    for item in items:
+        if not inspect.iscoroutinefunction(getattr(item, "function", None)):
+            continue
+        if _INTEGRATION_DIR not in item.path.parents:
+            continue
+        item.add_marker(session_loop_marker, append=False)
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def _close_shared_mcp_sessions() -> Any:
+    yield
+    await aclose_shared_stdio_sessions()
 
 
 @pytest.fixture(scope="session")

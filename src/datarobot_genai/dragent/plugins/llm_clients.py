@@ -57,11 +57,10 @@ EXCLUDE_FIELDS = {
     "type",
     "thinking",
     "reasoning",
-    "headers",
     "api_type",
     "llm_deployment_id",
-    "nim_deployment_id",
-    "use_datarobot_llm_gateway",
+    "llm_nim_deployment_id",
+    "llm_use_datarobot_llm_gateway",
     # Fields inherited from LLMConfig that are not framework-level LLM kwargs:
     "datarobot_api_token",
     "datarobot_endpoint",
@@ -156,11 +155,7 @@ async def datarobot_llm_deployment_langchain(
 
     config = prepare_llm_parameters(llm_config)
 
-    context_headers = extract_headers_from_context(["X-DataRobot-Identity-Token"])
-    if llm_config.headers:
-        context_headers = {**context_headers, **llm_config.headers}
-
-    config["extra_headers"] = context_headers
+    config["extra_headers"] = extract_headers_from_context(["X-DataRobot-Identity-Token"])
 
     client = get_datarobot_deployment_llm(
         llm_config.llm_deployment_id, llm_config.model_name, parameters=config
@@ -182,7 +177,7 @@ async def datarobot_nim_langchain(
 
     config = prepare_llm_parameters(llm_config)
     client = get_datarobot_nim_llm(
-        llm_config.nim_deployment_id, llm_config.model_name, parameters=config
+        llm_config.llm_nim_deployment_id, llm_config.model_name, parameters=config
     )
     yield langchain_patch_llm_based_on_config(client, config)
 
@@ -208,15 +203,18 @@ async def datarobot_llm_component_langchain(
     if llm_type == LLMType.GATEWAY:
         client = get_datarobot_gateway_llm(llm_config.model_name, config)
     elif llm_type == LLMType.DEPLOYMENT:
-        if llm_config.headers:
-            config["extra_headers"] = llm_config.headers
+        config["extra_headers"] = extract_headers_from_context(["X-DataRobot-Identity-Token"])
         client = get_datarobot_deployment_llm(
             llm_config.llm_deployment_id,  # type: ignore[arg-type]
             llm_config.model_name,
             config,
         )
     elif llm_type == LLMType.NIM:
-        client = get_datarobot_nim_llm(llm_config.nim_deployment_id, llm_config.model_name, config)  # type: ignore[arg-type]
+        client = get_datarobot_nim_llm(
+            llm_config.llm_nim_deployment_id,  # type: ignore[arg-type]
+            llm_config.model_name,
+            config,
+        )
     elif llm_type == LLMType.EXTERNAL:
         client = get_external_llm(llm_config.model_name, config)
     else:

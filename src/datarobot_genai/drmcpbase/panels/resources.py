@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from datarobot_genai.drmcputils.files.store import DataRobotFilesBlobStore
+from datarobot_genai.drmcputils.panels.access import _get_store
 from datarobot_genai.drmcputils.panels.access import _require_mcp_sandbox
 from datarobot_genai.drmcputils.panels.models import Json
 from datarobot_genai.drmcputils.panels.models import Text
@@ -40,7 +40,9 @@ from datarobot_genai.drmcputils.panels.store import PanelStore
 
 
 def _store() -> PanelStore:
-    return PanelStore(DataRobotFilesBlobStore())
+    # Shared factory: conversation-scoped when the request carries the
+    # x-datarobot-conversation-id header, unscoped otherwise.
+    return _get_store()
 
 
 async def panels_list_resource(source: str) -> str:
@@ -57,13 +59,13 @@ async def panels_list_resource(source: str) -> str:
 
 async def panel_metadata_resource(source: str, panel_id: str) -> str:
     _require_mcp_sandbox()
-    panel = await _store().get(panel_id)
+    panel = await _store().get(panel_id, source=source)
     return panel.model_dump_json()
 
 
 async def panel_content_resource(source: str, panel_id: str) -> str:
     _require_mcp_sandbox()
-    panel = await _store().get(panel_id)
+    panel = await _store().get(panel_id, source=source)
     if isinstance(panel, Text):
         return json.dumps({"type": "text", "text": panel.text})
     if isinstance(panel, Json):
@@ -71,8 +73,12 @@ async def panel_content_resource(source: str, panel_id: str) -> str:
     return json.dumps(
         {
             "type": panel.type.value,
+            # payload_files_id + payload_path are exactly the Files download
+            # API's (container id, fileName) pair. payload_path is None on
+            # legacy panels, whose payload_files_id alone identifies the blob.
             "payload_files_id": panel.payload_files_id,
             "payload_name": panel.payload_name,
+            "payload_path": panel.payload_path,
         }
     )
 

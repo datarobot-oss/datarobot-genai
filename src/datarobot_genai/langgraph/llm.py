@@ -21,13 +21,14 @@ from langchain_core.messages import BaseMessage  # noqa: TC002
 from langchain_core.outputs import ChatGenerationChunk  # noqa: TC002
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
-from datarobot_genai.core.config import Config
 from datarobot_genai.core.config import LLMConfig
 from datarobot_genai.core.config import LLMType
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import default_datarobot_llm_gateway_url
 from datarobot_genai.core.config import default_deployment_url
 from datarobot_genai.core.config import default_model_name
+from datarobot_genai.core.config import registered_default_llm_name
+from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.llm_parameters import apply_reasoning_to_parameters
 
 
@@ -60,6 +61,7 @@ def _wrap_bare_text_blocks(
 def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
 
+    config.pop("assume_native_tool_calling_when_unmapped", None)
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
     else:
@@ -244,8 +246,15 @@ def get_llm(
     parameters: dict | None = None,
     streaming: bool = True,
     reasoning: bool = False,
+    config: LLMConfig | None = None,
 ) -> BaseChatModel:
-    config = Config()
+    """Build the framework LLM for a given (or the default) LLM config.
+
+    Pass ``config`` (for example ``resolve_config().resolve_llm_config(name="bob")``)
+    to build a specific configured LLM instance; omit it to build the app's default LLM.
+    """
+    if config is None:
+        config = resolve_config().resolve_llm_config(name=registered_default_llm_name())
     llm_type = config.get_llm_type()
     if llm_type == LLMType.GATEWAY:
         return get_datarobot_gateway_llm(model_name, parameters, streaming, reasoning)
@@ -259,7 +268,7 @@ def get_llm(
         )
     elif llm_type == LLMType.NIM:
         return get_datarobot_nim_llm(
-            config.nim_deployment_id,  # type: ignore[arg-type]
+            config.llm_nim_deployment_id,  # type: ignore[arg-type]
             model_name,
             parameters,
             streaming,

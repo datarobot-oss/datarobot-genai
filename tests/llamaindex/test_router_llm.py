@@ -34,8 +34,8 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
         datarobot_endpoint="https://app.datarobot.com/api/v2",
         datarobot_api_token="env-token",
         llm_deployment_id=None,
-        nim_deployment_id=None,
-        use_datarobot_llm_gateway=True,
+        llm_nim_deployment_id=None,
+        llm_use_datarobot_llm_gateway=True,
         llm_default_model=None,
     )
     monkeypatch.setattr(config_mod, "Config", lambda: env)
@@ -80,8 +80,8 @@ def _make_tool_call_chunks() -> list[Any]:
 def test_get_router_llm_returns_litellm_instance() -> None:
     from datarobot_genai.llama_index.llm import get_router_llm
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_cls:
         mock_cls.return_value = MagicMock()
@@ -100,8 +100,8 @@ def test_get_router_llm_stream_chat_yields_chunks() -> None:
     mock_router.completion.return_value = iter(chunks)
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -120,8 +120,8 @@ def test_get_router_llm_stream_chat_accumulates_tool_calls() -> None:
     mock_router.completion.return_value = iter(_make_tool_call_chunks())
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -156,8 +156,8 @@ async def test_get_router_llm_astream_chat_accumulates_tool_calls() -> None:
     mock_router.acompletion = fake_acompletion
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -192,8 +192,8 @@ async def test_get_router_llm_astream_chat_yields_chunks() -> None:
     mock_router.acompletion = fake_acompletion
 
     with patch("litellm.Router", return_value=mock_router):
-        primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-        _fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+        primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+        _fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
         llm = get_router_llm(primary, [_fb])
 
     from llama_index.core.base.llms.types import ChatMessage
@@ -201,3 +201,53 @@ async def test_get_router_llm_astream_chat_yields_chunks() -> None:
     gen = await llm._astream_chat([ChatMessage(role="user", content="hi")])
     results = [r async for r in gen]
     assert len(results) == 2
+
+
+def _echo_tool() -> Any:
+    from llama_index.core.tools import FunctionTool  # noqa: PLC0415
+
+    return FunctionTool.from_defaults(fn=lambda text: text, name="echo")
+
+
+def _gateway_cfg(model: str) -> LLMConfig:
+    return LLMConfig(llm_use_datarobot_llm_gateway=True, llm_default_model=model)
+
+
+@pytest.mark.parametrize(
+    ("primary_model", "fallback_models", "expected_stripped"),
+    [
+        ("azure/gpt-4o", ["azure/o3"], True),  # o-series fallback -> strip for the whole group
+        ("azure/o3", ["azure/gpt-4o"], True),  # o-series primary -> strip
+        ("azure/gpt-4o", ["azure/gpt-4o", "azure/o3"], True),  # o-series later fallback -> strip
+        ("azure/gpt-4o", ["azure/gpt-5"], False),  # no o-series anywhere -> keep
+    ],
+)
+def test_router_prepare_chat_with_tools_strips_parallel_for_o_series_group(
+    primary_model: str, fallback_models: list[str], expected_stripped: bool
+) -> None:
+    """parallel_tool_calls is stripped when any model in {primary, *fallbacks} is o-series."""
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        llm = get_router_llm(
+            _gateway_cfg(primary_model), [_gateway_cfg(m) for m in fallback_models]
+        )
+
+    result = llm._prepare_chat_with_tools([_echo_tool()], allow_parallel_tool_calls=True)
+    assert result["tools"]
+    assert ("parallel_tool_calls" not in result) is expected_stripped
+    if not expected_stripped:
+        assert result["parallel_tool_calls"] is True
+
+
+def test_router_prepare_chat_with_tools_strips_both_params_when_no_tools() -> None:
+    """With no tools, both tool_choice and parallel_tool_calls are stripped for any model."""
+    from datarobot_genai.llama_index.llm import get_router_llm
+
+    with patch("litellm.Router", return_value=MagicMock()):
+        llm = get_router_llm(_gateway_cfg("azure/gpt-4o"), [_gateway_cfg("azure/gpt-4o")])
+
+    result = llm._prepare_chat_with_tools([], allow_parallel_tool_calls=True)
+    assert not result.get("tools")
+    assert "parallel_tool_calls" not in result
+    assert "tool_choice" not in result

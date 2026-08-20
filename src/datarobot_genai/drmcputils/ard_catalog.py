@@ -24,8 +24,9 @@ source of truth in :mod:`datarobot_genai.drmcputils.global_mcp_tools`
 which packages to load. So ARD and registration cannot drift: enabling/disabling a package or
 excluding a tool is a one-line edit there, reflected in both. Today's enabled surface is
 predictive (catalog / modeling / deployments / predictions), use_case, perplexity, tavily,
-dr_docs, and vdb; connectors, files_api, workload, panels, hosted/dynamic categories, and the
-``dr_mcpapps`` placeholder are not registered, so they are not advertised.
+dr_docs, vdb, files_api, and workload; connectors, panels, hosted/dynamic categories, and the
+``dr_mcpapps`` placeholder are not registered, so they are not advertised. ``file_upload`` is
+excluded from files_api (needs local disk access).
 
 A cross-check test in global-mcp asserts this catalog matches ``register_all_drtools`` output,
 so a taxonomy/rename mismatch still fails CI.

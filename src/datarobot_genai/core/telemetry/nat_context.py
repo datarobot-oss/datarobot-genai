@@ -42,6 +42,64 @@ _run_parent_stacks: dict[str, list[NatSpanRef]] = {}
 # Fallback for unit tests that push/pop without a NAT workflow run id.
 _local_parent_stack: ContextVar[list[NatSpanRef]] = ContextVar("nat_local_parent_stack", default=[])
 
+_RUNNER_PATCH_STATE: dict[str, bool] = {"patched": False}
+
+
+def _reassert_request_trace_context(
+    context_state: Any, span_context: SpanContext, run_id: str | None
+) -> None:
+    """Re-pin this request's trace context after NAT's ``Runner.__aenter__`` restored the
+    build-phase snapshot: pin ``workflow_trace_id`` to the request span's trace, seed
+    ``_root_span_id`` from it (only when unset), and restore ``run_id``.
+    """
+    if span_context.is_valid:
+        context_state.workflow_trace_id.set(span_context.trace_id)
+        if context_state._root_span_id.get() is None:
+            context_state._root_span_id.set(span_context.span_id)
+    context_state.workflow_run_id.set(run_id)
+
+
+def patch_nat_runner_context_isolation() -> None:
+    """Re-pin each request's trace context across NAT's ``Runner.__aenter__``.
+
+    ``__aenter__`` restores the build-phase context snapshot every run, so on a warm
+    per-user server the first request's context (``workflow_trace_id``, the active OTel
+    span, ``run_id``) leaks into later ones and the NAT root is left parentless. Capture
+    the request span before ``__aenter__``, then re-pin ``workflow_trace_id`` and seed
+    ``_root_span_id`` from it after. Idempotent.
+    """
+    if _RUNNER_PATCH_STATE["patched"]:
+        return
+    try:
+        from nat.runtime.runner import Runner
+    except Exception:
+        logger.debug(
+            "nat.runtime.runner unavailable; skipping context-isolation patch", exc_info=True
+        )
+        return
+
+    original_aenter = Runner.__aenter__
+
+    async def _aenter_preserving_request_context(self: Any) -> Any:
+        # Telemetry only: never let this break the workflow run. Capture the request
+        # span before the build-phase snapshot is restored over it.
+        try:
+            span = trace.get_current_span().get_span_context()
+            run_id = self._context_state.workflow_run_id.get()
+        except Exception:
+            logger.debug("NAT trace-context capture failed", exc_info=True)
+            return await original_aenter(self)
+        result = await original_aenter(self)
+        try:
+            _reassert_request_trace_context(self._context_state, span, run_id)
+        except Exception:
+            logger.debug("NAT trace-context restore failed", exc_info=True)
+        return result
+
+    Runner.__aenter__ = _aenter_preserving_request_context  # type: ignore[method-assign]
+    _RUNNER_PATCH_STATE["patched"] = True
+    logger.debug("Patched nat Runner.__aenter__ for per-request trace-context isolation")
+
 
 def _workflow_run_id_from_nat() -> str | None:
     try:

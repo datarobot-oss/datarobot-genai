@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.error import URLError
+from urllib.request import Request
 
 import pytest
 import yaml
@@ -58,6 +59,31 @@ def test_health_check_returns_error_on_unexpected_exception() -> None:
     with patch("datarobot_genai.eval.validation.urlopen", side_effect=OSError("timeout")):
         result = health_check("http://localhost:8842/v1")
     assert result is not None
+
+
+def test_health_check_probes_health_route_with_path_stripped() -> None:
+    # /health is probed against host:port (the /v1 path is dropped) so the
+    # agent logs a clean 200 instead of a 404 on the bare base URL.
+    with patch("datarobot_genai.eval.validation.urlopen") as mock_urlopen:
+        assert health_check("http://localhost:8842/v1") is None
+    assert mock_urlopen.call_count == 1
+    assert mock_urlopen.call_args.args[0].full_url == "http://localhost:8842/health"
+
+
+def test_health_check_falls_back_to_base_when_no_health_route() -> None:
+    # Endpoints without a /health route (e.g. some deployed endpoints) 404 on
+    # the probe; fall back to pinging the literal endpoint.
+    requested: list[str] = []
+
+    def fake_urlopen(req: Request, *args: object, **kwargs: object) -> MagicMock:
+        requested.append(req.full_url)
+        if req.full_url.endswith("/health"):
+            raise HTTPError(req.full_url, 404, "Not Found", {}, None)  # type: ignore[arg-type]
+        return MagicMock()
+
+    with patch("datarobot_genai.eval.validation.urlopen", side_effect=fake_urlopen):
+        assert health_check("http://localhost:8842/v1") is None
+    assert requested == ["http://localhost:8842/health", "http://localhost:8842/v1"]
 
 
 # ---------------------------------------------------------------------------

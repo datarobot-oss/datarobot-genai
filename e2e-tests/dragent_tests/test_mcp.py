@@ -28,8 +28,12 @@ from dragent_tests.helpers import stream_sse_responses
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
 
-if not os.environ.get("MCP_DEPLOYMENT_ID"):
-    pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)
+if not (os.environ.get("MCP_DEPLOYMENT_ID") or os.environ.get("MCP_WORKLOAD_ID")):
+    pytest.skip(
+        "Neither MCP_DEPLOYMENT_ID nor MCP_WORKLOAD_ID is set; "
+        "skipping MCP tool call tests",
+        allow_module_level=True,
+    )
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping MCP tests", allow_module_level=True)
 
@@ -43,6 +47,16 @@ EXPECTED_TOOL_CALL_NAMES = {
     "search_datarobot_agentic_docs",
     "mcp_tools__search_datarobot_agentic_docs"
 }
+
+# The MCP client holds a single persistent streamable-http session, opened at
+# workflow build time in ``datarobot_mcp_client`` (``async with client``). Its
+# transport POSTs to the MCP server are therefore emitted from that build-time
+# context and root their own trace instead of joining the per-request workflow
+# trace (the NAT ``mcp_tools__*`` tool span itself still joins). A shared
+# persistent connection's I/O cannot be attributed to a single request, so we
+# exclude it from the single-trace check. Matches ``SETUP_HTTP_SPAN_URLS`` in
+# otel_helpers, which already lists this same fragment.
+MCP_TRANSPORT_SPAN_URLS = ("/directAccess/mcp",)
 
 def test_mcp_tool_is_called(
     http_client: httpx.Client, otel_collector: MockOtelCollector
@@ -91,4 +105,5 @@ def test_mcp_tool_is_called(
         MCP_TOOL_PROMPT,
         expect_tool_name=AGENT_SUPPORTS_TOOL_CALLS_STREAMING,
         framework=AGENT,
+        ignore_span_urls=MCP_TRANSPORT_SPAN_URLS,
     )

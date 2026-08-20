@@ -134,19 +134,39 @@ class TestResolveSettings:
         assert token == "tok"
         assert endpoint == "https://ep"
 
+    def test_token_comes_from_the_global_app_config(self):
+        # The token is resolved off the global config (so a registered app config
+        # supplies it), while the endpoint stays a local env-only setting.
+        mock_settings = MagicMock(spec=DataRobotRegistrySettings)
+        mock_settings.datarobot_endpoint = "https://ep"
+        with (
+            patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings),
+            patch(f"{_MODULE}.resolve_config") as mock_resolve,
+        ):
+            mock_resolve.return_value.resolve_datarobot_api_token.return_value = "app-tok"
+            token, endpoint = _resolve_settings()
+        assert token == "app-tok"
+        assert endpoint == "https://ep"
+
     def test_raises_when_no_token(self):
         mock_settings = MagicMock(spec=DataRobotRegistrySettings)
-        mock_settings.datarobot_api_token = None
         mock_settings.datarobot_endpoint = None
-        with patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings):
+        with (
+            patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings),
+            patch(f"{_MODULE}.resolve_config") as mock_resolve,
+        ):
+            mock_resolve.return_value.resolve_datarobot_api_token.return_value = None
             with pytest.raises(AgentCardRegistryError, match="API token is required"):
                 _resolve_settings()
 
     def test_raises_when_no_endpoint(self):
         mock_settings = MagicMock(spec=DataRobotRegistrySettings)
-        mock_settings.datarobot_api_token = "tok"
         mock_settings.datarobot_endpoint = None
-        with patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings):
+        with (
+            patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings),
+            patch(f"{_MODULE}.resolve_config") as mock_resolve,
+        ):
+            mock_resolve.return_value.resolve_datarobot_api_token.return_value = "tok"
             with pytest.raises(AgentCardRegistryError, match="API endpoint is required"):
                 _resolve_settings()
 

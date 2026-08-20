@@ -29,10 +29,14 @@ from starlette.middleware import Middleware
 
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
+from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
+from datarobot_genai.drmcpbase.oauth_scopes import probe_verification_keys
 from datarobot_genai.drmcpbase.panels import register_panel_resources
 from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
 
 from .clients import RequestHeadersMiddleware
 from .config import get_config
@@ -43,6 +47,7 @@ from .dynamic_prompts.register import register_prompts_from_datarobot_prompt_man
 from .dynamic_tools.deployment.register import register_tools_of_datarobot_deployments
 from .logging import MCPLogging
 from .mcp_instance import mcp
+from .oauth_metadata import build_protected_resource_metadata_config
 from .routes import register_routes
 from .routes_utils import prefix_mount_path
 from .server_life_cycle import BaseServerLifecycle
@@ -182,6 +187,15 @@ class DataRobotMCPServer:
         # Register HTTP routes if using streamable-http transport
         if transport == "streamable-http":
             register_routes(self._mcp)
+            # Building the published OAuth metadata is what validates it, so
+            # build it once now: an incomplete Cross-Application Access block
+            # becomes a startup warning naming the missing variables, rather
+            # than a surprise on the first discovery request. The deployment
+            # tooling rejects a partial set outright before it ever ships;
+            # this covers containers configured by hand. Deliberately not a
+            # hard failure — the block is optional metadata, and refusing to
+            # start would turn a typo in it into a full outage.
+            build_protected_resource_metadata_config()
 
     def _configure_mcp_capabilities(self) -> None:
         """Configure MCP capabilities that FastMCP doesn't expose directly.
@@ -264,6 +278,21 @@ class DataRobotMCPServer:
             for resource in resources:
                 self._logger.info(f" > {resource.name}")
 
+            # Wire OAuth scope requirements last, once every component exists:
+            # the dynamic ones registered above, plus anything pre_server_start
+            # added. Wiring earlier leaves later components unguarded while
+            # looking configured. It also has to follow the listing above — the
+            # public listers apply the very auth checks being wired, and with no
+            # request (hence no token) an enforcing server would log its own
+            # startup inventory as empty.
+            asyncio.run(wire_scopes(self._mcp))
+
+            # Probe the JWKS once, here rather than inside wire_scopes: wiring
+            # re-runs on every dynamic registration and must stay network-free,
+            # while an unreachable IdP should be a line in the boot log instead
+            # of a server that silently serves nothing to anyone.
+            asyncio.run(probe_verification_keys())
+
             # Create event loop for async operations
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -288,6 +317,20 @@ class DataRobotMCPServer:
                         self._mcp.run_http_async(
                             transport="http",
                             middleware=[
+                                # Serve the MCP mount and every shared REST route with
+                                # or without a trailing slash — a 307 would carry a
+                                # container-local Location that breaks behind the
+                                # directAccess gateway. It reads the registered
+                                # spellings off this app's own router, so it needs no
+                                # configuring and follows a URL_PREFIX mount for free.
+                                # First, so the header middleware's MCP-path skip sees
+                                # the normalized path.
+                                Middleware(TrailingSlashNormalizer),
+                                # Rejects unauthorized calls to the MCP endpoint and every
+                                # other route under routes.py (health check and .well-known
+                                # discovery excepted) before any other middleware does
+                                # request/OTel setup work for them.
+                                Middleware(GeneralOAuthClaimValidationMiddleware),
                                 # Request headers in context for REST routes only (skips MCP path).
                                 Middleware(RequestHeadersMiddleware),
                                 Middleware(OtelASGIMiddleware),

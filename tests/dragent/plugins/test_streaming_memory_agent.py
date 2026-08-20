@@ -25,6 +25,7 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import SystemMessage as AgUiSystemMessage
 from ag_ui.core import UserMessage as AgUiUserMessage
 from ag_ui.core.events import EventType
+from ag_ui.core.events import RunErrorEvent
 from ag_ui.core.events import TextMessageContentEvent
 from nat.data_models.agent import AgentBaseConfig
 from nat.data_models.component_ref import FunctionRef
@@ -327,11 +328,26 @@ class TestStreamingMemoryAgentFactory:
 
     async def test_yields_function_info_with_single_fn(self, context_user_id):
         # stream_to_single_fn is wired so `nat dragent run` (and other
-        # non-streaming callers) can collapse the event stream to text.
+        # non-streaming callers) can collapse the event stream.
         config = _make_config()
         builder = _make_builder(memory_editor=AsyncMock())
         async with streaming_memory_agent(config, builder) as fn_info:
             assert fn_info.single_fn is not None
+
+    async def test_single_fn_aggregates_to_dragent_event_response(self, context_user_id):
+        # Non-streaming callers get an aggregated DRAgentEventResponse (not str), so
+        # moderation and the frontend converters keep operating on the canonical type.
+        config = _make_config(memory_name="mem0")
+        chunks = [_chunk("Hel"), _chunk("lo")]
+        builder = _make_builder(
+            memory_editor=UnconfiguredMemoryEditor(),
+            inner_agent_chunks=chunks,
+        )
+        async with streaming_memory_agent(config, builder) as fn_info:
+            result = await fn_info.single_fn(_input(_user("hi")))
+
+        assert isinstance(result, DRAgentEventResponse)
+        assert _content_deltas([result]) == ["Hel", "lo"]
 
     async def test_fetches_memory_client_and_inner_agent(self, context_user_id):
         config = _make_config(memory_name="mem0")
@@ -513,6 +529,30 @@ class TestStreamFnSavesUserMessage:
 
         assert out  # streaming still happened
         assert any("memory.add_items(user) failed" in rec.message for rec in caplog.records)
+
+    async def test_saves_partial_assistant_text_when_run_errors(self, context_user_id):
+        # Inner agent streams partial text, then frames a mid-run failure as a terminal RUN_ERROR.
+        config = _make_config(memory_name="mem0", save_user_messages_to_memory=False)
+        memory_editor = AsyncMock()
+        memory_editor.search.return_value = []
+        chunks = [
+            _chunk("partial answer"),
+            DRAgentEventResponse(events=[RunErrorEvent(message="boom", code="RUN_ERROR")]),
+        ]
+        builder = _make_builder(memory_editor=memory_editor, inner_agent_chunks=chunks)
+
+        async with streaming_memory_agent(config, builder) as fn_info:
+            # Must not raise even though the aggregated events carry a terminal RUN_ERROR.
+            out = await _drain(fn_info.stream_fn(_input(_user("hi"))))
+
+        assert out  # the stream (including the RUN_ERROR) still passed through
+        # Partial assistant text is still persisted: extraction must not raise on RUN_ERROR.
+        assistant_saves = [
+            call.args[0][0].conversation
+            for call in memory_editor.add_items.await_args_list
+            if call.args[0][0].conversation[0]["role"] == "assistant"
+        ]
+        assert assistant_saves == [[{"role": "assistant", "content": "partial answer"}]]
 
 
 class TestStreamFnRetrievesMemory:

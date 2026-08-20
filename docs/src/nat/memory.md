@@ -49,10 +49,20 @@ memory:
 ## Wrap an agent with automatic memory
 
 ```yaml
+middleware:
+  datarobot_dragent_normalization:
+    _type: datarobot_dragent_normalization
+
 functions:
   nat_agent:
     _type: per_user_tool_calling_agent
     llm_name: datarobot_llm
+    # Required for inner agents: NAT middleware is per-function and opt-in — it is
+    # NOT inherited from the parent workflow. The memory wrapper calls the inner
+    # agent's stream directly, so the normalization middleware must be declared here
+    # for the inner agent to yield DRAgentEventResponse.
+    middleware:
+      - datarobot_dragent_normalization
     tool_names:
       - planner
       - writer
@@ -64,6 +74,13 @@ workflow:
   llm_name: datarobot_llm
   description: "Agent with automatic memory capture and retrieval."
 ```
+
+`per_user_tool_calling_agent` emits native NAT output (a `str` for single responses and
+`ChatResponseChunk` for streaming). The `datarobot_dragent_normalization` middleware converts
+that into DRAgent's canonical `DRAgentEventResponse`. When a `per_user_tool_calling_agent` is the
+top-level workflow (not wrapped by a memory agent), declare the middleware in the `workflow:`
+block instead — as the last (innermost) entry so it runs before any moderation or telemetry
+middleware.
 
 NAT supplies the runtime `user_id` to the memory backend from the session user manager, `X-User-ID` header, or its local fallback. The provider forwards that `user_id` into Mem0 v2 search filters so memories remain isolated per user.
 

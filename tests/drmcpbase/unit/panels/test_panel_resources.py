@@ -79,6 +79,21 @@ async def test_panel_content_resource_dataset_is_reference(panel_resources: Pane
     assert out["payload_files_id"] == panel.payload_files_id
 
 
+def test_store_factory_scopes_to_the_conversation_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN a request carrying the conversation header
+    from datarobot_genai.drmcputils.panels import access as access_mod
+
+    monkeypatch.setattr(
+        access_mod,
+        "get_request_headers",
+        lambda: {"x-datarobot-conversation-id": "conv-xyz"},
+    )
+    # THEN the resource store factory yields a conversation-scoped store
+    assert res_mod._store().conversation_id == "conv_xyz"
+
+
 def test_register_panel_resources_registers_expected_uris() -> None:
     """register_panel_resources wires every handler onto the passed instance.
 

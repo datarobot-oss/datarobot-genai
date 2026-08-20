@@ -13,5 +13,11 @@
 # limitations under the License.
 
 from datarobot_genai.drmcpbase.fastmcp_transforms.transform import register_mcp_catalog_transform
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import register_toolsets_allowlist_expander
+from datarobot_genai.drmcpbase.fastmcp_transforms.utils import unfiltered_catalog_provider
 
-__all__ = ["register_mcp_catalog_transform"]
+__all__ = [
+    "register_mcp_catalog_transform",
+    "register_toolsets_allowlist_expander",
+    "unfiltered_catalog_provider",
+]

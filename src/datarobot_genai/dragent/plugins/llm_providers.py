@@ -26,6 +26,7 @@ from pydantic import Field
 
 from datarobot_genai.core.config import DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM
 from datarobot_genai.core.config import LLMConfig
+from datarobot_genai.core.config import default_assume_native_tool_calling_when_unmapped
 from datarobot_genai.core.config import default_llm_deployment_id
 from datarobot_genai.core.config import default_nim_deployment_id
 from datarobot_genai.core.config import default_use_datarobot_llm_gateway
@@ -57,7 +58,7 @@ class DataRobotLLMComponentModelConfig(
         ),
         default=None,
     )
-    use_datarobot_llm_gateway: bool = Field(
+    llm_use_datarobot_llm_gateway: bool = Field(
         default_factory=default_use_datarobot_llm_gateway,
         description="Whether to use the DataRobot LLM gateway.",
     )
@@ -65,13 +66,17 @@ class DataRobotLLMComponentModelConfig(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
-    nim_deployment_id: str | None = Field(
+    llm_nim_deployment_id: str | None = Field(
         description="The NIM deployment ID.",
         default_factory=default_nim_deployment_id,
     )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
+    assume_native_tool_calling_when_unmapped: bool = Field(
+        default_factory=default_assume_native_tool_calling_when_unmapped,
+        description=(
+            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
+            "still report native tool-calling support so CrewAI uses API tool_calls "
+            "instead of the ReAct text path."
+        ),
     )
 
 
@@ -114,10 +119,6 @@ class DataRobotLLMDeploymentModelConfig(
         description="The LLM deployment ID.",
         default_factory=default_llm_deployment_id,
     )
-    headers: dict[str, str] | None = Field(
-        description="Additional headers send to LLM deployment.",
-        default=None,
-    )
 
 
 @register_llm_provider(config_type=DataRobotLLMDeploymentModelConfig)
@@ -138,9 +139,17 @@ class DataRobotNIMModelConfig(DataRobotReasoningMixin, NIMModelConfig, name="dat
         description="The model name to pass through to the NIM deployment.",
         default=None,
     )
-    nim_deployment_id: str = Field(
+    llm_nim_deployment_id: str = Field(
         description="The LLM deployment ID.",
         default_factory=default_nim_deployment_id,
+    )
+    assume_native_tool_calling_when_unmapped: bool = Field(
+        default_factory=default_assume_native_tool_calling_when_unmapped,
+        description=(
+            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
+            "still report native tool-calling support so CrewAI uses API tool_calls "
+            "instead of the ReAct text path."
+        ),
     )
 
 
@@ -178,10 +187,10 @@ class DataRobotLLMRouterConfig(OpenAIModelConfig, name="datarobot-llm-router"): 
           _type: datarobot-llm-router
           primary:
             llm_deployment_id: "abc123"
-            use_datarobot_llm_gateway: false
+            llm_use_datarobot_llm_gateway: false
           fallbacks:
             - llm_deployment_id: "def456"
-              use_datarobot_llm_gateway: false
+              llm_use_datarobot_llm_gateway: false
           num_retries: 3
     """
 

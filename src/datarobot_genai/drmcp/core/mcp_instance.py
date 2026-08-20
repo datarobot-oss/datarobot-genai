@@ -25,6 +25,7 @@ from typing import TypeVar
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError
 from fastmcp.prompts.prompt import Prompt
+from fastmcp.server.auth import AuthCheck
 from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool
 from mcp.types import Annotations as MCPAnnotationsType
@@ -263,6 +264,11 @@ class ToolKwargs(TypedDict, total=False):
     annotations: Any | None
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
+    # Forwarded to mcp.tool() unchanged. Pair with
+    # `datarobot_genai.drmcp.core.oauth_scopes.require_scopes` to require OAuth
+    # scopes on a tool; FastMCP's own require_scopes hides the tool from every
+    # caller when no auth provider is configured, which is the deployed shape.
+    auth: AuthCheck | list[AuthCheck] | None
 
 
 @dataclass

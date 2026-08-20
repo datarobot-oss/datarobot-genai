@@ -1,0 +1,40 @@
+---
+# Copyright 2026 DataRobot, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Shared NAT eval config for e2e tests. NAT runs the workflow on each dataset
+# question, then scores the generated response with the configured evaluators.
+functions:
+  judge:
+    _type: chat_completion
+    llm_name: datarobot_llm
+    description: Judge LLM for DataRobot moderation evaluators.
+
+llms:
+  datarobot_llm:
+    _type: datarobot-llm-component
+    temperature: 0
+
+workflow:
+  _type: chat_completion
+  llm_name: datarobot_llm
+  description: Minimal workflow placeholder for nat eval e2e.
+
+eval:
+  general:
+    max_concurrency: 1
+    output:
+      # Default for manual ``nat eval`` runs; e2e overrides via --override to pytest tmp_path.
+      dir: ./.tmp/nat-eval-e2e
+      cleanup: true

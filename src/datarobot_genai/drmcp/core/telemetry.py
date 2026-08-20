@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from collections.abc import Iterator
 from collections.abc import Mapping
@@ -44,7 +45,7 @@ from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 from opentelemetry.trace import SpanKind
@@ -57,6 +58,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from datarobot_genai.drmcpbase.datarobot_otel_metrics import bootstrap_metrics_provider
+from datarobot_genai.drmcpbase.tool_metrics import record_tool_call
 from datarobot_genai.drmcputils.credentials import get_credentials
 
 from .config import get_config
@@ -127,15 +129,18 @@ class OpenTelemetryMiddleware(Middleware):
                     "mcp.method.name": "tools/call",
                 }
             )
+            started = time.perf_counter()
             try:
                 result = await call_next(context)
                 span.set_status(Status(StatusCode.OK))
+                record_tool_call(tool_name, time.perf_counter() - started, None)
                 return result
 
             except Exception as e:
                 span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
+                record_tool_call(tool_name, time.perf_counter() - started, e)
                 raise
 
 
@@ -186,9 +191,9 @@ def _setup_otel_env_variables() -> None:
 
 
 def _setup_otel_exporter() -> None:
-    """Set up OpenTelemetry exporter with SimpleSpanProcessor."""
+    """Set up OpenTelemetry exporter with BatchSpanProcessor."""
     otlp_exporter = OTLPSpanExporter()
-    span_processor = SimpleSpanProcessor(otlp_exporter)
+    span_processor = BatchSpanProcessor(otlp_exporter)
     provider = trace.get_tracer_provider()
     # mypy: TracerProvider has add_span_processor at runtime; typing may lag
     if hasattr(provider, "add_span_processor"):

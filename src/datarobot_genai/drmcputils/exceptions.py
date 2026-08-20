@@ -14,6 +14,7 @@
 
 """Custom exceptions for DataRobot tools."""
 
+import re
 from enum import StrEnum
 
 
@@ -30,6 +31,27 @@ class ToolErrorKind(StrEnum):
     NOT_FOUND = "not_found"
     UPSTREAM = "upstream"
     INTERNAL = "internal"
+
+
+# The "[kind] message" prefix log_execution puts on client-facing tool errors
+# (see drmcp/core/logging.py). Kept next to the enum so the two can't drift.
+_KIND_PREFIX_RE = re.compile(rf"^\s*\[({'|'.join(kind.value for kind in ToolErrorKind)})\]")
+
+
+def tool_error_kind_from_message(message: str) -> ToolErrorKind | None:
+    """Parse the ``[kind]`` prefix from a client-facing tool error message.
+
+    ``log_execution`` converts every tool failure into a FastMCP ``ToolError``
+    whose message starts with the :class:`ToolErrorKind` value in brackets
+    (``"[validation] mode must be one of: fast, deep"``). This is the inverse:
+    consumers holding only the wire message (metrics recording, dashboards)
+    can recover the kind without depending on the original
+    exception instance. Returns ``None`` when no kind prefix is present.
+    """
+    match = _KIND_PREFIX_RE.match(message)
+    if match is None:
+        return None
+    return ToolErrorKind(match.group(1))
 
 
 class ToolError(Exception):
@@ -81,3 +103,7 @@ class ToolError(Exception):
     def __repr__(self) -> str:
         """Return a string representation of the exception."""
         return f"{self.__class__.__name__}({self.message!r}, kind={self.kind!r})"
+
+
+class AudienceClaimValidationError(Exception):
+    pass

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -204,8 +205,7 @@ def test_factory_does_not_add_extra_body_when_absent() -> None:
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        llm = llama_index_llm.get_llm()
+    llm = llama_index_llm.get_llm(config=config)
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
     assert extras.get("api_base") == "https://example.test/genai/llmgw"
@@ -215,8 +215,7 @@ def test_get_llm_routes_to_deployment() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.DEPLOYMENT
     config.llm_deployment_id = "dep-123"
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        llm = llama_index_llm.get_llm()
+    llm = llama_index_llm.get_llm(config=config)
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
     assert extras.get("api_base") == "https://example.test/deployments/dep-123/chat/completions"
@@ -225,9 +224,8 @@ def test_get_llm_routes_to_deployment() -> None:
 def test_get_llm_routes_to_nim() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.NIM
-    config.nim_deployment_id = "nim-456"
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        llm = llama_index_llm.get_llm()
+    config.llm_nim_deployment_id = "nim-456"
+    llm = llama_index_llm.get_llm(config=config)
     assert isinstance(llm, LiteLLM)
     extras = llm.additional_kwargs
     assert extras.get("api_base") == "https://example.test/deployments/nim-456/chat/completions"
@@ -236,24 +234,71 @@ def test_get_llm_routes_to_nim() -> None:
 def test_get_llm_routes_to_external() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.EXTERNAL
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        llm = llama_index_llm.get_llm()
+    llm = llama_index_llm.get_llm(config=config)
     assert isinstance(llm, LiteLLM)
     assert llm.model == "default-model"
+
+
+def test_get_llm_without_config_resolves_off_the_global_config() -> None:
+    """The no-config path resolves per-LLM config off the GLOBAL config by name.
+
+    genai has no module-level ``resolve_llm_config`` to reach for; see the DO NOT
+    note in core/config.py.
+    """
+    config = MagicMock()
+    config.get_llm_type.return_value = LLMType.GATEWAY
+    global_config = MagicMock()
+    global_config.resolve_llm_config.return_value = config
+    with patch.object(llama_index_llm, "resolve_config", return_value=global_config):
+        llm = llama_index_llm.get_llm()
+    global_config.resolve_llm_config.assert_called_once_with(name="llm")
+    assert isinstance(llm, LiteLLM)
 
 
 def test_get_llm_raises_on_unknown_type() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = "unknown"
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        with pytest.raises(ValueError, match="Invalid LLM type"):
-            llama_index_llm.get_llm()
+    with pytest.raises(ValueError, match="Invalid LLM type"):
+        llama_index_llm.get_llm(config=config)
 
 
 def test_get_llm_forwards_model_name_and_parameters() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY
-    with patch.object(llama_index_llm, "Config", return_value=config):
-        llm = llama_index_llm.get_llm(model_name="azure/gpt-4", parameters={"temperature": 0.5})
+    llm = llama_index_llm.get_llm(
+        model_name="azure/gpt-4", parameters={"temperature": 0.5}, config=config
+    )
     assert llm.model == "datarobot/azure/gpt-4"
     assert llm.temperature == 0.5
+
+
+def _echo_tool() -> Any:
+    from llama_index.core.tools import FunctionTool  # noqa: PLC0415
+
+    return FunctionTool.from_defaults(fn=lambda text: text, name="echo")
+
+
+def test_prepare_chat_with_tools_strips_parallel_tool_calls_for_o_series() -> None:
+    """OpenAI o-series models reject ``parallel_tool_calls`` even with tools present."""
+    llm = llama_index_llm.get_datarobot_gateway_llm("azure/o3")
+    result = llm._prepare_chat_with_tools([_echo_tool()], allow_parallel_tool_calls=True)
+    assert result["tools"]
+    assert "parallel_tool_calls" not in result
+    assert result["tool_choice"] == "auto"
+
+
+def test_prepare_chat_with_tools_keeps_parallel_tool_calls_for_gpt() -> None:
+    """gpt-4o / gpt-5 support ``parallel_tool_calls``, so it is left untouched."""
+    for model in ("azure/gpt-4o", "azure/gpt-5"):
+        llm = llama_index_llm.get_datarobot_gateway_llm(model)
+        result = llm._prepare_chat_with_tools([_echo_tool()], allow_parallel_tool_calls=True)
+        assert result["parallel_tool_calls"] is True
+
+
+def test_prepare_chat_with_tools_strips_both_params_when_no_tools() -> None:
+    """With no tools, both tool_choice and parallel_tool_calls are stripped for any model."""
+    llm = llama_index_llm.get_datarobot_gateway_llm("azure/gpt-4o")
+    result = llm._prepare_chat_with_tools([], allow_parallel_tool_calls=True)
+    assert not result.get("tools")
+    assert "parallel_tool_calls" not in result
+    assert "tool_choice" not in result

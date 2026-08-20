@@ -80,6 +80,8 @@ class TestMCPWorkloadToolsRegistration:
             tool_names = {t.name for t in result.tools}
             missing = _EXPECTED_TOOLS - tool_names
             assert not missing, f"workload tools not registered: {missing}"
+            # enabled=False — kept in codebase but excluded from MCP registration
+            assert "read_openapi_spec" not in tool_names
 
 
 @pytest.mark.asyncio

@@ -85,7 +85,7 @@ def _build_fake_load_workflow(response: ChatResponse):
             yield _FakeSession()
 
     @asynccontextmanager
-    async def _fake_load_workflow(_path, headers=None):
+    async def _fake_load_workflow(_path):
         yield _FakeSessionManager()
 
     return _fake_load_workflow
@@ -94,7 +94,7 @@ def _build_fake_load_workflow(response: ChatResponse):
 def _install_fake_workflow(monkeypatch: pytest.MonkeyPatch, response: ChatResponse) -> None:
     """Patch ``load_workflow`` and bypass disk lookup of workflow.yaml."""
     monkeypatch.setattr(
-        "datarobot_genai.nat.helpers.load_workflow",
+        "nat.runtime.loader.load_workflow",
         _build_fake_load_workflow(response),
     )
     monkeypatch.setattr(
@@ -131,7 +131,7 @@ def _build_trace_id_recording_load_workflow(response: ChatResponse, observed: di
             yield _FakeSession()
 
     @asynccontextmanager
-    async def _fake_load_workflow(_path, headers=None):
+    async def _fake_load_workflow(_path):
         yield _FakeSessionManager()
 
     return _fake_load_workflow
@@ -141,7 +141,7 @@ def _install_trace_id_recording_workflow(
     monkeypatch: pytest.MonkeyPatch, response: ChatResponse, observed: dict
 ) -> None:
     monkeypatch.setattr(
-        "datarobot_genai.nat.helpers.load_workflow",
+        "nat.runtime.loader.load_workflow",
         _build_trace_id_recording_load_workflow(response, observed),
     )
     monkeypatch.setattr(
@@ -316,46 +316,6 @@ def test_execute_dragent_inline_sync_wrapper_under_ipykernel_like_host(
     # THEN: the synchronous wrapper returns the same shape as the async function
     assert isinstance(result, ChatCompletion)
     assert result.choices[0].message.content == "Sync"
-
-
-# --- Header forwarding --------------------------------------------------
-
-
-async def test_execute_dragent_inline_forwards_default_headers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # GIVEN: a fake load_workflow that records the headers it was invoked with
-    captured: dict[str, object] = {}
-    fake = _build_fake_load_workflow(_make_chat_response(content="ok"))
-
-    @asynccontextmanager
-    async def _sniffing_load_workflow(path, headers=None):
-        captured["path"] = path
-        captured["headers"] = headers
-        async with fake(path, headers=headers) as sm:
-            yield sm
-
-    monkeypatch.setattr(
-        "datarobot_genai.nat.helpers.load_workflow",
-        _sniffing_load_workflow,
-    )
-    monkeypatch.setattr(
-        "datarobot_genai.dragent.inline._resolve_config_path",
-        lambda custom_model_dir, config_file: Path("/tmp/fake.yaml"),
-    )
-
-    # WHEN: calling the inline function with default_headers
-    await execute_dragent_inline_async(
-        chat_completion={
-            "model": "datarobot-e2e",
-            "messages": [{"role": "user", "content": "hi"}],
-        },  # type: ignore[arg-type]
-        custom_model_dir=Path("/tmp"),
-        default_headers={"x-datarobot-api-token": "secret"},
-    )
-
-    # THEN: load_workflow received the supplied headers
-    assert captured["headers"] == {"x-datarobot-api-token": "secret"}
 
 
 # --- Trace id propagation -----------------------------------------------

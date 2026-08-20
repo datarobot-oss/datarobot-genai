@@ -54,22 +54,24 @@ async def test_datarobot_llm_deployment_crewai_with_identity_token():
         llm_deployment_id="123",
         temperature=0.0,
         api_key="some_token",
-        headers={"X-DataRobot-Identity-Token": "identity-token-123"},
     )
-    async with WorkflowBuilder() as builder:
-        await builder.add_llm("datarobot_llm", llm_config)
-        llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
-        assert isinstance(llm, LLM)
-        assert llm.additional_params == {
-            "max_retries": 10,
-            "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
-            "stream_options": {"include_usage": True},
-        }
+    with patch(
+        "datarobot_genai.crewai.llm_clients.extract_headers_from_context",
+        return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+    ):
+        async with WorkflowBuilder() as builder:
+            await builder.add_llm("datarobot_llm", llm_config)
+            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+            assert isinstance(llm, LLM)
+            assert llm.additional_params == {
+                "max_retries": 10,
+                "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
+            }
 
 
 async def test_datarobot_nim_crewai():
     llm_config = DataRobotNIMModelConfig(
-        nim_deployment_id="123",
+        llm_nim_deployment_id="123",
         model_name="azure/gpt-4o-2024-11-20",
         temperature=0.0,
         api_key="some_token",
@@ -102,15 +104,19 @@ async def test_datarobot_llm_component_crewai(
     ):
         llm_config = DataRobotLLMComponentModelConfig(
             model_name="anthropic/claude-3",
-            use_datarobot_llm_gateway=use_datarobot_llm_gateway,
-            headers={"X-DataRobot-Identity-Token": "identity-token-123"},
+            llm_use_datarobot_llm_gateway=use_datarobot_llm_gateway,
             llm_deployment_id=llm_deployment_id,
-            nim_deployment_id=nim_deployment_id,
+            llm_nim_deployment_id=nim_deployment_id,
             temperature=0.2,
         )
-        async with WorkflowBuilder() as builder:
-            await builder.add_llm("datarobot_llm", llm_config)
-            llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
+        identity_patch = patch(
+            "datarobot_genai.crewai.llm_clients.extract_headers_from_context",
+            return_value={"X-DataRobot-Identity-Token": "identity-token-123"},
+        )
+        with identity_patch:
+            async with WorkflowBuilder() as builder:
+                await builder.add_llm("datarobot_llm", llm_config)
+                llm = await builder.get_llm("datarobot_llm", wrapper_type=LLMFrameworkEnum.CREWAI)
 
         assert isinstance(llm, LLM)
         assert llm.is_litellm is True
@@ -122,7 +128,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         elif llm_config.get_llm_type() == LLMType.DEPLOYMENT:
             assert llm.model == "datarobot/anthropic/claude-3"
@@ -132,7 +137,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
                 "extra_headers": {"X-DataRobot-Identity-Token": "identity-token-123"},
             }
         elif llm_config.get_llm_type() == LLMType.NIM:
@@ -143,7 +147,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key == "some_token"
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         elif llm_config.get_llm_type() == LLMType.EXTERNAL:
             assert llm.model == "anthropic/claude-3"
@@ -151,7 +154,6 @@ async def test_datarobot_llm_component_crewai(
             assert llm.api_key is None
             assert llm.additional_params == {
                 "max_retries": 10,
-                "stream_options": {"include_usage": True},
             }
         else:
             raise ValueError(f"Invalid LLM type inferred from config: {llm_config.get_llm_type()}")

@@ -30,7 +30,7 @@ Values are read from the process environment (and `.env` in the working director
 
 ## DataRobot LLM Gateway
 
-Use **`get_datarobot_gateway_llm()`** when you always want the gateway regardless of `USE_DATAROBOT_LLM_GATEWAY`. Calls go through the gateway URL derived from `DATAROBOT_ENDPOINT`; use `DATAROBOT_API_TOKEN` as the API key.
+Use **`get_datarobot_gateway_llm()`** when you always want the gateway regardless of `LLM_USE_DATAROBOT_LLM_GATEWAY`. Calls go through the gateway URL derived from `DATAROBOT_ENDPOINT`; use `DATAROBOT_API_TOKEN` as the API key.
 
 **Pick a real gateway model id.** Do **not** rely on the default model name for gateway use: `get_datarobot_gateway_llm()` falls back to `LLM_DEFAULT_MODEL` which might be empty in your env.
 
@@ -84,7 +84,7 @@ from datarobot_genai.langgraph.llm import get_external_llm
 llm = get_external_llm("gpt-4o-mini")
 ```
 
-To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `NIM_DEPLOYMENT_ID` (see **get_llm()** below).
+To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `LLM_NIM_DEPLOYMENT_ID` (see **get_llm()** below).
 
 ## LLM Provider Fallback (Router)
 
@@ -125,21 +125,27 @@ Prefer the explicit **`get_*`** helpers above when you know the route. Use **`ge
 
 Routing order:
 
-1. **Gateway** if `USE_DATAROBOT_LLM_GATEWAY=true` (default).
+1. **Gateway** if `LLM_USE_DATAROBOT_LLM_GATEWAY=true` (default).
 2. Else **deployment** if `LLM_DEPLOYMENT_ID` is set.
-3. Else **NIM** if `NIM_DEPLOYMENT_ID` is set.
+3. Else **NIM** if `LLM_NIM_DEPLOYMENT_ID` is set.
 4. Else **external** (LiteLLM using provider-specific environment variables).
 
-If both `LLM_DEPLOYMENT_ID` and `NIM_DEPLOYMENT_ID` are set with the gateway off, **deployment wins**.
+If both `LLM_DEPLOYMENT_ID` and `LLM_NIM_DEPLOYMENT_ID` are set with the gateway off, **deployment wins**.
 
 These variables control **`get_llm()`** specifically:
 
 | Variable | Role |
 |---|---|
-| `USE_DATAROBOT_LLM_GATEWAY` | When `true` (default), use the **DataRobot LLM Gateway**. |
+| `LLM_USE_DATAROBOT_LLM_GATEWAY` | When `true` (default), use the **DataRobot LLM Gateway**. |
 | `LLM_DEPLOYMENT_ID` | When the gateway is off, use this **LLM deployment** chat endpoint. |
-| `NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id is set, use this **NIM** deployment. |
+| `LLM_NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id is set, use this **NIM** deployment. |
 | `LLM_DEFAULT_MODEL` | Default model id when you omit `model_name` on **`get_llm()`** |
+
+Every variable in that table is namespaced by the LLM instance it configures. `LLM_` is the
+prefix for the default instance, which is named `llm`; an application that registers its own
+config under a different instance name reads `<INSTANCE>_DEPLOYMENT_ID` and friends instead.
+`DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` are shared by every instance and are not
+namespaced.
 
 Example (LangGraph; adjust the import for LlamaIndex or CrewAI):
 

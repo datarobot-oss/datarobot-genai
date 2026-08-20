@@ -14,11 +14,24 @@ cases:
         - llamaindex
         - base
 
+  - name: nat-eval
+    env:
+      LLM: llmgw
+      LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+    tests:
+      - ./dragent_tests/test_nat_eval.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
+        - base
+
   - name: memory
     env:
       LLM: llmgw
       LLM_DEFAULT_MODEL: "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
-      WORKFLOW_FILE: workflow-memory.yaml
       E2E_PROVISION_MEMORY_SPACE: "true"
     tests:
       - ./dragent_tests/test_memory.py
@@ -54,7 +67,7 @@ cases:
     env:
       LLM: deployment
       LLM_DEFAULT_MODEL: datarobot/datarobot-deployed-llm
-      USE_DATAROBOT_LLM_GATEWAY: 0
+      LLM_USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
       - ./dragent_tests/test_tools.py
       - ./dragent_tests/test_streaming.py
@@ -69,7 +82,7 @@ cases:
     env:
       LLM: external
       LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
-      USE_DATAROBOT_LLM_GATEWAY: 0
+      LLM_USE_DATAROBOT_LLM_GATEWAY: 0
     tests:
       - ./dragent_tests/test_tools.py
       - ./dragent_tests/test_streaming.py

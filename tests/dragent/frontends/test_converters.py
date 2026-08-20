@@ -16,9 +16,12 @@ import datetime
 from unittest.mock import patch
 
 from ag_ui.core import RunAgentInput
+from ag_ui.core import RunErrorEvent
 from ag_ui.core import StepStartedEvent
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
 from ag_ui.core import Tool
 from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallChunkEvent
@@ -34,12 +37,20 @@ from nat.data_models.api_server import ChatResponseChunkChoice
 from nat.data_models.api_server import ChoiceDelta
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.api_server import Message
+from nat.data_models.api_server import Usage
 
 # Importing register applies dragent's GlobalTypeConverter registrations (including the
 # str -> ChatResponse override), matching production import side effects.
 import datarobot_genai.dragent.frontends.register  # noqa: E402, F401
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
+from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
 from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
+from datarobot_genai.dragent.frontends.converters import (
+    convert_chat_response_to_dragent_event_response,
+)
+from datarobot_genai.dragent.frontends.converters import (
+    convert_dragent_event_response_to_chat_response,
+)
 from datarobot_genai.dragent.frontends.converters import (
     convert_dragent_event_response_to_chat_response_chunk,
 )
@@ -60,7 +71,7 @@ from datarobot_genai.dragent.frontends.converters import (
     convert_run_agent_input_to_chat_request_or_message,
 )
 from datarobot_genai.dragent.frontends.converters import convert_str_to_chat_response
-from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_event_response
+from datarobot_genai.dragent.frontends.converters import convert_str_to_dragent_text_response
 from datarobot_genai.dragent.frontends.converters import convert_tool_message_to_str
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -228,28 +239,97 @@ def test_convert_chat_request_to_run_agent_input() -> None:
     assert result.tools[0].name == "get_weather"
 
 
-# --- Output converters: str -> DRAgentEventResponse ---
+# --- build_assistant_text_events / str|ChatResponse -> DRAgentEventResponse (normalization) ---
 
 
-def test_convert_str_to_dragent_event_response() -> None:
-    # GIVEN a response string
-    delta = "streaming delta"
+def test_build_assistant_text_events_with_text() -> None:
+    events = build_assistant_text_events("hello")
 
-    # WHEN converting to DRAgentEventResponse
-    result = convert_str_to_dragent_event_response(delta)
+    assert isinstance(events[0], TextMessageStartEvent)
+    assert isinstance(events[1], TextMessageContentEvent)
+    assert events[1].delta == "hello"
+    assert isinstance(events[-1], TextMessageEndEvent)
+    # start / content / end share a message id
+    assert events[0].message_id == events[1].message_id == events[-1].message_id
 
-    # THEN result has default usage_metrics and events
+
+def test_build_assistant_text_events_empty_uses_chunk_placeholder() -> None:
+    events = build_assistant_text_events("")
+
+    assert isinstance(events[0], TextMessageStartEvent)
+    assert isinstance(events[1], TextMessageChunkEvent)
+    assert events[1].delta == ""
+    assert isinstance(events[-1], TextMessageEndEvent)
+
+
+def test_convert_str_to_dragent_text_response_emits_text_events() -> None:
+    # Emits real assistant text deltas so downstream text detection + str extraction work.
+    result = convert_str_to_dragent_text_response("normalized")
+
     assert isinstance(result, DRAgentEventResponse)
-    assert result.usage_metrics is not None
-    assert result.usage_metrics["prompt_tokens"] == 0
-    assert result.usage_metrics["completion_tokens"] == 0
-    assert result.usage_metrics["total_tokens"] == 0
-    assert result.events is not None
-    assert len(result.events) == 1
+    assert convert_dragent_event_response_to_str(result) == "normalized"
 
-    # THEN event is a CustomEvent with the correct name and value
-    assert result.events[0].value["delta"] == delta
-    assert result.events[0].name == "DEFAULT_NAT_RESPONSE"
+
+def test_convert_chat_response_to_dragent_event_response_preserves_model_and_usage() -> None:
+    usage = Usage(prompt_tokens=3, completion_tokens=5, total_tokens=8)
+    chat_response = ChatResponse.from_string("answer", usage=usage, model="my-model")
+
+    result = convert_chat_response_to_dragent_event_response(chat_response)
+
+    assert isinstance(result, DRAgentEventResponse)
+    assert convert_dragent_event_response_to_str(result) == "answer"
+    assert result.model == "my-model"
+    assert result.usage_metrics == {
+        "prompt_tokens": 3,
+        "completion_tokens": 5,
+        "total_tokens": 8,
+    }
+
+
+# --- DRAgentEventResponse -> ChatResponse ---
+
+
+def test_convert_dragent_event_response_to_chat_response_basic() -> None:
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="Hello world")],
+        model="agent-model",
+        usage_metrics={"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6},
+    )
+
+    result = convert_dragent_event_response_to_chat_response(response)
+
+    assert isinstance(result, ChatResponse)
+    assert result.choices[0].message.content == "Hello world"
+    assert result.model == "agent-model"
+    assert result.usage.prompt_tokens == 2
+    assert result.usage.completion_tokens == 4
+    assert result.usage.total_tokens == 6
+    assert result.choices[0].finish_reason == "stop"
+
+
+def test_convert_dragent_event_response_to_chat_response_preserves_moderations() -> None:
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+        datarobot_moderations={"score": 0.42},
+    )
+
+    result = convert_dragent_event_response_to_chat_response(response)
+
+    assert getattr(result, "datarobot_moderations", None) == {"score": 0.42}
+
+
+def test_convert_dragent_event_response_to_chat_response_registered() -> None:
+    # The direct converter must be registered so NAT prefers it over the lossy
+    # DRAgentEventResponse -> str -> ChatResponse path.
+    response = DRAgentEventResponse(
+        events=[TextMessageContentEvent(message_id="m1", delta="hi")],
+        datarobot_moderations={"score": 0.5},
+    )
+
+    result = GlobalTypeConverter.convert(response, to_type=ChatResponse)
+
+    assert isinstance(result, ChatResponse)
+    assert getattr(result, "datarobot_moderations", None) == {"score": 0.5}
 
 
 # --- Various converters ---
@@ -398,6 +478,71 @@ def test_convert_dragent_event_response_to_str_empty_events() -> None:
     assert result == ""
 
 
+def test_convert_dragent_event_response_to_str_keeps_only_final_message() -> None:
+    """Reproduces the multi-node concatenation reported against the recipe template.
+
+    The two-node LangGraph graph (``researcher_node -> responder_node``) emits one
+    assistant message per node. Joining every delta returned the notes glued onto the
+    answer ("ParisParis"); only the responder's message is the answer.
+    """
+    # GIVEN an aggregated response carrying two complete assistant messages
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageStartEvent(message_id="researcher"),
+            TextMessageContentEvent(message_id="researcher", delta="- Paris is the capital"),
+            TextMessageEndEvent(message_id="researcher"),
+            TextMessageStartEvent(message_id="responder"),
+            TextMessageContentEvent(message_id="responder", delta="Paris"),
+            TextMessageEndEvent(message_id="responder"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN only the final message survives
+    assert result == "Paris"
+
+
+def test_convert_dragent_event_response_to_str_treats_id_change_as_boundary() -> None:
+    # GIVEN chunk-only text deltas (no START boundary) spanning two message ids
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageChunkEvent(message_id="m1", delta="notes"),
+            TextMessageChunkEvent(message_id="m2", delta="ans"),
+            TextMessageChunkEvent(message_id="m2", delta="wer"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN the id change is treated as a message boundary
+    assert result == "answer"
+
+
+def test_convert_dragent_event_response_to_str_keeps_final_answer_after_tool_call() -> None:
+    # GIVEN an agent that emitted a preamble, called a tool, then answered
+    response = DRAgentEventResponse(
+        events=[
+            TextMessageStartEvent(message_id="m1"),
+            TextMessageContentEvent(message_id="m1", delta="Let me look that up."),
+            TextMessageEndEvent(message_id="m1"),
+            ToolCallStartEvent(tool_call_id="t1", tool_call_name="lookup", parent_message_id="m1"),
+            ToolCallEndEvent(tool_call_id="t1"),
+            TextMessageStartEvent(message_id="m2"),
+            TextMessageContentEvent(message_id="m2", delta="404"),
+            TextMessageEndEvent(message_id="m2"),
+        ]
+    )
+
+    # WHEN converting to str
+    result = convert_dragent_event_response_to_str(response)
+
+    # THEN the pre-tool preamble is dropped in favour of the final answer
+    assert result == "404"
+
+
 # --- convert_dragent_event_response_to_chat_response_chunk ---
 
 
@@ -479,6 +624,28 @@ def test_convert_dragent_event_response_to_chat_response_chunk_empty_events() ->
 
     # THEN content is empty but structure is still valid
     assert result.choices[0].delta.content == ""
+
+
+def test_convert_dragent_event_response_to_chat_response_chunk_surfaces_run_error() -> None:
+    # GIVEN a response whose events carry a terminal RunErrorEvent
+    response = DRAgentEventResponse(
+        original_chunk=None,
+        events=[RunErrorEvent(message="workflow blew up", code="ValueError")],
+    )
+
+    # WHEN converting to ChatResponseChunk
+    result = convert_dragent_event_response_to_chat_response_chunk(response)
+
+    # THEN the chunk carries the OpenAI-shaped error extra and no content choices
+    assert isinstance(result, ChatResponseChunk)
+    assert result.choices == []
+    assert getattr(result, "error", None) == {
+        "message": "workflow blew up",
+        "type": "workflow_error",
+        "code": "ValueError",
+    }
+    # AND the model is backfilled to the configured model, not NAT's "unknown-model" placeholder
+    assert result.model not in (None, "unknown-model")
 
 
 def test_convert_dragent_event_response_to_chat_response_chunk_returns_original_chunk() -> None:

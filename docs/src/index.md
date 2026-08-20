@@ -1,3 +1,19 @@
+<!--
+  ~ Copyright 2026 DataRobot, Inc. and its affiliates.
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+-->
+
 <p align="center">
   <a href="https://github.com/datarobot-oss/datarobot-genai">
     <img src="img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
@@ -56,9 +72,9 @@ The examples and `workflow.yaml` expect the variables below; see [LLM configurat
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | — | Your DataRobot API token. |
 | `DATAROBOT_ENDPOINT` | `https://app.datarobot.com/api/v2` | Base URL for your DataRobot API requests. |
-| `USE_DATAROBOT_LLM_GATEWAY` | `true` | Set to `true` to use the DataRobot LLM Gateway. |
+| `LLM_USE_DATAROBOT_LLM_GATEWAY` | `true` | Set to `true` to use the DataRobot LLM Gateway. |
 | `LLM_DEPLOYMENT_ID` | — | Set this to target a specific LLM deployment when the gateway is off. |
-| `NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment when the gateway is off. |
+| `LLM_NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment when the gateway is off. |
 | `LLM_DEFAULT_MODEL` | `datarobot-deployed-llm` | Default model name you run against. |
 | `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` | `20` | Maximum number of prior messages the client keeps in history. |
 | `AUTH_RESOLUTION_STRATEGY` | `http` | How `drtools` resolves secrets: `http` or `config`. See [drtools/auth.md](drtools/auth.md). |

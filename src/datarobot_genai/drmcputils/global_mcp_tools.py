@@ -48,6 +48,8 @@ GLOBAL_MCP_PACKAGE_CATEGORIES: dict[str, frozenset[MCPToolCategory]] = {
     "tavily": frozenset({MCPToolCategory.DR_WEB_SEARCH_TAVILY}),
     "dr_docs": frozenset({MCPToolCategory.DR_DOCUMENTATION}),
     "vdb": frozenset({MCPToolCategory.DR_VDB}),
+    "files_api": frozenset({MCPToolCategory.DR_FILE}),
+    "workload": frozenset({MCPToolCategory.DR_WORKLOAD}),
 }
 
 # Per-tool opt-out applied on top of the enabled packages — the single place a specific tool is
