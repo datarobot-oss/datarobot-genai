@@ -15,8 +15,11 @@
 
 import contextvars
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
+import jwt
 from datarobot.auth.datarobot.exceptions import OAuthServiceClientErr
 from datarobot.auth.session import AuthCtx
 from datarobot.models.genai.agent.auth import ToolAuth
@@ -27,6 +30,7 @@ from datarobot_genai.core.utils.auth import DRAppCtx
 from datarobot_genai.drmcputils.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
 from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
@@ -342,3 +346,107 @@ def _extract_token_from_headers_with_fallback(headers: dict[str, str]) -> str | 
     if token := _extract_token_from_auth_context(headers):
         return token
     return None
+
+
+@dataclass
+class AuthorizationClaims:
+    # RFC-7519: aud can be a single string or a list (case sensitive); None when absent.
+    audience: str | list[str] | None = None
+
+    @classmethod
+    def from_jwt_payload_partition(cls, jwt_payload_dict: dict[str, Any]) -> "AuthorizationClaims":
+        return cls(
+            jwt_payload_dict.get("aud", None),
+        )
+
+    def audience_is_a_list(self) -> bool:
+        return isinstance(self.audience, list)
+
+    def contain_expected_audience(self, expected_audience: str) -> bool:
+        if isinstance(self.audience, list):
+            return expected_audience in self.audience
+        return expected_audience == self.audience
+
+
+class JWTTokenClaimsValidator:
+    def __init__(
+        self,
+        http_header_name_of_jwt_token: str,
+        http_request_header: Mapping[str, str],
+    ) -> None:
+        self.http_header_name_of_jwt_token = http_header_name_of_jwt_token
+        self.claims = self.get_claims_from_jwt_token(
+            self.http_header_name_of_jwt_token, http_request_header
+        )
+
+    @staticmethod
+    def get_bearer_token_header(
+        request_header_name_case_insensitive: str,
+        request_headers_with_lower_case_key: Mapping[str, str],
+    ) -> str | None:
+        for name, value in request_headers_with_lower_case_key.items():
+            if name == request_header_name_case_insensitive.lower():
+                return value
+        return None
+
+    @staticmethod
+    def get_bearer_token_value(
+        bearer_token_header: str,
+        bearer_token_header_can_be_missing: bool = True,
+    ) -> str | None:
+        schema, _, value = bearer_token_header.partition(" ")
+        if schema.lower() == "bearer":
+            return value
+        elif bearer_token_header_can_be_missing:
+            return bearer_token_header
+        else:
+            return None
+
+    @staticmethod
+    def is_jwt_token(token_value: str) -> bool:
+        try:
+            jwt.get_unverified_header(token_value)
+            return True
+        except jwt.exceptions.DecodeError:
+            return False
+
+    @staticmethod
+    def get_jwt_payload_without_signature_verification(jwt_token_value: str) -> dict[str, Any]:
+        return jwt.decode(jwt_token_value, options={"verify_signature": False})
+
+    @classmethod
+    def get_claims_from_jwt_token(
+        cls, request_header_name: str, request_headers: Mapping[str, str]
+    ) -> AuthorizationClaims | None:
+        bearer_token_header = cls.get_bearer_token_header(request_header_name, request_headers)
+        bearer_token_value = (
+            cls.get_bearer_token_value(bearer_token_header) if bearer_token_header else None
+        )
+        if bearer_token_value and cls.is_jwt_token(bearer_token_value):
+            return AuthorizationClaims.from_jwt_payload_partition(
+                cls.get_jwt_payload_without_signature_verification(bearer_token_value)
+            )
+
+        return None
+
+    def has_valid_claims(self) -> bool:
+        return self.claims is not None
+
+    def validate_audience_claim(self, expected_audience_claim: str | None) -> None:
+        if expected_audience_claim is None:
+            logger.info(
+                "Authorization audience claim validation is not executed. "
+                "There is no expected audience claim provided."
+            )
+            return
+
+        if not self.has_valid_claims():
+            raise AudienceClaimValidationError(
+                "Authorization audience claim validation failed: "
+                "no valid JWT token in inbound request"
+            )
+
+        if not self.claims.contain_expected_audience(expected_audience_claim):  # type: ignore[union-attr]
+            raise AudienceClaimValidationError("Authorization audience claim validation failed")
+
+        logger.info("Audience claim validation succeeded.")

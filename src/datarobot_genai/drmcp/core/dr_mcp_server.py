@@ -29,6 +29,7 @@ from starlette.middleware import Middleware
 
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
@@ -325,6 +326,11 @@ class DataRobotMCPServer:
                                 # First, so the header middleware's MCP-path skip sees
                                 # the normalized path.
                                 Middleware(TrailingSlashNormalizer),
+                                # Rejects unauthorized calls to the MCP endpoint and every
+                                # other route under routes.py (health check and .well-known
+                                # discovery excepted) before any other middleware does
+                                # request/OTel setup work for them.
+                                Middleware(GeneralOAuthClaimValidationMiddleware),
                                 # Request headers in context for REST routes only (skips MCP path).
                                 Middleware(RequestHeadersMiddleware),
                                 Middleware(OtelASGIMiddleware),

@@ -25,8 +25,33 @@ import os
 
 DEPLOYMENT_A2A_PATH = "directAccess/a2a"
 WORKLOAD_A2A_PATH = "a2a"
+DEPLOYMENT_MCP_PATH = "directAccess/mcp"
+MCP_PATH = "mcp"
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
+_API_V2_SUFFIX = "/api/v2"
+
+
+def normalize_api_v2_endpoint(endpoint: str) -> str:
+    """Return ``endpoint`` with exactly one trailing ``/api/v2`` and no trailing slash.
+
+    Callers hand us ``DATAROBOT_ENDPOINT`` in both spellings — with and without
+    the ``/api/v2`` suffix — and the deployment / workload routes live below it.
+    Normalising in one place keeps ``.../api/v2/api/v2/...`` and
+    ``.../deployments/...`` (missing ``/api/v2``) out of the URL builders.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot endpoint
+    -------
+    str
+        The endpoint with a single ``/api/v2`` suffix.
+    """
+    base = endpoint.rstrip("/")
+    if base.endswith(_API_V2_SUFFIX):
+        return base
+    return f"{base}{_API_V2_SUFFIX}"
 
 
 def resolve_datarobot_endpoint(require: bool = False) -> str | None:
@@ -127,6 +152,68 @@ def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
     """
     base = endpoint.removesuffix("/")
     return f"{base}/endpoints/workloads/{workload_id}/{WORKLOAD_A2A_PATH}/"
+
+
+def build_deployment_mcp_url(endpoint: str, deployment_id: str) -> str:
+    """Construct the MCP  URL.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot endpoint, with or without the ``/api/v2`` suffix.
+    deployment_id:
+        The DataRobot deployment ID.
+
+    Returns
+    -------
+    str
+        A URL of the form
+        ``{endpoint}/api/v2/deployments/{deployment_id}/directAccess/mcp``.
+    """
+    base = normalize_api_v2_endpoint(endpoint)
+    return f"{base}/deployments/{deployment_id}/{DEPLOYMENT_MCP_PATH}"
+
+
+def workload_mcp_url_from_endpoint(workload_endpoint: str, path: str = MCP_PATH) -> str:
+    """Append the MCP path to the endpoint the platform reported for a workload.
+
+    This is the only way to address a workload's MCP server: its route cannot be
+    composed from a workload ID, due to different endpoints for the API Gateway.
+    We look up the endpoint from the workload API
+    (:func:`datarobot_genai.core.mcp.config.lookup_workload_endpoint`) and append
+    the path to what it reports.
+
+    Parameters
+    ----------
+    workload_endpoint:
+        The workload's ``endpoint`` field as returned by the Workload API.
+    path:
+        Path the MCP server is served from, relative to the endpoint.
+
+    Returns
+    -------
+    str
+        ``{workload_endpoint}/{path}``, with duplicate slashes avoided.
+    """
+    return f"{workload_endpoint.rstrip('/')}/{path.lstrip('/')}"
+
+
+def build_local_mcp_url(port: int, host: str = "localhost") -> str:
+    """Construct the MCP URL for an MCP server running locally.
+
+    Parameters
+    ----------
+    port:
+        Port the local MCP server listens on.
+    host:
+        Host name, ``localhost`` by default.
+
+    Returns
+    -------
+    str
+        A URL of the form ``http://localhost:{port}/mcp``.
+    """
+    return f"http://{host}:{port}/{MCP_PATH}"
 
 
 def build_workload_agent_card_url(endpoint: str, workload_id: str) -> str:
