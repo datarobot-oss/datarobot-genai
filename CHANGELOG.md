@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## 0.28.2
+- `drtools/core/sandbox`: a partially flushed OTEL log stream is no longer mistaken for a run that produced no result marker. The wait previously stopped as soon as two consecutive reads returned identical stdout, which — with reads 0.5s apart and remaining lines ~0.4s behind — abandoned the wait about a second in and reported `no result marker in logs` for workloads that had actually succeeded. Stdout must now stay unchanged for a quiet window (5s) before the run is declared markerless, so genuine crashes still fail fast instead of waiting out the full budget.
+
 ## 0.28.1
 - `core.mcp`: `MCPConfig` now accepts `mcp_workload_id` (env `MCP_WORKLOAD_ID`) to connect to a Workload API MCP server (MODEL-24379), with the same auth headers as custom-model deployment mode, and mutually exclusive with `mcp_deployment_id` / `external_mcp_url`. Its URL comes only from the platform (`GET /api/v2/workloads/<id>/` → `endpoint` + `/mcp`), never from a URL template, because Envoy-fronted clusters serve workloads from a per-enclave Host that `DATAROBOT_ENDPOINT` cannot derive; if the lookup cannot answer, the agent gets no MCP server rather than a guessed URL. MCP URL construction moves to `dragent/deployment_urls`.
 

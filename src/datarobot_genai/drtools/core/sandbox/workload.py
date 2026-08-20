@@ -83,6 +83,16 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
+# How long a container's stdout must stay byte-identical before we conclude it
+# produced no result marker. A duration, not a poll count: OTEL delivers stdout
+# line by line with lag, so back-to-back identical reads prove only that the
+# next line hasn't landed *yet*. On staging the runner's "RLIMIT_NPROC" line
+# arrived ~0.4s ahead of the marker, and two reads 0.5s apart were enough to
+# wrongly declare the run markerless. This window bounds both sides: genuine
+# crashes still report in ~5s rather than waiting out the full budget, and a
+# flush an order of magnitude slower than observed is still caught.
+_STABLE_OUTPUT_QUIET_S = 5.0
+
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
 # computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
 # already enforced inside the container (DR_SANDBOX_TIMEOUT_SECS → SIGALRM →
@@ -383,6 +393,7 @@ class DataRobotWorkloadSandbox:
         stdout = ""
         stderr = ""
         prev_stdout: str | None = None
+        stdout_settled_at = time.monotonic()
         # Poll until the marker appears (in OTEL or logTail) or the budget
         # elapses: a one-shot runner exits, so the workload can reach a terminal
         # status before the OTEL collector flushes the container's stdout.
@@ -419,14 +430,22 @@ class DataRobotWorkloadSandbox:
                 break
             if time.monotonic() > deadline:
                 break
-            # No marker yet. If OTEL output has arrived and stopped changing, the
-            # run produced no marker (a genuine failure/crash) — stop instead of
-            # waiting out the full flush budget. A successful one-shot's output
-            # *includes* the marker, so stable output without a marker is never a
-            # success we'd be cutting short.
-            if stdout and stdout == prev_stdout:
+            # No marker yet. If OTEL output has arrived and then stayed
+            # completely still for _STABLE_OUTPUT_QUIET_S, the run produced no
+            # marker (a genuine failure/crash) — stop rather than waiting out
+            # the full budget.
+            #
+            # The quiet window is what makes this safe. A partially flushed
+            # stdout looks exactly like a complete one, so "unchanged since the
+            # last read" proves nothing when reads are ~0.5s apart and the
+            # remaining lines are ~0.4s behind — that is precisely how a
+            # succeeded run got reported as "no result marker in logs".
+            now = time.monotonic()
+            if stdout != prev_stdout:
+                prev_stdout = stdout
+                stdout_settled_at = now
+            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_QUIET_S:
                 break
-            prev_stdout = stdout
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)
 
