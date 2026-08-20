@@ -189,6 +189,45 @@ class TestAudienceValidation:
             assert client.post("/").status_code == 200
 
 
+class TestExactAudienceMatching:
+    """`aud` must equal the expected audience exactly -- no prefix, suffix, case or
+    whitespace leniency, and no substring match.
+    """
+
+    @pytest.fixture
+    def client(self) -> TestClient:
+        return TestClient(_app(routes=_a2a_routes()))
+
+    @pytest.mark.parametrize(
+        "aud",
+        [
+            f"-{EXPECTED_AUDIENCE}",
+            f"{EXPECTED_AUDIENCE}-",
+            f"{EXPECTED_AUDIENCE}/",
+            f" {EXPECTED_AUDIENCE}",
+            f"{EXPECTED_AUDIENCE} ",
+            EXPECTED_AUDIENCE.upper(),
+            EXPECTED_AUDIENCE[:-1],
+            f"x{EXPECTED_AUDIENCE}x",
+        ],
+    )
+    def test_near_miss_is_rejected(self, client, aud):
+        """GIVEN an aud that merely resembles ours THEN the request is rejected."""
+        response = client.post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=aud)})
+        assert response.status_code == 401
+
+    def test_exact_value_is_accepted(self, client):
+        response = client.post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)}
+        )
+        assert response.status_code == 200
+
+    def test_list_of_near_misses_is_rejected(self, client):
+        """A list claim is matched entry by entry, not by containment."""
+        token = make_jwt(aud=[f"-{EXPECTED_AUDIENCE}", f"{EXPECTED_AUDIENCE}-"])
+        assert client.post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: token}).status_code == 401
+
+
 class TestServingRoutes:
     """The same instance also covers the non-A2A routes.
 

@@ -119,6 +119,9 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
             logger.info(message)
             return _error(HTTPStatus.UNPROCESSABLE_ENTITY, message)
 
+        # `audience` is a list, so `in` is exact equality per entry. If _audience_claim ever
+        # returned the raw claim, a str would make this a substring match and let "-aaa"
+        # satisfy "aaa" -- see TestExactAudienceMatching.
         if self._expected_audience not in audience:
             message = "Authorization audience claim validation failed"  # no token/claim values
             logger.info(message)
