@@ -111,7 +111,12 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import SecretStr
+from pydantic import model_validator
 
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+from datarobot_genai.dragent.inbound_token import TOKEN_HEADERS
+from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 
 try:
@@ -330,21 +335,23 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
     entries needed for credentials.
     """
 
-    okta_token_header: str = Field(
-        default="x-datarobot-external-access-token",
+    okta_token_header: str | None = Field(
+        default=None,
+        deprecated=True,
         description=(
-            "Incoming header carrying the caller's Okta access token. "
-            "Forwarded as Bearer for discovery; used as subject token in Step 1. "
-            "Matched case-insensitively."
+            f"Deprecated. The inbound token header is fixed at "
+            f"``{OAUTH_ACCESS_TOKEN_HEADER}`` so that audience validation and this provider "
+            f"cannot read different headers. Accepted only when set to that value; removal "
+            f"in a future release."
         ),
     )
-    fallback_token_headers: list[str] = Field(
-        default=["authorization"],
+    fallback_token_headers: list[str] | None = Field(
+        default=None,
+        deprecated=True,
         description=(
-            "Fallback headers to try (in order) when ``okta_token_header`` is absent. "
-            "Useful for local development without an API gateway that remaps "
-            "``Authorization`` → ``x-datarobot-external-access-token``. "
-            "If the value starts with 'Bearer ', the prefix is stripped automatically."
+            f"Deprecated. The fallback carrier is fixed at "
+            f"``{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}``. Accepted only when set to exactly "
+            f"that; removal in a future release."
         ),
     )
     principal_id: str | None = Field(
@@ -360,6 +367,49 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "Base64-encoded or raw-JSON RSA private JWK (env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _retire_token_header_overrides(self) -> "OAuth2CrossApplicationAccessAuthProviderConfig":
+        """Accept a header override only where it still describes what happens.
+
+        Audience validation and this provider must read the same headers, so the set is now
+        fixed (``inbound_token.TOKEN_HEADERS``). A value equal to the old default is harmless
+        and kept working; anything else changed meaning, and ignoring it silently would leave
+        the config lying -- ``fallback_token_headers: []`` used to *disable* the fallback, so
+        accepting it would quietly switch it back on.
+
+        Warnings go to the log, not ``warnings.warn``: emitted from inside a validator, a
+        ``DeprecationWarning`` is attributed to pydantic's module and filtered out in
+        production. ``Field(deprecated=True)`` above is for the JSON schema only -- it fires on
+        attribute access, and nothing reads these fields.
+        """
+        for name, supported in (
+            ("okta_token_header", OAUTH_ACCESS_TOKEN_HEADER),
+            ("fallback_token_headers", [OAUTH_ACCESS_TOKEN_FALLBACK_HEADER]),
+        ):
+            # __dict__, not getattr: Field(deprecated=True) installs a data descriptor whose
+            # __get__ warns, and a null means "no value" - model_dump() emits the None
+            # defaults explicitly, so a dump/reload round trip must not trip this.
+            value = self.__dict__.get(name)
+            if name not in self.model_fields_set or value is None:
+                continue
+            if value == supported:
+                logger.warning(
+                    "%s is deprecated and no longer has any effect; it will be removed in a "
+                    "future release. Delete it from workflow.yaml.",
+                    name,
+                )
+                continue
+            raise ValueError(
+                f"{name} is no longer configurable and the value you set is not what the "
+                f"agent does. The access token is read from "
+                f"'{OAUTH_ACCESS_TOKEN_HEADER}', then "
+                f"'Bearer {OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}' -- inbound audience "
+                f"validation inspects exactly those, so reading any other header would "
+                f"exchange a token it never checked. Delete {name} from workflow.yaml and "
+                f"forward the standard header."
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -635,7 +685,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
 
     async def authenticate_for_discovery(self, user_id: str | None = None) -> dict[str, str]:
         token = self._extract_token()
-        logger.info("Forwarding token from '%s' for discovery", self.config.okta_token_header)
+        logger.info("Forwarding token from '%s' for discovery", OAUTH_ACCESS_TOKEN_HEADER)
         return {"Authorization": f"Bearer {token}"}
 
     def set_agent_card(self, card: AgentCard) -> None:
@@ -656,9 +706,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         )
 
     def get_non_forwardable_header_keys(self) -> set[str]:
-        excluded_header_keys = {self.config.okta_token_header.lower()}
-        excluded_header_keys.update(header.lower() for header in self.config.fallback_token_headers)
-        return excluded_header_keys
+        """Token carriers are never forwarded; downstream agents get an exchanged token."""
+        return set(TOKEN_HEADERS)
 
     def get_forwardable_x_datarobot_headers_from_inbound_request(self) -> list[HeaderCred]:
         headers: dict[str, str] = Context.get().metadata.headers or {}
@@ -704,29 +753,29 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         return AuthResult(credentials=auth_request_credentials)
 
     def _extract_token(self) -> str:
-        """Extract the access token from NAT request context headers.
+        """Extract the caller's IdP access token from NAT request context headers.
 
-        Tries ``okta_token_header`` first, then each ``fallback_token_headers``
-        entry (stripping ``Bearer `` prefix if present).
+        Uses ``inbound_token.find_idp_token``, the same function audience validation uses, so
+        this cannot exchange a token from a header the validator never inspected.
         """
         headers: dict[str, str] = Context.get().metadata.headers or {}
 
-        token = headers.get(self.config.okta_token_header.lower())
-        if token:
+        token = find_idp_token(headers)
+        if token is not None:
             return token
 
-        for fallback in self.config.fallback_token_headers:
-            value = headers.get(fallback.lower())
-            if value:
-                if value.lower().startswith("bearer "):
-                    value = value[len("bearer ") :]
-                logger.debug("Using fallback header '%s'", fallback)
-                return value
-
+        # Read for the message only, never for extraction: an operator who still has the
+        # deprecated override in workflow.yaml would otherwise see their own header name
+        # there and conclude the library is broken.
+        override = (
+            " A deprecated okta_token_header override is configured and ignored."
+            if "okta_token_header" in self.config.model_fields_set
+            else ""
+        )
         raise RuntimeError(
-            f"Header '{self.config.okta_token_header}' not found in request context "
-            f"(also tried fallbacks: {self.config.fallback_token_headers}). "
-            "The access token must be forwarded with every agent call."
+            f"No IdP access token in request context (looked in "
+            f"{sorted(TOKEN_HEADERS)}).{override} The access token must be forwarded with "
+            f"every agent call."
         )
 
 

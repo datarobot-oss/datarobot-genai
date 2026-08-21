@@ -77,6 +77,17 @@ class DRAgentA2AConfig(BaseModel):
         default=None,
         description="External identity and URL override for the agent card.",
     )
+    oauth_claim_validation: bool = Field(
+        default=False,
+        description=(
+            "Opt in to L2 validation of the inbound IdP token's claims. Off unless set to "
+            "true, so an agent never starts enforcing because ``cross_application_access`` "
+            "was filled in for the agent card. Today this governs the ``aud`` claim, taken "
+            "from ``cross_application_access.token_request.audience``; ``scope`` joins it "
+            "under the same flag. Applies to every route, not only /a2a, because an inbound "
+            "token reaches the workflow the same way whichever route it arrives on."
+        ),
+    )
     enable_unauthenticated_well_known_route: bool = Field(
         default=False,
         description=(

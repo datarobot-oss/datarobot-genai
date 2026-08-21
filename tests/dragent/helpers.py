@@ -12,9 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared DRAgent constants."""
+"""Helpers shared across the dragent test packages."""
 
-DRAGENT_CONFIG_FILE_ENV = "DRAGENT_CONFIG_FILE"
+from typing import Any
 
-# Path the A2A app is mounted at on the serving FastAPI app.
-A2A_MOUNT_PATH = "a2a"
+import jwt
+
+# Nothing under test verifies signatures (the API Gateway owns that), so the key is
+# arbitrary; it is sized past 32 bytes only to keep PyJWT from warning about a short HMAC key.
+_SIGNING_KEY = "test-signing-key-long-enough-for-hs256"
+
+
+def make_jwt(**claims: Any) -> str:
+    """Build a signed JWT carrying ``claims``."""
+    return jwt.encode(claims, _SIGNING_KEY, algorithm="HS256")
