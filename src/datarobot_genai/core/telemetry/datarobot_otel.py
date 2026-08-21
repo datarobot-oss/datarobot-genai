@@ -266,11 +266,12 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         return False
 
     _BOOTSTRAP_STATE["installed"] = True
+    lower_headers = {k.lower(): v for k, v in headers.items()}
     logger.info(
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
-        headers["X-DataRobot-Entity-Id"],
+        lower_headers.get("x-datarobot-entity-id", ""),
     )
     return True
 
