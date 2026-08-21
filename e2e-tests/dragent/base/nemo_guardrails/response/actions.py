@@ -78,6 +78,7 @@ async def self_check_output(
 
         response = await llm_call(llm, prompt, llm_params={"temperature": 0.0})
 
+        response = getattr(response, "content", response) or ""
         response = response.lower().strip()
         log.info(f"Output self-checking result is: `{response}`.")
 
