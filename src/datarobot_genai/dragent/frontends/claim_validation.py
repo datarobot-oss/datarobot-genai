@@ -23,16 +23,22 @@ called with a DataRobot API token instead (see ``a2a.py``'s ``bearerAuth`` schem
 a caller is authenticated is the gateway's business.  Signature, issuer and expiry are not
 re-verified either; claims are decoded unverified and only read.
 
-Covers every route, not just ``/a2a``: NAT copies inbound headers into the workflow context on
-every route, and the cross-application-access provider reads the token from there regardless of
-which route it arrived on.  Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
+Covers every route with no exemptions, ``/a2a`` and agent-card discovery included: NAT copies
+inbound headers into the workflow context on every route, and the cross-application-access
+provider reads the token from there regardless of which route it arrived on.
+
+Agent-card discovery needs no exemption because auth there is optional, which the pass-through
+above already models: an unauthenticated request reaches ``_handle_get_agent_card``, which
+applies ``enable_unauthenticated_well_known_route`` and serves a redacted card or a 401. A
+request that *does* present a token gets the full check first -- a token naming another agent is
+rejected rather than earning a card.
+
+Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
 """
 
 import logging
 from http import HTTPStatus
 
-from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
-from a2a.utils.constants import PREV_AGENT_CARD_WELL_KNOWN_PATH
 from nat.authentication.jwt_utils import decode_jwt_claims_unverified
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.base import RequestResponseEndpoint
@@ -44,19 +50,6 @@ from starlette.types import ASGIApp
 from datarobot_genai.dragent.inbound_token import find_idp_token
 
 logger = logging.getLogger(__name__)
-
-# Both paths A2AStarletteApplication.routes() binds to _handle_get_agent_card.
-_AGENT_CARD_PATHS = (AGENT_CARD_WELL_KNOWN_PATH, PREV_AGENT_CARD_WELL_KNOWN_PATH)
-
-
-def is_agent_card_path(path: str) -> bool:
-    """Whether ``path`` ends with an agent-card route, which owns its own auth decision.
-
-    ``_handle_get_agent_card`` chooses between a redacted card and a 401 via
-    ``enable_unauthenticated_well_known_route``; validation must not pre-empt it.  Suffix, not
-    equality: Starlette keeps mount and deployment prefixes in ``scope["path"]``.
-    """
-    return (path.rstrip("/") or "/").endswith(_AGENT_CARD_PATHS)
 
 
 def _audience_claim(token: str) -> list[str]:
@@ -105,9 +98,6 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
 
     def _reject(self, request: Request) -> JSONResponse | None:
         """Response to send instead of calling the app, or ``None`` to allow."""
-        if is_agent_card_path(request.url.path):
-            return None
-
         token = find_idp_token(request.headers)
         if token is None:
             return None  # No claim validation When using standard datarobot api tokens

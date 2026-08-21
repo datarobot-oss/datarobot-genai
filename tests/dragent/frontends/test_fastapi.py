@@ -302,13 +302,17 @@ class TestInboundAudienceValidation:
     """Wiring of the L2 audience check onto both the A2A app and the serving app."""
 
     @staticmethod
-    def _worker(audience: str | None) -> DRAgentFastApiFrontEndPluginWorker:
+    def _worker(
+        audience: str | None, *, opted_in: bool = True, with_xaa: bool | None = None
+    ) -> DRAgentFastApiFrontEndPluginWorker:
         """Build a worker whose a2a config advertises XAA with the given audience.
 
-        ``audience=None`` keeps ``cross_application_access`` unset entirely.
+        ``with_xaa`` defaults to ``audience is not None``, so ``_worker(None)`` means no
+        ``cross_application_access`` block at all; pass it explicitly for the block-present
+        but audience-unset case.  ``opted_in`` drives ``a2a.oauth_claim_validation``.
         """
         cross_app = None
-        if audience is not None:
+        if with_xaa if with_xaa is not None else audience is not None:
             cross_app = CrossApplicationAccessConfig(
                 token_exchange=CrossAppTokenExchange(
                     trusted_issuer="https://your-org.okta.com",
@@ -324,6 +328,7 @@ class TestInboundAudienceValidation:
                 front_end=DRAgentFastApiFrontEndConfig(
                     a2a=DRAgentA2AConfig(
                         server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                        oauth_claim_validation=opted_in,
                         cross_application_access=cross_app,
                     ),
                 )
@@ -331,6 +336,32 @@ class TestInboundAudienceValidation:
         )
         with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
             return DRAgentFastApiFrontEndPluginWorker(config)
+
+    def test_not_installed_without_the_opt_in(self):
+        """GIVEN an audience but no oauth_claim_validation THEN nothing is enforced.
+
+        Opt-in means opt-in: filling in the XAA audience must not start enforcing on its own.
+        """
+        with self._built_app(self._worker("api://my-agent", opted_in=False)) as app:
+            assert self._claim_middleware(app) == []
+
+    def test_opt_in_without_an_audience_fails_loudly(self):
+        """GIVEN the opt-in but nothing to enforce THEN startup fails.
+
+        Silently running an agent that believes it validates is the worst outcome.
+        """
+        for worker in (
+            self._worker(None, opted_in=True, with_xaa=True),  # block present, audience unset
+            self._worker(None, opted_in=True, with_xaa=False),  # no block at all
+        ):
+            with pytest.raises(ValueError, match="oauth_claim_validation is true"):
+                with self._built_app(worker):
+                    pass
+
+    def test_flag_defaults_off(self):
+        """An a2a block that says nothing about it does not enforce."""
+        config = DRAgentA2AConfig(server=A2AFrontEndConfig())
+        assert config.oauth_claim_validation is False
 
     def test_resolve_expected_audience_from_cross_app_access(self):
         """GIVEN token_request.audience is set THEN it is the expected inbound audience."""
@@ -419,9 +450,12 @@ class TestInboundAudienceValidation:
         assert len(installed) == 1
         assert installed[0].kwargs["expected_audience"] == "api://my-agent"
 
-    def test_build_app_installs_nothing_without_audience(self):
-        """GIVEN no expected audience THEN no route is guarded."""
-        with self._built_app(self._worker(None)) as app:
+    def test_build_app_installs_nothing_by_default(self):
+        """GIVEN neither the opt-in nor an audience THEN no route is guarded.
+
+        The default state for an agent that has not asked for L2 checks.
+        """
+        with self._built_app(self._worker(None, opted_in=False)) as app:
             assert self._claim_middleware(app) == []
 
     def test_serving_route_rejects_a_token_naming_another_agent(self):

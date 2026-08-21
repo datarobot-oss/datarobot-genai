@@ -16,7 +16,6 @@ import base64
 
 import pytest
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
-from a2a.utils.constants import PREV_AGENT_CARD_WELL_KNOWN_PATH
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.responses import PlainTextResponse
@@ -27,7 +26,6 @@ from starlette.testclient import TestClient
 
 from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
-from datarobot_genai.dragent.frontends.claim_validation import is_agent_card_path
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 
 from ..helpers import make_jwt
@@ -73,17 +71,38 @@ class TestAudienceValidation:
     def client(self) -> TestClient:
         return TestClient(_app(routes=_a2a_routes()))
 
-    def test_agent_card_path_is_exempt(self, client):
-        """GIVEN no token WHEN the agent card is fetched THEN the middleware passes it through."""
+    def test_unauthenticated_agent_card_passes_through(self, client):
+        """GIVEN no token WHEN the agent card is fetched THEN the middleware passes it through.
+
+        Auth on that route is optional; _handle_get_agent_card decides via
+        enable_unauthenticated_well_known_route.
+        """
         response = client.get(AGENT_CARD_WELL_KNOWN_PATH)
         assert response.status_code == 200
         assert response.text == "card"
 
-    def test_agent_card_path_is_exempt_when_mounted(self):
-        """GIVEN the app mounted under /a2a WHEN the card is fetched THEN still exempt.
+    def test_agent_card_with_wrong_audience_is_rejected(self, client):
+        """GIVEN a token naming another agent THEN the card route rejects it too.
 
-        Guards the suffix match: the mount prefix is present in ``request.url.path``.
+        No route is exempt: once a token is presented, it is fully authorized before the
+        handler gets to decide what card to serve.
         """
+        response = client.get(
+            AGENT_CARD_WELL_KNOWN_PATH,
+            headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)},
+        )
+        assert response.status_code == 401
+
+    def test_agent_card_with_matching_audience_passes_through(self, client):
+        response = client.get(
+            AGENT_CARD_WELL_KNOWN_PATH,
+            headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)},
+        )
+        assert response.status_code == 200
+        assert response.text == "card"
+
+    def test_unauthenticated_agent_card_passes_through_when_mounted(self):
+        """GIVEN the app mounted under /a2a WHEN the card is fetched with no token THEN allowed."""
         outer = Starlette(
             routes=[
                 Mount(
@@ -311,16 +330,19 @@ class TestServingRoutes:
         response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
 
-    def test_a2a_subtree_is_exempt(self, client):
-        """GIVEN a wrong-audience token at the mounted agent card THEN it is still exempt.
+    def test_mounted_a2a_subtree_is_checked_too(self, client):
+        """GIVEN a wrong-audience token inside the /a2a mount THEN it is rejected.
 
-        Pre-empting it would override _handle_get_agent_card's redacted-vs-401 decision.
+        One instance covers the mounted app as well; nothing under /a2a is exempt.
         """
-        token = make_jwt(aud=OTHER_AUDIENCE)
         response = client.get(
             f"/{A2A_MOUNT_PATH}{AGENT_CARD_WELL_KNOWN_PATH}",
-            headers={OAUTH_ACCESS_TOKEN_HEADER: token},
+            headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)},
         )
+        assert response.status_code == 401
+
+    def test_unauthenticated_request_into_the_a2a_mount_passes_through(self, client):
+        response = client.get(f"/{A2A_MOUNT_PATH}{AGENT_CARD_WELL_KNOWN_PATH}")
         assert response.status_code == 200
         assert response.text == "card"
 
@@ -360,30 +382,12 @@ class TestFallbackHeaderClassification:
         assert response.status_code == 422
 
 
-class TestPathPredicates:
-    @pytest.mark.parametrize(
-        "path,expected",
-        [
-            (AGENT_CARD_WELL_KNOWN_PATH, True),
-            (PREV_AGENT_CARD_WELL_KNOWN_PATH, True),
-            (f"/{A2A_MOUNT_PATH}{AGENT_CARD_WELL_KNOWN_PATH}", True),
-            # The A2A RPC endpoint is "/", which must never be exempt on the A2A app.
-            ("/", False),
-            ("/chat/completions", False),
-        ],
-    )
-    def test_is_agent_card_path(self, path, expected):
-        assert is_agent_card_path(path) is expected
-
-
 class TestMountPrefixRobustness:
-    """Validation must not depend on recognising the mount path.
+    """Validation must hold under any mount or deployment path prefix.
 
-    ``scope["path"]`` keeps every prefix -- the mount's and any deployment's -- so the
-    agent-card exemption matches on suffix rather than equality.
+    ``scope["path"]`` keeps every prefix, so nothing here may depend on recognising one.
     """
 
-    # Neither the default `/a2a` mount nor anything the serving exemption recognises.
     UNRECOGNISED_MOUNT = "/deployments/abc123/a2a"
 
     def _client(self) -> TestClient:
@@ -404,23 +408,21 @@ class TestMountPrefixRobustness:
         assert response.status_code == 401
         assert response.text != "executed"
 
-    def test_agent_card_keeps_its_own_auth_decision_under_an_unrecognised_mount(self):
-        """GIVEN a wrong-audience token on the card route under any prefix THEN still exempt."""
+    def test_agent_card_is_checked_under_an_unrecognised_mount(self):
+        """GIVEN a wrong-audience token on the card route THEN it is rejected, prefix or not."""
         with self._client() as client:
             response = client.get(
                 f"{self.UNRECOGNISED_MOUNT}{AGENT_CARD_WELL_KNOWN_PATH}",
                 headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)},
             )
+        assert response.status_code == 401
+
+    def test_unauthenticated_agent_card_still_reaches_the_handler(self):
+        """GIVEN no token THEN the card route is untouched, whatever the prefix.
+
+        ``enable_unauthenticated_well_known_route`` stays authoritative for that case.
+        """
+        with self._client() as client:
+            response = client.get(f"{self.UNRECOGNISED_MOUNT}{AGENT_CARD_WELL_KNOWN_PATH}")
         assert response.status_code == 200
         assert response.text == "card"
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            AGENT_CARD_WELL_KNOWN_PATH,
-            f"/deployments/abc123/a2a{AGENT_CARD_WELL_KNOWN_PATH}",
-            f"/some/other/prefix/a2a{PREV_AGENT_CARD_WELL_KNOWN_PATH}",
-        ],
-    )
-    def test_agent_card_is_exempt_under_any_prefix(self, path):
-        assert is_agent_card_path(path) is True

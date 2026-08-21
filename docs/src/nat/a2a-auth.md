@@ -146,6 +146,11 @@ general:
             - Write a blog post about the future of AI in healthcare
             - Create an article about sustainable energy trends
 
+      # Opt-in to enforcing the inbound token's claims (all api routes)
+      # When enabled the validation will ensute the token aud claim match
+      # cross_application_access.token_request.audience
+      oauth_claim_validation: true
+
       # Server-side: advertise XAA requirements in the agent card
       cross_application_access:
         # Step 1: Token exchange to fetch the ID-JAG (RFC 8693)
@@ -247,9 +252,13 @@ DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
 
 - Applies to **every route**, not just `/a2a`.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
-- Agent-card discovery is exempt, so `enable_unauthenticated_well_known_route` stays
-  authoritative for what an unauthenticated caller sees.
-- Disabled when `token_request.audience` or `cross_application_access` is unset; logged at startup.
+- No route is exempt, agent-card discovery included. Auth there is optional, so an
+  unauthenticated request still reaches the handler and
+  `enable_unauthenticated_well_known_route` decides what it sees; a request that *does* carry a
+  token is validated first, and one naming another agent gets `401` instead of a card.
+- Off unless `a2a.oauth_claim_validation: true` is set. With the flag on but no
+  `cross_application_access.token_request.audience` to enforce, startup fails rather than
+  pretending to. Either state is logged at startup.
 - Audience comparison is exact — no case or trailing-slash leniency.
 
 ### Server-side configuration reference: `external`
@@ -278,6 +287,7 @@ routing is enforced before the request reaches the agent process.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
+| `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
 | `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive 401. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
@@ -302,7 +312,8 @@ remote XAA-protected agent.
 > the value it used to default to still loads, with a deprecation warning in the startup log.
 > Any other value — including `fallback_token_headers: []`, which used to disable the fallback —
 > is rejected at startup, because honouring it would read a header audience validation does not
-> inspect. Delete the line.
+> inspect. To upgrade, remove the `okta_token_header` and `fallback_token_headers` lines from the
+> `authentication:` entry in your agent's `workflow.yaml`; nothing replaces them.
 
 ### Agent card mapping
 
