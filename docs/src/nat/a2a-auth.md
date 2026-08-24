@@ -146,8 +146,8 @@ general:
             - Write a blog post about the future of AI in healthcare
             - Create an article about sustainable energy trends
 
-      # Opt-in to enforcing the inbound token's claims (all api routes)
-      # When enabled the validation will ensute the token aud claim match
+      # Opt in to enforcing the inbound token's claims (all API routes, not just /a2a).
+      # When enabled, a token's aud claim must match
       # cross_application_access.token_request.audience
       oauth_claim_validation: true
 
