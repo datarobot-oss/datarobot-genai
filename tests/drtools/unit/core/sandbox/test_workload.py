@@ -627,7 +627,6 @@ async def test_genuinely_markerless_failure_gives_up_on_the_quiet_window(
     allowance) and still returning promptly.
     """
     monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
-    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_EMPTY_QUIET_S", 0.05)
     monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.05)
     respx.post(CREATE_URL).mock(return_value=_create_response())
     respx.get(GET_URL).mock(
@@ -710,28 +709,63 @@ async def test_frozen_nonempty_stdout_still_waits_for_late_marker(
 
 
 @respx.mock
-async def test_empty_output_gives_up_quickly(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No output at all means the container likely never started — fail fast.
+async def test_empty_output_keeps_polling_for_a_late_starting_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty output must NOT be treated as "no marker coming".
 
-    This is the asymmetry: an empty stream has nothing in flight, so we must NOT
-    wait out the long non-empty budget for it.
+    Regression for the review finding on #638. A transient ErrImagePull marks
+    the workload errored *before* the runner starts; k8s retries and the
+    container can begin a minute later, emitting its marker then. Throughout
+    that window stdout is empty, because the pull's records are ERROR level and
+    route to stderr. An early give-up on empty output therefore breaks exactly
+    the case the provisioning budget exists for — so empty output has no
+    stillness rule and polls until the deadline.
     """
     monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
-    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_EMPTY_QUIET_S", 0.05)
-    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 600.0)
     respx.post(CREATE_URL).mock(return_value=_create_response())
     respx.get(GET_URL).mock(
         return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
     )
-    respx.get(LOGS_URL).mock(return_value=_logs_response_entries([]))
+    pull_err = {
+        "timestamp": "t",
+        "level": "ERROR",
+        "message": "Image pull failed reason=ErrImagePull message=failed to pull and unpack image",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    started_line = {
+        "timestamp": "t",
+        "level": "INFO",
+        "message": "sandbox process limit (RLIMIT_NPROC) set to 4096",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    marker = {
+        "timestamp": "t",
+        "level": "INFO",
+        "message": "__DR_SANDBOX_RESULT__:99",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    # Several polls where stdout is EMPTY (only the stderr-bound pull error),
+    # then the retried container starts and produces its marker.
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response_entries([]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err, started_line]),
+            _logs_response_entries([pull_err, started_line, marker]),
+        ]
+    )
     respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
 
-    started = time.monotonic()
     async with httpx.AsyncClient() as client:
-        with pytest.raises(SandboxError):
-            await _sandbox(client, provisioning_timeout_s=300.0).run("code", timeout_s=30)
-    # Must exit on the empty-output budget, not the 600s non-empty one or the deadline.
-    assert time.monotonic() - started < 30
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 99
 
 
 @respx.mock

@@ -83,22 +83,26 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
-# How long output must stay unchanged before we conclude no result marker is
-# coming. Applied asymmetrically (see _fetch_logs), because "no output at all"
-# and "some output, marker not yet flushed" are different situations:
+# How long NON-EMPTY output must stay unchanged before we conclude no result
+# marker is coming.
 #
-# * EMPTY output — the container may never have started (e.g. an image pull that
-#   never recovered). Nothing is in flight, so a short window is enough.
-# * NON-EMPTY output — the container started, and the image runner prints its
-#   result marker *after* its try/except BaseException/finally
-#   (datarobot-user-models, dr_mcp_execute_sandbox_minimal/runner.py), so a
-#   marker is emitted on every path that reaches it: normal return, user
-#   exception, SystemExit, and the in-process timeout. Output therefore means a
-#   marker is still coming, and how long the OTEL collector takes to flush it is
-#   not something we can bound from here. Wait, and give up only after a long
-#   stillness — that covers the one genuine no-marker case with output, a
-#   container SIGKILLed before reaching the print.
-_STABLE_OUTPUT_EMPTY_QUIET_S = 5.0
+# Only non-empty output gets a stillness rule. Once the container has printed
+# anything, a marker is in flight: the image runner prints it AFTER its own
+# try/except BaseException/finally (datarobot-user-models,
+# dr_mcp_execute_sandbox_minimal/runner.py), so every container that starts
+# emits one on every path — normal return, user exception, SystemExit, and the
+# in-process timeout. How long the OTEL collector then takes to flush it is not
+# boundable from here, so wait, and give up only after a long stillness. That
+# covers the one genuine no-marker-with-output case: a container SIGKILLed
+# before reaching the print.
+#
+# EMPTY output deliberately has NO stillness rule and polls to the deadline.
+# It cannot be distinguished from "the container has not started yet": a
+# transient ErrImagePull marks the workload errored before the runner starts,
+# k8s retries, and the container can begin a minute later — and the pull's
+# ERROR records route to stderr, so stdout stays empty throughout. Giving up
+# early on empty output would break exactly the case the provisioning budget
+# exists for.
 _STABLE_OUTPUT_NONEMPTY_QUIET_S = 30.0
 
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
@@ -453,13 +457,10 @@ class DataRobotWorkloadSandbox:
             if stdout != prev_stdout:
                 prev_stdout = stdout
                 stdout_settled_at = now
-                continue_waiting = True
-            else:
-                quiet_budget = (
-                    _STABLE_OUTPUT_NONEMPTY_QUIET_S if stdout else _STABLE_OUTPUT_EMPTY_QUIET_S
-                )
-                continue_waiting = now - stdout_settled_at < quiet_budget
-            if not continue_waiting:
+            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S:
+                # Non-empty and long since still: the marker is not coming.
+                # Empty output falls through and keeps polling to the deadline
+                # (see the constant above) — it may be a pull still retrying.
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)

@@ -36,6 +36,8 @@ API_KEY = "test-key-do-not-use"
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
     "MLOPS_DEPLOYMENT_ID",
+    "OTEL_ENTITY_ID",
+    "MLOPS_RUNTIME_PARAM_OTEL_ENTITY_ID",
     "DATAROBOT_ENDPOINT",
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -134,6 +136,29 @@ class TestHeaderResolvers:
 
     def test_headers_none_when_entity_id_only(self, clean_env):
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        assert resolve_datarobot_headers_from_env() is None
+
+    def test_headers_from_otel_entity_id_for_local_dev(self, clean_env):
+        # For local dev, OTEL_ENTITY_ID is set via .env / Pulumi outputs and
+        # loaded by _OtelSettings — mirrors config.py's otel_entity_id field.
+        clean_env.setenv("DATAROBOT_API_TOKEN", API_KEY)
+        clean_env.setenv("OTEL_ENTITY_ID", ENTITY_ID)
+        headers = resolve_datarobot_headers_from_env()
+        assert headers == {
+            "X-DataRobot-Api-Key": API_KEY,
+            "X-DataRobot-Entity-Id": ENTITY_ID,
+        }
+
+    def test_mlops_deployment_id_takes_priority_over_otel_entity_id(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", API_KEY)
+        clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        clean_env.setenv("OTEL_ENTITY_ID", "deployment-other")
+        headers = resolve_datarobot_headers_from_env()
+        assert headers is not None
+        assert headers["X-DataRobot-Entity-Id"] == "deployment-abc123"
+
+    def test_headers_none_when_otel_entity_id_without_api_key(self, clean_env):
+        clean_env.setenv("OTEL_ENTITY_ID", ENTITY_ID)
         assert resolve_datarobot_headers_from_env() is None
 
 
