@@ -76,6 +76,7 @@ _ENABLED_CATEGORIES = {
     "dr_vdb",
     "dr_file",
     "dr_workload",
+    "dr_otel",
 }
 
 
@@ -130,6 +131,17 @@ class TestIncludedSurface:
             "artifact_get",
         } <= names
         assert "file_upload" not in names
+
+    def test_otel_included(self, names: set[str]) -> None:
+        assert {
+            "otel_traces_list",
+            "otel_trace_get",
+            "otel_span_payload_get",
+            "otel_logs_list",
+            "otel_metrics_catalog_list",
+            "otel_metrics_values_get",
+            "otel_entity_stats_get",
+        } <= names
 
 
 class TestMcpUrl:
