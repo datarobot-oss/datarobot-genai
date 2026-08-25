@@ -127,26 +127,18 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_registry_backend: Literal["memory", "memory_space"] = Field(
-        default="memory",
+    agent_card_registry_memory_space_id: str | None = Field(
+        default=None,
         description=(
-            "Cache backend for agent cards. 'memory' uses in-process cache only; "
-            "'memory_space' adds a shared DataRobot MemorySpace L2 with "
-            "in-process L1 read-through."
+            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
+            "Defaults to AGENT_MEMORY_SPACE_ID. When unset, only in-process L1 "
+            "caching is used."
         ),
     )
 
     agent_card_registry_key_prefix: str = Field(
         default="dragent:",
         description="Key prefix for MemorySpace agent card cache entries.",
-    )
-
-    agent_card_registry_memory_space_id: str | None = Field(
-        default=None,
-        description=(
-            "DataRobot MemorySpace ID for L2 cache when agent_card_registry_backend="
-            "'memory_space'. Defaults to AGENT_MEMORY_SPACE_ID."
-        ),
     )
 
 
@@ -295,10 +287,10 @@ class AgentCardRegistry:
         self._backend = cache_backend or create_agent_card_cache_backend(config)
 
         logger.debug(
-            "AgentCardRegistry created (backend=%s, cache_ttl=%ds, max_staleness=%ds)",
-            config.agent_card_registry_backend,
+            "AgentCardRegistry created (cache_ttl=%ds, max_staleness=%ds, l2=%s)",
             self._cache_ttl,
             self._max_staleness_seconds,
+            isinstance(self._backend, LayeredAgentCardCacheBackend),
         )
 
     # ------------------------------------------------------------------

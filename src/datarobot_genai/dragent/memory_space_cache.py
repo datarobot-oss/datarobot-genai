@@ -61,8 +61,7 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
     agent_card_registry_memory_space_id: str | None = Field(
         default=None,
         description=(
-            "DataRobot MemorySpace ID for dragent L2 caches when "
-            "AGENT_CARD_REGISTRY_BACKEND=memory_space. "
+            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
             "Defaults to AGENT_MEMORY_SPACE_ID."
         ),
     )
@@ -83,13 +82,35 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
     )
 
 
-def resolve_memory_space_id(explicit: str | None = None) -> str:
-    """Return the MemorySpace ID for cache backends."""
+def try_resolve_memory_space_id(explicit: str | None = None) -> str | None:
+    """Return the MemorySpace ID for cache backends, or ``None`` when unset."""
     cfg = MemorySpaceCacheConfig()
     space_id = explicit or cfg.agent_card_registry_memory_space_id or cfg.agent_memory_space_id
     if not space_id or not space_id.strip():
-        raise ValueError(_MEMORY_SPACE_REQUIRED_MSG)
+        return None
     return space_id.strip()
+
+
+def resolve_memory_space_id(explicit: str | None = None) -> str:
+    """Return the MemorySpace ID for cache backends."""
+    space_id = try_resolve_memory_space_id(explicit)
+    if space_id is None:
+        raise ValueError(_MEMORY_SPACE_REQUIRED_MSG)
+    return space_id
+
+
+def try_configure_datarobot_memory_client(
+    *,
+    endpoint: str | None = None,
+    api_token: str | None = None,
+) -> bool:
+    """Configure the DataRobot client for memory Session API calls when possible."""
+    try:
+        configure_datarobot_memory_client(endpoint=endpoint, api_token=api_token)
+    except Exception as exc:
+        logger.debug("MemorySpace client unavailable: %s", exc)
+        return False
+    return True
 
 
 def configure_datarobot_memory_client(

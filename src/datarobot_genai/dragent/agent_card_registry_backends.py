@@ -29,8 +29,8 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
-from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_configure_datarobot_memory_client
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 if TYPE_CHECKING:
     from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -329,24 +329,29 @@ def _infer_key_type(record: AgentCardCacheRecord, lookup_key: str) -> LookupKeyT
 def create_agent_card_cache_backend(
     config: AgentCardRegistryConfig,
 ) -> AgentCardCacheBackend:
-    """Instantiate the configured cache backend."""
-    backend = config.agent_card_registry_backend
-    if backend == "memory":
-        return MemoryAgentCardCacheBackend()
+    """Instantiate the agent card cache backend (L1, plus MemorySpace L2 when available)."""
+    l1 = MemoryAgentCardCacheBackend()
+    memory_space_id = try_resolve_memory_space_id(config.agent_card_registry_memory_space_id)
+    if memory_space_id is None:
+        logger.debug("Agent card registry cache: L1 only (no MemorySpace ID configured)")
+        return l1
 
-    if backend == "memory_space":
-        memory_space_id = resolve_memory_space_id(config.agent_card_registry_memory_space_id)
-        configure_datarobot_memory_client()
-        kv_cache = MemorySpaceKVCache(
-            memory_space_id=memory_space_id,
-            key_prefix=config.agent_card_registry_key_prefix,
+    if not try_configure_datarobot_memory_client():
+        logger.warning(
+            "Agent card registry cache: L1 only — MemorySpace L2 unavailable "
+            "(set DATAROBOT_API_TOKEN and DATAROBOT_ENDPOINT)"
         )
-        return LayeredAgentCardCacheBackend(
-            MemoryAgentCardCacheBackend(),
-            MemorySpaceAgentCardCacheBackend(kv_cache=kv_cache),
-        )
+        return l1
 
-    raise ValueError(
-        f"Unsupported agent card registry cache backend: {backend!r}. "
-        "Expected 'memory' or 'memory_space'."
+    kv_cache = MemorySpaceKVCache(
+        memory_space_id=memory_space_id,
+        key_prefix=config.agent_card_registry_key_prefix,
+    )
+    logger.debug(
+        "Agent card registry cache: L1 + MemorySpace L2 (space_id=%s)",
+        memory_space_id,
+    )
+    return LayeredAgentCardCacheBackend(
+        l1,
+        MemorySpaceAgentCardCacheBackend(kv_cache=kv_cache),
     )

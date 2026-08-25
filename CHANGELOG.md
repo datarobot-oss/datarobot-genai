@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.4
-- `dragent`: optional DataRobot MemorySpace L2 cache for agent cards (`AGENT_CARD_REGISTRY_BACKEND=memory_space`) — in-process L1 read-through/write-through over the agentic memory Session API with platform-provisioned `AGENT_MEMORY_SPACE_ID` (or `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID`).
+- `dragent`: agent card registry uses in-process L1 cache with optional DataRobot MemorySpace L2 (read-through/write-through over the agentic memory Session API) when `AGENT_MEMORY_SPACE_ID` or `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is set; falls back to L1-only when no memory space is configured.
 - `dragent`: pluggable agent card registry cache backends with stale-if-error bounded by `AGENT_CARD_REGISTRY_CACHE_TTL`.
 
 ## 0.29.3

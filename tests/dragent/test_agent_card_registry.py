@@ -123,24 +123,16 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
-    def test_backend_default_memory(self):
-        config = AgentCardRegistryConfig()
-        assert config.agent_card_registry_backend == "memory"
-
     def test_max_staleness_derived_from_cache_ttl(self):
         registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=1800)
         assert registry._max_staleness_seconds == 1800
 
-    def test_memory_space_backend_from_env(self):
+    def test_memory_space_id_from_env(self):
         with patch.dict(
             "os.environ",
-            {
-                "AGENT_CARD_REGISTRY_BACKEND": "memory_space",
-                "AGENT_CARD_REGISTRY_MEMORY_SPACE_ID": "space-123",
-            },
+            {"AGENT_CARD_REGISTRY_MEMORY_SPACE_ID": "space-123"},
         ):
             config = AgentCardRegistryConfig()
-            assert config.agent_card_registry_backend == "memory_space"
             assert config.agent_card_registry_memory_space_id == "space-123"
 
 

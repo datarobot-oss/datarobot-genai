@@ -96,29 +96,46 @@ class TestMemorySpaceAgentCardCacheBackend:
         assert stale.card.name == "MemorySpace Agent"
 
 
-class TestCreateAgentCardCacheBackendMemorySpace:
-    def test_memory_space_backend_requires_space_id(self):
-        config = AgentCardRegistryConfig(agent_card_registry_backend="memory_space")
+class TestCreateAgentCardCacheBackend:
+    def test_l1_only_when_no_memory_space_id(self):
+        config = AgentCardRegistryConfig()
         env = {
             "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
             "DATAROBOT_API_TOKEN": "token",
         }
         with patch.dict("os.environ", env, clear=True):
-            with pytest.raises(ValueError, match="MemorySpace ID"):
-                create_agent_card_cache_backend(config)
+            from datarobot_genai.dragent.agent_card_registry_backends import (
+                MemoryAgentCardCacheBackend,
+            )
 
-    def test_memory_space_backend_creates_layered_backend(self):
-        config = AgentCardRegistryConfig(
-            agent_card_registry_backend="memory_space",
-            agent_card_registry_memory_space_id="space-123",
-        )
+            backend = create_agent_card_cache_backend(config)
+
+        assert type(backend) is MemoryAgentCardCacheBackend
+
+    def test_l1_only_when_memory_client_unconfigured(self):
+        config = AgentCardRegistryConfig(agent_card_registry_memory_space_id="space-123")
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
+            return_value=False,
+        ):
+            from datarobot_genai.dragent.agent_card_registry_backends import (
+                MemoryAgentCardCacheBackend,
+            )
+
+            backend = create_agent_card_cache_backend(config)
+
+        assert type(backend) is MemoryAgentCardCacheBackend
+
+    def test_creates_layered_backend_when_memory_space_configured(self):
+        config = AgentCardRegistryConfig(agent_card_registry_memory_space_id="space-123")
         env = {
             "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
             "DATAROBOT_API_TOKEN": "token",
         }
         with patch.dict("os.environ", env, clear=False):
             with patch(
-                "datarobot_genai.dragent.agent_card_registry_backends.configure_datarobot_memory_client"
+                "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
+                return_value=True,
             ) as configure_mock:
                 backend = create_agent_card_cache_backend(config)
 
