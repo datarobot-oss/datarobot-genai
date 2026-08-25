@@ -95,13 +95,13 @@ class TestMemorySpaceKVCache:
                 return_value=session,
             ),
         ):
-            await kv_cache.set_value("dep-1", '{"version": 1}', kind="agent_card")
+            await kv_cache.set_value("dep-1", '{"version": 1}')
 
         with patch(
             "datarobot_genai.dragent.memory_space_cache._find_cache_session",
             return_value=session,
         ):
-            assert await kv_cache.get_value("dep-1", kind="agent_card") == '{"version": 1}'
+            assert await kv_cache.get_value("dep-1") == '{"version": 1}'
 
         session.post_event.assert_called_once()
         kwargs = session.post_event.call_args.kwargs
@@ -116,34 +116,10 @@ class TestMemorySpaceKVCache:
             "datarobot_genai.dragent.memory_space_cache._find_cache_session",
             return_value=session,
         ):
-            await kv_cache.set_value("dep-1", "v2", kind="agent_card")
+            await kv_cache.set_value("dep-1", "v2")
 
         session.update_event.assert_called_once_with(1, body={"v": 1, "payload": "v2"})
         assert session.post_event.call_count == 1
-
-    async def test_different_kinds_are_isolated(self, kv_cache: MemorySpaceKVCache) -> None:
-        agent_session = _FakeSession("sess-agent")
-        xaa_session = _FakeSession("sess-xaa")
-
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                side_effect=[None, None],
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
-                side_effect=[agent_session, xaa_session],
-            ),
-        ):
-            await kv_cache.set_value("same-key", "agent", kind="agent_card")
-            await kv_cache.set_value("same-key", "xaa", kind="xaa_token")
-
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-            side_effect=[agent_session, xaa_session],
-        ):
-            assert await kv_cache.get_value("same-key", kind="agent_card") == "agent"
-            assert await kv_cache.get_value("same-key", kind="xaa_token") == "xaa"
 
     async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
@@ -158,7 +134,7 @@ class TestMemorySpaceKVCache:
                 return_value=session,
             ) as create_mock,
         ):
-            await kv_cache.set_value("dep-1", "payload", kind="agent_card")
+            await kv_cache.set_value("dep-1", "payload")
 
         create_mock.assert_called_once()
         assert create_mock.call_args.args[1] == [DRAGENT_CACHE_PARTICIPANT_ID]
@@ -170,6 +146,6 @@ class TestMemorySpaceKVCache:
             "datarobot_genai.dragent.memory_space_cache._find_cache_session",
             return_value=session,
         ):
-            await kv_cache.delete_value("dep-1", kind="agent_card")
+            await kv_cache.delete_value("dep-1")
 
         session.delete.assert_called_once()

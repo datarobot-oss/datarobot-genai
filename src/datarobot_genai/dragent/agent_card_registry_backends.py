@@ -205,7 +205,7 @@ class MemorySpaceAgentCardCacheBackend:
         return [f"deployment:{lookup_key}", f"external:{lookup_key}"]
 
     async def _get_record(self, storage_key: str) -> AgentCardCacheRecord | None:
-        payload = await self._kv.get_value(storage_key, kind="agent_card")
+        payload = await self._kv.get_value(storage_key)
         if payload is None:
             return None
         try:
@@ -244,7 +244,7 @@ class MemorySpaceAgentCardCacheBackend:
             record = build_cache_record(card, lookup_key=lookup_key, key_type=key_type)
             payload = record.model_dump_json()
             for storage_key in self._storage_keys_for_record(record):
-                await self._kv.set_value(storage_key, payload, kind="agent_card")
+                await self._kv.set_value(storage_key, payload)
 
     async def evict(
         self,
@@ -253,7 +253,7 @@ class MemorySpaceAgentCardCacheBackend:
         key_type: LookupKeyType | None = None,
     ) -> None:
         for storage_key in self._storage_keys_for_lookup(lookup_key, key_type=key_type):
-            await self._kv.delete_value(storage_key, kind="agent_card")
+            await self._kv.delete_value(storage_key)
 
 
 class LayeredAgentCardCacheBackend:

@@ -30,7 +30,6 @@ import hashlib
 import logging
 import os
 from typing import Any
-from typing import Literal
 
 import datarobot as dr
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
@@ -46,8 +45,7 @@ DRAGENT_CACHE_PARTICIPANT_ID = hashlib.sha256(b"datarobot-genai:dragent-cache").
 CACHE_METADATA_VERSION = 1
 CACHE_EVENT_TYPE = "status"
 DEDUPLICATION_KEY_LENGTH = 64
-
-CacheKind = Literal["agent_card", "xaa_token"]
+CACHE_KIND = "agent_card"
 
 _MEMORY_SPACE_REQUIRED_MSG = (
     "Memory space cache backends require a provisioned DataRobot MemorySpace ID. "
@@ -130,12 +128,12 @@ def _cache_session_description(logical_key: str) -> str:
     return f"/dragent/cache/{logical_key}"
 
 
-def _cache_session_metadata(logical_key: str, *, kind: CacheKind) -> dict[str, Any]:
+def _cache_session_metadata(logical_key: str) -> dict[str, Any]:
     return {
         "v": CACHE_METADATA_VERSION,
         "dragent_cache": True,
         "cache_key": logical_key,
-        "cache_kind": kind,
+        "cache_kind": CACHE_KIND,
     }
 
 
@@ -154,14 +152,13 @@ def _create_cache_session(
     memory_space_id: str,
     *,
     logical_key: str,
-    kind: CacheKind,
 ) -> Session:
     """Create a cache session, adopting an existing one on deduplication collision."""
     try:
         return Session.create(
             memory_space_id,
             [DRAGENT_CACHE_PARTICIPANT_ID],
-            metadata=_cache_session_metadata(logical_key, kind=kind),
+            metadata=_cache_session_metadata(logical_key),
             description=_cache_session_description(logical_key),
             deduplication_key=_cache_deduplication_key(logical_key),
         )
@@ -210,12 +207,12 @@ class MemorySpaceKVCache:
         normalized = key_prefix if key_prefix.endswith(":") else f"{key_prefix}:"
         self._key_prefix = normalized
 
-    def _logical_key(self, key: str, *, kind: CacheKind) -> str:
-        return f"{self._key_prefix}{kind}:{key}"
+    def _logical_key(self, key: str) -> str:
+        return f"{self._key_prefix}{CACHE_KIND}:{key}"
 
-    async def get_value(self, key: str, *, kind: CacheKind) -> str | None:
+    async def get_value(self, key: str) -> str | None:
         """Return the stored JSON payload for *key*, or ``None`` when missing."""
-        logical_key = self._logical_key(key, kind=kind)
+        logical_key = self._logical_key(key)
 
         def _get() -> str | None:
             session = _find_cache_session(self._memory_space_id, logical_key)
@@ -229,9 +226,9 @@ class MemorySpaceKVCache:
             logger.exception("MemorySpace cache read failed for %s", logical_key)
             return None
 
-    async def set_value(self, key: str, payload: str, *, kind: CacheKind) -> None:
+    async def set_value(self, key: str, payload: str) -> None:
         """Upsert a JSON payload for *key*."""
-        logical_key = self._logical_key(key, kind=kind)
+        logical_key = self._logical_key(key)
 
         def _set() -> None:
             session = _find_cache_session(self._memory_space_id, logical_key)
@@ -239,7 +236,6 @@ class MemorySpaceKVCache:
                 session = _create_cache_session(
                     self._memory_space_id,
                     logical_key=logical_key,
-                    kind=kind,
                 )
             _write_payload(session, payload)
 
@@ -248,9 +244,9 @@ class MemorySpaceKVCache:
         except Exception:
             logger.exception("MemorySpace cache write failed for %s", logical_key)
 
-    async def delete_value(self, key: str, *, kind: CacheKind) -> None:
+    async def delete_value(self, key: str) -> None:
         """Remove a cached payload for *key* when present."""
-        logical_key = self._logical_key(key, kind=kind)
+        logical_key = self._logical_key(key)
 
         def _delete() -> None:
             session = _find_cache_session(self._memory_space_id, logical_key)
