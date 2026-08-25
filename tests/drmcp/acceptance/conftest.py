@@ -120,6 +120,102 @@ def nonexistent_workload_id() -> str:
     return "000000000000000000000001"
 
 
+@pytest.fixture(scope="session")
+def otel_entity_type() -> str:
+    """Entity type for OTel acceptance tests (``TEST_OTEL_ENTITY_TYPE`` env, default deployment)."""
+    return os.environ.get("TEST_OTEL_ENTITY_TYPE", "deployment")
+
+
+@pytest.fixture(scope="session")
+def otel_entity_id() -> str:
+    """Entity id for OTel acceptance tests, from the required ``TEST_OTEL_ENTITY_ID`` env var.
+
+    Unlike ``workload_id``, there is no generic "pick any entity" fallback here: these cases
+    need a *specific* entity known to carry real OTel data (and, for the failure-diagnosis
+    cases, at least one real error-status trace) -- an entity with zero OTel data would fail
+    these tests for a data reason, not a tool-description reason. See plan §9 step 9's own
+    reference deployment ("[agent-application-dev] [agent]", whose median trace is 807k
+    tokens) for the kind of entity this should point at.
+    """
+    value = os.environ.get("TEST_OTEL_ENTITY_ID")
+    if not value:
+        pytest.skip(
+            "TEST_OTEL_ENTITY_ID is not set; OTel acceptance cases need a specific entity "
+            "known to carry real OTel traces/logs to be meaningful."
+        )
+    return value
+
+
+@pytest.fixture(scope="session")
+def otel_failing_trace_id(dr_client: Any, otel_entity_type: str, otel_entity_id: str) -> str:
+    """Discover a trace_id with an error span on the configured OTel entity.
+
+    ``TEST_OTEL_FAILING_TRACE_ID`` overrides discovery. Otherwise this calls
+    ``GET otel/{entity_type}/{entity_id}/traces/?status=error&limit=1`` directly against the
+    DataRobot REST API (bypassing the LLM entirely), the same way ``workload_id`` discovers a
+    workload id -- tier 3 tests whether the model picks the right *tool and parameters* given a
+    real, live failure, not whether it can also locate one blind with no test-side help.
+    """
+    override = os.environ.get("TEST_OTEL_FAILING_TRACE_ID")
+    if override:
+        return override
+    try:
+        result = (
+            dr_client.client.get_client()
+            .get(
+                f"otel/{otel_entity_type}/{otel_entity_id}/traces/",
+                params={"status": "error", "limit": 1},
+            )
+            .json()
+        )
+        traces = result.get("traces") or result.get("data") or []
+        if not traces:
+            pytest.skip(
+                f"No error-status OTel traces found for {otel_entity_type}/{otel_entity_id}; "
+                "set TEST_OTEL_FAILING_TRACE_ID to a known failing trace_id to run this case."
+            )
+        return str(traces[0]["trace_id"])
+    except Exception as exc:
+        pytest.skip(f"Could not discover a failing OTel trace for acceptance tests: {exc}")
+
+
+@pytest.fixture(scope="session")
+def otel_failing_span_id(
+    dr_client: Any,
+    otel_entity_type: str,
+    otel_entity_id: str,
+    otel_failing_trace_id: str,
+) -> str:
+    """Discover the span_id of an ERROR-status span within ``otel_failing_trace_id``.
+
+    ``TEST_OTEL_FAILING_SPAN_ID`` overrides discovery. Otherwise this fetches the trace
+    directly (same bypass-the-LLM rationale as ``otel_failing_trace_id``) and picks the first
+    span whose ``status_code`` is ``ERROR``.
+    """
+    override = os.environ.get("TEST_OTEL_FAILING_SPAN_ID")
+    if override:
+        return override
+    try:
+        result = (
+            dr_client.client.get_client()
+            .get(
+                f"otel/{otel_entity_type}/{otel_entity_id}/traces/{otel_failing_trace_id}/",
+                params={"limit": 100},
+            )
+            .json()
+        )
+        spans = result.get("spans") or []
+        error_spans = [s for s in spans if s.get("status_code") == "ERROR"]
+        if not error_spans:
+            pytest.skip(
+                f"Trace {otel_failing_trace_id} has no ERROR-status span in the first 100; "
+                "set TEST_OTEL_FAILING_SPAN_ID to run this case."
+            )
+        return str(error_spans[0]["span_id"])
+    except Exception as exc:
+        pytest.skip(f"Could not discover a failing OTel span for acceptance tests: {exc}")
+
+
 _FILES_API_TEST_FILENAME = "acceptance-test.txt"
 _FILES_API_TEST_CONTENT = b"mcp files api acceptance test\n"
 
