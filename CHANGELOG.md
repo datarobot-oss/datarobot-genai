@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.28.5
+- `drtools/core/sandbox`: the marker wait no longer gives up on a container that is still running. 0.28.2 required stdout to stay unchanged for 5s before declaring a run markerless, but stdout can sit frozen at the runner's first line for longer while the OTEL collector flushes the marker — observed on staging holding at 97 bytes across three polls (~10s), with the marker available 3s after we gave up, at 17s of a 324s budget. Stillness is now only consulted for NON-EMPTY output, where it means something: the image runner prints its marker after its own `try/except BaseException/finally`, so any container that started emits one, and output therefore means a marker is in flight (bounded at 30s of stillness to cover a container SIGKILLed before the print). Empty output keeps polling to the deadline and gets no stillness rule at all, because it is indistinguishable from a container that has not started yet — a transient `ErrImagePull` marks the workload errored before the runner starts, k8s retries, and the pull's records are ERROR level so they route to stderr and leave stdout empty meanwhile.
+
 ## 0.28.4
 - `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
 
