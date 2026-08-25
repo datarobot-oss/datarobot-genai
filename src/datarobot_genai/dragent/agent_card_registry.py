@@ -131,8 +131,7 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         default=None,
         description=(
             "DataRobot MemorySpace ID for the agent card registry L2 cache. "
-            "Defaults to AGENT_MEMORY_SPACE_ID. When unset, only in-process L1 "
-            "caching is used."
+            "When unset, only in-process L1 caching is used."
         ),
     )
 

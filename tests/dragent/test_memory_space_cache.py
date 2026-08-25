@@ -24,6 +24,7 @@ from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 
 class _FakeEvent:
@@ -70,10 +71,14 @@ class TestResolveMemorySpaceId:
         assert resolve_memory_space_id("space-explicit") == "space-explicit"
 
     def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("AGENT_MEMORY_SPACE_ID", raising=False)
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         with pytest.raises(ValueError, match="MemorySpace ID"):
             resolve_memory_space_id(None)
+
+    def test_agent_memory_space_id_is_not_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
+        monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
+        assert try_resolve_memory_space_id(None) is None
 
 
 class TestMemorySpaceKVCache:

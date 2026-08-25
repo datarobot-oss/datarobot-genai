@@ -51,7 +51,7 @@ CacheKind = Literal["agent_card", "xaa_token"]
 
 _MEMORY_SPACE_REQUIRED_MSG = (
     "Memory space cache backends require a provisioned DataRobot MemorySpace ID. "
-    "Set AGENT_CARD_REGISTRY_MEMORY_SPACE_ID or AGENT_MEMORY_SPACE_ID."
+    "Set AGENT_CARD_REGISTRY_MEMORY_SPACE_ID."
 )
 
 
@@ -60,15 +60,7 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
 
     agent_card_registry_memory_space_id: str | None = Field(
         default=None,
-        description=(
-            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
-            "Defaults to AGENT_MEMORY_SPACE_ID."
-        ),
-    )
-
-    agent_memory_space_id: str | None = Field(
-        default=None,
-        description="Platform-injected MemorySpace ID (AGENT_MEMORY_SPACE_ID).",
+        description="DataRobot MemorySpace ID for the agent card registry L2 cache.",
     )
 
     datarobot_endpoint: str | None = Field(
@@ -83,9 +75,9 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
 
 
 def try_resolve_memory_space_id(explicit: str | None = None) -> str | None:
-    """Return the MemorySpace ID for cache backends, or ``None`` when unset."""
+    """Return the agent card registry MemorySpace ID, or ``None`` when unset."""
     cfg = MemorySpaceCacheConfig()
-    space_id = explicit or cfg.agent_card_registry_memory_space_id or cfg.agent_memory_space_id
+    space_id = explicit or cfg.agent_card_registry_memory_space_id
     if not space_id or not space_id.strip():
         return None
     return space_id.strip()
