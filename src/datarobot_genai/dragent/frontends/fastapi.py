@@ -26,7 +26,6 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontE
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
@@ -36,6 +35,8 @@ from datarobot_genai.core.utils.logging import setup_logging
 from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
+from .claim_validation import GeneralOAuthClaimValidationMiddleware
+from .register import DRAgentA2AConfig
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
 from .session import headers_from_a2a_state
@@ -161,43 +162,81 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         return sm
 
+    @property
+    def _a2a_config(self) -> DRAgentA2AConfig | None:
+        """Return the agent's A2A block, or ``None`` when it has none.
+
+        ``getattr`` because ``build_app()`` runs for any worker, and one built on NAT's vanilla
+        ``FastApiFrontEndConfig`` has no ``a2a`` field at all.
+        """
+        return getattr(self.front_end_config, "a2a", None)
+
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
         await super().add_routes(app, builder)
-        if self.front_end_config.a2a:
-            await self._add_a2a_routes(app, builder, self.front_end_config.a2a)
+        if a2a := self._a2a_config:
+            await self._add_a2a_routes(app, builder, a2a)
+
+    def _resolve_expected_audience(self) -> str | None:
+        """Audience an inbound token must carry: the one callers obtain through the
+        cross-application-access flow this agent advertises.
+
+        ``None`` when XAA is not configured or its audience is unset. Whether the check runs
+        at all is ``a2a.oauth_claim_validation``, not this.
+
+        """
+        a2a = self._a2a_config
+        if a2a is None or a2a.cross_application_access is None:
+            return None
+        return a2a.cross_application_access.token_request.audience
+
+    def _add_audience_validation_middleware(self, app: FastAPI) -> None:
+        """Install the claim check on the served app, if opted in.  See ``claim_validation``.
+
+        One instance covers ``/a2a`` too: Starlette keeps the mount prefix in
+        ``scope["path"]``, so the outer middleware sees A2A traffic.
+
+        Must run here, not from ``add_routes``: NAT calls that from inside the lifespan, by
+        which point Starlette has frozen the middleware stack and ``add_middleware`` raises.
+        """
+        a2a = self._a2a_config
+        if a2a is None or not a2a.oauth_claim_validation:
+            logger.info("OAuth claim validation disabled (a2a.oauth_claim_validation is not true)")
+            return
+
+        expected_audience = self._resolve_expected_audience()
+        if not expected_audience:
+            # Opted in with nothing to enforce: fail loudly rather than run an agent that
+            # believes it is validating.
+            raise ValueError(
+                "a2a.oauth_claim_validation is true but no expected audience is configured. "
+                "Set a2a.cross_application_access.token_request.audience, or turn "
+                "oauth_claim_validation off."
+            )
+
+        app.add_middleware(
+            GeneralOAuthClaimValidationMiddleware, expected_audience=expected_audience
+        )
+        logger.info("OAuth claim validation enabled (aud)")
 
     async def _add_a2a_routes(
-        self, app: FastAPI, builder: WorkflowBuilder, a2a_config: A2AFrontEndConfig
+        self, app: FastAPI, builder: WorkflowBuilder, a2a: DRAgentA2AConfig
     ) -> None:
         # A2AFrontEndPluginWorker reads config.general.front_end to get its front_end_config.
         # Pass a full Config with the A2AFrontEndConfig substituted in, and inherit host/port
         # from the FastAPI front end so the agent card URL matches where the app is mounted.
-        a2a_config = a2a_config.server.model_copy(
+        server_config = a2a.server.model_copy(
             update={"host": self.front_end_config.host, "port": self.front_end_config.port}
         )
         nat_config = self._config.model_copy(
-            update={"general": self._config.general.model_copy(update={"front_end": a2a_config})}
+            update={"general": self._config.general.model_copy(update={"front_end": server_config})}
         )
         self._a2a_worker = DRAgentA2AFrontEndPluginWorker(nat_config)
 
-        cross_app_access = (
-            self.front_end_config.a2a.cross_application_access
-            if self.front_end_config.a2a
-            else None
-        )
-        skills = self.front_end_config.a2a.skills if self.front_end_config.a2a else []
-        external = self.front_end_config.a2a.external if self.front_end_config.a2a else None
-        enable_unauthenticated_well_known_route = (
-            self.front_end_config.a2a.enable_unauthenticated_well_known_route
-            if self.front_end_config.a2a
-            else False
-        )
-
         agent_card = await create_agent_card(
             frontend_config=self._a2a_worker.front_end_config,
-            cross_app_access=cross_app_access,
-            skills=skills,
-            external=external,
+            cross_app_access=a2a.cross_application_access,
+            skills=a2a.skills,
+            external=a2a.external,
         )
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
@@ -210,7 +249,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         a2a_server = self._a2a_worker.create_a2a_server(
             agent_card,
             agent_executor,
-            enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
+            enable_unauthenticated_well_known_route=a2a.enable_unauthenticated_well_known_route,
         )
         a2a_app = a2a_server.build()
 
@@ -226,6 +265,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
         # NAT 1.6 no longer calls self.add_health_route() so we register here.
         self._register_health_routes(app)
+
+        self._add_audience_validation_middleware(app)
 
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.

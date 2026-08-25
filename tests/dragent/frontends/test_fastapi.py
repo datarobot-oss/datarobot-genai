@@ -16,6 +16,7 @@ import os
 import sys
 import types
 from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -35,6 +36,7 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
@@ -46,6 +48,7 @@ from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
+from ..helpers import make_jwt
 from .helpers import AUTH_HANDLER_PATH
 from .helpers import expected_workflow_key
 from .helpers import make_auth_ctx
@@ -293,6 +296,197 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         ) as mock_a2a_worker_cls:
             await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
+
+
+class TestInboundAudienceValidation:
+    """Wiring of the L2 audience check onto both the A2A app and the serving app."""
+
+    @staticmethod
+    def _worker(
+        audience: str | None, *, opted_in: bool = True, with_xaa: bool | None = None
+    ) -> DRAgentFastApiFrontEndPluginWorker:
+        """Build a worker whose a2a config advertises XAA with the given audience.
+
+        ``with_xaa`` defaults to ``audience is not None``, so ``_worker(None)`` means no
+        ``cross_application_access`` block at all; pass it explicitly for the block-present
+        but audience-unset case.  ``opted_in`` drives ``a2a.oauth_claim_validation``.
+        """
+        cross_app = None
+        if with_xaa if with_xaa is not None else audience is not None:
+            cross_app = CrossApplicationAccessConfig(
+                token_exchange=CrossAppTokenExchange(
+                    trusted_issuer="https://your-org.okta.com",
+                    audience="https://your-org.okta.com/oauth2/ausXXX",
+                ),
+                token_request=CrossAppTokenRequest(
+                    token_url="https://your-org.okta.com/oauth2/ausXXX/v1/token",
+                    audience=audience,
+                ),
+            )
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(
+                    a2a=DRAgentA2AConfig(
+                        server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                        oauth_claim_validation=opted_in,
+                        cross_application_access=cross_app,
+                    ),
+                )
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            return DRAgentFastApiFrontEndPluginWorker(config)
+
+    def test_not_installed_without_the_opt_in(self):
+        """GIVEN an audience but no oauth_claim_validation THEN nothing is enforced.
+
+        Opt-in means opt-in: filling in the XAA audience must not start enforcing on its own.
+        """
+        with self._built_app(self._worker("api://my-agent", opted_in=False)) as app:
+            assert self._claim_middleware(app) == []
+
+    def test_opt_in_without_an_audience_fails_loudly(self):
+        """GIVEN the opt-in but nothing to enforce THEN startup fails.
+
+        Silently running an agent that believes it validates is the worst outcome.
+        """
+        for worker in (
+            self._worker(None, opted_in=True, with_xaa=True),  # block present, audience unset
+            self._worker(None, opted_in=True, with_xaa=False),  # no block at all
+        ):
+            with pytest.raises(ValueError, match="oauth_claim_validation is true"):
+                with self._built_app(worker):
+                    pass
+
+    def test_flag_defaults_off(self):
+        """An a2a block that says nothing about it does not enforce."""
+        config = DRAgentA2AConfig(server=A2AFrontEndConfig())
+        assert config.oauth_claim_validation is False
+
+    def test_resolve_expected_audience_from_cross_app_access(self):
+        """GIVEN token_request.audience is set THEN it is the expected inbound audience."""
+        worker = self._worker("api://my-agent")
+        assert worker._resolve_expected_audience() == "api://my-agent"
+
+    def test_resolve_expected_audience_none_without_cross_app_access(self):
+        """GIVEN no cross_application_access block THEN no audience is expected."""
+        assert self._worker(None)._resolve_expected_audience() is None
+
+    def test_resolve_expected_audience_none_when_audience_unset(self):
+        """GIVEN XAA configured but token_request.audience unset THEN no audience is expected."""
+        worker = self._worker("api://my-agent")
+        worker.front_end_config.a2a.cross_application_access.token_request.audience = None
+        assert worker._resolve_expected_audience() is None
+
+    def test_resolve_expected_audience_none_without_a2a(self):
+        """GIVEN a2a is not configured at all THEN no audience is expected."""
+        config = Config(general=GeneralConfig(front_end=DRAgentFastApiFrontEndConfig()))
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+        assert worker._resolve_expected_audience() is None
+
+    async def _add_routes(self, worker, mock_builder, mock_a2a_worker) -> FastAPI:
+        app = FastAPI()
+        with (
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            await worker.add_routes(app, mock_builder)
+        return mock_a2a_worker.create_a2a_server.return_value.build.return_value
+
+    async def test_a2a_app_is_not_separately_guarded(
+        self, mock_builder, mock_a2a_worker, patch_super_add_routes
+    ):
+        """GIVEN an expected audience THEN the mounted A2A app gets no instance of its own.
+
+        The served app's instance already covers ``/a2a``; a second would decode twice.
+        """
+        worker = self._worker("api://my-agent")
+        a2a_app = await self._add_routes(worker, mock_builder, mock_a2a_worker)
+        assert self._claim_middleware(a2a_app) == []
+
+    @staticmethod
+    def _claim_middleware(app: FastAPI) -> list:
+        return [
+            middleware
+            for middleware in app.user_middleware
+            if middleware.cls is GeneralOAuthClaimValidationMiddleware
+        ]
+
+    @staticmethod
+    @contextmanager
+    def _built_app(worker: DRAgentFastApiFrontEndPluginWorker):
+        """Build the served app the way the server does, stubbing workflow construction.
+
+        Yields inside the patches because the lifespan runs on ``TestClient.__enter__``,
+        not at ``build_app()``.
+        """
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            yield worker.build_app()
+
+    def test_build_app_installs_one_instance_when_audience_configured(self):
+        """GIVEN an expected audience THEN exactly one instance guards the served app.
+
+        Also covers why this lives in build_app: add_routes runs inside the lifespan, where
+        Starlette has frozen the middleware stack.
+        """
+        with self._built_app(self._worker("api://my-agent")) as app:
+            installed = self._claim_middleware(app)
+        assert len(installed) == 1
+        assert installed[0].kwargs["expected_audience"] == "api://my-agent"
+
+    def test_build_app_installs_nothing_by_default(self):
+        """GIVEN neither the opt-in nor an audience THEN no route is guarded.
+
+        The default state for an agent that has not asked for L2 checks.
+        """
+        with self._built_app(self._worker(None, opted_in=False)) as app:
+            assert self._claim_middleware(app) == []
+
+    def test_serving_route_rejects_a_token_naming_another_agent(self):
+        """GIVEN a wrong-audience token on a non-A2A route THEN it is rejected.
+
+        NAT copies inbound headers into the workflow context on every route.
+        """
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get("/health", headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 401
+
+    def test_serving_route_accepts_a_token_naming_this_agent(self):
+        token = make_jwt(aud="api://my-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get("/health", headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 200
+
+    def test_serving_route_without_an_idp_token_still_works(self):
+        """GIVEN validation is enabled but no IdP token is sent THEN nothing breaks.
+
+        The DataRobot-API-token path must be unaffected.
+        """
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            assert client.get("/health").status_code == 200
+            assert (
+                client.get(
+                    "/health", headers={"authorization": "Bearer NjRiYWE1Njk5NmZiMzZlM2Vl"}
+                ).status_code
+                == 200
+            )
 
 
 class TestPerUserCompatibleAgentExecutor:
