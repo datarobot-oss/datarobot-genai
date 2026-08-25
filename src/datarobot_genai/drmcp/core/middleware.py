@@ -174,7 +174,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         if not user:
             message = (
                 "No AuthenticatedUser is found in inbound request scope. "
-                f"Skip {__class__.__name__}."
+                f"Skip {self.__class__.__name__}."
             )
             logger.info(message)
             return await call_next(request)
