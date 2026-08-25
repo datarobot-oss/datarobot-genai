@@ -101,8 +101,21 @@ function_groups:
 
 #### Batch fetching
 
-When a workflow has many registry-backed function groups, all cards are resolved in a maximum of two HTTP calls: one for deployment IDs, one for external IDs. Results are cached in-memory and
-reused until the TTL expires.
+When a workflow has many registry-backed function groups, all cards are resolved in a maximum of two HTTP calls: one for deployment IDs, one for external IDs. Results are cached (in-process by default, in-process L1 + shared Redis L2 when `AGENT_CARD_REGISTRY_BACKEND=redis`, or L1 + DataRobot MemorySpace L2 when `AGENT_CARD_REGISTRY_BACKEND=memory_space`) and reused until the TTL expires.
+
+On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in the same batch (enabled by default via `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP`). Disable with `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP=false` if you need to defer registry access until the first tool call.
+
+While the server is running, registered cards are **refreshed in the background** on a fixed interval (default 30 min via `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`). Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained.
+
+> [!WARNING]
+> **Shared Redis on user-deployed agents:** When many independent agent deployments share one
+> Redis instance, library namespace and HMAC signing are **not** a security boundary against
+> malicious or modified code. The platform must inject per-deployment/workload Redis ACLs,
+> unique signing keys, and platform IDs. See [Platform requirements (shared Redis)](../design/multi-cluster-cache-resilience.md#platform-requirements-shared-redis).
+>
+> **Preferred alternative:** provision a dedicated MemorySpace per deployment
+> (`AGENT_MEMORY_SPACE_ID`) and set `AGENT_CARD_REGISTRY_BACKEND=memory_space`. See
+> [DataRobot MemorySpace backend](../design/multi-cluster-cache-resilience.md#datarobot-memoryspace-backend-recommended-for-user-deployed-agents).
 
 #### Registry environment variables
 
@@ -112,6 +125,16 @@ reused until the TTL expires.
 | `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. |
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
+| `AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP` | No | When `true` (default), batch-fetch all registry-backed agent cards during dragent startup before accepting traffic. Set to `false` to disable. |
+| `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS` | No | Maximum age in seconds for serving a cached card when the registry is unreachable (stale-if-error). Default `86400` (24 h). |
+| `AGENT_CARD_REGISTRY_STALE_IF_ERROR` | No | When `true` (default), return the last-known-good cached card if a registry fetch fails and the entry is within `AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS`. |
+| `AGENT_CARD_REGISTRY_BACKEND` | No | Cache backend: `memory` (default, in-process only), `redis` (L1 + shared Redis L2), or `memory_space` (L1 + DataRobot MemorySpace L2). |
+| `AGENT_CARD_REGISTRY_REDIS_URL` | When `backend=redis` | Redis connection URL, e.g. `redis://cache.secondary.svc:6379/0`. |
+| `AGENT_CARD_REGISTRY_REDIS_PREFIX` | No | Base key prefix for Redis/MemorySpace cache entries. Default `dragent:`. For Redis, platform deployment/workload ID is appended as `dep:{id}:` or `wl:{id}:`. |
+| `AGENT_CARD_REGISTRY_CACHE_NAMESPACE` | Local dev only | Explicit namespace when `MLOPS_DEPLOYMENT_ID` and `WORKLOAD_ID` are unset. Cannot override platform IDs on hosted runtimes. Redis backends only. |
+| `AGENT_CARD_REGISTRY_REDIS_SIGNING_KEY` | When `backend=redis` | HMAC signing secret for Redis cache entries. **Platform must inject a unique value per deployment/workload** on shared Redis; falls back to `IDP_AGENT_PRIVATE_KEY_JWK` then `SESSION_SECRET_KEY` only when appropriate. |
+| `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` | When `backend=memory_space` | DataRobot MemorySpace ID for L2 cache. Defaults to `AGENT_MEMORY_SPACE_ID` when unset. |
+| `AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS` | No | Background refresh period in seconds for registered cards past the soft cache TTL. Default `1800` (30 min). Set to `0` to disable. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`

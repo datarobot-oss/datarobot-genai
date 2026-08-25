@@ -315,6 +315,16 @@ remote XAA-protected agent.
 > inspect. To upgrade, remove the `okta_token_header` and `fallback_token_headers` lines from the
 > `authentication:` entry in your agent's `workflow.yaml`; nothing replaces them.
 
+Exchanged access tokens are cached by default to avoid repeating the two-step
+Okta flow on every A2A call. Configure via:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_CARD_XAA_TOKEN_CACHE_ENABLED` | `true` | Enable exchanged-token cache. |
+| `AGENT_CARD_XAA_TOKEN_CACHE_BACKEND` | `memory` | `memory`, `redis` (uses registry Redis URL/prefix + namespace), or `memory_space` (uses `AGENT_MEMORY_SPACE_ID`). Prefer `memory_space` on user-deployed agents; use `memory` on shared multi-tenant Redis; see [platform requirements](../design/multi-cluster-cache-resilience.md#platform-requirements-shared-redis) and [MemorySpace backend](../design/multi-cluster-cache-resilience.md#datarobot-memoryspace-backend-recommended-for-user-deployed-agents). |
+| `AGENT_CARD_XAA_TOKEN_SKEW_SECONDS` | `60` | Evict cached tokens this many seconds before JWT `exp`. |
+| `AGENT_CARD_XAA_TOKEN_MAX_TTL_SECONDS` | `3600` | Cap cache TTL regardless of token `exp`. |
+
 ### Agent card mapping
 
 The `cross_application_access` configuration is split across two parts of the
