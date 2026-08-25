@@ -542,8 +542,12 @@ class AgentCardRegistry:
                 cards = await self._fetch(params)
                 self._store_cards(cards)
 
-                if lookup_key in self._cache:
-                    return self._cache[lookup_key].card
+                if lookup_key in cards:
+                    return cards[lookup_key]
+
+                # Successful miss — evict stale entry so stale-if-error cannot
+                # resurrect a deregistered agent on a later fetch failure.
+                self._cache.pop(lookup_key, None)
             except AgentCardRegistryError:
                 if stale_card := self._try_get_stale(lookup_key):
                     return stale_card
