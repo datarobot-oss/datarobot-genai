@@ -83,15 +83,27 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
-# How long a container's stdout must stay byte-identical before we conclude it
-# produced no result marker. A duration, not a poll count: OTEL delivers stdout
-# line by line with lag, so back-to-back identical reads prove only that the
-# next line hasn't landed *yet*. On staging the runner's "RLIMIT_NPROC" line
-# arrived ~0.4s ahead of the marker, and two reads 0.5s apart were enough to
-# wrongly declare the run markerless. This window bounds both sides: genuine
-# crashes still report in ~5s rather than waiting out the full budget, and a
-# flush an order of magnitude slower than observed is still caught.
-_STABLE_OUTPUT_QUIET_S = 5.0
+# How long NON-EMPTY output must stay unchanged before we conclude no result
+# marker is coming.
+#
+# Only non-empty output gets a stillness rule. Once the container has printed
+# anything, a marker is in flight: the image runner prints it AFTER its own
+# try/except BaseException/finally (datarobot-user-models,
+# dr_mcp_execute_sandbox_minimal/runner.py), so every container that starts
+# emits one on every path — normal return, user exception, SystemExit, and the
+# in-process timeout. How long the OTEL collector then takes to flush it is not
+# boundable from here, so wait, and give up only after a long stillness. That
+# covers the one genuine no-marker-with-output case: a container SIGKILLed
+# before reaching the print.
+#
+# EMPTY output deliberately has NO stillness rule and polls to the deadline.
+# It cannot be distinguished from "the container has not started yet": a
+# transient ErrImagePull marks the workload errored before the runner starts,
+# k8s retries, and the container can begin a minute later — and the pull's
+# ERROR records route to stderr, so stdout stays empty throughout. Giving up
+# early on empty output would break exactly the case the provisioning budget
+# exists for.
+_STABLE_OUTPUT_NONEMPTY_QUIET_S = 30.0
 
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
 # computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
@@ -430,21 +442,25 @@ class DataRobotWorkloadSandbox:
                 break
             if time.monotonic() > deadline:
                 break
-            # No marker yet. If OTEL output has arrived and then stayed
-            # completely still for _STABLE_OUTPUT_QUIET_S, the run produced no
-            # marker (a genuine failure/crash) — stop rather than waiting out
-            # the full budget.
+            # No marker yet. Decide whether one is still coming.
             #
-            # The quiet window is what makes this safe. A partially flushed
-            # stdout looks exactly like a complete one, so "unchanged since the
-            # last read" proves nothing when reads are ~0.5s apart and the
-            # remaining lines are ~0.4s behind — that is precisely how a
-            # succeeded run got reported as "no result marker in logs".
+            # Keyed on whether the container produced ANY output, not on how
+            # long output has been still. Output means the runner is executing,
+            # and it prints the marker after its own finally — so a marker is in
+            # flight and the only question is collector latency, which we cannot
+            # bound from here. Waiting on stillness alone is what made a
+            # succeeded run report "no result marker": stdout sat unchanged at
+            # the runner's first line while the marker was still being flushed,
+            # and ERROR-level records (which route to stderr) kept arriving, so
+            # the stream was demonstrably alive while `stdout` looked frozen.
             now = time.monotonic()
             if stdout != prev_stdout:
                 prev_stdout = stdout
                 stdout_settled_at = now
-            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_QUIET_S:
+            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S:
+                # Non-empty and long since still: the marker is not coming.
+                # Empty output falls through and keeps polling to the deadline
+                # (see the constant above) — it may be a pull still retrying.
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)
