@@ -12,24 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import httpx
 import pytest
+from a2a.types import AgentCard
 
 from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import DataRobotRegistrySettings
-from datarobot_genai.dragent.agent_card_registry import _CacheEntry
+from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
 from datarobot_genai.dragent.agent_card_registry import _parse_registry_response
 from datarobot_genai.dragent.agent_card_registry import _resolve_settings
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
+from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheRecord
+from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 
 _MODULE = "datarobot_genai.dragent.agent_card_registry"
 
@@ -70,6 +76,21 @@ def _entry(dep_id=None, ext_id=None, card=_SAMPLE_AGENT_CARD):
     }
 
 
+def _card(**overrides) -> AgentCard:
+    return AgentCard.model_validate({**_SAMPLE_AGENT_CARD, **overrides})
+
+
+def _parsed(cards: dict, *, key_types: dict | None = None) -> ParsedRegistryCards:
+    if key_types is None:
+        key_types = {key: "dep" for key in cards}
+    return ParsedRegistryCards(cards=cards, key_types=key_types)
+
+
+def _memory_registry(**kwargs) -> AgentCardRegistry:
+    kwargs.setdefault("cache_backend", MemoryAgentCardCacheBackend())
+    return AgentCardRegistry(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Tests: AgentCardRegistryConfig
 # ---------------------------------------------------------------------------
@@ -102,28 +123,64 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
+    def test_stale_if_error_default(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_stale_if_error is True
+
+    def test_max_staleness_default(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_max_staleness_seconds == 24 * 3600
+
+    def test_stale_if_error_from_env(self):
+        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_STALE_IF_ERROR": "false"}):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_stale_if_error is False
+
+    def test_backend_default_memory(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_backend == "memory"
+
+    def test_memory_space_backend_from_env(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "AGENT_CARD_REGISTRY_BACKEND": "memory_space",
+                "AGENT_CARD_REGISTRY_MEMORY_SPACE_ID": "space-123",
+            },
+        ):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_backend == "memory_space"
+            assert config.agent_card_registry_memory_space_id == "space-123"
+
 
 # ---------------------------------------------------------------------------
-# Tests: _CacheEntry
+# Tests: AgentCardCacheRecord
 # ---------------------------------------------------------------------------
 
 
-class TestCacheEntry:
+class TestAgentCardCacheRecord:
     def test_not_expired_within_ttl(self):
-        entry = _CacheEntry(MagicMock())
+        entry = AgentCardCacheRecord(card=_card())
         assert entry.is_fresh(3600)
-        assert not entry.is_expired(3600)
 
-    def test_expired_with_zero_ttl(self):
-        entry = _CacheEntry(MagicMock())
+    def test_not_fresh_with_zero_ttl(self):
+        entry = AgentCardCacheRecord(card=_card())
         assert not entry.is_fresh(0)
-        assert entry.is_expired(0)
 
-    def test_expired_after_ttl(self):
-        entry = _CacheEntry(MagicMock())
-        entry.fetched_at -= 100  # Simulate 100s ago
+    def test_not_fresh_after_ttl(self):
+        entry = AgentCardCacheRecord(card=_card())
+        entry.fetched_at = datetime.now(UTC) - timedelta(seconds=100)
         assert not entry.is_fresh(50)
-        assert entry.is_expired(50)
+
+    def test_within_staleness(self):
+        entry = AgentCardCacheRecord(card=_card())
+        entry.fetched_at = datetime.now(UTC) - timedelta(seconds=100)
+        assert entry.is_within_staleness(3600)
+        assert not entry.is_within_staleness(50)
+
+    def test_zero_max_staleness_never_servable(self):
+        entry = AgentCardCacheRecord(card=_card())
+        assert not entry.is_within_staleness(0)
 
 
 # ---------------------------------------------------------------------------
@@ -182,19 +239,21 @@ class TestResolveSettings:
 class TestParseRegistryResponse:
     def test_indexes_by_both_ids(self):
         body = _registry_response(_entry(dep_id="dep-1", ext_id="ext-1"))
-        cards = _parse_registry_response(body)
-        assert "dep-1" in cards
-        assert "ext-1" in cards
-        assert cards["dep-1"] is cards["ext-1"]
+        parsed = _parse_registry_response(body)
+        assert "dep-1" in parsed.cards
+        assert "ext-1" in parsed.cards
+        assert parsed.cards["dep-1"] is parsed.cards["ext-1"]
+        assert parsed.key_types["dep-1"] == "dep"
+        assert parsed.key_types["ext-1"] == "ext"
 
     def test_skips_entries_without_agent_card(self):
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": None})
-        assert _parse_registry_response(body) == {}
+        assert _parse_registry_response(body).cards == {}
 
     def test_skips_entries_with_invalid_card(self):
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": {"bad": True}})
-        cards = _parse_registry_response(body)
-        assert cards == {}
+        parsed = _parse_registry_response(body)
+        assert parsed.cards == {}
 
 
 class TestParseRegistryResponseDuplicates:
@@ -207,15 +266,15 @@ class TestParseRegistryResponseDuplicates:
         )
 
     def test_first_keeps_first_card(self):
-        cards = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="first")
-        assert cards["shared-ext"].name == "Test Agent"
+        parsed = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="first")
+        assert parsed.cards["shared-ext"].name == "Test Agent"
         # Both deployment IDs are still indexed independently
-        assert "dep-1" in cards
-        assert "dep-2" in cards
+        assert "dep-1" in parsed.cards
+        assert "dep-2" in parsed.cards
 
     def test_last_keeps_last_card(self):
-        cards = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="last")
-        assert cards["shared-ext"].name == "Second Agent"
+        parsed = _parse_registry_response(self._body_with_duplicate_ext(), on_duplicate="last")
+        assert parsed.cards["shared-ext"].name == "Second Agent"
 
     def test_error_raises_on_duplicate(self):
         with pytest.raises(AgentCardRegistryError, match="Multiple agent cards found"):
@@ -227,13 +286,13 @@ class TestParseRegistryResponseDuplicates:
             _entry(dep_id="dep-1", ext_id="ext-1"),
             _entry(dep_id="dep-2", ext_id="ext-2"),
         )
-        cards = _parse_registry_response(body, on_duplicate="error")
-        assert "ext-1" in cards
-        assert "ext-2" in cards
+        parsed = _parse_registry_response(body, on_duplicate="error")
+        assert "ext-1" in parsed.cards
+        assert "ext-2" in parsed.cards
 
     def test_default_strategy_is_first(self):
-        cards = _parse_registry_response(self._body_with_duplicate_ext())
-        assert cards["shared-ext"].name == "Test Agent"
+        parsed = _parse_registry_response(self._body_with_duplicate_ext())
+        assert parsed.cards["shared-ext"].name == "Test Agent"
 
 
 _SAMPLE_AGENT_CARD_3 = {
@@ -265,20 +324,20 @@ class TestParseRegistryResponseMultiIdBatch:
         )
 
     def test_first_picks_first_of_three(self):
-        cards = _parse_registry_response(self._batch_response(), on_duplicate="first")
+        parsed = _parse_registry_response(self._batch_response(), on_duplicate="first")
         # agent-A → first card (Test Agent)
-        assert cards["agent-A"].name == "Test Agent"
+        assert parsed.cards["agent-A"].name == "Test Agent"
         # agent-B has no duplicates → stored as-is
-        assert cards["agent-B"].name == "Second Agent"
+        assert parsed.cards["agent-B"].name == "Second Agent"
         # All deployment IDs are independently indexed
-        assert len({cards[k].name for k in ["dep-a1", "dep-a2", "dep-a3", "dep-b1"]}) == 3
+        assert len({parsed.cards[k].name for k in ["dep-a1", "dep-a2", "dep-a3", "dep-b1"]}) == 3
 
     def test_last_picks_last_of_three(self):
-        cards = _parse_registry_response(self._batch_response(), on_duplicate="last")
+        parsed = _parse_registry_response(self._batch_response(), on_duplicate="last")
         # agent-A → last card (Third Agent)
-        assert cards["agent-A"].name == "Third Agent"
+        assert parsed.cards["agent-A"].name == "Third Agent"
         # agent-B unaffected
-        assert cards["agent-B"].name == "Second Agent"
+        assert parsed.cards["agent-B"].name == "Second Agent"
 
     def test_error_raises_for_duplicate_id_only(self):
         """Error is raised for agent-A (3 cards) — agent-B (1 card) never reached."""
@@ -299,38 +358,44 @@ class TestAgentCardRegistry:
             yield m
 
     async def test_get_single_deployment_id(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        expected = _card()
+        mock_fetch.return_value = _parsed({"dep-1": expected})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         card = await registry.get(deployment_id="dep-1")
-        assert card is mock_fetch.return_value["dep-1"]
+        assert card is expected
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
     async def test_get_single_external_id(self, mock_fetch):
-        mock_fetch.return_value = {"ext-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        expected = _card()
+        mock_fetch.return_value = _parsed(
+            {"ext-1": expected},
+            key_types={"ext-1": "ext"},
+        )
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         card = await registry.get(external_id="ext-1")
-        assert card is mock_fetch.return_value["ext-1"]
+        assert card is expected
         mock_fetch.assert_awaited_once_with({"externalIds": "ext-1"})
 
     async def test_get_raises_when_both_ids(self):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get(deployment_id="d", external_id="e")
 
     async def test_get_raises_when_neither_id(self):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get()
 
     async def test_get_raises_when_not_found(self, mock_fetch):
-        mock_fetch.return_value = {}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        mock_fetch.return_value = _parsed({})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="missing")
 
     async def test_get_uses_cache(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        card = _card()
+        mock_fetch.return_value = _parsed({"dep-1": card})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
 
         card1 = await registry.get(deployment_id="dep-1")
         card2 = await registry.get(deployment_id="dep-1")
@@ -340,9 +405,9 @@ class TestAgentCardRegistry:
 
     async def test_cache_ttl_zero_always_refetches(self, mock_fetch):
         """cache_ttl=0 means every get() triggers a fresh fetch."""
-        card_mock = MagicMock(name="card1")
-        mock_fetch.return_value = {"dep-1": card_mock}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=0)
+        card_mock = _card()
+        mock_fetch.return_value = _parsed({"dep-1": card_mock})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=0)
 
         await registry.get(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
@@ -350,14 +415,15 @@ class TestAgentCardRegistry:
         assert mock_fetch.await_count == 2
 
     async def test_expired_cache_triggers_refetch(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        card = _card()
+        mock_fetch.return_value = _parsed({"dep-1": card})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
 
         await registry.get(deployment_id="dep-1")
-        # Simulate expiry
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card1-refreshed")}
+        refreshed = _card(name="Refreshed Agent")
+        mock_fetch.return_value = _parsed({"dep-1": refreshed})
         await registry.get(deployment_id="dep-1")
         assert mock_fetch.await_count == 2
 
@@ -373,20 +439,27 @@ class TestAgentCardRegistryStaleIfError:
         with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
             yield m
 
-    async def test_serves_stale_when_refresh_fails(self, mock_fetch):
-        stale_card = MagicMock(name="stale-card")
+    @pytest.fixture
+    def cache_backend(self):
+        return MemoryAgentCardCacheBackend()
+
+    async def test_serves_stale_when_refresh_fails(self, mock_fetch, cache_backend):
+        stale_card = _card()
         mock_fetch.side_effect = [
-            {"dep-1": stale_card},
+            _parsed({"dep-1": stale_card}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=True,
+            cache_backend=cache_backend,
         )
 
         card1 = await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120  # past soft TTL
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         card2 = await registry.get(deployment_id="dep-1")
 
@@ -394,65 +467,114 @@ class TestAgentCardRegistryStaleIfError:
         assert card2 is stale_card
         assert mock_fetch.await_count == 2
 
-    async def test_raises_when_no_cached_card(self, mock_fetch):
-        mock_fetch.side_effect = AgentCardRegistryError("registry down")
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+    async def test_raises_when_stale_if_error_disabled(self, mock_fetch, cache_backend):
+        stale_card = _card()
+        mock_fetch.side_effect = [
+            _parsed({"dep-1": stale_card}),
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=False,
+            cache_backend=cache_backend,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         with pytest.raises(AgentCardRegistryError, match="registry down"):
             await registry.get(deployment_id="dep-1")
 
-    async def test_stale_if_error_on_flush_pending_failure(self, mock_fetch):
-        stale_card = MagicMock(name="stale-card")
+    async def test_raises_when_beyond_max_staleness(self, mock_fetch, cache_backend):
+        stale_card = _card()
         mock_fetch.side_effect = [
-            {"dep-1": stale_card},
+            _parsed({"dep-1": stale_card}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
+            max_staleness_seconds=30,
+            stale_if_error=True,
+            cache_backend=cache_backend,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 120)
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+    async def test_raises_when_no_cached_card(self, mock_fetch):
+        mock_fetch.side_effect = AgentCardRegistryError("registry down")
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+    async def test_stale_if_error_on_flush_pending_failure(self, mock_fetch, cache_backend):
+        stale_card = _card()
+        mock_fetch.side_effect = [
+            _parsed({"dep-1": stale_card}),
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=True,
+            cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         registry.register(deployment_id="dep-2")
         card = await registry.get(deployment_id="dep-1")
 
         assert card is stale_card
 
-    async def test_raises_when_deregistered_after_soft_ttl(self, mock_fetch):
-        stale_card = MagicMock(name="stale-card")
+    async def test_raises_when_deregistered_after_soft_ttl(self, mock_fetch, cache_backend):
+        stale_card = _card()
         mock_fetch.side_effect = [
-            {"dep-1": stale_card},
-            {},
+            _parsed({"dep-1": stale_card}),
+            _parsed({}),
         ]
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
+            cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="dep-1")
 
-        assert "dep-1" not in registry._cache
+        assert await cache_backend.get_stale("dep-1", max_staleness_seconds=3600) is None
 
-    async def test_deregistered_not_resurrected_by_stale_if_error(self, mock_fetch):
-        stale_card = MagicMock(name="stale-card")
+    async def test_deregistered_not_resurrected_by_stale_if_error(self, mock_fetch, cache_backend):
+        stale_card = _card()
         mock_fetch.side_effect = [
-            {"dep-1": stale_card},
-            {},
+            _parsed({"dep-1": stale_card}),
+            _parsed({}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
+            max_staleness_seconds=3600,
+            stale_if_error=True,
+            cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="dep-1")
@@ -475,10 +597,10 @@ class TestAgentCardRegistryRegisterFlush:
     async def test_register_then_get_flushes_batch(self, mock_fetch):
         """Registered IDs are batch-fetched on first get()."""
         mock_fetch.side_effect = [
-            {"dep-1": MagicMock(name="c1"), "dep-2": MagicMock(name="c2")},
-            {"ext-1": MagicMock(name="c3")},
+            _parsed({"dep-1": _card(), "dep-2": _card(name="Second Agent")}),
+            _parsed({"ext-1": _card(name="Third Agent")}, key_types={"ext-1": "ext"}),
         ]
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-2")
         registry.register(external_id="ext-1")
@@ -500,8 +622,8 @@ class TestAgentCardRegistryRegisterFlush:
         mock_fetch.assert_not_awaited()
 
     async def test_register_deduplicates(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="c1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-1")
@@ -510,8 +632,8 @@ class TestAgentCardRegistryRegisterFlush:
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
     async def test_pending_cleared_after_flush(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="c1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
 
         await registry.get(deployment_id="dep-1")
@@ -532,11 +654,13 @@ class TestAgentCardRegistryPrefetch:
             yield m
 
     async def test_prefetch_deployment_ids(self, mock_fetch):
-        mock_fetch.return_value = {
-            "dep-1": MagicMock(name="card1"),
-            "dep-2": MagicMock(name="card2"),
-        }
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        mock_fetch.return_value = _parsed(
+            {
+                "dep-1": _card(),
+                "dep-2": _card(name="Second Agent"),
+            }
+        )
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1", "dep-2"])
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1,dep-2"})
@@ -547,10 +671,10 @@ class TestAgentCardRegistryPrefetch:
 
     async def test_prefetch_mixed_issues_separate_calls(self, mock_fetch):
         mock_fetch.side_effect = [
-            {"dep-1": MagicMock(name="card1")},
-            {"ext-1": MagicMock(name="card2")},
+            _parsed({"dep-1": _card()}),
+            _parsed({"ext-1": _card(name="Second Agent")}, key_types={"ext-1": "ext"}),
         ]
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1"], external_ids=["ext-1"])
 
         assert mock_fetch.await_count == 2
@@ -559,13 +683,13 @@ class TestAgentCardRegistryPrefetch:
         assert calls[1].args[0] == {"externalIds": "ext-1"}
 
     async def test_prefetch_skips_already_cached(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card1")}
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
 
         await registry.prefetch(deployment_ids=["dep-1"])
         mock_fetch.reset_mock()
 
-        mock_fetch.return_value = {"dep-2": MagicMock(name="card2")}
+        mock_fetch.return_value = _parsed({"dep-2": _card(name="Second Agent")})
         await registry.prefetch(deployment_ids=["dep-1", "dep-2"])
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-2"})
 
@@ -594,13 +718,13 @@ class TestAgentCardRegistryFetch:
 
     async def test_fetch_passes_params_and_auth(self, mock_httpx_client):
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_httpx_client):
-            registry = AgentCardRegistry(
+            registry = _memory_registry(
                 api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
             )
-            cards = await registry._fetch({"deploymentIds": "dep-1,dep-2"})
+            parsed = await registry._fetch({"deploymentIds": "dep-1,dep-2"})
 
-        assert "dep-1" in cards
-        assert "dep-2" in cards
+        assert "dep-1" in parsed.cards
+        assert "dep-2" in parsed.cards
         call_kwargs = mock_httpx_client.get.call_args.kwargs
         assert call_kwargs["params"]["deploymentIds"] == "dep-1,dep-2"
         assert call_kwargs["params"]["limit"] == "100"
@@ -619,7 +743,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 403"):
                 await registry._fetch({"deploymentIds": "dep-1"})
 
@@ -664,15 +788,15 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(
+            registry = _memory_registry(
                 api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
             )
-            cards = await registry._fetch({"deploymentIds": "dep-1,dep-2,dep-3"})
+            parsed = await registry._fetch({"deploymentIds": "dep-1,dep-2,dep-3"})
 
-        assert "dep-1" in cards
-        assert "dep-2" in cards
-        assert "dep-3" in cards
-        assert len(cards) == 3
+        assert "dep-1" in parsed.cards
+        assert "dep-2" in parsed.cards
+        assert "dep-3" in parsed.cards
+        assert len(parsed.cards) == 3
         assert mock_client.get.await_count == 3
 
     async def test_fetch_no_pagination_when_next_absent(self):
@@ -692,10 +816,10 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
-            cards = await registry._fetch({"deploymentIds": "dep-1"})
+            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            parsed = await registry._fetch({"deploymentIds": "dep-1"})
 
-        assert "dep-1" in cards
+        assert "dep-1" in parsed.cards
         assert mock_client.get.await_count == 1
 
     async def test_fetch_pagination_error_on_second_page_raises(self):
@@ -722,7 +846,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 500"):
                 await registry._fetch({"deploymentIds": "dep-1,dep-2"})
 
@@ -750,12 +874,12 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
-            cards = await registry._fetch({"deploymentIds": "dep-0"})
+            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            parsed = await registry._fetch({"deploymentIds": "dep-0"})
 
         # Should have fetched exactly _MAX_PAGES (stopped at the safety limit)
         assert mock_client.get.await_count == _MAX_PAGES
-        assert len(cards) == _MAX_PAGES
+        assert len(parsed.cards) == _MAX_PAGES
 
 
 # ---------------------------------------------------------------------------
