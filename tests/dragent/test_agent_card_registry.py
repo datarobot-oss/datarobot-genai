@@ -111,15 +111,18 @@ class TestAgentCardRegistryConfig:
 class TestCacheEntry:
     def test_not_expired_within_ttl(self):
         entry = _CacheEntry(MagicMock())
+        assert entry.is_fresh(3600)
         assert not entry.is_expired(3600)
 
     def test_expired_with_zero_ttl(self):
         entry = _CacheEntry(MagicMock())
+        assert not entry.is_fresh(0)
         assert entry.is_expired(0)
 
     def test_expired_after_ttl(self):
         entry = _CacheEntry(MagicMock())
         entry.fetched_at -= 100  # Simulate 100s ago
+        assert not entry.is_fresh(50)
         assert entry.is_expired(50)
 
 
@@ -360,6 +363,105 @@ class TestAgentCardRegistry:
 
 
 # ---------------------------------------------------------------------------
+# Tests: AgentCardRegistry — stale-if-error
+# ---------------------------------------------------------------------------
+
+
+class TestAgentCardRegistryStaleIfError:
+    @pytest.fixture
+    def mock_fetch(self):
+        with patch.object(AgentCardRegistry, "_fetch", new_callable=AsyncMock) as m:
+            yield m
+
+    async def test_serves_stale_when_refresh_fails(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+        )
+
+        card1 = await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120  # past soft TTL
+
+        card2 = await registry.get(deployment_id="dep-1")
+
+        assert card1 is stale_card
+        assert card2 is stale_card
+        assert mock_fetch.await_count == 2
+
+    async def test_raises_when_no_cached_card(self, mock_fetch):
+        mock_fetch.side_effect = AgentCardRegistryError("registry down")
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+    async def test_stale_if_error_on_flush_pending_failure(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+        )
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120
+
+        registry.register(deployment_id="dep-2")
+        card = await registry.get(deployment_id="dep-1")
+
+        assert card is stale_card
+
+    async def test_raises_when_deregistered_after_soft_ttl(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            {},
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+        )
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120
+
+        with pytest.raises(AgentCardRegistryError, match="No agent card found"):
+            await registry.get(deployment_id="dep-1")
+
+        assert "dep-1" not in registry._cache
+
+    async def test_deregistered_not_resurrected_by_stale_if_error(self, mock_fetch):
+        stale_card = MagicMock(name="stale-card")
+        mock_fetch.side_effect = [
+            {"dep-1": stale_card},
+            {},
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+        )
+        await registry.get(deployment_id="dep-1")
+        registry._cache["dep-1"].fetched_at -= 120
+
+        with pytest.raises(AgentCardRegistryError, match="No agent card found"):
+            await registry.get(deployment_id="dep-1")
+
+        with pytest.raises(AgentCardRegistryError, match="registry down"):
+            await registry.get(deployment_id="dep-1")
+
+
+# ---------------------------------------------------------------------------
 # Tests: AgentCardRegistry — register + batch flush
 # ---------------------------------------------------------------------------
 
@@ -415,6 +517,7 @@ class TestAgentCardRegistryRegisterFlush:
         await registry.get(deployment_id="dep-1")
         assert len(registry._pending_deployment_ids) == 0
         assert len(registry._pending_external_ids) == 0
+        assert registry.has_registered_lookups() is True
 
 
 # ---------------------------------------------------------------------------

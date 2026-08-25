@@ -104,6 +104,10 @@ function_groups:
 When a workflow has many registry-backed function groups, all cards are resolved in a maximum of two HTTP calls: one for deployment IDs, one for external IDs. Results are cached in-memory and
 reused until the TTL expires.
 
+On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in the same batch before the server accepts traffic.
+
+While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
+
 #### Registry environment variables
 
 | Variable | Required | Description |
