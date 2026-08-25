@@ -20,10 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
-from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
-from datarobot_genai.dragent.registry_refresh import get_registry_refresh_interval_seconds
-from datarobot_genai.dragent.registry_refresh import is_registry_refresh_enabled
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 
@@ -77,23 +74,6 @@ class TestAgentCardRegistryRefresh:
         mock_fetch.assert_not_awaited()
 
 
-class TestRegistryRefreshConfig:
-    def test_refresh_enabled_by_default(self):
-        config = AgentCardRegistryConfig()
-        assert config.agent_card_registry_refresh_interval_seconds == 30 * 60
-        assert is_registry_refresh_enabled() is True
-
-    def test_refresh_disabled_when_zero(self):
-        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS": "0"}):
-            config = AgentCardRegistryConfig()
-            assert config.agent_card_registry_refresh_interval_seconds == 0
-            assert is_registry_refresh_enabled() is False
-
-    def test_refresh_interval_from_env(self):
-        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS": "900"}):
-            assert get_registry_refresh_interval_seconds() == 900
-
-
 class TestRegistryRefreshLoop:
     async def test_loop_calls_refresh_after_interval(self):
         registry = AsyncMock()
@@ -140,7 +120,6 @@ class TestRegistryRefreshLifespan:
             return fake_task
 
         with (
-            patch(f"{_MODULE}.get_registry_refresh_interval_seconds", return_value=60),
             patch(
                 f"{_MODULE}.get_default_registry",
                 AsyncMock(return_value=mock_registry),
@@ -152,24 +131,12 @@ class TestRegistryRefreshLifespan:
 
             fake_task.cancel.assert_called_once()
 
-    async def test_lifespan_no_op_when_disabled(self):
-        config = MagicMock()
-        with (
-            patch(f"{_MODULE}.get_registry_refresh_interval_seconds", return_value=0),
-            patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
-        ):
-            async with registry_refresh_lifespan(config):
-                pass
-
-            mock_create_task.assert_not_called()
-
     async def test_lifespan_no_op_without_registered_ids(self):
         mock_registry = MagicMock()
         mock_registry.has_registered_lookups.return_value = False
         config = MagicMock()
 
         with (
-            patch(f"{_MODULE}.get_registry_refresh_interval_seconds", return_value=60),
             patch(
                 f"{_MODULE}.get_default_registry",
                 AsyncMock(return_value=mock_registry),

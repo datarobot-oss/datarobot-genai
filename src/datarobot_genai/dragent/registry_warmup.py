@@ -16,7 +16,7 @@
 
 Collects ``registry`` blocks from ``authenticated_a2a_client`` function groups
 in the loaded NAT config and batch-fetches all agent cards before the server
-accepts traffic (when enabled via ``AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP``).
+accepts traffic.
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 
@@ -43,8 +42,8 @@ class _WarmState:
 def is_registry_warm() -> bool:
     """Return whether the latest startup prefetch completed successfully.
 
-    When prefetch is disabled or there are no registry-backed function groups,
-    this returns ``True`` (nothing to warm).
+    When there are no registry-backed function groups, this returns ``True``
+    (nothing to warm).
     """
     return _WarmState.warm
 
@@ -52,11 +51,6 @@ def is_registry_warm() -> bool:
 def reset_registry_warm_state() -> None:
     """Reset warm state (for tests)."""
     _WarmState.warm = False
-
-
-def is_prefetch_on_startup_enabled() -> bool:
-    """Return whether startup registry prefetch is enabled."""
-    return AgentCardRegistryConfig().agent_card_registry_prefetch_on_startup
 
 
 def collect_registry_lookup_ids(
@@ -93,14 +87,9 @@ def collect_registry_lookup_ids(
 async def warmup_registry_from_config(config: Config) -> None:
     """Batch-prefetch agent cards for all registry-backed A2A clients in *config*.
 
-    No-op when prefetch is disabled or when no registry lookups are configured.
-    On failure, logs an error and leaves :func:`is_registry_warm` as ``False``.
+    No-op when no registry lookups are configured. On failure, logs an error and
+    leaves :func:`is_registry_warm` as ``False``.
     """
-    if not is_prefetch_on_startup_enabled():
-        logger.debug("Agent card registry prefetch on startup is disabled.")
-        _WarmState.warm = True
-        return
-
     deployment_ids, external_ids = collect_registry_lookup_ids(config)
     if not deployment_ids and not external_ids:
         logger.debug("No registry-backed A2A function groups; skipping agent card prefetch.")

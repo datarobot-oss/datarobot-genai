@@ -92,27 +92,13 @@ class TestCollectRegistryLookupIds:
 class TestWarmupRegistryFromConfig:
     async def test_prefetch_called_for_registry_ids(self, nat_config):
         mock_registry = AsyncMock()
-        with (
-            patch(f"{_MODULE}.is_prefetch_on_startup_enabled", return_value=True),
-            patch(f"{_MODULE}.get_default_registry", AsyncMock(return_value=mock_registry)),
-        ):
+        with patch(f"{_MODULE}.get_default_registry", AsyncMock(return_value=mock_registry)):
             await warmup_registry_from_config(nat_config)
 
         mock_registry.prefetch.assert_awaited_once_with(
             deployment_ids=["1234"],
             external_ids=["abcd"],
         )
-        assert is_registry_warm() is True
-
-    async def test_skips_when_disabled(self, nat_config):
-        mock_get = AsyncMock()
-        with (
-            patch(f"{_MODULE}.is_prefetch_on_startup_enabled", return_value=False),
-            patch(f"{_MODULE}.get_default_registry", mock_get),
-        ):
-            await warmup_registry_from_config(nat_config)
-
-        mock_get.assert_not_awaited()
         assert is_registry_warm() is True
 
     async def test_no_op_when_no_registry_groups(self):
@@ -124,10 +110,7 @@ class TestWarmupRegistryFromConfig:
             ),
         }
         mock_get = AsyncMock()
-        with (
-            patch(f"{_MODULE}.is_prefetch_on_startup_enabled", return_value=True),
-            patch(f"{_MODULE}.get_default_registry", mock_get),
-        ):
+        with patch(f"{_MODULE}.get_default_registry", mock_get):
             await warmup_registry_from_config(config)
 
         mock_get.assert_not_awaited()
@@ -136,10 +119,7 @@ class TestWarmupRegistryFromConfig:
     async def test_warm_false_on_prefetch_failure(self, nat_config):
         mock_registry = AsyncMock()
         mock_registry.prefetch.side_effect = RuntimeError("registry down")
-        with (
-            patch(f"{_MODULE}.is_prefetch_on_startup_enabled", return_value=True),
-            patch(f"{_MODULE}.get_default_registry", AsyncMock(return_value=mock_registry)),
-        ):
+        with patch(f"{_MODULE}.get_default_registry", AsyncMock(return_value=mock_registry)):
             await warmup_registry_from_config(nat_config)
 
         assert is_registry_warm() is False

@@ -55,12 +55,6 @@ logger = logging.getLogger(__name__)
 # Default cache TTL: 24 hours (in seconds).
 _DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 
-# Default hard staleness bound for stale-if-error (in seconds).
-_DEFAULT_MAX_STALENESS_SECONDS = 24 * 3600
-
-# Default background refresh interval (in seconds). 0 disables the refresh loop.
-_DEFAULT_REFRESH_INTERVAL_SECONDS = 30 * 60
-
 # Default HTTP timeout for registry requests (in seconds).
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -125,43 +119,6 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
             "creation time (ascending), so 'first' keeps the earliest "
             "registered card, 'last' keeps the most recently registered card, "
             "and 'error' raises AgentCardRegistryError.  Default: 'first'."
-        ),
-    )
-
-    agent_card_registry_prefetch_on_startup: bool = Field(
-        default=True,
-        description=(
-            "When true, batch-fetch all registry-backed agent cards during "
-            "dragent FastAPI startup (before accepting traffic). "
-            "Set AGENT_CARD_REGISTRY_PREFETCH_ON_STARTUP=false to disable."
-        ),
-    )
-
-    agent_card_registry_max_staleness_seconds: int = Field(
-        default=_DEFAULT_MAX_STALENESS_SECONDS,
-        ge=0,
-        description=(
-            "Maximum age in seconds for serving a cached agent card when the "
-            "registry is unreachable (stale-if-error). Default: 86400 (24 hours)."
-        ),
-    )
-
-    agent_card_registry_stale_if_error: bool = Field(
-        default=True,
-        description=(
-            "When true, return the last-known-good cached agent card if a "
-            "registry fetch fails and the entry is within "
-            "agent_card_registry_max_staleness_seconds. "
-            "Set AGENT_CARD_REGISTRY_STALE_IF_ERROR=false to disable."
-        ),
-    )
-
-    agent_card_registry_refresh_interval_seconds: int = Field(
-        default=_DEFAULT_REFRESH_INTERVAL_SECONDS,
-        ge=0,
-        description=(
-            "Background refresh period in seconds for registered agent cards "
-            "past the soft cache TTL. Set to 0 to disable. Default: 1800 (30 min)."
         ),
     )
 
@@ -287,12 +244,6 @@ class _CacheEntry:
             return True
         return self.age_seconds() >= ttl
 
-    def is_within_staleness(self, max_staleness_seconds: int) -> bool:
-        """Return *True* if this entry may be served under stale-if-error."""
-        if max_staleness_seconds == 0:
-            return False
-        return self.age_seconds() <= max_staleness_seconds
-
 
 class AgentCardRegistry:
     """Batch-capable, TTL-cached client for the central agent card registry.
@@ -301,9 +252,8 @@ class AgentCardRegistry:
     The first ``get()`` flushes all pending IDs in ≤2 HTTP calls
     (one per ID type — API uses AND when both are mixed).
     Subsequent ``get()`` calls hit the in-memory cache until the soft TTL
-    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails and
-    ``AGENT_CARD_REGISTRY_STALE_IF_ERROR`` is enabled, a cached card may still
-    be returned up to ``AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS``.
+    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails, the
+    last-known-good cached card is returned if one is present.
     """
 
     def __init__(
@@ -312,8 +262,6 @@ class AgentCardRegistry:
         endpoint: str | None = None,
         timeout: float | None = None,
         cache_ttl: int | None = None,
-        max_staleness_seconds: int | None = None,
-        stale_if_error: bool | None = None,
         on_duplicate: DuplicateStrategy | None = None,
     ) -> None:
         self._api_token = api_token
@@ -334,26 +282,11 @@ class AgentCardRegistry:
         self._cache_ttl = (
             cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
         )
-        self._max_staleness_seconds = (
-            max_staleness_seconds
-            if max_staleness_seconds is not None
-            else config.agent_card_registry_max_staleness_seconds
-        )
-        self._stale_if_error = (
-            stale_if_error
-            if stale_if_error is not None
-            else config.agent_card_registry_stale_if_error
-        )
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
 
-        logger.debug(
-            "AgentCardRegistry created (cache_ttl=%ds, max_staleness=%ds, stale_if_error=%s)",
-            self._cache_ttl,
-            self._max_staleness_seconds,
-            self._stale_if_error,
-        )
+        logger.debug("AgentCardRegistry created (cache_ttl=%ds)", self._cache_ttl)
 
     # ------------------------------------------------------------------
     # Registration (synchronous — called at config-parse time)
@@ -456,11 +389,9 @@ class AgentCardRegistry:
         return self._is_fresh(key)
 
     def _try_get_stale(self, key: str) -> AgentCard | None:
-        """Return a stale cached card when refresh failed and policy allows it."""
-        if not self._stale_if_error:
-            return None
+        """Return the last-known-good cached card when a registry refresh failed."""
         entry = self._cache.get(key)
-        if entry is None or not entry.is_within_staleness(self._max_staleness_seconds):
+        if entry is None:
             return None
         logger.warning(
             "Registry unreachable; serving stale agent card for %s (age=%.0fs)",

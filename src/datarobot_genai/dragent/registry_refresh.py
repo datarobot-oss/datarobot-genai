@@ -24,7 +24,6 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
-from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 
 if TYPE_CHECKING:
@@ -32,20 +31,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-def is_registry_refresh_enabled() -> bool:
-    """Return whether the background registry refresh loop is enabled."""
-    return AgentCardRegistryConfig().agent_card_registry_refresh_interval_seconds > 0
-
-
-def get_registry_refresh_interval_seconds() -> int:
-    """Return the configured background refresh interval in seconds."""
-    return AgentCardRegistryConfig().agent_card_registry_refresh_interval_seconds
+# Refresh registered cards that are past the soft TTL this often.
+_REFRESH_INTERVAL_SECONDS = 30 * 60
 
 
 async def registry_refresh_loop(
     registry: AgentCardRegistry,
-    interval_seconds: int,
+    interval_seconds: int = _REFRESH_INTERVAL_SECONDS,
 ) -> None:
     """Periodically refresh soft-expired registered agent cards."""
     while True:
@@ -60,15 +52,8 @@ async def registry_refresh_loop(
 async def registry_refresh_lifespan(_config: Config) -> AsyncIterator[None]:
     """Start the background refresh task for the registry singleton.
 
-    No-op when ``AGENT_CARD_REGISTRY_REFRESH_INTERVAL_SECONDS`` is ``0`` or when
-    no registry-backed IDs were registered at config-parse time.
+    No-op when no registry-backed IDs were registered at config-parse time.
     """
-    interval = get_registry_refresh_interval_seconds()
-    if interval <= 0:
-        logger.debug("Agent card registry background refresh is disabled.")
-        yield
-        return
-
     registry = await get_default_registry()
     if not registry.has_registered_lookups():
         logger.debug("No registered agent card IDs; skipping background refresh task.")
@@ -77,9 +62,9 @@ async def registry_refresh_lifespan(_config: Config) -> AsyncIterator[None]:
 
     logger.info(
         "Starting agent card registry background refresh (interval=%ds)",
-        interval,
+        _REFRESH_INTERVAL_SECONDS,
     )
-    task = asyncio.create_task(registry_refresh_loop(registry, interval))
+    task = asyncio.create_task(registry_refresh_loop(registry, _REFRESH_INTERVAL_SECONDS))
     try:
         yield
     finally:
