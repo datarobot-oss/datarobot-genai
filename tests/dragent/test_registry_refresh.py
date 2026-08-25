@@ -46,7 +46,7 @@ def _card(**overrides):
 
 
 def _parsed(cards: dict) -> ParsedRegistryCards:
-    return ParsedRegistryCards(cards=cards, key_types={key: "dep" for key in cards})
+    return ParsedRegistryCards(cards=cards, key_types={key: "deployment" for key in cards})
 
 
 class TestAgentCardRegistryRefresh:

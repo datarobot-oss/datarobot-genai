@@ -82,7 +82,7 @@ def _card(**overrides) -> AgentCard:
 
 def _parsed(cards: dict, *, key_types: dict | None = None) -> ParsedRegistryCards:
     if key_types is None:
-        key_types = {key: "dep" for key in cards}
+        key_types = {key: "deployment" for key in cards}
     return ParsedRegistryCards(cards=cards, key_types=key_types)
 
 
@@ -226,8 +226,8 @@ class TestParseRegistryResponse:
         assert "dep-1" in parsed.cards
         assert "ext-1" in parsed.cards
         assert parsed.cards["dep-1"] is parsed.cards["ext-1"]
-        assert parsed.key_types["dep-1"] == "dep"
-        assert parsed.key_types["ext-1"] == "ext"
+        assert parsed.key_types["dep-1"] == "deployment"
+        assert parsed.key_types["ext-1"] == "external"
 
     def test_skips_entries_without_agent_card(self):
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": None})
@@ -352,7 +352,7 @@ class TestAgentCardRegistry:
         expected = _card()
         mock_fetch.return_value = _parsed(
             {"ext-1": expected},
-            key_types={"ext-1": "ext"},
+            key_types={"ext-1": "external"},
         )
         registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         card = await registry.get(external_id="ext-1")
@@ -556,7 +556,7 @@ class TestAgentCardRegistryRegisterFlush:
         """Registered IDs are batch-fetched on first get()."""
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card(), "dep-2": _card(name="Second Agent")}),
-            _parsed({"ext-1": _card(name="Third Agent")}, key_types={"ext-1": "ext"}),
+            _parsed({"ext-1": _card(name="Third Agent")}, key_types={"ext-1": "external"}),
         ]
         registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
@@ -630,7 +630,7 @@ class TestAgentCardRegistryPrefetch:
     async def test_prefetch_mixed_issues_separate_calls(self, mock_fetch):
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card()}),
-            _parsed({"ext-1": _card(name="Second Agent")}, key_types={"ext-1": "ext"}),
+            _parsed({"ext-1": _card(name="Second Agent")}, key_types={"ext-1": "external"}),
         ]
         registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1"], external_ids=["ext-1"])

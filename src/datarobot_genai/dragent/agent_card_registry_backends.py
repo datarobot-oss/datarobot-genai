@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-LookupKeyType = Literal["dep", "ext"]
+LookupKeyType = Literal["deployment", "external"]
 _DEFAULT_KEY_PREFIX = "dragent:"
 
 
@@ -78,10 +78,12 @@ def build_cache_record(
 ) -> AgentCardCacheRecord:
     """Build a cache record for *lookup_key* with optional registry ID metadata."""
     resolved_dep = (
-        deployment_id if deployment_id is not None else (lookup_key if key_type == "dep" else None)
+        deployment_id
+        if deployment_id is not None
+        else (lookup_key if key_type == "deployment" else None)
     )
     resolved_ext = (
-        external_id if external_id is not None else (lookup_key if key_type == "ext" else None)
+        external_id if external_id is not None else (lookup_key if key_type == "external" else None)
     )
     return AgentCardCacheRecord(
         card=card,
@@ -151,7 +153,7 @@ class MemoryAgentCardCacheBackend:
         key_types: dict[str, LookupKeyType],
     ) -> None:
         for lookup_key, card in cards.items():
-            key_type = key_types.get(lookup_key, "dep")
+            key_type = key_types.get(lookup_key, "deployment")
             self._entries[lookup_key] = build_cache_record(
                 card, lookup_key=lookup_key, key_type=key_type
             )
@@ -185,9 +187,9 @@ class MemorySpaceAgentCardCacheBackend:
     def _storage_keys_for_record(self, record: AgentCardCacheRecord) -> list[str]:
         keys: list[str] = []
         if record.deployment_id:
-            keys.append(f"dep:{record.deployment_id}")
+            keys.append(f"deployment:{record.deployment_id}")
         if record.external_id:
-            keys.append(f"ext:{record.external_id}")
+            keys.append(f"external:{record.external_id}")
         return keys
 
     def _storage_keys_for_lookup(
@@ -196,11 +198,11 @@ class MemorySpaceAgentCardCacheBackend:
         *,
         key_type: LookupKeyType | None = None,
     ) -> list[str]:
-        if key_type == "dep":
-            return [f"dep:{lookup_key}"]
-        if key_type == "ext":
-            return [f"ext:{lookup_key}"]
-        return [f"dep:{lookup_key}", f"ext:{lookup_key}"]
+        if key_type == "deployment":
+            return [f"deployment:{lookup_key}"]
+        if key_type == "external":
+            return [f"external:{lookup_key}"]
+        return [f"deployment:{lookup_key}", f"external:{lookup_key}"]
 
     async def _get_record(self, storage_key: str) -> AgentCardCacheRecord | None:
         payload = await self._kv.get_value(storage_key, kind="agent_card")
@@ -238,7 +240,7 @@ class MemorySpaceAgentCardCacheBackend:
         key_types: dict[str, LookupKeyType],
     ) -> None:
         for lookup_key, card in cards.items():
-            key_type = key_types.get(lookup_key, "dep")
+            key_type = key_types.get(lookup_key, "deployment")
             record = build_cache_record(card, lookup_key=lookup_key, key_type=key_type)
             payload = record.model_dump_json()
             for storage_key in self._storage_keys_for_record(record):
@@ -320,10 +322,10 @@ class LayeredAgentCardCacheBackend:
 
 def _infer_key_type(record: AgentCardCacheRecord, lookup_key: str) -> LookupKeyType:
     if record.deployment_id == lookup_key:
-        return "dep"
+        return "deployment"
     if record.external_id == lookup_key:
-        return "ext"
-    return "dep"
+        return "external"
+    return "deployment"
 
 
 def create_agent_card_cache_backend(

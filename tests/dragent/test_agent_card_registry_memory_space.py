@@ -64,7 +64,7 @@ class TestMemorySpaceAgentCardCacheBackend:
         ):
             await memory_space_backend.store(
                 {"dep-1": _SAMPLE_AGENT_CARD},
-                key_types={"dep-1": "dep"},
+                key_types={"dep-1": "deployment"},
             )
             record = await memory_space_backend.get_fresh("dep-1", cache_ttl=3600)
 
@@ -87,7 +87,7 @@ class TestMemorySpaceAgentCardCacheBackend:
         ):
             await memory_space_backend.store(
                 {"dep-1": _SAMPLE_AGENT_CARD},
-                key_types={"dep-1": "dep"},
+                key_types={"dep-1": "deployment"},
             )
             assert await memory_space_backend.get_fresh("dep-1", cache_ttl=60) is None
             stale = await memory_space_backend.get_stale("dep-1", max_staleness_seconds=3600)

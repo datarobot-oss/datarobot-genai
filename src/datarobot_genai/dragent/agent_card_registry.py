@@ -213,13 +213,13 @@ def _parse_registry_response(
         # Deployment IDs are unique by platform design — always overwrite.
         if dep_id := entry.get("deploymentId"):
             cards[dep_id] = card
-            key_types[dep_id] = "dep"
+            key_types[dep_id] = "deployment"
 
         # External IDs may have duplicates — apply the configured strategy.
         if ext_id := entry.get("externalId"):
             if ext_id not in cards:
                 cards[ext_id] = card
-                key_types[ext_id] = "ext"
+                key_types[ext_id] = "external"
             else:
                 logger.warning(
                     "Duplicate external ID '%s' in registry response (on_duplicate=%s).",
@@ -234,7 +234,7 @@ def _parse_registry_response(
                     )
                 if on_duplicate == "last":
                     cards[ext_id] = card
-                    key_types[ext_id] = "ext"
+                    key_types[ext_id] = "external"
                 # "first" — keep existing entry (no-op)
     return ParsedRegistryCards(cards=cards, key_types=key_types)
 
@@ -570,7 +570,7 @@ class AgentCardRegistry:
 
                 # Successful miss — evict stale entry so stale-if-error cannot
                 # resurrect a deregistered agent on a later fetch failure.
-                key_type: LookupKeyType = "dep" if deployment_id else "ext"
+                key_type: LookupKeyType = "deployment" if deployment_id else "external"
                 await self._backend.evict(lookup_key, key_type=key_type)
             except AgentCardRegistryError:
                 if stale_card := await self._try_get_stale(lookup_key):
