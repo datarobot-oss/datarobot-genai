@@ -49,6 +49,7 @@ from starlette.responses import JSONResponse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
@@ -66,7 +67,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-A2A_MOUNT_PATH = "a2a"
 
 OAUTH2_SECURITY_DESCRIPTION_WITH_TOKEN_EXCHANGE = (
     "OAuth 2.0 authorization utilizing RFC 7523 JWT Bearer Grant. Requires a prerequisite "
