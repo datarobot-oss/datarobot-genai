@@ -123,22 +123,13 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
-    def test_stale_if_error_default(self):
-        config = AgentCardRegistryConfig()
-        assert config.agent_card_registry_stale_if_error is True
-
-    def test_max_staleness_default(self):
-        config = AgentCardRegistryConfig()
-        assert config.agent_card_registry_max_staleness_seconds == 24 * 3600
-
-    def test_stale_if_error_from_env(self):
-        with patch.dict("os.environ", {"AGENT_CARD_REGISTRY_STALE_IF_ERROR": "false"}):
-            config = AgentCardRegistryConfig()
-            assert config.agent_card_registry_stale_if_error is False
-
     def test_backend_default_memory(self):
         config = AgentCardRegistryConfig()
         assert config.agent_card_registry_backend == "memory"
+
+    def test_max_staleness_derived_from_cache_ttl(self):
+        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=1800)
+        assert registry._max_staleness_seconds == 1800
 
     def test_memory_space_backend_from_env(self):
         with patch.dict(
@@ -453,40 +444,18 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=3600,
-            stale_if_error=True,
+            max_staleness_seconds=120,
             cache_backend=cache_backend,
         )
 
         card1 = await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 120)
+        registry._age_cache_entry_for_test("dep-1", 90)
 
         card2 = await registry.get(deployment_id="dep-1")
 
         assert card1 is stale_card
         assert card2 is stale_card
         assert mock_fetch.await_count == 2
-
-    async def test_raises_when_stale_if_error_disabled(self, mock_fetch, cache_backend):
-        stale_card = _card()
-        mock_fetch.side_effect = [
-            _parsed({"dep-1": stale_card}),
-            AgentCardRegistryError("registry down"),
-        ]
-        registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
-            cache_ttl=60,
-            max_staleness_seconds=3600,
-            stale_if_error=False,
-            cache_backend=cache_backend,
-        )
-
-        await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 120)
-
-        with pytest.raises(AgentCardRegistryError, match="registry down"):
-            await registry.get(deployment_id="dep-1")
 
     async def test_raises_when_beyond_max_staleness(self, mock_fetch, cache_backend):
         stale_card = _card()
@@ -499,7 +468,6 @@ class TestAgentCardRegistryStaleIfError:
             endpoint="https://ep",
             cache_ttl=60,
             max_staleness_seconds=30,
-            stale_if_error=True,
             cache_backend=cache_backend,
         )
 
@@ -526,12 +494,11 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=3600,
-            stale_if_error=True,
+            max_staleness_seconds=120,
             cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 120)
+        registry._age_cache_entry_for_test("dep-1", 90)
 
         registry.register(deployment_id="dep-2")
         card = await registry.get(deployment_id="dep-1")
@@ -556,7 +523,7 @@ class TestAgentCardRegistryStaleIfError:
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="dep-1")
 
-        assert await cache_backend.get_stale("dep-1", max_staleness_seconds=3600) is None
+        assert await cache_backend.get_stale("dep-1", max_staleness_seconds=60) is None
 
     async def test_deregistered_not_resurrected_by_stale_if_error(self, mock_fetch, cache_backend):
         stale_card = _card()
@@ -570,11 +537,10 @@ class TestAgentCardRegistryStaleIfError:
             endpoint="https://ep",
             cache_ttl=60,
             max_staleness_seconds=3600,
-            stale_if_error=True,
             cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 120)
+        registry._age_cache_entry_for_test("dep-1", 60)
 
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="dep-1")

@@ -60,9 +60,6 @@ logger = logging.getLogger(__name__)
 # Default cache TTL: 24 hours (in seconds).
 _DEFAULT_CACHE_TTL_SECONDS = 24 * 3600
 
-# Default hard staleness bound for stale-if-error (in seconds).
-_DEFAULT_MAX_STALENESS_SECONDS = 24 * 3600
-
 # Default HTTP timeout for registry requests (in seconds).
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -127,25 +124,6 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
             "creation time (ascending), so 'first' keeps the earliest "
             "registered card, 'last' keeps the most recently registered card, "
             "and 'error' raises AgentCardRegistryError.  Default: 'first'."
-        ),
-    )
-
-    agent_card_registry_max_staleness_seconds: int = Field(
-        default=_DEFAULT_MAX_STALENESS_SECONDS,
-        ge=0,
-        description=(
-            "Maximum age in seconds for serving a cached agent card when the "
-            "registry is unreachable (stale-if-error). Default: 86400 (24 hours)."
-        ),
-    )
-
-    agent_card_registry_stale_if_error: bool = Field(
-        default=True,
-        description=(
-            "When true, return the last-known-good cached agent card if a "
-            "registry fetch fails and the entry is within "
-            "agent_card_registry_max_staleness_seconds. "
-            "Set AGENT_CARD_REGISTRY_STALE_IF_ERROR=false to disable."
         ),
     )
 
@@ -277,9 +255,8 @@ class AgentCardRegistry:
     The first ``get()`` flushes all pending IDs in ≤2 HTTP calls
     (one per ID type — API uses AND when both are mixed).
     Subsequent ``get()`` calls hit the in-memory cache until the soft TTL
-    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails and
-    ``AGENT_CARD_REGISTRY_STALE_IF_ERROR`` is enabled, a cached card may still
-    be returned up to ``AGENT_CARD_REGISTRY_MAX_STALENESS_SECONDS``.
+    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails, a cached
+    card may still be returned while it remains within ``AGENT_CARD_REGISTRY_CACHE_TTL``.
     """
 
     def __init__(
@@ -289,7 +266,6 @@ class AgentCardRegistry:
         timeout: float | None = None,
         cache_ttl: int | None = None,
         max_staleness_seconds: int | None = None,
-        stale_if_error: bool | None = None,
         on_duplicate: DuplicateStrategy | None = None,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
@@ -311,14 +287,7 @@ class AgentCardRegistry:
             cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
         )
         self._max_staleness_seconds = (
-            max_staleness_seconds
-            if max_staleness_seconds is not None
-            else config.agent_card_registry_max_staleness_seconds
-        )
-        self._stale_if_error = (
-            stale_if_error
-            if stale_if_error is not None
-            else config.agent_card_registry_stale_if_error
+            max_staleness_seconds if max_staleness_seconds is not None else self._cache_ttl
         )
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
@@ -326,12 +295,10 @@ class AgentCardRegistry:
         self._backend = cache_backend or create_agent_card_cache_backend(config)
 
         logger.debug(
-            "AgentCardRegistry created (backend=%s, cache_ttl=%ds, max_staleness=%ds, "
-            "stale_if_error=%s)",
+            "AgentCardRegistry created (backend=%s, cache_ttl=%ds, max_staleness=%ds)",
             config.agent_card_registry_backend,
             self._cache_ttl,
             self._max_staleness_seconds,
-            self._stale_if_error,
         )
 
     # ------------------------------------------------------------------
@@ -435,9 +402,7 @@ class AgentCardRegistry:
         return record is not None
 
     async def _try_get_stale(self, key: str) -> AgentCard | None:
-        """Return a stale cached card when refresh failed and policy allows it."""
-        if not self._stale_if_error:
-            return None
+        """Return a stale cached card when refresh failed."""
         record = await self._backend.get_stale(
             key,
             max_staleness_seconds=self._max_staleness_seconds,
