@@ -172,9 +172,11 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         user = self.get_user_from_request_scope(request)
         if not user:
-            logger.info(
-                "No AuthenticatedUser is found in inbound request scope. Skip this middleware."
+            message = (
+                "No AuthenticatedUser is found in inbound request scope. "
+                f"Skip {__class__.__name__}."
             )
+            logger.info(message)
             return await call_next(request)
 
         try:
