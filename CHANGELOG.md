@@ -4,8 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.4
+## 0.29.5
 - Enable `cve-sync` automation in the repo
+
+## 0.29.4
+- `dragent`: agent card registry uses in-process L1 cache with optional DataRobot MemorySpace L2 (read-through/write-through over the agentic memory Session API) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is set; falls back to L1-only when no memory space is configured.
+- `dragent`: pluggable agent card registry cache backends with stale-if-error bounded by `AGENT_CARD_REGISTRY_CACHE_TTL`.
+- `dragent`: L1 read-through of an L2 agent card hit preserves the original ``fetched_at``, so soft TTL and max-staleness are not reset on promotion.
 
 ## 0.29.3
 - `dragent`: **fixed `authenticated_a2a_client` groups overwriting each other's agent card on a shared `auth_provider`.** Function groups are built per user, but `WorkflowBuilder.get_auth_provider` returns one instance per configured name and `PerUserWorkflowBuilder` delegates to it — so every group called `set_agent_card()` on the same object and the last one to connect decided `target_audience`, `token_url` and `id_jag_scopes` for all of them. Two A2A function groups sharing an `auth_provider`, or two users active at once, could mint a token for the wrong agent; the receiving agent rejects it on the audience check, so this failed closed, but it showed up as intermittent auth failures.
