@@ -24,6 +24,7 @@ from a2a.types import AgentCard
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheRecord
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
+from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import MemorySpaceAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
@@ -141,3 +142,40 @@ class TestCreateAgentCardCacheBackend:
 
         assert isinstance(backend, LayeredAgentCardCacheBackend)
         configure_mock.assert_called_once()
+
+
+class TestLayeredAgentCardCacheBackend:
+    async def test_get_fresh_read_through_preserves_fetched_at(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2 = MemoryAgentCardCacheBackend()
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        # GIVEN an L2 record that is already 30s old
+        await l2.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+        l2.age_entry_for_test("dep-1", 30)
+
+        # WHEN L1 misses and L2 hits within the 60s soft TTL
+        record = await layered.get_fresh("dep-1", cache_ttl=60)
+
+        # THEN the promoted L1 entry keeps the original fetch time
+        assert record is not None
+        assert await l1.get_fresh("dep-1", cache_ttl=60) is not None
+        assert await l1.get_fresh("dep-1", cache_ttl=20) is None
+
+    async def test_get_stale_read_through_does_not_reset_soft_ttl(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2 = MemoryAgentCardCacheBackend()
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        # GIVEN an L2 record past the 60s soft TTL but within max staleness
+        await l2.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+        l2.age_entry_for_test("dep-1", 90)
+
+        # WHEN L1 misses and L2 serves a stale-if-error hit
+        record = await layered.get_stale("dep-1", max_staleness_seconds=120)
+
+        # THEN L1 must not treat the promoted card as freshly fetched
+        assert record is not None
+        assert await l1.get_fresh("dep-1", cache_ttl=60) is None
+        assert await l1.get_stale("dep-1", max_staleness_seconds=80) is None
+        assert await l1.get_stale("dep-1", max_staleness_seconds=120) is not None

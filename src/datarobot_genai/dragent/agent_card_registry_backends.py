@@ -158,6 +158,10 @@ class MemoryAgentCardCacheBackend:
                 card, lookup_key=lookup_key, key_type=key_type
             )
 
+    async def store_record(self, lookup_key: str, record: AgentCardCacheRecord) -> None:
+        """Insert *record* as-is, preserving ``fetched_at`` for L1 read-through."""
+        self._entries[lookup_key] = record.model_copy()
+
     async def evict(
         self,
         lookup_key: str,
@@ -267,10 +271,7 @@ class LayeredAgentCardCacheBackend:
         if record := await self._l1.get_fresh(lookup_key, cache_ttl=cache_ttl):
             return record
         if record := await self._l2.get_fresh(lookup_key, cache_ttl=cache_ttl):
-            await self._l1.store(
-                {lookup_key: record.card},
-                key_types={lookup_key: _infer_key_type(record, lookup_key)},
-            )
+            await self._promote_to_l1(lookup_key, record)
             return record
         return None
 
@@ -289,12 +290,12 @@ class LayeredAgentCardCacheBackend:
             lookup_key,
             max_staleness_seconds=max_staleness_seconds,
         ):
-            await self._l1.store(
-                {lookup_key: record.card},
-                key_types={lookup_key: _infer_key_type(record, lookup_key)},
-            )
+            await self._promote_to_l1(lookup_key, record)
             return record
         return None
+
+    async def _promote_to_l1(self, lookup_key: str, record: AgentCardCacheRecord) -> None:
+        await self._l1.store_record(lookup_key, record)
 
     async def store(
         self,
@@ -318,14 +319,6 @@ class LayeredAgentCardCacheBackend:
     def memory(self) -> MemoryAgentCardCacheBackend:
         """Expose the L1 backend (tests)."""
         return self._l1
-
-
-def _infer_key_type(record: AgentCardCacheRecord, lookup_key: str) -> LookupKeyType:
-    if record.deployment_id == lookup_key:
-        return "deployment"
-    if record.external_id == lookup_key:
-        return "external"
-    return "deployment"
 
 
 def create_agent_card_cache_backend(
