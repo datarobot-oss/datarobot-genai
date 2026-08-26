@@ -16,11 +16,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Coroutine
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import Literal
 from typing import Protocol
 
@@ -169,6 +172,10 @@ class MemoryAgentCardCacheBackend:
         """Insert *record* as-is, preserving ``fetched_at`` for L1 read-through."""
         self._entries[lookup_key] = record.model_copy()
 
+    def has_entry(self, lookup_key: str) -> bool:
+        """Return *True* when *lookup_key* is present in L1 (fresh or stale)."""
+        return lookup_key in self._entries
+
     async def evict(
         self,
         lookup_key: str,
@@ -292,15 +299,44 @@ class MemorySpaceAgentCardCacheBackend:
 
 
 class LayeredAgentCardCacheBackend:
-    """L1 memory read-through / write-through over an L2 backend."""
+    """L1 memory read-through / write-behind over an L2 backend."""
 
     def __init__(self, l1: MemoryAgentCardCacheBackend, l2: AgentCardCacheBackend) -> None:
         self._l1 = l1
         self._l2 = l2
+        self._l2_tasks: set[asyncio.Task[Any]] = set()
+
+    def _schedule_l2(self, coro: Coroutine[Any, Any, Any]) -> None:
+        """Run an L2 operation in the background without blocking callers."""
+        task = asyncio.create_task(coro)
+        self._l2_tasks.add(task)
+        task.add_done_callback(self._l2_tasks.discard)
+        task.add_done_callback(self._log_l2_task_failure)
+
+    @staticmethod
+    def _log_l2_task_failure(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.warning("Agent card registry L2 background task failed", exc_info=exc)
+
+    async def flush_l2_tasks(self) -> None:
+        """Await in-flight L2 writes/evictions (tests and graceful shutdown)."""
+        if not self._l2_tasks:
+            return
+        tasks = list(self._l2_tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
         if record := await self._l1.get_fresh(lookup_key, cache_ttl=cache_ttl):
             return record
+        # L1 holds a stale entry with the same fetched_at L2 would return — skip L2.
+        if self._l1.has_entry(lookup_key):
+            return None
         if record := await self._l2.get_fresh(lookup_key, cache_ttl=cache_ttl):
             await self._promote_to_l1(lookup_key, record)
             return record
@@ -336,7 +372,7 @@ class LayeredAgentCardCacheBackend:
         registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> None:
         await self._l1.store(cards, key_types=key_types, registry_ids=registry_ids)
-        await self._l2.store(cards, key_types=key_types, registry_ids=registry_ids)
+        self._schedule_l2(self._l2.store(cards, key_types=key_types, registry_ids=registry_ids))
 
     async def evict(
         self,
@@ -345,7 +381,7 @@ class LayeredAgentCardCacheBackend:
         key_type: LookupKeyType | None = None,
     ) -> None:
         await self._l1.evict(lookup_key, key_type=key_type)
-        await self._l2.evict(lookup_key, key_type=key_type)
+        self._schedule_l2(self._l2.evict(lookup_key, key_type=key_type))
 
     @property
     def memory(self) -> MemoryAgentCardCacheBackend:

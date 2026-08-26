@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -231,3 +232,52 @@ class TestLayeredAgentCardCacheBackend:
         assert await l1.get_fresh("dep-1", cache_ttl=60) is None
         assert await l1.get_stale("dep-1", max_staleness_seconds=80) is None
         assert await l1.get_stale("dep-1", max_staleness_seconds=120) is not None
+
+    async def test_get_fresh_skips_l2_when_l1_has_stale_entry(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2 = AsyncMock()
+        l2.get_fresh = AsyncMock(return_value=None)
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        await l1.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+        l1.age_entry_for_test("dep-1", 120)
+
+        assert await layered.get_fresh("dep-1", cache_ttl=60) is None
+        l2.get_fresh.assert_not_awaited()
+
+    async def test_store_write_behind_does_not_block_on_l2(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2_blocked = asyncio.Event()
+        l2_started = asyncio.Event()
+
+        async def slow_store(*args, **kwargs):
+            l2_started.set()
+            await l2_blocked.wait()
+
+        l2 = AsyncMock()
+        l2.store = AsyncMock(side_effect=slow_store)
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        await layered.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+
+        assert await l1.get_fresh("dep-1", cache_ttl=3600) is not None
+        await asyncio.wait_for(l2_started.wait(), timeout=1.0)
+        l2.store.assert_awaited_once()
+        l2_blocked.set()
+        await layered.flush_l2_tasks()
+
+    async def test_evict_write_behind_clears_l1_before_l2(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2 = MemoryAgentCardCacheBackend()
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        await layered.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+        await layered.flush_l2_tasks()
+        assert await l2.get_fresh("dep-1", cache_ttl=3600) is not None
+
+        await layered.evict("dep-1", key_type="deployment")
+        assert not l1.has_entry("dep-1")
+        assert await l2.get_fresh("dep-1", cache_ttl=3600) is not None
+
+        await layered.flush_l2_tasks()
+        assert await l2.get_fresh("dep-1", cache_ttl=3600) is None
