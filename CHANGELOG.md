@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.6 - 2026-08-26
+- Add a `authlib` floor at `>=1.7.1`.
+- Raise the `pip` floor from `>=26.1.2` to `>=26.2`.
+
 ## 0.29.5
 - Enable `cve-sync` automation in the repo
 
