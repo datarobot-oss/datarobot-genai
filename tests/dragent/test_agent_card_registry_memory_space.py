@@ -293,6 +293,29 @@ class TestLayeredAgentCardCacheBackend:
         assert await layered.get_fresh("dep-1", cache_ttl=60) is None
         l2.get_fresh.assert_not_awaited()
 
+    async def test_get_stale_waits_for_slow_l2(self):
+        l1 = MemoryAgentCardCacheBackend()
+        stale_record = build_cache_record(
+            _SAMPLE_AGENT_CARD,
+            lookup_key="dep-1",
+            key_type="deployment",
+            deployment_id="dep-1",
+            external_id=None,
+        )
+
+        async def slow_get_stale(*args, **kwargs):
+            await asyncio.sleep(0.15)
+            return stale_record
+
+        l2 = AsyncMock()
+        l2.get_stale = AsyncMock(side_effect=slow_get_stale)
+        layered = LayeredAgentCardCacheBackend(l1, l2, l2_read_timeout=0.05)
+
+        record = await layered.get_stale("dep-1", max_staleness_seconds=3600)
+
+        assert record is stale_record
+        l2.get_stale.assert_awaited_once()
+
     async def test_get_fresh_l2_read_timeout_falls_through(self):
         l1 = MemoryAgentCardCacheBackend()
         l2_started = asyncio.Event()

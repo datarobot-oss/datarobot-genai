@@ -414,12 +414,11 @@ class LayeredAgentCardCacheBackend:
             key_type=key_type,
         ):
             return record
-        if record := await self._read_l2_with_timeout(
-            self._l2.get_stale(
-                lookup_key,
-                max_staleness_seconds=max_staleness_seconds,
-                key_type=key_type,
-            )
+        # Stale-if-error runs only after a registry fetch failed — wait for L2.
+        if record := await self._l2.get_stale(
+            lookup_key,
+            max_staleness_seconds=max_staleness_seconds,
+            key_type=key_type,
         ):
             await self._promote_to_l1(lookup_key, record)
             return record
