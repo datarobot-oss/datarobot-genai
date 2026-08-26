@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.10 - 2026-08-26
+- `dragent`, `langgraph`, `llama_index`: **agent spans now carry `gen_ai.agent.name`.
+- Adds `datarobot-opentelemetry>=0.4.0,<1.0.0` to the `llamaindex` and `dragent` extras.
+
 ## 0.29.9
 - `dragent`: `registry` in `workflow.yaml` accepts `workload_id` alongside `deployment_id` and `external_id`, so an agent served by the Workload API runtime — where its card is keyed by workload rather than deployment — is reachable through the central agent card registry. Lookups query `workloadIds`, cache under a `workload:` key (L1 and MemorySpace L2), and take part in startup prefetch, background refresh and stale-if-error like the other two kinds. A workload card that also publishes an `external.id` stays reachable by either ID.
 - `dragent`: each registry request now carries exactly **one** ID kind. `deploymentIds` + `workloadIds` in one request is rejected by the API with HTTP 400 (not an empty result like `deploymentIds` + `externalIds`), so the client fetches one kind per call and raises before issuing a request that mixes the two.
