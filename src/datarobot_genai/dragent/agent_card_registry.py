@@ -38,9 +38,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any
 from typing import Literal
+from typing import NamedTuple
 
 import httpx
 from a2a.types import AgentCard
@@ -48,6 +48,11 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
 
 from datarobot_genai.core.config import resolve_config
+from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheBackend
+from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
+from datarobot_genai.dragent.agent_card_registry_backends import LookupKeyType
+from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
+from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
 
 logger = logging.getLogger(__name__)
@@ -122,6 +127,14 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
+    agent_card_registry_memory_space_id: str | None = Field(
+        default=None,
+        description=(
+            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
+            "When unset, only in-process L1 caching is used."
+        ),
+    )
+
 
 class AgentCardRegistryError(RuntimeError):
     """Raised when the central agent card registry lookup fails."""
@@ -148,10 +161,18 @@ def _resolve_settings(
     return resolved_token, resolved_endpoint
 
 
+class ParsedRegistryCards(NamedTuple):
+    """Parsed registry response with lookup key types for cache indexing."""
+
+    cards: dict[str, AgentCard]
+    key_types: dict[str, LookupKeyType]
+    registry_ids: dict[str, tuple[str | None, str | None]]
+
+
 def _parse_registry_response(
     body: dict[str, Any],
     on_duplicate: DuplicateStrategy = "first",
-) -> dict[str, AgentCard]:
+) -> ParsedRegistryCards:
     """Parse a paginated registry response into ``{id: AgentCard}``.
 
     Each record is indexed by ``deploymentId`` (always unique) and
@@ -166,6 +187,8 @@ def _parse_registry_response(
     * ``"error"`` — raise :class:`AgentCardRegistryError`.
     """
     cards: dict[str, AgentCard] = {}
+    key_types: dict[str, LookupKeyType] = {}
+    registry_ids: dict[str, tuple[str | None, str | None]] = {}
     for entry in body.get("data", []):
         raw_card = entry.get("agentCard")
         if not raw_card:
@@ -184,14 +207,22 @@ def _parse_registry_response(
             )
             continue
 
+        dep_id = entry.get("deploymentId")
+        ext_id = entry.get("externalId")
+        id_pair = (dep_id, ext_id)
+
         # Deployment IDs are unique by platform design — always overwrite.
-        if dep_id := entry.get("deploymentId"):
+        if dep_id:
             cards[dep_id] = card
+            key_types[dep_id] = "deployment"
+            registry_ids[dep_id] = id_pair
 
         # External IDs may have duplicates — apply the configured strategy.
-        if ext_id := entry.get("externalId"):
+        if ext_id:
             if ext_id not in cards:
                 cards[ext_id] = card
+                key_types[ext_id] = "external"
+                registry_ids[ext_id] = id_pair
             else:
                 logger.warning(
                     "Duplicate external ID '%s' in registry response (on_duplicate=%s).",
@@ -206,43 +237,10 @@ def _parse_registry_response(
                     )
                 if on_duplicate == "last":
                     cards[ext_id] = card
+                    key_types[ext_id] = "external"
+                    registry_ids[ext_id] = id_pair
                 # "first" — keep existing entry (no-op)
-    return cards
-
-
-class _CacheEntry:
-    """A cached agent card with its fetch timestamp."""
-
-    __slots__ = ("card", "fetched_at")
-
-    def __init__(self, card: AgentCard) -> None:
-        self.card = card
-        self.fetched_at = time.monotonic()
-
-    def age_seconds(self) -> float:
-        """Return the entry age in seconds."""
-        return time.monotonic() - self.fetched_at
-
-    def is_fresh(self, cache_ttl: int) -> bool:
-        """Return *True* if this entry is within the soft TTL (*cache_ttl*).
-
-        A TTL of 0 means "never fresh" (always attempt refresh).
-        """
-        if cache_ttl == 0:
-            return False
-        return self.age_seconds() < cache_ttl
-
-    def is_expired(self, ttl: int) -> bool:
-        """Return *True* if this entry is older than *ttl* seconds.
-
-        A TTL of 0 means "always expired" (no caching).
-
-        .. deprecated::
-            Prefer :meth:`is_fresh` with the soft cache TTL.
-        """
-        if ttl == 0:
-            return True
-        return self.age_seconds() >= ttl
+    return ParsedRegistryCards(cards=cards, key_types=key_types, registry_ids=registry_ids)
 
 
 class AgentCardRegistry:
@@ -252,8 +250,8 @@ class AgentCardRegistry:
     The first ``get()`` flushes all pending IDs in ≤2 HTTP calls
     (one per ID type — API uses AND when both are mixed).
     Subsequent ``get()`` calls hit the in-memory cache until the soft TTL
-    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails, the
-    last-known-good cached card is returned if one is present.
+    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails, a cached
+    card may still be returned while it remains within ``AGENT_CARD_REGISTRY_CACHE_TTL``.
     """
 
     def __init__(
@@ -263,10 +261,10 @@ class AgentCardRegistry:
         timeout: float | None = None,
         cache_ttl: int | None = None,
         on_duplicate: DuplicateStrategy | None = None,
+        cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
         self._api_token = api_token
         self._endpoint = endpoint
-        self._cache: dict[str, _CacheEntry] = {}
         self._lock = asyncio.Lock()
 
         # Pending registrations (filled synchronously, flushed on first get)
@@ -285,8 +283,13 @@ class AgentCardRegistry:
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
+        self._backend = cache_backend or create_agent_card_cache_backend(config)
 
-        logger.debug("AgentCardRegistry created (cache_ttl=%ds)", self._cache_ttl)
+        logger.debug(
+            "AgentCardRegistry created (cache_ttl=%ds, l2=%s)",
+            self._cache_ttl,
+            isinstance(self._backend, LayeredAgentCardCacheBackend),
+        )
 
     # ------------------------------------------------------------------
     # Registration (synchronous — called at config-parse time)
@@ -320,7 +323,7 @@ class AgentCardRegistry:
     # Internal HTTP
     # ------------------------------------------------------------------
 
-    async def _fetch(self, params: dict[str, str]) -> dict[str, AgentCard]:
+    async def _fetch(self, params: dict[str, str]) -> ParsedRegistryCards:
         """Execute registry HTTP GET(s) with pagination and return all parsed cards.
 
         Requests the maximum page size (100) to minimise round-trips, then
@@ -375,39 +378,57 @@ class AgentCardRegistry:
         except httpx.HTTPError as exc:
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
-        cards = _parse_registry_response({"data": all_entries}, on_duplicate=self._on_duplicate)
-        logger.info("Fetched %d agent card(s) from registry (%d pages).", len(cards), pages_fetched)
-        return cards
+        parsed = _parse_registry_response({"data": all_entries}, on_duplicate=self._on_duplicate)
+        logger.info(
+            "Fetched %d agent card(s) from registry (%d pages).",
+            len(parsed.cards),
+            pages_fetched,
+        )
+        return parsed
 
-    def _is_fresh(self, key: str) -> bool:
+    async def _is_fresh(self, key: str) -> bool:
         """Return True if *key* is cached and within the soft TTL."""
-        entry = self._cache.get(key)
-        return entry is not None and entry.is_fresh(self._cache_ttl)
+        record = await self._backend.get_fresh(key, cache_ttl=self._cache_ttl)
+        return record is not None
 
-    def _is_cached(self, key: str) -> bool:
-        """Return True if *key* is cached and within the soft TTL."""
-        return self._is_fresh(key)
-
-    def _try_get_stale(self, key: str) -> AgentCard | None:
-        """Return the last-known-good cached card when a registry refresh failed."""
-        entry = self._cache.get(key)
-        if entry is None:
+    async def _try_get_stale(self, key: str) -> AgentCard | None:
+        """Return a stale cached card when refresh failed."""
+        record = await self._backend.get_stale(
+            key,
+            max_staleness_seconds=self._cache_ttl,
+        )
+        if record is None:
             return None
         logger.warning(
             "Registry unreachable; serving stale agent card for %s (age=%.0fs)",
             key,
-            entry.age_seconds(),
+            record.age_seconds(),
         )
-        return entry.card
+        return record.card
 
-    def _store_cards(self, cards: dict[str, AgentCard]) -> None:
-        for key, card in cards.items():
-            self._cache[key] = _CacheEntry(card)
+    async def _store_cards(self, parsed: ParsedRegistryCards) -> None:
+        if not parsed.cards:
+            return
+        await self._backend.store(
+            parsed.cards,
+            key_types=parsed.key_types,
+            registry_ids=parsed.registry_ids,
+        )
+
+    def _age_cache_entry_for_test(self, lookup_key: str, seconds: float) -> None:
+        """Shift a cached entry's fetch time backward (tests only)."""
+        backend = self._backend
+        if isinstance(backend, MemoryAgentCardCacheBackend):
+            backend.age_entry_for_test(lookup_key, seconds)
+            return
+
+        if isinstance(backend, LayeredAgentCardCacheBackend):
+            backend.memory.age_entry_for_test(lookup_key, seconds)
 
     async def _flush_pending(self) -> None:
         """Batch-fetch all registered-but-uncached IDs.  Must be called under ``_lock``."""
-        missing_dep = [d for d in self._pending_deployment_ids if not self._is_cached(d)]
-        missing_ext = [e for e in self._pending_external_ids if not self._is_cached(e)]
+        missing_dep = [d for d in self._pending_deployment_ids if not await self._is_fresh(d)]
+        missing_ext = [e for e in self._pending_external_ids if not await self._is_fresh(e)]
 
         # Clear pending sets regardless — they've been processed
         self._pending_deployment_ids.clear()
@@ -417,12 +438,12 @@ class AgentCardRegistry:
             return
 
         if missing_dep:
-            cards = await self._fetch({"deploymentIds": ",".join(missing_dep)})
-            self._store_cards(cards)
+            parsed = await self._fetch({"deploymentIds": ",".join(missing_dep)})
+            await self._store_cards(parsed)
 
         if missing_ext:
-            cards = await self._fetch({"externalIds": ",".join(missing_ext)})
-            self._store_cards(cards)
+            parsed = await self._fetch({"externalIds": ",".join(missing_ext)})
+            await self._store_cards(parsed)
 
     # ------------------------------------------------------------------
     # Public API
@@ -450,20 +471,20 @@ class AgentCardRegistry:
             External IDs to prefetch.
         """
         async with self._lock:
-            missing_dep = [d for d in (deployment_ids or []) if not self._is_cached(d)]
-            missing_ext = [e for e in (external_ids or []) if not self._is_cached(e)]
+            missing_dep = [d for d in (deployment_ids or []) if not await self._is_fresh(d)]
+            missing_ext = [e for e in (external_ids or []) if not await self._is_fresh(e)]
 
             if not missing_dep and not missing_ext:
                 logger.debug("All requested agent cards already cached — skipping prefetch.")
                 return
 
             if missing_dep:
-                cards = await self._fetch({"deploymentIds": ",".join(missing_dep)})
-                self._store_cards(cards)
+                parsed = await self._fetch({"deploymentIds": ",".join(missing_dep)})
+                await self._store_cards(parsed)
 
             if missing_ext:
-                cards = await self._fetch({"externalIds": ",".join(missing_ext)})
-                self._store_cards(cards)
+                parsed = await self._fetch({"externalIds": ",".join(missing_ext)})
+                await self._store_cards(parsed)
 
     async def refresh_all_registered(self) -> None:
         """Re-fetch registered IDs whose cache entries are past the soft TTL.
@@ -518,20 +539,22 @@ class AgentCardRegistry:
         lookup_key: str = deployment_id or external_id  # type: ignore[assignment]
 
         # Fast path — fresh cache hit
-        if self._is_fresh(lookup_key):
-            return self._cache[lookup_key].card
+        if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+            return fresh.card
 
         async with self._lock:
             # Double-check after acquiring lock
-            if self._is_fresh(lookup_key):
-                return self._cache[lookup_key].card
+            if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+                return fresh.card
 
             try:
                 # Flush all pending registrations in a batch
                 if self._pending_deployment_ids or self._pending_external_ids:
                     await self._flush_pending()
-                    if self._is_fresh(lookup_key):
-                        return self._cache[lookup_key].card
+                    if fresh := await self._backend.get_fresh(
+                        lookup_key, cache_ttl=self._cache_ttl
+                    ):
+                        return fresh.card
 
                 # Still not fresh — fetch individually
                 params: dict[str, str] = (
@@ -539,17 +562,21 @@ class AgentCardRegistry:
                     if deployment_id
                     else {"externalIds": external_id}  # type: ignore[dict-item]
                 )
-                cards = await self._fetch(params)
-                self._store_cards(cards)
+                parsed = await self._fetch(params)
+                await self._store_cards(parsed)
 
-                if lookup_key in cards:
-                    return cards[lookup_key]
+                if lookup_key in parsed.cards:
+                    return parsed.cards[lookup_key]
+
+                if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+                    return fresh.card
 
                 # Successful miss — evict stale entry so stale-if-error cannot
                 # resurrect a deregistered agent on a later fetch failure.
-                self._cache.pop(lookup_key, None)
+                key_type: LookupKeyType = "deployment" if deployment_id else "external"
+                await self._backend.evict(lookup_key, key_type=key_type)
             except AgentCardRegistryError:
-                if stale_card := self._try_get_stale(lookup_key):
+                if stale_card := await self._try_get_stale(lookup_key):
                     return stale_card
                 raise
 
