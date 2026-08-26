@@ -130,10 +130,6 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
-    def test_max_staleness_derived_from_cache_ttl(self):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=1800)
-        assert registry._max_staleness_seconds == 1800
-
     def test_memory_space_id_from_env(self):
         with patch.dict(
             "os.environ",
@@ -445,20 +441,22 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=120,
             cache_backend=cache_backend,
         )
 
         card1 = await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 90)
-
-        card2 = await registry.get(deployment_id="dep-1")
+        fixed_now = datetime.now(UTC)
+        cache_backend._entries["dep-1"].fetched_at = fixed_now - timedelta(seconds=60)
+        with patch("datarobot_genai.dragent.agent_card_registry_backends.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.UTC = UTC
+            card2 = await registry.get(deployment_id="dep-1")
 
         assert card1 is stale_card
         assert card2 is stale_card
         assert mock_fetch.await_count == 2
 
-    async def test_raises_when_beyond_max_staleness(self, mock_fetch, cache_backend):
+    async def test_raises_when_beyond_cache_ttl(self, mock_fetch, cache_backend):
         stale_card = _card()
         mock_fetch.side_effect = [
             _parsed({"dep-1": stale_card}),
@@ -468,7 +466,6 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=30,
             cache_backend=cache_backend,
         )
 
@@ -495,14 +492,17 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=120,
             cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 90)
+        fixed_now = datetime.now(UTC)
+        cache_backend._entries["dep-1"].fetched_at = fixed_now - timedelta(seconds=60)
 
         registry.register(deployment_id="dep-2")
-        card = await registry.get(deployment_id="dep-1")
+        with patch("datarobot_genai.dragent.agent_card_registry_backends.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.UTC = UTC
+            card = await registry.get(deployment_id="dep-1")
 
         assert card is stale_card
 
@@ -537,7 +537,6 @@ class TestAgentCardRegistryStaleIfError:
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=60,
-            max_staleness_seconds=3600,
             cache_backend=cache_backend,
         )
         await registry.get(deployment_id="dep-1")

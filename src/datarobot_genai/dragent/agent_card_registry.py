@@ -265,7 +265,6 @@ class AgentCardRegistry:
         endpoint: str | None = None,
         timeout: float | None = None,
         cache_ttl: int | None = None,
-        max_staleness_seconds: int | None = None,
         on_duplicate: DuplicateStrategy | None = None,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
@@ -286,18 +285,14 @@ class AgentCardRegistry:
         self._cache_ttl = (
             cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
         )
-        self._max_staleness_seconds = (
-            max_staleness_seconds if max_staleness_seconds is not None else self._cache_ttl
-        )
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
         self._backend = cache_backend or create_agent_card_cache_backend(config)
 
         logger.debug(
-            "AgentCardRegistry created (cache_ttl=%ds, max_staleness=%ds, l2=%s)",
+            "AgentCardRegistry created (cache_ttl=%ds, l2=%s)",
             self._cache_ttl,
-            self._max_staleness_seconds,
             isinstance(self._backend, LayeredAgentCardCacheBackend),
         )
 
@@ -405,7 +400,7 @@ class AgentCardRegistry:
         """Return a stale cached card when refresh failed."""
         record = await self._backend.get_stale(
             key,
-            max_staleness_seconds=self._max_staleness_seconds,
+            max_staleness_seconds=self._cache_ttl,
         )
         if record is None:
             return None
