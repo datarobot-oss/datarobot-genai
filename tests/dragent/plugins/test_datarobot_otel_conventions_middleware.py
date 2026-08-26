@@ -37,6 +37,7 @@ from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
+from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
 from opentelemetry.sdk.trace import ReadableSpan
@@ -247,6 +248,23 @@ async def test_invoke_sets_prompt_and_completion_for_str_output(
     assert span.attributes[GEN_AI_COMPLETION] == "4"
 
 
+async def test_invoke_sets_agent_name_from_context(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    context = MagicMock()
+    context.name = "my_agent_function"
+
+    await middleware.function_middleware_invoke(
+        _nat_input("hi"),
+        call_next=_call_next("ok"),
+        context=context,
+    )
+
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "my_agent_function"
+
+
 async def test_invoke_sets_prompt_from_input_message(
     middleware: DataRobotOtelConventionsMiddleware,
     span_exporter: InMemorySpanExporter,
@@ -322,6 +340,25 @@ async def test_invoke_non_text_output_sets_no_completion(
 # ---------------------------------------------------------------------------
 # function_middleware_stream
 # ---------------------------------------------------------------------------
+
+
+async def test_stream_sets_agent_name_from_context(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    context = MagicMock()
+    context.name = "my_streaming_agent"
+
+    await _drain(
+        middleware.function_middleware_stream(
+            _nat_input("hi"),
+            call_next=_call_next_stream([]),
+            context=context,
+        )
+    )
+
+    span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "my_streaming_agent"
 
 
 async def test_stream_aggregates_completion_across_chunks(

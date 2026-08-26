@@ -21,6 +21,7 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
+from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -161,13 +162,14 @@ class DataRobotOtelConventionsMiddleware(
         self,
         *args: Any,
         call_next: CallNext,
-        context: FunctionMiddlewareContext,  # noqa: ARG002
+        context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> Any:
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
         ):
+            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
@@ -184,13 +186,14 @@ class DataRobotOtelConventionsMiddleware(
         self,
         *args: Any,
         call_next: CallNextStream,
-        context: FunctionMiddlewareContext,  # noqa: ARG002
+        context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> AsyncIterator[Any]:
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
         ):
+            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)

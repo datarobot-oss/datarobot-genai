@@ -205,6 +205,25 @@ class SimpleLangGraphAgent(LangGraphAgent):
         return {}
 
 
+# ---------------------------------------------------------------------------
+# name (compiled onto the graph, read back out by the OTel auto-instrumentor
+# as gen_ai.agent.name)
+# ---------------------------------------------------------------------------
+
+
+def test_name_defaults_to_the_concrete_subclass_name() -> None:
+    """Without an explicit name=, langgraph's own compile() falls back to the
+    generic literal "LangGraph" - identical across every agent built from this
+    class, useless for multi-agent segmentation. Defaulting to the subclass
+    name here gives every agent something distinguishing for free.
+    """
+    assert SimpleLangGraphAgent().name == "SimpleLangGraphAgent"
+
+
+def test_name_respects_an_explicit_override() -> None:
+    assert SimpleLangGraphAgent(name="my_custom_agent").name == "my_custom_agent"
+
+
 def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose() -> None:
     """graph_factory(llm, tools, verbose) is called when building workflow (each access)."""
     inner = SimpleLangGraphAgent()
