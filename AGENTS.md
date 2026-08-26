@@ -16,4 +16,7 @@
 
 1. Read README.md
 2. Then read .cursor/rules
-3. Make sure you bump the version in each branch. Update pyproject.toml and run `task install` to do so
+3. Bump the version for each change that ships. Update pyproject.toml and run `task install` to do so.
+   For a stack of dependent PRs, bump once on the PR that lands last: `version-check` reads the whole
+   stack, so the tip's bump satisfies every PR in it. See
+   [CONTRIBUTING.md](CONTRIBUTING.md#versioning-and-releases).

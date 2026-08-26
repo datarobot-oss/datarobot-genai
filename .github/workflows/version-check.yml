@@ -1,0 +1,169 @@
+# Requires a version bump in pyproject.toml whenever a PR touches the shipped
+# package, so that release-on-merge.yml has a new tag to cut on merge to main.
+#
+# A stack of dependent PRs is one unit of release, so the gate is applied to the
+# stack rather than to each PR in it: the tip's tree already contains every layer
+# below it, so comparing the tip against main answers "does a bump land anywhere
+# in this stack?". One bump on the PR that lands last covers the whole stack, and
+# no PR carries a pyproject.toml change it would only have to re-resolve on the
+# next rebase.
+#
+# Lives in its own workflow (rather than in ci.yml) so that a `stacked` event, or
+# a re-run once the tip is bumped, re-runs this check alone instead of the whole
+# ~35-job CI matrix. The stack is read from the API at run time rather than from
+# the event payload, so re-running the job from the Actions UI — which replays the
+# original payload — still sees a bump pushed to the tip afterwards.
+
+name: Version Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, stacked]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Resolve which PR to inspect
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Null, and so empty here, for a PR that is not part of a stack.
+          STACK_NUMBER: ${{ github.event.pull_request.stack.number }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$STACK_NUMBER" ]]; then
+            echo "PR #$PR_NUMBER is not part of a stack — checking it against main."
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Only GraphQL lists a stack's members — the `stack` object on the REST
+          # pull request carries just that PR's own position and the stack size.
+          # `position` orders them bottom (closest to main) to top.
+          QUERY='
+            query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $number) {
+                  stack {
+                    entries(first: 100) {
+                      nodes { position pullRequest { number state } }
+                    }
+                  }
+                }
+              }
+            }'
+
+          # Without the stack's members there is no tip to check, and falling back
+          # to this PR alone would demand the per-branch bump this gate exists to
+          # avoid. Skip instead: an unbumped stack that lands releases nothing
+          # (see release-on-merge.yml), so the cost is a delayed release, not a
+          # broken one.
+          if ! RESPONSE=$(gh api graphql -f query="$QUERY" \
+              -F owner="${GITHUB_REPOSITORY%/*}" \
+              -F name="${GITHUB_REPOSITORY#*/}" \
+              -F number="$PR_NUMBER" 2>&1); then
+            RESPONSE=${RESPONSE//$'\n'/ }  # an annotation is a single line
+            echo "::warning::Could not read stack #$STACK_NUMBER, so the version check was skipped. Re-run this job to try again. ($RESPONSE)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TIP=$(jq -r '
+            [(.data.repository.pullRequest.stack.entries.nodes // [])[]
+             | select(.pullRequest.state == "OPEN")]
+            | sort_by(.position) | last // {} | .pullRequest.number // empty
+          ' <<<"$RESPONSE")
+
+          # An empty result means this PR left the stack after the event fired, so
+          # there is nothing to defer to and it stands on its own again.
+          if [[ -z "$TIP" ]]; then
+            echo "PR #$PR_NUMBER is no longer in stack #$STACK_NUMBER — checking it against main."
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$TIP" == "$PR_NUMBER" ]]; then
+            echo "PR #$PR_NUMBER is the tip of stack #$STACK_NUMBER — the stack's bump belongs here."
+          else
+            echo "PR #$PR_NUMBER is in stack #$STACK_NUMBER — checking its tip, PR #$TIP, where the stack's bump belongs."
+          fi
+          echo "pr=$TIP" >> "$GITHUB_OUTPUT"
+          echo "stack=$STACK_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.target.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version bump
+        if: steps.target.outputs.skip != 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_PR: ${{ steps.target.outputs.pr }}
+          STACK_NUMBER: ${{ steps.target.outputs.stack }}
+        run: |
+          set -euo pipefail
+
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          # refs/pull/<n>/head resolves in this repo even when the head branch
+          # lives in a fork, so this works for any PR in the stack.
+          git fetch --quiet origin "+refs/pull/$TARGET_PR/head:refs/remotes/origin/pr/$TARGET_PR"
+          TARGET="refs/remotes/origin/pr/$TARGET_PR"
+
+          CHANGED=$(git diff --name-only "origin/main...$TARGET")
+          if ! grep -q '^src/datarobot_genai/' <<<"$CHANGED"; then
+            echo "⏭️ No changes under src/datarobot_genai/ — version bump not required"
+            exit 0
+          fi
+
+          if ! git cat-file -e "$TARGET:pyproject.toml" 2>/dev/null; then
+            echo "❌ ERROR: pyproject.toml not found in PR #$TARGET_PR"
+            exit 1
+          fi
+
+          # awk keeps the first match without exiting early: under `pipefail`, a
+          # downstream `head -1` can SIGPIPE the command feeding it and fail the
+          # step with no diagnostic.
+          version_at() {
+            git show "$1:pyproject.toml" \
+              | awk -F'"' '/^version = / && !seen { print $2; seen = 1 }' \
+              | tr -d '\r'
+          }
+
+          TARGET_VERSION=$(version_at "$TARGET")
+          MAIN_VERSION=$(version_at origin/main)
+          echo "Version in PR #$TARGET_PR: $TARGET_VERSION"
+          echo "Version on main: $MAIN_VERSION"
+
+          if [ "$TARGET_VERSION" != "$MAIN_VERSION" ]; then
+            echo "✅ Version was bumped from $MAIN_VERSION to $TARGET_VERSION"
+            exit 0
+          fi
+
+          echo "❌ ERROR: Version in pyproject.toml was not bumped!"
+          echo ""
+          echo "Bump the version field in pyproject.toml, e.g. change"
+          echo "  version = \"$MAIN_VERSION\"  ->  version = \"<new-version>\""
+          echo "then run 'task install' so uv.lock stays in sync."
+          if [[ -n "$STACK_NUMBER" ]]; then
+            echo ""
+            echo "One bump covers stack #$STACK_NUMBER, and it belongs on the PR that"
+            echo "lands last — PR #$TARGET_PR. Bump it there, then 'gh stack sync' to"
+            echo "push every branch, which re-runs this check across the stack."
+            if [[ "$TARGET_PR" != "$PR_NUMBER" ]]; then
+              echo "If the bump is already on a lower layer, 'gh stack sync' also"
+              echo "rebases PR #$TARGET_PR so the tip picks it up."
+            fi
+          fi
+          exit 1
