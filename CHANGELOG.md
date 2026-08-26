@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.3
+- `dragent`: **fixed `authenticated_a2a_client` groups overwriting each other's agent card on a shared `auth_provider`.** Function groups are built per user, but `WorkflowBuilder.get_auth_provider` returns one instance per configured name and `PerUserWorkflowBuilder` delegates to it — so every group called `set_agent_card()` on the same object and the last one to connect decided `target_audience`, `token_url` and `id_jag_scopes` for all of them. Two A2A function groups sharing an `auth_provider`, or two users active at once, could mint a token for the wrong agent; the receiving agent rejects it on the audience check, so this failed closed, but it showed up as intermittent auth failures.
+- A group that resolves an `AgentCardAware` auth provider now takes its own copy of it, so the card it fetched stays with the agent it fetched it from. Configuration and credentials are unchanged and still shared.
+
 ## 0.29.2
 - `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block.
 - `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when a registry fetch fails.

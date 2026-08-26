@@ -14,6 +14,7 @@
 
 import abc
 import asyncio
+import copy
 import functools
 import inspect
 import logging
@@ -458,6 +459,13 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
         if config.auth_provider:
             try:
                 auth_provider = await self._builder.get_auth_provider(config.auth_provider)
+                if isinstance(auth_provider, AgentCardAware):
+                    # get_auth_provider returns one instance per configured name, shared
+                    # by every function group and every user.  A provider that keeps
+                    # agent-card state would otherwise serve whichever group connected
+                    # last, so this group takes its own copy — config and credentials
+                    # stay shared.
+                    auth_provider = copy.copy(auth_provider)
                 logger.info(
                     "Resolved authentication provider '%s' for A2A client",
                     config.auth_provider,
