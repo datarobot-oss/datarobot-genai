@@ -30,6 +30,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from datarobot_genai.drmcp.core.config import get_config
+from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
 from datarobot_genai.drmcpbase.middleware import AuthContextExtractor
@@ -39,7 +40,6 @@ from datarobot_genai.drmcputils.auth import extract_auth_context_from_headers
 from datarobot_genai.drmcputils.auth import set_auth_context
 from datarobot_genai.drmcputils.auth import set_request_headers
 from datarobot_genai.drmcputils.constants import AUTH_CTX_KEY
-from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 
 from .routes_utils import prefix_mount_path
 

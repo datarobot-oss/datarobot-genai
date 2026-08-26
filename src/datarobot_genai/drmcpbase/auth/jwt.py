@@ -20,7 +20,7 @@ import jwt
 from fastmcp.server.auth import AccessToken
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 
-from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +31,7 @@ class JWTTokenHandler:
         request_header_name_case_insensitive: str,
         request_headers_with_lower_case_key: Mapping[str, str],
     ) -> str | None:
-        for name, value in request_headers_with_lower_case_key.items():
-            if name == request_header_name_case_insensitive.lower():
-                return value
-        return None
+        return request_headers_with_lower_case_key.get(request_header_name_case_insensitive.lower())
 
     @staticmethod
     def get_bearer_token_value(
@@ -73,8 +70,9 @@ class JWTTokenHandler:
 
     @staticmethod
     def extract_exp(claims: dict[str, Any]) -> int | None:
+        # exp in JWT is a NumericDate type (Seconds Since the Epoch, integer or non-integer).
         exp = claims.get("exp")
-        return int(exp) if exp is not None else None
+        return int(float(exp)) if exp is not None else None
 
     @staticmethod
     def extract_client_id(claims: dict[str, Any]) -> str:

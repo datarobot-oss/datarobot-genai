@@ -20,10 +20,10 @@ import jwt
 import pytest
 from fastmcp.server.auth import AccessToken
 
+from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import AuthorizationClaims
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
-from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 
 
 @pytest.fixture
@@ -278,6 +278,7 @@ class TestJWTTokenHandler:
         "input_claims,output_exp",
         [
             ({"exp": "1"}, 1),
+            ({"exp": "1.0"}, 1.0),
             ({"exp": None}, None),
             ({}, None),
         ],

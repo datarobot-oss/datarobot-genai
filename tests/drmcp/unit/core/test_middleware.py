@@ -32,9 +32,9 @@ from datarobot_genai.drmcp.core.middleware import ErrorResponse
 from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
 from datarobot_genai.drmcp.core.middleware import is_path_exempt_from_oauth_validation
+from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
-from datarobot_genai.drmcputils.exceptions import AudienceClaimValidationError
 
 
 async def _ok_response(_request: Request) -> PlainTextResponse:
