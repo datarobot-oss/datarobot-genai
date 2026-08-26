@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 LookupKeyType = Literal["deployment", "external"]
 
+# Bound cold-path L2 read latency so a slow MemorySpace does not delay registry fetch.
+_DEFAULT_L2_READ_TIMEOUT_SECONDS = 0.2
+
 
 class AgentCardCacheRecord(BaseModel):
     """Serialized agent card cache entry shared across backends."""
@@ -322,9 +325,16 @@ class MemorySpaceAgentCardCacheBackend:
 class LayeredAgentCardCacheBackend:
     """L1 memory read-through / write-behind over an L2 backend."""
 
-    def __init__(self, l1: MemoryAgentCardCacheBackend, l2: AgentCardCacheBackend) -> None:
+    def __init__(
+        self,
+        l1: MemoryAgentCardCacheBackend,
+        l2: AgentCardCacheBackend,
+        *,
+        l2_read_timeout: float = _DEFAULT_L2_READ_TIMEOUT_SECONDS,
+    ) -> None:
         self._l1 = l1
         self._l2 = l2
+        self._l2_read_timeout = l2_read_timeout
         self._l2_tasks: set[asyncio.Task[Any]] = set()
 
     def _schedule_l2(self, coro: Coroutine[Any, Any, Any]) -> None:
@@ -352,6 +362,22 @@ class LayeredAgentCardCacheBackend:
         tasks = list(self._l2_tasks)
         await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def _read_l2_with_timeout(
+        self,
+        coro: Coroutine[Any, Any, AgentCardCacheRecord | None],
+    ) -> AgentCardCacheRecord | None:
+        """Run an L2 read with a bounded wait; return ``None`` on timeout."""
+        if self._l2_read_timeout <= 0:
+            return await coro
+        try:
+            return await asyncio.wait_for(coro, timeout=self._l2_read_timeout)
+        except TimeoutError:
+            logger.debug(
+                "Agent card registry L2 read timed out after %.2fs",
+                self._l2_read_timeout,
+            )
+            return None
+
     async def get_fresh(
         self,
         lookup_key: str,
@@ -364,10 +390,12 @@ class LayeredAgentCardCacheBackend:
         # L1 holds a stale entry with the same fetched_at L2 would return — skip L2.
         if self._l1.has_entry(lookup_key):
             return None
-        if record := await self._l2.get_fresh(
-            lookup_key,
-            cache_ttl=cache_ttl,
-            key_type=key_type,
+        if record := await self._read_l2_with_timeout(
+            self._l2.get_fresh(
+                lookup_key,
+                cache_ttl=cache_ttl,
+                key_type=key_type,
+            )
         ):
             await self._promote_to_l1(lookup_key, record)
             return record
@@ -386,10 +414,12 @@ class LayeredAgentCardCacheBackend:
             key_type=key_type,
         ):
             return record
-        if record := await self._l2.get_stale(
-            lookup_key,
-            max_staleness_seconds=max_staleness_seconds,
-            key_type=key_type,
+        if record := await self._read_l2_with_timeout(
+            self._l2.get_stale(
+                lookup_key,
+                max_staleness_seconds=max_staleness_seconds,
+                key_type=key_type,
+            )
         ):
             await self._promote_to_l1(lookup_key, record)
             return record
@@ -428,6 +458,10 @@ def create_agent_card_cache_backend(
 ) -> AgentCardCacheBackend:
     """Instantiate the agent card cache backend (L1, plus MemorySpace L2 when available)."""
     l1 = MemoryAgentCardCacheBackend()
+    if config.agent_card_registry_cache_ttl == 0:
+        logger.debug("Agent card registry cache: L1 only (cache_ttl=0)")
+        return l1
+
     memory_space_id = try_resolve_memory_space_id(config.agent_card_registry_memory_space_id)
     if memory_space_id is None:
         logger.debug("Agent card registry cache: L1 only (no MemorySpace ID configured)")

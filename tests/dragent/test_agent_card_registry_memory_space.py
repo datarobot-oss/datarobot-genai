@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import time
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -195,6 +196,24 @@ class TestCreateAgentCardCacheBackend:
 
         assert type(backend) is MemoryAgentCardCacheBackend
 
+    def test_l1_only_when_cache_ttl_zero_even_with_memory_space(self):
+        config = AgentCardRegistryConfig(
+            agent_card_registry_memory_space_id="space-123",
+            agent_card_registry_cache_ttl=0,
+        )
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
+            return_value=True,
+        ) as configure_mock:
+            from datarobot_genai.dragent.agent_card_registry_backends import (
+                MemoryAgentCardCacheBackend,
+            )
+
+            backend = create_agent_card_cache_backend(config)
+
+        assert type(backend) is MemoryAgentCardCacheBackend
+        configure_mock.assert_not_called()
+
     def test_l1_only_when_memory_client_unconfigured(self):
         config = AgentCardRegistryConfig(agent_card_registry_memory_space_id="space-123")
         with patch(
@@ -273,6 +292,25 @@ class TestLayeredAgentCardCacheBackend:
 
         assert await layered.get_fresh("dep-1", cache_ttl=60) is None
         l2.get_fresh.assert_not_awaited()
+
+    async def test_get_fresh_l2_read_timeout_falls_through(self):
+        l1 = MemoryAgentCardCacheBackend()
+        l2_started = asyncio.Event()
+
+        async def slow_get_fresh(*args, **kwargs):
+            l2_started.set()
+            await asyncio.sleep(1.0)
+
+        l2 = AsyncMock()
+        l2.get_fresh = AsyncMock(side_effect=slow_get_fresh)
+        layered = LayeredAgentCardCacheBackend(l1, l2, l2_read_timeout=0.05)
+
+        started = time.monotonic()
+        assert await layered.get_fresh("dep-1", cache_ttl=3600) is None
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 0.5
+        await asyncio.wait_for(l2_started.wait(), timeout=1.0)
 
     async def test_store_write_behind_does_not_block_on_l2(self):
         l1 = MemoryAgentCardCacheBackend()
