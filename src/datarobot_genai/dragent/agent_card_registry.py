@@ -386,16 +386,21 @@ class AgentCardRegistry:
         )
         return parsed
 
-    async def _is_fresh(self, key: str) -> bool:
+    async def _is_fresh(self, key: str, *, key_type: LookupKeyType) -> bool:
         """Return True if *key* is cached and within the soft TTL."""
-        record = await self._backend.get_fresh(key, cache_ttl=self._cache_ttl)
+        record = await self._backend.get_fresh(
+            key,
+            cache_ttl=self._cache_ttl,
+            key_type=key_type,
+        )
         return record is not None
 
-    async def _try_get_stale(self, key: str) -> AgentCard | None:
+    async def _try_get_stale(self, key: str, *, key_type: LookupKeyType) -> AgentCard | None:
         """Return a stale cached card when refresh failed."""
         record = await self._backend.get_stale(
             key,
             max_staleness_seconds=self._cache_ttl,
+            key_type=key_type,
         )
         if record is None:
             return None
@@ -427,8 +432,16 @@ class AgentCardRegistry:
 
     async def _flush_pending(self) -> None:
         """Batch-fetch all registered-but-uncached IDs.  Must be called under ``_lock``."""
-        missing_dep = [d for d in self._pending_deployment_ids if not await self._is_fresh(d)]
-        missing_ext = [e for e in self._pending_external_ids if not await self._is_fresh(e)]
+        missing_dep = [
+            d
+            for d in self._pending_deployment_ids
+            if not await self._is_fresh(d, key_type="deployment")
+        ]
+        missing_ext = [
+            e
+            for e in self._pending_external_ids
+            if not await self._is_fresh(e, key_type="external")
+        ]
 
         # Clear pending sets regardless — they've been processed
         self._pending_deployment_ids.clear()
@@ -471,8 +484,14 @@ class AgentCardRegistry:
             External IDs to prefetch.
         """
         async with self._lock:
-            missing_dep = [d for d in (deployment_ids or []) if not await self._is_fresh(d)]
-            missing_ext = [e for e in (external_ids or []) if not await self._is_fresh(e)]
+            missing_dep = [
+                d
+                for d in (deployment_ids or [])
+                if not await self._is_fresh(d, key_type="deployment")
+            ]
+            missing_ext = [
+                e for e in (external_ids or []) if not await self._is_fresh(e, key_type="external")
+            ]
 
             if not missing_dep and not missing_ext:
                 logger.debug("All requested agent cards already cached — skipping prefetch.")
@@ -537,14 +556,23 @@ class AgentCardRegistry:
             raise AgentCardRegistryError("Specify exactly one of 'deployment_id' or 'external_id'.")
 
         lookup_key: str = deployment_id or external_id  # type: ignore[assignment]
+        lookup_key_type: LookupKeyType = "deployment" if deployment_id else "external"
 
         # Fast path — fresh cache hit
-        if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+        if fresh := await self._backend.get_fresh(
+            lookup_key,
+            cache_ttl=self._cache_ttl,
+            key_type=lookup_key_type,
+        ):
             return fresh.card
 
         async with self._lock:
             # Double-check after acquiring lock
-            if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+            if fresh := await self._backend.get_fresh(
+                lookup_key,
+                cache_ttl=self._cache_ttl,
+                key_type=lookup_key_type,
+            ):
                 return fresh.card
 
             try:
@@ -552,7 +580,9 @@ class AgentCardRegistry:
                 if self._pending_deployment_ids or self._pending_external_ids:
                     await self._flush_pending()
                     if fresh := await self._backend.get_fresh(
-                        lookup_key, cache_ttl=self._cache_ttl
+                        lookup_key,
+                        cache_ttl=self._cache_ttl,
+                        key_type=lookup_key_type,
                     ):
                         return fresh.card
 
@@ -568,15 +598,18 @@ class AgentCardRegistry:
                 if lookup_key in parsed.cards:
                     return parsed.cards[lookup_key]
 
-                if fresh := await self._backend.get_fresh(lookup_key, cache_ttl=self._cache_ttl):
+                if fresh := await self._backend.get_fresh(
+                    lookup_key,
+                    cache_ttl=self._cache_ttl,
+                    key_type=lookup_key_type,
+                ):
                     return fresh.card
 
                 # Successful miss — evict stale entry so stale-if-error cannot
                 # resurrect a deregistered agent on a later fetch failure.
-                key_type: LookupKeyType = "deployment" if deployment_id else "external"
-                await self._backend.evict(lookup_key, key_type=key_type)
+                await self._backend.evict(lookup_key, key_type=lookup_key_type)
             except AgentCardRegistryError:
-                if stale_card := await self._try_get_stale(lookup_key):
+                if stale_card := await self._try_get_stale(lookup_key, key_type=lookup_key_type):
                     return stale_card
                 raise
 

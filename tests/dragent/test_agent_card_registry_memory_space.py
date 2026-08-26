@@ -117,7 +117,36 @@ class TestMemorySpaceAgentCardCacheBackend:
         assert record.deployment_id == "dep-1"
         assert record.external_id == "ext-1"
 
-    async def test_evict_removes_sibling_l2_key(self, memory_space_backend):
+    async def test_get_fresh_uses_key_type_for_single_storage_probe(self, memory_space_backend):
+        get_calls: list[str] = []
+
+        async def track_get(key: str) -> str | None:
+            get_calls.append(key)
+            return None
+
+        with patch.object(memory_space_backend._kv, "get_value", side_effect=track_get):
+            assert (
+                await memory_space_backend.get_fresh(
+                    "dep-1",
+                    cache_ttl=3600,
+                    key_type="deployment",
+                )
+                is None
+            )
+
+        assert get_calls == ["deployment:dep-1"]
+
+    async def test_get_fresh_without_key_type_probes_both_aliases(self, memory_space_backend):
+        get_calls: list[str] = []
+
+        async def track_get(key: str) -> str | None:
+            get_calls.append(key)
+            return None
+
+        with patch.object(memory_space_backend._kv, "get_value", side_effect=track_get):
+            assert await memory_space_backend.get_fresh("dep-1", cache_ttl=3600) is None
+
+        assert get_calls == ["deployment:dep-1", "external:dep-1"]
         """Typed eviction must delete every storage alias for the card."""
         record = build_cache_record(
             _SAMPLE_AGENT_CARD,

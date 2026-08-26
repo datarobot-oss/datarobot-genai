@@ -97,7 +97,13 @@ def build_cache_record(
 class AgentCardCacheBackend(Protocol):
     """Async cache backend for agent card registry entries."""
 
-    async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
+    async def get_fresh(
+        self,
+        lookup_key: str,
+        *,
+        cache_ttl: int,
+        key_type: LookupKeyType | None = None,
+    ) -> AgentCardCacheRecord | None:
         """Return a cached record when within the soft TTL."""
 
     async def get_stale(
@@ -105,6 +111,7 @@ class AgentCardCacheBackend(Protocol):
         lookup_key: str,
         *,
         max_staleness_seconds: int,
+        key_type: LookupKeyType | None = None,
     ) -> AgentCardCacheRecord | None:
         """Return a cached record within the hard staleness bound."""
 
@@ -132,7 +139,13 @@ class MemoryAgentCardCacheBackend:
     def __init__(self) -> None:
         self._entries: dict[str, AgentCardCacheRecord] = {}
 
-    async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
+    async def get_fresh(
+        self,
+        lookup_key: str,
+        *,
+        cache_ttl: int,
+        key_type: LookupKeyType | None = None,
+    ) -> AgentCardCacheRecord | None:
         record = self._entries.get(lookup_key)
         if record is None or not record.is_fresh(cache_ttl):
             return None
@@ -143,6 +156,7 @@ class MemoryAgentCardCacheBackend:
         lookup_key: str,
         *,
         max_staleness_seconds: int,
+        key_type: LookupKeyType | None = None,
     ) -> AgentCardCacheRecord | None:
         record = self._entries.get(lookup_key)
         if record is None or not record.is_within_staleness(max_staleness_seconds):
@@ -240,8 +254,14 @@ class MemorySpaceAgentCardCacheBackend:
             logger.warning("Ignoring invalid MemorySpace agent card payload for %s", storage_key)
             return None
 
-    async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
-        for storage_key in self._storage_keys_for_lookup(lookup_key):
+    async def get_fresh(
+        self,
+        lookup_key: str,
+        *,
+        cache_ttl: int,
+        key_type: LookupKeyType | None = None,
+    ) -> AgentCardCacheRecord | None:
+        for storage_key in self._storage_keys_for_lookup(lookup_key, key_type=key_type):
             record = await self._get_record(storage_key)
             if record is not None and record.is_fresh(cache_ttl):
                 return record
@@ -252,8 +272,9 @@ class MemorySpaceAgentCardCacheBackend:
         lookup_key: str,
         *,
         max_staleness_seconds: int,
+        key_type: LookupKeyType | None = None,
     ) -> AgentCardCacheRecord | None:
-        for storage_key in self._storage_keys_for_lookup(lookup_key):
+        for storage_key in self._storage_keys_for_lookup(lookup_key, key_type=key_type):
             record = await self._get_record(storage_key)
             if record is not None and record.is_within_staleness(max_staleness_seconds):
                 return record
@@ -331,13 +352,23 @@ class LayeredAgentCardCacheBackend:
         tasks = list(self._l2_tasks)
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def get_fresh(self, lookup_key: str, *, cache_ttl: int) -> AgentCardCacheRecord | None:
-        if record := await self._l1.get_fresh(lookup_key, cache_ttl=cache_ttl):
+    async def get_fresh(
+        self,
+        lookup_key: str,
+        *,
+        cache_ttl: int,
+        key_type: LookupKeyType | None = None,
+    ) -> AgentCardCacheRecord | None:
+        if record := await self._l1.get_fresh(lookup_key, cache_ttl=cache_ttl, key_type=key_type):
             return record
         # L1 holds a stale entry with the same fetched_at L2 would return — skip L2.
         if self._l1.has_entry(lookup_key):
             return None
-        if record := await self._l2.get_fresh(lookup_key, cache_ttl=cache_ttl):
+        if record := await self._l2.get_fresh(
+            lookup_key,
+            cache_ttl=cache_ttl,
+            key_type=key_type,
+        ):
             await self._promote_to_l1(lookup_key, record)
             return record
         return None
@@ -347,15 +378,18 @@ class LayeredAgentCardCacheBackend:
         lookup_key: str,
         *,
         max_staleness_seconds: int,
+        key_type: LookupKeyType | None = None,
     ) -> AgentCardCacheRecord | None:
         if record := await self._l1.get_stale(
             lookup_key,
             max_staleness_seconds=max_staleness_seconds,
+            key_type=key_type,
         ):
             return record
         if record := await self._l2.get_stale(
             lookup_key,
             max_staleness_seconds=max_staleness_seconds,
+            key_type=key_type,
         ):
             await self._promote_to_l1(lookup_key, record)
             return record
