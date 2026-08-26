@@ -32,6 +32,7 @@ from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from httpx import Response
+from nat.authentication.interfaces import AuthProviderBase
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
@@ -388,7 +389,8 @@ class TestAuthenticatedA2AClientFunctionGroup:
         assert patched_fg_env.call_args.kwargs["auth_provider"] is None
 
     async def test_resolves_and_passes_auth_provider(self, mock_builder, patched_fg_env):
-        mock_auth_provider = MagicMock()
+        """A provider that keeps no agent-card state is passed through untouched."""
+        mock_auth_provider = MagicMock(spec=AuthProviderBase)
         mock_builder.get_auth_provider.return_value = mock_auth_provider
         config = AuthenticatedA2AClientConfig(url=_AGENT_URL, auth_provider="my_auth")
 
@@ -601,7 +603,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
     async def test_registry_fetches_card_and_derives_base_url(
         self, registry_config, mock_builder, patched_fg_env
     ):
-        mock_auth_provider = MagicMock()
+        mock_auth_provider = MagicMock(spec=AuthProviderBase)
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
         mock_card = MagicMock()
@@ -647,7 +649,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
     async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
         """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
-        mock_auth_provider = AsyncMock()
+        mock_auth_provider = AsyncMock(spec=AuthProviderBase)
         mock_auth_provider.authenticate.return_value = None
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
