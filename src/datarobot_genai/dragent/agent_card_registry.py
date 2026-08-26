@@ -171,6 +171,7 @@ class ParsedRegistryCards(NamedTuple):
 
     cards: dict[str, AgentCard]
     key_types: dict[str, LookupKeyType]
+    registry_ids: dict[str, tuple[str | None, str | None]]
 
 
 def _parse_registry_response(
@@ -192,6 +193,7 @@ def _parse_registry_response(
     """
     cards: dict[str, AgentCard] = {}
     key_types: dict[str, LookupKeyType] = {}
+    registry_ids: dict[str, tuple[str | None, str | None]] = {}
     for entry in body.get("data", []):
         raw_card = entry.get("agentCard")
         if not raw_card:
@@ -210,16 +212,22 @@ def _parse_registry_response(
             )
             continue
 
+        dep_id = entry.get("deploymentId")
+        ext_id = entry.get("externalId")
+        id_pair = (dep_id, ext_id)
+
         # Deployment IDs are unique by platform design — always overwrite.
-        if dep_id := entry.get("deploymentId"):
+        if dep_id:
             cards[dep_id] = card
             key_types[dep_id] = "deployment"
+            registry_ids[dep_id] = id_pair
 
         # External IDs may have duplicates — apply the configured strategy.
-        if ext_id := entry.get("externalId"):
+        if ext_id:
             if ext_id not in cards:
                 cards[ext_id] = card
                 key_types[ext_id] = "external"
+                registry_ids[ext_id] = id_pair
             else:
                 logger.warning(
                     "Duplicate external ID '%s' in registry response (on_duplicate=%s).",
@@ -235,8 +243,9 @@ def _parse_registry_response(
                 if on_duplicate == "last":
                     cards[ext_id] = card
                     key_types[ext_id] = "external"
+                    registry_ids[ext_id] = id_pair
                 # "first" — keep existing entry (no-op)
-    return ParsedRegistryCards(cards=cards, key_types=key_types)
+    return ParsedRegistryCards(cards=cards, key_types=key_types, registry_ids=registry_ids)
 
 
 class AgentCardRegistry:
@@ -410,7 +419,11 @@ class AgentCardRegistry:
     async def _store_cards(self, parsed: ParsedRegistryCards) -> None:
         if not parsed.cards:
             return
-        await self._backend.store(parsed.cards, key_types=parsed.key_types)
+        await self._backend.store(
+            parsed.cards,
+            key_types=parsed.key_types,
+            registry_ids=parsed.registry_ids,
+        )
 
     def _age_cache_entry_for_test(self, lookup_key: str, seconds: float) -> None:
         """Shift a cached entry's fetch time backward (tests only)."""

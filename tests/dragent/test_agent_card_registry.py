@@ -80,10 +80,17 @@ def _card(**overrides) -> AgentCard:
     return AgentCard.model_validate({**_SAMPLE_AGENT_CARD, **overrides})
 
 
-def _parsed(cards: dict, *, key_types: dict | None = None) -> ParsedRegistryCards:
+def _parsed(
+    cards: dict,
+    *,
+    key_types: dict | None = None,
+    registry_ids: dict | None = None,
+) -> ParsedRegistryCards:
     if key_types is None:
         key_types = {key: "deployment" for key in cards}
-    return ParsedRegistryCards(cards=cards, key_types=key_types)
+    if registry_ids is None:
+        registry_ids = {}
+    return ParsedRegistryCards(cards=cards, key_types=key_types, registry_ids=registry_ids)
 
 
 def _memory_registry(**kwargs) -> AgentCardRegistry:
@@ -228,6 +235,8 @@ class TestParseRegistryResponse:
         assert parsed.cards["dep-1"] is parsed.cards["ext-1"]
         assert parsed.key_types["dep-1"] == "deployment"
         assert parsed.key_types["ext-1"] == "external"
+        assert parsed.registry_ids["dep-1"] == ("dep-1", "ext-1")
+        assert parsed.registry_ids["ext-1"] == ("dep-1", "ext-1")
 
     def test_skips_entries_without_agent_card(self):
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": None})
@@ -539,6 +548,33 @@ class TestAgentCardRegistryStaleIfError:
 
         with pytest.raises(AgentCardRegistryError, match="registry down"):
             await registry.get(deployment_id="dep-1")
+
+    async def test_deregistered_sibling_id_evicted_from_cache(self, mock_fetch, cache_backend):
+        """Evicting on a deployment miss must drop the external-ID alias too."""
+        stale_card = _card()
+        id_pair = ("dep-1", "ext-1")
+        mock_fetch.side_effect = [
+            _parsed(
+                {"dep-1": stale_card, "ext-1": stale_card},
+                key_types={"dep-1": "deployment", "ext-1": "external"},
+                registry_ids={"dep-1": id_pair, "ext-1": id_pair},
+            ),
+            _parsed({}),
+        ]
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=60,
+            cache_backend=cache_backend,
+        )
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 60)
+
+        with pytest.raises(AgentCardRegistryError, match="No agent card found"):
+            await registry.get(deployment_id="dep-1")
+
+        assert await cache_backend.get_stale("dep-1", max_staleness_seconds=3600) is None
+        assert await cache_backend.get_stale("ext-1", max_staleness_seconds=3600) is None
 
 
 # ---------------------------------------------------------------------------

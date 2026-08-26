@@ -111,6 +111,7 @@ class AgentCardCacheBackend(Protocol):
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
+        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> None:
         """Persist one or more cards keyed by lookup ID."""
 
@@ -151,11 +152,18 @@ class MemoryAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
+        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> None:
+        id_pairs = registry_ids or {}
         for lookup_key, card in cards.items():
             key_type = key_types.get(lookup_key, "deployment")
+            dep_id, ext_id = id_pairs.get(lookup_key, (None, None))
             self._entries[lookup_key] = build_cache_record(
-                card, lookup_key=lookup_key, key_type=key_type
+                card,
+                lookup_key=lookup_key,
+                key_type=key_type,
+                deployment_id=dep_id,
+                external_id=ext_id,
             )
 
     async def store_record(self, lookup_key: str, record: AgentCardCacheRecord) -> None:
@@ -168,7 +176,15 @@ class MemoryAgentCardCacheBackend:
         *,
         key_type: LookupKeyType | None = None,
     ) -> None:
-        self._entries.pop(lookup_key, None)
+        keys_to_evict = {lookup_key}
+        record = self._entries.get(lookup_key)
+        if record is not None:
+            if record.deployment_id:
+                keys_to_evict.add(record.deployment_id)
+            if record.external_id:
+                keys_to_evict.add(record.external_id)
+        for key in keys_to_evict:
+            self._entries.pop(key, None)
 
     def age_entry_for_test(self, lookup_key: str, seconds: float) -> None:
         """Shift *lookup_key* fetch time backward (tests only)."""
@@ -242,10 +258,19 @@ class MemorySpaceAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
+        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> None:
+        id_pairs = registry_ids or {}
         for lookup_key, card in cards.items():
             key_type = key_types.get(lookup_key, "deployment")
-            record = build_cache_record(card, lookup_key=lookup_key, key_type=key_type)
+            dep_id, ext_id = id_pairs.get(lookup_key, (None, None))
+            record = build_cache_record(
+                card,
+                lookup_key=lookup_key,
+                key_type=key_type,
+                deployment_id=dep_id,
+                external_id=ext_id,
+            )
             payload = record.model_dump_json()
             for storage_key in self._storage_keys_for_record(record):
                 await self._kv.set_value(storage_key, payload)
@@ -256,7 +281,14 @@ class MemorySpaceAgentCardCacheBackend:
         *,
         key_type: LookupKeyType | None = None,
     ) -> None:
-        for storage_key in self._storage_keys_for_lookup(lookup_key, key_type=key_type):
+        keys_to_evict = set(self._storage_keys_for_lookup(lookup_key, key_type=key_type))
+        record: AgentCardCacheRecord | None = None
+        for storage_key in keys_to_evict:
+            if record is None:
+                record = await self._get_record(storage_key)
+        if record is not None:
+            keys_to_evict.update(self._storage_keys_for_record(record))
+        for storage_key in keys_to_evict:
             await self._kv.delete_value(storage_key)
 
 
@@ -302,9 +334,10 @@ class LayeredAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
+        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
     ) -> None:
-        await self._l1.store(cards, key_types=key_types)
-        await self._l2.store(cards, key_types=key_types)
+        await self._l1.store(cards, key_types=key_types, registry_ids=registry_ids)
+        await self._l2.store(cards, key_types=key_types, registry_ids=registry_ids)
 
     async def evict(
         self,
