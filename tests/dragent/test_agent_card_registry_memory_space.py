@@ -148,6 +148,8 @@ class TestMemorySpaceAgentCardCacheBackend:
             assert await memory_space_backend.get_fresh("dep-1", cache_ttl=3600) is None
 
         assert get_calls == ["deployment:dep-1", "external:dep-1"]
+
+    async def test_evict_removes_sibling_l2_key(self, memory_space_backend):
         """Typed eviction must delete every storage alias for the card."""
         record = build_cache_record(
             _SAMPLE_AGENT_CARD,
