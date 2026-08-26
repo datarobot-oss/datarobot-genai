@@ -63,7 +63,7 @@ class _FakeSession:
 
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
-    return MemorySpaceKVCache(memory_space_id="space-1", key_prefix="dragent:")
+    return MemorySpaceKVCache(memory_space_id="space-1")
 
 
 class TestResolveMemorySpaceId:

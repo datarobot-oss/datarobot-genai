@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 LookupKeyType = Literal["deployment", "external"]
-_DEFAULT_KEY_PREFIX = "dragent:"
 
 
 class AgentCardCacheRecord(BaseModel):
@@ -371,10 +370,7 @@ def create_agent_card_cache_backend(
         )
         return l1
 
-    kv_cache = MemorySpaceKVCache(
-        memory_space_id=memory_space_id,
-        key_prefix=config.agent_card_registry_key_prefix,
-    )
+    kv_cache = MemorySpaceKVCache(memory_space_id=memory_space_id)
     logger.debug(
         "Agent card registry cache: L1 + MemorySpace L2 (space_id=%s)",
         memory_space_id,

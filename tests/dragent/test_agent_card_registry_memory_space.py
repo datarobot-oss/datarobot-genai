@@ -46,7 +46,7 @@ _SAMPLE_AGENT_CARD = AgentCard.model_validate(
 
 @pytest.fixture
 def memory_space_backend():
-    kv = MemorySpaceKVCache(memory_space_id="space-1", key_prefix="dragent:")
+    kv = MemorySpaceKVCache(memory_space_id="space-1")
     return MemorySpaceAgentCardCacheBackend(kv_cache=kv)
 
 

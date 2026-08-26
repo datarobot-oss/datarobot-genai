@@ -135,11 +135,6 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_registry_key_prefix: str = Field(
-        default="dragent:",
-        description="Key prefix for MemorySpace agent card cache entries.",
-    )
-
 
 class AgentCardRegistryError(RuntimeError):
     """Raised when the central agent card registry lookup fails."""
