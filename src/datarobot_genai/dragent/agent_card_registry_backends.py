@@ -444,7 +444,9 @@ class LayeredAgentCardCacheBackend:
         key_type: LookupKeyType | None = None,
     ) -> None:
         await self._l1.evict(lookup_key, key_type=key_type)
-        self._schedule_l2(self._l2.evict(lookup_key, key_type=key_type))
+        # Evict L2 before returning — write-behind store must not let a later
+        # get_fresh read a deregistered card from L2 after L1 was cleared.
+        await self._l2.evict(lookup_key, key_type=key_type)
 
     @property
     def memory(self) -> MemoryAgentCardCacheBackend:

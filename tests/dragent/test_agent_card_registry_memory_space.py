@@ -356,7 +356,7 @@ class TestLayeredAgentCardCacheBackend:
         l2_blocked.set()
         await layered.flush_l2_tasks()
 
-    async def test_evict_write_behind_clears_l1_before_l2(self):
+    async def test_evict_clears_l2_before_returning(self):
         l1 = MemoryAgentCardCacheBackend()
         l2 = MemoryAgentCardCacheBackend()
         layered = LayeredAgentCardCacheBackend(l1, l2)
@@ -367,7 +367,5 @@ class TestLayeredAgentCardCacheBackend:
 
         await layered.evict("dep-1", key_type="deployment")
         assert not l1.has_entry("dep-1")
-        assert await l2.get_fresh("dep-1", cache_ttl=3600) is not None
-
-        await layered.flush_l2_tasks()
         assert await l2.get_fresh("dep-1", cache_ttl=3600) is None
+        assert await layered.get_fresh("dep-1", cache_ttl=3600) is None
