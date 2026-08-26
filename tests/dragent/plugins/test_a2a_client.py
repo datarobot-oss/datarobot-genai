@@ -12,15 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import base64
+import json
 from contextlib import contextmanager
 from contextlib import nullcontext
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 import pytest
+import respx
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
+from a2a.types import AgentExtension
+from a2a.types import ClientCredentialsOAuthFlow
+from a2a.types import OAuth2SecurityScheme
+from a2a.types import OAuthFlows
+from a2a.types import SecurityScheme
+from httpx import Response
+from nat.authentication.interfaces import AuthProviderBase
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
@@ -37,6 +49,12 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import _extract_auth_header
 from datarobot_genai.dragent.plugins.auth_a2a_client import _FailedRegistryClient
 from datarobot_genai.dragent.plugins.auth_a2a_client import _sanitize_a2a_error
 from datarobot_genai.dragent.plugins.auth_a2a_client import _wrap_a2a_function
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessAuthProviderConfig,
+)
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessOAuth2AuthProvider,
+)
 
 _AGENT_URL = "http://agent.example.com"
 
@@ -371,7 +389,8 @@ class TestAuthenticatedA2AClientFunctionGroup:
         assert patched_fg_env.call_args.kwargs["auth_provider"] is None
 
     async def test_resolves_and_passes_auth_provider(self, mock_builder, patched_fg_env):
-        mock_auth_provider = MagicMock()
+        """A provider that keeps no agent-card state is passed through untouched."""
+        mock_auth_provider = MagicMock(spec=AuthProviderBase)
         mock_builder.get_auth_provider.return_value = mock_auth_provider
         config = AuthenticatedA2AClientConfig(url=_AGENT_URL, auth_provider="my_auth")
 
@@ -584,7 +603,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
     async def test_registry_fetches_card_and_derives_base_url(
         self, registry_config, mock_builder, patched_fg_env
     ):
-        mock_auth_provider = MagicMock()
+        mock_auth_provider = MagicMock(spec=AuthProviderBase)
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
         mock_card = MagicMock()
@@ -630,7 +649,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
 
     async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):
         """When registry provides a card, _AuthenticatedA2ABaseClient skips _resolve_agent_card."""
-        mock_auth_provider = AsyncMock()
+        mock_auth_provider = AsyncMock(spec=AuthProviderBase)
         mock_auth_provider.authenticate.return_value = None
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
@@ -842,3 +861,255 @@ class TestAuthenticatedA2AClientFunctionGroupRegistryError:
             await fg.__aenter__()
 
             assert isinstance(fg._client, _FailedRegistryClient)
+
+
+# ---------------------------------------------------------------------------
+# Tests: flow params belong to the group, not to the shared auth provider
+# ---------------------------------------------------------------------------
+
+_OKTA_MODULE = "datarobot_genai.dragent.plugins.okta_a2a_auth"
+
+_TRUSTED_ISSUER = "https://okta.example.com"
+_ORG_AS_TOKEN_URL = f"{_TRUSTED_ISSUER}/oauth2/v1/token"
+_INBOUND_TOKEN_HEADER = "x-datarobot-external-access-token"
+
+_FAKE_JWK_B64 = base64.b64encode(
+    json.dumps(
+        {
+            "kty": "RSA",
+            "kid": "test-kid",
+            "n": "abc",
+            "e": "AQAB",
+            "d": "def",
+            "p": "ghi",
+            "q": "jkl",
+            "dp": "mno",
+            "dq": "pqr",
+            "qi": "stu",
+        }
+    ).encode()
+).decode()
+
+
+class _Agent:
+    """One remote agent: its base URL and the XAA parameters its card advertises."""
+
+    def __init__(self, name: str) -> None:
+        self.url = f"http://{name}.example.com"
+        self.token_url = f"{_TRUSTED_ISSUER}/oauth2/aus-{name}/v1/token"
+        self.exchange_audience = f"{_TRUSTED_ISSUER}/oauth2/aus-{name}"
+        self.target_audience = f"https://api.{name}.example.com"
+        self.scope = f"{name}_scope"
+        self.final_token = f"scoped-token-for-{name}"
+
+    def card(self) -> AgentCard:
+        return AgentCard(
+            name=self.url,
+            description="",
+            url=self.url,
+            version="1.0.0",
+            skills=[],
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+            security_schemes={
+                "oauth2": SecurityScheme(
+                    root=OAuth2SecurityScheme(
+                        type="oauth2",
+                        flows=OAuthFlows(
+                            client_credentials=ClientCredentialsOAuthFlow(
+                                token_url=self.token_url,
+                                scopes={self.scope: "access"},
+                            )
+                        ),
+                    )
+                )
+            },
+            capabilities=AgentCapabilities(
+                streaming=False,
+                extensions=[
+                    AgentExtension(
+                        uri="urn:ietf:params:oauth:grant-type:jwt-bearer",
+                        description="",
+                        params={
+                            "tokenEndpointAuthMethod": "private_key_jwt",
+                            "tokenExchange": {
+                                "grantType": ("urn:ietf:params:oauth:grant-type:token-exchange"),
+                                "requestedTokenType": ("urn:ietf:params:oauth:token-type:id-jag"),
+                                "trustedIssuer": _TRUSTED_ISSUER,
+                                "audience": self.exchange_audience,
+                            },
+                            "tokenRequest": {
+                                "grantType": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                                "audience": self.target_audience,
+                            },
+                        },
+                    )
+                ],
+            ),
+        )
+
+
+def _credential_service_of(function_group):
+    """Return the credential service the group's AuthInterceptor was built with."""
+    interceptors = function_group._client._client.interceptors
+    return interceptors[0]._credential_service
+
+
+def _provider_of(function_group):
+    """Return the auth provider instance the group actually authenticates through."""
+    return function_group._client._auth_provider
+
+
+class TestSharedAuthProviderFlowParams:
+    """Two function groups, one shared auth provider, two different remote agents.
+
+    ``WorkflowBuilder.get_auth_provider`` returns one instance per configured name and
+    ``PerUserWorkflowBuilder`` delegates straight to it, so a group that kept its agent
+    card on the provider would hand its audience to every other group.  Each exchange
+    must carry the audience of the agent its own group is talking to.
+    """
+
+    @pytest.fixture
+    def agents(self):
+        return _Agent("alpha"), _Agent("beta")
+
+    @pytest.fixture
+    def shared_auth_provider(self, monkeypatch):
+        monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "http")
+        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig(
+                principal_id="0oa_principal",
+                private_jwk=_FAKE_JWK_B64,
+            )
+        )
+
+    @contextmanager
+    def _patched_env(self, agents, *, user_id="test-user"):
+        """Serve each client the card of the agent at its own base URL, offline."""
+        cards = {agent.url: agent.card() for agent in agents}
+
+        async def _set_card(client_self):
+            client_self._agent_card = cards[client_self._base_url]
+
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(f"{_MODULE}.httpx") as mock_httpx,
+            patch(f"{_MODULE}.ClientFactory") as mock_factory,
+            patch.object(_AuthenticatedA2ABaseClient, "_resolve_agent_card", _set_card),
+            patch.object(AuthenticatedA2AClientFunctionGroup, "_register_functions"),
+        ):
+            mock_httpx.AsyncClient.return_value = MagicMock(aclose=AsyncMock())
+            mock_ctx.get.return_value.user_id = user_id
+
+            def _create(card, interceptors=None):
+                client = MagicMock(aclose=AsyncMock())
+                client.interceptors = interceptors or []
+                return client
+
+            mock_factory.return_value.create.side_effect = _create
+            yield
+
+    async def _enter_group(self, agent, auth_provider):
+        builder = AsyncMock()
+        builder.get_auth_provider.return_value = auth_provider
+        group = AuthenticatedA2AClientFunctionGroup(
+            config=AuthenticatedA2AClientConfig(url=agent.url, auth_provider="okta_auth"),
+            builder=builder,
+        )
+        await group.__aenter__()
+        return group
+
+    @contextmanager
+    def _mocked_token_endpoints(self, agents):
+        """Mock both XAA steps; yield the step-1 route so its requests can be read."""
+        with (
+            patch(f"{_OKTA_MODULE}.Context") as mock_ctx,
+            patch(f"{_OKTA_MODULE}._make_client_assertion", return_value="jwt"),
+            respx.mock as mock_http,
+        ):
+            mock_ctx.get.return_value.metadata.headers = {
+                _INBOUND_TOKEN_HEADER: "inbound-user-token"
+            }
+            step1 = mock_http.post(_ORG_AS_TOKEN_URL).mock(
+                return_value=Response(200, json={"access_token": "id-jag"})
+            )
+            for agent in agents:
+                mock_http.post(agent.token_url).mock(
+                    return_value=Response(200, json={"access_token": agent.final_token})
+                )
+            yield step1
+
+    @staticmethod
+    def _resources_requested(step1_route):
+        """Return the ``resource`` (target audience) sent on each step-1 exchange."""
+        return [
+            parse_qs(call.request.content.decode())["resource"][0] for call in step1_route.calls
+        ]
+
+    async def test_each_group_keeps_its_own_flow_params(self, agents, shared_auth_provider):
+        """GIVEN two groups sharing a provider WHEN both connect THEN params differ."""
+        alpha, beta = agents
+        with self._patched_env(agents):
+            group_alpha = await self._enter_group(alpha, shared_auth_provider)
+            group_beta = await self._enter_group(beta, shared_auth_provider)
+
+        provider_alpha, provider_beta = _provider_of(group_alpha), _provider_of(group_beta)
+        assert provider_alpha is not provider_beta
+        assert provider_alpha._flow_params.target_audience == alpha.target_audience
+        assert provider_beta._flow_params.target_audience == beta.target_audience
+        # Nothing about either agent was written to the instance they were built from.
+        assert shared_auth_provider._flow_params is None
+
+    async def test_interleaved_calls_each_exchange_their_own_audience(
+        self, agents, shared_auth_provider
+    ):
+        """GIVEN both groups connected WHEN each calls THEN each mints its own audience.
+
+        Both cards are parsed before either call happens, so a provider that stored
+        the card would exchange beta's audience for alpha's call.
+        """
+        alpha, beta = agents
+        with self._patched_env(agents):
+            group_alpha = await self._enter_group(alpha, shared_auth_provider)
+            group_beta = await self._enter_group(beta, shared_auth_provider)
+
+            with self._mocked_token_endpoints(agents) as step1:
+                token_alpha = await _credential_service_of(group_alpha).get_credentials(
+                    "oauth2", None
+                )
+                token_beta = await _credential_service_of(group_beta).get_credentials(
+                    "oauth2", None
+                )
+
+        assert token_alpha == alpha.final_token
+        assert token_beta == beta.final_token
+        assert self._resources_requested(step1) == [
+            alpha.target_audience,
+            beta.target_audience,
+        ]
+
+    async def test_concurrent_per_user_groups_do_not_cross_audiences(
+        self, agents, shared_auth_provider
+    ):
+        """GIVEN two users' groups on one provider WHEN they call at once THEN no crossover.
+
+        ``PerUserWorkflowBuilder.get_auth_provider`` delegates to the shared builder, so
+        both users' groups authenticate through the same provider instance.
+        """
+        alpha, beta = agents
+        with self._patched_env(agents, user_id="user-a"):
+            group_alpha = await self._enter_group(alpha, shared_auth_provider)
+        with self._patched_env(agents, user_id="user-b"):
+            group_beta = await self._enter_group(beta, shared_auth_provider)
+
+        with self._mocked_token_endpoints(agents) as step1:
+            token_alpha, token_beta = await asyncio.gather(
+                _credential_service_of(group_alpha).get_credentials("oauth2", None),
+                _credential_service_of(group_beta).get_credentials("oauth2", None),
+            )
+
+        assert token_alpha == alpha.final_token
+        assert token_beta == beta.final_token
+        assert sorted(self._resources_requested(step1)) == sorted(
+            [alpha.target_audience, beta.target_audience]
+        )
