@@ -519,7 +519,19 @@ class DataRobotWorkloadSandbox:
                 resp.text,
             )
             return "", ""
-        return self._partition_log_entries(resp.json().get("data") or [])
+        try:
+            data = resp.json().get("data") or []
+            return self._partition_log_entries(data)
+        except Exception:  # pragma: no cover — defensive
+            # A 200 that is not the documented JSON shape must not fail the run:
+            # this endpoint is the source of truth for the result, so a bad read
+            # is retried like a transport error. Kept inside the same contract
+            # as the fetch above rather than escaping to _watch_logs.
+            logger.exception(
+                "workload-api logs response was not the expected JSON shape; "
+                "will retry / fall back to logTail"
+            )
+            return "", ""
 
     @staticmethod
     def _marker_deadline(deadline: float, watch: _StatusWatch) -> float:
@@ -560,11 +572,14 @@ class DataRobotWorkloadSandbox:
         severity, so it is treated as stdout).
 
         Runs concurrently with the status poll, so it starts at submit rather
-        than at terminal status — that is the marker-first latency win. The
-        give-up rules are unchanged from the terminal-gated version:
+        than at terminal status — that is the marker-first latency win. Giving
+        up therefore needs *both* halves of the old terminal-gated rule:
         non-empty-but-still output ends the wait after
-        :data:`_STABLE_OUTPUT_NONEMPTY_QUIET_S`, empty output never does and
-        polls to :meth:`_marker_deadline`.
+        :data:`_STABLE_OUTPUT_NONEMPTY_QUIET_S` **only once ``watch`` has a
+        terminal record**, because before that, still output means the container
+        is running quietly rather than finished without a marker. Every other
+        case (empty output, or still output pre-terminal) polls to
+        :meth:`_marker_deadline`.
         """
         stdout = ""
         stderr = ""
@@ -604,10 +619,27 @@ class DataRobotWorkloadSandbox:
             if stdout != prev_stdout:
                 prev_stdout = stdout
                 stdout_settled_at = now
-            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S:
-                # Non-empty and long since still: the marker is not coming.
-                # Empty output falls through and keeps polling to the deadline
-                # (see the constant above) — it may be a pull still retrying.
+            elif (
+                stdout
+                and watch.terminal is not None
+                and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S
+            ):
+                # Non-empty, still, AND the workload has reached a terminal
+                # status: the container can no longer produce output, so the
+                # marker is not coming.
+                #
+                # The terminal condition is load-bearing now that this watcher
+                # starts at submit instead of after the status poll. The runner
+                # prints a startup line ("sandbox process limit ...") BEFORE
+                # user code, so stdout goes non-empty immediately and then sits
+                # unchanged for as long as the snippet runs quietly. Without the
+                # terminal gate, a snippet that prints nothing for
+                # _STABLE_OUTPUT_NONEMPTY_QUIET_S would be abandoned while its
+                # container was still working, and `timeout_s` would stop
+                # bounding user code the moment that first line appeared.
+                # Before terminal status, still output means "running", not
+                # "finished without a marker"; the wait is bounded by
+                # _marker_deadline instead.
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, _LOG_POLL_MAX_DELAY_S)

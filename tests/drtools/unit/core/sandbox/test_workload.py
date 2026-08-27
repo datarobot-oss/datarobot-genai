@@ -76,13 +76,26 @@ def _logs_response(message: str) -> httpx.Response:
     )
 
 
+# Captured before any test monkeypatches ``asyncio.sleep`` so ``_noop_sleep``
+# can still yield to the event loop without recursing into itself.
+_REAL_SLEEP = asyncio.sleep
+
+
 async def _noop_sleep(_seconds: float) -> None:
     """Collapse the poll backoff so flush-timing tests run instantly.
 
     The behaviour under test is *how many* polls are required before giving up,
     not the wall-clock between them.
+
+    This still yields to the event loop (``sleep(0)``) rather than returning
+    outright. ``run()`` drives the status poller and the log watcher as two
+    concurrent tasks, so a sleep that never suspends lets the log watcher spin
+    and *starve the status poller* -- ``watch.terminal`` would stay ``None`` for
+    the whole test even though the mocked status endpoint reports a terminal
+    state. That is a test-harness artifact with no production analogue, since a
+    real ``asyncio.sleep(delay)`` always suspends.
     """
-    return None
+    await _REAL_SLEEP(0)
 
 
 def _logs_response_entries(entries: list[dict[str, object]]) -> httpx.Response:
@@ -1271,3 +1284,82 @@ async def test_cancellation_leaves_no_pending_status_task() -> None:
     ]
     assert leftover == []
     assert delete_route.called
+
+
+@respx.mock
+async def test_quiet_snippet_is_not_abandoned_before_terminal_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for the review finding on #658.
+
+    The log watcher now starts at submit, and the image runner prints a startup
+    line BEFORE user code. So stdout goes non-empty immediately and then sits
+    unchanged for as long as the snippet runs quietly. The stillness rule must
+    not fire in that window, or a still-running container is abandoned and
+    `timeout_s` stops bounding user code once that first line appears.
+
+    Here the workload never reaches a terminal status while stdout is frozen at
+    the startup line for many polls; the marker only arrives afterwards.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    # Deliberately tiny: repetition alone must not end the wait pre-terminal.
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    # Status stays non-terminal for the whole frozen-stdout window.
+    respx.get(GET_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
+            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
+            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
+            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
+            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"}),
+        ]
+    )
+    startup = "sandbox process limit (RLIMIT_NPROC) set to 4096"
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(f'{startup}\n__DR_SANDBOX_RESULT__:{{"slow": true}}'),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=30)
+
+    assert result.return_value == {"slow": True}
+
+
+@respx.mock
+async def test_non_json_logs_response_does_not_fail_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 200 that is not the documented JSON shape must be retried, not raised.
+
+    `_read_logs_once` documents that it never raises, because the logs endpoint
+    is the source of truth for the result and one bad read must not fail an
+    execution. Regression for the review finding that `resp.json()` and
+    `_partition_log_entries` sat outside its try.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            httpx.Response(200, text="<html>gateway</html>"),  # not JSON at all
+            httpx.Response(200, json={"data": "not-a-list"}),  # wrong shape
+            _logs_response("__DR_SANDBOX_RESULT__:5"),  # then the real thing
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 5
