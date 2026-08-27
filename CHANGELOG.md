@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.12
+- Prefer `DATAROBOT_PUBLIC_API_ENDPOINT` when constructing the memory space URL.
+
 ## 0.29.11 - 2026-08-26
 - `dragent`: tool-call spans now carry `gen_ai.tool.name` instead of the bare legacy `tool_name` attributeg.
 
