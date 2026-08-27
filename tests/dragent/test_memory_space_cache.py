@@ -83,10 +83,10 @@ class TestResolveMemorySpaceId:
 
 
 class TestConfigureDatarobotMemoryClient:
-    def test_uses_agent_memory_public_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_uses_public_api_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         monkeypatch.setenv(
-            "AGENT_MEMORY_DATAROBOT_ENDPOINT",
+            "DATAROBOT_PUBLIC_API_ENDPOINT",
             "https://staging.datarobot.com/api/v2",
         )
         monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")

@@ -43,6 +43,7 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from typing import Any
+from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
@@ -58,6 +59,7 @@ from pydantic import Field
 from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.telemetry.memory import trace_memory_operation
 from datarobot_genai.core.telemetry.memory import truncate_memory_text
+from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -391,14 +393,12 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     use httpx's base-url joining for that call). A trailing slash on the
     host would produce a double slash there.
     """
-    from datarobot_genai.dragent.deployment_urls import resolve_memory_api_endpoint
-
     # Deliberately not ``resolve_config().resolve_datarobot_endpoint()``: that resolver
     # substitutes the public app.datarobot.com default when nothing is configured, and
     # this host receives memory writes plus the API token, so "unset" has to stay
     # distinguishable from "configured".
-    base = resolve_memory_api_endpoint(explicit_endpoint=config.datarobot_endpoint)
-    return f"{base}/memory/{config.agent_memory_space_id}"
+    base = cast(str, config.datarobot_endpoint or resolve_datarobot_endpoint(require=True))
+    return f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}"
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:

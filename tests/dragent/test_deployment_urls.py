@@ -31,7 +31,6 @@ from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
 from datarobot_genai.dragent.deployment_urls import normalize_api_v2_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
-from datarobot_genai.dragent.deployment_urls import resolve_memory_api_endpoint
 from datarobot_genai.dragent.deployment_urls import workload_mcp_url_from_endpoint
 
 
@@ -259,52 +258,6 @@ class TestResolveDataRobotEndpoint:
         }
         with patch.dict(os.environ, env, clear=True):
             assert resolve_datarobot_endpoint() == "https://app.datarobot.com/api/v2"
-
-
-class TestResolveMemoryApiEndpoint:
-    def test_prefers_explicit_config(self) -> None:
-        assert (
-            resolve_memory_api_endpoint(explicit_endpoint="https://explicit.example/api/v2")
-            == "https://explicit.example/api/v2"
-        )
-
-    def test_prefers_agent_memory_env_over_internal_endpoint(self) -> None:
-        env = {
-            "AGENT_MEMORY_DATAROBOT_ENDPOINT": "https://staging.datarobot.com/api/v2",
-            "DATAROBOT_ENDPOINT": "http://datarobot-nginx/api/v2",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            assert resolve_memory_api_endpoint() == "https://staging.datarobot.com/api/v2"
-
-    def test_prefers_public_api_endpoint_over_internal_endpoint(self) -> None:
-        env = {
-            "DATAROBOT_PUBLIC_API_ENDPOINT": "https://public.datarobot.com/api/v2",
-            "DATAROBOT_ENDPOINT": "http://datarobot-nginx/api/v2",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            assert resolve_memory_api_endpoint() == "https://public.datarobot.com/api/v2"
-
-    def test_appends_api_v2_to_custom_model_web_server_url(self) -> None:
-        env = {
-            "CUSTOM_MODEL_WEB_SERVER_URL": "https://staging.datarobot.com",
-            "DATAROBOT_ENDPOINT": "http://datarobot-nginx/api/v2",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            assert resolve_memory_api_endpoint() == "https://staging.datarobot.com/api/v2"
-
-    def test_falls_back_to_datarobot_endpoint(self) -> None:
-        env = {"DATAROBOT_ENDPOINT": "http://datarobot-nginx/api/v2"}
-        with patch.dict(os.environ, env, clear=True):
-            assert resolve_memory_api_endpoint() == "http://datarobot-nginx/api/v2"
-
-    def test_raises_when_unset_and_required(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(RuntimeError, match="AGENT_MEMORY_DATAROBOT_ENDPOINT"):
-                resolve_memory_api_endpoint()
-
-    def test_returns_none_when_unset_and_not_required(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            assert resolve_memory_api_endpoint(require=False) is None
 
 
 class TestUrlConsistency:
