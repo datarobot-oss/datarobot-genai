@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import json
 import time
 from datetime import UTC
 from datetime import datetime
@@ -28,6 +29,7 @@ from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheR
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import MemorySpaceAgentCardCacheBackend
+from datarobot_genai.dragent.agent_card_registry_backends import RegistryIds
 from datarobot_genai.dragent.agent_card_registry_backends import build_cache_record
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
@@ -44,6 +46,8 @@ _SAMPLE_AGENT_CARD = AgentCard.model_validate(
         "capabilities": {"streaming": False},
     }
 )
+
+_IDS = RegistryIds(deployment_id="dep-1", external_id="ext-1")
 
 
 @pytest.fixture
@@ -109,7 +113,7 @@ class TestMemorySpaceAgentCardCacheBackend:
             await memory_space_backend.store(
                 {"dep-1": _SAMPLE_AGENT_CARD, "ext-1": _SAMPLE_AGENT_CARD},
                 key_types={"dep-1": "deployment", "ext-1": "external"},
-                registry_ids={"dep-1": ("dep-1", "ext-1"), "ext-1": ("dep-1", "ext-1")},
+                registry_ids={"dep-1": _IDS, "ext-1": _IDS},
             )
 
         assert "deployment:dep-1" in storage
@@ -137,7 +141,7 @@ class TestMemorySpaceAgentCardCacheBackend:
 
         assert get_calls == ["deployment:dep-1"]
 
-    async def test_get_fresh_without_key_type_probes_both_aliases(self, memory_space_backend):
+    async def test_get_fresh_without_key_type_probes_every_alias(self, memory_space_backend):
         get_calls: list[str] = []
 
         async def track_get(key: str) -> str | None:
@@ -147,7 +151,7 @@ class TestMemorySpaceAgentCardCacheBackend:
         with patch.object(memory_space_backend._kv, "get_value", side_effect=track_get):
             assert await memory_space_backend.get_fresh("dep-1", cache_ttl=3600) is None
 
-        assert get_calls == ["deployment:dep-1", "external:dep-1"]
+        assert get_calls == ["deployment:dep-1", "external:dep-1", "workload:dep-1"]
 
     async def test_evict_removes_sibling_l2_key(self, memory_space_backend):
         """Typed eviction must delete every storage alias for the card."""
@@ -180,6 +184,102 @@ class TestMemorySpaceAgentCardCacheBackend:
 
         assert sorted(deleted) == ["deployment:dep-1", "external:ext-1"]
         assert storage == {}
+
+
+class TestMemorySpaceAgentCardCacheBackendWorkload:
+    async def test_store_writes_workload_storage_key(self, memory_space_backend):
+        """GIVEN a workload card with an external ID
+        WHEN stored THEN both aliases are written under their own prefixes.
+        """
+        storage: dict[str, str] = {}
+
+        async def capture_set(key: str, payload: str) -> None:
+            storage[key] = payload
+
+        ids = RegistryIds(external_id="ext-1", workload_id="wl-1")
+        with patch.object(memory_space_backend._kv, "set_value", side_effect=capture_set):
+            await memory_space_backend.store(
+                {"wl-1": _SAMPLE_AGENT_CARD, "ext-1": _SAMPLE_AGENT_CARD},
+                key_types={"wl-1": "workload", "ext-1": "external"},
+                registry_ids={"wl-1": ids, "ext-1": ids},
+            )
+
+        assert "workload:wl-1" in storage
+        assert "external:ext-1" in storage
+        assert "deployment:wl-1" not in storage
+        record = AgentCardCacheRecord.model_validate_json(storage["workload:wl-1"])
+        assert record.workload_id == "wl-1"
+        assert record.external_id == "ext-1"
+        assert record.deployment_id is None
+
+    async def test_get_fresh_reads_workload_storage_key(self, memory_space_backend):
+        """GIVEN a card stored under 'workload:' WHEN looked up by ID THEN it is found."""
+        record = build_cache_record(
+            _SAMPLE_AGENT_CARD,
+            lookup_key="wl-1",
+            key_type="workload",
+        )
+        storage = {"workload:wl-1": record.model_dump_json()}
+
+        async def mock_get(key: str) -> str | None:
+            return storage.get(key)
+
+        with patch.object(memory_space_backend._kv, "get_value", side_effect=mock_get):
+            found = await memory_space_backend.get_fresh("wl-1", cache_ttl=3600)
+
+        assert found is not None
+        assert found.workload_id == "wl-1"
+
+    async def test_evict_removes_sibling_workload_key(self, memory_space_backend):
+        """Evicting an external alias must drop the workload storage key too."""
+        record = build_cache_record(
+            _SAMPLE_AGENT_CARD,
+            lookup_key="wl-1",
+            key_type="workload",
+            external_id="ext-1",
+        )
+        payload = record.model_dump_json()
+        storage = {"workload:wl-1": payload, "external:ext-1": payload}
+        deleted: list[str] = []
+
+        async def mock_get(key: str) -> str | None:
+            return storage.get(key)
+
+        async def mock_delete(key: str) -> None:
+            deleted.append(key)
+            storage.pop(key, None)
+
+        with (
+            patch.object(memory_space_backend._kv, "get_value", side_effect=mock_get),
+            patch.object(memory_space_backend._kv, "delete_value", side_effect=mock_delete),
+        ):
+            await memory_space_backend.evict("ext-1", key_type="external")
+
+        assert sorted(deleted) == ["external:ext-1", "workload:wl-1"]
+        assert storage == {}
+
+
+class TestAgentCardCacheRecordCompatibility:
+    def test_record_without_workload_id_still_deserializes(self):
+        """GIVEN a v1 payload written before workload IDs existed
+        WHEN deserialized THEN it loads with workload_id unset.
+        """
+        legacy_payload = json.dumps(
+            {
+                "version": 1,
+                "fetched_at": datetime.now(UTC).isoformat(),
+                "card": _SAMPLE_AGENT_CARD.model_dump(mode="json", by_alias=True),
+                "source": "registry",
+                "deployment_id": "dep-1",
+                "external_id": "ext-1",
+            }
+        )
+
+        record = AgentCardCacheRecord.model_validate_json(legacy_payload)
+
+        assert record.workload_id is None
+        assert record.deployment_id == "dep-1"
+        assert record.card.name == "MemorySpace Agent"
 
 
 class TestCreateAgentCardCacheBackend:

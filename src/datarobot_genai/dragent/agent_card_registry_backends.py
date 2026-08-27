@@ -25,6 +25,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
+from typing import NamedTuple
 from typing import Protocol
 
 from a2a.types import AgentCard
@@ -40,7 +41,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-LookupKeyType = Literal["deployment", "external"]
+LookupKeyType = Literal["deployment", "external", "workload"]
+
+
+class RegistryIds(NamedTuple):
+    """The registry identifiers a single agent card entry carries.
+
+    A card is keyed by exactly one of ``deployment_id`` / ``workload_id`` (the
+    platform enforces this) and may additionally publish an ``external_id``.
+    Named fields rather than a positional tuple because three optional strings
+    in a row are indistinguishable at a call site.
+    """
+
+    deployment_id: str | None = None
+    external_id: str | None = None
+    workload_id: str | None = None
+
 
 # Bound cold-path L2 read latency so a slow MemorySpace does not delay registry fetch.
 _DEFAULT_L2_READ_TIMEOUT_SECONDS = 0.2
@@ -55,6 +71,7 @@ class AgentCardCacheRecord(BaseModel):
     source: str = "registry"
     deployment_id: str | None = None
     external_id: str | None = None
+    workload_id: str | None = None
 
     def age_seconds(self) -> float:
         """Return the entry age in seconds (wall clock, safe across processes)."""
@@ -80,6 +97,7 @@ def build_cache_record(
     key_type: LookupKeyType,
     deployment_id: str | None = None,
     external_id: str | None = None,
+    workload_id: str | None = None,
 ) -> AgentCardCacheRecord:
     """Build a cache record for *lookup_key* with optional registry ID metadata."""
     resolved_dep = (
@@ -90,10 +108,14 @@ def build_cache_record(
     resolved_ext = (
         external_id if external_id is not None else (lookup_key if key_type == "external" else None)
     )
+    resolved_wl = (
+        workload_id if workload_id is not None else (lookup_key if key_type == "workload" else None)
+    )
     return AgentCardCacheRecord(
         card=card,
         deployment_id=resolved_dep,
         external_id=resolved_ext,
+        workload_id=resolved_wl,
     )
 
 
@@ -123,7 +145,7 @@ class AgentCardCacheBackend(Protocol):
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
-        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
+        registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
         """Persist one or more cards keyed by lookup ID."""
 
@@ -171,18 +193,19 @@ class MemoryAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
-        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
+        registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
-        id_pairs = registry_ids or {}
+        id_sets = registry_ids or {}
         for lookup_key, card in cards.items():
             key_type = key_types.get(lookup_key, "deployment")
-            dep_id, ext_id = id_pairs.get(lookup_key, (None, None))
+            ids = id_sets.get(lookup_key, RegistryIds())
             self._entries[lookup_key] = build_cache_record(
                 card,
                 lookup_key=lookup_key,
                 key_type=key_type,
-                deployment_id=dep_id,
-                external_id=ext_id,
+                deployment_id=ids.deployment_id,
+                external_id=ids.external_id,
+                workload_id=ids.workload_id,
             )
 
     async def store_record(self, lookup_key: str, record: AgentCardCacheRecord) -> None:
@@ -206,6 +229,8 @@ class MemoryAgentCardCacheBackend:
                 keys_to_evict.add(record.deployment_id)
             if record.external_id:
                 keys_to_evict.add(record.external_id)
+            if record.workload_id:
+                keys_to_evict.add(record.workload_id)
         for key in keys_to_evict:
             self._entries.pop(key, None)
 
@@ -233,6 +258,8 @@ class MemorySpaceAgentCardCacheBackend:
             keys.append(f"deployment:{record.deployment_id}")
         if record.external_id:
             keys.append(f"external:{record.external_id}")
+        if record.workload_id:
+            keys.append(f"workload:{record.workload_id}")
         return keys
 
     def _storage_keys_for_lookup(
@@ -245,7 +272,13 @@ class MemorySpaceAgentCardCacheBackend:
             return [f"deployment:{lookup_key}"]
         if key_type == "external":
             return [f"external:{lookup_key}"]
-        return [f"deployment:{lookup_key}", f"external:{lookup_key}"]
+        if key_type == "workload":
+            return [f"workload:{lookup_key}"]
+        return [
+            f"deployment:{lookup_key}",
+            f"external:{lookup_key}",
+            f"workload:{lookup_key}",
+        ]
 
     async def _get_record(self, storage_key: str) -> AgentCardCacheRecord | None:
         payload = await self._kv.get_value(storage_key)
@@ -288,18 +321,19 @@ class MemorySpaceAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
-        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
+        registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
-        id_pairs = registry_ids or {}
+        id_sets = registry_ids or {}
         for lookup_key, card in cards.items():
             key_type = key_types.get(lookup_key, "deployment")
-            dep_id, ext_id = id_pairs.get(lookup_key, (None, None))
+            ids = id_sets.get(lookup_key, RegistryIds())
             record = build_cache_record(
                 card,
                 lookup_key=lookup_key,
                 key_type=key_type,
-                deployment_id=dep_id,
-                external_id=ext_id,
+                deployment_id=ids.deployment_id,
+                external_id=ids.external_id,
+                workload_id=ids.workload_id,
             )
             payload = record.model_dump_json()
             for storage_key in self._storage_keys_for_record(record):
@@ -432,7 +466,7 @@ class LayeredAgentCardCacheBackend:
         cards: dict[str, AgentCard],
         *,
         key_types: dict[str, LookupKeyType],
-        registry_ids: dict[str, tuple[str | None, str | None]] | None = None,
+        registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
         await self._l1.store(cards, key_types=key_types, registry_ids=registry_ids)
         self._schedule_l2(self._l2.store(cards, key_types=key_types, registry_ids=registry_ids))
