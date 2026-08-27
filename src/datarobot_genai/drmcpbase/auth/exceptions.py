@@ -23,3 +23,7 @@ class NoHeadersFoundInRequestContextError(Exception):
 
 class NoDataRobotBearerTokenFoundInRequestContextError(Exception):
     pass
+
+
+class AudienceClaimValidationError(Exception):
+    pass

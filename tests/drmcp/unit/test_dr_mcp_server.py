@@ -20,10 +20,16 @@ from unittest.mock import patch
 import pytest
 from fastmcp import FastMCP
 
+from datarobot_genai.drmcp.core.clients import RequestHeadersMiddleware
 from datarobot_genai.drmcp.core.dr_mcp_server import DataRobotMCPServer
+from datarobot_genai.drmcp.core.dr_mcp_server import get_ordered_list_of_starlette_middlewares
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
+from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
+from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
+from datarobot_genai.drmcp.core.telemetry import OtelASGIMiddleware
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.default import Metadata
+from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
 
 
 @pytest.fixture
@@ -419,6 +425,17 @@ class TestDataRobotMCPServer:
         dr_mcp_server = DataRobotMCPServer(mock_mcp)
         result = await dr_mcp_server.get_resources()
         assert isinstance(result, dict)
+
+    def test_get_ordered_list_of_starlette_middlewares(self) -> None:
+        output = get_ordered_list_of_starlette_middlewares()
+        expected_middleware_classes_in_order = [
+            TrailingSlashNormalizer,
+            OAuthJWTTokenHandlerMiddleware,
+            GeneralOAuthClaimValidationMiddleware,
+            RequestHeadersMiddleware,
+            OtelASGIMiddleware,
+        ]
+        assert [middleware.cls for middleware in output] == expected_middleware_classes_in_order
 
 
 def test_mcp_server_capabilities():
