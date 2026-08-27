@@ -206,16 +206,41 @@ class MemorySpaceKVCache:
         self._memory_space_id = memory_space_id
         normalized = key_prefix if key_prefix.endswith(":") else f"{key_prefix}:"
         self._key_prefix = normalized
+        self._session_ids: dict[str, str] = {}
 
     def _logical_key(self, key: str) -> str:
         return f"{self._key_prefix}{CACHE_KIND}:{key}"
+
+    def _cache_session_id(self, logical_key: str, session: Session) -> None:
+        self._session_ids[logical_key] = session.id
+
+    def _invalidate_session_id(self, logical_key: str) -> None:
+        self._session_ids.pop(logical_key, None)
+
+    def _resolve_session(self, logical_key: str) -> Session | None:
+        """Return the cache session, using a process-local session-id cache when possible."""
+        if session_id := self._session_ids.get(logical_key):
+            try:
+                return Session.get(self._memory_space_id, session_id)
+            except Exception:
+                logger.debug(
+                    "MemorySpace session cache miss for %s (session_id=%s)",
+                    logical_key,
+                    session_id,
+                )
+                self._invalidate_session_id(logical_key)
+
+        session = _find_cache_session(self._memory_space_id, logical_key)
+        if session is not None:
+            self._cache_session_id(logical_key, session)
+        return session
 
     async def get_value(self, key: str) -> str | None:
         """Return the stored JSON payload for *key*, or ``None`` when missing."""
         logical_key = self._logical_key(key)
 
         def _get() -> str | None:
-            session = _find_cache_session(self._memory_space_id, logical_key)
+            session = self._resolve_session(logical_key)
             if session is None:
                 return None
             return _read_payload(session)
@@ -231,12 +256,13 @@ class MemorySpaceKVCache:
         logical_key = self._logical_key(key)
 
         def _set() -> None:
-            session = _find_cache_session(self._memory_space_id, logical_key)
+            session = self._resolve_session(logical_key)
             if session is None:
                 session = _create_cache_session(
                     self._memory_space_id,
                     logical_key=logical_key,
                 )
+                self._cache_session_id(logical_key, session)
             _write_payload(session, payload)
 
         try:
@@ -249,9 +275,10 @@ class MemorySpaceKVCache:
         logical_key = self._logical_key(key)
 
         def _delete() -> None:
-            session = _find_cache_session(self._memory_space_id, logical_key)
+            session = self._resolve_session(logical_key)
             if session is not None:
                 session.delete()
+            self._invalidate_session_id(logical_key)
 
         try:
             await asyncio.to_thread(_delete)

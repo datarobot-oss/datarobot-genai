@@ -94,13 +94,12 @@ class TestMemorySpaceKVCache:
                 "datarobot_genai.dragent.memory_space_cache._create_cache_session",
                 return_value=session,
             ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.Session.get",
+                return_value=session,
+            ),
         ):
             await kv_cache.set_value("dep-1", '{"version": 1}')
-
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-            return_value=session,
-        ):
             assert await kv_cache.get_value("dep-1") == '{"version": 1}'
 
         session.post_event.assert_called_once()
@@ -108,13 +107,49 @@ class TestMemorySpaceKVCache:
         assert kwargs["event_type"] == CACHE_EVENT_TYPE
         assert kwargs["body"]["payload"] == '{"version": 1}'
 
+    async def test_get_reuses_cached_session_id_without_list(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        session = _FakeSession()
+        find_mock = MagicMock(return_value=None)
+        get_mock = MagicMock(return_value=session)
+        session.post_event(body={"v": 1, "payload": "cached"})
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                find_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
+                return_value=session,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.Session.get",
+                get_mock,
+            ),
+        ):
+            await kv_cache.set_value("dep-1", "cached")
+            find_mock.reset_mock()
+            get_mock.reset_mock()
+            assert await kv_cache.get_value("dep-1") == "cached"
+
+        find_mock.assert_not_called()
+        get_mock.assert_called_once_with("space-1", "sess-1")
+
     async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
         session.post_event(body={"v": 1, "payload": "v1"})
 
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-            return_value=session,
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                return_value=session,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.Session.get",
+                return_value=session,
+            ),
         ):
             await kv_cache.set_value("dep-1", "v2")
 
@@ -142,9 +177,15 @@ class TestMemorySpaceKVCache:
     async def test_delete_removes_session(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
 
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-            return_value=session,
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
+                return_value=session,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.Session.get",
+                return_value=session,
+            ),
         ):
             await kv_cache.delete_value("dep-1")
 

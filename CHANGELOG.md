@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.8
+- `dragent`: agent card registry MemorySpace L2 uses write-behind instead of write-through so connect-time registry fetches are not blocked on MemorySpace round-trips.
+- `dragent`: layered agent card cache skips L2 on soft-expired L1 hits; cold-path fresh L2 reads are bounded by a short timeout so a slow MemorySpace cannot delay registry fetch (stale-if-error L2 reads are not bounded).
+- `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
+- `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
+- `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
+
 ## 0.29.7
 - `drmcp/core/config`: Added `oauth_claim_validation` MCP config.
 - `drmcp/core/middleware.py`: Refactored MCP authorization validation middlewares
