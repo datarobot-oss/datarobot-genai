@@ -391,17 +391,14 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     use httpx's base-url joining for that call). A trailing slash on the
     host would produce a double slash there.
     """
+    from datarobot_genai.dragent.deployment_urls import resolve_memory_api_endpoint
+
     # Deliberately not ``resolve_config().resolve_datarobot_endpoint()``: that resolver
     # substitutes the public app.datarobot.com default when nothing is configured, and
     # this host receives memory writes plus the API token, so "unset" has to stay
     # distinguishable from "configured".
-    base = config.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
-    if not base:
-        raise RuntimeError(
-            "DataRobot endpoint is not set. Configure memory.datarobot_endpoint "
-            "or DATAROBOT_ENDPOINT when using agent_memory_space_id."
-        )
-    return f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}"
+    base = resolve_memory_api_endpoint(explicit_endpoint=config.datarobot_endpoint)
+    return f"{base}/memory/{config.agent_memory_space_id}"
 
 
 def _create_mem0_client(config: DRMem0MemoryClientConfig, api_key: str | None) -> Any:

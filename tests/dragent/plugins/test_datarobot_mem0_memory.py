@@ -617,14 +617,33 @@ def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any)
     )
 
 
+def test_dr_mem0_endpoint_prefers_agent_memory_env_over_internal_endpoint(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_MEMORY_DATAROBOT_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
+    )
+
+
 def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
     # GIVEN no datarobot_endpoint configured and no env var.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AGENT_MEMORY_DATAROBOT_ENDPOINT", raising=False)
+    monkeypatch.delenv("DATAROBOT_PUBLIC_API_ENDPOINT", raising=False)
+    monkeypatch.delenv("CUSTOM_MODEL_WEB_SERVER_URL", raising=False)
     config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
 
     # THEN the builder refuses to fabricate a URL — better to fail loud than to
     # point at a wrong host.
-    with pytest.raises(RuntimeError, match="DATAROBOT_ENDPOINT"):
+    with pytest.raises(RuntimeError, match="AGENT_MEMORY_DATAROBOT_ENDPOINT"):
         datarobot_mem0_memory._dr_mem0_endpoint(config)
 
 

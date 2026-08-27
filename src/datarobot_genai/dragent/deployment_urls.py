@@ -30,6 +30,10 @@ MCP_PATH = "mcp"
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 _API_V2_SUFFIX = "/api/v2"
+AGENT_MEMORY_DATAROBOT_ENDPOINT_ENV = "AGENT_MEMORY_DATAROBOT_ENDPOINT"
+CUSTOM_MODEL_WEB_SERVER_URL_ENV = "CUSTOM_MODEL_WEB_SERVER_URL"
+PUBLIC_API_ENDPOINT_ENV = "DATAROBOT_PUBLIC_API_ENDPOINT"
+DATAROBOT_ENDPOINT_ENV = "DATAROBOT_ENDPOINT"
 
 
 def normalize_api_v2_endpoint(endpoint: str) -> str:
@@ -92,6 +96,66 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     if require:
         raise ValueError("DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set.")
     return _DEFAULT_DATAROBOT_ENDPOINT
+
+
+def resolve_memory_api_endpoint(
+    *,
+    explicit_endpoint: str | None = None,
+    require: bool = True,
+) -> str | None:
+    """Return the DataRobot API base URL for Memory Service routes.
+
+    Deployed custom models commonly receive ``DATAROBOT_ENDPOINT`` pointing at
+    in-cluster ``datarobot-nginx``, which does not route ``/memory/`` to the
+    Memory Service. Prefer publicly reachable endpoints injected at deploy time.
+
+    Checks sources in priority order:
+
+    1. ``explicit_endpoint`` — workflow config or caller override.
+    2. ``AGENT_MEMORY_DATAROBOT_ENDPOINT`` — deploy-time public API URL.
+    3. ``DATAROBOT_PUBLIC_API_ENDPOINT`` — externally reachable platform URL.
+    4. ``CUSTOM_MODEL_WEB_SERVER_URL`` — custom model web server base URL.
+    5. ``DATAROBOT_ENDPOINT`` — in-cluster fallback.
+
+    Parameters
+    ----------
+    explicit_endpoint:
+        Optional caller-provided endpoint override.
+    require:
+        When *True*, raises :class:`RuntimeError` if no endpoint can be resolved.
+        When *False*, returns *None* instead.
+
+    Returns
+    -------
+    str | None
+        Normalized API v2 base URL, or *None* when ``require=False`` and unset.
+
+    Raises
+    ------
+    RuntimeError
+        If ``require=True`` and no endpoint source is configured.
+    """
+    if explicit_endpoint:
+        return normalize_api_v2_endpoint(explicit_endpoint)
+
+    for env_var in (
+        AGENT_MEMORY_DATAROBOT_ENDPOINT_ENV,
+        PUBLIC_API_ENDPOINT_ENV,
+        CUSTOM_MODEL_WEB_SERVER_URL_ENV,
+        DATAROBOT_ENDPOINT_ENV,
+    ):
+        value = os.getenv(env_var, "").strip()
+        if value:
+            return normalize_api_v2_endpoint(value)
+
+    if require:
+        raise RuntimeError(
+            "DataRobot endpoint is not set. Configure memory.datarobot_endpoint, "
+            f"{AGENT_MEMORY_DATAROBOT_ENDPOINT_ENV}, {PUBLIC_API_ENDPOINT_ENV}, "
+            f"{CUSTOM_MODEL_WEB_SERVER_URL_ENV}, or {DATAROBOT_ENDPOINT_ENV} when "
+            "using agent memory."
+        )
+    return None
 
 
 def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:

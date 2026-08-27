@@ -37,6 +37,8 @@ from datarobot.errors import MemorySessionDeduplicationError
 from datarobot.models.memory import Session
 from pydantic import Field
 
+from datarobot_genai.dragent.deployment_urls import resolve_memory_api_endpoint
+
 logger = logging.getLogger(__name__)
 
 # Stable 24-hex participant id (BSON ObjectId length) for cache sessions.
@@ -111,11 +113,15 @@ def configure_datarobot_memory_client(
     """Configure the process-global DataRobot client for memory Session API calls."""
     cfg = MemorySpaceCacheConfig()
     token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
-    base = endpoint or cfg.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
-    if not base:
-        raise ValueError("DATAROBOT_ENDPOINT is required when using memory_space cache backends.")
+    try:
+        base = resolve_memory_api_endpoint(
+            explicit_endpoint=endpoint,
+            require=True,
+        )
+    except RuntimeError as exc:
+        raise ValueError(str(exc)) from exc
     dr.Client(token=token, endpoint=base)
 
 
