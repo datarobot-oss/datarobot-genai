@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.11 - 2026-08-26
+- `dragent`: tool-call spans now carry `gen_ai.tool.name` instead of the bare legacy `tool_name` attribute, so NAT-based tool calls stop landing in Datavolt's deprecated attribute bucket (PBMP-8006 SDK-2).
+
 ## 0.29.10 - 2026-08-26
 - `dragent`, `langgraph`, `llama_index`: **agent spans now carry `gen_ai.agent.name`.
 - Adds `datarobot-opentelemetry>=0.4.0,<1.0.0` to the `llamaindex` and `dragent` extras.
