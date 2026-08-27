@@ -192,6 +192,22 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             assert response.status_code == 200, f"Expected 200 at {path}"
             assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
 
+    def test_agent_manifest_route_returns_declared_structure(self, app_with_health):
+        """Served alongside the health routes by the same build_app() call - proves
+        the route is actually wired up, not just that build_agent_manifest() works
+        in isolation (covered separately in test_agent_manifest.py).
+        """
+        with TestClient(app_with_health) as client:
+            response = client.get("/.well-known/agent-manifest.json")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["components"] == []
+        # `worker`'s Config has no workflow= set, so it defaults to NAT's
+        # EmptyFunctionConfig - same empty-config shape asserted directly
+        # against build_agent_manifest() in test_agent_manifest.py.
+        assert body["root_agent"]["type"] == "EmptyFunctionConfig"
+
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
 
