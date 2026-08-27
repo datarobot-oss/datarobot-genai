@@ -52,9 +52,10 @@ from datarobot_genai.drtools.pagination import clamp_limit
 from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 # Cap on each of a log line's 'message'/'stacktrace' fields, independently, in
-# characters. Provisional like otel_trace_get's defaults (traces.py) — plan §9
-# step 9's real-trace run may correct it; nothing else in this module repeats
-# the literal.
+# characters. Confirmed by plan §9 step 9's run against real deployments, where it
+# bit on 3/50 and 11/50 error lines (embedded tracebacks) and left the rest intact —
+# i.e. it trims the outliers without flattening ordinary log output. Nothing else in
+# this module repeats the literal.
 DEFAULT_MAX_LINE_CHARS = 2_000
 
 # Fields capped independently by max_line_chars, each with its own marker.

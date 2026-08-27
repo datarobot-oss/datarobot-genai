@@ -122,13 +122,24 @@ default of 60,000 is chosen to land near 20k tokens under that ratio. Every
 budget is a plain `int` argument on the tool call, so an agent that finds a
 default wrong for its use case can pass a different one on the next call.
 
-> **PROVISIONAL:** `otel_trace_get`'s three numeric defaults —
-> `span_limit=100`, `max_field_chars=2000`, `max_total_chars=60000` — were set
-> from this proxy measurement, not from a run against Claude's own tokenizer
-> or a real trace. Plan §9 step 9 (a manual run against a real agent
-> deployment) may correct them after this release; check
-> `src/datarobot_genai/drtools/otel/traces.py`'s `DEFAULT_TRACE_*` constants
-> for the current values if this note has gone stale.
+These defaults were set from the proxy measurement above and then checked
+against a real agent deployment, whose traces ranged from 130 KB to 1.67 MB of
+raw JSON (~42k to ~539k tokens at 3.1 chars/token):
+
+| Raw trace | `view="summary"` | `view="payloads"` |
+| --- | --- | --- |
+| 129,780 chars, 28 spans | 10,520 chars | 26,769 chars, 0 spans dropped |
+| 1,077,814 chars, 36 spans | 14,333 chars | 56,650 chars, 13 spans dropped |
+| 1,671,172 chars, 36 spans | 14,351 chars | 56,750 chars, 13 spans dropped |
+
+Summary output stays flat near 14,000 characters while the raw trace grows 13×
+— a 116× reduction on the largest — which is the property the whole design
+rests on. Of the three defaults only `max_total_chars` binds in practice, and
+it binds at ~94% utilization (56,338 of 60,000) rather than clipping early;
+`span_limit=100` was never reached, and `max_field_chars=2000` produced
+contiguous windows with a correct `next_offset` (e.g. `output.value`: 2,000 of
+23,622 chars). Check `src/datarobot_genai/drtools/otel/traces.py`'s
+`DEFAULT_TRACE_*` constants for the current values if this note has gone stale.
 
 ## 403s: configuration, not missing data
 
