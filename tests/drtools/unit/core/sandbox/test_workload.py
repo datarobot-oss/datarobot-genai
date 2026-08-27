@@ -1296,29 +1296,25 @@ async def test_quiet_snippet_is_not_abandoned_before_terminal_status(
     line BEFORE user code. So stdout goes non-empty immediately and then sits
     unchanged for as long as the snippet runs quietly. The stillness rule must
     not fire in that window, or a still-running container is abandoned and
-    `timeout_s` stops bounding user code once that first line appears.
+    ``timeout_s`` stops bounding user code once that first line appeared.
 
-    Here the workload never reaches a terminal status while stdout is frozen at
-    the startup line for many polls; the marker only arrives afterwards.
+    The quiet window is set to ``0.0`` so stillness is provably reached on the
+    very next poll -- a small-but-nonzero value would not reliably elapse
+    between mocked polls, which would make this test vacuous. Status never
+    reaches a terminal state, so the ONLY thing that can keep the wait alive is
+    the terminal gate. The marker arrives on a late poll; without the gate the
+    wait breaks on poll 2 with no marker and the run fails.
     """
     monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
-    # Deliberately tiny: repetition alone must not end the wait pre-terminal.
-    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.01)
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.0)
     respx.post(CREATE_URL).mock(return_value=_create_response())
-    # Status stays non-terminal for the whole frozen-stdout window.
+    # Never terminal: mirrors a container still executing a quiet snippet.
     respx.get(GET_URL).mock(
-        side_effect=[
-            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
-            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
-            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
-            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"}),
-            httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"}),
-        ]
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"})
     )
     startup = "sandbox process limit (RLIMIT_NPROC) set to 4096"
     respx.get(LOGS_URL).mock(
         side_effect=[
-            _logs_response(startup),
             _logs_response(startup),
             _logs_response(startup),
             _logs_response(startup),
