@@ -25,6 +25,12 @@ two ends of a small protocol used by the container-backed sandbox
   :data:`RESULT_MARKER`; :func:`parse_result_marker` strips and decodes it.
 - The runner exits :data:`SANDBOX_TIMEOUT_EXIT_CODE` when its in-process
   wall-clock cap fires; the caller maps that to ``SandboxTimeout``.
+- On that same timeout path the runner first prints
+  :data:`TIMEOUT_LOG_MARKER` to stderr; :func:`has_timeout_marker` detects it.
+  This is the *in-band* half of the timeout signal, and it is what lets the
+  caller classify a timeout without a terminal workload record to read the
+  exit code from (see :class:`DataRobotWorkloadSandbox`, which returns as soon
+  as the result marker is available).
 
 Only these constants + the parser are shared, so we keep them here rather than
 carrying a hand-synced duplicate of the whole runner in this repo (the runner
@@ -40,6 +46,18 @@ RESULT_MARKER = "__DR_SANDBOX_RESULT__:"
 # Exit code the runner uses when its in-process SIGALRM cap fires before the
 # caller / workload-api timeout. Surfaced by the caller as ``SandboxTimeout``.
 SANDBOX_TIMEOUT_EXIT_CODE = 124
+
+# Line the runner prints to STDERR when its SIGALRM cap fires, immediately
+# before emitting its (null) result marker:
+#
+#     print(f"sandbox exceeded timeout of {timeout_secs}s", file=sys.stderr)
+#
+# The trailing "<N>s" varies with DR_SANDBOX_TIMEOUT_SECS, so only the stable
+# prefix is matched. This matters because the timeout path's result marker is
+# ``__DR_SANDBOX_RESULT__:null`` — byte-identical to a snippet that simply
+# returned nothing — so the marker alone never means "success", and this line
+# is the only in-band way to tell the two apart.
+TIMEOUT_LOG_MARKER = "sandbox exceeded timeout of"
 
 
 def _marker_line_index(lines: list[str]) -> int:
@@ -58,6 +76,20 @@ def _marker_line_index(lines: list[str]) -> int:
 def has_result_marker(stdout: str) -> bool:
     """Whether ``stdout`` contains a result-marker line (see :func:`parse_result_marker`)."""
     return _marker_line_index(stdout.splitlines()) != -1
+
+
+def has_timeout_marker(output: str) -> bool:
+    """Whether the runner reported its in-process wall-clock cap firing.
+
+    Matches :data:`TIMEOUT_LOG_MARKER` anywhere in ``output`` rather than
+    anchoring to the start of a line: the OTEL collector can prefix container
+    lines, and callers pass a concatenation of stdout and stderr because which
+    of the two the line lands in depends on how the collector maps severity.
+    A snippet that prints the sentinel itself would be misclassified as a
+    timeout — an acceptable trade for a signal that is otherwise the only
+    in-band way to detect the timeout path (see :data:`TIMEOUT_LOG_MARKER`).
+    """
+    return TIMEOUT_LOG_MARKER in output
 
 
 def parse_result_marker(stdout: str) -> tuple[str, Any]:
