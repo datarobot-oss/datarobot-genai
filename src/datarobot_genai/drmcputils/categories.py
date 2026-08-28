@@ -44,6 +44,7 @@ Hierarchy:
     dr_panels
   dr_db
     dr_vdb
+  dr_otel                                (leaf — no sub-categories)
   dr_user_tools                          (user-authored tools — outside the static taxonomy)
   dr_dynamic_tools                       (hosted tools — registered separately)
 """
@@ -93,6 +94,9 @@ class MCPToolCategory(StrEnum):
     # ── database categories ──────────────────────────────────────────────────
     DR_DB = "dr_db"
     DR_VDB = "dr_vdb"
+
+    # ── observability (leaf, standalone — not parented under dr_development) ──
+    DR_OTEL = "dr_otel"
 
     # ── special / marker-resolved ────────────────────────────────────────────
     # Tools the user authored in their own MCP server code (``dr_mcp_tool``'s
@@ -291,6 +295,17 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
             "vdb_query",
         }
     ),
+    MCPToolCategory.DR_OTEL: frozenset(
+        {
+            "otel_traces_list",
+            "otel_trace_get",
+            "otel_span_payload_get",
+            "otel_logs_list",
+            "otel_metrics_catalog_list",
+            "otel_metrics_values_get",
+            "otel_entity_stats_get",
+        }
+    ),
     # Marker-resolved categories — tool names are resolved at request time
     # from each tool's ``meta.tool_category`` marker, not from this static
     # map.  Present so the names are recognised as categories; the empty set
@@ -410,6 +425,8 @@ TOOL_CATEGORY_LABELS: dict[MCPToolCategory, str] = {
     # ── databases ───────────────────────────────────────────────────────────
     MCPToolCategory.DR_DB: "Databases",
     MCPToolCategory.DR_VDB: "Vector databases",
+    # ── observability (standalone leaf, top-level — see PARENT_TO_CHILDREN) ──
+    MCPToolCategory.DR_OTEL: "Observability",
     # ── marker-resolved (user MCPs only) ────────────────────────────────────
     MCPToolCategory.DR_USER_TOOLS: "Your own tools",
     MCPToolCategory.DR_DYNAMIC_TOOLS: "Deployed tools",
