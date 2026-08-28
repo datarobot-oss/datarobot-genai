@@ -184,7 +184,13 @@ This serves streamable-HTTP on `http://localhost:8080/mcp` by default
 `MCPServerConfig` in `drmcp/core/config.py`). `task drmcp-test-dev-server-background`
 (used by this repo's own acceptance suite) starts the same server on
 `:8652` with every tool package — including OTel — pre-enabled, if you'd
-rather reuse that instead of setting the flags above by hand.
+rather reuse that instead of setting the flags above by hand. That suite's
+OTel cases (`tests/drmcp/acceptance/test_otel_tools.py`) need no
+pre-existing entity: they create a Use Case, OTLP-export a small failing
+agent run into it, and delete it afterwards, so `task drmcp-acceptance`
+exercises these tools end to end with nothing but `DATAROBOT_API_TOKEN` and
+`DR_LLM_GATEWAY_MODEL` set. Set `TEST_OTEL_ENTITY_ID` to point them at a
+real, externally-instrumented entity instead.
 
 **2. Point the harness at it.** Most MCP-aware coding harnesses read an
 `.mcp.json` in the project root (or a user-level config) describing remote
