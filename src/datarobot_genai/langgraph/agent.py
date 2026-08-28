@@ -129,7 +129,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after
         self.debug = debug
-        self.name = name
+        # Compiled onto the graph below and read back out by the LangChain
+        # OTel auto-instrumentor as gen_ai.agent.name - default to the
+        # concrete subclass name so multi-agent segmentation still has
+        # something to group by when a caller doesn't pass `name=`
+        # explicitly (langgraph's own default is the generic "LangGraph",
+        # identical across every agent built from this class).
+        self.name = name or type(self).__name__
         self._structured_history = structured_history
         super().__init__(
             api_key=api_key,
