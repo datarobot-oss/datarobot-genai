@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.13 - 2026-08-28
+- Narrow the cve-sync residue block to the packages this project actually resolves, dropping 36 that could never affect its lock. No dependency floor moved.
+
 ## 0.29.12
 - Prefer `DATAROBOT_PUBLIC_API_ENDPOINT` when constructing the memory space URL.
 
