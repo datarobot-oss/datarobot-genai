@@ -40,6 +40,7 @@ from ag_ui.core import UserMessage
 from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from nat.data_models.api_server import ChatRequestOrMessage
 from nat.data_models.api_server import Message
+from opentelemetry import baggage
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -558,3 +559,57 @@ async def test_stream_passes_through_non_event_chunks(
     span = _span_named(span_exporter, AGENT_SPAN_NAME)
     assert GEN_AI_PROMPT not in span.attributes
     assert GEN_AI_COMPLETION not in span.attributes
+
+
+# ---------------------------------------------------------------------------
+# Agent name propagated as Baggage for the duration of the call
+# ---------------------------------------------------------------------------
+
+
+async def test_invoke_puts_agent_name_in_baggage_for_the_duration_of_the_call(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    context = MagicMock()
+    context.name = "my_agent_function"
+    seen_agent_name = None
+
+    async def _call_next(*args: Any, **kwargs: Any) -> str:
+        nonlocal seen_agent_name
+        seen_agent_name = baggage.get_baggage("gen_ai.agent.name")
+        return "ok"
+
+    await middleware.function_middleware_invoke(
+        _nat_input("hi"),
+        call_next=_call_next,
+        context=context,
+    )
+
+    assert seen_agent_name == "my_agent_function"
+    assert baggage.get_baggage("gen_ai.agent.name") is None
+
+
+async def test_stream_puts_agent_name_in_baggage_for_the_duration_of_the_call(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    context = MagicMock()
+    context.name = "my_streaming_agent"
+    seen_agent_name = None
+
+    async def _call_next(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        nonlocal seen_agent_name
+        seen_agent_name = baggage.get_baggage("gen_ai.agent.name")
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    await _drain(
+        middleware.function_middleware_stream(
+            _nat_input("hi"),
+            call_next=_call_next,
+            context=context,
+        )
+    )
+
+    assert seen_agent_name == "my_streaming_agent"
+    assert baggage.get_baggage("gen_ai.agent.name") is None

@@ -70,6 +70,8 @@ from opentelemetry.trace.status import Status
 from opentelemetry.trace.status import StatusCode
 from wrapt import wrap_function_wrapper
 
+from datarobot_genai.core.telemetry.agent_identity import agent_name_baggage
+
 logger = logging.getLogger(__name__)
 
 _INSTRUMENTED = {"crewai": False}
@@ -245,7 +247,9 @@ async def wrap_aexecute_task(
         try:
             CrewAISpanAttributes(span=span, instance=instance)
             _set_agent_request_attributes(span, instance)
-            result = await wrapped(*args, **kwargs)
+            agent_name = instance.role if hasattr(instance, "role") else None
+            with agent_name_baggage(agent_name):
+                result = await wrapped(*args, **kwargs)
             _finalize_agent_span(span, instance, token_histogram)
             return result
         except Exception as ex:

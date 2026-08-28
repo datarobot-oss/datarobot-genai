@@ -38,6 +38,7 @@ from opentelemetry.trace import StatusCode
 from datarobot_genai.core.agents import RUN_ERROR_CODE
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents import track_open_text_in_events
+from datarobot_genai.core.telemetry.agent_identity import agent_name_baggage
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.response import run_error_response
@@ -169,6 +170,7 @@ class DataRobotOtelConventionsMiddleware(
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
+            agent_name_baggage(context.name),
         ):
             span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
@@ -193,6 +195,7 @@ class DataRobotOtelConventionsMiddleware(
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
+            agent_name_baggage(context.name),
         ):
             span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
