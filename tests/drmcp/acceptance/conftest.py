@@ -13,14 +13,28 @@
 # limitations under the License.
 
 import os
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 import pytest
+from datarobot.errors import ClientError
 from datarobot.fs import DataRobotFileSystem
 
 from datarobot_genai.drmcp.test_utils.clients.dr_gateway import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp.test_utils.mcp_utils_ete import get_dr_llm_gateway_client_config
+from tests.drmcp.helpers.otel_entity import OTEL_ACCEPTANCE_ENTITY_TYPE
+from tests.drmcp.helpers.otel_entity import USE_CASE_NAME_PREFIX
+from tests.drmcp.helpers.otel_entity import OtelAcceptanceEntity
+from tests.drmcp.helpers.otel_entity import cleanup_use_case
+from tests.drmcp.helpers.otel_entity import emit_failing_agent_run
+from tests.drmcp.helpers.otel_entity import list_error_span_ids
+from tests.drmcp.helpers.otel_entity import list_error_trace_ids
+from tests.drmcp.helpers.otel_entity import otel_ingest_base_url
+from tests.drmcp.helpers.otel_entity import otel_ingest_headers
+from tests.drmcp.helpers.otel_entity import provision_use_case
+from tests.drmcp.helpers.otel_entity import wait_for_otel_ingestion
 
 # Acceptance tests require real DataRobot credentials from .env (mcp_utils_ete loads it on import).
 os.environ["MCP_USE_CLIENT_STUBS"] = "false"
@@ -120,100 +134,167 @@ def nonexistent_workload_id() -> str:
     return "000000000000000000000001"
 
 
-@pytest.fixture(scope="session")
-def otel_entity_type() -> str:
-    """Entity type for OTel acceptance tests (``TEST_OTEL_ENTITY_TYPE`` env, default deployment)."""
-    return os.environ.get("TEST_OTEL_ENTITY_TYPE", "deployment")
+def _external_otel_entity(dr_client: Any, entity_id: str) -> OtelAcceptanceEntity:
+    """Resolve ``TEST_OTEL_ENTITY_ID`` (+ optional type/trace/span overrides) to an entity.
 
-
-@pytest.fixture(scope="session")
-def otel_entity_id() -> str:
-    """Entity id for OTel acceptance tests, from the required ``TEST_OTEL_ENTITY_ID`` env var.
-
-    Unlike ``workload_id``, there is no generic "pick any entity" fallback here: these cases
-    need a *specific* entity known to carry real OTel data (and, for the failure-diagnosis
-    cases, at least one real error-status trace) -- an entity with zero OTel data would fail
-    these tests for a data reason, not a tool-description reason. See plan §9 step 9's own
-    reference deployment ("[agent-application-dev] [agent]", whose median trace is 807k
-    tokens) for the kind of entity this should point at.
+    The opt-in path for running the cases against a *real*, externally-instrumented
+    entity -- e.g. plan §9 step 9's reference deployment, whose median trace is 807k
+    tokens -- rather than the small provisioned one. ``TEST_OTEL_FAILING_TRACE_ID`` /
+    ``TEST_OTEL_FAILING_SPAN_ID`` override discovery; otherwise the newest error-status
+    trace and its first ERROR span are looked up directly against the REST API (bypassing
+    the LLM entirely) -- tier 3 tests whether the model picks the right *tool and
+    parameters* given a real, live failure, not whether it can also locate one blind.
     """
-    value = os.environ.get("TEST_OTEL_ENTITY_ID")
-    if not value:
-        pytest.skip(
-            "TEST_OTEL_ENTITY_ID is not set; OTel acceptance cases need a specific entity "
-            "known to carry real OTel traces/logs to be meaningful."
-        )
-    return value
-
-
-@pytest.fixture(scope="session")
-def otel_failing_trace_id(dr_client: Any, otel_entity_type: str, otel_entity_id: str) -> str:
-    """Discover a trace_id with an error span on the configured OTel entity.
-
-    ``TEST_OTEL_FAILING_TRACE_ID`` overrides discovery. Otherwise this calls
-    ``GET otel/{entity_type}/{entity_id}/traces/?status=error&limit=1`` directly against the
-    DataRobot REST API (bypassing the LLM entirely), the same way ``workload_id`` discovers a
-    workload id -- tier 3 tests whether the model picks the right *tool and parameters* given a
-    real, live failure, not whether it can also locate one blind with no test-side help.
-    """
-    override = os.environ.get("TEST_OTEL_FAILING_TRACE_ID")
-    if override:
-        return override
-    try:
-        result = (
-            dr_client.client.get_client()
-            .get(
-                f"otel/{otel_entity_type}/{otel_entity_id}/traces/",
-                params={"status": "error", "limit": 1},
-            )
-            .json()
-        )
-        traces = result.get("traces") or result.get("data") or []
-        if not traces:
+    entity_type = os.environ.get("TEST_OTEL_ENTITY_TYPE", "deployment")
+    rest_client = dr_client.client.get_client()
+    trace_id = os.environ.get("TEST_OTEL_FAILING_TRACE_ID")
+    if not trace_id:
+        try:
+            trace_ids = list_error_trace_ids(rest_client, entity_type, entity_id)
+        except Exception as exc:
+            pytest.skip(f"Could not discover a failing OTel trace for acceptance tests: {exc}")
+        if not trace_ids:
             pytest.skip(
-                f"No error-status OTel traces found for {otel_entity_type}/{otel_entity_id}; "
-                "set TEST_OTEL_FAILING_TRACE_ID to a known failing trace_id to run this case."
+                f"No error-status OTel traces found for {entity_type}/{entity_id}; set "
+                "TEST_OTEL_FAILING_TRACE_ID to a known failing trace_id to run this case."
             )
-        return str(traces[0]["trace_id"])
-    except Exception as exc:
-        pytest.skip(f"Could not discover a failing OTel trace for acceptance tests: {exc}")
+        trace_id = trace_ids[0]
+    span_id = os.environ.get("TEST_OTEL_FAILING_SPAN_ID")
+    if not span_id:
+        try:
+            span_ids = list_error_span_ids(rest_client, entity_type, entity_id, trace_id)
+        except Exception as exc:
+            pytest.skip(f"Could not discover a failing OTel span for acceptance tests: {exc}")
+        if not span_ids:
+            pytest.skip(
+                f"Trace {trace_id} has no ERROR-status span in the first 100; set "
+                "TEST_OTEL_FAILING_SPAN_ID to run this case."
+            )
+        span_id = span_ids[0]
+    return OtelAcceptanceEntity(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        failing_trace_id=trace_id,
+        failing_span_id=span_id,
+    )
 
 
 @pytest.fixture(scope="session")
-def otel_failing_span_id(
-    dr_client: Any,
-    otel_entity_type: str,
-    otel_entity_id: str,
-    otel_failing_trace_id: str,
-) -> str:
-    """Discover the span_id of an ERROR-status span within ``otel_failing_trace_id``.
+def otel_acceptance_entity(request: pytest.FixtureRequest, dr_client: Any) -> OtelAcceptanceEntity:
+    """Provision (or resolve) the entity the OTel acceptance cases run against.
 
-    ``TEST_OTEL_FAILING_SPAN_ID`` overrides discovery. Otherwise this fetches the trace
-    directly (same bypass-the-LLM rationale as ``otel_failing_trace_id``) and picks the first
-    span whose ``status_code`` is ``ERROR``.
+    With no configuration this creates a Use Case (OTel entity type
+    ``experiment_container``), OTLP-exports a small failing agentic run into it -- one
+    error-status trace whose ``llm.chat`` span errored with a 429 and carries LLM output,
+    one healthy trace, and an error-level log line correlated to the failing span -- waits
+    until the REST API can read all of it back, and deletes everything at session end.
+    That gives the three tier-3 cases a reproducible entity with exactly the data they
+    assume, instead of depending on whatever real entity someone happens to have.
+
+    Overrides:
+
+    * ``TEST_OTEL_ENTITY_ID`` (+ ``TEST_OTEL_ENTITY_TYPE``, default ``deployment``) --
+      skip provisioning and run against that entity instead; see
+      :func:`_external_otel_entity`.
+    * ``TEST_OTEL_KEEP_ENTITY`` -- leave the provisioned Use Case and its telemetry in
+      place for inspection (``dr xp --entity-id <id>``) instead of deleting them.
     """
-    override = os.environ.get("TEST_OTEL_FAILING_SPAN_ID")
+    override = os.environ.get("TEST_OTEL_ENTITY_ID")
     if override:
-        return override
+        return _external_otel_entity(dr_client, override)
+
+    rest_client = dr_client.client.get_client()
+    run_label = uuid.uuid4().hex[:8]
+    name = (
+        f"{USE_CASE_NAME_PREFIX} {time.strftime('%Y-%m-%d %H:%M:%SZ', time.gmtime())} {run_label}"
+    )
     try:
-        result = (
-            dr_client.client.get_client()
-            .get(
-                f"otel/{otel_entity_type}/{otel_entity_id}/traces/{otel_failing_trace_id}/",
-                params={"limit": 100},
-            )
-            .json()
+        use_case_id = provision_use_case(
+            dr_client,
+            name=name,
+            description=(
+                "Created by datarobot-genai's OTel MCP acceptance tests "
+                "(tests/drmcp/acceptance/test_otel_tools.py) as an OTel telemetry target. "
+                "Deleted automatically at the end of the run; safe to delete if left behind."
+            ),
         )
-        spans = result.get("spans") or []
-        error_spans = [s for s in spans if s.get("status_code") == "ERROR"]
-        if not error_spans:
-            pytest.skip(
-                f"Trace {otel_failing_trace_id} has no ERROR-status span in the first 100; "
-                "set TEST_OTEL_FAILING_SPAN_ID to run this case."
-            )
-        return str(error_spans[0]["span_id"])
     except Exception as exc:
-        pytest.skip(f"Could not discover a failing OTel span for acceptance tests: {exc}")
+        pytest.skip(f"Could not create a Use Case for the OTel acceptance tests: {exc}")
+
+    def _teardown() -> None:
+        for warning in cleanup_use_case(dr_client, rest_client, use_case_id):
+            print(f"Warning: {warning}")
+
+    if os.environ.get("TEST_OTEL_KEEP_ENTITY"):
+        print(
+            f"TEST_OTEL_KEEP_ENTITY set: keeping use case {use_case_id} "
+            f"(dr xp --entity-id {use_case_id} --enable-logs)"
+        )
+    else:
+        request.addfinalizer(_teardown)
+
+    ingest_base_url = otel_ingest_base_url(rest_client.endpoint)
+    try:
+        emitted = emit_failing_agent_run(
+            ingest_base_url=ingest_base_url,
+            headers=otel_ingest_headers(
+                OTEL_ACCEPTANCE_ENTITY_TYPE,
+                use_case_id,
+                rest_client.token or os.environ.get("DATAROBOT_API_TOKEN", ""),
+            ),
+            run_label=run_label,
+        )
+    except RuntimeError as exc:
+        pytest.fail(f"OTLP export to {ingest_base_url} for use case {use_case_id} failed: {exc}")
+    try:
+        elapsed = wait_for_otel_ingestion(
+            rest_client, OTEL_ACCEPTANCE_ENTITY_TYPE, use_case_id, emitted
+        )
+    except ClientError as exc:
+        if exc.status_code == 403:
+            pytest.skip(
+                f"Cannot read OTel data for {OTEL_ACCEPTANCE_ENTITY_TYPE}/{use_case_id} "
+                f"(403 -- usually the GENAI_EXPERIMENTATION flag or the "
+                f"AGENTIC_PREDICTIVE_GOVERNANCE_BUILDER seat license): {exc}"
+            )
+        raise
+    except TimeoutError as exc:
+        pytest.fail(str(exc))
+    print(
+        f"Provisioned OTel acceptance entity {OTEL_ACCEPTANCE_ENTITY_TYPE}/{use_case_id}: "
+        f"failing trace {emitted.failing_trace_id} span {emitted.failing_span_id} "
+        f"(readable {elapsed:.0f}s after export)"
+    )
+    return OtelAcceptanceEntity(
+        entity_type=OTEL_ACCEPTANCE_ENTITY_TYPE,
+        entity_id=use_case_id,
+        failing_trace_id=emitted.failing_trace_id,
+        failing_span_id=emitted.failing_span_id,
+    )
+
+
+@pytest.fixture(scope="session")
+def otel_entity_type(otel_acceptance_entity: OtelAcceptanceEntity) -> str:
+    """Entity type for OTel acceptance tests (``experiment_container`` when provisioned)."""
+    return otel_acceptance_entity.entity_type
+
+
+@pytest.fixture(scope="session")
+def otel_entity_id(otel_acceptance_entity: OtelAcceptanceEntity) -> str:
+    """Entity id for OTel acceptance tests (the provisioned Use Case id by default)."""
+    return otel_acceptance_entity.entity_id
+
+
+@pytest.fixture(scope="session")
+def otel_failing_trace_id(otel_acceptance_entity: OtelAcceptanceEntity) -> str:
+    """trace_id of an error-status trace on the OTel acceptance entity."""
+    return otel_acceptance_entity.failing_trace_id
+
+
+@pytest.fixture(scope="session")
+def otel_failing_span_id(otel_acceptance_entity: OtelAcceptanceEntity) -> str:
+    """span_id of an ERROR-status span within ``otel_failing_trace_id``."""
+    return otel_acceptance_entity.failing_span_id
 
 
 _FILES_API_TEST_FILENAME = "acceptance-test.txt"

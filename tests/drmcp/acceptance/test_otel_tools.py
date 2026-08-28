@@ -28,11 +28,16 @@ first. The three cases below are the ones plan §7 names explicitly:
   directly is the right move, not re-fetching the whole trace again.
 * "any errors in the logs for this deployment?" -> otel_logs_list(level="error").
 
-These need a real, already-failing entity to be meaningful (an entity with no
+These need an entity that is actually failing to be meaningful (an entity with no
 OTel data, or no error traces, would fail these tests for a data reason, not a
-tool-description reason) -- see the ``otel_entity_id``/``otel_failing_trace_id``/
-``otel_failing_span_id`` fixtures in conftest.py for how that entity is
-configured or discovered.
+tool-description reason). Rather than depend on a real one existing somewhere,
+the ``otel_acceptance_entity`` fixture in conftest.py provisions its own: a Use
+Case (``experiment_container``) into which it OTLP-exports a small failing
+agentic run -- an ``agent.run`` whose ``llm.chat`` span errored with a 429 and
+carries LLM output, plus an error-level log line correlated to that span --
+waits for the REST API to read it back, and deletes it at session end (see
+``tests/drmcp/helpers/otel_entity.py``). ``TEST_OTEL_ENTITY_ID`` opts back into
+running against a real, externally-instrumented entity instead.
 """
 
 import inspect
@@ -124,7 +129,7 @@ def expectations_for_show_llm_output_on_failing_span(
 
 
 @pytest.fixture(scope="session")
-def expectations_for_logs_errors_for_deployment(
+def expectations_for_logs_errors_for_entity(
     otel_entity_type: str, otel_entity_id: str
 ) -> ETETestExpectations:
     return ETETestExpectations(
@@ -203,12 +208,12 @@ class TestOtelToolsE2E(ToolBaseE2E):
                 test_name,
             )
 
-    async def test_logs_errors_for_deployment(
+    async def test_logs_errors_for_entity(
         self,
         llm_client: Any,
         otel_entity_type: str,
         otel_entity_id: str,
-        expectations_for_logs_errors_for_deployment: ETETestExpectations,
+        expectations_for_logs_errors_for_entity: ETETestExpectations,
     ) -> None:
         """LLM checks for error-level OTel logs via otel_logs_list(level="error")."""
         prompt = (
@@ -217,10 +222,10 @@ class TestOtelToolsE2E(ToolBaseE2E):
         )
         async with ete_test_mcp_session() as session:
             frame = inspect.currentframe()
-            test_name = frame.f_code.co_name if frame else "test_logs_errors_for_deployment"
+            test_name = frame.f_code.co_name if frame else "test_logs_errors_for_entity"
             await self._run_test_with_expectations(
                 prompt,
-                expectations_for_logs_errors_for_deployment,
+                expectations_for_logs_errors_for_entity,
                 llm_client,
                 session,
                 test_name,
