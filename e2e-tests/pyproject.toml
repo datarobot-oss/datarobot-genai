@@ -101,7 +101,6 @@ constraint-dependencies = [
     "pyarrow>=23.0.1",
     "pyasn1>=0.6.4",
     "pygments>=2.20.0",
-    "pymdown-extensions>=11.0.1",
     "pypdf>=6.15.0",
     "pytest>=9.0.3",
     "python-multipart>=0.0.31",
@@ -110,7 +109,6 @@ constraint-dependencies = [
     "soupsieve>=2.8.4",
     "starlette>=1.3.1",
     "tornado>=6.5.7",
-    "transformers>=5.5.0",
     "urllib3>=2.7.0",
 ]
 override-dependencies = [
