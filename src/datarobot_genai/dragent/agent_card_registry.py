@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 from collections.abc import Iterator
 from typing import Any
 from typing import Literal
@@ -528,50 +529,38 @@ class AgentCardRegistry:
         if isinstance(backend, LayeredAgentCardCacheBackend):
             backend.memory.age_entry_for_test(lookup_key, seconds)
 
+    async def _uncached(self, ids: Iterable[str], *, key_type: LookupKeyType) -> list[str]:
+        """Return the *ids* of *key_type* that are not cached within the soft TTL."""
+        return [i for i in ids if not await self._is_fresh(i, key_type=key_type)]
+
     async def _flush_pending(self) -> None:
         """Batch-fetch all registered-but-uncached IDs.  Must be called under ``_lock``."""
-        missing_dep = [
-            d
-            for d in self._pending_deployment_ids
-            if not await self._is_fresh(d, key_type="deployment")
-        ]
-        missing_ext = [
-            e
-            for e in self._pending_external_ids
-            if not await self._is_fresh(e, key_type="external")
-        ]
-        missing_wl = [
-            w
-            for w in self._pending_workload_ids
-            if not await self._is_fresh(w, key_type="workload")
-        ]
+        missing: dict[LookupKeyType, list[str]] = {
+            "deployment": await self._uncached(self._pending_deployment_ids, key_type="deployment"),
+            "external": await self._uncached(self._pending_external_ids, key_type="external"),
+            "workload": await self._uncached(self._pending_workload_ids, key_type="workload"),
+        }
 
         # Clear pending sets regardless — they've been processed
         self._pending_deployment_ids.clear()
         self._pending_external_ids.clear()
         self._pending_workload_ids.clear()
 
-        await self._fetch_and_store_by_kind(missing_dep, missing_ext, missing_wl)
+        await self._fetch_and_store_by_kind(missing)
 
     async def _fetch_and_store_by_kind(
         self,
-        deployment_ids: list[str],
-        external_ids: list[str],
-        workload_ids: list[str],
+        ids_by_kind: dict[LookupKeyType, list[str]],
     ) -> None:
         """Fetch and cache each ID kind in its **own** request.
 
         Kinds are never combined: ``deploymentIds`` + ``workloadIds`` is an HTTP
         400, and either mixed with ``externalIds`` AND-matches to nothing.
         """
-        for param, ids in (
-            (_DEPLOYMENT_IDS_PARAM, deployment_ids),
-            (_EXTERNAL_IDS_PARAM, external_ids),
-            (_WORKLOAD_IDS_PARAM, workload_ids),
-        ):
+        for key_type, ids in ids_by_kind.items():
             if not ids:
                 continue
-            parsed = await self._fetch({param: ",".join(ids)})
+            parsed = await self._fetch({_id_param_for(key_type): ",".join(ids)})
             await self._store_cards(parsed)
 
     # ------------------------------------------------------------------
@@ -603,23 +592,17 @@ class AgentCardRegistry:
             Workload IDs to prefetch.
         """
         async with self._lock:
-            missing_dep = [
-                d
-                for d in (deployment_ids or [])
-                if not await self._is_fresh(d, key_type="deployment")
-            ]
-            missing_ext = [
-                e for e in (external_ids or []) if not await self._is_fresh(e, key_type="external")
-            ]
-            missing_wl = [
-                w for w in (workload_ids or []) if not await self._is_fresh(w, key_type="workload")
-            ]
+            missing: dict[LookupKeyType, list[str]] = {
+                "deployment": await self._uncached(deployment_ids or [], key_type="deployment"),
+                "external": await self._uncached(external_ids or [], key_type="external"),
+                "workload": await self._uncached(workload_ids or [], key_type="workload"),
+            }
 
-            if not missing_dep and not missing_ext and not missing_wl:
+            if not any(missing.values()):
                 logger.debug("All requested agent cards already cached — skipping prefetch.")
                 return
 
-            await self._fetch_and_store_by_kind(missing_dep, missing_ext, missing_wl)
+            await self._fetch_and_store_by_kind(missing)
 
     async def refresh_all_registered(self) -> None:
         """Re-fetch registered IDs whose cache entries are past the soft TTL.
