@@ -20,6 +20,11 @@ from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import ToolError as FastMCPToolError
+from opentelemetry import baggage
+from opentelemetry import context as otel_context
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 
@@ -595,3 +600,61 @@ class TestMiddlewareRecordsToolMetrics:
         assert name == "predict"
         assert duration >= 0
         assert error is boom
+
+
+class TestOnCallToolReadsAgentNameFromBaggage:
+    """The tool span reads ``gen_ai.agent.name`` back out of Baggage, already
+    attached by ``with_otel_context`` before this middleware's span opens.
+    """
+
+    @pytest.fixture
+    def span_exporter(self, monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        monkeypatch.setattr(
+            telemetry.trace, "get_tracer", lambda *a, **k: provider.get_tracer(__name__)
+        )
+        return exporter
+
+    @pytest.fixture
+    def middleware(self, span_exporter: InMemorySpanExporter) -> OpenTelemetryMiddleware:
+        return OpenTelemetryMiddleware()
+
+    @pytest.mark.asyncio
+    async def test_agent_name_in_baggage_is_set_on_the_tool_span(
+        self,
+        middleware: OpenTelemetryMiddleware,
+        span_exporter: InMemorySpanExporter,
+    ) -> None:
+        context = Mock()
+        context.message.name = "vdb_query"
+        context.message.arguments = {"q": "hello"}
+        call_next = AsyncMock(return_value=Mock())
+
+        token = otel_context.attach(baggage.set_baggage("gen_ai.agent.name", "researcher"))
+        try:
+            await middleware.on_call_tool(context, call_next)
+        finally:
+            otel_context.detach(token)
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].attributes["gen_ai.agent.name"] == "researcher"
+
+    @pytest.mark.asyncio
+    async def test_no_agent_name_in_baggage_leaves_the_attribute_unset(
+        self,
+        middleware: OpenTelemetryMiddleware,
+        span_exporter: InMemorySpanExporter,
+    ) -> None:
+        context = Mock()
+        context.message.name = "vdb_query"
+        context.message.arguments = {"q": "hello"}
+        call_next = AsyncMock(return_value=Mock())
+
+        await middleware.on_call_tool(context, call_next)
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert "gen_ai.agent.name" not in spans[0].attributes
