@@ -53,7 +53,6 @@ AGENT_SPAN_NAME = "datarobot_agent"
 # Span attributes that map to deployment Tracing table columns.
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
-TOOL_NAME = "tool_name"  # Tools column
 ERROR_TYPE = "error.type"  # Failed span classification
 
 # AG-UI event types that carry assistant text deltas.
@@ -104,17 +103,19 @@ def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventRespon
 
 
 def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
-    """Emit a short-lived span carrying ``tool_name`` for each tool-call start.
+    """Emit a short-lived span carrying ``gen_ai.tool.name`` for each tool-call start.
 
     NAT reports tool execution via intermediate-step end events we can't wrap,
     but it does surface a ``ToolCallStartEvent``. Creating and immediately
-    ending a span with the ``tool_name`` attribute is enough to populate the
-    Tracing table Tools column.
+    ending a span with the ``gen_ai.tool.name`` attribute is enough to populate
+    the Tracing table Tools column - using the semconv name directly (rather
+    than the bare ``tool_name`` this used to set) keeps these calls out of
+    Datavolt's deprecated-attribute bucket.
     """
     for event in response.events:
         if isinstance(event, ToolCallStartEvent):
             with tracer.start_as_current_span(event.tool_call_name) as span:
-                span.set_attribute(TOOL_NAME, event.tool_call_name)
+                span.set_attribute(DataRobotSpanAttributes.GEN_AI_TOOL_NAME, event.tool_call_name)
 
 
 class DataRobotOtelConventionsMiddlewareConfig(

@@ -16,7 +16,7 @@
 
 The middleware wraps every workflow invocation in a ``datarobot_agent`` SDK
 span and maps the last user message to ``gen_ai.prompt``, the workflow output to
-``gen_ai.completion``, and tool-call starts to short-lived ``tool_name`` spans.
+``gen_ai.completion``, and tool-call starts to short-lived ``gen_ai.tool.name`` spans.
 Tests drive the middleware against a real in-memory span exporter so assertions
 look at the spans/attributes that would actually be exported.
 """
@@ -52,7 +52,6 @@ from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware impor
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import ERROR_TYPE
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import GEN_AI_COMPLETION
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import GEN_AI_PROMPT
-from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import TOOL_NAME
 from datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware import (
     DataRobotOtelConventionsMiddleware,
 )
@@ -303,7 +302,7 @@ async def test_invoke_event_response_sets_completion_and_tool_spans(
     assert agent_span.attributes[GEN_AI_COMPLETION] == "done"
 
     tool_span = _span_named(span_exporter, "lookup")
-    assert tool_span.attributes[TOOL_NAME] == "lookup"
+    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_TOOL_NAME] == "lookup"
 
 
 async def test_invoke_unknown_input_sets_no_prompt(
@@ -520,7 +519,7 @@ async def test_stream_emits_tool_spans(
     )
 
     tool_span = _span_named(span_exporter, "search")
-    assert tool_span.attributes[TOOL_NAME] == "search"
+    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_TOOL_NAME] == "search"
 
 
 async def test_stream_without_text_sets_no_completion(

@@ -37,6 +37,8 @@ from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
 from .a2a import create_agent_card
+from .agent_manifest import AgentManifest
+from .agent_manifest import build_agent_manifest
 from .claim_validation import GeneralOAuthClaimValidationMiddleware
 from .register import DRAgentA2AConfig
 from .session import DRAgentAGUISessionManager
@@ -267,6 +269,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         # Register DataRobot health routes (/, /ping, /ping/, /health, /health/).
         # NAT 1.6 no longer calls self.add_health_route() so we register here.
         self._register_health_routes(app)
+        self._register_agent_manifest_route(app)
 
         self._add_audience_validation_middleware(app)
 
@@ -319,6 +322,30 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             )
 
             logger.info(f"Added health check endpoint at {path}")
+
+    def _register_agent_manifest_route(self, app: FastAPI) -> None:
+        """Register the well-known Agent Manifest endpoint.
+
+        Built once from ``self._config`` here (not per-request) since the
+        manifest is a static reflection of the declared workflow.yaml
+        structure, not a live computation.
+        """
+        manifest = build_agent_manifest(self._config)
+
+        async def agent_manifest() -> AgentManifest:
+            """Return the declared components, tools, and root agent for this running agent."""
+            return manifest
+
+        app.add_api_route(
+            path="/.well-known/agent-manifest.json",
+            endpoint=agent_manifest,
+            methods=["GET"],
+            response_model=AgentManifest,
+            description="Declared components, tools, and root agent for this running agent",
+            tags=["Agent Manifest"],
+        )
+
+        logger.info("Added Agent Manifest endpoint at /.well-known/agent-manifest.json")
 
 
 class _GunicornSettings(DataRobotAppFrameworkBaseSettings):
