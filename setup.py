@@ -76,7 +76,7 @@ llamaindex = core + [
     "nvidia-nat-llama-index==1.7.0",
     "opentelemetry-instrumentation-llamaindex>=0.62.1,<1.0.0",
     "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
-    # >=0.4.0 for GEN_AI_AGENT_NAME (PBMP-8006 SDK-1)
+    # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
 ]
 
@@ -90,7 +90,7 @@ dragent = core + [
     "mem0ai>=1.0.4,<2.0.0",
     "starlette>=1.0.1",  # CVE fix
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
-    # >=0.4.0 for GEN_AI_AGENT_NAME (PBMP-8006 SDK-1)
+    # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
 ]
 

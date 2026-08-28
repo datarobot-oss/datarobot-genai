@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """Agent Manifest: a static reflection of a running agent's declared NAT
-workflow structure, served at ``/.well-known/agent-manifest.json`` (PBMP-8006
-SDK-3) alongside the existing A2A ``/.well-known/agent-card.json``.
+workflow structure, served at ``/.well-known/agent-manifest.json`` alongside
+the existing A2A ``/.well-known/agent-card.json``.
 
 Unlike the A2A agent card (hand-authored ``skills``/``description`` metadata,
 see :mod:`~datarobot_genai.dragent.frontends.a2a`), this manifest is derived
@@ -23,10 +23,9 @@ entirely from ``workflow.yaml``'s own declared structure - the
 :class:`~nat.data_models.config.Config` - so it needs no separate
 configuration and can never drift from what the agent actually declares.
 
-The manifest's own wire format is provisional: the downstream consumer
-(workload-api's manifest-parsing task, WAPI-1) hasn't landed yet, so there is
-no authoritative schema to match against. This shape may need to change once
-that lands.
+The manifest's own wire format is provisional: workload-api's manifest-parsing
+consumer hasn't landed yet, so there is no authoritative schema to match
+against. This shape may need to change once that lands.
 """
 
 from __future__ import annotations
