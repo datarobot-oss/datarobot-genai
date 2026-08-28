@@ -35,3 +35,9 @@ function_groups:
     registry:
       external_id: "abcd"
     auth_provider: okta_auth
+
+  a2a_agent_with_registry3:
+    _type: authenticated_a2a_client
+    registry:
+      workload_id: "wl-5678"
+    auth_provider: okta_auth

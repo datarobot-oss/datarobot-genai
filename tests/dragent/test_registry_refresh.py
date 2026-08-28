@@ -21,10 +21,36 @@ import pytest
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
+from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 
 _MODULE = "datarobot_genai.dragent.registry_refresh"
+
+_SAMPLE_AGENT_CARD = {
+    "name": "Test Agent",
+    "description": "A test agent",
+    "url": "https://agent.example.com/a2a/",
+    "version": "1.0.0",
+    "skills": [],
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "capabilities": {"streaming": False},
+}
+
+
+def _card(**overrides):
+    from a2a.types import AgentCard
+
+    return AgentCard.model_validate({**_SAMPLE_AGENT_CARD, **overrides})
+
+
+def _parsed(cards: dict) -> ParsedRegistryCards:
+    return ParsedRegistryCards(
+        cards=cards,
+        key_types={key: "deployment" for key in cards},
+        registry_ids={},
+    )
 
 
 class TestAgentCardRegistryRefresh:
@@ -34,7 +60,7 @@ class TestAgentCardRegistryRefresh:
             yield m
 
     async def test_refresh_skips_fresh_entries(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card")}
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
         registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
@@ -44,27 +70,27 @@ class TestAgentCardRegistryRefresh:
         mock_fetch.assert_not_awaited()
 
     async def test_refresh_refetches_soft_expired_entries(self, mock_fetch):
-        mock_fetch.return_value = {"dep-1": MagicMock(name="card")}
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
         registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         mock_fetch.reset_mock()
-        mock_fetch.return_value = {"dep-1": MagicMock(name="refreshed")}
+        mock_fetch.return_value = _parsed({"dep-1": _card(name="Refreshed Agent")})
         await registry.refresh_all_registered()
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
     async def test_refresh_logs_on_failure_without_raising(self, mock_fetch):
         mock_fetch.side_effect = [
-            {"dep-1": MagicMock(name="card")},
+            _parsed({"dep-1": _card()}),
             AgentCardRegistryError("registry down"),
         ]
         registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
-        registry._cache["dep-1"].fetched_at -= 120
+        registry._age_cache_entry_for_test("dep-1", 120)
 
         await registry.refresh_all_registered()
 

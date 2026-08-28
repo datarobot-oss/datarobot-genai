@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.9
+- `dragent`: `registry` in `workflow.yaml` accepts `workload_id` alongside `deployment_id` and `external_id`, so an agent served by the Workload API runtime — where its card is keyed by workload rather than deployment — is reachable through the central agent card registry. Lookups query `workloadIds`, cache under a `workload:` key (L1 and MemorySpace L2), and take part in startup prefetch, background refresh and stale-if-error like the other two kinds. A workload card that also publishes an `external.id` stays reachable by either ID.
+- `dragent`: each registry request now carries exactly **one** ID kind. `deploymentIds` + `workloadIds` in one request is rejected by the API with HTTP 400 (not an empty result like `deploymentIds` + `externalIds`), so the client fetches one kind per call and raises before issuing a request that mixes the two.
+- `dragent`: **fixed** registry requests exceeding the API's cap of 20 IDs per parameter — a workflow with more than 20 registry-backed function groups sent them all in one `deploymentIds`/`externalIds` value and got an HTTP 400. ID lists are now split into chunks of 20; entries from every chunk are merged before parsing, so `AGENT_CARD_REGISTRY_ON_DUPLICATE` still applies across the whole result set.
+
+## 0.29.8
+- `dragent`: agent card registry MemorySpace L2 uses write-behind instead of write-through so connect-time registry fetches are not blocked on MemorySpace round-trips.
+- `dragent`: layered agent card cache skips L2 on soft-expired L1 hits; cold-path fresh L2 reads are bounded by a short timeout so a slow MemorySpace cannot delay registry fetch (stale-if-error L2 reads are not bounded).
+- `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
+- `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
+- `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
+
+## 0.29.7
+- `drmcp/core/config`: Added `oauth_claim_validation` MCP config.
+- `drmcp/core/middleware.py`: Refactored MCP authorization validation middlewares
+
+## 0.29.6 - 2026-08-26
+- Add a `authlib` floor at `>=1.7.1`.
+- Raise the `pip` floor from `>=26.1.2` to `>=26.2`.
+
+## 0.29.5
+- Enable `cve-sync` automation in the repo
+
+## 0.29.4
+- `dragent`: agent card registry uses in-process L1 cache with optional DataRobot MemorySpace L2 (read-through/write-through over the agentic memory Session API) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is set; falls back to L1-only when no memory space is configured.
+- `dragent`: pluggable agent card registry cache backends with stale-if-error bounded by `AGENT_CARD_REGISTRY_CACHE_TTL`.
+- `dragent`: L1 read-through of an L2 agent card hit preserves the original ``fetched_at``, so soft TTL and max-staleness are not reset on promotion.
+
+## 0.29.3
+- `dragent`: **fixed `authenticated_a2a_client` groups overwriting each other's agent card on a shared `auth_provider`.** Function groups are built per user, but `WorkflowBuilder.get_auth_provider` returns one instance per configured name and `PerUserWorkflowBuilder` delegates to it — so every group called `set_agent_card()` on the same object and the last one to connect decided `target_audience`, `token_url` and `id_jag_scopes` for all of them. Two A2A function groups sharing an `auth_provider`, or two users active at once, could mint a token for the wrong agent; the receiving agent rejects it on the audience check, so this failed closed, but it showed up as intermittent auth failures.
+- A group that resolves an `AgentCardAware` auth provider now takes its own copy of it, so the card it fetched stays with the agent it fetched it from. Configuration and credentials are unchanged and still shared.
+
 ## 0.29.2
 - `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block.
 - `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when a registry fetch fails.
