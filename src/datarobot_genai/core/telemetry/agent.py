@@ -106,9 +106,16 @@ def instrument() -> None:
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
     if is_hosted_runtime():
+        from .datarobot_otel import bootstrap_otel_metrics_provider_for_datarobot
         from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()
+
+        # Must run before datarobot_dome builds its pipeline: OtelMetricSession
+        # captures get_meter_provider() at construction and binds force_flush to a
+        # no-op when the provider has none. instrument() runs at register.py import
+        # time and the middleware builds the pipeline later, so this already holds.
+        bootstrap_otel_metrics_provider_for_datarobot()
 
     _instrument_threading()
     _instrument_http_clients()

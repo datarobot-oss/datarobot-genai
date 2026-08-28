@@ -38,8 +38,10 @@ Inside a DataRobot deployment, the minimal ``workflow.yaml`` is::
           _type: datarobot_otelcollector
           project: "agent"
 
-Explicit overrides for any of the three auto-derived fields are honored —
-pin them in ``workflow.yaml`` to point at a non-default collector.
+``endpoint`` is the only auto-derived field; pin it in ``workflow.yaml`` to
+point at a non-default collector. Auth and entity headers are resolved from the
+environment by the factory below and merged with ``extra_headers``, which wins
+on collision.
 """
 
 from __future__ import annotations

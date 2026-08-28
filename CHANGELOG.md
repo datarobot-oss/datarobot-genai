@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.15
+- `dragent`: **moderation OTel metrics (`datarobot.moderations.*`) now export from agents running as DataRobot Workloads.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to the `<host>/otel` base and `instrument()` installs a global OTel `MeterProvider` in hosted runtimes; metrics attribute to `workload-<id>` or `deployment-<id>` (deployment wins when both are set). Previously no `MeterProvider` was ever installed, so `datarobot_dome`'s guardrail instruments recorded into the default no-op proxy and nothing left the process — dead in deployments too, masked there by the deployment-only custom-metrics path. DataRobot custom metrics remain deployment-only; `datarobot_dome` has no workload equivalent.
+- `docs/src/dragent/tracing.md`: added a moderation-metrics section, documented `WORKLOAD_ID` in the entity-id fallback table, and replaced the `datarobot_api_key` / `datarobot_entity_id` `workflow.yaml` fields — which no longer exist on `DataRobotOtelCollectorTelemetryExporter` — with a description of the headers they used to set and how to override them.
+
 ## 0.29.14 - 2026-08-31
 - Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
 

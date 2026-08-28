@@ -49,10 +49,17 @@ Fields:
 |---|---|---|---|
 | `project` | yes | — | OTel `service.name` for spans emitted by this workflow. |
 | `endpoint` | no | `<DATAROBOT_(PUBLIC_)ENDPOINT>/otel/v1/traces` | Full OTLP/HTTP endpoint override. |
-| `datarobot_api_key` | no | `DATAROBOT_API_TOKEN` env var | Sent as the `X-DataRobot-Api-Key` header. |
-| `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header. Non-empty values must keep the `deployment-` prefix. |
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
+
+### Auth and entity headers
+
+The exporter always sends two DataRobot headers. They are **not** `workflow.yaml` fields — the exporter resolves them from the environment on every startup, then merges `extra_headers` over the top, so `extra_headers` is how you override either one.
+
+| Header | Resolved from | Notes |
+|---|---|---|
+| `X-DataRobot-Api-Key` | `DATAROBOT_API_TOKEN` | Omitted (along with the entity header) when the token is missing. |
+| `X-DataRobot-Entity-Id` | `MLOPS_DEPLOYMENT_ID` → `deployment-<id>`, or `WORKLOAD_ID` → `workload-<id>` | Deployment wins when both are set. The `deployment-` / `workload-` prefix is required by the ingest and added for you. Overrides are **not** validated locally, so an unprefixed value is sent as-is and the ingest drops the spans. |
 
 Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are inherited from NAT's `BatchConfigMixin`; defaults are fine for most agents.
 
@@ -92,7 +99,7 @@ When the OTLP vars are not set, the runtime **falls back** to deriving the endpo
 | Fallback variable | Used for | Missing → |
 |---|---|---|
 | `DATAROBOT_API_TOKEN` | `X-DataRobot-Api-Key` header | Silent no-op; no spans reach DataRobot. |
-| `MLOPS_DEPLOYMENT_ID` | `X-DataRobot-Entity-Id` (auto-prefixed `deployment-<id>`) | Silent no-op; no spans reach DataRobot. |
+| `MLOPS_DEPLOYMENT_ID` **or** `WORKLOAD_ID` | `X-DataRobot-Entity-Id` (auto-prefixed `deployment-<id>` / `workload-<id>`; deployment wins when both are set) | Silent no-op; no spans reach DataRobot. |
 | `DATAROBOT_ENDPOINT` (or `DATAROBOT_PUBLIC_API_ENDPOINT`) | endpoint base; `/otel/v1/traces` appended | Silent no-op; no spans reach DataRobot. |
 
 Two caveats regardless of which path supplies the endpoint/headers:
@@ -124,9 +131,33 @@ after `dr auth login` in that terminal:
 dr xp --entity-id <use-case-id>
 ```
 
+## Moderation metrics
+
+When your agent runs the `datarobot_moderation` middleware, `datarobot_dome` can also export
+guardrail **metrics** over OTel, alongside the spans above. This works for agents running as
+DataRobot **workloads**, not just deployments.
+
+It is opt-in: set `OTEL_EXPORTER_OTLP_ENDPOINT` to the `<host>/otel` base. That single variable
+switches on both halves — `datarobot_dome` creates its OTel metric session, and `instrument()`
+installs the global `MeterProvider` those instruments record into. With the variable unset, both
+stay off and nothing is exported.
+
+| | |
+|---|---|
+| **Turn on with** | `OTEL_EXPORTER_OTLP_ENDPOINT=<host>/otel` (the same base the traces path uses) |
+| **What is exported** | `datarobot.moderations.*` counters, gauges, and histograms — one per guard metric |
+| **Attributed to** | the same entity as spans: `workload-<id>` or `deployment-<id>`, deployment winning when both env vars are set |
+| **Export cadence** | `OTEL_METRIC_EXPORT_INTERVAL` (standard OTel variable; the SDK default is 60s) |
+| **Ingest path** | `<host>/otel/v1/metrics`, appended by the OTLP exporter |
+
+DataRobot **custom metrics** are a separate mechanism and remain deployment-only: they upload
+through a deployment-scoped route that needs `MLOPS_DEPLOYMENT_ID`, and `datarobot_dome` has no
+workload equivalent. In a workload, OTel metrics are the moderation-metrics path.
+
 ## Troubleshooting
 
 - **Data Exploration tab is empty**: Confirm the export is configured — `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` (primary) or the `DATAROBOT_*` fallback. Both span paths silently skip when neither supplies an endpoint and headers.
 - **NAT lifecycle spans appear but framework spans don't**: the framework `instrument()` (e.g. `datarobot_genai.langgraph.telemetry.instrument`) was not called, or was called after the framework imported. Move the call to the top of `register.py`.
 - **Framework or memory spans appear in a separate trace from workflow spans**: confirm `datarobot_otelcollector` is enabled in `workflow.yaml` and `instrument()` is called in `register.py` before the framework imports. The exporter bridges NAT context into the SDK and the bootstrap wraps the global `TracerProvider` so LangChain/LangGraph, HTTP `POST`, and memory spans share the active workflow trace.
-- **`datarobot_entity_id must be of the form 'deployment-<id>'`**: You set `datarobot_entity_id` manually without the `deployment-` prefix. Either add the prefix or omit the field inside a deployment — it auto-derives from `MLOPS_DEPLOYMENT_ID`.
+- **Spans stop arriving after setting `extra_headers`**: an `X-DataRobot-Entity-Id` override must keep the `deployment-` / `workload-` / `experiment_container-` prefix. Nothing validates it locally, so a malformed value fails silently at the ingest.
+- **Moderation metrics don't appear**: `OTEL_EXPORTER_OTLP_ENDPOINT` is not set. Both `datarobot_dome` and the `instrument()` meter-provider bootstrap read that variable and stay off without it — see [Moderation metrics](#moderation-metrics).

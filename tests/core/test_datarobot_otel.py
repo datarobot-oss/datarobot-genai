@@ -15,7 +15,10 @@
 from __future__ import annotations
 
 import pytest
+from opentelemetry import metrics
 from opentelemetry import trace
+from opentelemetry.metrics._internal import _ProxyMeterProvider
+from opentelemetry.sdk.metrics import MeterProvider as SdkMeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
@@ -31,6 +34,7 @@ _ENV_VARS = (
     "DATAROBOT_PUBLIC_API_ENDPOINT",
     "OTEL_SERVICE_NAME",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
     "OTEL_EXPORTER_OTLP_HEADERS",
 )
 
@@ -46,6 +50,35 @@ def clean_env(monkeypatch):
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
     return monkeypatch
+
+
+@pytest.fixture
+def clean_metrics_env(clean_env):
+    """clean_env plus a fresh global MeterProvider slot.
+
+    Unlike traces, the metrics globals live in opentelemetry.metrics._internal rather
+    than on the package itself, so patching opentelemetry.metrics._METER_PROVIDER would
+    raise AttributeError.
+    """
+    clean_env.setattr("opentelemetry.metrics._internal._METER_PROVIDER", None)
+    clean_env.setattr("opentelemetry.metrics._internal._METER_PROVIDER_SET_ONCE", Once())
+    # set_meter_provider also caches the provider on the module-level proxy, which
+    # outlives the test. Swap in a throwaway so the real one never sees a provider
+    # this test shuts down — otherwise later get_meter() calls return a NoOpMeter.
+    clean_env.setattr(
+        "opentelemetry.metrics._internal._PROXY_METER_PROVIDER", _ProxyMeterProvider()
+    )
+    clean_env.setitem(datarobot_otel._METRICS_BOOTSTRAP_STATE, "installed", False)
+    # A PeriodicExportingMetricReader ticks on a background thread and registers
+    # an atexit flush. Push the interval past any plausible test-suite runtime
+    # and shut the provider down afterwards so neither fires.
+    clean_env.setenv("OTEL_METRIC_EXPORT_INTERVAL", "600000")
+
+    yield clean_env
+
+    installed = metrics._internal._METER_PROVIDER
+    if isinstance(installed, SdkMeterProvider):
+        installed.shutdown()
 
 
 class TestEnvResolvers:
@@ -368,3 +401,158 @@ class TestBootstrapOtelProvider:
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is third_party
+
+
+class TestBootstrapOtelMetricsProvider:
+    @staticmethod
+    def _set_full_env(monkeypatch):
+        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
+        monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+
+    @staticmethod
+    def _spy_exporter(monkeypatch):
+        # The import is local inside the bootstrap function, so the symbol doesn't
+        # exist at module level. Patch it on the source module instead.
+        from opentelemetry.exporter.otlp.proto.http import metric_exporter as exporter_module
+
+        real_exporter_cls = exporter_module.OTLPMetricExporter
+        captured: dict = {}
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            exporter = real_exporter_cls(**kwargs)
+            captured["_exporter"] = exporter
+            return exporter
+
+        monkeypatch.setattr(exporter_module, "OTLPMetricExporter", spy)
+        return captured
+
+    def test_skips_when_no_otlp_endpoint(self, clean_metrics_env):
+        # The opt-in contract: a fully configured DataRobot env is NOT enough.
+        # Without the endpoint var dome creates no metric session to feed us.
+        self._set_full_env(clean_metrics_env)
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert not isinstance(metrics.get_meter_provider(), SdkMeterProvider)
+
+    def test_metrics_specific_endpoint_alone_does_not_satisfy_gate(self, clean_metrics_env):
+        # datarobot_dome only reads OTEL_EXPORTER_OTLP_ENDPOINT, so the signal-specific
+        # variable on its own would give us a provider dome never feeds.
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv(
+            "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "https://example.test/otel/v1/metrics"
+        )
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert not isinstance(metrics.get_meter_provider(), SdkMeterProvider)
+
+    def test_installs_provider_with_workload_env(self, clean_metrics_env):
+        # The case this whole change exists for.
+        captured = self._spy_exporter(clean_metrics_env)
+        clean_metrics_env.setenv("WORKLOAD_ID", "wkl42")
+        clean_metrics_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+
+        provider = metrics.get_meter_provider()
+        assert isinstance(provider, SdkMeterProvider)
+        assert provider._sdk_config.resource.attributes["service.name"] == "workload-wkl42"
+        assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
+        assert captured["headers"]["X-DataRobot-Entity-Id"] == "workload-wkl42"
+
+    def test_installs_provider_with_deployment_env(self, clean_metrics_env):
+        captured = self._spy_exporter(clean_metrics_env)
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+
+        provider = metrics.get_meter_provider()
+        assert provider._sdk_config.resource.attributes["service.name"] == "deployment-abc123"
+        assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+
+    def test_deployment_wins_over_workload(self, clean_metrics_env):
+        captured = self._spy_exporter(clean_metrics_env)
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("WORKLOAD_ID", "wkl99")
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+        assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+
+    def test_no_endpoint_kwarg_passed_to_exporter(self, clean_metrics_env):
+        # Endpoint resolution is delegated to the exporter's standard OTLP
+        # handling: OTEL_EXPORTER_OTLP_ENDPOINT + /v1/metrics, which lands on
+        # the DataRobot ingest's /otel/v1/metrics path.
+        captured = self._spy_exporter(clean_metrics_env)
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+        assert "endpoint" not in captured
+        # ...and that delegation actually lands on the DataRobot ingest path.
+        assert captured["_exporter"]._endpoint == "https://example.test/otel/v1/metrics"
+
+    def test_skips_when_credentials_missing(self, clean_metrics_env):
+        # Endpoint set but no API token: the ingest would reject the export.
+        clean_metrics_env.setenv("WORKLOAD_ID", "wkl42")
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert not isinstance(metrics.get_meter_provider(), SdkMeterProvider)
+
+    def test_skips_when_entity_id_missing(self, clean_metrics_env):
+        clean_metrics_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+
+    def test_idempotent_second_call(self, clean_metrics_env):
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+        provider_first = metrics.get_meter_provider()
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert metrics.get_meter_provider() is provider_first
+
+    def test_exporter_failure_does_not_propagate(self, clean_metrics_env):
+        # Telemetry setup must never take down the agent.
+        from opentelemetry.exporter.otlp.proto.http import metric_exporter as exporter_module
+
+        def boom(**kwargs):
+            raise RuntimeError("exporter is unhappy")
+
+        clean_metrics_env.setattr(exporter_module, "OTLPMetricExporter", boom)
+
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert not isinstance(metrics.get_meter_provider(), SdkMeterProvider)
+
+    def test_explicit_otel_service_name_wins(self, clean_metrics_env):
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_SERVICE_NAME", "my-pinned-service")
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is True
+        provider = metrics.get_meter_provider()
+        assert provider._sdk_config.resource.attributes["service.name"] == "my-pinned-service"
+
+    def test_skips_when_meter_provider_already_installed(self, clean_metrics_env):
+        # There is no public API to attach a reader to an existing
+        # MeterProvider, and OTel refuses to override the global slot — so we
+        # leave whoever got there first alone rather than logging a bogus
+        # "installed".
+        from opentelemetry.sdk.metrics import MeterProvider as SdkProvider
+
+        pre_existing = SdkProvider(shutdown_on_exit=False)
+        metrics.set_meter_provider(pre_existing)
+
+        self._set_full_env(clean_metrics_env)
+        clean_metrics_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.test/otel")
+
+        assert datarobot_otel.bootstrap_otel_metrics_provider_for_datarobot() is False
+        assert metrics.get_meter_provider() is pre_existing

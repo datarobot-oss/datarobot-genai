@@ -26,6 +26,8 @@ the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 * ``bootstrap_otel_provider_for_datarobot`` — install a global OTel SDK
   ``TracerProvider`` pointed at the DataRobot ingest so framework
   auto-instrumentors actually export spans.
+* ``bootstrap_otel_metrics_provider_for_datarobot`` — the same for a
+  ``MeterProvider``, so ``datarobot_dome``'s moderation instruments export.
 """
 
 from __future__ import annotations
@@ -48,6 +50,10 @@ logger = logging.getLogger(__name__)
 # process — short-circuit on this flag and don't trip OTel's "overriding"
 # warning.
 _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
+
+# Same, for the metrics bootstrap. Separate flag: the two have different
+# preconditions, so a skip on one must not block the other.
+_METRICS_BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 
 # The DataRobot OTel ingest expects entity ids (and deployment-derived service
 # names) in the ``deployment-<id>`` or ``workload-<id>`` shape. Single source
@@ -271,6 +277,83 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
         endpoint,
+        lower_headers.get("x-datarobot-entity-id", ""),
+    )
+    return True
+
+
+def bootstrap_otel_metrics_provider_for_datarobot() -> bool:
+    """Install a global OTel MeterProvider so moderation metrics reach DataRobot.
+
+    The metrics counterpart to bootstrap_otel_provider_for_datarobot. datarobot_dome
+    builds its guardrail instruments from the global meter provider, which dragent never
+    installed, so everything they recorded was quietly dropped.
+
+    Metrics are opt-in through OTEL_EXPORTER_OTLP_ENDPOINT — the same variable
+    dome checks before creating its metric session, so the two switch on together. They
+    are attributed to whichever entity the agent runs as, a workload or a deployment,
+    preferring the deployment when both are set.
+
+    Returns False, logging the reason, when credentials or an endpoint are missing, when
+    another MeterProvider is already installed, when it has already run, or when setup
+    failed.
+    """
+    # Not datarobot_opentelemetry.integrations.configure(), which does the same thing for
+    # metrics but also for traces and logs, with no way to ask for one signal. It would add
+    # a second span processor to the provider the tracer bootstrap just installed, so every
+    # span would export twice, and it would ship all agent logs to DataRobot as well.
+    if _METRICS_BOOTSTRAP_STATE["installed"]:
+        return False
+
+    # Opt-in switch; also stops the exporter falling back to its localhost default.
+    if not os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        logger.info(
+            "Skipping OTel MeterProvider bootstrap: OTEL_EXPORTER_OTLP_ENDPOINT "
+            "not set. Moderation metrics are opt-in."
+        )
+        return False
+
+    headers = resolve_datarobot_headers_from_env()
+    if not headers:
+        logger.info(
+            "Skipping OTel MeterProvider bootstrap: DataRobot auth/entity headers "
+            "not resolvable (MLOPS_DEPLOYMENT_ID or WORKLOAD_ID / DATAROBOT_API_TOKEN)."
+        )
+        return False
+
+    # Imported lazily, matching the tracer bootstrap above.
+    from opentelemetry import metrics
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.resources import Resource
+
+    try:
+        # Check the slot before building anything: the reader spawns a ticker thread
+        # at construction, so it must not be built on the skip path.
+        if isinstance(metrics.get_meter_provider(), MeterProvider):
+            logger.debug(
+                "Skipping OTel MeterProvider bootstrap: an SDK MeterProvider is "
+                "already installed; OTel does not allow overriding it."
+            )
+            return False
+
+        # No endpoint kwarg: standard OTLP resolution appends /v1/metrics to the
+        # <host>/otel base, landing on the DataRobot ingest path.
+        exporter = OTLPMetricExporter(headers=headers)
+        # No export_interval_millis — OTEL_METRIC_EXPORT_INTERVAL governs cadence.
+        reader = PeriodicExportingMetricReader(exporter)
+        resource = Resource.create({"service.name": _resolve_service_name()})
+        metrics.set_meter_provider(MeterProvider(metric_readers=[reader], resource=resource))
+    except Exception:
+        # Never let telemetry setup take down the agent.
+        logger.exception("Failed to bootstrap DataRobot OTel MeterProvider")
+        return False
+
+    _METRICS_BOOTSTRAP_STATE["installed"] = True
+    lower_headers = {k.lower(): v for k, v in headers.items()}
+    logger.info(
+        "DataRobot OTel MeterProvider installed (entity_id=%s)",
         lower_headers.get("x-datarobot-entity-id", ""),
     )
     return True
