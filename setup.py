@@ -92,6 +92,9 @@ dragent = core + [
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
     # >=0.4.0 for GEN_AI_AGENT_NAME (PBMP-8006 SDK-1)
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
+    # Memory Service light ORM (DRMemorySpace/DRSession/DREvent), used to back the
+    # agent card registry's MemorySpace L2 cache instead of a hand-rolled Session client.
+    "datarobot[application-utils]>=3.19.0rc0,<4.0.0",  # rc0: application_utils.persistence is unreleased
 ]
 
 # auth is standalone set of dependencies for auth utilities only

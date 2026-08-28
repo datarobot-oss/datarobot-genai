@@ -23,6 +23,7 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import AgentCard
+from datarobot.application_utils.persistence import DRMemoryServiceClient
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheRecord
@@ -52,7 +53,10 @@ _IDS = RegistryIds(deployment_id="dep-1", external_id="ext-1")
 
 @pytest.fixture
 def memory_space_backend():
-    kv = MemorySpaceKVCache(memory_space_id="space-1")
+    client = DRMemoryServiceClient(
+        endpoint="https://app.datarobot.com/api/v2", api_token="test-token"
+    )
+    kv = MemorySpaceKVCache(memory_space_id="space-1", client=client)
     return MemorySpaceAgentCardCacheBackend(kv_cache=kv)
 
 
@@ -304,9 +308,11 @@ class TestCreateAgentCardCacheBackend:
             agent_card_registry_cache_ttl=0,
         )
         with patch(
-            "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-            return_value=True,
-        ) as configure_mock:
+            "datarobot_genai.dragent.agent_card_registry_backends.try_build_memory_service_client",
+            return_value=DRMemoryServiceClient(
+                endpoint="https://app.datarobot.com/api/v2", api_token="test-token"
+            ),
+        ) as build_client_mock:
             from datarobot_genai.dragent.agent_card_registry_backends import (
                 MemoryAgentCardCacheBackend,
             )
@@ -314,13 +320,13 @@ class TestCreateAgentCardCacheBackend:
             backend = create_agent_card_cache_backend(config)
 
         assert type(backend) is MemoryAgentCardCacheBackend
-        configure_mock.assert_not_called()
+        build_client_mock.assert_not_called()
 
     def test_l1_only_when_memory_client_unconfigured(self):
         config = AgentCardRegistryConfig(agent_card_registry_memory_space_id="space-123")
         with patch(
-            "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-            return_value=False,
+            "datarobot_genai.dragent.agent_card_registry_backends.try_build_memory_service_client",
+            return_value=None,
         ):
             from datarobot_genai.dragent.agent_card_registry_backends import (
                 MemoryAgentCardCacheBackend,
@@ -338,13 +344,15 @@ class TestCreateAgentCardCacheBackend:
         }
         with patch.dict("os.environ", env, clear=False):
             with patch(
-                "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-                return_value=True,
-            ) as configure_mock:
+                "datarobot_genai.dragent.agent_card_registry_backends.try_build_memory_service_client",
+                return_value=DRMemoryServiceClient(
+                    endpoint="https://app.datarobot.com/api/v2", api_token="test-token"
+                ),
+            ) as build_client_mock:
                 backend = create_agent_card_cache_backend(config)
 
         assert isinstance(backend, LayeredAgentCardCacheBackend)
-        configure_mock.assert_called_once()
+        build_client_mock.assert_called_once()
 
 
 class TestLayeredAgentCardCacheBackend:

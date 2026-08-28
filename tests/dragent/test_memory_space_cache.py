@@ -14,57 +14,74 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
-from unittest.mock import MagicMock
-from unittest.mock import patch
 
+import httpx
 import pytest
+import respx
+from datarobot.application_utils.persistence import DRMemoryServiceClient
+from datarobot.application_utils.persistence.markers import SYSTEM_PARTICIPANT
 
-from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
-from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_build_memory_service_client
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
+BASE = "https://app.datarobot.com/api/v2"
+MEMORY_BASE = f"{BASE}/memory"
+SPACE_ID = "space-1"
+SESSIONS_URL = f"{MEMORY_BASE}/{SPACE_ID}/sessions/"
+SESSION_ID = "sess-1"
+SESSION_URL = f"{SESSIONS_URL}{SESSION_ID}/"
+EVENTS_URL = f"{SESSION_URL[:-1]}/events/"
+LOGICAL_KEY = "dragent:agent_card:dep-1"
 
-class _FakeEvent:
-    def __init__(self, *, sequence_id: int, body: dict[str, Any] | None) -> None:
-        self.sequence_id = sequence_id
-        self.body = body
+
+def _session_wire(
+    *,
+    session_id: str = SESSION_ID,
+    dedup_key: str = LOGICAL_KEY,
+    version: int = 1,
+) -> dict[str, Any]:
+    return {
+        "id": session_id,
+        "participants": [SYSTEM_PARTICIPANT],
+        "description": "//dragent-cache/",
+        "deduplicationKey": dedup_key,
+        "metadata": {},
+        "lifecycleStrategies": [],
+        "version": version,
+        "createdAt": "2026-06-30T00:00:00Z",
+    }
 
 
-class _FakeSession:
-    def __init__(self, session_id: str = "sess-1") -> None:
-        self.id = session_id
-        self.metadata: dict[str, Any] = {}
-        self._events: list[_FakeEvent] = []
-        self.post_event = MagicMock(side_effect=self._post_event)
-        self.update_event = MagicMock(side_effect=self._update_event)
-        self.delete = MagicMock()
+def _event_wire(*, sequence_id: int = 0, content: str = "payload") -> dict[str, Any]:
+    return {
+        "sequenceId": sequence_id,
+        "createdAt": "2026-06-30T00:00:01Z",
+        "eventType": "status",
+        "emitterType": "agent",
+        "emitterId": None,
+        "body": {"content": content},
+    }
 
-    def events(self, **kwargs: Any) -> list[_FakeEvent]:
-        if "last_n" in kwargs:
-            return self._events[-kwargs["last_n"] :]
-        return list(self._events)
 
-    def _post_event(self, **kwargs: Any) -> _FakeEvent:
-        event = _FakeEvent(sequence_id=len(self._events) + 1, body=kwargs.get("body"))
-        self._events.append(event)
-        return event
+def _items(*wires: dict[str, Any]) -> dict[str, Any]:
+    return {"items": list(wires), "total": len(wires)}
 
-    def _update_event(self, sequence_id: int, **kwargs: Any) -> None:
-        for event in self._events:
-            if event.sequence_id == sequence_id:
-                if "body" in kwargs:
-                    event.body = kwargs["body"]
-                return
-        raise KeyError(sequence_id)
+
+def _client() -> DRMemoryServiceClient:
+    return DRMemoryServiceClient(
+        endpoint=BASE,
+        api_token="test-token",
+        http_client=httpx.AsyncClient(),
+    )
 
 
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
-    return MemorySpaceKVCache(memory_space_id="space-1")
+    return MemorySpaceKVCache(memory_space_id=SPACE_ID, client=_client())
 
 
 class TestResolveMemorySpaceId:
@@ -82,7 +99,17 @@ class TestResolveMemorySpaceId:
         assert try_resolve_memory_space_id(None) is None
 
 
-class TestConfigureDatarobotMemoryClient:
+class TestTryBuildMemoryServiceClient:
+    def test_returns_none_without_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+        assert try_build_memory_service_client() is None
+
+    def test_returns_none_without_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
+        monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+        monkeypatch.delenv("DATAROBOT_PUBLIC_API_ENDPOINT", raising=False)
+        assert try_build_memory_service_client() is None
+
     def test_uses_public_api_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         monkeypatch.setenv(
@@ -91,121 +118,142 @@ class TestConfigureDatarobotMemoryClient:
         )
         monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
 
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
-            configure_datarobot_memory_client()
+        client = try_build_memory_service_client()
 
-        client_mock.assert_called_once_with(
-            token="token",
-            endpoint="https://staging.datarobot.com/api/v2",
+        assert client is not None
+        assert client.base_url == "https://staging.datarobot.com/api/v2/memory"
+
+    def test_explicit_args_take_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+        monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+
+        client = try_build_memory_service_client(
+            endpoint="https://explicit.datarobot.com/api/v2",
+            api_token="explicit-token",
         )
+
+        assert client is not None
+        assert client.base_url == "https://explicit.datarobot.com/api/v2/memory"
 
 
 class TestMemorySpaceKVCache:
-    async def test_set_and_get_round_trip(self, kv_cache: MemorySpaceKVCache) -> None:
-        session = _FakeSession()
-
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=None,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
-                return_value=session,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
-            ),
-        ):
-            await kv_cache.set_value("dep-1", '{"version": 1}')
-            assert await kv_cache.get_value("dep-1") == '{"version": 1}'
-
-        session.post_event.assert_called_once()
-        kwargs = session.post_event.call_args.kwargs
-        assert kwargs["event_type"] == CACHE_EVENT_TYPE
-        assert kwargs["body"]["payload"] == '{"version": 1}'
-
-    async def test_get_reuses_cached_session_id_without_list(
+    @respx.mock
+    async def test_get_value_returns_none_when_no_session(
         self, kv_cache: MemorySpaceKVCache
     ) -> None:
-        session = _FakeSession()
-        find_mock = MagicMock(return_value=None)
-        get_mock = MagicMock(return_value=session)
-        session.post_event(body={"v": 1, "payload": "cached"})
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items()))
 
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                find_mock,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
-                return_value=session,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                get_mock,
-            ),
-        ):
-            await kv_cache.set_value("dep-1", "cached")
-            find_mock.reset_mock()
-            get_mock.reset_mock()
-            assert await kv_cache.get_value("dep-1") == "cached"
+        assert await kv_cache.get_value("dep-1") is None
 
-        find_mock.assert_not_called()
-        get_mock.assert_called_once_with("space-1", "sess-1")
+    @respx.mock
+    async def test_set_value_creates_session_and_event_when_missing(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        captured: dict[str, Any] = {}
 
-    async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache) -> None:
-        session = _FakeSession()
-        session.post_event(body={"v": 1, "payload": "v1"})
+        def _capture_post(req: httpx.Request) -> httpx.Response:
+            captured["session_body"] = json.loads(req.content)
+            return httpx.Response(201, json=_session_wire())
 
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=session,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
-            ),
-        ):
-            await kv_cache.set_value("dep-1", "v2")
+        # Dedup lookup misses, so post() creates the session, then post()s the first event.
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items()))
+        respx.post(SESSIONS_URL).mock(side_effect=_capture_post)
+        respx.get(EVENTS_URL).mock(return_value=httpx.Response(200, json=_items()))
 
-        session.update_event.assert_called_once_with(1, body={"v": 1, "payload": "v2"})
-        assert session.post_event.call_count == 1
+        def _capture_event(req: httpx.Request) -> httpx.Response:
+            captured["event_body"] = json.loads(req.content)
+            return httpx.Response(201, json=_event_wire(content="payload-v1"))
 
-    async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:
-        session = _FakeSession()
+        respx.post(EVENTS_URL).mock(side_effect=_capture_event)
 
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=None,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.create",
-                return_value=session,
-            ) as create_mock,
-        ):
-            await kv_cache.set_value("dep-1", "payload")
+        await kv_cache.set_value("dep-1", "payload-v1")
 
-        create_mock.assert_called_once()
-        assert create_mock.call_args.args[1] == [DRAGENT_CACHE_PARTICIPANT_ID]
+        assert captured["session_body"]["deduplicationKey"] == LOGICAL_KEY
+        assert captured["session_body"]["participants"] == [SYSTEM_PARTICIPANT]
+        assert captured["event_body"]["body"]["content"] == "payload-v1"
+        assert captured["event_body"]["emitter"]["type"] == "agent"
 
-    async def test_delete_removes_session(self, kv_cache: MemorySpaceKVCache) -> None:
-        session = _FakeSession()
+    @respx.mock
+    async def test_set_value_patches_existing_event_in_place(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items(_session_wire())))
+        respx.get(EVENTS_URL).mock(
+            return_value=httpx.Response(200, json=_items(_event_wire(content="v1")))
+        )
 
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=session,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
-            ),
-        ):
-            await kv_cache.delete_value("dep-1")
+        patch_calls: list[dict[str, Any]] = []
 
-        session.delete.assert_called_once()
+        def _capture_patch(req: httpx.Request) -> httpx.Response:
+            patch_calls.append(json.loads(req.content))
+            return httpx.Response(200, json=_event_wire(content="v2"))
+
+        patch_route = respx.patch(f"{EVENTS_URL}0/").mock(side_effect=_capture_patch)
+        post_route = respx.post(EVENTS_URL).mock(
+            return_value=httpx.Response(201, json=_event_wire())
+        )
+
+        await kv_cache.set_value("dep-1", "v2")
+
+        assert patch_route.called
+        assert not post_route.called
+        assert patch_calls[0]["body"]["content"] == "v2"
+
+    @respx.mock
+    async def test_set_value_swallows_errors(self, kv_cache: MemorySpaceKVCache) -> None:
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(500, json={"detail": "boom"}))
+
+        # Must not raise -- L2 failures degrade to an L1-only cache, never break the caller.
+        await kv_cache.set_value("dep-1", "payload")
+
+    @respx.mock
+    async def test_get_value_uses_cached_session_id_and_skips_dedup_lookup(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        kv_cache._session_ids[LOGICAL_KEY] = SESSION_ID  # noqa: SLF001
+        list_route = respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items()))
+        respx.get(SESSION_URL).mock(return_value=httpx.Response(200, json=_session_wire()))
+        respx.get(EVENTS_URL).mock(
+            return_value=httpx.Response(200, json=_items(_event_wire(content="cached")))
+        )
+
+        assert await kv_cache.get_value("dep-1") == "cached"
+        assert not list_route.called
+
+    @respx.mock
+    async def test_get_value_falls_back_to_dedup_lookup_on_stale_session_id(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        kv_cache._session_ids[LOGICAL_KEY] = "stale-session"  # noqa: SLF001
+        respx.get(f"{SESSIONS_URL}stale-session/").mock(
+            return_value=httpx.Response(404, json={"detail": "not found"})
+        )
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items(_session_wire())))
+        respx.get(EVENTS_URL).mock(
+            return_value=httpx.Response(200, json=_items(_event_wire(content="recovered")))
+        )
+
+        assert await kv_cache.get_value("dep-1") == "recovered"
+        assert kv_cache._session_ids[LOGICAL_KEY] == SESSION_ID  # noqa: SLF001
+
+    @respx.mock
+    async def test_delete_value_removes_session_and_invalidates_cache(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        kv_cache._session_ids[LOGICAL_KEY] = SESSION_ID  # noqa: SLF001
+        respx.get(SESSION_URL).mock(return_value=httpx.Response(200, json=_session_wire()))
+        delete_route = respx.delete(SESSION_URL).mock(return_value=httpx.Response(204))
+
+        await kv_cache.delete_value("dep-1")
+
+        assert delete_route.called
+        assert LOGICAL_KEY not in kv_cache._session_ids  # noqa: SLF001
+
+    @respx.mock
+    async def test_delete_value_no_op_when_missing(self, kv_cache: MemorySpaceKVCache) -> None:
+        respx.get(SESSIONS_URL).mock(return_value=httpx.Response(200, json=_items()))
+        delete_route = respx.delete(SESSION_URL)
+
+        await kv_cache.delete_value("dep-1")
+
+        assert not delete_route.called
