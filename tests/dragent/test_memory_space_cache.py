@@ -23,6 +23,7 @@ import pytest
 from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
@@ -79,6 +80,24 @@ class TestResolveMemorySpaceId:
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
         assert try_resolve_memory_space_id(None) is None
+
+
+class TestConfigureDatarobotMemoryClient:
+    def test_uses_public_api_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
+        monkeypatch.setenv(
+            "DATAROBOT_PUBLIC_API_ENDPOINT",
+            "https://staging.datarobot.com/api/v2",
+        )
+        monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
+
+        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
+            configure_datarobot_memory_client()
+
+        client_mock.assert_called_once_with(
+            token="token",
+            endpoint="https://staging.datarobot.com/api/v2",
+        )
 
 
 class TestMemorySpaceKVCache:

@@ -190,7 +190,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.8"
+version = "0.29.12"
 source = { editable = "../" }
 
 [package.metadata]

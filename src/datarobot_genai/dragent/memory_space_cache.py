@@ -30,12 +30,15 @@ import hashlib
 import logging
 import os
 from typing import Any
+from typing import cast
 
 import datarobot as dr
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.errors import MemorySessionDeduplicationError
 from datarobot.models.memory import Session
 from pydantic import Field
+
+from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -111,12 +114,10 @@ def configure_datarobot_memory_client(
     """Configure the process-global DataRobot client for memory Session API calls."""
     cfg = MemorySpaceCacheConfig()
     token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
-    base = endpoint or cfg.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
-    if not base:
-        raise ValueError("DATAROBOT_ENDPOINT is required when using memory_space cache backends.")
-    dr.Client(token=token, endpoint=base)
+    base = cast(str, endpoint or resolve_datarobot_endpoint(require=True))
+    dr.Client(token=token, endpoint=base.rstrip("/"))
 
 
 def _cache_deduplication_key(logical_key: str) -> str:
