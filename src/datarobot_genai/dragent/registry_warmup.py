@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from typing import NamedTuple
 
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
@@ -53,18 +54,26 @@ def reset_registry_warm_state() -> None:
     _WarmState.warm = False
 
 
-def collect_registry_lookup_ids(
-    config: Config,
-) -> tuple[list[str], list[str]]:
-    """Return deduplicated ``(deployment_ids, external_ids)`` from *config*.
+class RegistryLookupIds(NamedTuple):
+    """Registry lookup IDs collected from a workflow config, by ID kind."""
+
+    deployment_ids: list[str]
+    external_ids: list[str]
+    workload_ids: list[str]
+
+    def is_empty(self) -> bool:
+        """Return whether no registry lookups were configured at all."""
+        return not (self.deployment_ids or self.external_ids or self.workload_ids)
+
+
+def collect_registry_lookup_ids(config: Config) -> RegistryLookupIds:
+    """Return deduplicated registry lookup IDs per kind from *config*.
 
     Only ``authenticated_a2a_client`` function groups with a ``registry`` block
     contribute IDs. Order is preserved (first-seen).
     """
-    deployment_ids: list[str] = []
-    external_ids: list[str] = []
-    seen_dep: set[str] = set()
-    seen_ext: set[str] = set()
+    collected = RegistryLookupIds(deployment_ids=[], external_ids=[], workload_ids=[])
+    seen: dict[str, set[str]] = {"deployment": set(), "external": set(), "workload": set()}
 
     function_groups = getattr(config, "function_groups", None) or {}
     for fg_config in function_groups.values():
@@ -72,16 +81,16 @@ def collect_registry_lookup_ids(
             continue
         if fg_config.registry is None:
             continue
-        if dep_id := fg_config.registry.deployment_id:
-            if dep_id not in seen_dep:
-                seen_dep.add(dep_id)
-                deployment_ids.append(dep_id)
-        if ext_id := fg_config.registry.external_id:
-            if ext_id not in seen_ext:
-                seen_ext.add(ext_id)
-                external_ids.append(ext_id)
+        for kind, lookup_id, ids in (
+            ("deployment", fg_config.registry.deployment_id, collected.deployment_ids),
+            ("external", fg_config.registry.external_id, collected.external_ids),
+            ("workload", fg_config.registry.workload_id, collected.workload_ids),
+        ):
+            if lookup_id and lookup_id not in seen[kind]:
+                seen[kind].add(lookup_id)
+                ids.append(lookup_id)
 
-    return deployment_ids, external_ids
+    return collected
 
 
 async def warmup_registry_from_config(config: Config) -> None:
@@ -90,24 +99,27 @@ async def warmup_registry_from_config(config: Config) -> None:
     No-op when no registry lookups are configured. On failure, logs an error and
     leaves :func:`is_registry_warm` as ``False``.
     """
-    deployment_ids, external_ids = collect_registry_lookup_ids(config)
-    if not deployment_ids and not external_ids:
+    collected = collect_registry_lookup_ids(config)
+    if collected.is_empty():
         logger.debug("No registry-backed A2A function groups; skipping agent card prefetch.")
         _WarmState.warm = True
         return
 
     _WarmState.warm = False
     logger.info(
-        "Prefetching agent cards from central registry (deployment_ids=%s, external_ids=%s)",
-        deployment_ids,
-        external_ids,
+        "Prefetching agent cards from central registry "
+        "(deployment_ids=%s, external_ids=%s, workload_ids=%s)",
+        collected.deployment_ids,
+        collected.external_ids,
+        collected.workload_ids,
     )
 
     try:
         registry = await get_default_registry()
         await registry.prefetch(
-            deployment_ids=deployment_ids or None,
-            external_ids=external_ids or None,
+            deployment_ids=collected.deployment_ids or None,
+            external_ids=collected.external_ids or None,
+            workload_ids=collected.workload_ids or None,
         )
     except Exception:
         logger.exception(
@@ -118,7 +130,9 @@ async def warmup_registry_from_config(config: Config) -> None:
 
     _WarmState.warm = True
     logger.info(
-        "Agent card registry prefetch complete (%d deployment ID(s), %d external ID(s)).",
-        len(deployment_ids),
-        len(external_ids),
+        "Agent card registry prefetch complete "
+        "(%d deployment ID(s), %d external ID(s), %d workload ID(s)).",
+        len(collected.deployment_ids),
+        len(collected.external_ids),
+        len(collected.workload_ids),
     )
