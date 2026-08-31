@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -26,6 +27,10 @@ from datarobot.core.config import deployment_url
 from datarobot.core.config import getenv
 from datarobot.core.config import llm_gateway_url
 from pydantic import Field
+from pydantic_settings import SettingsConfigDict
+from pydantic_settings.exceptions import SettingsError
+
+from datarobot_genai.core.mcp._compat import MCPServerRef
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
@@ -57,9 +62,11 @@ class Config(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
 
     # App-wide settings (genai-specific tunables).
-    max_history_messages: int = Field(
-        default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
-    )
+    # Named for its environment variable rather than aliased to it: GetenvSettingsSource
+    # keys strictly on `field_name.upper()` and ignores aliases, so under `alias=` this
+    # field had no runtime-parameter path at all -- it could only ever be set by a plain
+    # environment variable.
+    datarobot_genai_max_history_messages: int = Field(default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0)
     assume_native_tool_calling_when_unmapped: bool = Field(
         default=False,
         description=(
@@ -76,6 +83,29 @@ class Config(DataRobotAppFrameworkBaseSettings):
     llm_nim_deployment_id: str | None = None
     llm_use_datarobot_llm_gateway: bool = True
     llm_default_model: str | None = None
+
+    # Every MCP server a standalone genai can reach. Generic: adding a server is an
+    # entry in MCP_SERVERS, never an edit here. An app that registers its own config
+    # declares the same field; see the seam below.
+    mcp_servers: list[MCPServerRef] = []
+
+    # The singular pre-`mcp_servers` settings, each of which addressed the one server an
+    # agent could reach. Declared so they keep resolving through all the normal sources,
+    # as the entry named `default`; `resolve_mcp_servers()` performs that synthesis and
+    # rejects setting two of them. Removed once the deprecation period ends.
+    mcp_deployment_id: str | None = None
+    mcp_workload_id: str | None = None
+    mcp_server_port: int | None = None
+    external_mcp_url: str | None = None
+    external_mcp_headers: str | None = None
+    external_mcp_transport: str | None = None
+
+    # Restated rather than inherited: declaring model_config on a subclass replaces the
+    # base class's entirely. `env_ignore_empty` is the part worth having -- without it an
+    # empty `MCP_DEPLOYMENT_ID=` left in a container image is a *set* environment
+    # variable, which outranks the runtime parameter infra deliberately set and resolves
+    # the field to "".
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
 
 # --- App config injection seam ---------------------------------------------
@@ -207,6 +237,40 @@ def apply_legacy_llm_params(config: Config, name: str) -> None:
         config.model_fields_set.add(field)
 
 
+def _reraise_with_parse_detail(exc: SettingsError) -> None:
+    """Re-raise a settings-source parse failure with the text that failed to parse.
+
+    pydantic-settings JSON-decodes complex fields *inside the settings source*, before
+    any validator runs, and reports only::
+
+        error parsing value for field "mcp_servers" from source "EnvSettingsSource"
+
+    -- no parse error, no offending text, no position. A stray comma in a seven-server
+    MCP_SERVERS is otherwise a scavenger hunt, so dig the underlying JSON error and the
+    raw value out and put them in the message.
+    """
+    field = None
+    if match := re.search(r'field "([^"]+)"', str(exc)):
+        field = match.group(1)
+
+    cause = exc.__cause__ or exc.__context__
+    detail = f"{type(cause).__name__}: {cause}" if cause is not None else "no further detail"
+
+    raw = None
+    if field:
+        raw = getenv(field.upper())
+
+    message = f"{exc} -- {detail}."
+    if raw is not None:
+        message += f" The value was: {raw!r}"
+    if field == "mcp_servers":
+        message += (
+            " MCP_SERVERS must be a JSON array of objects, each with a name and exactly "
+            'one address, e.g. [{"name":"analytics","deployment_id":"<24-hex>"}].'
+        )
+    raise SettingsError(message) from exc
+
+
 def resolve_config() -> Config:
     """Return the single GLOBAL application config.
 
@@ -214,11 +278,16 @@ def resolve_config() -> Config:
     env-reading :class:`Config` (a standalone genai with no app around it).
     Everything is resolved off the returned config through the ``datarobot.core``
     base class methods (``resolve_datarobot_endpoint`` / ``resolve_datarobot_api_token``);
-    for LLM routing call ``resolve_llm_config(name=...)`` on the returned config.
+    for LLM routing call ``resolve_llm_config(name=...)`` on the returned config, and for
+    MCP servers ``resolve_mcp_server(name=...)`` / ``resolve_mcp_servers()``.
     """
     provider = _provider_registry["provider"]
     if provider is not None:
-        provided = provider()
+        try:
+            provided = provider()
+        except SettingsError as exc:
+            _reraise_with_parse_detail(exc)
+            raise  # unreachable; _reraise_with_parse_detail always raises
         if provided is not None:
             _validate_global_config(provided)
             # provided is a DataRobotAppFrameworkBaseSettings subclass (validated
@@ -227,7 +296,11 @@ def resolve_config() -> Config:
             app_config = cast(Config, provided)
             apply_legacy_llm_params(app_config, registered_default_llm_name())
             return app_config
-    config = Config()
+    try:
+        config = Config()
+    except SettingsError as exc:
+        _reraise_with_parse_detail(exc)
+        raise  # unreachable; _reraise_with_parse_detail always raises
     apply_legacy_llm_params(config, registered_default_llm_name())
     return config
 
@@ -255,7 +328,7 @@ def get_max_history_messages_default() -> int:
     read off genai's own :class:`Config`, not per-LLM config. Invalid values fall
     back to the built-in default; negative values are treated as 0 (disable history).
     """
-    return max(Config().max_history_messages, 0)
+    return max(Config().datarobot_genai_max_history_messages, 0)
 
 
 def default_api_key() -> str | None:

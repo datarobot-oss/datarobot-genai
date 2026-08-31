@@ -27,7 +27,7 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.core.config import default_api_key
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp.target import build_headers
 from datarobot_genai.dragent.context import extract_authorization_from_context
 from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
 
@@ -65,17 +65,13 @@ async def datarobot_api_key_client(
     yield APIKeyAuthProvider(config=config)
 
 
-def _get_default_headers() -> None | dict[str, str]:
-    """Get the default headers dict from environment."""
-    if mcp_config := MCPConfig().server_config:
-        return mcp_config["headers"]
-    return None
-
-
 class DataRobotMCPAuthProviderConfig(AuthProviderBaseConfig, name="datarobot_mcp_auth"):  # type: ignore[call-arg]
     headers: dict[str, str] | None = Field(
-        description=("Headers to be used for authentication. "),
-        default_factory=_get_default_headers,
+        default=None,
+        description=(
+            "Extra headers, merged LAST so they override the resolved ones. The only way "
+            "to attach a static header to a DataRobot-hosted server."
+        ),
     )
     default_user_id: str | None = Field(default="default-user", description="Default user ID")
     allow_default_user_id_for_tool_calls: bool = Field(
@@ -94,28 +90,39 @@ class DataRobotMCPAuthProvider(AuthProviderBase[DataRobotMCPAuthProviderConfig])
 
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
         """
-        Authenticate the user using the API key credentials.
+        Build the credentials for one MCP server.
 
         Args:
             user_id (str): The user ID to authenticate.
+            target (MCPTarget): The server being called, passed by the caller's auth
+                adapter. Required.
 
         Returns
         -------
             AuthenticatedContext: The authenticated context containing headers
         """
-        forwarded_headers = extract_datarobot_headers_from_context()
-        authentication_context = extract_authorization_from_context()
-        mcp_config = MCPConfig(
-            forwarded_headers=forwarded_headers, authorization_context=authentication_context
-        ).server_config
+        # NAT shares ONE provider instance across every block naming it
+        # (workflow_builder.get_auth_provider returns self._auth_providers[name].instance),
+        # so the target MUST arrive with the call. Storing it on `self` would mean the
+        # last block to build wins and every block got that block's credentials -- the
+        # same defect this replaces, relocated into a different object.
+        target = kwargs.get("target")
+        if target is None:
+            raise ValueError(
+                "datarobot_mcp_auth requires a resolved MCPTarget passed as `target=`. It "
+                "must never fall back to reading the environment: which credentials a "
+                "server receives depends on that server's kind, so a fleet would get one "
+                "server's credentials for all of them."
+            )
 
-        # in dragent we get forwarded_headers and authentication_context from Context
-        # in drum we write self.config.headers with a custom loader
-        auth_headers = {}
-        if mcp_config:
-            auth_headers.update(mcp_config["headers"])
-        if self.config.headers:
-            auth_headers.update(self.config.headers)
+        # In dragent the forwarded headers and authorization context come from Context;
+        # in drum a custom loader writes self.config.headers instead.
+        auth_headers = build_headers(
+            target,
+            forwarded=extract_datarobot_headers_from_context(),
+            auth_context=extract_authorization_from_context(),
+            extra=self.config.headers,  # merged last: an explicit override wins
+        )
 
         return AuthResult(
             credentials=[HeaderCred(name=name, value=value) for name, value in auth_headers.items()]

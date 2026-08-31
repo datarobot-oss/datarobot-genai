@@ -23,7 +23,8 @@ from crewai.utilities.agent_utils import convert_tools_to_openai_schema
 from mcp.types import Tool
 from pydantic import BaseModel
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp import MCPServerRef
+from datarobot_genai.core.mcp import build_target
 from datarobot_genai.crewai.mcp import _EMPTY_OBJECT_SCHEMA
 from datarobot_genai.crewai.mcp import _local_server_reachable
 from datarobot_genai.crewai.mcp import _RawSchemaCrewAIAdapter
@@ -121,89 +122,83 @@ class TestRawSchemaAdapter:
 class TestMCPToolsContext:
     """Test MCP tools context manager."""
 
-    async def test_mcp_tools_context_no_configuration(self):
-        """Test context manager when no MCP server is configured."""
-        with patch.dict(os.environ, {}, clear=True):
-            mcp_config = MCPConfig()
-            async with mcp_tools_context(mcp_config) as tools:
-                assert tools == []
+    EXTERNAL_URL = "https://mcp-server.example.com/mcp"
+    DEPLOYMENT_ID = "abc123def456789012345678"
+    API_BASE = "https://app.datarobot.com/api/v2"
+    API_KEY = "test-api-key"
 
-    async def test_mcp_tools_context_with_external_url(self, mock_adapter, mock_tools):
-        """Test context manager with external MCP URL."""
-        test_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=test_url)
-        async with mcp_tools_context(mcp_config) as tools:
+    def external_target(self, name="partner"):
+        return build_target(MCPServerRef(name=name, url=self.EXTERNAL_URL))
+
+    def deployment_target(self):
+        return build_target(
+            MCPServerRef(name="analytics", deployment_id=self.DEPLOYMENT_ID),
+            datarobot_endpoint=self.API_BASE,
+            datarobot_api_token=self.API_KEY,
+        )
+
+    async def test_a_third_party_server_is_connected(self, mock_adapter, mock_tools):
+        async with mcp_tools_context(self.external_target(), prefix="") as tools:
             assert tools == mock_tools
             mock_adapter.assert_called_once()
             # Check that the server config was passed correctly (first positional arg)
             call_args = mock_adapter.call_args[0][0]
-            assert call_args["url"] == test_url
+            assert call_args["url"] == self.EXTERNAL_URL
             assert call_args["transport"] == "streamable-http"
 
-    async def test_mcp_tools_context_with_datarobot_deployment(
+    async def test_a_deployment_is_connected_with_datarobot_credentials(
         self, mock_adapter, agent_auth_context_data, mock_tools
     ):
-        """Test context manager with DataRobot deployment ID."""
-        deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "test-api-key"
-
-        mcp_config = MCPConfig(
-            mcp_deployment_id=deployment_id,
-            datarobot_endpoint=api_base,
-            datarobot_api_token=api_key,
-            authorization_context=agent_auth_context_data,
-        )
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(
+            self.deployment_target(), prefix="", auth_context=agent_auth_context_data
+        ) as tools:
             assert tools == mock_tools
             mock_adapter.assert_called_once()
             call_args = mock_adapter.call_args[0][0]
-            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert call_args["url"] == expected_url
+            assert call_args["url"] == (
+                f"{self.API_BASE}/deployments/{self.DEPLOYMENT_ID}/directAccess/mcp"
+            )
             assert call_args["transport"] == "streamable-http"
-            assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+            assert call_args["headers"]["Authorization"] == f"Bearer {self.API_KEY}"
             assert call_args["headers"]["X-DataRobot-Authorization-Context"] is not None
 
-    async def test_mcp_tools_context_with_forwarded_headers(
+    async def test_a_forwarded_scoped_token_is_sent(
         self, mock_adapter, agent_auth_context_data, mock_tools
     ):
-        """Test context manager with forwarded headers including scoped token."""
-        deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "test-api-key"
-        forwarded_headers = {
-            "x-datarobot-api-key": "scoped-token-123",
-        }
-
-        mcp_config = MCPConfig(
-            mcp_deployment_id=deployment_id,
-            datarobot_endpoint=api_base,
-            datarobot_api_token=api_key,
-            authorization_context=agent_auth_context_data,
-            forwarded_headers=forwarded_headers,
-        )
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(
+            self.deployment_target(),
+            prefix="",
+            auth_context=agent_auth_context_data,
+            forwarded={"x-datarobot-api-key": "scoped-token-123"},
+        ) as tools:
             assert tools == mock_tools
-            mock_adapter.assert_called_once()
             call_args = mock_adapter.call_args[0][0]
             assert call_args["headers"]["x-datarobot-api-key"] == "scoped-token-123"
-            assert call_args["headers"]["Authorization"] == f"Bearer {api_key}"
+            assert call_args["headers"]["Authorization"] == f"Bearer {self.API_KEY}"
+
+    async def test_tools_are_namespaced_by_server_name(self, mock_adapter, mock_tools):
+        # Two servers each exposing the same tool would otherwise collide.
+        for tool, name in zip(mock_tools, ["search", "fetch"], strict=True):
+            tool.name = name
+        async with mcp_tools_context(self.external_target(name="analytics")) as tools:
+            assert [t.name for t in tools] == ["analytics__search", "analytics__fetch"]
 
     @pytest.mark.usefixtures("mock_adapter")
-    async def test_mcp_tools_context_propagates_exceptions(self):
+    async def test_a_consumer_exception_is_propagated(self):
         """Exceptions raised inside the context body propagate (not swallowed)."""
-        test_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=test_url)
         with pytest.raises(RuntimeError):
-            async with mcp_tools_context(mcp_config):
+            async with mcp_tools_context(self.external_target()):
                 raise RuntimeError("Connection failed")
 
-    async def test_mcp_tools_context_connection_error_yields_empty(self):
-        """Test graceful fallback when MCP server connection fails."""
-        test_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=test_url)
+    async def test_an_unreachable_server_raises_by_default(self):
         with patch("datarobot_genai.crewai.mcp.MCPAdapt", side_effect=ConnectionError("refused")):
-            async with mcp_tools_context(mcp_config) as tools:
+            with pytest.raises(ConnectionError):
+                async with mcp_tools_context(self.external_target()):
+                    pass
+
+    async def test_strict_false_restores_the_degrade_quietly_behaviour(self):
+        with patch("datarobot_genai.crewai.mcp.MCPAdapt", side_effect=ConnectionError("refused")):
+            async with mcp_tools_context(self.external_target(), strict=False) as tools:
                 assert tools == []
 
     async def test_unreachable_local_server_skips_adapter(self):
@@ -216,9 +211,14 @@ class TestMCPToolsContext:
         bound.bind(("127.0.0.1", 0))
         closed_port = bound.getsockname()[1]
         try:
-            mcp_config = MCPConfig(mcp_server_port=closed_port)
+            target = build_target(
+                MCPServerRef(name="docs", local_port=closed_port), datarobot_api_token="tok"
+            )
             with patch("datarobot_genai.crewai.mcp.MCPAdapt") as mock_adapter:
-                async with mcp_tools_context(mcp_config) as tools:
+                with pytest.raises(ConnectionError, match="docs"):
+                    async with mcp_tools_context(target):
+                        pass
+                async with mcp_tools_context(target, strict=False) as tools:
                     assert tools == []
                 mock_adapter.assert_not_called()
         finally:

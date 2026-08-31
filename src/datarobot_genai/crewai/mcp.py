@@ -31,7 +31,9 @@ from mcpadapt.core import MCPAdapt
 from mcpadapt.crewai_adapter import CrewAIAdapter
 from pydantic import BaseModel
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp.target import MCPTarget
+from datarobot_genai.core.mcp.target import MCPTargetKind
+from datarobot_genai.core.mcp.target import build_server_config
 
 logger = logging.getLogger(__name__)
 
@@ -85,34 +87,55 @@ class _RawSchemaCrewAIAdapter(CrewAIAdapter):
 
 # here it is async to conform with other MCP adapters
 @asynccontextmanager
-async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTool], None]:
-    """Context manager for MCP tools that handles connection lifecycle."""
-    # If no MCP server configured, return empty tools list
-    if not mcp_config.server_config:
-        logger.info("No MCP server configured, using empty tools list")
-        yield []
-        return
+async def mcp_tools_context(
+    target: MCPTarget,
+    *,
+    prefix: str | None = None,
+    forwarded: dict[str, str] | None = None,
+    auth_context: dict[str, Any] | None = None,
+    strict: bool = True,
+) -> AsyncGenerator[list[BaseTool], None]:
+    """Yield the CrewAI tools one MCP server exposes, managing the connection lifecycle.
 
-    url = mcp_config.server_config["url"]
+    Parameters
+    ----------
+    target : MCPTarget
+        The resolved server to connect to.
+    prefix : str | None
+        Namespace every tool as ``<prefix>__<tool>``. Defaults to the server's name;
+        pass ``""`` to keep raw names, which is safe only with a single server.
+    forwarded : dict[str, str] | None
+        Headers forwarded from the inbound request.
+    auth_context : dict[str, Any] | None
+        Authorization context to encode for the MCP connection.
+    strict : bool
+        Raise when the server cannot be reached, rather than yielding no tools.
+    """
+    prefix = target.name if prefix is None else prefix
+    server_config = build_server_config(target, forwarded=forwarded, auth_context=auth_context)
+    url = server_config["url"]
 
     # A local MCP server that isn't running would otherwise block ~30s and dump
-    # a background-thread traceback; skip the adapter and degrade cleanly.
-    if mcp_config.is_local_server and not _local_server_reachable(url):
-        logger.warning(
-            "Local MCP server at %s is not reachable. Continuing without MCP tools.",
-            url,
-        )
+    # a background-thread traceback; skip the adapter rather than wait it out.
+    if target.kind is MCPTargetKind.LOCAL and not _local_server_reachable(url):
+        message = f"Local MCP server {target.name!r} at {url} is not reachable."
+        if strict:
+            raise ConnectionError(message)
+        logger.warning("%s Continuing without its tools.", message)
         yield []
         return
 
-    logger.info("Connecting to MCP server: %s", url)
+    logger.info("Connecting to MCP server %r: %s", target.name, url)
 
     try:
-        adapter = MCPAdapt(mcp_config.server_config, _RawSchemaCrewAIAdapter())
+        adapter = MCPAdapt(server_config, _RawSchemaCrewAIAdapter())
         tools = adapter.__enter__()
     except Exception as exc:
+        if strict:
+            raise
         logger.warning(
-            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            "Failed to connect to MCP server %r at %s: %s. Continuing without its tools.",
+            target.name,
             url,
             exc,
         )
@@ -120,7 +143,12 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
         return
 
     try:
-        logger.info("Successfully connected to MCP server, got %d tools", len(tools))
+        if prefix:
+            # `__` matches NAT's function-group separator, so two servers exposing the
+            # same tool name stay distinct and read the same on both paths.
+            for tool in tools:
+                tool.name = f"{prefix}__{tool.name}"
+        logger.info("Loaded %d tools from MCP server %r", len(tools), target.name)
         yield tools
     finally:
         adapter.__exit__(None, None, None)
