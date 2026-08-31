@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import logging
+import socket
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse
 
 from langchain.tools import BaseTool
 from langchain_core.tools import StructuredTool
@@ -26,12 +27,31 @@ from langchain_mcp_adapters.sessions import StreamableHttpConnection
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pydantic import PrivateAttr
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp.target import MCPTarget
+from datarobot_genai.core.mcp.target import MCPTargetKind
+from datarobot_genai.core.mcp.target import build_server_config
 
 logger = logging.getLogger(__name__)
 
 
-def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
+def _local_server_reachable(url: str, timeout: float = 1.0) -> bool:
+    """TCP-probe a local MCP server's host:port.
+
+    A local server that has not been started otherwise waits out the connect timeout on
+    every agent build. Cheap to check, and "one of my four servers is not running" is
+    routine when developing against a local fleet.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _wrap_mcp_tool_for_langgraph(inner: BaseTool, prefix: str = "") -> BaseTool:
     """Wrap an MCP tool so LangGraph-injected 'runtime' is filtered from callback inputs.
 
     MCP tools from langchain_mcp_adapters use args_schema=tool.inputSchema (a dict).
@@ -63,9 +83,9 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
 
         _inner: BaseTool = PrivateAttr()
 
-        def __init__(self, inner_tool: BaseTool, coro: Any) -> None:
+        def __init__(self, inner_tool: BaseTool, coro: Any, name: str) -> None:
             super().__init__(
-                name=inner_tool.name,
+                name=name,
                 description=inner_tool.description or "",
                 args_schema=inner_tool.args_schema,
                 coroutine=coro,
@@ -79,36 +99,60 @@ def _wrap_mcp_tool_for_langgraph(inner: BaseTool) -> BaseTool:
             base: frozenset[str] = getattr(self._inner, "_injected_args_keys", frozenset())
             return base | frozenset(["runtime"])
 
-    return _MCPToolWrapper(inner, _invoke_inner)
+    # `__` matches the separator NAT uses to namespace function-group tools, so a tool
+    # reads the same whether it arrived through this path or a workflow.yaml block.
+    return _MCPToolWrapper(
+        inner, _invoke_inner, f"{prefix}__{inner.name}" if prefix else inner.name
+    )
 
 
 @asynccontextmanager
 async def mcp_tools_context(
-    mcp_config: MCPConfig,
+    target: MCPTarget,
+    *,
+    prefix: str | None = None,
+    forwarded: dict[str, str] | None = None,
+    auth_context: dict[str, Any] | None = None,
+    strict: bool = True,
 ) -> AsyncGenerator[list[BaseTool], None]:
-    """Yield a list of LangChain BaseTool instances loaded via MCP.
-
-    If no configuration or loading fails, yields an empty list without raising.
+    """Yield the LangChain tools one MCP server exposes.
 
     Parameters
     ----------
-    authorization_context : dict[str, Any] | None
-        Authorization context to use for MCP connections
-    forwarded_headers : dict[str, str] | None
-        Forwarded headers, e.g. x-datarobot-api-key to use for MCP authentication
+    target : MCPTarget
+        The resolved server to connect to, from
+        ``build_target(config.resolve_mcp_server(name), ...)``.
+    prefix : str | None
+        Namespace every tool as ``<prefix>__<tool>``, using the same separator NAT's
+        function groups use so traces and evals read the same on both paths. Defaults to
+        the server's name. Pass ``""`` to keep the raw names -- safe only with a single
+        server, since two servers each exposing ``search`` would otherwise collide and
+        one would silently shadow the other.
+    forwarded : dict[str, str] | None
+        Headers forwarded from the inbound request.
+    auth_context : dict[str, Any] | None
+        Authorization context to encode for the MCP connection.
+    strict : bool
+        Raise when the server cannot be reached. The default: a server that was
+        configured and is unreachable is a failure, and yielding an empty tool list
+        makes it indistinguishable from one that was never configured. Pass ``False``
+        for the old degrade-quietly behaviour.
     """
-    server_config = mcp_config.server_config
-
-    if not server_config:
-        logger.info("No MCP server configured, using empty tools list")
-        yield []
-        return
-
-    # Prevent mutation of the original server_config
-    server_config = copy.deepcopy(server_config)
+    prefix = target.name if prefix is None else prefix
+    server_config = build_server_config(target, forwarded=forwarded, auth_context=auth_context)
 
     url = server_config["url"]
-    logger.info("Connecting to MCP server: %s", url)
+    logger.info("Connecting to MCP server %r: %s", target.name, url)
+
+    # A local server that isn't running would otherwise wait out the connect timeout on
+    # every start; "one of my four servers is not up" is routine for a local fleet.
+    if target.kind is MCPTargetKind.LOCAL and not _local_server_reachable(url):
+        message = f"Local MCP server {target.name!r} at {url} is not reachable."
+        if strict:
+            raise ConnectionError(message)
+        logger.warning("%s Continuing without its tools.", message)
+        yield []
+        return
 
     # Pop transport from server_config to avoid passing it twice
     # Use .pop() with default to never error
@@ -144,15 +188,18 @@ async def mcp_tools_context(
         # drops the buffered interrupt events. Per-call sessions have no long-lived task
         # group spanning the stream, so the teardown stays task-local.
         raw_tools = await load_mcp_tools(session=None, connection=connection)
-        tools = [_wrap_mcp_tool_for_langgraph(t) for t in raw_tools]
-        logger.info("Successfully loaded %d MCP tools", len(tools))
+        tools = [_wrap_mcp_tool_for_langgraph(t, prefix) for t in raw_tools]
+        logger.info("Loaded %d tools from MCP server %r", len(tools), target.name)
         connected = True
         yield tools
     except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
         if connected:
             raise
+        if strict:
+            raise
         logger.warning(
-            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            "Failed to connect to MCP server %r at %s: %s. Continuing without its tools.",
+            target.name,
             url,
             exc,
         )

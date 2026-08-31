@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack
 from typing import Annotated
 
 from ag_ui.core import RunAgentInput
@@ -47,7 +48,7 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
     framework_wrappers=[LLMFrameworkEnum.LLAMA_INDEX],
 )
 async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> AsyncGenerator:
-    from datarobot_genai.core.mcp import MCPConfig
+    from datarobot_genai.core.mcp import aresolve_mcp_targets
     from datarobot_genai.dragent.context import extract_authorization_from_context
     from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
     from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
@@ -70,10 +71,21 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
         # Agent contains user-specific headers and authorization context
         forwarded_headers = extract_datarobot_headers_from_context()
         authorization_context = extract_authorization_from_context()
-        mcp_config = MCPConfig(
-            forwarded_headers=forwarded_headers, authorization_context=authorization_context
-        )
-        async with mcp_tools_context(mcp_config) as tools:
+
+        # Every configured MCP server, not just one. Each entry in MCP_SERVERS resolves
+        # to its own target, and each target carries its own credentials, so a fleet can
+        # mix deployments, workloads, local processes and third-party servers freely.
+        # Tools are namespaced by server name, so two servers exposing `search` coexist.
+        async with AsyncExitStack() as stack:
+            tools = []
+            for target in await aresolve_mcp_targets():
+                tools += await stack.enter_async_context(
+                    mcp_tools_context(
+                        target,
+                        forwarded=forwarded_headers,
+                        auth_context=authorization_context,
+                    )
+                )
             agent = MyAgent(
                 llm=llm,
                 forwarded_headers=forwarded_headers,

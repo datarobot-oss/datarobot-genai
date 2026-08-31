@@ -19,7 +19,7 @@ from unittest.mock import Mock
 import aiohttp
 import pytest
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.config import Config
 
 # aiohttp 3.14 added a required keyword-only ``stream_writer`` argument to
 # ``ClientResponse.__init__``. aioresponses (<=0.7.8) builds mocked responses
@@ -138,20 +138,13 @@ def agent_auth_context_data() -> dict[str, Any]:
 
 @pytest.fixture(autouse=True, scope="function")
 def disable_env_file(monkeypatch):
-    """Disable loading of .env file for MCPConfig and related settings classes.
+    """Disable loading of .env file for the genai settings class.
 
     Pydantic BaseSettings uses ``model_config.env_file`` to pull values from an env file.
     Tests should rely solely on explicit parameters / injected environment variables.
     This fixture patches the class-level config so any implicit .env lookup is skipped.
     """
-    # Pydantic v2: model_config is a mapping; ensure env_file fields are disabled.
-    if hasattr(MCPConfig, "model_config") and isinstance(getattr(MCPConfig, "model_config"), dict):
-        # Create a shallow copy to avoid mutating original dict in-place across tests.
-        new_config = {**MCPConfig.model_config}
-        new_config["env_file"] = None
-        new_config["env_file_encoding"] = None
-        monkeypatch.setattr(MCPConfig, "model_config", new_config, raising=False)
-    else:
-        # Fallback: attempt attribute patching if object-like.
-        monkeypatch.setattr(MCPConfig.model_config, "env_file", None, raising=False)
-        monkeypatch.setattr(MCPConfig.model_config, "env_file_encoding", None, raising=False)
+    new_config = {**Config.model_config}
+    new_config["env_file"] = None
+    new_config["env_file_encoding"] = None
+    monkeypatch.setattr(Config, "model_config", new_config, raising=False)

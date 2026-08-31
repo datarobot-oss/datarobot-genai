@@ -33,11 +33,17 @@ Those names are what you list under **`workflow.tool_names`**.
 
 ## `function_groups` — bundled tools (MCP)
 
-**`mcp_tools`** in the example is a **group** (`_type: datarobot_mcp_client`), not a single function. It expands to the MCP tools exposed by your deployment. You still add **`mcp_tools`** to **`tool_names`** so the orchestrator may call them. Details: [mcp.md](mcp.md).
+Each MCP block is a **group** (`_type: datarobot_mcp_client`), not a single function, and
+expands to the tools one server exposes. A block names a configured server; the address
+comes from `MCP_SERVERS`, never from the YAML. Add one block per server, and add each
+group to **`tool_names`** so the orchestrator may call them. Details: [mcp.md](mcp.md).
 
 ## `authentication` — credentials MCP calls should use
 
-The example defines **`datarobot_mcp_auth`** so MCP requests carry the same kind of auth as the rest of the DataRobot stack. See [mcp.md](mcp.md).
+The example defines **`datarobot_mcp_auth`** so MCP requests carry the same kind of auth
+as the rest of the DataRobot stack. One provider serves every block that names it, and
+each block supplies its own server, so a fleet mixing deployments, workloads and
+third-party servers gets the right credentials per server. See [mcp.md](mcp.md).
 
 ## `memory` — optional long-term memory (NAT workflows)
 
@@ -51,7 +57,7 @@ This block picks **which agent pattern** runs and **which tools** are in play.
 |---|---|
 | **`_type: per_user_tool_calling_agent`** | NAT/DRAgent tool-calling agent: one LLM orchestrates calls to the listed tools. |
 | **`llm_name: datarobot_llm`** | Uses the LLM defined under **`llms`**. |
-| **`tool_names`** | Ordered list of tools/groups the model may invoke: here `planner`, `writer`, `mcp_tools`, `generate_objectid`. |
+| **`tool_names`** | Ordered list of tools/groups the model may invoke: here `planner`, `writer`, one group per MCP server, `generate_objectid`. |
 | **`return_direct`** | Tools whose output should be returned to the user as-is (here `writer`). |
 | **`system_prompt`** | Instructions for the orchestrator (how to chain planner → writer, when to use MCP, etc.). |
 | **`verbose`** | Extra logging from the runner. |

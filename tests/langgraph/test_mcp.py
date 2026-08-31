@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
-from pydantic import ValidationError
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp import MCPServerRef
+from datarobot_genai.core.mcp import build_target
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 
@@ -110,158 +110,150 @@ def clear_environment_variables():
         yield
 
 
-class TestMCPToolsContext:
-    async def test_mcp_tools_context_no_configuration(self):
-        with patch.dict(os.environ, {}, clear=True):
-            mcp_config = MCPConfig()
-            async with mcp_tools_context(mcp_config) as tools:
-                assert tools == []
+EXTERNAL_URL = "https://mcp-server.example.com/mcp"
+DEPLOYMENT_ID = "abc123def456789012345678"
 
-    async def test_mcp_tools_context_with_external_url(
+
+def external_target(name="partner", url=EXTERNAL_URL, **kwargs):
+    return build_target(MCPServerRef(name=name, url=url, **kwargs))
+
+
+def deployment_target(deployment_id=DEPLOYMENT_ID, endpoint=None, token="test-api-key"):
+    return build_target(
+        MCPServerRef(name="analytics", deployment_id=deployment_id),
+        datarobot_endpoint=endpoint or "https://app.datarobot.com/api/v2",
+        datarobot_api_token=token,
+    )
+
+
+class TestMCPToolsContext:
+    async def test_a_third_party_server_is_connected_with_its_own_headers(
         self, setup_session_and_tools, assert_mock_tools_expected
     ):
-        test_headers = '{"X-API-Key": "test-key", "Content-Type": "application/json"}'
-        test_transport = "sse"
-        external_url = "https://mcp-server.example.com/mcp"
-
-        mcp_config = MCPConfig(
-            external_mcp_url=external_url,
-            external_mcp_headers=test_headers,
-            external_mcp_transport=test_transport,
+        target = external_target(
+            headers={"X-API-Key": "test-key", "Content-Type": "application/json"},
+            transport="sse",
         )
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(target, prefix="") as tools:
             assert_mock_tools_expected(tools)
 
-            # Verify tools were loaded session-lessly with the correct connection config
             setup_session_and_tools["load_tools"].assert_called_once()
             connection_config = _loaded_connection(setup_session_and_tools)
-            assert connection_config["url"] == external_url.rstrip("/")
-            expected_headers = {"X-API-Key": "test-key", "Content-Type": "application/json"}
-            assert connection_config["headers"] == expected_headers
+            assert connection_config["url"] == EXTERNAL_URL
+            assert connection_config["headers"] == {
+                "X-API-Key": "test-key",
+                "Content-Type": "application/json",
+            }
             # SSEConnection uses transport="sse"
             assert connection_config["transport"] == "sse"
 
-    async def test_mcp_tools_context_with_external_url_default_transport(
+    async def test_the_default_transport_is_streamable_http(
         self, setup_session_and_tools, assert_mock_tools_expected
     ):
-        external_url = "https://mcp-server.example.com/mcp"
-
-        mcp_config = MCPConfig(external_mcp_url=external_url)
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(external_target(), prefix="") as tools:
             assert_mock_tools_expected(tools)
 
-            # Verify tools were loaded session-lessly with the correct connection config
-            # (default transport)
             setup_session_and_tools["load_tools"].assert_called_once()
             connection_config = _loaded_connection(setup_session_and_tools)
-            assert connection_config["url"] == external_url.rstrip("/")
-            assert connection_config["headers"] == {}  # No custom headers
+            assert connection_config["url"] == EXTERNAL_URL
+            assert connection_config["headers"] == {}
             # StreamableHttpConnection uses transport="streamable_http" (underscore)
             assert connection_config["transport"] == "streamable_http"
 
-    async def test_mcp_tools_context_with_datarobot_deployment(
+    async def test_a_deployment_is_connected_with_datarobot_credentials(
         self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
     ):
-        deployment_id = "abc123def456789012345678"
-        api_base = "https://app.datarobot.com/api/v2"
-        api_key = "test-api-key"
-
         # When the agent is initialized, it sets the authorization context for the
         # process, so subsequent tools and MCP calls receive it via a dedicated header.
         set_authorization_context(agent_auth_context_data)
 
-        mcp_config = MCPConfig(
-            mcp_deployment_id=deployment_id,
-            datarobot_endpoint=api_base,
-            datarobot_api_token=api_key,
-        )
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(deployment_target(), prefix="") as tools:
             assert_mock_tools_expected(tools)
-            # Check tools were loaded session-lessly with correct connection config
             setup_session_and_tools["load_tools"].assert_called_once()
             connection_config = _loaded_connection(setup_session_and_tools)
-            expected_url = f"{api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert connection_config["url"] == expected_url
-            assert connection_config["headers"]["Authorization"] == f"Bearer {api_key}"
+            assert connection_config["url"] == (
+                f"https://app.datarobot.com/api/v2/deployments/{DEPLOYMENT_ID}/directAccess/mcp"
+            )
+            assert connection_config["headers"]["Authorization"] == "Bearer test-api-key"
 
-    async def test_mcp_tools_context_with_parameters(
+    async def test_the_endpoint_and_token_come_from_the_target(
         self, setup_session_and_tools, agent_auth_context_data, assert_mock_tools_expected
     ):
-        deployment_id = "abc123def456789012345678"
-        custom_api_base = "https://custom.datarobot.com/api/v2"
-        custom_api_key = "custom-key"
-
-        # When the agent is initialized, it sets the authorization context for the
-        # process, so subsequent tools and MCP calls receive it via a dedicated header.
         set_authorization_context(agent_auth_context_data)
+        target = deployment_target(endpoint="https://custom.datarobot.com/api/v2", token="custom")
 
-        mcp_config = MCPConfig(
-            mcp_deployment_id=deployment_id,
-            datarobot_endpoint=custom_api_base,
-            datarobot_api_token=custom_api_key,
-        )
-        async with mcp_tools_context(mcp_config) as tools:
+        async with mcp_tools_context(target, prefix="") as tools:
             assert_mock_tools_expected(tools)
-            # Check tools were loaded session-lessly with custom parameters
-            setup_session_and_tools["load_tools"].assert_called_once()
             connection_config = _loaded_connection(setup_session_and_tools)
-            expected_url = f"{custom_api_base}/deployments/{deployment_id}/directAccess/mcp"
-            assert connection_config["url"] == expected_url
-            assert connection_config["headers"]["Authorization"] == f"Bearer {custom_api_key}"
+            assert connection_config["url"] == (
+                f"https://custom.datarobot.com/api/v2/deployments/{DEPLOYMENT_ID}/directAccess/mcp"
+            )
+            assert connection_config["headers"]["Authorization"] == "Bearer custom"
 
-    async def test_mcp_tools_context_with_sse_transport(
-        self, setup_session_and_tools, assert_mock_tools_expected
+    async def test_forwarded_headers_and_auth_context_are_arguments_not_config(
+        self, setup_session_and_tools
     ):
-        external_url = "https://mcp-server.example.com/mcp"
+        # They are request scope. As fields on a shared config object they were what
+        # made it unsafe to copy between requests.
+        async with mcp_tools_context(
+            deployment_target(), prefix="", forwarded={"x-datarobot-entity-id": "e1"}
+        ):
+            headers = _loaded_connection(setup_session_and_tools)["headers"]
+        assert headers["x-datarobot-entity-id"] == "e1"
 
-        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
-        async with mcp_tools_context(mcp_config) as tools:
-            assert_mock_tools_expected(tools)
-            # Verify tools were loaded session-lessly with SSE transport
-            setup_session_and_tools["load_tools"].assert_called_once()
-            connection_config = _loaded_connection(setup_session_and_tools)
-            # SSEConnection uses transport="sse"
-            assert connection_config["transport"] == "sse"
+    async def test_tools_are_namespaced_by_server_name_so_a_fleet_cannot_collide(
+        self, setup_session_and_tools
+    ):
+        # Two servers each exposing `search` would otherwise collide and one would
+        # silently shadow the other. `__` is the separator NAT uses for function groups.
+        async with mcp_tools_context(external_target(name="analytics")) as tools:
+            assert [t.name for t in tools] == ["analytics__dummy-tool-1", "analytics__tool-2"]
+
+    async def test_an_explicit_prefix_overrides_the_server_name(self, setup_session_and_tools):
+        async with mcp_tools_context(external_target(name="analytics"), prefix="reports") as tools:
+            assert [t.name for t in tools] == ["reports__dummy-tool-1", "reports__tool-2"]
 
     @pytest.mark.usefixtures("setup_session_and_tools")
-    async def test_mcp_tools_context_exception_is_propagated(self):
-        external_url = "https://mcp-server.example.com/mcp"
-
-        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
+    async def test_a_consumer_exception_is_propagated(self):
         with pytest.raises(RuntimeError):
-            async with mcp_tools_context(mcp_config):
+            async with mcp_tools_context(external_target()):
                 raise RuntimeError("Connection failed")
 
-    async def test_mcp_tools_context_unsupported_transport(self):
-        external_url = "https://mcp-server.example.com/mcp"
-
-        # mcp_tools_context will raise ValidationError for unsupported transport
-        with pytest.raises(ValidationError):
-            mcp_config = MCPConfig(
-                external_mcp_url=external_url, external_mcp_transport="invalid-transport"
-            )
-            async with mcp_tools_context(mcp_config):
-                pass
-
-    async def test_mcp_tools_context_connection_error_yields_empty(self):
-        """Test graceful fallback when MCP server connection fails."""
-        external_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=external_url)
+    async def test_an_unreachable_server_raises_by_default(self):
+        # A server that was configured and cannot be reached is a failure. Yielding no
+        # tools makes it indistinguishable from a server that was never configured.
         with patch(
             "datarobot_genai.langgraph.mcp.load_mcp_tools", side_effect=ConnectionError("refused")
         ):
-            async with mcp_tools_context(mcp_config) as tools:
+            with pytest.raises(ConnectionError):
+                async with mcp_tools_context(external_target()):
+                    pass
+
+    async def test_strict_false_restores_the_degrade_quietly_behaviour(self):
+        with patch(
+            "datarobot_genai.langgraph.mcp.load_mcp_tools", side_effect=ConnectionError("refused")
+        ):
+            async with mcp_tools_context(external_target(), strict=False) as tools:
+                assert tools == []
+
+    async def test_an_unreachable_local_server_is_reported_before_connecting(self):
+        # A local server that is not running is routine when developing against a fleet;
+        # probing is cheaper than waiting out the connect timeout on every build.
+        target = build_target(MCPServerRef(name="docs", local_port=9), datarobot_api_token="tok")
+        with patch("datarobot_genai.langgraph.mcp._local_server_reachable", return_value=False):
+            with pytest.raises(ConnectionError, match="docs"):
+                async with mcp_tools_context(target):
+                    pass
+
+            async with mcp_tools_context(target, strict=False) as tools:
                 assert tools == []
 
     @pytest.mark.usefixtures("setup_session_and_tools")
-    async def test_mcp_tools_context_consumer_connection_error_propagates(self):
+    async def test_a_consumer_connection_error_propagates(self):
         """A connection-type exception raised by the consumer must propagate, not trigger
         the setup-phase fallback.  Before the `connected` guard this would hit `yield []`
         as a second yield and raise RuntimeError: generator didn't stop after athrow().
         """
-        external_url = "https://mcp-server.example.com/mcp"
-        mcp_config = MCPConfig(external_mcp_url=external_url, external_mcp_transport="sse")
-
         with pytest.raises(ConnectionError, match="downstream failure"):
-            async with mcp_tools_context(mcp_config):
+            async with mcp_tools_context(external_target(transport="sse"), strict=False):
                 raise ConnectionError("downstream failure")

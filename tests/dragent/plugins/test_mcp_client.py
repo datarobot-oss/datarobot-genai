@@ -11,20 +11,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.mcp.client.client_base import MCPBaseClient
 from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 from pydantic import create_model
 
+from datarobot_genai.core.mcp import MCPServerRef
+from datarobot_genai.core.mcp import build_headers
+from datarobot_genai.core.mcp import build_target
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPClientConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import _make_input_schema_enum_safe
+
+DEPLOYMENT_ID = "69331f1f30548f83b668d9dc"
+WORKLOAD_ID = "6a72dd6d4417b3136f64fef0"
+API_ENDPOINT = "https://app.datarobot.com/api/v2"
 
 
 class _InputSchema(BaseModel):
@@ -78,7 +87,22 @@ class _FakeMCPClient(MCPBaseClient):
         yield self
 
 
-async def test_datarobot_mcp_client():
+@pytest.fixture
+def one_configured_server():
+    """Configure the `default` server the way an existing .env addresses it."""
+    with patch.dict(
+        os.environ,
+        {
+            "MCP_DEPLOYMENT_ID": DEPLOYMENT_ID,
+            "DATAROBOT_ENDPOINT": API_ENDPOINT,
+            "DATAROBOT_API_TOKEN": "tok",
+        },
+        clear=True,
+    ):
+        yield
+
+
+async def test_datarobot_mcp_client(one_configured_server):
     with patch(
         "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
     ) as mock_client:
@@ -99,6 +123,144 @@ async def test_datarobot_mcp_client():
             # Function names are prefixed with the group name (e.g. datarobot_mcp_tools__a)
             assert "datarobot_mcp_tools__a" in all_functions
             assert "datarobot_mcp_tools__b" in all_functions
+        # The address came from the environment, never from the block
+        assert mock_client.call_args[0][0] == (
+            f"{API_ENDPOINT}/deployments/{DEPLOYMENT_ID}/directAccess/mcp"
+        )
+
+
+async def test_the_block_carries_a_name_and_the_address_comes_from_the_fleet():
+    fleet = (
+        f'[{{"name":"analytics","deployment_id":"{DEPLOYMENT_ID}"}},'
+        f'{{"name":"docs","local_port":9001}}]'
+    )
+    with patch.dict(
+        os.environ,
+        {
+            "MCP_SERVERS": fleet,
+            "DATAROBOT_ENDPOINT": API_ENDPOINT,
+            "DATAROBOT_API_TOKEN": "tok",
+        },
+        clear=True,
+    ):
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
+        ) as mock_client:
+            mock_client.side_effect = lambda url, *a, **kw: _FakeMCPClient(tools={}, url=url)
+            config = DataRobotMCPClientConfig(
+                server=DataRobotMCPServerConfig(name="docs", auth_provider=None)
+            )
+            async with WorkflowBuilder() as builder:
+                await builder.add_function_group("docs_tools", config)
+                await builder.get_function_group("docs_tools")
+    assert mock_client.call_args[0][0] == "http://localhost:9001/mcp"
+
+
+async def test_an_unknown_server_name_fails_the_build():
+    # A typo is otherwise indistinguishable from a working server, and this is also the
+    # only thing that catches a config provider registered too late.
+    with patch.dict(os.environ, {}, clear=True):
+        config = DataRobotMCPClientConfig(
+            server=DataRobotMCPServerConfig(name="analytics", auth_provider=None)
+        )
+        async with WorkflowBuilder() as builder:
+            with pytest.raises(LookupError, match="analytics"):
+                await builder.add_function_group("analytics_tools", config)
+                await builder.get_function_group("analytics_tools")
+
+
+@pytest.mark.parametrize(
+    "inline",
+    [
+        pytest.param({"url": "https://elsewhere.example.com/mcp"}, id="url"),
+        pytest.param({"transport": "sse"}, id="transport"),
+        pytest.param({"custom_headers": {"x-key": "v"}}, id="custom_headers"),
+    ],
+)
+def test_an_inline_address_in_the_block_is_rejected(inline):
+    # These are inherited from NAT's server config and ignored by this client. A field
+    # that is silently ignored is worse than one that raises.
+    with pytest.raises(ValueError, match="MCP_SERVERS"):
+        DataRobotMCPServerConfig(name="analytics", **inline)
+
+
+class TestAMixedFleetShareOneAuthProvider:
+    """NAT returns ONE auth provider instance per name, shared by every block using it.
+
+    So the provider cannot hold the target: the last block to build would win and every
+    server would receive that block's credentials. A single-server test passes either
+    way, which is why this one exists.
+    """
+
+    async def test_each_block_gets_the_credentials_for_its_own_kind(self):
+        targets = {
+            "analytics": build_target(
+                MCPServerRef(name="analytics", deployment_id=DEPLOYMENT_ID),
+                datarobot_endpoint=API_ENDPOINT,
+                datarobot_api_token="tok",
+            ),
+            "docs": build_target(
+                MCPServerRef(name="docs", local_port=9001), datarobot_api_token="tok"
+            ),
+            "partner": build_target(
+                MCPServerRef(name="partner", url="https://partner.example.com/mcp")
+            ),
+        }
+
+        from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProvider
+        from datarobot_genai.dragent.plugins.datarobot_auth_provider import (
+            DataRobotMCPAuthProviderConfig,
+        )
+
+        # ONE provider instance, as `builder.get_auth_provider` would hand back
+        provider = DataRobotMCPAuthProvider(config=DataRobotMCPAuthProviderConfig())
+
+        headers = {}
+        for name, target in targets.items():
+            result = await provider.authenticate(user_id=None, target=target)
+            headers[name] = {c.name: c.value.get_secret_value() for c in result.credentials}
+
+        assert headers["analytics"]["Authorization"] == "Bearer tok"
+        assert headers["docs"]["Authorization"] == "Bearer tok"
+        # A third-party server gets no DataRobot identity, even from a shared provider
+        assert headers["partner"] == {}
+
+    async def test_a_workload_and_a_deployment_do_not_share_an_api_key_header(self):
+        # `x-datarobot-api-key` is attached only for workloads. Under one globally
+        # resolved config a mixed fleet is wrong for at least one server either way.
+        workload = build_headers(_workload_target())
+        deployment = build_headers(
+            build_target(
+                MCPServerRef(name="analytics", deployment_id=DEPLOYMENT_ID),
+                datarobot_endpoint=API_ENDPOINT,
+                datarobot_api_token="tok",
+            )
+        )
+        assert "x-datarobot-api-key" in workload
+        assert "x-datarobot-api-key" not in deployment
+
+
+def _workload_target():
+    from datarobot_genai.core.mcp import MCPTarget
+
+    return MCPTarget(
+        ref=MCPServerRef(name="search", workload_id=WORKLOAD_ID),
+        url="https://app.datarobot.com/workloads/x/mcp",
+        api_token="tok",
+    )
+
+
+async def test_the_auth_provider_refuses_to_guess_which_server_is_asking():
+    # Falling back to an environment read here would silently restore exactly the
+    # behaviour this replaces: one server's credentials sent to all of them.
+    from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProvider
+    from datarobot_genai.dragent.plugins.datarobot_auth_provider import (
+        DataRobotMCPAuthProviderConfig,
+    )
+
+    provider = DataRobotMCPAuthProvider(config=DataRobotMCPAuthProviderConfig())
+    with pytest.raises(ValueError, match="MCPTarget"):
+        await provider.authenticate(user_id=None)
 
 
 # Tests for the BUZZOK-30556 enum-safe input schema patch.

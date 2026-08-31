@@ -23,41 +23,49 @@ fetch tools from MCP servers.
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from llama_index.core.tools import BaseTool
 from llama_index.tools.mcp import BasicMCPClient
 from llama_index.tools.mcp import aget_tools_from_mcp_url
 
-from datarobot_genai.core.mcp import MCPConfig
+from datarobot_genai.core.mcp.target import MCPTarget
+from datarobot_genai.core.mcp.target import build_server_config
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def mcp_tools_context(
-    mcp_config: MCPConfig,
+    target: MCPTarget,
+    *,
+    prefix: str | None = None,
+    forwarded: dict[str, str] | None = None,
+    auth_context: dict[str, Any] | None = None,
+    strict: bool = True,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """
-    Asynchronously load MCP tools for LlamaIndex.
+    Asynchronously load the LlamaIndex tools one MCP server exposes.
 
     Args:
-        mcp_config: MCP configuration including server connection parameters
+        target: The resolved server to connect to.
+        prefix: Namespace every tool as ``<prefix>__<tool>``. Defaults to the server's
+            name; pass ``""`` to keep raw names, which is safe only with a single server.
+        forwarded: Headers forwarded from the inbound request.
+        auth_context: Authorization context to encode for the MCP connection.
+        strict: Raise when the server cannot be reached, rather than yielding no tools.
 
     Returns
     -------
-        List of MCP tools, or empty list if no MCP configuration is present.
+        List of MCP tools.
     """
-    server_params = mcp_config.server_config
-
-    if not server_params:
-        logger.info("No MCP server configured, using empty tools list")
-        yield []
-        return
+    prefix = target.name if prefix is None else prefix
+    server_params = build_server_config(target, forwarded=forwarded, auth_context=auth_context)
 
     url = server_params["url"]
     headers = server_params.get("headers", {})
 
-    logger.info("Connecting to MCP server: %s", url)
+    logger.info("Connecting to MCP server %r: %s", target.name, url)
 
     try:
         # Create BasicMCPClient with headers to pass authentication
@@ -68,10 +76,18 @@ async def mcp_tools_context(
         )
         # Ensure list
         tools = list(tools) if tools is not None else []
-        logger.info("Successfully connected to MCP server, got %d tools", len(tools))
+        if prefix:
+            # `__` matches NAT's function-group separator, so two servers exposing the
+            # same tool name stay distinct and read the same on both paths.
+            for tool in tools:
+                tool.metadata.name = f"{prefix}__{tool.metadata.name}"
+        logger.info("Loaded %d tools from MCP server %r", len(tools), target.name)
     except (ConnectionError, OSError, TimeoutError, ExceptionGroup) as exc:
+        if strict:
+            raise
         logger.warning(
-            "Failed to connect to MCP server at %s: %s. Continuing without MCP tools.",
+            "Failed to connect to MCP server %r at %s: %s. Continuing without its tools.",
+            target.name,
             url,
             exc,
         )
