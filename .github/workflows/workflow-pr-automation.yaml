@@ -64,7 +64,7 @@ jobs:
   # event-driven mark-reviewed run was never dispatched.
   notify-slack-scheduled:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.18
+    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.26
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     permissions:
