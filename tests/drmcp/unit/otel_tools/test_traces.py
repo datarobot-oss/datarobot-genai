@@ -241,6 +241,26 @@ async def test_otel_traces_list_wraps_a_client_error_as_a_tool_error(
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
 
 
+@pytest.mark.asyncio
+async def test_otel_traces_list_forwards_fractional_cost_bounds(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN sub-dollar cost bounds — trace cost is a fractional currency amount
+    _stub_json(patched_dr_client, {"data": []})
+
+    # WHEN otel_traces_list is called with them
+    await traces.otel_traces_list(
+        entity_type="deployment", entity_id=_ENTITY_ID, min_trace_cost=0.001, max_trace_cost=0.01
+    )
+
+    # THEN they reach the wire unmangled — the int-typed signature rejected every
+    # realistic sub-dollar bound at schema validation before the tool body ran
+    patched_dr_client.get.assert_called_once_with(
+        f"otel/deployment/{_ENTITY_ID}/traces/",
+        params={"limit": 20, "offset": 0, "minTraceCost": 0.001, "maxTraceCost": 0.01},
+    )
+
+
 # ------------------------------------------------------------------ #
 # otel_trace_get                                                       #
 # ------------------------------------------------------------------ #
@@ -409,6 +429,41 @@ async def test_otel_trace_get_view_payloads_drops_spans_when_the_budget_is_tight
     assert truncation["chars_used"] <= traces.DEFAULT_TRACE_MAX_TOTAL_CHARS
     assert result["count"] == truncation["spans_returned"]
     assert truncation["max_total_chars"] == traces.DEFAULT_TRACE_MAX_TOTAL_CHARS
+
+
+@pytest.mark.asyncio
+async def test_otel_trace_get_view_payloads_caps_container_attributes_within_the_budget(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a two-span trace whose first span carries a 100k-char message list —
+    # uncapped, its serialized cost alone blows the whole 60,000-char budget and
+    # drops it plus every span after it
+    trace_id = "e" * 32
+    messages = [{"role": "user", "content": "x" * 100_000}]
+    trace = _single_span_trace(
+        trace_id=trace_id, span_id="f" * 16, attributes={"gen_ai.input.messages": messages}
+    )
+    second = dict(trace["spans"][0])
+    second["span_id"] = "a" * 16
+    second["attributes"] = {"gen_ai.tool.name": "search"}
+    trace["spans"] = [trace["spans"][0], second]
+    trace["span_count"] = trace["count"] = trace["total_count"] = 2
+    _stub_json(patched_dr_client, trace)
+
+    # WHEN view='payloads' is requested with the defaults
+    result = await traces.otel_trace_get(
+        entity_type="deployment", entity_id=_ENTITY_ID, trace_id=trace_id, view="payloads"
+    )
+
+    # THEN both spans are returned — the container was windowed at max_field_chars
+    # like any string payload — and the window is marked as serialized JSON
+    assert result["truncation"]["spans_dropped"] == 0
+    assert result["count"] == 2
+    first_span = result["spans"][0]
+    window = first_span["attributes"]["gen_ai.input.messages"]
+    assert isinstance(window, str)
+    assert len(window) == traces.DEFAULT_TRACE_MAX_FIELD_CHARS
+    assert first_span["truncation"]["fields"]["gen_ai.input.messages"]["serialized"] is True
 
 
 @pytest.mark.asyncio
@@ -858,3 +913,241 @@ async def test_otel_span_payload_get_wraps_a_client_error_as_a_tool_error(
             span_id="anything",
         )
     assert exc_info.value.kind is ToolErrorKind.UPSTREAM
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_rejects_field_offset_without_fields(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a continuation offset with no fields naming what to continue — every
+    # field shorter than the offset would come back as an empty window
+    # WHEN / THEN the tool raises a VALIDATION error before any HTTP call
+    with pytest.raises(ToolError) as exc_info:
+        await traces.otel_span_payload_get(
+            entity_type="deployment",
+            entity_id=_ENTITY_ID,
+            trace_id=OVERSIZED_TRACE_ID,
+            span_id="anything",
+            field_offset=8_000,
+        )
+    assert exc_info.value.kind is ToolErrorKind.VALIDATION
+    assert "fields" in str(exc_info.value)
+    patched_dr_client.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_field_offset_does_not_blank_the_status_message(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN an ERROR span with a short status message and one long attribute
+    trace_id = "c" * 32
+    span_id = "d" * 16
+    long_output = "o" * 20_000
+    trace = _single_span_trace(
+        trace_id=trace_id,
+        span_id=span_id,
+        attributes={"gen_ai.task.output": long_output},
+        status_message="RateLimitError: 429",
+    )
+    _stub_json(patched_dr_client, trace)
+
+    # WHEN a continuation call pages the long attribute past the message's length
+    result = await traces.otel_span_payload_get(
+        entity_type="deployment",
+        entity_id=_ENTITY_ID,
+        trace_id=trace_id,
+        span_id=span_id,
+        fields=["gen_ai.task.output"],
+        field_offset=8_000,
+    )
+
+    # THEN the attribute window continues while the short status message comes
+    # back whole — an offset meant for one field no longer blanks the rest
+    assert result["attributes"]["gen_ai.task.output"] == long_output[8_000:16_000]
+    assert result["status_message"] == "RateLimitError: 429"
+    assert "status_message" not in result["truncation"]["fields"]
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_continues_a_status_message_named_in_fields(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN an ERROR span whose long status_message a first call truncated
+    trace_id = "c" * 32
+    span_id = "d" * 16
+    long_status_message = "Traceback (most recent call last):\n" + ("frame line. " * 2_000)
+    trace = _single_span_trace(
+        trace_id=trace_id, span_id=span_id, attributes={}, status_message=long_status_message
+    )
+    _stub_json(patched_dr_client, trace)
+
+    # WHEN the continuation names 'status_message' in fields with an offset
+    result = await traces.otel_span_payload_get(
+        entity_type="deployment",
+        entity_id=_ENTITY_ID,
+        trace_id=trace_id,
+        span_id=span_id,
+        fields=["status_message"],
+        field_offset=100,
+        max_field_chars=100,
+    )
+
+    # THEN the status message window continues from the offset, and the name is
+    # not reported as fields_not_found — it is structural, not an attribute
+    assert result["status_message"] == long_status_message[100:200]
+    assert result["truncation"]["fields"]["status_message"]["next_offset"] == 200
+    assert "fields_not_found" not in result["truncation"]
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_windows_an_oversized_container_attribute(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a span whose gen_ai.prompt is a JSON-decoded message list far larger
+    # than max_field_chars — the OTLP array shape that used to come back whole,
+    # uncapped and with no truncation record
+    trace_id = "a" * 32
+    span_id = "b" * 16
+    messages = [{"role": "user", "content": "x" * 100_000}]
+    serialized = json.dumps(messages, default=str, ensure_ascii=False)
+    trace = _single_span_trace(
+        trace_id=trace_id, span_id=span_id, attributes={"gen_ai.prompt": messages}
+    )
+    _stub_json(patched_dr_client, trace)
+
+    # WHEN the span payload is fetched with the default 8,000-char field cap
+    result = await traces.otel_span_payload_get(
+        entity_type="deployment",
+        entity_id=_ENTITY_ID,
+        trace_id=trace_id,
+        span_id=span_id,
+        fields=["gen_ai.prompt"],
+    )
+
+    # THEN the value is windowed over its serialized JSON with a truncation
+    # record, instead of being returned whole
+    assert result["attributes"]["gen_ai.prompt"] == serialized[:8_000]
+    assert result["truncation"]["fields"]["gen_ai.prompt"] == {
+        "returned_chars": 8_000,
+        "total_chars": len(serialized),
+        "next_offset": 8_000,
+        "serialized": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_matches_ids_case_insensitively(
+    patched_dr_client: MagicMock, oversized_agent_trace: dict[str, Any]
+) -> None:
+    # GIVEN a trace id and span id pasted in uppercase — the server emits
+    # lowercase hex, and an exact == match raised NOT_FOUND for a span that exists
+    span = oversized_agent_trace["spans"][_GIANT_SPAN_INDEX]
+    _stub_json(patched_dr_client, oversized_agent_trace)
+
+    # WHEN the tool is called with uppercase ids
+    result = await traces.otel_span_payload_get(
+        entity_type="deployment",
+        entity_id=_ENTITY_ID,
+        trace_id=OVERSIZED_TRACE_ID.upper(),
+        span_id=span["span_id"].upper(),
+    )
+
+    # THEN the span is found, the URL carries the lowercased trace id, and the
+    # response reports the server's own span id casing
+    assert result["span_id"] == span["span_id"]
+    call_path = patched_dr_client.get.call_args[0][0]
+    assert f"/traces/{OVERSIZED_TRACE_ID}/" in call_path
+
+
+def _minimal_span(index: int, span_id: str | None = None) -> dict[str, Any]:
+    """Build the smallest span _span_payload_view and the id match can read."""
+    return {
+        "span_id": span_id or f"{index:016x}",
+        "name": f"span-{index}",
+        "status_code": "OK",
+        "status_message": None,
+        "attributes": {},
+    }
+
+
+def _span_page(
+    trace_id: str, spans: list[dict[str, Any]], offset: int, total_count: int
+) -> dict[str, Any]:
+    """Wrap one server-side span page in the trace-detail envelope."""
+    return {
+        "trace_id": trace_id,
+        "spans": spans,
+        "count": len(spans),
+        "offset": offset,
+        "limit": traces.DEFAULT_TRACE_SPAN_LIMIT,
+        "total_count": total_count,
+        "next": None,
+        "previous": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_pages_past_the_first_span_page(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN a 150-span trace whose target span sits on the second server page —
+    # otel_trace_get(span_offset=100) legitimately surfaces such span ids
+    trace_id = "a" * 32
+    target_span_id = "beef000000000120"
+    first_page = _span_page(trace_id, [_minimal_span(i) for i in range(100)], 0, 150)
+    second_page = _span_page(
+        trace_id,
+        [_minimal_span(100 + i) for i in range(20)]
+        + [_minimal_span(120, target_span_id)]
+        + [_minimal_span(121 + i) for i in range(29)],
+        100,
+        150,
+    )
+    patched_dr_client.get.side_effect = [
+        MagicMock(json=lambda: first_page),
+        MagicMock(json=lambda: second_page),
+    ]
+
+    # WHEN the drill-down tool is asked for that span
+    result = await traces.otel_span_payload_get(
+        entity_type="deployment",
+        entity_id=_ENTITY_ID,
+        trace_id=trace_id,
+        span_id=target_span_id,
+    )
+
+    # THEN the tool followed the pagination instead of raising NOT_FOUND
+    assert result["span_id"] == target_span_id
+    assert patched_dr_client.get.call_count == 2
+    patched_dr_client.get.assert_any_call(
+        f"otel/deployment/{_ENTITY_ID}/traces/{trace_id}/",
+        params={"limit": traces.DEFAULT_TRACE_SPAN_LIMIT, "offset": 100},
+    )
+
+
+@pytest.mark.asyncio
+async def test_otel_span_payload_get_raises_not_found_after_checking_every_page(
+    patched_dr_client: MagicMock,
+) -> None:
+    # GIVEN the same 150-span trace and a span id that is on none of its pages
+    trace_id = "a" * 32
+    first_page = _span_page(trace_id, [_minimal_span(i) for i in range(100)], 0, 150)
+    second_page = _span_page(trace_id, [_minimal_span(100 + i) for i in range(50)], 100, 150)
+    patched_dr_client.get.side_effect = [
+        MagicMock(json=lambda: first_page),
+        MagicMock(json=lambda: second_page),
+    ]
+
+    # WHEN / THEN the tool raises NOT_FOUND only after checking every page,
+    # and the error reports the full count it checked ("f" * 16 collides with
+    # no generated id — _minimal_span ids are zero-padded hex indexes)
+    with pytest.raises(ToolError) as exc_info:
+        await traces.otel_span_payload_get(
+            entity_type="deployment",
+            entity_id=_ENTITY_ID,
+            trace_id=trace_id,
+            span_id="f" * 16,
+        )
+    assert exc_info.value.kind is ToolErrorKind.NOT_FOUND
+    assert "150" in str(exc_info.value)
+    assert patched_dr_client.get.call_count == 2

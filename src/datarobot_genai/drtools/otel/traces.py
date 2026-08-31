@@ -54,6 +54,7 @@ from datarobot_genai.drtools.otel.constants import RESPONSE_PAYLOAD_FIELDS
 from datarobot_genai.drtools.otel.constants import EntityType
 from datarobot_genai.drtools.otel.truncation import apply_char_budget
 from datarobot_genai.drtools.otel.truncation import canonical_attributes
+from datarobot_genai.drtools.otel.truncation import cap_payload_value
 from datarobot_genai.drtools.otel.truncation import cap_value
 from datarobot_genai.drtools.otel.truncation import summarize_spans
 from datarobot_genai.drtools.pagination import clamp_limit
@@ -138,8 +139,12 @@ async def otel_traces_list(
     min_trace_duration_ns: Annotated[int | None, "Minimum trace duration, in nanoseconds."] = None,
     min_span_duration_ns: Annotated[int | None, "Minimum span duration, in nanoseconds."] = None,
     max_span_duration_ns: Annotated[int | None, "Maximum span duration, in nanoseconds."] = None,
-    min_trace_cost: Annotated[int | None, "Minimum trace cost."] = None,
-    max_trace_cost: Annotated[int | None, "Maximum trace cost."] = None,
+    min_trace_cost: Annotated[
+        float | None, "Minimum trace cost. Fractional amounts are valid (e.g. 0.01)."
+    ] = None,
+    max_trace_cost: Annotated[
+        float | None, "Maximum trace cost. Fractional amounts are valid (e.g. 0.01)."
+    ] = None,
     sort_by: Annotated[
         Literal["timestamp", "duration", "cost"] | None,
         "Field to sort by. Defaults to 'timestamp' when sort_direction is set.",
@@ -341,10 +346,13 @@ async def otel_trace_get(
         "the text is still there under its own name, just not duplicated.\n\n"
         "Each field is windowed at max_field_chars. When a field is larger than "
         "that, 'truncation.fields' names it with 'next_offset' — pass that back "
-        "as field_offset (typically with fields=[that one name]) to continue "
-        "reading it; one measured field was 740,000 chars.\n\n"
-        "Known cost: there is no per-span endpoint, so this refetches the whole "
-        "trace and filters client-side.\n\n"
+        "as field_offset together with fields=[that one name] (field_offset "
+        "requires fields, so an offset meant for one long field cannot blank "
+        "every short field beside it); include 'status_message' in fields to "
+        "continue a truncated status message. One measured field was 740,000 "
+        "chars.\n\n"
+        "Known cost: there is no per-span endpoint, so this refetches the trace "
+        "page by page and filters client-side until the span is found.\n\n"
         f"{_TRACE_403_HINT}\n\n"
         "Example: otel_span_payload_get(entity_type='deployment', entity_id='...', "
         "trace_id='...', span_id='...')\n"
@@ -371,7 +379,9 @@ async def otel_span_payload_get(
     ] = None,
     max_field_chars: Annotated[int, "Cap per field value, in characters."] = 8_000,
     field_offset: Annotated[
-        int, "Character offset to continue a previously truncated field from."
+        int,
+        "Character offset to continue a previously truncated field from. "
+        "Requires 'fields' naming the field(s) to continue.",
     ] = 0,
 ) -> dict[str, Any]:
     eid = require_object_id(entity_id, "entity_id")
@@ -382,23 +392,58 @@ async def otel_span_payload_get(
             "Argument validation error: 'field_offset' must be >= 0.",
             kind=ToolErrorKind.VALIDATION,
         )
-
-    try:
-        # No span_limit parameter on this tool (§2.3's signature has none) — the
-        # fetch page size is tied to the same DEFAULT_TRACE_SPAN_LIMIT otel_trace_get
-        # uses, so a step-9 correction to that constant covers this call site too.
-        trace = OtelQueryApiClient().get_trace(
-            entity_type, eid, tid, limit=DEFAULT_TRACE_SPAN_LIMIT
+    if field_offset > 0 and not fields:
+        raise ToolError(
+            "Argument validation error: 'field_offset' requires 'fields' naming the "
+            "field(s) to continue (e.g. fields=['gen_ai.task.output']). Without it, "
+            "every field shorter than the offset would come back as an empty window.",
+            kind=ToolErrorKind.VALIDATION,
         )
+
+    # The server emits lowercase hex span ids; match case-insensitively so a
+    # hand-pasted uppercase id still finds its span instead of a NOT_FOUND.
+    sid_lower = sid.lower()
+
+    # No span_limit parameter on this tool (§2.3's signature has none) — the fetch
+    # page size is tied to the same DEFAULT_TRACE_SPAN_LIMIT otel_trace_get uses.
+    # There is no per-span endpoint either, so page through the trace's spans until
+    # the requested one is found: otel_trace_get(span_offset=...) legitimately
+    # surfaces span ids past the first page, and stopping at page one made every
+    # one of those permanently unreachable from this tool.
+    span: dict[str, Any] | None = None
+    spans_checked = 0
+    fetched_bytes = 0
+    total_count: int | None = None
+    offset = 0
+    try:
+        client = OtelQueryApiClient()
+        while True:
+            trace = client.get_trace(
+                entity_type, eid, tid, limit=DEFAULT_TRACE_SPAN_LIMIT, offset=offset
+            )
+            # Evidence for §10's server-side field-projection ask: whole trace pages
+            # are fetched to return one span's payload. ensure_ascii=False matches
+            # truncation.py's own char/byte accounting so this approximates what was
+            # actually received on the wire, not an escape-expanded blowup of it.
+            fetched_bytes += len(json.dumps(trace, default=str, ensure_ascii=False).encode("utf-8"))
+            spans = trace.get("spans") or []
+            spans_checked += len(spans)
+            raw_total = trace.get("total_count")
+            if isinstance(raw_total, int):
+                total_count = raw_total
+            span = next(
+                (s for s in spans if str(s.get("span_id") or "").lower() == sid_lower), None
+            )
+            if span is not None:
+                break
+            if len(spans) < DEFAULT_TRACE_SPAN_LIMIT:
+                break  # short (or empty) page: the server has no more spans
+            if total_count is not None and spans_checked >= total_count:
+                break
+            offset += len(spans)
     except ClientError as exc:
         raise_tool_error_for_client_error(exc)
 
-    # Evidence for §10's server-side field-projection ask: there is no per-span
-    # endpoint, so a full trace is fetched to return one span's payload.
-    # ensure_ascii=False matches truncation.py's own char/byte accounting so this
-    # approximates what was actually received on the wire, not an escape-expanded
-    # blowup of it.
-    fetched_bytes = len(json.dumps(trace, default=str, ensure_ascii=False).encode("utf-8"))
     logger.info(
         "otel_span_payload_get: fetched %d bytes for trace %s to return span %s",
         fetched_bytes,
@@ -406,12 +451,10 @@ async def otel_span_payload_get(
         sid,
     )
 
-    spans = trace.get("spans") or []
-    span = next((s for s in spans if s.get("span_id") == sid), None)
     if span is None:
         raise ToolError(
-            f"Span '{sid}' not found in trace '{tid}' (checked {len(spans)} of "
-            f"{trace.get('total_count', len(spans))} spans in the fetched page).",
+            f"Span '{sid}' not found in trace '{tid}' (checked {spans_checked} of "
+            f"{total_count if total_count is not None else spans_checked} spans).",
             kind=ToolErrorKind.NOT_FOUND,
         )
 
@@ -420,9 +463,15 @@ async def otel_span_payload_get(
     dropped_duplicate: list[str] = []
     dropped_semconv: list[str] = []
 
+    status_message_requested = False
     if fields is not None:
-        missing = [name for name in fields if name not in merged]
-        selected = {name: merged[name] for name in fields if name in merged}
+        # 'status_message' is structural, not a merged-payload attribute: naming it
+        # in 'fields' requests offset continuation of a truncated status message
+        # rather than an attribute lookup (which would report it as not found).
+        status_message_requested = "status_message" in fields
+        requested = [name for name in fields if name != "status_message"]
+        missing = [name for name in requested if name not in merged]
+        selected = {name: merged[name] for name in requested if name in merged}
     else:
         selected, dropped = canonical_attributes(merged)
         dropped_duplicate = dropped["duplicate"]
@@ -432,11 +481,9 @@ async def otel_span_payload_get(
     attributes: dict[str, Any] = {}
     field_windows: dict[str, Any] = {}
     for name, value in selected.items():
-        window: Any = value
-        if isinstance(value, str):
-            window, info = cap_value(value, max_field_chars, field_offset)
-            if info is not None:
-                field_windows[name] = info
+        window, info = cap_payload_value(value, max_field_chars, field_offset)
+        if info is not None:
+            field_windows[name] = info
         if name in RESPONSE_PAYLOAD_FIELDS:
             response_fields[name] = window
         else:
@@ -445,12 +492,14 @@ async def otel_span_payload_get(
     # status_message is the one structural field that can carry an unbounded
     # traceback (SpanViewValidator has no server-side max_length on it — see
     # truncation.STATUS_MESSAGE_MAX_CHARS's docstring), so it gets the same
-    # field_offset windowing as every other field this tool emits rather than
-    # bypassing the tool's own windowing contract.
+    # max_field_chars window as every other field this tool emits. field_offset
+    # applies to it only when 'fields' names it — a continuation offset meant for
+    # one long attribute must not blank the (usually short) status message.
     status_message = span.get("status_message")
     if isinstance(status_message, str):
+        status_offset = field_offset if status_message_requested else 0
         status_message, status_message_info = cap_value(
-            status_message, max_field_chars, field_offset
+            status_message, max_field_chars, status_offset
         )
         if status_message_info is not None:
             field_windows["status_message"] = status_message_info
@@ -464,7 +513,7 @@ async def otel_span_payload_get(
         truncation["fields_not_found"] = missing
 
     return {
-        "span_id": sid,
+        "span_id": span.get("span_id") or sid,
         "name": span.get("name"),
         "status_code": span.get("status_code"),
         "status_message": status_message,
@@ -504,10 +553,7 @@ def _span_payload_view(span: dict[str, Any], max_field_chars: int) -> dict[str, 
     attributes: dict[str, Any] = {}
     field_windows: dict[str, Any] = {}
     for name, value in kept.items():
-        if not isinstance(value, str):
-            attributes[name] = value
-            continue
-        window, info = cap_value(value, max_field_chars)
+        window, info = cap_payload_value(value, max_field_chars)
         attributes[name] = window
         if info is not None:
             field_windows[name] = info
