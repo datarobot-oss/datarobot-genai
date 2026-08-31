@@ -29,8 +29,6 @@ from datarobot_genai.core.mcp import build_server_config
 from datarobot_genai.core.mcp import build_target
 from datarobot_genai.core.mcp import clear_workload_endpoint_cache
 from datarobot_genai.core.mcp import lookup_workload_endpoint
-from datarobot_genai.core.mcp._compat import resolve_mcp_server
-from datarobot_genai.core.mcp._compat import resolve_mcp_servers
 
 WORKLOAD_ID = "6a6b3d359e6b2c11158c2a13"
 DEPLOYMENT_ID = "69331f1f30548f83b668d9dc"
@@ -126,7 +124,7 @@ class TestResolveMCPServers:
             '{"name":"partner","url":"https://partner.example.com/mcp"}]'
         )
         with patch.dict(os.environ, {"MCP_SERVERS": fleet}, clear=True):
-            servers = resolve_mcp_servers(Config())
+            servers = Config().resolve_mcp_servers()
         # THEN every one of them is reachable, and kind is a per-server property
         assert [s.name for s in servers] == ["analytics", "catalog", "search", "docs", "partner"]
         assert [s.kind.value for s in servers] == [
@@ -144,14 +142,14 @@ class TestResolveMCPServers:
         )
         with patch.dict(os.environ, {"MCP_SERVERS": fleet}, clear=True):
             with pytest.raises(ValueError, match="unique"):
-                resolve_mcp_servers(Config())
+                Config().resolve_mcp_servers()
 
     def test_an_unknown_name_fails_rather_than_looking_like_an_unconfigured_server(self):
         # This is the guard that catches both a typo and a config provider registered
         # too late: a fallback config contains none of the app's server names.
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(LookupError, match="No MCP server named 'analytics'"):
-                resolve_mcp_server(Config(), "analytics")
+                Config().resolve_mcp_server("analytics")
 
     @pytest.mark.parametrize(
         ("env", "expected_kind"),
@@ -167,7 +165,7 @@ class TestResolveMCPServers:
     def test_todays_singular_variables_keep_working_as_the_default_server(self, env, expected_kind):
         # GIVEN an existing .env written before MCP_SERVERS existed
         with patch.dict(os.environ, env, clear=True):
-            servers = resolve_mcp_servers(Config())
+            servers = Config().resolve_mcp_servers()
         # THEN it resolves, unchanged, as the server named `default`
         assert [(s.name, s.kind.value) for s in servers] == [("default", expected_kind)]
 
@@ -181,7 +179,7 @@ class TestResolveMCPServers:
             {"MCP_SERVER_PORT": "9000", "MCP_WORKLOAD_ID": WORKLOAD_ID},
             clear=True,
         ):
-            servers = resolve_mcp_servers(Config())
+            servers = Config().resolve_mcp_servers()
         assert [(s.name, s.kind.value) for s in servers] == [("default", "workload")]
 
     def test_two_singular_variables_now_raise_instead_of_discarding_one(self):
@@ -193,7 +191,7 @@ class TestResolveMCPServers:
             clear=True,
         ):
             with pytest.raises(ValueError, match="mutually exclusive"):
-                resolve_mcp_servers(Config())
+                Config().resolve_mcp_servers()
 
     def test_a_declared_fleet_supersedes_the_singular_variables_wholesale(self):
         # Not merged per name: the list you declare is the fleet you get. Merging would
@@ -210,7 +208,7 @@ class TestResolveMCPServers:
             },
             clear=True,
         ):
-            servers = resolve_mcp_servers(Config())
+            servers = Config().resolve_mcp_servers()
         assert [(s.name, s.kind.value) for s in servers] == [("analytics", "local")]
 
     def test_an_empty_variable_does_not_shadow_the_runtime_parameter(self):
@@ -227,12 +225,12 @@ class TestResolveMCPServers:
             },
             clear=True,
         ):
-            servers = resolve_mcp_servers(Config())
+            servers = Config().resolve_mcp_servers()
         assert [s.deployment_id for s in servers] == [DEPLOYMENT_ID]
 
     def test_no_configuration_at_all_is_a_legitimate_empty_fleet(self):
         with patch.dict(os.environ, {}, clear=True):
-            assert resolve_mcp_servers(Config()) == []
+            assert Config().resolve_mcp_servers() == []
 
 
 class TestBuildTarget:
@@ -472,7 +470,7 @@ class TestAMixedFleetGetsPerServerCredentials:
                         datarobot_api_token=config.resolve_datarobot_api_token(),
                     )
                 )
-                for ref in resolve_mcp_servers(config)
+                for ref in config.resolve_mcp_servers()
             }
 
         # The workload needs the extra key header; the deployment must not get it; and

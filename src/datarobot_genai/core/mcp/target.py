@@ -38,13 +38,11 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
+from datarobot.core.config import MCPServerKind
+from datarobot.core.config import MCPServerRef
 from pydantic import BaseModel
 from pydantic import ConfigDict
 
-from datarobot_genai.core.mcp._compat import MCPServerKind
-from datarobot_genai.core.mcp._compat import MCPServerRef
-from datarobot_genai.core.mcp._compat import resolve_mcp_server
-from datarobot_genai.core.mcp._compat import resolve_mcp_servers
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.dragent.deployment_urls import build_deployment_mcp_url
 from datarobot_genai.dragent.deployment_urls import build_local_mcp_url
@@ -431,9 +429,9 @@ def resolve_mcp_targets(names: list[str] | None = None) -> list[MCPTarget]:
 
     config = resolve_config()
     refs = (
-        [resolve_mcp_server(config, name) for name in names]
+        [config.resolve_mcp_server(name) for name in names]
         if names is not None
-        else resolve_mcp_servers(config)
+        else config.resolve_mcp_servers()
     )
     return [
         build_target(
@@ -451,9 +449,9 @@ async def aresolve_mcp_targets(names: list[str] | None = None) -> list[MCPTarget
 
     config = resolve_config()
     refs = (
-        [resolve_mcp_server(config, name) for name in names]
+        [config.resolve_mcp_server(name) for name in names]
         if names is not None
-        else resolve_mcp_servers(config)
+        else config.resolve_mcp_servers()
     )
     return await build_targets(
         refs,

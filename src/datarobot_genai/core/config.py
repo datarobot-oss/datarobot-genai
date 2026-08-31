@@ -23,14 +23,13 @@ from typing import cast
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
+from datarobot.core.config import MCPServerRef
 from datarobot.core.config import deployment_url
 from datarobot.core.config import getenv
 from datarobot.core.config import llm_gateway_url
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 from pydantic_settings.exceptions import SettingsError
-
-from datarobot_genai.core.mcp._compat import MCPServerRef
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
