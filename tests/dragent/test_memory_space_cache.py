@@ -172,7 +172,9 @@ class TestMemorySpaceKVCache:
         ):
             await kv_cache.set_value("dep-1", "v2")
 
-        session.update_event.assert_called_once_with(1, body={"v": 1, "payload": "v2"})
+        session.update_event.assert_called_once_with(
+            1, body={"v": 1, "payload": "v2", "content": "v2"}
+        )
         assert session.post_event.call_count == 1
 
     async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:

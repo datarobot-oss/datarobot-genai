@@ -139,7 +139,12 @@ def _cache_session_metadata(logical_key: str) -> dict[str, Any]:
 
 
 def _payload_event_body(payload: str) -> dict[str, Any]:
-    return {"v": CACHE_METADATA_VERSION, "payload": payload}
+    # The Memory Sessions Events API requires a top-level "content" field on every
+    # event body (schema validation: `body.content` is required). The cache payload
+    # itself is carried separately in "payload" so `_payload_from_event_body` can
+    # keep reading it verbatim; "content" just satisfies the API contract and
+    # doubles as a human-readable preview of the cached value.
+    return {"v": CACHE_METADATA_VERSION, "payload": payload, "content": payload}
 
 
 def _payload_from_event_body(body: dict[str, Any] | None) -> str | None:
