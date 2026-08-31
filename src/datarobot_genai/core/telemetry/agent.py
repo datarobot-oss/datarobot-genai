@@ -48,8 +48,10 @@ def _instrument_http_clients() -> None:
     try:
         requests_module = importlib.import_module("opentelemetry.instrumentation.requests")
         requests_instrumentor = getattr(requests_module, "RequestsInstrumentor")
-        # Don't trace the OTel exporter's own POST to the collector
-        requests_instrumentor().instrument(excluded_urls="otel/v1/traces")
+        # Don't trace the OTel exporters' own POSTs to the collector (traces and,
+        # since the meter provider bootstrap, metrics too - both OTLP HTTP
+        # exporters are requests-based).
+        requests_instrumentor().instrument(excluded_urls="otel/v1/(traces|metrics)")
     except Exception as e:
         logger.debug(f"requests instrumentation skipped: {e}")
     try:
