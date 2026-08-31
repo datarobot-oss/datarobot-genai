@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.8
+- `dragent`: **fixed streaming moderation skipping the response guards when a batch mixes tool-call events with the first text delta. Prescore metadata now attaches to whichever batch carries `TEXT_MESSAGE_START` instead of only a batch that leads with it.
 - Fixed Nemo Guardrails moderation e2e tests
 
 ## 0.29.7

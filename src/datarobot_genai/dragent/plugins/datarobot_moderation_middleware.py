@@ -642,7 +642,13 @@ def _postscore_only_datarobot_moderations(
 
 
 def _is_text_message_start_response(response: DRAgentEventResponse) -> bool:
-    return bool(response.events and response.events[0].type == EventType.TEXT_MESSAGE_START)
+    """Whether the batch opens a text segment.
+
+    Checks every event, not just the first: NAT batches ``TEXT_MESSAGE_START`` behind the
+    tool-call lifecycle events that precede it, and an ``events[0]``-only test would leave
+    prescore metadata unattached for the whole run.
+    """
+    return any(event.type == EventType.TEXT_MESSAGE_START for event in response.events)
 
 
 @dataclass
@@ -1110,6 +1116,62 @@ def skip_event_type(event: Event) -> bool:
         EventType.TEXT_MESSAGE_CONTENT,
         EventType.TEXT_MESSAGE_CHUNK,
     }
+
+
+def _split_response_by_text_deltas(
+    response: DRAgentEventResponse,
+) -> list[DRAgentEventResponse]:
+    """Split one batch into runs that are either all text deltas or all other events.
+
+    ``_moderated_dragent_stream`` routes each batch either into moderation or around it,
+    keyed on the batch's *first* event. NAT emits the first text delta in the same batch as
+    the tool-call lifecycle events that precede it (observed on the wire:
+    ``TOOL_CALL_END, TOOL_CALL_RESULT, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT``), so an
+    unsplit batch sends the run's text down the non-text path: response-stage guards never
+    run and no chunk carries moderation metadata. Feeding the mixed batch to dome instead is
+    not an option -- the moderated chunk is rebuilt into text/tool-delta events only, which
+    would drop ``TOOL_CALL_END`` / ``TOOL_CALL_RESULT`` and break the AG-UI sequence.
+
+    Segments keep upstream order, so flattening the result reproduces the original event
+    sequence. The stream payload (``original_chunk`` / ``usage_metrics``) rides with the first
+    text segment: it describes the delta, and copying it onto every segment would double-count
+    usage downstream.
+    """
+    events = response.events
+    if len(events) < 2:
+        return [response]
+
+    segments: list[tuple[bool, list[Event]]] = []
+    for event in events:
+        carries_text = not skip_event_type(event)
+        if segments and segments[-1][0] == carries_text:
+            segments[-1][1].append(event)
+        else:
+            segments.append((carries_text, [event]))
+    if len(segments) == 1:
+        return [response]
+
+    zero = default_usage_metrics()
+    parts: list[DRAgentEventResponse] = []
+    payload_assigned = False
+    for carries_text, segment_events in segments:
+        keep_payload = carries_text and not payload_assigned
+        payload_assigned = payload_assigned or keep_payload
+        update: dict[str, Any] = {"events": segment_events}
+        if not keep_payload:
+            update |= {"usage_metrics": zero, "original_chunk": None}
+        parts.append(response.model_copy(update=update))
+    return parts
+
+
+async def _split_mixed_text_batches(
+    upstream: AsyncGenerator[DRAgentEventResponse],
+) -> AsyncGenerator[DRAgentEventResponse]:
+    """Re-emit *upstream* with lifecycle events and text deltas in separate batches."""
+    async with contextlib.aclosing(upstream) as source:
+        async for response in source:
+            for part in _split_response_by_text_deltas(response):
+                yield part
 
 
 def _synthetic_text_message_end_events(
@@ -1782,10 +1844,14 @@ class DataRobotModerationMiddleware(
                     # own feed task, and NAT's ``push_active_function`` token cannot be reset
                     # across Contexts. See ``_context_pinned_stream``.
                     _context_pinned_stream(
-                        _validated_dragent_stream(
-                            cast(
-                                AsyncGenerator[Any, None],
-                                call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                        # Split before routing: a batch mixing lifecycle events with text
+                        # deltas would otherwise bypass moderation entirely.
+                        _split_mixed_text_batches(
+                            _validated_dragent_stream(
+                                cast(
+                                    AsyncGenerator[Any, None],
+                                    call_next(*ctx.modified_args, **ctx.modified_kwargs),
+                                ),
                             ),
                         ),
                     ),
