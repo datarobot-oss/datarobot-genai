@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.15 - 2026-08-31
+- Include `"content"` in the body of the request when storing an agent card in the memory space.
+
 ## 0.29.14 - 2026-08-31
 - Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
 
