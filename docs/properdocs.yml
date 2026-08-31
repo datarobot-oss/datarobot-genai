@@ -118,6 +118,7 @@ nav:
     - drtools/README.md
     - Authentication: drtools/auth.md
     - Atlassian Auth: drtools/auth-atlassian.md
+    - OTel Observability: drtools/otel.md
   - Design:
     - design/nat-1.6-streaming.md
   - API Reference: api/

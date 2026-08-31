@@ -21,17 +21,79 @@ this package reads OTel data; it does not produce any.
 
 Direct mirror of :class:`WorkloadApiClient`: one thin method per
 ``GET /otel/*``, each wrapped in :func:`request_user_dr_client` so credentials
-come from the requesting user's headers. Pure transport — camelCase query-param
-assembly and ``.json()``, nothing else. No truncation, no validation: callers
+come from the requesting user's headers. Transport only — camelCase query-param
+assembly on the way out, snake_case key normalization on the way back
+(:func:`_normalize_keys`), nothing else. No truncation, no validation: callers
 (the ``otel`` tools) are responsible for both.
 """
 
 import logging
 from typing import Any
+from typing import cast
+
+from datarobot.utils import underscorize
 
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 
 logger = logging.getLogger(__name__)
+
+# Keys whose *contents* are OTel data, not DataRobot API fields, and so must survive
+# verbatim. An attribute map is keyed by semantic-convention names ('gen_ai.task.output',
+# 'traceloop.entity.output'), which ``otel/constants.py`` matches literally and which the
+# agent passes straight back as otel_span_payload_get(fields=...); underscorize() would
+# rewrite any of them carrying a capital letter and break both. The key itself is already
+# snake_case, so only recursion into the value is suppressed.
+_OPAQUE_KEYS: frozenset[str] = frozenset(
+    {
+        "attributes",
+        "resource",
+        "scope",
+        "events",
+        "links",
+        # The trace envelope's guard maps are keyed by user-configured guard names
+        # ('PII Detection'), not API fields; underscorize() would mangle any name
+        # carrying a capital or a space ('pii _detection'). Both spellings appear
+        # because the raw wire key is camelCase while stub/hand-written fixtures
+        # are already snake_case.
+        "promptGuards",
+        "responseGuards",
+        "prompt_guards",
+        "response_guards",
+    }
+)
+
+
+def _normalize_keys(value: Any) -> Any:
+    """Recursively rewrite the API's camelCase response keys to snake_case.
+
+    drflask camelizes response keys on the way out ('traceId', 'spansCount',
+    'genAiUsageInputTokens') while every tool in :mod:`datarobot_genai.drtools.otel` reads
+    snake_case, so the translation has to happen somewhere. Doing it here — once, in the
+    transport — keeps the tools, their fixtures and the integration stubs all speaking one
+    dialect.
+
+    Uses the DataRobot SDK's own :func:`underscorize`, so this agrees with ``from_api``.
+    It differs from ``from_api`` in two ways that matter here: null-valued keys are kept
+    (``from_api`` drops them, which would make a present-but-null payload field
+    indistinguishable from an absent one), and :data:`_OPAQUE_KEYS` are not descended into.
+
+    Idempotent on already-snake_case input, so a stubbed or hand-written fixture passes
+    through unchanged.
+    """
+    if isinstance(value, list):
+        return [_normalize_keys(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            underscorize(key): item if key in _OPAQUE_KEYS else _normalize_keys(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _get_normalized(path: str, params: dict[str, Any]) -> dict[str, Any]:
+    """``GET`` one ``/otel`` route and return its body with keys normalized."""
+    with request_user_dr_client() as client:
+        return cast(dict[str, Any], _normalize_keys(client.get(path, params=params).json()))
 
 
 class OtelQueryApiClient:
@@ -97,8 +159,7 @@ class OtelQueryApiClient:
             params["sortBy"] = sort_by
         if sort_direction:
             params["sortDirection"] = sort_direction
-        with request_user_dr_client() as client:
-            return client.get(f"otel/{entity_type}/{entity_id}/traces/", params=params).json()
+        return _get_normalized(f"otel/{entity_type}/{entity_id}/traces/", params)
 
     def get_trace(
         self,
@@ -111,10 +172,7 @@ class OtelQueryApiClient:
     ) -> dict[str, Any]:
         """GET /otel/{entityType}/{entityId}/traces/{traceId}/ — one trace, spans paginated."""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
-        with request_user_dr_client() as client:
-            return client.get(
-                f"otel/{entity_type}/{entity_id}/traces/{trace_id}/", params=params
-            ).json()
+        return _get_normalized(f"otel/{entity_type}/{entity_id}/traces/{trace_id}/", params)
 
     # ------------------------------------------------------------------ #
     # Logs                                                                 #
@@ -149,8 +207,7 @@ class OtelQueryApiClient:
             params["spanId"] = span_id
         if trace_id:
             params["traceId"] = trace_id
-        with request_user_dr_client() as client:
-            return client.get(f"otel/{entity_type}/{entity_id}/logs/", params=params).json()
+        return _get_normalized(f"otel/{entity_type}/{entity_id}/logs/", params)
 
     # ------------------------------------------------------------------ #
     # Metrics                                                              #
@@ -170,10 +227,7 @@ class OtelQueryApiClient:
             params["search"] = search
         if metric_type:
             params["metricType"] = metric_type
-        with request_user_dr_client() as client:
-            return client.get(
-                f"otel/{entity_type}/{entity_id}/metrics/summary/", params=params
-            ).json()
+        return _get_normalized(f"otel/{entity_type}/{entity_id}/metrics/summary/", params)
 
     def get_metrics_values(
         self,
@@ -190,10 +244,7 @@ class OtelQueryApiClient:
             params["startTime"] = start
         if end:
             params["endTime"] = end
-        with request_user_dr_client() as client:
-            return client.get(
-                f"otel/{entity_type}/{entity_id}/metrics/values/", params=params
-            ).json()
+        return _get_normalized(f"otel/{entity_type}/{entity_id}/metrics/values/", params)
 
     def get_autocollected_metrics_values(
         self,
@@ -209,10 +260,9 @@ class OtelQueryApiClient:
             params["startTime"] = start
         if end:
             params["endTime"] = end
-        with request_user_dr_client() as client:
-            return client.get(
-                f"otel/{entity_type}/{entity_id}/metrics/autocollectedValues/", params=params
-            ).json()
+        return _get_normalized(
+            f"otel/{entity_type}/{entity_id}/metrics/autocollectedValues/", params
+        )
 
     # ------------------------------------------------------------------ #
     # Stats                                                                #
@@ -236,5 +286,4 @@ class OtelQueryApiClient:
             params["startTime"] = start
         if end:
             params["endTime"] = end
-        with request_user_dr_client() as client:
-            return client.get("otel/stats/", params=params).json()
+        return _get_normalized("otel/stats/", params)

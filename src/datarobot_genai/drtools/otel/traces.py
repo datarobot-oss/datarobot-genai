@@ -62,12 +62,14 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 logger = logging.getLogger(__name__)
 
-# otel_trace_get's defaults, in one place. Plan §9 step 9 — a manual run against a
-# real agent trace — is deliberately NOT part of this round, so these three
-# numbers are provisional: measured on a proxy (§1's 3.1 chars/token), not on
-# Claude's own tokenizer, and not yet exercised against a real trace. Nothing else
-# in this package repeats these literals, so correcting them later (per step 9) is
-# a one-line change here rather than a hunt through the module.
+# otel_trace_get's defaults, in one place. Set from §1's 3.1 chars/token proxy, then
+# confirmed by plan §9 step 9's run against a real agent deployment (130 KB - 1.67 MB
+# raw traces): summary stayed flat near 14,000 chars across a 13x growth in raw size,
+# only max_total_chars ever bound (at ~94% utilization, 13 of 36 spans dropped and
+# reported), span_limit was never reached, and max_field_chars produced contiguous
+# windows with a correct next_offset. See docs/src/drtools/otel.md for the numbers.
+# Nothing else in this package repeats these literals, so retuning them is a one-line
+# change here rather than a hunt through the module.
 DEFAULT_TRACE_SPAN_LIMIT = 100
 DEFAULT_TRACE_MAX_FIELD_CHARS = 2_000
 DEFAULT_TRACE_MAX_TOTAL_CHARS = 60_000
