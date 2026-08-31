@@ -10,6 +10,8 @@ Enable them with:
 export ENABLE_OTEL_TOOLS=true
 ```
 
+(or list `otel` in `MCP_CLI_CONFIGS`, like any other tool package).
+
 They ship in `datarobot-genai[drtools]` / `datarobot-genai[drmcp]` and are
 registered under the `dr_otel` category (label **Observability**), a
 standalone top-level category alongside `dr_documentation`, `dr_use_cases`,
@@ -79,10 +81,14 @@ for these:
    telling you where the payload mass actually is, without paying for any of
    it.
 3. **`otel_span_payload_get`** — once you know which span matters, fetch its
-   payload text directly. Every dropped duplicate/derived field is *named*,
-   not silently discarded (`dropped_as_duplicate` / `dropped_semconv`), and
-   `field_offset` pages within a single field — one measured attribute was
-   740,000 characters, well past what any single call can return in full.
+   payload text directly (the tool pages through the trace's spans server-side,
+   so a span past the first page of 100 is still reachable). Every dropped
+   duplicate/derived field is *named*, not silently discarded
+   (`dropped_as_duplicate` / `dropped_semconv`), and `field_offset` pages
+   within a single field — pass it together with `fields=[that one name]`
+   (the tool requires `fields` alongside a non-zero offset; `status_message`
+   may be named there too); one measured attribute was 740,000 characters,
+   well past what any single call can return in full.
 
 `otel_trace_get(view="payloads")` exists as a middle ground — canonical
 semconv attributes only, each capped and budgeted across the whole span page
@@ -121,6 +127,12 @@ this package is a **character** budget, using a measured conversion of
 default of 60,000 is chosen to land near 20k tokens under that ratio. Every
 budget is a plain `int` argument on the tool call, so an agent that finds a
 default wrong for its use case can pass a different one on the next call.
+
+Non-string attribute values (OTLP array attributes, JSON-decoded message
+lists such as `gen_ai.prompt`) are measured, deduplicated and windowed over
+their serialized JSON. A container small enough to fit its cap is returned
+natively; an oversized one comes back as a window of its JSON text with
+`"serialized": true` in its truncation record.
 
 These defaults were set from the proxy measurement above and then checked
 against a real agent deployment, whose traces ranged from 130 KB to 1.67 MB of

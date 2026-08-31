@@ -215,6 +215,36 @@ def test_get_trace_forwards_explicit_span_pagination(
     )
 
 
+def test_get_trace_normalizes_envelope_keys_but_not_guard_names(
+    client: OtelQueryApiClient, patched_dr_client: MagicMock
+) -> None:
+    # GIVEN a camelCase wire response whose guard maps are keyed by user-defined
+    # guard names, including one with capitals and a space
+    trace_id = "c" * 32
+    patched_dr_client.get.return_value = MagicMock(
+        json=lambda: {
+            "traceId": trace_id,
+            "spanCount": 1,
+            "metrics": {
+                "promptGuards": {"PII Detection": {"average": 0.5, "count": 2}},
+                "responseGuards": {"Toxicity": {"average": 0.0, "count": 2}},
+            },
+            "spans": [],
+        }
+    )
+
+    # WHEN get_trace is called
+    result = client.get_trace("deployment", "abc123", trace_id)
+
+    # THEN envelope keys are snake_case but guard names survive verbatim —
+    # underscorize('PII Detection') would produce 'pii _detection' and break the
+    # agent's ability to match a guard back to its configured name
+    assert result["trace_id"] == trace_id
+    assert result["span_count"] == 1
+    assert result["metrics"]["prompt_guards"] == {"PII Detection": {"average": 0.5, "count": 2}}
+    assert result["metrics"]["response_guards"] == {"Toxicity": {"average": 0.0, "count": 2}}
+
+
 # ------------------------------------------------------------------ #
 # list_logs                                                            #
 # ------------------------------------------------------------------ #

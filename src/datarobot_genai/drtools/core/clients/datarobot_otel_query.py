@@ -43,7 +43,24 @@ logger = logging.getLogger(__name__)
 # agent passes straight back as otel_span_payload_get(fields=...); underscorize() would
 # rewrite any of them carrying a capital letter and break both. The key itself is already
 # snake_case, so only recursion into the value is suppressed.
-_OPAQUE_KEYS: frozenset[str] = frozenset({"attributes", "resource", "scope", "events", "links"})
+_OPAQUE_KEYS: frozenset[str] = frozenset(
+    {
+        "attributes",
+        "resource",
+        "scope",
+        "events",
+        "links",
+        # The trace envelope's guard maps are keyed by user-configured guard names
+        # ('PII Detection'), not API fields; underscorize() would mangle any name
+        # carrying a capital or a space ('pii _detection'). Both spellings appear
+        # because the raw wire key is camelCase while stub/hand-written fixtures
+        # are already snake_case.
+        "promptGuards",
+        "responseGuards",
+        "prompt_guards",
+        "response_guards",
+    }
+)
 
 
 def _normalize_keys(value: Any) -> Any:
