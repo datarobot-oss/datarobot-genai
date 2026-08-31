@@ -14,7 +14,7 @@
 
 """DataRobot OTel ingest endpoint helpers.
 
-Two responsibilities, intentionally co-located so a single import covers
+Three responsibilities, intentionally co-located so a single import covers
 both the NAT telemetry exporter
 (``datarobot_genai.dragent.plugins.datarobot_otelcollector``) and
 the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
@@ -22,10 +22,14 @@ the framework-instrumentor bootstrap (``datarobot_genai.core.telemetry.agent``):
 * ``resolve_*_from_env`` — read ``MLOPS_DEPLOYMENT_ID`` / ``WORKLOAD_ID`` /
   ``DATAROBOT_API_TOKEN`` / ``DATAROBOT_(PUBLIC_)ENDPOINT`` and shape them into
   the values the OTel ingest expects (``deployment-<id>`` or ``workload-<id>``
-  entity id; ``<host>/otel/v1/traces`` endpoint).
+  entity id; ``<host>/otel/v1/traces`` or ``<host>/otel/v1/metrics`` endpoint).
 * ``bootstrap_otel_provider_for_datarobot`` — install a global OTel SDK
   ``TracerProvider`` pointed at the DataRobot ingest so framework
   auto-instrumentors actually export spans.
+* ``bootstrap_otel_meter_provider_for_datarobot`` — same, for metrics: without
+  it, ``datarobot_dome`` (moderations) guard metrics record through the OTel
+  SDK's no-op default ``MeterProvider`` and are silently dropped, since
+  nothing else in this SDK's bootstrap path ever installs a real one.
 """
 
 from __future__ import annotations
@@ -55,6 +59,10 @@ _BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 # can't drift.
 DEPLOYMENT_ENTITY_ID_PREFIX = "deployment-"
 WORKLOAD_ENTITY_ID_PREFIX = "workload-"
+
+# Idempotency state for bootstrap_otel_meter_provider_for_datarobot, separate
+# from _BOOTSTRAP_STATE (traces) since either can succeed or fail independently.
+_METER_BOOTSTRAP_STATE: dict[str, bool] = {"installed": False}
 
 
 class _OtelSettings(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
@@ -106,17 +114,17 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
     return None
 
 
-def resolve_otel_traces_endpoint_from_env() -> str:
+def _resolve_otel_endpoint_from_env(signal_path: str) -> str:
     # if OTEL_EXPORTER_OTLP_ENDPOINT is set: do not override it
     if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
         # The convention for OTEL_EXPORTER_OTLP_ENDPOINT is to be base url
-        # so we need to append /v1/traces
+        # so we need to append the signal-specific path.
         otel_endpoint = os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"].rstrip("/")
-        return f"{otel_endpoint}/v1/traces"
+        return f"{otel_endpoint}{signal_path}"
 
     # Derive from the DR API base URL: e.g. https://app.datarobot.com/api/v2
     # → https://app.datarobot.com/otel/v1/traces. The OTel collector ingress
-    # lives at the same host, off /otel/v1/traces, not under /api/v2. We
+    # lives at the same host, off /otel/v1/<signal>, not under /api/v2. We
     # only honour explicitly set env vars (no built-in default) so an
     # unconfigured env never silently targets app.datarobot.com.
     base = os.getenv("DATAROBOT_PUBLIC_API_ENDPOINT") or os.getenv("DATAROBOT_ENDPOINT")
@@ -125,7 +133,15 @@ def resolve_otel_traces_endpoint_from_env() -> str:
     parsed = urllib.parse.urlsplit(base)
     if not parsed.scheme or not parsed.netloc:
         return ""
-    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/otel/v1/traces", "", ""))
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, f"/otel{signal_path}", "", ""))
+
+
+def resolve_otel_traces_endpoint_from_env() -> str:
+    return _resolve_otel_endpoint_from_env("/v1/traces")
+
+
+def resolve_otel_metrics_endpoint_from_env() -> str:
+    return _resolve_otel_endpoint_from_env("/v1/metrics")
 
 
 def _use_simple_span_processor() -> bool:
@@ -270,6 +286,88 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
     logger.info(
         "DataRobot OTel span processor %s → %s (entity_id=%s)",
         action,
+        endpoint,
+        lower_headers.get("x-datarobot-entity-id", ""),
+    )
+    return True
+
+
+def bootstrap_otel_meter_provider_for_datarobot() -> bool:
+    """Ensure datarobot_dome (moderations) guard metrics reach the DataRobot OTel ingest.
+
+    ``OtelMetricSession`` defers to the OTel SDK's global ``MeterProvider``
+    (``get_meter_provider()``) whenever none is passed explicitly - but unlike
+    traces, nothing else in this SDK's bootstrap path ever installs one. Left
+    unfixed, every guard metric records through the SDK's no-op default meter
+    and is silently dropped before it ever reaches an exporter.
+
+    Same install-only shape as ``bootstrap_otel_provider_for_datarobot``, with
+    one real difference: there is no "attach" mode here. A ``TracerProvider``
+    can take an additional span processor after construction; an SDK
+    ``MeterProvider``'s metric readers are constructor-only and immutable
+    once built, so if an SDK ``MeterProvider`` is already installed globally
+    when this runs, we can't add our exporter to it and skip instead - the
+    same fail-safe behavior as an unrecognized provider type on the trace side.
+
+    Returns ``True`` when a provider was installed by this call, ``False``
+    (silently) when the hosted-runtime env is incomplete, an SDK
+    ``MeterProvider`` is already installed, or this has already run once in
+    this process.
+    """
+    if _METER_BOOTSTRAP_STATE["installed"]:
+        return False
+
+    headers = resolve_datarobot_headers_from_env()
+    endpoint = resolve_otel_metrics_endpoint_from_env()
+    if not headers or not endpoint:
+        logger.info(
+            "Skipping OTel MeterProvider bootstrap: hosted-runtime env "
+            "(MLOPS_DEPLOYMENT_ID or WORKLOAD_ID / DATAROBOT_API_TOKEN / "
+            "DATAROBOT_(PUBLIC_)ENDPOINT) not fully set."
+        )
+        return False
+
+    # Imported lazily, same rationale as the trace bootstrap above.
+    from opentelemetry import metrics
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+    from opentelemetry.metrics._internal import _ProxyMeterProvider
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.resources import Resource
+
+    try:
+        current = metrics.get_meter_provider()
+        if not isinstance(current, _ProxyMeterProvider):
+            logger.debug(
+                "Skipping OTel MeterProvider bootstrap: an SDK MeterProvider "
+                "is already installed (%s); its metric readers can't be "
+                "extended after construction.",
+                type(current).__name__,
+            )
+            return False
+
+        exporter = OTLPMetricExporter(endpoint=endpoint, headers=headers)
+        reader = PeriodicExportingMetricReader(exporter)
+        sdk_version = _get_opentelemetry_sdk_version()
+        resource = Resource.create(
+            {
+                "telemetry.sdk.language": "python",
+                "telemetry.sdk.name": "opentelemetry",
+                "telemetry.sdk.version": sdk_version,
+                "service.name": _resolve_service_name(),
+            }
+        )
+        provider = MeterProvider(metric_readers=[reader], resource=resource)
+        metrics.set_meter_provider(provider)
+    except Exception:
+        # Never let telemetry setup take down the agent.
+        logger.exception("Failed to bootstrap DataRobot OTel MeterProvider")
+        return False
+
+    _METER_BOOTSTRAP_STATE["installed"] = True
+    lower_headers = {k.lower(): v for k, v in headers.items()}
+    logger.info(
+        "DataRobot OTel meter provider installed → %s (entity_id=%s)",
         endpoint,
         lower_headers.get("x-datarobot-entity-id", ""),
     )
