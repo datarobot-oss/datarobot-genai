@@ -159,6 +159,24 @@ def test_list_traces_sends_zero_valued_duration_and_cost_filters(
     )
 
 
+def test_list_traces_forwards_fractional_cost_bounds(
+    client: OtelQueryApiClient, patched_dr_client: MagicMock
+) -> None:
+    # GIVEN sub-dollar cost bounds — trace cost is a fractional currency amount
+    # (the SDK types it Float; the stub trace's own cost is 0.002)
+    patched_dr_client.get.return_value = MagicMock(json=lambda: {"data": []})
+
+    # WHEN list_traces is called with fractional bounds
+    client.list_traces("deployment", "abc123", min_trace_cost=0.001, max_trace_cost=0.01)
+
+    # THEN they are forwarded unmangled — an int-typed signature rejected every
+    # realistic sub-dollar bound before the request was ever made
+    patched_dr_client.get.assert_called_once_with(
+        "otel/deployment/abc123/traces/",
+        params={"limit": 20, "offset": 0, "minTraceCost": 0.001, "maxTraceCost": 0.01},
+    )
+
+
 # ------------------------------------------------------------------ #
 # get_trace                                                            #
 # ------------------------------------------------------------------ #

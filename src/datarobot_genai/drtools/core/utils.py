@@ -57,9 +57,11 @@ def require_object_id(value: str, name: str) -> str:
 
 
 def require_trace_id(value: str) -> str:
-    """Validate an exactly-32-character hex OTel trace id.
+    """Validate an exactly-32-character hex OTel trace id, returned lowercased.
 
-    Mirrors ``TracingRetrieveParamValidator.trace_id``.
+    Mirrors ``TracingRetrieveParamValidator.trace_id``. Lowercasing matters: the
+    server emits and matches lowercase hex, so an uppercase id pasted by a human
+    would otherwise miss an existing trace.
     """
     if not isinstance(value, str):
         raise ToolError(
@@ -72,7 +74,7 @@ def require_trace_id(value: str) -> str:
             f"Argument validation error: 'trace_id' must be a 32-character hex ID, got {value!r}.",
             kind=ToolErrorKind.VALIDATION,
         )
-    return stripped
+    return stripped.lower()
 
 
 def is_valid_url(url: str) -> bool:

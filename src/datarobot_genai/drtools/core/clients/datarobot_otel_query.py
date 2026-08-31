@@ -64,8 +64,8 @@ class OtelQueryApiClient:
         min_trace_duration_ns: int | None = None,
         min_span_duration_ns: int | None = None,
         max_span_duration_ns: int | None = None,
-        min_trace_cost: int | None = None,
-        max_trace_cost: int | None = None,
+        min_trace_cost: float | None = None,
+        max_trace_cost: float | None = None,
         sort_by: str | None = None,
         sort_direction: str | None = None,
     ) -> dict[str, Any]:

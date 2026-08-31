@@ -127,6 +127,16 @@ def test_require_trace_id_accepts_32_lowercase_hex_chars() -> None:
     assert result == _VALID_TRACE_ID
 
 
+def test_require_trace_id_lowercases_uppercase_hex() -> None:
+    # GIVEN a 32-char trace id pasted with uppercase hex digits
+    # WHEN require_trace_id validates it
+    result = require_trace_id(_VALID_TRACE_ID.upper())
+
+    # THEN it is accepted and lowercased — the server emits and matches lowercase
+    # hex, so forwarding the uppercase form verbatim would miss an existing trace
+    assert result == _VALID_TRACE_ID
+
+
 def test_require_trace_id_strips_surrounding_whitespace() -> None:
     # GIVEN a valid trace id with surrounding whitespace
     # WHEN require_trace_id validates it

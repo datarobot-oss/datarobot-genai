@@ -33,6 +33,7 @@ from datarobot_genai.drtools.otel.truncation import PAYLOAD_MIN_CHARS
 from datarobot_genai.drtools.otel.truncation import STATUS_MESSAGE_MAX_CHARS
 from datarobot_genai.drtools.otel.truncation import apply_char_budget
 from datarobot_genai.drtools.otel.truncation import canonical_attributes
+from datarobot_genai.drtools.otel.truncation import cap_payload_value
 from datarobot_genai.drtools.otel.truncation import cap_value
 from datarobot_genai.drtools.otel.truncation import summarize_spans
 from tests.drmcp.unit.otel_tools.trace_factory import CHARS_PER_TOKEN
@@ -247,6 +248,29 @@ def test_summarize_spans_counts_a_response_field_and_a_same_named_attribute() ->
     assert summaries[0]["payload_chars"] == 800
     assert stats["total_payload_chars"] == 800
     assert summaries[0]["payload_fields"] == ["prompt"]
+
+
+def test_summarize_spans_counts_container_payloads_by_their_serialized_size() -> None:
+    # GIVEN a span whose only payload is a JSON-decoded message list — the wire
+    # shape OTLP array attributes and instrumentations actually produce
+    messages = [{"role": "user", "content": "x" * 100_000}]
+    span = {
+        "span_id": "aaaa0000bbbb1111",
+        "name": "llm.chat",
+        "attributes": {"gen_ai.prompt": messages, "gen_ai.usage.input_tokens": 38_211},
+    }
+
+    # WHEN the span is summarized
+    summaries, stats = summarize_spans([span])
+
+    # THEN the list is counted at its serialized size, not reported as 0 payload
+    # chars — 'where the mass is' must include non-str payload carriers
+    expected = len(json.dumps(messages, default=str, ensure_ascii=False))
+    assert summaries[0]["payload_chars"] == expected
+    assert summaries[0]["payload_fields"] == ["gen_ai.prompt"]
+    assert stats["total_payload_chars"] == expected
+    # THEN scalar metadata still never masquerades as payload
+    assert "gen_ai.usage.input_tokens" not in summaries[0]["payload_fields"]
 
 
 def test_summarize_spans_caps_a_traceback_in_status_message(
@@ -510,6 +534,23 @@ def test_canonical_attributes_passes_through_non_string_values() -> None:
     assert dropped == {"duplicate": [], "semconv": []}
 
 
+def test_canonical_attributes_dedups_byte_identical_container_twins() -> None:
+    # GIVEN the same message list written by two instrumentations
+    messages = [{"role": "user", "content": "m" * (PAYLOAD_MIN_CHARS * 2)}]
+    payload = {
+        "gen_ai.input.messages": list(messages),
+        "traceloop.entity.input": list(messages),
+    }
+
+    # WHEN the payload is reduced
+    kept, dropped = canonical_attributes(payload)
+
+    # THEN the higher-precedence carrier survives and the twin is a duplicate —
+    # container twins dedup over their serialized JSON just like string twins
+    assert list(kept) == ["gen_ai.input.messages"]
+    assert dropped == {"duplicate": ["traceloop.entity.input"], "semconv": []}
+
+
 def test_canonical_attributes_does_not_mutate_its_input(
     oversized_agent_trace: dict[str, Any],
 ) -> None:
@@ -643,6 +684,77 @@ def test_cap_value_counts_characters_not_bytes() -> None:
     assert info is not None
     assert info["total_chars"] == len(value)
     assert len(value.encode("utf-8")) > len(value)
+
+
+# ------------------------------------------------------------------ #
+# cap_payload_value                                                  #
+# ------------------------------------------------------------------ #
+
+
+def test_cap_payload_value_passes_a_small_container_through_natively() -> None:
+    # GIVEN a container attribute whose JSON fits the cap
+    value = [{"role": "user", "content": "hi"}]
+
+    # WHEN it is capped
+    window, info = cap_payload_value(value, MAX_FIELD_CHARS_SPAN_VIEW)
+
+    # THEN it comes back as the container itself, with no truncation record
+    assert window == value
+    assert info is None
+
+
+def test_cap_payload_value_windows_an_oversized_list_over_its_json() -> None:
+    # GIVEN a gen_ai.prompt-shaped list whose content dwarfs the cap — OTLP allows
+    # array attributes, and 'cap only str' used to return this whole
+    value = [{"role": "user", "content": "x" * 100_000}]
+    serialized = json.dumps(value, default=str, ensure_ascii=False)
+
+    # WHEN it is capped
+    window, info = cap_payload_value(value, 2_000)
+
+    # THEN the window is the serialized JSON's first 2,000 chars and the record
+    # marks it as serialized, with next_offset for continuation
+    assert window == serialized[:2_000]
+    assert info == {
+        "returned_chars": 2_000,
+        "total_chars": len(serialized),
+        "next_offset": 2_000,
+        "serialized": True,
+    }
+
+
+def test_cap_payload_value_continues_a_container_from_an_offset() -> None:
+    # GIVEN the same oversized container and the first call's next_offset
+    value = [{"role": "user", "content": "x" * 100_000}]
+    serialized = json.dumps(value, default=str, ensure_ascii=False)
+
+    # WHEN the next window is requested
+    window, info = cap_payload_value(value, 2_000, 2_000)
+
+    # THEN the window continues contiguously over the serialized text
+    assert window == serialized[2_000:4_000]
+    assert info is not None
+    assert info["serialized"] is True
+    assert info["next_offset"] == 4_000
+
+
+def test_cap_payload_value_matches_cap_value_for_strings() -> None:
+    # GIVEN a plain string value
+    value = "y" * 5_000
+
+    # WHEN both helpers cap it
+    # THEN they agree exactly — strings take the cap_value path unchanged
+    assert cap_payload_value(value, 2_000) == cap_value(value, 2_000)
+    assert cap_payload_value(value, 2_000, 2_000) == cap_value(value, 2_000, 2_000)
+
+
+def test_cap_payload_value_leaves_scalars_untouched() -> None:
+    # GIVEN metadata-sized scalar values
+    # WHEN they are capped
+    # THEN they pass through with no record — numbers, bools and None are
+    # metadata-sized by construction
+    for scalar in (200, 0.5, True, None):
+        assert cap_payload_value(scalar, 10) == (scalar, None)
 
 
 # ------------------------------------------------------------------ #

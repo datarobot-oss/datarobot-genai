@@ -150,9 +150,9 @@ def canonical_attributes(attributes: dict[str, Any]) -> tuple[dict[str, Any], di
 
     twins: dict[str, list[str]] = {}
     for name in names:
-        value = attributes[name]
-        if isinstance(value, str) and len(value) >= PAYLOAD_MIN_CHARS:
-            twins.setdefault(value, []).append(name)
+        text = _payload_text(attributes[name])
+        if text is not None and len(text) >= PAYLOAD_MIN_CHARS:
+            twins.setdefault(text, []).append(name)
 
     # Within a group of byte-identical values the keeper is the highest-precedence
     # member that is not itself a derived family: electing a derived member and
@@ -180,11 +180,13 @@ def canonical_attributes(attributes: dict[str, Any]) -> tuple[dict[str, Any], di
     # Bucket by what actually survived, not by why the drop was decided. The
     # surviving set is length-unbounded on purpose: a short byte-identical twin is
     # still a duplicate even though it never entered the dedup map above.
-    surviving = {value for value in kept.values() if isinstance(value, str)}
+    surviving = {
+        text for text in (_payload_text(value) for value in kept.values()) if text is not None
+    }
     dropped: dict[str, list[str]] = {"duplicate": [], "semconv": []}
     for name in dropped_names:
-        value = attributes[name]
-        bucket = "duplicate" if isinstance(value, str) and value in surviving else "semconv"
+        text = _payload_text(attributes[name])
+        bucket = "duplicate" if text is not None and text in surviving else "semconv"
         dropped[bucket].append(name)
 
     dropped["duplicate"].sort()
@@ -221,6 +223,32 @@ def cap_value(value: str, max_chars: int, offset: int = 0) -> tuple[str, dict[st
         "total_chars": total_chars,
         "next_offset": end if end < total_chars else None,
     }
+
+
+def cap_payload_value(
+    value: Any, max_chars: int, offset: int = 0
+) -> tuple[Any, dict[str, Any] | None]:
+    """Window any payload value; containers are windowed over their JSON text.
+
+    A string behaves exactly as :func:`cap_value`. A list/dict that fits whole
+    (requested from offset 0) is returned as-is, native; one that does not is
+    returned as a window of its serialized JSON with ``"serialized": True`` in
+    the record, so the caller knows the window is JSON text of a container
+    rather than a raw string value. OTLP allows array attributes and
+    instrumentations send JSON-decoded message lists (``gen_ai.prompt`` as a
+    100k-char list was observed), so capping only ``str`` values let those
+    through every cap whole. Numbers, bools and None pass through untouched —
+    they are metadata-sized by construction.
+    """
+    if isinstance(value, str):
+        return cap_value(value, max_chars, offset)
+    if isinstance(value, (list, dict)):
+        window, info = cap_value(_container_text(value), max_chars, offset)
+        if info is None:
+            return value, None
+        info["serialized"] = True
+        return window, info
+    return value, None
 
 
 def apply_char_budget(
@@ -274,19 +302,43 @@ def _capped_status_message(value: Any) -> Any:
     return f"{window}…[truncated, {info['total_chars'] - info['returned_chars']} more chars]"
 
 
+def _container_text(value: list[Any] | dict[str, Any]) -> str:
+    """Serialize a container exactly the way ``apply_char_budget`` charges it."""
+    return json.dumps(value, default=str, ensure_ascii=False)
+
+
+def _payload_text(value: Any) -> str | None:
+    """Return the text a value contributes to payload accounting and dedup.
+
+    A str is its own text; a list/dict is measured over its serialized JSON — the
+    same serialization ``apply_char_budget`` charges — so accounting, byte-identity
+    dedup, caps and the budget agree on one size. Anything else is metadata-sized:
+    None.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, dict)):
+        return _container_text(value)
+    return None
+
+
 def _payload_sizes(span: dict[str, Any]) -> dict[str, int]:
-    """Map a span's payload-sized string fields to their char counts, largest first.
+    """Map a span's payload-sized fields to their char counts, largest first.
 
     ``attributes`` is a dynamic dict on the wire, so it can carry a key literally
     named ``prompt`` or ``completion`` beside the span's own response field. Sizes
     accumulate under the shared name instead of overwriting, so ``payload_chars``
-    counts both and never undercounts the payload actually on the span.
+    counts both and never undercounts the payload actually on the span. Container
+    values count their serialized JSON via ``_payload_text`` — counting only
+    ``str`` values reported a 100k-char ``gen_ai.prompt`` list as 0 payload chars,
+    pointing the agent away from exactly the span it needed.
     """
     sizes: dict[str, int] = {}
 
     def add(name: str, value: Any) -> None:
-        if isinstance(value, str) and len(value) >= PAYLOAD_MIN_CHARS:
-            sizes[name] = sizes.get(name, 0) + len(value)
+        text = _payload_text(value)
+        if text is not None and len(text) >= PAYLOAD_MIN_CHARS:
+            sizes[name] = sizes.get(name, 0) + len(text)
 
     for name in RESPONSE_PAYLOAD_FIELDS:
         add(name, span.get(name))
