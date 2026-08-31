@@ -21,6 +21,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Any
 
+from datarobot.core.config import DEFAULT_MCP_SERVER_NAME
 from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client.client_base import AuthAdapter
@@ -32,8 +33,6 @@ from nat.plugins.mcp.exception_handler import extract_primary_exception
 from pydantic import Field
 from pydantic import model_validator
 
-from datarobot_genai.core.mcp._compat import DEFAULT_MCP_SERVER_NAME
-from datarobot_genai.core.mcp._compat import resolve_mcp_server
 from datarobot_genai.core.mcp.target import MCPTarget
 from datarobot_genai.core.mcp.target import build_target
 
@@ -313,7 +312,7 @@ async def datarobot_mcp_client_function_group(
     # credentials -- which is what an unresolvable address used to produce.
     app_config = resolve_config()
     target = build_target(
-        resolve_mcp_server(app_config, config.server.name),
+        app_config.resolve_mcp_server(config.server.name),
         datarobot_endpoint=app_config.resolve_datarobot_endpoint(),
         datarobot_api_token=app_config.resolve_datarobot_api_token(),
     )

@@ -38,10 +38,9 @@ import warnings
 from typing import Any
 from typing import Literal
 
+from datarobot.core.config import DEFAULT_MCP_SERVER_NAME
+from datarobot.core.config import MCPServerRef
 from pydantic import BaseModel
-
-from datarobot_genai.core.mcp._compat import DEFAULT_MCP_SERVER_NAME
-from datarobot_genai.core.mcp._compat import MCPServerRef
 
 _REMOVED_MEMBER_MESSAGE = (
     "MCPConfig.{name} was removed. It read the environment and resolved one server, "

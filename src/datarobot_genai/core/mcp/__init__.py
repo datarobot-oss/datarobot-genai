@@ -1,5 +1,6 @@
-from ._compat import MCPServerKind
-from ._compat import MCPServerRef
+from datarobot.core.config import MCPServerKind
+from datarobot.core.config import MCPServerRef
+
 from .config import MCPConfig
 from .target import MCPTarget
 from .target import MCPTargetKind
