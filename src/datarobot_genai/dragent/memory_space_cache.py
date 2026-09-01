@@ -21,6 +21,35 @@ surface the agent-application recipe uses for chat history when
 Each provisioned memory space has a unique ``memory_space_id`` and platform-level
 access control scoped to the deploying user or workload API token. Unlike shared
 Redis, no per-deployment namespace or HMAC signing is required for this backend.
+
+Each cache entry is one Memory Service session — found by a ``description``-filtered
+lookup on the logical cache key — carrying a single event whose ``body["content"]``
+is the opaque JSON payload. ``set_value`` patches that event in place instead of
+appending; the cache only ever needs the current value, never a history.
+
+Deliberately built on stable ``datarobot[core]`` rather than the Memory Service
+light ORM (``DRMemorySpace`` / ``DRSession`` / ``DREvent`` /
+``DRDeduplicationKey``) that BUZZOK-32180 standardizes this cache on: that ORM
+ships only as ``application_utils.persistence`` in the pre-release
+``datarobot-early-access`` distribution today, which we can't take as a
+production dependency. Two things fall out of that constraint that a future
+migration to the ORM should pick back up:
+
+* **Session lookup by logical key** goes through ``Session.list(description=...)``
+  (see ``_find_cache_session``) rather than an exact-match ``deduplicationKey``
+  point lookup — the stable SDK's ``Session.list`` has no such filter, so a
+  ``deduplication_key`` here only dedupes concurrent *creates*
+  (``MemorySessionDeduplicationError``), not reads.
+* **The DataRobot client is process-global** (``dr.Client()``, configured once by
+  ``configure_datarobot_memory_client``), not an object explicitly threaded into
+  ``MemorySpaceKVCache`` the way ``DRMemoryServiceClient`` is. Stable
+  ``datarobot.models.memory.Session`` always resolves credentials through
+  ``datarobot.client.get_client()``; there's no per-instance client to inject
+  without giving up the pooled, keep-alive ``requests.Session`` this module
+  relies on (see the note on ``_STALE_CONNECTION_RETRIES`` below).
+
+Once ``application_utils.persistence`` ships in a stable ``datarobot`` release,
+this module should be replaced with that ORM the same way BUZZOK-32180 did.
 """
 
 from __future__ import annotations
@@ -90,7 +119,6 @@ def _call_with_stale_connection_retry(func: Callable[[], T], *, op: str) -> T:
 # Stable 24-hex participant id (BSON ObjectId length) for cache sessions.
 DRAGENT_CACHE_PARTICIPANT_ID = hashlib.sha256(b"datarobot-genai:dragent-cache").hexdigest()[:24]
 
-CACHE_METADATA_VERSION = 1
 CACHE_EVENT_TYPE = "status"
 DEDUPLICATION_KEY_LENGTH = 64
 CACHE_KIND = "agent_card"
@@ -142,7 +170,13 @@ def try_configure_datarobot_memory_client(
     endpoint: str | None = None,
     api_token: str | None = None,
 ) -> bool:
-    """Configure the DataRobot client for memory Session API calls when possible."""
+    """Configure the DataRobot client for memory Session API calls when possible.
+
+    Mirrors the ``client is None`` gate BUZZOK-32180's
+    ``try_build_memory_service_client`` uses, but returns ``bool`` rather than a
+    client object: stable ``datarobot.models.memory.Session`` has no per-instance
+    client to construct and hand back -- see the module docstring.
+    """
     try:
         configure_datarobot_memory_client(endpoint=endpoint, api_token=api_token)
     except Exception as exc:
@@ -176,27 +210,10 @@ def _cache_session_description(logical_key: str) -> str:
 
 def _cache_session_metadata(logical_key: str) -> dict[str, Any]:
     return {
-        "v": CACHE_METADATA_VERSION,
         "dragent_cache": True,
         "cache_key": logical_key,
         "cache_kind": CACHE_KIND,
     }
-
-
-def _payload_event_body(payload: str) -> dict[str, Any]:
-    # The Memory Sessions Events API requires a top-level "content" field on every
-    # event body (schema validation: `body.content` is required). The cache payload
-    # itself is carried separately in "payload" so `_payload_from_event_body` can
-    # keep reading it verbatim; "content" just satisfies the API contract and
-    # doubles as a human-readable preview of the cached value.
-    return {"v": CACHE_METADATA_VERSION, "payload": payload, "content": payload}
-
-
-def _payload_from_event_body(body: dict[str, Any] | None) -> str | None:
-    if not body or body.get("v") != CACHE_METADATA_VERSION:
-        return None
-    value = body.get("payload")
-    return str(value) if value is not None else None
 
 
 def _create_cache_session(
@@ -241,14 +258,26 @@ def _find_cache_session(memory_space_id: str, logical_key: str) -> Session | Non
 
 
 def _read_payload(session: Session) -> str | None:
+    """Return the cache entry's payload, or ``None`` when the session has no event yet.
+
+    The payload is the event's ``content`` directly -- no cache-specific envelope
+    or schema version -- matching how BUZZOK-32180's ``DREvent.content`` is read.
+    """
     events = _call_with_stale_connection_retry(lambda: session.events(last_n=1), op="read_payload")
     if not events:
         return None
-    return _payload_from_event_body(events[0].body)
+    body = events[0].body
+    if not body:
+        return None
+    value = body.get("content")
+    return str(value) if value is not None else None
 
 
 def _write_payload(session: Session, payload: str) -> None:
-    body = _payload_event_body(payload)
+    # The Memory Sessions Events API requires a top-level "content" field on every
+    # event body (schema validation: `body.content` is required), so the payload
+    # is stored there directly -- no extra wrapper field is needed.
+    body = {"content": payload}
     events = _call_with_stale_connection_retry(
         lambda: session.events(last_n=1), op="write_payload_read"
     )

@@ -127,7 +127,7 @@ class TestMemorySpaceKVCache:
         session.post_event.assert_called_once()
         kwargs = session.post_event.call_args.kwargs
         assert kwargs["event_type"] == CACHE_EVENT_TYPE
-        assert kwargs["body"]["payload"] == '{"version": 1}'
+        assert kwargs["body"]["content"] == '{"version": 1}'
 
     async def test_get_reuses_cached_session_id_without_list(
         self, kv_cache: MemorySpaceKVCache
@@ -135,7 +135,7 @@ class TestMemorySpaceKVCache:
         session = _FakeSession()
         find_mock = MagicMock(return_value=None)
         get_mock = MagicMock(return_value=session)
-        session.post_event(body={"v": 1, "payload": "cached"})
+        session.post_event(body={"content": "cached"})
 
         with (
             patch(
@@ -161,7 +161,7 @@ class TestMemorySpaceKVCache:
 
     async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
-        session.post_event(body={"v": 1, "payload": "v1"})
+        session.post_event(body={"content": "v1"})
 
         with (
             patch(
@@ -175,9 +175,7 @@ class TestMemorySpaceKVCache:
         ):
             await kv_cache.set_value("dep-1", "v2")
 
-        session.update_event.assert_called_once_with(
-            1, body={"v": 1, "payload": "v2", "content": "v2"}
-        )
+        session.update_event.assert_called_once_with(1, body={"content": "v2"})
         assert session.post_event.call_count == 1
 
     async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:
@@ -249,7 +247,7 @@ class TestStaleConnectionRetry:
         self, kv_cache: MemorySpaceKVCache
     ) -> None:
         session = _FakeSession()
-        session.post_event(body={"v": 1, "payload": "cached"})
+        session.post_event(body={"content": "cached"})
         list_mock = MagicMock(
             side_effect=[
                 requests.exceptions.ConnectionError("stale connection"),
