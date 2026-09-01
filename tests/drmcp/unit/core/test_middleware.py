@@ -232,7 +232,11 @@ class TestOAuthJWTTokenHandlerMiddleware:
         client = TestClient(mock_app())
         response = client.get("/")
 
-        assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.json() == {
+            "error": ErrorCodeInAuthErrorResponse.INVALID_TOKEN.to_value(),
+            "error_description": "Invalid JWT token.",
+        }
         mock_parse_to_access_token.assert_called_once_with(
             OAuthJWTTokenHandlerMiddleware.HTTP_HEADER_TO_VALIDATE,
             ANY,

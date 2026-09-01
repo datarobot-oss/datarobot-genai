@@ -175,7 +175,14 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
             request.headers,
         )
         if not access_token:
-            return ErrorResponse.INVALID_JWT_TOKEN.to_starlette_response()
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.UNAUTHORIZED,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+                    error_description="Invalid JWT token.",
+                ),
+            )
 
         scope = request.scope
         self.update_scope_with_auth_credentials(scope, access_token)
