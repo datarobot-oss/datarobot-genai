@@ -38,10 +38,10 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
-from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
@@ -229,10 +229,7 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 # WHEN the configured chat path is requested
                 chat_response = client.get("/chat")
                 # THEN its 404 response still carries the monitoring header.
-                assert (
-                    chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER]
-                    == "true"
-                )
+                assert chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER] == "true"
 
                 # WHEN an unrelated health route is requested
                 health_response = client.get("/health")
