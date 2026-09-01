@@ -108,11 +108,15 @@ class ErrorResponse(Enum):
 
 
 def build_well_known_protected_resource_url(request: Request) -> str:
-    if resolve_self_url():
-        well_known_path = f"{resolve_self_url()}/.well-known/oauth-protected-resource"
-    else:
-        well_known_path = f"{request.url.path.rstrip('/')}/.well-known/oauth-protected-resource"
-    return str(request.url.replace(path=well_known_path, query=""))
+    self_url = resolve_self_url()
+    if self_url:
+        return f"{self_url.rstrip('/')}/.well-known/oauth-protected-resource"
+    return str(
+        request.url.replace(
+            path=prefix_mount_path("/.well-known/oauth-protected-resource"),
+            query="",
+        )
+    )
 
 
 def build_http_response_from_auth_error(

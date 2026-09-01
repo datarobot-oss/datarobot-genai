@@ -236,7 +236,7 @@ class ErrorCodeInAuthErrorResponse(Enum):
 @dataclass
 class AuthErrorResponse:
     resource_metadata: str
-    error_code: ErrorCodeInAuthErrorResponse | None = ErrorCodeInAuthErrorResponse.UNKNOWN
+    error_code: ErrorCodeInAuthErrorResponse = ErrorCodeInAuthErrorResponse.UNKNOWN
     scopes: list[str] | None = None
     error_description: str | None = None
 
