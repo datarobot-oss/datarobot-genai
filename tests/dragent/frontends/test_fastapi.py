@@ -41,6 +41,7 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
@@ -210,6 +211,66 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
+
+    def test_model_monitoring_header_disabled_by_default(self, app_with_health):
+        """MODEL_MONITORING_HEADER_ENABLED defaults off; no unwanted header.
+
+        See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` in fastapi.py.
+        """
+        with TestClient(app_with_health) as client:
+            response = client.get("/health")
+            assert DATAROBOT_MODEL_MONITORING_HEADER not in response.headers
+
+    def test_model_monitoring_header_enabled_via_env_var(self, worker):
+        """Setting MODEL_MONITORING_HEADER_ENABLED=true adds the header to the
+        OpenAI-compatible chat-completions routes, but not to unrelated routes like health.
+
+        See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` in fastapi.py.
+        """
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.dict(os.environ, {"MODEL_MONITORING_HEADER_ENABLED": "true"}),
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            app = worker.build_app()
+            with TestClient(app) as client:
+                # No chat route is actually mounted (configure() is mocked out), but the
+                # middleware matches on path alone, so the 404 response still carries it.
+                chat_response = client.get("/chat")
+                assert (
+                    chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER]
+                    == "true"
+                )
+
+                health_response = client.get("/health")
+                assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
+
+    def test_chat_completion_paths_built_from_config(self, worker):
+        """_chat_completion_paths() derives paths from front_end_config, not hardcoded strings."""
+        paths = worker._chat_completion_paths()
+        assert paths == {
+            "/v1/chat/completions",
+            "/v1/chat",
+            "/v1/chat/stream",
+            "/chat",
+            "/chat/stream",
+        }
+
+    def test_chat_completion_paths_excludes_legacy_when_disabled(self):
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(disable_legacy_routes=True),
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+        paths = worker._chat_completion_paths()
+        assert paths == {"/chat/completions"}
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker
