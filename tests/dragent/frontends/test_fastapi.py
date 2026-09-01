@@ -212,42 +212,31 @@ class TestDRAgentFastApiFrontEndPluginWorker:
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
 
-    def test_model_monitoring_header_disabled_by_default(self, app_with_health):
-        """MODEL_MONITORING_HEADER_ENABLED defaults off; no unwanted header.
-
-        See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` in fastapi.py.
-        """
-        with TestClient(app_with_health) as client:
-            response = client.get("/health")
-            assert DATAROBOT_MODEL_MONITORING_HEADER not in response.headers
-
-    def test_model_monitoring_header_enabled_via_env_var(self, worker):
-        """Setting MODEL_MONITORING_HEADER_ENABLED=true adds the header to the
-        OpenAI-compatible chat-completions routes, but not to unrelated routes like health.
-
-        See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` in fastapi.py.
-        """
+    def test_model_monitoring_header_is_added_to_chat_routes(self, worker):
+        """The header is always added to chat routes but not unrelated routes."""
 
         @asynccontextmanager
         async def mock_from_config(_config):
             yield MagicMock()
 
         with (
-            patch.dict(os.environ, {"MODEL_MONITORING_HEADER_ENABLED": "true"}),
             patch.object(worker, "configure", new_callable=AsyncMock),
             patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
         ):
             app = worker.build_app()
             with TestClient(app) as client:
-                # No chat route is actually mounted (configure() is mocked out), but the
-                # middleware matches on path alone, so the 404 response still carries it.
+                # GIVEN no chat route is mounted because configure() is mocked out
+                # WHEN the configured chat path is requested
                 chat_response = client.get("/chat")
+                # THEN its 404 response still carries the monitoring header.
                 assert (
                     chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER]
                     == "true"
                 )
 
+                # WHEN an unrelated health route is requested
                 health_response = client.get("/health")
+                # THEN it does not carry the monitoring header.
                 assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
 
     def test_chat_completion_paths_built_from_config(self, worker):

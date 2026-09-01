@@ -50,8 +50,7 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
 # predictions-gateway decides whether to run its own chat-completions monitoring
-# by reading this header off the upstream response. Off by default: gate it behind
-# MODEL_MONITORING_HEADER_ENABLED so it can be turned on per-deployment.
+# by reading this header off the upstream response.
 DATAROBOT_MODEL_MONITORING_HEADER = "X-DataRobot-Model-Monitoring"
 
 # Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
@@ -324,17 +323,13 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         return frozenset(paths)
 
     def _add_model_monitoring_header_middleware(self, app: FastAPI) -> None:
-        """Set X-DataRobot-Model-Monitoring on chat-completions responses, if enabled.
+        """Set X-DataRobot-Model-Monitoring on chat-completions responses.
 
         See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` for why this is needed.
-        Off by default; enable via ``MODEL_MONITORING_HEADER_ENABLED``. Scoped to the
-        OpenAI-compatible chat routes: predictions-gateway uses it to decide whether to run
-        its own chat-completions monitoring, so setting it on unrelated routes (health, A2A,
-        static, ...) would be misleading.
+        Scoped to the OpenAI-compatible chat routes: predictions-gateway uses it to decide whether
+        to run its own chat-completions monitoring, so setting it on unrelated routes (health,
+        A2A, static, ...) would be misleading.
         """
-        if not _ModelMonitoringHeaderSettings().model_monitoring_header_enabled:
-            return
-
         chat_completion_paths = self._chat_completion_paths()
 
         @app.middleware("http")
@@ -404,15 +399,6 @@ class _GunicornSettings(DataRobotAppFrameworkBaseSettings):
         default=600,
         gt=0,
         description="Gunicorn worker/graceful timeout (seconds) for the dragent front end.",
-    )
-
-
-class _ModelMonitoringHeaderSettings(DataRobotAppFrameworkBaseSettings):
-    """Toggle for the X-DataRobot-Model-Monitoring response header (prefix-free env)."""
-
-    model_monitoring_header_enabled: bool = Field(
-        default=False,
-        description="Set X-DataRobot-Model-Monitoring on every response from this front end.",
     )
 
 
