@@ -49,8 +49,7 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
-# predictions-gateway decides whether to run its own chat-completions monitoring
-# by reading this header off the upstream response.
+# Instructs predictions-gateway to run monitoring for chat-completions endpoints.
 DATAROBOT_MODEL_MONITORING_HEADER = "X-DataRobot-Model-Monitoring"
 
 # Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
@@ -303,9 +302,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _chat_completion_paths(self) -> frozenset[str]:
         """Paths served by the OpenAI-compatible chat endpoints NAT registers.
 
-        Mirrors the route construction in ``nat.front_ends.fastapi.routes.chat.add_chat_routes``:
-        the v1 path handles both streaming and non-streaming at one route, while the plain
-        ``openai_api_path`` and ``legacy_openai_api_path`` get a sibling ``/stream`` route.
+        Mirrors the route construction in ``nat.front_ends.fastapi.routes.chat.add_chat_routes``.
         Built from config rather than hardcoded, since ``endpoints`` entries can add more of
         these at arbitrary paths.
         """
@@ -325,10 +322,8 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
     def _add_model_monitoring_header_middleware(self, app: FastAPI) -> None:
         """Set X-DataRobot-Model-Monitoring on chat-completions responses.
 
-        See the module-level comment on ``DATAROBOT_MODEL_MONITORING_HEADER`` for why this is needed.
         Scoped to the OpenAI-compatible chat routes: predictions-gateway uses it to decide whether
-        to run its own chat-completions monitoring, so setting it on unrelated routes (health,
-        A2A, static, ...) would be misleading.
+        to run its own chat-completions monitoring.
         """
         chat_completion_paths = self._chat_completion_paths()
 
