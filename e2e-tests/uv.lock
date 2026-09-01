@@ -950,7 +950,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.6"
+version = "0.29.8"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1101,11 +1101,11 @@ requires-dist = [
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drmcputils'", specifier = ">=3.18.0,<4.0.0" },
     { name = "datarobot", extras = ["fs"], marker = "extra == 'drtools'", specifier = ">=3.18.0,<4.0.0" },
     { name = "datarobot-asgi-middleware", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.2.47,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.2.47,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.2.47,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.2.47,<12.0.0" },
-    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.2.47,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'core'", specifier = ">=11.3.4,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'crewai'", specifier = ">=11.3.4,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'dragent'", specifier = ">=11.3.4,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'langgraph'", specifier = ">=11.3.4,<12.0.0" },
+    { name = "datarobot-moderations", extras = ["all"], marker = "extra == 'llamaindex'", specifier = ">=11.3.4,<12.0.0" },
     { name = "datarobot-predict", marker = "extra == 'core'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'crewai'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'dragent'", specifier = ">=1.13.2,<2.0.0" },
@@ -1353,7 +1353,7 @@ example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editab
 
 [[package]]
 name = "datarobot-moderations"
-version = "11.2.47"
+version = "11.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1373,7 +1373,7 @@ dependencies = [
     { name = "tiktoken" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/20/de8c6739e29a92afb28e686a465251cb989d1e405c26fccdb521f80c8540/datarobot_moderations-11.2.47-py3-none-any.whl", hash = "sha256:ae6a0ddb243704e99e27395f60b8025bfe6b0a72bd011372553fadabb81c8ecf", size = 177480, upload-time = "2026-07-24T13:14:03.425Z" },
+    { url = "https://files.pythonhosted.org/packages/51/92/023ddc77c3c730b751110f28b78bd8eb02606191ee5f0b43d7148fde81b6/datarobot_moderations-11.3.4-py3-none-any.whl", hash = "sha256:2b42b968e2a2741c69f243b98af8ef595e85f2e7a3328d85eff1a1eb6b457192", size = 178431, upload-time = "2026-08-21T17:32:01.04Z" },
 ]
 
 [package.optional-dependencies]
@@ -2422,17 +2422,17 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "decorator", marker = "python_full_version < '3.12'" },
-    { name = "ipython-pygments-lexers", marker = "python_full_version < '3.12'" },
-    { name = "jedi", marker = "python_full_version < '3.12'" },
-    { name = "matplotlib-inline", marker = "python_full_version < '3.12'" },
-    { name = "pexpect", marker = "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "prompt-toolkit", marker = "python_full_version < '3.12'" },
-    { name = "pygments", marker = "python_full_version < '3.12'" },
-    { name = "stack-data", marker = "python_full_version < '3.12'" },
-    { name = "traitlets", marker = "python_full_version < '3.12'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "decorator" },
+    { name = "ipython-pygments-lexers" },
+    { name = "jedi" },
+    { name = "matplotlib-inline" },
+    { name = "pexpect", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "prompt-toolkit" },
+    { name = "pygments" },
+    { name = "stack-data" },
+    { name = "traitlets" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c5/25/daae0e764047b0a2480c7bbb25d48f4f509b5818636562eeac145d06dfee/ipython-9.10.1.tar.gz", hash = "sha256:e170e9b2a44312484415bdb750492699bf329233b03f2557a9692cce6466ada4", size = 4426663, upload-time = "2026-03-27T09:53:26.244Z" }
 wheels = [
@@ -2448,16 +2448,16 @@ resolution-markers = [
     "python_full_version == '3.12.*'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "decorator", marker = "python_full_version >= '3.12'" },
-    { name = "ipython-pygments-lexers", marker = "python_full_version >= '3.12'" },
-    { name = "jedi", marker = "python_full_version >= '3.12'" },
-    { name = "matplotlib-inline", marker = "python_full_version >= '3.12'" },
-    { name = "pexpect", marker = "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "prompt-toolkit", marker = "python_full_version >= '3.12'" },
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
-    { name = "stack-data", marker = "python_full_version >= '3.12'" },
-    { name = "traitlets", marker = "python_full_version >= '3.12'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "decorator" },
+    { name = "ipython-pygments-lexers" },
+    { name = "jedi" },
+    { name = "matplotlib-inline" },
+    { name = "pexpect", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "prompt-toolkit" },
+    { name = "pygments" },
+    { name = "stack-data" },
+    { name = "traitlets" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/73/7114f80a8f9cabdb13c27732dce24af945b2923dcab80723602f7c8bc2d8/ipython-9.12.0.tar.gz", hash = "sha256:01daa83f504b693ba523b5a407246cabde4eb4513285a3c6acaff11a66735ee4", size = 4428879, upload-time = "2026-03-27T09:42:45.312Z" }
 wheels = [
@@ -3735,10 +3735,10 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "jsonref", marker = "python_full_version < '3.12'" },
-    { name = "mcp", marker = "python_full_version < '3.12'" },
-    { name = "pydantic", marker = "python_full_version < '3.12'" },
-    { name = "python-dotenv", marker = "python_full_version < '3.12'" },
+    { name = "jsonref" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/28/64fc666fa5d86bb1b048c167975d4ea19210f9f8571b64b26563739774ac/mcpadapt-0.1.19.tar.gz", hash = "sha256:dfab84fc75cc84a49a40bd61079773b1faf840227b74b82c71a7755b9c1957c5", size = 4227721, upload-time = "2025-10-16T07:11:56.736Z" }
 wheels = [
@@ -3754,10 +3754,10 @@ resolution-markers = [
     "python_full_version == '3.12.*'",
 ]
 dependencies = [
-    { name = "jsonref", marker = "python_full_version >= '3.12'" },
-    { name = "mcp", marker = "python_full_version >= '3.12'" },
-    { name = "pydantic", marker = "python_full_version >= '3.12'" },
-    { name = "python-dotenv", marker = "python_full_version >= '3.12'" },
+    { name = "jsonref" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e3/71/1bbbe157e55d30ab4a74fa878f6942cc0586e9820f03e03451a3d2297e9b/mcpadapt-0.1.20.tar.gz", hash = "sha256:4047c0da61e481dd0673a48936a427da9e6547c6cf0d580ff4e4761dcf058ed1", size = 4203656, upload-time = "2025-10-24T15:35:02.135Z" }
 wheels = [

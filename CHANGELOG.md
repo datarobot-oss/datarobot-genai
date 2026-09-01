@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.29.8
 - `dragent`: **fixed streaming moderation skipping the response guards when a batch mixes tool-call events with the first text delta. Prescore metadata now attaches to whichever batch carries `TEXT_MESSAGE_START` instead of only a batch that leads with it.
 - Fixed Nemo Guardrails moderation e2e tests
+- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.4`.
 
 ## 0.29.7
 - `drmcp/core/config`: Added `oauth_claim_validation` MCP config.
