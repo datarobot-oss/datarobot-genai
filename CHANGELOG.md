@@ -4,13 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.8
+## 0.29.20
 - `drtools/core/sandbox`: **the workload sandbox now returns as soon as the `__DR_SANDBOX_RESULT__:` marker is available, instead of waiting for a terminal workload status** (MODEL-24537). Container logs and workload status are watched concurrently rather than sequentially. The status poll has not gone away — it is still what fails a container that never starts, and the only source of a terminal `timeout` status or the `statusDetails.logTail` fallback — it just stopped being the gate. Measured against staging, the marker was available at a mean of 15.9s while terminal status arrived at a mean of 22.5s and ranged to 48s; the wait removed was 30-54% of every call. Ihar Baravy measured the user-visible half on the BPA demo flow: `transform_panel_dataset` 14.0s → 33.0s over 18 calls (+308s) and `create_chart_panel` 11.0s → 39.3s over 6 calls (+170s), with non-sandbox tools unchanged within ±2s.
   The gap existed because the runner is a one-shot job scheduled as a long-running service: it finishes in under a second and exits 0, Kubernetes reads exit-0 as a crash and restarts it, and only after repeated restarts does it declare `CrashLoopBackOff` and the workload-api report `errored`. The old code waited for Kubernetes to give up on a container that had already done its job.
 - `drtools/core/sandbox`: **a user-code timeout is now actually detected on this backend.** The `exitCode == 124` check could never fire against the workload-api, because the workload record reports `exitCode: null` for every sandbox workload (it describes a service, not a job) — verified across 7 staging runs, including a deliberately timing-out one. Detection now also keys on the `sandbox exceeded timeout of Ns` line the runner prints before emitting its `__DR_SANDBOX_RESULT__:null` marker (`protocol.has_timeout_marker`), which is in-band and therefore works without a terminal record. The check spans stdout *and* stderr: staging tags the runner's own writes to fd 2 as INFO, so the line arrives on the stdout side, and only the platform's own `lrs-*` records come through at ERROR severity. Because that marker is byte-identical to a snippet returning nothing, a null payload with no sentinel in hand costs one short confirming re-read before the run is allowed to succeed.
 - `drtools/core/sandbox`: `SandboxError` / `SandboxTimeout` raised by the workload backend now carry `exit_code` and `stderr`, which `observability.classify_outcome` already expected — previously it received neither, so every OOM was classified as `crash`.
 - `drtools/core/sandbox`: a failing status endpoint no longer fails a run whose snippet demonstrably completed. A status-fetch error is recorded and only re-raised when no result marker was found either.
 - `drtools/core/sandbox`: a terminal `timeout` status no longer spends the 30s log-flush budget looking for a marker that cannot change the outcome.
+
+## 0.29.19
+- `drmcp/core/middleware.py`: Add well-known metadata info in MCP 403 authorization error response
+
+## 0.29.18 - 2026-09-01
+- Add a minimum version for `hydra-core`: `>=1.3.4`.
+- Raise the minimum `nltk` version from `>=3.10.2` to `>=3.10.3`.
+
+## 0.29.17 - 2026-09-01
+- `crewai`, `dragent`, `langgraph`, `llama_index`: `gen_ai.agent.name` is now propagated as OTel Baggage for the duration of an agent's own execution.
+- Adds `datarobot_genai.core.telemetry.agent_identity`
+
+## 0.29.16
+- `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.
+
+## 0.29.15 - 2026-08-31
+- `dragent`: simplified the agent card registry's MemorySpace L2 cache event encoding to store the payload directly as the event's `content` field, dropping the now-redundant `v`/`payload` envelope (`content` already carried the same value, so existing cache entries remain readable). Brings the stable-`datarobot[core]`-based cache's shape closer to the `datarobot[application-utils]` Memory Service ORM design from BUZZOK-32180 without taking the pre-release `datarobot-early-access` dependency — see the module docstring in `memory_space_cache.py` for what still differs and why.
+- `dragent`: fixed the agent card registry's MemorySpace (L2) cache raising `requests.exceptions.ConnectionError` (`RemoteDisconnected`/`ProtocolError`, "Remote end closed connection without response") when a pooled keep-alive connection sat idle across the infrequent L1-cache-miss / 30-minute registry-refresh calls in `memory_space_cache.py` for longer than the remote end's idle-connection timeout. That error isn't retried by the DataRobot client's own `handle_connection_reset` wrapper (which only retries `ConnectionResetError`), so it previously surfaced on every stale-connection hit even though the cache already degrades gracefully to a miss. All memory-space Session API calls in the module now retry once on `ConnectionError` before giving up.
+
+## 0.29.14 - 2026-08-31
+- Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
+
+## 0.29.13 - 2026-08-28
+- Narrow the cve-sync residue block to the packages this project actually resolves, dropping 36 that could never affect its lock. No dependency floor moved.
+
+## 0.29.12
+- Prefer `DATAROBOT_PUBLIC_API_ENDPOINT` when constructing the memory space URL.
+
+## 0.29.11 - 2026-08-26
+- `dragent`: tool-call spans now carry `gen_ai.tool.name` instead of the bare legacy `tool_name` attributeg.
+
+## 0.29.10 - 2026-08-26
+- `dragent`, `langgraph`, `llama_index`: **agent spans now carry `gen_ai.agent.name`.
+- Adds `datarobot-opentelemetry>=0.4.0,<1.0.0` to the `llamaindex` and `dragent` extras.
+
+## 0.29.9
+- `dragent`: `registry` in `workflow.yaml` accepts `workload_id` alongside `deployment_id` and `external_id`, so an agent served by the Workload API runtime — where its card is keyed by workload rather than deployment — is reachable through the central agent card registry. Lookups query `workloadIds`, cache under a `workload:` key (L1 and MemorySpace L2), and take part in startup prefetch, background refresh and stale-if-error like the other two kinds. A workload card that also publishes an `external.id` stays reachable by either ID.
+- `dragent`: each registry request now carries exactly **one** ID kind. `deploymentIds` + `workloadIds` in one request is rejected by the API with HTTP 400 (not an empty result like `deploymentIds` + `externalIds`), so the client fetches one kind per call and raises before issuing a request that mixes the two.
+- `dragent`: **fixed** registry requests exceeding the API's cap of 20 IDs per parameter — a workflow with more than 20 registry-backed function groups sent them all in one `deploymentIds`/`externalIds` value and got an HTTP 400. ID lists are now split into chunks of 20; entries from every chunk are merged before parsing, so `AGENT_CARD_REGISTRY_ON_DUPLICATE` still applies across the whole result set.
+
+## 0.29.8
+- `dragent`: agent card registry MemorySpace L2 uses write-behind instead of write-through so connect-time registry fetches are not blocked on MemorySpace round-trips.
+- `dragent`: layered agent card cache skips L2 on soft-expired L1 hits; cold-path fresh L2 reads are bounded by a short timeout so a slow MemorySpace cannot delay registry fetch (stale-if-error L2 reads are not bounded).
+- `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
+- `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
+- `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
 
 ## 0.29.7
 - `drmcp/core/config`: Added `oauth_claim_validation` MCP config.

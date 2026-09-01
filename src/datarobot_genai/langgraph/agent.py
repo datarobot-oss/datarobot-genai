@@ -56,6 +56,7 @@ from datarobot_genai.core.agents.base import UsageMetrics
 from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import frame_agent_errors
 from datarobot_genai.core.agents.reasoning import flatten_to_text
+from datarobot_genai.core.telemetry.agent_identity import agent_name_baggage
 from datarobot_genai.langgraph.history import ag_ui_history_to_langchain
 from datarobot_genai.langgraph.reasoning import iter_message_blocks
 
@@ -129,7 +130,13 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
         self.interrupt_before = interrupt_before
         self.interrupt_after = interrupt_after
         self.debug = debug
-        self.name = name
+        # Compiled onto the graph below and read back out by the LangChain
+        # OTel auto-instrumentor as gen_ai.agent.name - default to the
+        # concrete subclass name so multi-agent segmentation still has
+        # something to group by when a caller doesn't pass `name=`
+        # explicitly (langgraph's own default is the generic "LangGraph",
+        # identical across every agent built from this class).
+        self.name = name or type(self).__name__
         self._structured_history = structured_history
         super().__init__(
             api_key=api_key,
@@ -323,13 +330,17 @@ class LangGraphAgent(BaseAgent[BaseTool], abc.ABC):
             pipeline_interactions, usage_metrics).
         """
         try:
-            result = await self._invoke(run_agent_input)
+            # gen_ai.agent.name into Baggage for the whole run, so an MCP tool call
+            # made from inside it (auto-instrumented HTTP client picks up whatever's
+            # in the active context) can tag its own span with which agent called it.
+            with agent_name_baggage(self.name):
+                result = await self._invoke(run_agent_input)
 
-            # Yield all items from the result generator
-            # The context will be closed when this generator is exhausted
-            # Cast to async generator since we know stream=True means it's a generator
-            async for item in result:
-                yield item
+                # Yield all items from the result generator
+                # The context will be closed when this generator is exhausted
+                # Cast to async generator since we know stream=True means it's a generator
+                async for item in result:
+                    yield item
         except RuntimeError as e:
             error_message = str(e).lower()
             if "different task" in error_message and "cancel scope" in error_message:

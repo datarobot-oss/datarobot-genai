@@ -31,6 +31,7 @@ from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
+from datarobot_genai.drmcp.core.middleware import OAuthMCPToolCallScopeValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
@@ -107,6 +108,7 @@ def get_ordered_list_of_starlette_middlewares() -> list[Middleware]:
         Middleware(TrailingSlashNormalizer),
         Middleware(OAuthJWTTokenHandlerMiddleware),
         Middleware(GeneralOAuthClaimValidationMiddleware),
+        Middleware(OAuthMCPToolCallScopeValidationMiddleware),
         # Request headers in context for REST routes only (skips MCP path).
         Middleware(RequestHeadersMiddleware),
         Middleware(OtelASGIMiddleware),

@@ -77,7 +77,7 @@ OTEL_EXPORTER_OTLP_HEADERS = (
 # ``datarobot_genai.dragent.plugins.datarobot_otel_conventions_middleware``.
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
-TOOL_NAME = "tool_name"  # Tools column
+GEN_AI_TOOL_NAME = "gen_ai.tool.name"  # Tools column
 
 # HTTP client spans that fire during import / runtime bootstrap -- before any
 # workflow trace exists -- so they legitimately root their own trace rather than
@@ -637,8 +637,8 @@ def assert_tracing_conventions(
       single ``trace_id``, and
     * the export carried the DataRobot ingest auth headers.
 
-    When *expect_tool_name* is set, also requires a ``tool_name`` span in the
-    same trace (frameworks that surface tool calls as AG-UI events).
+    When *expect_tool_name* is set, also requires a ``gen_ai.tool.name`` span
+    in the same trace (frameworks that surface tool calls as AG-UI events).
 
     When *framework* is set (e.g. ``"crewai"``), also requires that framework's
     characteristic auto-instrumentor spans in the same trace — see
@@ -682,9 +682,9 @@ def assert_tracing_conventions(
 
     if expect_tool_name:
         spans_in_trace = [s for s in collector.spans() if s.trace_id in agent_trace_ids]
-        tool_spans = [s for s in spans_in_trace if s.attributes.get(TOOL_NAME)]
+        tool_spans = [s for s in spans_in_trace if s.attributes.get(GEN_AI_TOOL_NAME)]
         assert tool_spans, (
-            f"Expected a span carrying {TOOL_NAME!r} in the same trace as the "
+            f"Expected a span carrying {GEN_AI_TOOL_NAME!r} in the same trace as the "
             f"agent span for the tool-calling request; "
             f"got span names {sorted({s.name for s in spans_in_trace})}."
         )

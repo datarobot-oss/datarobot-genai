@@ -204,15 +204,21 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
 class AgentCardRegistryLookup(BaseModel):
     """Identifies an agent card in the central DataRobot agent card registry.
 
-    Exactly one of ``deployment_id`` or ``external_id`` must be specified.
-    The registry is queried using standard DataRobot API-token authentication
-    (``DATAROBOT_API_TOKEN``), which avoids the chicken-and-egg problem where the
-    agent's own card endpoint requires per-agent AuthN/AuthZ.
+    Exactly one of ``deployment_id``, ``external_id`` or ``workload_id`` must be
+    specified.  The registry is queried using standard DataRobot API-token
+    authentication (``DATAROBOT_API_TOKEN``), which avoids the chicken-and-egg
+    problem where the agent's own card endpoint requires per-agent AuthN/AuthZ.
 
     Example YAML::
 
         registry:
           deployment_id: "64a1b2c3d4e5f6a7b8c9d0e1"
+
+    An agent served by the Workload API runtime is keyed by its workload ID
+    instead::
+
+        registry:
+          workload_id: "64a1b2c3d4e5f6a7b8c9d0e2"
     """
 
     deployment_id: str | None = Field(
@@ -223,18 +229,29 @@ class AgentCardRegistryLookup(BaseModel):
         default=None,
         description="External agent identifier to look up in the central agent card registry.",
     )
+    workload_id: str | None = Field(
+        default=None,
+        description="DataRobot workload ID to look up in the central agent card registry.",
+    )
 
     @model_validator(mode="after")
     def _exactly_one_identifier(self) -> "AgentCardRegistryLookup":
-        if self.deployment_id and self.external_id:
+        identifiers = {
+            "deployment_id": self.deployment_id,
+            "external_id": self.external_id,
+            "workload_id": self.workload_id,
+        }
+        provided = sorted(name for name, value in identifiers.items() if value)
+        if len(provided) > 1:
             raise ValueError(
-                "Specify exactly one of 'deployment_id' or 'external_id' inside 'registry', "
-                "not both. Each identifies the agent card differently in the central registry."
+                f"Specify exactly one of 'deployment_id', 'external_id' or 'workload_id' "
+                f"inside 'registry', not {len(provided)} ({', '.join(provided)}). "
+                "Each identifies the agent card differently in the central registry."
             )
-        if not self.deployment_id and not self.external_id:
+        if not provided:
             raise ValueError(
-                "The 'registry' block requires exactly one of 'deployment_id' or 'external_id' "
-                "to identify the agent card in the central registry."
+                "The 'registry' block requires exactly one of 'deployment_id', 'external_id' "
+                "or 'workload_id' to identify the agent card in the central registry."
             )
         return self
 
@@ -253,10 +270,10 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
             url: "http://agent.example.com:8080"
             auth_provider: my_auth
 
-    **Central registry lookup** — set ``registry`` with either ``deployment_id``
-    or ``external_id``.  The card is fetched from the DataRobot central agent card
-    registry using ``DATAROBOT_API_TOKEN``, and the agent's RPC URL is derived
-    from the card's advertised ``url``::
+    **Central registry lookup** — set ``registry`` with one of ``deployment_id``,
+    ``external_id`` or ``workload_id``.  The card is fetched from the DataRobot
+    central agent card registry using ``DATAROBOT_API_TOKEN``, and the agent's RPC
+    URL is derived from the card's advertised ``url``::
 
         function_groups:
           my_agent:
@@ -306,6 +323,7 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
             registry.register(
                 deployment_id=self.registry.deployment_id,  # type: ignore[union-attr]
                 external_id=self.registry.external_id,  # type: ignore[union-attr]
+                workload_id=self.registry.workload_id,  # type: ignore[union-attr]
             )
         return self
 
@@ -491,6 +509,7 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                 pre_resolved_card = await registry.get(
                     deployment_id=config.registry.deployment_id,
                     external_id=config.registry.external_id,
+                    workload_id=config.registry.workload_id,
                 )
             except AgentCardRegistryError as exc:
                 error_msg = str(exc)
@@ -508,10 +527,11 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
 
             base_url = str(pre_resolved_card.url)
             logger.info(
-                "Agent card resolved via central registry (deployment_id=%s, external_id=%s), "
-                "RPC base URL derived from card: %s",
+                "Agent card resolved via central registry (deployment_id=%s, external_id=%s, "
+                "workload_id=%s), RPC base URL derived from card: %s",
                 config.registry.deployment_id,
                 config.registry.external_id,
+                config.registry.workload_id,
                 base_url,
             )
         else:
