@@ -19,6 +19,7 @@ from typing import get_args
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from datarobot_genai.drmcp.core import config as config_module
 from datarobot_genai.drmcp.core.config import MCPServerConfig
@@ -485,6 +486,48 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_files_api_tools is True
             assert config.tool_config.enable_workload_tools is False
             self._reset_config()
+
+
+class TestOAuthClaimValidation:
+    """The flag is refused without the audience it would enforce."""
+
+    @staticmethod
+    def _build(env: dict[str, str]) -> MCPServerConfig:
+        with patch.dict(os.environ, env, clear=True):
+            config_module._config = None
+            try:
+                return MCPServerConfig(_env_file=None, tool_config=MCPToolConfig(_env_file=None))
+            finally:
+                config_module._config = None
+
+    def test_defaults_to_off(self) -> None:
+        assert self._build({}).oauth_claim_validation is False
+
+    def test_off_without_an_audience_is_valid(self) -> None:
+        assert self._build({"OAUTH_CLAIM_VALIDATION": "false"}).oauth_claim_validation is False
+
+    def test_on_with_an_audience_is_valid(self) -> None:
+        config = self._build(
+            {
+                "OAUTH_CLAIM_VALIDATION": "true",
+                "MCP_XAA_TOKEN_AUDIENCE": "https://mcp.example.com",
+            }
+        )
+
+        assert config.oauth_claim_validation is True
+        assert config.mcp_xaa_token_audience == "https://mcp.example.com"
+
+    def test_on_without_an_audience_is_refused(self) -> None:
+        """Otherwise every non-exempt route demands a JWT and validates nothing on it."""
+        with pytest.raises(ValidationError, match="oauth_claim_validation is true"):
+            self._build({"OAUTH_CLAIM_VALIDATION": "true"})
+
+    def test_on_via_runtime_parameter_is_refused_too(self) -> None:
+        """The deployment path sets it as MLOPS_RUNTIME_PARAM_, not a plain env var."""
+        with pytest.raises(ValidationError, match="oauth_claim_validation is true"):
+            self._build(
+                {"MLOPS_RUNTIME_PARAM_OAUTH_CLAIM_VALIDATION": '{"type":"boolean","payload":true}'}
+            )
 
 
 class TestOtelStandardFields:

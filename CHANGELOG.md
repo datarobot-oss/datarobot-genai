@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+## 0.29.20
+- `drmcp/core/config`: **`oauth_claim_validation` now requires `mcp_xaa_token_audience`**  Matches the a2a side.
 
 
 ## 0.29.26

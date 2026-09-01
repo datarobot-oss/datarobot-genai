@@ -23,6 +23,7 @@ from fastmcp.settings import DuplicateBehavior
 from pydantic import Field
 from pydantic import ValidationInfo
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import SettingsConfigDict
 
 from datarobot_genai.drmcputils.constants import DEFAULT_DATAROBOT_ENDPOINT
@@ -326,6 +327,17 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         default=False,
         description="Enable OAuth claim validation (e.g., audience, scope)",
     )
+
+    @model_validator(mode="after")
+    def _require_audience_for_claim_validation(self) -> "MCPServerConfig":
+        """Require an audience for claim validation."""
+        if self.oauth_claim_validation and not self.mcp_xaa_token_audience:
+            raise ValueError(
+                "oauth_claim_validation is true but no expected audience is configured. "
+                "Set mcp_xaa_token_audience (MCP_XAA_TOKEN_AUDIENCE), or turn "
+                "oauth_claim_validation off."
+            )
+        return self
 
 
 # Global configuration instance
