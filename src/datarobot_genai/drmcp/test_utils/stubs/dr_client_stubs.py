@@ -583,6 +583,7 @@ def test_create_dr_client() -> StubDRClient:
                         {
                             "id": stub_datastore.id,
                             "canonicalName": stub_datastore.canonical_name,
+                            "type": "jdbc",
                             "creatorId": stub_datastore.creator_id,
                             "params": dict(stub_datastore.params),
                         }

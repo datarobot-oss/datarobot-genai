@@ -15,3 +15,6 @@
 """Shared DRAgent constants."""
 
 DRAGENT_CONFIG_FILE_ENV = "DRAGENT_CONFIG_FILE"
+
+# Path the A2A app is mounted at on the serving FastAPI app.
+A2A_MOUNT_PATH = "a2a"

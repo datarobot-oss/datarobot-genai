@@ -33,8 +33,8 @@ def _make_env_config(**overrides: object) -> config_mod.Config:
         "datarobot_endpoint": "https://app.datarobot.com/api/v2",
         "datarobot_api_token": "env-token",
         "llm_deployment_id": None,
-        "nim_deployment_id": None,
-        "use_datarobot_llm_gateway": True,
+        "llm_nim_deployment_id": None,
+        "llm_use_datarobot_llm_gateway": True,
         "llm_default_model": None,
     }
     defaults.update(overrides)
@@ -54,90 +54,73 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_llm_config_get_llm_type_gateway() -> None:
-    assert LLMConfig(use_datarobot_llm_gateway=True).get_llm_type() == LLMType.GATEWAY
+    assert LLMConfig(llm_use_datarobot_llm_gateway=True).get_llm_type() == LLMType.GATEWAY
 
 
 def test_llm_config_get_llm_type_deployment() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
     assert cfg.get_llm_type() == LLMType.DEPLOYMENT
 
 
 def test_llm_config_get_llm_type_nim() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, nim_deployment_id="nim-1")
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_nim_deployment_id="nim-1")
     assert cfg.get_llm_type() == LLMType.NIM
 
 
 def test_llm_config_get_llm_type_external() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False)
+    cfg = LLMConfig(llm_use_datarobot_llm_gateway=False)
     assert cfg.get_llm_type() == LLMType.EXTERNAL
 
 
 # ---------------------------------------------------------------------------
-# LLMConfig.to_litellm_params — all four LLMTypes
+# build_litellm_router hydration
+#
+# to_litellm_params itself now lives in datarobot.core and is self-contained (it
+# never reaches back into genai); it is covered in public_api_client. genai's
+# responsibility is to hydrate the router's primary/fallbacks, which are parsed
+# from workflow.yaml with the two globals unset, from the ambient global config
+# before rendering them.
 # ---------------------------------------------------------------------------
 
 
-def test_to_litellm_params_gateway() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=True)
-    params = cfg.to_litellm_params()
-    assert params["model"].startswith("datarobot/")
-    assert params["api_base"] == "https://app.datarobot.com"
-    assert params["api_key"] == "env-token"
+def test_build_litellm_router_hydrates_globals_from_ambient_config() -> None:
+    from datarobot_genai.core.router import build_litellm_router
+
+    # Bare configs: no endpoint/token set, exactly as parsed from workflow.yaml.
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=True)
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router_cls.return_value = MagicMock()
+        build_litellm_router(primary, [fallback])
+
+    model_list = mock_router_cls.call_args.kwargs["model_list"]
+    # api_key + api_base come from the patched ambient Config (env-token / default
+    # endpoint), not from the bare configs themselves.
+    assert model_list[0]["litellm_params"]["api_key"] == "env-token"
+    assert model_list[0]["litellm_params"]["api_base"] == "https://app.datarobot.com"
+    assert model_list[1]["litellm_params"]["api_key"] == "env-token"
+    assert "dep-1" in model_list[1]["litellm_params"]["api_base"]
 
 
-def test_to_litellm_params_deployment() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-abc")
-    params = cfg.to_litellm_params()
-    assert params["model"].startswith("datarobot/")
-    assert "dep-abc" in params["api_base"]
-    assert params["api_key"] == "env-token"
+def test_build_litellm_router_keeps_explicit_config_credentials() -> None:
+    from datarobot_genai.core.router import build_litellm_router
 
-
-def test_to_litellm_params_nim() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, nim_deployment_id="nim-xyz")
-    params = cfg.to_litellm_params()
-    assert "nim-xyz" in params["api_base"]
-    assert params["api_key"] == "env-token"
-
-
-def test_to_litellm_params_external() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_default_model="gpt-4")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "gpt-4"
-    assert "api_base" not in params
-
-
-def test_to_litellm_params_external_strips_datarobot_prefix() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=False, llm_default_model="datarobot/azure/gpt-4")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "azure/gpt-4"
-
-
-def test_to_litellm_params_uses_explicit_api_key_over_env() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=True, datarobot_api_token="explicit-key")
-    params = cfg.to_litellm_params()
-    assert params["api_key"] == "explicit-key"
-
-
-def test_to_litellm_params_uses_explicit_endpoint() -> None:
-    cfg = LLMConfig(
-        use_datarobot_llm_gateway=True,
+    # An explicit token/endpoint on the config wins over the ambient globals.
+    primary = LLMConfig(
+        llm_use_datarobot_llm_gateway=True,
+        datarobot_api_token="explicit-key",
         datarobot_endpoint="https://custom.host/api/v2",
     )
-    params = cfg.to_litellm_params()
-    assert params["api_base"] == "https://custom.host"
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
 
+    with patch("litellm.Router") as mock_router_cls:
+        mock_router_cls.return_value = MagicMock()
+        build_litellm_router(primary, [fallback])
 
-def test_to_litellm_params_gateway_adds_datarobot_prefix_when_missing() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="azure/gpt-4o")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "datarobot/azure/gpt-4o"
-
-
-def test_to_litellm_params_gateway_does_not_double_prefix() -> None:
-    cfg = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="datarobot/azure/gpt-4o")
-    params = cfg.to_litellm_params()
-    assert params["model"] == "datarobot/azure/gpt-4o"
+    model_list = mock_router_cls.call_args.kwargs["model_list"]
+    assert model_list[0]["litellm_params"]["api_key"] == "explicit-key"
+    assert model_list[0]["litellm_params"]["api_base"] == "https://custom.host"
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +131,8 @@ def test_to_litellm_params_gateway_does_not_double_prefix() -> None:
 def test_build_litellm_router_model_list_structure() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fallback = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fallback = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -167,9 +150,9 @@ def test_build_litellm_router_model_list_structure() -> None:
 def test_build_litellm_router_fallbacks_chain() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fb0 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
-    fb1 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-3")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fb0 = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    fb1 = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-3")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -182,10 +165,10 @@ def test_build_litellm_router_fallbacks_chain() -> None:
 def test_build_litellm_router_multiple_fallbacks() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=True)
-    fb0 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
-    fb1 = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
-    fb2 = LLMConfig(use_datarobot_llm_gateway=True, llm_default_model="gpt-4")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=True)
+    fb0 = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    fb1 = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-2")
+    fb2 = LLMConfig(llm_use_datarobot_llm_gateway=True, llm_default_model="gpt-4")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -204,8 +187,8 @@ def test_build_litellm_router_multiple_fallbacks() -> None:
 def test_build_litellm_router_passes_settings() -> None:
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=True)
-    fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=True)
+    fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-1")
 
     with patch("litellm.Router") as mock_router_cls:
         mock_router_cls.return_value = MagicMock()
@@ -295,8 +278,8 @@ def test_router_propagates_exception_when_all_models_fail() -> None:
     """When litellm.Router exhausts all fallbacks it raises; wrappers must not swallow it."""
     from datarobot_genai.core.router import build_litellm_router
 
-    primary = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-bad")
-    fb = LLMConfig(use_datarobot_llm_gateway=False, llm_deployment_id="dep-also-bad")
+    primary = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-bad")
+    fb = LLMConfig(llm_use_datarobot_llm_gateway=False, llm_deployment_id="dep-also-bad")
 
     mock_router_instance = MagicMock()
     mock_router_instance.completion.side_effect = RuntimeError("all models failed")

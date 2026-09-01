@@ -43,6 +43,7 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from typing import Any
+from typing import cast
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from nat.builder.builder import Builder
@@ -55,8 +56,10 @@ from nat.memory.models import MemoryItem
 from nat.utils.exception_handlers.automatic_retries import patch_with_retry
 from pydantic import Field
 
+from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.telemetry.memory import trace_memory_operation
 from datarobot_genai.core.telemetry.memory import truncate_memory_text
+from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -390,12 +393,11 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     use httpx's base-url joining for that call). A trailing slash on the
     host would produce a double slash there.
     """
-    base = config.datarobot_endpoint or os.getenv("DATAROBOT_ENDPOINT")
-    if not base:
-        raise RuntimeError(
-            "DataRobot endpoint is not set. Configure memory.datarobot_endpoint "
-            "or DATAROBOT_ENDPOINT when using agent_memory_space_id."
-        )
+    # Deliberately not ``resolve_config().resolve_datarobot_endpoint()``: that resolver
+    # substitutes the public app.datarobot.com default when nothing is configured, and
+    # this host receives memory writes plus the API token, so "unset" has to stay
+    # distinguishable from "configured".
+    base = cast(str, config.datarobot_endpoint or resolve_datarobot_endpoint(require=True))
     return f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}"
 
 
@@ -424,7 +426,9 @@ def _resolve_memory_backend(
 ) -> tuple[str, str, str | None] | None:
     """Return ``(api_key, store_name, store_id)`` when configured, else ``None``."""
     if config.agent_memory_space_id:
-        api_key = config.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
+        # The token falls back to the global app config so an app that registers its
+        # own config supplies it here too.
+        api_key = config.datarobot_api_token or resolve_config().resolve_datarobot_api_token()
         if not api_key:
             return None
         return (api_key, "datarobot-memory", config.agent_memory_space_id)

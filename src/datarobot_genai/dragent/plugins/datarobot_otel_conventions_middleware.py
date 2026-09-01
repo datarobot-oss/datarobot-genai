@@ -21,6 +21,7 @@ from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
+from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -52,7 +53,6 @@ AGENT_SPAN_NAME = "datarobot_agent"
 # Span attributes that map to deployment Tracing table columns.
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
-TOOL_NAME = "tool_name"  # Tools column
 ERROR_TYPE = "error.type"  # Failed span classification
 
 # AG-UI event types that carry assistant text deltas.
@@ -103,17 +103,19 @@ def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventRespon
 
 
 def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
-    """Emit a short-lived span carrying ``tool_name`` for each tool-call start.
+    """Emit a short-lived span carrying ``gen_ai.tool.name`` for each tool-call start.
 
     NAT reports tool execution via intermediate-step end events we can't wrap,
     but it does surface a ``ToolCallStartEvent``. Creating and immediately
-    ending a span with the ``tool_name`` attribute is enough to populate the
-    Tracing table Tools column.
+    ending a span with the ``gen_ai.tool.name`` attribute is enough to populate
+    the Tracing table Tools column - using the semconv name directly (rather
+    than the bare ``tool_name`` this used to set) keeps these calls out of
+    Datavolt's deprecated-attribute bucket.
     """
     for event in response.events:
         if isinstance(event, ToolCallStartEvent):
             with tracer.start_as_current_span(event.tool_call_name) as span:
-                span.set_attribute(TOOL_NAME, event.tool_call_name)
+                span.set_attribute(DataRobotSpanAttributes.GEN_AI_TOOL_NAME, event.tool_call_name)
 
 
 class DataRobotOtelConventionsMiddlewareConfig(
@@ -161,13 +163,14 @@ class DataRobotOtelConventionsMiddleware(
         self,
         *args: Any,
         call_next: CallNext,
-        context: FunctionMiddlewareContext,  # noqa: ARG002
+        context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> Any:
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
         ):
+            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
@@ -184,13 +187,14 @@ class DataRobotOtelConventionsMiddleware(
         self,
         *args: Any,
         call_next: CallNextStream,
-        context: FunctionMiddlewareContext,  # noqa: ARG002
+        context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> AsyncIterator[Any]:
         with (
             use_nat_workflow_trace_context(),
             tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
         ):
+            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)

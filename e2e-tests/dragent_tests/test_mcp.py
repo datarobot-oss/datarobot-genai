@@ -28,8 +28,12 @@ from dragent_tests.helpers import stream_sse_responses
 from dragent_tests.otel_helpers import MockOtelCollector
 from dragent_tests.otel_helpers import assert_tracing_conventions
 
-if not os.environ.get("MCP_DEPLOYMENT_ID"):
-    pytest.skip("MCP deployment ID is not set, skipping MCP tool call tests", allow_module_level=True)
+if not (os.environ.get("MCP_DEPLOYMENT_ID") or os.environ.get("MCP_WORKLOAD_ID")):
+    pytest.skip(
+        "Neither MCP_DEPLOYMENT_ID nor MCP_WORKLOAD_ID is set; "
+        "skipping MCP tool call tests",
+        allow_module_level=True,
+    )
 if not AGENT_SUPPORTS_TOOL_CALLS:
     pytest.skip(f"{AGENT} agent does not support tool calls, skipping MCP tests", allow_module_level=True)
 

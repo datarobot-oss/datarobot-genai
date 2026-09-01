@@ -15,6 +15,7 @@
 import asyncio
 import base64
 import json
+import time
 
 import httpx
 import pytest
@@ -73,6 +74,15 @@ def _logs_response(message: str) -> httpx.Response:
             ],
         },
     )
+
+
+async def _noop_sleep(_seconds: float) -> None:
+    """Collapse the poll backoff so flush-timing tests run instantly.
+
+    The behaviour under test is *how many* polls are required before giving up,
+    not the wall-clock between them.
+    """
+    return None
 
 
 def _logs_response_entries(entries: list[dict[str, object]]) -> httpx.Response:
@@ -559,3 +569,246 @@ def test_create_payload_matches_workload_api_schema() -> None:
     assert runtime_container["resourceAllocation"]["cpu"] >= 1
     assert "replicaCount" not in payload["runtime"]  # lives under the container group now
     assert runtime_group["replicaCount"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# Partial OTEL flush must not be mistaken for "no marker"
+# --------------------------------------------------------------------------- #
+
+
+@respx.mock
+async def test_partial_flush_on_failure_status_still_finds_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reproduces the staging false-failure.
+
+    Observed sequence: a transient ErrImagePull marks the workload ``errored``
+    while k8s retries; the container then runs to completion. OTEL delivers its
+    stdout line by line, so the runner's own "RLIMIT_NPROC" line lands ~0.4s
+    ahead of the result marker. Polling starts at 0.5s, so two consecutive reads
+    saw only that first line and the wait was abandoned ~1s in — reporting "no
+    result marker in logs" for a run that had actually succeeded.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    partial = "sandbox process limit (RLIMIT_NPROC) set to 4096"
+    complete = f"{partial}\n__DR_SANDBOX_RESULT__:99"
+    # Same partial payload several times over, then the marker finally flushes.
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(partial),
+            _logs_response(partial),
+            _logs_response(partial),
+            _logs_response(partial),
+            _logs_response(complete),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 99
+    assert "__DR_SANDBOX_RESULT__" not in result.stdout
+
+
+@respx.mock
+async def test_genuinely_markerless_failure_gives_up_on_the_quiet_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shortcut's purpose is preserved: a real crash must not wait out the budget.
+
+    Output that arrives and then never changes exits via the quiet window, NOT
+    the deadline — which matters because the failure-status budget is ~5
+    minutes. Asserted by giving the deadline room (a large provisioning
+    allowance) and still returning promptly.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.05)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response("Traceback: boom"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    started = time.monotonic()
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxError):
+            await _sandbox(client, provisioning_timeout_s=300.0).run("code", timeout_s=30)
+    # Exited on the quiet window, nowhere near the 330s deadline.
+    assert time.monotonic() - started < 30
+
+
+@respx.mock
+async def test_success_status_partial_flush_survives_one_repeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even on a success status, one repeated read is not proof the flush ended."""
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "succeeded"})
+    )
+    partial = "warming up"
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(partial),
+            _logs_response(partial),
+            _logs_response(f"{partial}\n__DR_SANDBOX_RESULT__:7"),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 7
+
+
+@respx.mock
+async def test_frozen_nonempty_stdout_still_waits_for_late_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for the staging trace that survived the first fix.
+
+    Captured from a real failing run: the runner's RLIMIT_NPROC line flushed and
+    then stdout sat byte-identical at 97 bytes across three consecutive polls
+    (~10s) while the marker was still being flushed. A quiet-window check on
+    stdout gave up at 17s of a 324s budget; the endpoint had the marker 3s
+    later. Non-empty output means the container is running and the runner prints
+    its marker from after its own finally, so the wait must continue.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    # Deliberately SHORT non-empty budget: the point is that repetition alone
+    # must not end the wait, not that the budget is large.
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 60.0)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    frozen = "sandbox process limit (RLIMIT_NPROC) set to 4096"
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(frozen),
+            _logs_response(frozen),
+            _logs_response(frozen),
+            _logs_response(frozen),
+            _logs_response(f"{frozen}\n__DR_SANDBOX_RESULT__:42"),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 42
+
+
+@respx.mock
+async def test_empty_output_keeps_polling_for_a_late_starting_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty output must NOT be treated as "no marker coming".
+
+    Regression for the review finding on #638. A transient ErrImagePull marks
+    the workload errored *before* the runner starts; k8s retries and the
+    container can begin a minute later, emitting its marker then. Throughout
+    that window stdout is empty, because the pull's records are ERROR level and
+    route to stderr. An early give-up on empty output therefore breaks exactly
+    the case the provisioning budget exists for — so empty output has no
+    stillness rule and polls until the deadline.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    pull_err = {
+        "timestamp": "t",
+        "level": "ERROR",
+        "message": "Image pull failed reason=ErrImagePull message=failed to pull and unpack image",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    started_line = {
+        "timestamp": "t",
+        "level": "INFO",
+        "message": "sandbox process limit (RLIMIT_NPROC) set to 4096",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    marker = {
+        "timestamp": "t",
+        "level": "INFO",
+        "message": "__DR_SANDBOX_RESULT__:99",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    # Several polls where stdout is EMPTY (only the stderr-bound pull error),
+    # then the retried container starts and produces its marker.
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response_entries([]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err, started_line]),
+            _logs_response_entries([pull_err, started_line, marker]),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 99
+
+
+@respx.mock
+async def test_stderr_only_records_do_not_end_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ERROR-level records route to stderr, so they must not be read as stdout activity.
+
+    In the captured trace a CrashLoopBackOff ERROR arrived while stdout stayed
+    frozen — the stream was alive but `stdout` looked static.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 60.0)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    out = {"timestamp": "t", "level": "INFO", "message": "starting", "spanId": "s", "traceId": "t"}
+    err = {
+        "timestamp": "t",
+        "level": "ERROR",
+        "message": "Crash looping reason=CrashLoopBackOff",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    done = {
+        "timestamp": "t",
+        "level": "INFO",
+        "message": "__DR_SANDBOX_RESULT__:7",
+        "spanId": "s",
+        "traceId": "t",
+    }
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response_entries([out]),
+            _logs_response_entries([out, err]),
+            _logs_response_entries([out, err]),
+            _logs_response_entries([out, err, done]),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 7

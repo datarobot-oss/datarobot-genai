@@ -29,6 +29,8 @@ from starlette.middleware import Middleware
 
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVarIsNotSetError
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
+from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
+from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
 from datarobot_genai.drmcp.core.middleware import initialize_oauth_middleware
 from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 from datarobot_genai.drmcpbase.fastmcp_transforms import register_mcp_catalog_transform
@@ -90,6 +92,25 @@ def _import_modules_from_dir(
                         importlib.import_module(module_name)
                 except ImportError as e:
                     logging.warning(f"Failed to import module {module_name}: {e}")
+
+
+def get_ordered_list_of_starlette_middlewares() -> list[Middleware]:
+    return [
+        # Serve the MCP mount and every shared REST route with
+        # or without a trailing slash — a 307 would carry a
+        # container-local Location that breaks behind the
+        # directAccess gateway. It reads the registered
+        # spellings off this app's own router, so it needs no
+        # configuring and follows a URL_PREFIX mount for free.
+        # First, so the header middleware's MCP-path skip sees
+        # the normalized path.
+        Middleware(TrailingSlashNormalizer),
+        Middleware(OAuthJWTTokenHandlerMiddleware),
+        Middleware(GeneralOAuthClaimValidationMiddleware),
+        # Request headers in context for REST routes only (skips MCP path).
+        Middleware(RequestHeadersMiddleware),
+        Middleware(OtelASGIMiddleware),
+    ]
 
 
 class DataRobotMCPServer:
@@ -315,20 +336,7 @@ class DataRobotMCPServer:
                     server_task = asyncio.create_task(
                         self._mcp.run_http_async(
                             transport="http",
-                            middleware=[
-                                # Serve the MCP mount and every shared REST route with
-                                # or without a trailing slash — a 307 would carry a
-                                # container-local Location that breaks behind the
-                                # directAccess gateway. It reads the registered
-                                # spellings off this app's own router, so it needs no
-                                # configuring and follows a URL_PREFIX mount for free.
-                                # First, so the header middleware's MCP-path skip sees
-                                # the normalized path.
-                                Middleware(TrailingSlashNormalizer),
-                                # Request headers in context for REST routes only (skips MCP path).
-                                Middleware(RequestHeadersMiddleware),
-                                Middleware(OtelASGIMiddleware),
-                            ],
+                            middleware=get_ordered_list_of_starlette_middlewares(),
                             show_banner=False,
                             port=self._config.mcp_server_port,
                             log_level=self._config.mcp_server_log_level,

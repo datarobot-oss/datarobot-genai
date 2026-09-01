@@ -1,8 +1,15 @@
+# Requires a CHANGELOG.md entry on every PR, or the `skip-changelog` label for
+# changes that don't warrant one.
+#
+# Stacks are checked as a unit, the same way version-check.yml handles version
+# bumps: the tip's diff against the stack's base contains every layer, so a single
+# entry anywhere in the stack satisfies the check for all of its PRs.
+
 name: Changelog Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled, stacked]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -11,27 +18,124 @@ concurrency:
 jobs:
   changelog-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
+      - name: Resolve which PR to inspect
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          # Null, and so empty here, for a PR that is not part of a stack.
+          STACK_NUMBER: ${{ github.event.pull_request.stack.number }}
+          SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$SKIP_LABEL" == "true" ]]; then
+            echo "✅ Skipping changelog check (skip-changelog label present)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$STACK_NUMBER" ]]; then
+            echo "PR #$PR_NUMBER is not part of a stack — checking it against $BASE_REF."
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Only GraphQL lists a stack's members — the `stack` object on the REST
+          # pull request carries just that PR's own position and the stack size.
+          # `position` orders them bottom (closest to the stack's base) to top.
+          QUERY='
+            query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $number) {
+                  stack {
+                    baseRefName
+                    entries(first: 100) {
+                      nodes { position pullRequest { number state } }
+                    }
+                  }
+                }
+              }
+            }'
+
+          # Without the stack's members there is no tip to check, and falling back
+          # to this PR alone would demand an entry per branch — the thing stack
+          # awareness exists to avoid. Skip instead and say so.
+          if ! RESPONSE=$(gh api graphql -f query="$QUERY" \
+              -F owner="${GITHUB_REPOSITORY%/*}" \
+              -F name="${GITHUB_REPOSITORY#*/}" \
+              -F number="$PR_NUMBER" 2>&1); then
+            RESPONSE=${RESPONSE//$'\n'/ }  # an annotation is a single line
+            echo "::warning::Could not read stack #$STACK_NUMBER, so the changelog check was skipped. Re-run this job to try again. ($RESPONSE)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TIP=$(jq -r '
+            [(.data.repository.pullRequest.stack.entries.nodes // [])[]
+             | select(.pullRequest.state == "OPEN")]
+            | sort_by(.position) | last // {} | .pullRequest.number // empty
+          ' <<<"$RESPONSE")
+          STACK_BASE=$(jq -r '.data.repository.pullRequest.stack.baseRefName // empty' <<<"$RESPONSE")
+
+          # An empty result means this PR left the stack after the event fired, so
+          # there is nothing to defer to and it stands on its own again.
+          if [[ -z "$TIP" || -z "$STACK_BASE" ]]; then
+            echo "PR #$PR_NUMBER is no longer in stack #$STACK_NUMBER — checking it against $BASE_REF."
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$TIP" == "$PR_NUMBER" ]]; then
+            echo "PR #$PR_NUMBER is the tip of stack #$STACK_NUMBER — checking the stack against $STACK_BASE."
+          else
+            echo "PR #$PR_NUMBER is in stack #$STACK_NUMBER — checking its tip, PR #$TIP, against $STACK_BASE."
+          fi
+          echo "pr=$TIP" >> "$GITHUB_OUTPUT"
+          echo "base=$STACK_BASE" >> "$GITHUB_OUTPUT"
+          echo "stack=$STACK_NUMBER" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.target.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Check changelog was updated
+        if: steps.target.outputs.skip != 'true'
+        env:
+          TARGET_PR: ${{ steps.target.outputs.pr }}
+          BASE_REF: ${{ steps.target.outputs.base }}
+          STACK_NUMBER: ${{ steps.target.outputs.stack }}
         run: |
-          # Skip if PR has the skip-changelog label
-          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}" == "true" ]]; then
-            echo "✅ Skipping changelog check (skip-changelog label present)"
+          set -euo pipefail
+
+          git fetch --quiet origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          # refs/pull/<n>/head resolves in this repo even when the head branch
+          # lives in a fork, so this works for any PR in the stack.
+          git fetch --quiet origin "+refs/pull/$TARGET_PR/head:refs/remotes/origin/pr/$TARGET_PR"
+
+          CHANGED=$(git diff --name-only "origin/$BASE_REF...refs/remotes/origin/pr/$TARGET_PR")
+          if grep -q '^CHANGELOG.md$' <<<"$CHANGED"; then
+            echo "✅ CHANGELOG.md was updated"
             exit 0
           fi
 
-          # Check if CHANGELOG.md was modified
-          git fetch origin ${{ github.base_ref }}
-          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "^CHANGELOG.md$"; then
-            echo "✅ CHANGELOG.md was updated"
-            exit 0
+          echo "❌ CHANGELOG.md was not updated"
+          if [[ -n "$STACK_NUMBER" ]]; then
+            echo "No layer of stack #$STACK_NUMBER touches CHANGELOG.md. One entry"
+            echo "anywhere in the stack covers all of it, as long as it lands in the"
+            echo "tip's history (PR #$TARGET_PR) — or add the 'skip-changelog' label"
+            echo "to this PR."
           else
-            echo "❌ CHANGELOG.md was not updated"
             echo "Please update CHANGELOG.md or add the 'skip-changelog' label"
-            exit 1
           fi
+          exit 1

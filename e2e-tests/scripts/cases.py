@@ -129,7 +129,7 @@ class Case(BaseModel):
     )
 
     # Env values are env vars, so coerce YAML scalars (e.g. integers like
-    # ``USE_DATAROBOT_LLM_GATEWAY: 0``) to strings rather than forcing the
+    # ``LLM_USE_DATAROBOT_LLM_GATEWAY: 0``) to strings rather than forcing the
     # author to quote everything.
     @field_validator("env", mode="before")
     @classmethod

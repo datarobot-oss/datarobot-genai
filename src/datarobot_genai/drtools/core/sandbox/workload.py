@@ -83,6 +83,28 @@ _TEARDOWN_TIMEOUT_S = 5.0
 # up to this budget for the marker rather than reading once and racing the flush.
 _LOG_FLUSH_TIMEOUT_S = 30.0
 
+# How long NON-EMPTY output must stay unchanged before we conclude no result
+# marker is coming.
+#
+# Only non-empty output gets a stillness rule. Once the container has printed
+# anything, a marker is in flight: the image runner prints it AFTER its own
+# try/except BaseException/finally (datarobot-user-models,
+# dr_mcp_execute_sandbox_minimal/runner.py), so every container that starts
+# emits one on every path — normal return, user exception, SystemExit, and the
+# in-process timeout. How long the OTEL collector then takes to flush it is not
+# boundable from here, so wait, and give up only after a long stillness. That
+# covers the one genuine no-marker-with-output case: a container SIGKILLed
+# before reaching the print.
+#
+# EMPTY output deliberately has NO stillness rule and polls to the deadline.
+# It cannot be distinguished from "the container has not started yet": a
+# transient ErrImagePull marks the workload errored before the runner starts,
+# k8s retries, and the container can begin a minute later — and the pull's
+# ERROR records route to stderr, so stdout stays empty throughout. Giving up
+# early on empty output would break exactly the case the provisioning budget
+# exists for.
+_STABLE_OUTPUT_NONEMPTY_QUIET_S = 30.0
+
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
 # computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
 # already enforced inside the container (DR_SANDBOX_TIMEOUT_SECS → SIGALRM →
@@ -383,6 +405,7 @@ class DataRobotWorkloadSandbox:
         stdout = ""
         stderr = ""
         prev_stdout: str | None = None
+        stdout_settled_at = time.monotonic()
         # Poll until the marker appears (in OTEL or logTail) or the budget
         # elapses: a one-shot runner exits, so the workload can reach a terminal
         # status before the OTEL collector flushes the container's stdout.
@@ -419,14 +442,26 @@ class DataRobotWorkloadSandbox:
                 break
             if time.monotonic() > deadline:
                 break
-            # No marker yet. If OTEL output has arrived and stopped changing, the
-            # run produced no marker (a genuine failure/crash) — stop instead of
-            # waiting out the full flush budget. A successful one-shot's output
-            # *includes* the marker, so stable output without a marker is never a
-            # success we'd be cutting short.
-            if stdout and stdout == prev_stdout:
+            # No marker yet. Decide whether one is still coming.
+            #
+            # Keyed on whether the container produced ANY output, not on how
+            # long output has been still. Output means the runner is executing,
+            # and it prints the marker after its own finally — so a marker is in
+            # flight and the only question is collector latency, which we cannot
+            # bound from here. Waiting on stillness alone is what made a
+            # succeeded run report "no result marker": stdout sat unchanged at
+            # the runner's first line while the marker was still being flushed,
+            # and ERROR-level records (which route to stderr) kept arriving, so
+            # the stream was demonstrably alive while `stdout` looked frozen.
+            now = time.monotonic()
+            if stdout != prev_stdout:
+                prev_stdout = stdout
+                stdout_settled_at = now
+            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S:
+                # Non-empty and long since still: the marker is not coming.
+                # Empty output falls through and keeps polling to the deadline
+                # (see the constant above) — it may be a pull still retrying.
                 break
-            prev_stdout = stdout
             await asyncio.sleep(delay)
             delay = min(delay * 2, 3.0)
 

@@ -4,8 +4,110 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.27.13
+## 0.29.16
 - `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.
+
+## 0.29.15 - 2026-08-31
+- `dragent`: simplified the agent card registry's MemorySpace L2 cache event encoding to store the payload directly as the event's `content` field, dropping the now-redundant `v`/`payload` envelope (`content` already carried the same value, so existing cache entries remain readable). Brings the stable-`datarobot[core]`-based cache's shape closer to the `datarobot[application-utils]` Memory Service ORM design from BUZZOK-32180 without taking the pre-release `datarobot-early-access` dependency — see the module docstring in `memory_space_cache.py` for what still differs and why.
+- `dragent`: fixed the agent card registry's MemorySpace (L2) cache raising `requests.exceptions.ConnectionError` (`RemoteDisconnected`/`ProtocolError`, "Remote end closed connection without response") when a pooled keep-alive connection sat idle across the infrequent L1-cache-miss / 30-minute registry-refresh calls in `memory_space_cache.py` for longer than the remote end's idle-connection timeout. That error isn't retried by the DataRobot client's own `handle_connection_reset` wrapper (which only retries `ConnectionResetError`), so it previously surfaced on every stale-connection hit even though the cache already degrades gracefully to a miss. All memory-space Session API calls in the module now retry once on `ConnectionError` before giving up.
+
+## 0.29.14 - 2026-08-31
+- Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
+
+## 0.29.13 - 2026-08-28
+- Narrow the cve-sync residue block to the packages this project actually resolves, dropping 36 that could never affect its lock. No dependency floor moved.
+
+## 0.29.12
+- Prefer `DATAROBOT_PUBLIC_API_ENDPOINT` when constructing the memory space URL.
+
+## 0.29.11 - 2026-08-26
+- `dragent`: tool-call spans now carry `gen_ai.tool.name` instead of the bare legacy `tool_name` attributeg.
+
+## 0.29.10 - 2026-08-26
+- `dragent`, `langgraph`, `llama_index`: **agent spans now carry `gen_ai.agent.name`.
+- Adds `datarobot-opentelemetry>=0.4.0,<1.0.0` to the `llamaindex` and `dragent` extras.
+
+## 0.29.9
+- `dragent`: `registry` in `workflow.yaml` accepts `workload_id` alongside `deployment_id` and `external_id`, so an agent served by the Workload API runtime — where its card is keyed by workload rather than deployment — is reachable through the central agent card registry. Lookups query `workloadIds`, cache under a `workload:` key (L1 and MemorySpace L2), and take part in startup prefetch, background refresh and stale-if-error like the other two kinds. A workload card that also publishes an `external.id` stays reachable by either ID.
+- `dragent`: each registry request now carries exactly **one** ID kind. `deploymentIds` + `workloadIds` in one request is rejected by the API with HTTP 400 (not an empty result like `deploymentIds` + `externalIds`), so the client fetches one kind per call and raises before issuing a request that mixes the two.
+- `dragent`: **fixed** registry requests exceeding the API's cap of 20 IDs per parameter — a workflow with more than 20 registry-backed function groups sent them all in one `deploymentIds`/`externalIds` value and got an HTTP 400. ID lists are now split into chunks of 20; entries from every chunk are merged before parsing, so `AGENT_CARD_REGISTRY_ON_DUPLICATE` still applies across the whole result set.
+
+## 0.29.8
+- `dragent`: agent card registry MemorySpace L2 uses write-behind instead of write-through so connect-time registry fetches are not blocked on MemorySpace round-trips.
+- `dragent`: layered agent card cache skips L2 on soft-expired L1 hits; cold-path fresh L2 reads are bounded by a short timeout so a slow MemorySpace cannot delay registry fetch (stale-if-error L2 reads are not bounded).
+- `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
+- `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
+- `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
+
+## 0.29.7
+- `drmcp/core/config`: Added `oauth_claim_validation` MCP config.
+- `drmcp/core/middleware.py`: Refactored MCP authorization validation middlewares
+
+## 0.29.6 - 2026-08-26
+- Add a `authlib` floor at `>=1.7.1`.
+- Raise the `pip` floor from `>=26.1.2` to `>=26.2`.
+
+## 0.29.5
+- Enable `cve-sync` automation in the repo
+
+## 0.29.4
+- `dragent`: agent card registry uses in-process L1 cache with optional DataRobot MemorySpace L2 (read-through/write-through over the agentic memory Session API) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is set; falls back to L1-only when no memory space is configured.
+- `dragent`: pluggable agent card registry cache backends with stale-if-error bounded by `AGENT_CARD_REGISTRY_CACHE_TTL`.
+- `dragent`: L1 read-through of an L2 agent card hit preserves the original ``fetched_at``, so soft TTL and max-staleness are not reset on promotion.
+
+## 0.29.3
+- `dragent`: **fixed `authenticated_a2a_client` groups overwriting each other's agent card on a shared `auth_provider`.** Function groups are built per user, but `WorkflowBuilder.get_auth_provider` returns one instance per configured name and `PerUserWorkflowBuilder` delegates to it — so every group called `set_agent_card()` on the same object and the last one to connect decided `target_audience`, `token_url` and `id_jag_scopes` for all of them. Two A2A function groups sharing an `auth_provider`, or two users active at once, could mint a token for the wrong agent; the receiving agent rejects it on the audience check, so this failed closed, but it showed up as intermittent auth failures.
+- A group that resolves an `AgentCardAware` auth provider now takes its own copy of it, so the card it fetched stays with the agent it fetched it from. Configuration and credentials are unchanged and still shared.
+
+## 0.29.2
+- `dragent`: prefetch central agent card registry lookups at FastAPI startup for all `authenticated_a2a_client` function groups with a `registry` block.
+- `dragent`: agent card registry stale-if-error for in-memory cache — serve last-known-good cards when a registry fetch fails.
+- `dragent`: background agent card registry refresh loop for registered IDs past the soft cache TTL (every 30 minutes).
+
+## 0.29.1
+- `docs/` and `e2e-tests/`: **re-locked to match the root.** Both are separate resolution roots with their own `uv.lock`, and nothing re-locks them when the root's dependencies change, so they had been drifting since 0.28.0. `docs/uv.lock` still carried the `datarobot-early-access` pin that 0.28.3 gave up, and `e2e-tests/uv.lock` still resolved `datarobot` 3.17.0; both now take stable `datarobot>=3.18.0,<4.0.0` with the matching extra specifiers, and both pick up `pydantic-settings` for the `auth`, `drmcpbase`, `drmcputils`, and `drtools` extras. Neither lock ships in the wheel, so this changes no published dependency; it stops the docs build and the e2e suite from installing a resolution the package itself no longer describes.
+- Every root's lock now stamps the same `datarobot-genai` version. The satellites install the root as an editable path dependency and record its version, which the release bump does not update on its own, so `docs/` sat at 0.28.3 and `e2e-tests/` at 0.28.5 against a 0.29.0 root. Left alone this is the same drift the rest of this entry removes.
+
+## 0.29.0
+- *Breaking change*: `okta_token_header` and `fallback_token_headers` on `okta_cross_app_access` are retired. The carrier set is fixed so that audience validation and the XAA provider cannot read different headers. Setting either to the value it used to default to still loads, with a deprecation warning; any other value is rejected at startup — including `fallback_token_headers: []`, which used to disable the `authorization` fallback and would otherwise be silently switched back on. **Delete the field from `workflow.yaml`.**
+- `dragent/frontends`: **an inbound IdP access token is now rejected unless its `aud` claim names this agent** — `401`, or `422` if the value is not a decodable JWT. The gateway validates that a JWT is signed and trusted but forwards it as-is, so a token minted for another agent was accepted and exchanged. Opt in with `a2a.oauth_claim_validation: true`, beside `enable_unauthenticated_well_known_route`; off by default, and with the flag on but no `a2a.cross_application_access.token_request.audience` to enforce, startup fails rather than pretending to. The flag covers `scope` too when that lands.
+- **An audience check, not authentication**: a request with no IdP token passes through, since an agent may be called with a DataRobot API token instead. Signature, issuer and expiry are not re-verified. No route is exempt: agent-card discovery has optional auth, so an unauthenticated request still reaches the handler and `enable_unauthenticated_well_known_route` decides, while a token that is present is validated first.
+- **Every route, not just `/a2a`** — NAT copies inbound headers into the workflow context on every route and the XAA provider reads the token from there, so scoping the check to A2A would leave the same token usable via `/chat/completions`.
+- **Token headers now have one definition** (`dragent/inbound_token.py`), shared with the XAA provider so the validated and exchanged sets cannot drift: `x-datarobot-external-access-token`, then `authorization` for local runs. The latter also carries DataRobot API tokens, so a value there counts only if it decodes as a JWT.
+
+## 0.28.5
+- `drtools/core/sandbox`: the marker wait no longer gives up on a container that is still running. 0.28.2 required stdout to stay unchanged for 5s before declaring a run markerless, but stdout can sit frozen at the runner's first line for longer while the OTEL collector flushes the marker — observed on staging holding at 97 bytes across three polls (~10s), with the marker available 3s after we gave up, at 17s of a 324s budget. Stillness is now only consulted for NON-EMPTY output, where it means something: the image runner prints its marker after its own `try/except BaseException/finally`, so any container that started emits one, and output therefore means a marker is in flight (bounded at 30s of stillness to cover a container SIGKILLed before the print). Empty output keeps polling to the deadline and gets no stillness rule at all, because it is indistinguishable from a container that has not started yet — a transient `ErrImagePull` marks the workload errored before the runner starts, k8s retries, and the pull's records are ERROR level so they route to stderr and leave stdout empty meanwhile.
+
+## 0.28.4
+- `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
+
+## 0.28.3
+- **Back to stable `datarobot`** for the `core`, `auth`, and `fs` extras (`>=3.18.0,<4.0.0`), replacing the `datarobot-early-access` pin taken in 0.28.0. The config API that pin was waiting on has settled: stable 3.18.0 ships `datarobot.core.config`'s `LLMConfig`, `LLMType`, and `DataRobotAppFrameworkBaseSettings.resolve_llm_config`, which is everything `datarobot_genai.core.config` consumes. With only one `datarobot` distribution in play again, the `tool.uv.exclude-dependencies` entry that dropped stable `datarobot` in favor of early access is gone, and `datarobot-moderations` and `datarobot-predict` are satisfied by the same copy genai uses. Consumers no longer need to exclude or override one of the two packages to keep a single `datarobot` on the import path.
+- `core/config`: **the pre-rename bare parameter names keep working on stable 3.18.** The fallback that reads `NIM_DEPLOYMENT_ID` and `USE_DATAROBOT_LLM_GATEWAY` when the namespaced field was not set explicitly lives in `datarobot.core` from 3.19, which stable 3.18 predates, so `resolve_config()` now applies it: it fills the `{name}_*` field on the config object before core reads it, and warns. Scope is two fields on one namespace: the app's default instance only (a second LLM never inherits the bare names), and only when that name is really an LLM namespace, meaning the config declares its `{name}_deployment_id` / `{name}_default_model` / `{name}_nim_deployment_id` fields. It is deliberately not restricted to a literal `llm_` prefix, because pre-rename `af-component-llm` exported `{NAME}_DEPLOYMENT_ID` namespaced but `USE_DATAROBOT_LLM_GATEWAY` bare, so an app whose component is named anything else is exactly the case being bridged. A namespaced value always wins over a legacy one, and the field is marked as explicitly set, so core's own bridge stands down on 3.19+ instead of warning twice. Behavior is unchanged from 0.28.0; without this, an app still emitting the old names would silently revert to the defaults (gateway on, no NIM deployment). Removed once the floor is 3.19.
+
+## 0.28.2
+- `drtools/core/sandbox`: a partially flushed OTEL log stream is no longer mistaken for a run that produced no result marker. The wait previously stopped as soon as two consecutive reads returned identical stdout, which — with reads 0.5s apart and remaining lines ~0.4s behind — abandoned the wait about a second in and reported `no result marker in logs` for workloads that had actually succeeded. Stdout must now stay unchanged for a quiet window (5s) before the run is declared markerless, so genuine crashes still fail fast instead of waiting out the full budget.
+
+## 0.28.1
+- `core.mcp`: `MCPConfig` now accepts `mcp_workload_id` (env `MCP_WORKLOAD_ID`) to connect to a Workload API MCP server (MODEL-24379), with the same auth headers as custom-model deployment mode, and mutually exclusive with `mcp_deployment_id` / `external_mcp_url`. Its URL comes only from the platform (`GET /api/v2/workloads/<id>/` → `endpoint` + `/mcp`), never from a URL template, because Envoy-fronted clusters serve workloads from a per-enclave Host that `DATAROBOT_ENDPOINT` cannot derive; if the lookup cannot answer, the agent gets no MCP server rather than a guessed URL. MCP URL construction moves to `dragent/deployment_urls`.
+
+## 0.28.1
+- `drmcp/core`: Added an MCP middleware which performs general OAuth claim validation.
+- `drmcputils/auth.py`: Added JWTTokenClaimsValidator which performs validations on claims in JWT token.
+
+## 0.28.0
+- `core/config`: **`LLMConfig` and `LLMType` now come from `datarobot.core.config`** rather than being defined here, and are re-exported from `datarobot_genai.core.config` along with `deployment_url` and `llm_gateway_url`. Existing imports from `datarobot_genai.core.config` keep working. The routing logic (`get_llm_type`, `to_litellm_params`) moved with them, so there is one definition of "how a DataRobot LLM config becomes litellm params" shared by genai and the rest of the DataRobot Python ecosystem instead of a copy in each.
+- **Per-LLM settings are namespaced by their instance name (breaking).** A global config can describe any number of LLM instances, and each instance's routing fields are read under its own prefix. The default instance is named `llm`, so for the fields that were previously global: `USE_DATAROBOT_LLM_GATEWAY` becomes `LLM_USE_DATAROBOT_LLM_GATEWAY`, and `NIM_DEPLOYMENT_ID` becomes `LLM_NIM_DEPLOYMENT_ID`. `LLM_DEPLOYMENT_ID` and `LLM_DEFAULT_MODEL` already carried the prefix and are unchanged, as are `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN`, which are shared by every instance. The same rename applies to the `workflow.yaml` fields on `datarobot-llm-component`, `datarobot-nim`, and the router's `primary` / `fallbacks` entries: `use_datarobot_llm_gateway` becomes `llm_use_datarobot_llm_gateway`, `nim_deployment_id` becomes `llm_nim_deployment_id`. **Rename these in `workflow.yaml` when you upgrade:** unknown keys are ignored there, so an unrenamed field does not fail, it silently reverts to its default (gateway on, no NIM deployment). For the two environment variables, `datarobot.core` reads the old bare names as a fallback when the namespaced field was not set explicitly, warns when it does, and drops that bridge in 3.21.
+- `core/config`: **added the app config injection seam** so an application owns the authoritative global config and genai reads through it. An app registers a zero-arg provider returning its own `DataRobotAppFrameworkBaseSettings` subclass with `register_config_provider(provider, default_llm_name=...)`; `resolve_config()` returns that config (or genai's own env-reading `Config` when nothing is registered). Per-LLM config is then resolved off that object with `resolve_config().resolve_llm_config(name=...)`, which maps one instance's `{name}_*` fields plus the two globals into an `LLMConfig`. There is deliberately **no module-level `resolve_llm_config()` in genai**: a free function that hands back an `LLMConfig` invites callers to import, monkeypatch, and extend it, and every such override lives in genai instead of on the app's config object, so it stops working the moment an app registers its own `config.py`. Call sites name the instance explicitly, using `registered_default_llm_name()` when they have no name of their own. Registration happens during NAT plugin discovery, before the workflow config is validated, so the provider is in place before genai first reads config. The provider is called on every resolve, so values re-resolve through the app's settings sources rather than being frozen at import. A provider returning something that is not a settings object raises `TypeError` naming what it got, instead of failing later on a missing attribute. The invariant that keeps this from drifting: nothing in genai reads a config attribute directly, everything goes through the base class `resolve_*` methods.
+- `core/router`: `build_litellm_router` fills each entry's endpoint and API token from the ambient global config before rendering litellm params. Router entries are parsed straight from `workflow.yaml` with the two globals unset, and core's `to_litellm_params` is self-contained (it never reaches back into genai for them), so the hydration has to happen at the call site. Explicit per-entry `datarobot_endpoint` / `datarobot_api_token` still win.
+- **Depends on `datarobot-early-access` instead of `datarobot`** for the `core`, `auth`, and `fs` extras (`>=3.19.0.2026.8.10`). `datarobot.core.config` is still changing between stable releases, and pinning a stable version means waiting on a release for every correction. Both packages ship the same `datarobot` module, and `datarobot-moderations` and `datarobot-predict` each require the stable one, so installing both would write two copies over the same directory. `datarobot` is therefore excluded from resolution via `tool.uv.exclude-dependencies`, and early access satisfies those requirements. This goes back to stable `datarobot` once the config API settles.
+- docs: `llm.md`, `index.md`, and `fallback.md` updated for the namespaced variable and field names, with a note on what the `LLM_` prefix actually is.
+
+## 0.27.14
+- `drtools/predictive`: `catalog_list_datastores` now requests `type=all` from `GET externalDataStores/` (the API defaults to JDBC-only and returns `[]` when the user only has native-database or connector stores). Agents listing connections no longer report none connected. Optional `datastore_type` still filters (`jdbc`, `dr-database-v1`, `dr-connector-v1`, `databases`); each row includes `type`.
+
+## 0.27.13
+- `drmcp/core/telemetry`: MCP server startup no longer blocks on unreachable OTLP endpoints — span export uses ``BatchSpanProcessor`` (background thread) instead of ``SimpleSpanProcessor`` (synchronous export on every span end).
 
 ## 0.27.12
 - `drtools/core/sandbox`: workload scheduling and image-pull time no longer consume the caller's `timeout_s` (which bounds user code, enforced in-container). A separate `provisioning_timeout_s` allowance (default 300s, constructor-tunable) bounds the infra wait — a cold node's first pull of the sandbox image (60-90s) used to surface as `SandboxTimeout` before user code ever ran.
@@ -378,6 +480,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `crewai`: native tool calling for gateway models — `supports_function_calling` now resolves them via `get_model_info` (was wrongly `False` → prompt path), and `LitellmStopWordLLM` streams native calls itself (CrewAI's handler drops them), sanitizing schemas and tracking usage.
 - `crewai`: the router LLM returns tool calls as a bare list (not a json string) and reads `supports_function_calling` from its whole failover chain.
 - `crewai`: reset each agent's executor per request — a reused crew leaked `messages`/`iterations` across requests (bedrock "tool calling without tools=" errors; text-leaked tool calls).
+- `core/datarobot_otel`: `resolve_entity_id_from_env` now falls back to `otel_entity_id` loaded via `DataRobotAppFrameworkBaseSettings` (env vars, `.env` files, Pulumi outputs, and DataRobot runtime parameters) when `MLOPS_DEPLOYMENT_ID` is not set.
 
 ## 0.19.9
 - `drmcp`/`drtools/files_api`: acceptance E2E tests for read-only Files API tools (`file_list`, `file_info`, `file_read`, `file_sign`) against a live MCP server with `ENABLE_FILES_API_TOOLS=true`.

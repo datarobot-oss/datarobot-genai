@@ -9,7 +9,7 @@ The same case files drive both:
 
 ## Environment
 
-Credentials/endpoints shared by every case (DataRobot platform, MCP deployment, Azure for the external-LLM case, etc.) live in `e2e-tests/.env*` and are loaded automatically by the `dotenv:` chain in [Taskfile.yaml](Taskfile.yaml). Copy [.env.sample](.env.sample) and fill in the blanks. LLM-specific knobs (`LLM`, `LLM_DEFAULT_MODEL`, `WORKFLOW_FILE`, `USE_DATAROBOT_LLM_GATEWAY`) are NOT placed in `.env` — they come from the case YAML and the matrix combination selected for the run.
+Credentials/endpoints shared by every case (DataRobot platform, MCP deployment, Azure for the external-LLM case, etc.) live in `e2e-tests/.env*` and are loaded automatically by the `dotenv:` chain in [Taskfile.yaml](Taskfile.yaml). Copy [.env.sample](.env.sample) and fill in the blanks. LLM-specific knobs (`LLM`, `LLM_DEFAULT_MODEL`, `WORKFLOW_FILE`, `LLM_USE_DATAROBOT_LLM_GATEWAY`) are NOT placed in `.env` — they come from the case YAML and the matrix combination selected for the run.
 
 The `task cases-*` commands below all run through Task, so they pick up the dotenv chain automatically. The runner scripts (`scripts/cases.py`, `scripts/run_local.py`) deliberately do not load `.env` themselves.
 
@@ -18,8 +18,11 @@ The `task cases-*` commands below all run through Task, so they pick up the dote
 Some tests require additional resources deployed in DataRobot. They are injected as environment variables. Make sure to include said variables before running a specific test case.
 
 ```
-# Necessary for all tests using an MCP server
+# Necessary for all tests using an MCP server — pick one method:
+#   custom-model deployment → set MCP_DEPLOYMENT_ID
+#   workload API deployment → set MCP_WORKLOAD_ID
 MCP_DEPLOYMENT_ID=
+MCP_WORKLOAD_ID=
 
 # Necessary for configurations using DataRobot Deployment as LLM
 LLM_DEPLOYMENT_ID=
