@@ -35,6 +35,7 @@ from datarobot_genai.drtools.core.sandbox.base import SandboxInfraError
 from datarobot_genai.drtools.core.sandbox.base import SandboxResult
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
 from datarobot_genai.drtools.core.sandbox.observability import InstrumentedSandbox
+from datarobot_genai.drtools.core.sandbox.observability import _split_image_version
 from datarobot_genai.drtools.core.sandbox.observability import classify_outcome
 
 
@@ -241,3 +242,87 @@ def test_get_instruments_rebuilds_when_meter_provider_changes(monkeypatch) -> No
     finally:
         obs._STATE.clear()
         obs._STATE.update(saved)
+
+
+# --------------------------------------------------------------------------- #
+# sandbox.image / sandbox.image_version span attributes
+# --------------------------------------------------------------------------- #
+
+
+class _ImagedSandbox(_FakeSandbox):
+    """A backend that reports which container image it runs (workload backend)."""
+
+    def __init__(self, image: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.image = image
+
+
+@pytest.mark.parametrize(
+    ("image", "expected_version"),
+    [
+        ("datarobot/env-dr-mcp-sandbox:6a75cd051842e907f92b5e90", "6a75cd051842e907f92b5e90"),
+        ("datarobot/env-dr-mcp-sandbox:v11.12.0-latest", "v11.12.0-latest"),
+        (
+            "repo@sha256:d28d390425090c2d7f90c87acf7673fb63c1d308eb",
+            "sha256:d28d390425090c2d7f90c87acf7673fb63c1d308eb",
+        ),
+        # A port in the registry host must not be mistaken for a tag.
+        ("localhost:5000/env-sandbox", None),
+        ("env-sandbox", None),
+    ],
+)
+def test_split_image_version(image: str, expected_version: str | None) -> None:
+    assert _split_image_version(image) == expected_version
+
+
+async def test_span_carries_image_and_version_on_success() -> None:
+    tracer, exporter = _tracer_and_exporter()
+    _, instruments = _reader_and_instruments()
+    result = SandboxResult(stdout="", stderr="", return_value=None, duration_s=0.0, exit_code=0)
+    image = "datarobot/env-dr-mcp-sandbox:6a75cd051842e907f92b5e90"
+    sandbox = InstrumentedSandbox(
+        _ImagedSandbox(image, result=result), instruments=instruments, tracer=tracer
+    )
+
+    await sandbox.run("code")
+
+    span = next(s for s in exporter.get_finished_spans() if s.name == "sandbox.execute")
+    assert span.attributes.get("sandbox.image") == image
+    assert span.attributes.get("sandbox.image_version") == "6a75cd051842e907f92b5e90"
+
+
+async def test_span_carries_image_on_failure_path_too() -> None:
+    # Which image ran matters most when the run failed, so the attributes are
+    # set before the backend is invoked rather than alongside the success mark.
+    tracer, exporter = _tracer_and_exporter()
+    _, instruments = _reader_and_instruments()
+    image = "datarobot/env-dr-mcp-sandbox:v11.12.0-latest"
+    sandbox = InstrumentedSandbox(
+        _ImagedSandbox(image, error=SandboxError("killed", exit_code=137)),
+        instruments=instruments,
+        tracer=tracer,
+    )
+
+    with pytest.raises(SandboxError):
+        await sandbox.run("code")
+
+    span = next(s for s in exporter.get_finished_spans() if s.name == "sandbox.execute")
+    assert span.attributes.get("sandbox.image") == image
+    assert span.attributes.get("sandbox.image_version") == "v11.12.0-latest"
+    assert span.attributes.get("sandbox.outcome") == "failure"
+
+
+async def test_backend_without_image_contributes_no_attributes() -> None:
+    # A local/process backend has no image; the span must simply omit them.
+    tracer, exporter = _tracer_and_exporter()
+    _, instruments = _reader_and_instruments()
+    result = SandboxResult(stdout="", stderr="", return_value=None, duration_s=0.0, exit_code=0)
+    sandbox = InstrumentedSandbox(
+        _FakeSandbox(result=result), instruments=instruments, tracer=tracer
+    )
+
+    await sandbox.run("code")
+
+    span = next(s for s in exporter.get_finished_spans() if s.name == "sandbox.execute")
+    assert "sandbox.image" not in span.attributes
+    assert "sandbox.image_version" not in span.attributes
