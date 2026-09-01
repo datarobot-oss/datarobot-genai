@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.15 - 2026-09-01
+- Move the cve-sync workflow onto the shared reusable workflows in `datarobot-oss/cve-sync`, so a fix to the automation reaches this repo on its next scheduled run instead of needing a pull request here.
+- `.taskfiles/cve-sync.yml` is now generated from upstream and refreshed automatically, so it can no longer drift. Do not edit it by hand.
+
 ## 0.29.14 - 2026-08-31
 - Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
 
