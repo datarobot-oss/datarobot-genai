@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.17
+
+- `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
+
 ## 0.29.16
 - `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.
 
