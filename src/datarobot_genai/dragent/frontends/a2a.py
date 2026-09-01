@@ -54,6 +54,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAcce
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
+from datarobot_genai.dragent.deployment_urls import resolve_external_workload_base
 
 from .register import DRAgentA2AExternalConfig
 from .session import _a2a_headers
@@ -114,11 +115,20 @@ _IDENTITY_EXTENSION_URIS = frozenset({INTERNAL_IDENTITY_URI, EXTERNAL_IDENTITY_U
 def get_a2a_endpoint_url(host: str, port: int) -> str:
     """Construct the A2A endpoint URL for the running server.
 
-    In a DataRobot deployment (``MLOPS_DEPLOYMENT_ID`` is set), uses the
-    deployment's direct-access URL built from ``DATAROBOT_PUBLIC_API_ENDPOINT``
-    / ``DATAROBOT_ENDPOINT``.  Otherwise falls back to the local
-    ``http://{host}:{port}/a2a/`` URL.
+    Three tiers, most specific first:
+
+    1. Behind an Envoy API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` and
+       ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` are both injected), the gateway's own
+       route is the only externally reachable one, so it wins in every hosting
+       mode.
+    2. In a DataRobot deployment (``MLOPS_DEPLOYMENT_ID`` is set) or workload
+       (``WORKLOAD_ID``), composes the platform URL from
+       ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
+    3. Otherwise falls back to the local ``http://{host}:{port}/a2a/`` URL.
     """
+    if external_base := resolve_external_workload_base():
+        return f"{external_base}/{A2A_MOUNT_PATH}/"
+
     deployment_id = get_deployment_id()
     workload_id = get_workload_id()
 

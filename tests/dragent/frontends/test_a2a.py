@@ -24,6 +24,8 @@ from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_HOST_ENV
+from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_PREFIX_ENV
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_SCHEME_NAME
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
@@ -159,6 +161,16 @@ class TestCreateAgentCard:
         assert card.description == "Does things"
         assert card.version == "2.0.0"
         assert card.url == "http://localhost:9000/a2a/"
+
+    async def test_agent_card_url_uses_api_gateway_route(self, a2a_frontend_config):
+        env = {
+            "WORKLOAD_ID": "abc123",
+            WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+            WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        assert str(card.url) == "https://enclave-x.datarobot.com/workloads/abc123/a2a/"
 
     async def test_security_schemes_set_when_cross_application_access_present(
         self, a2a_frontend_config
@@ -554,3 +566,80 @@ class TestGetA2aEndpointUrl:
                 ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set"
             ):
                 get_a2a_endpoint_url("localhost", 8000)
+
+    @pytest.mark.parametrize(
+        "env,expected",
+        [
+            (
+                {
+                    "WORKLOAD_ID": "abc123",
+                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                },
+                "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/",
+            ),
+            (
+                {
+                    "WORKLOAD_ID": "abc123",
+                    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2/",
+                },
+                "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/",
+            ),
+        ],
+    )
+    def test_workload(self, env, expected):
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000) == expected
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            # Behind the gateway on a workload.
+            {
+                "WORKLOAD_ID": "abc123",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+                WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+            },
+            # The gateway route wins in deployment mode too.
+            {
+                "MLOPS_DEPLOYMENT_ID": "dep123",
+                "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+                WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+                WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+            },
+            # No DataRobot endpoint at all: the gateway vars are self-sufficient.
+            {
+                "WORKLOAD_ID": "abc123",
+                WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+                WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+            },
+            # Not hosted at all — still no reason to publish a localhost URL.
+            {
+                WORKLOAD_EXTERNAL_HOST_ENV: "https://enclave-x.datarobot.com/",
+                WORKLOAD_EXTERNAL_PREFIX_ENV: "workloads/abc123/",
+            },
+        ],
+    )
+    def test_api_gateway_route_wins(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            assert (
+                get_a2a_endpoint_url("localhost", 8000)
+                == "https://enclave-x.datarobot.com/workloads/abc123/a2a/"
+            )
+
+    @pytest.mark.parametrize(
+        "gateway_env",
+        [
+            {WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com"},
+            {WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123"},
+        ],
+    )
+    def test_partial_gateway_config_falls_back(self, gateway_env):
+        env = {
+            "WORKLOAD_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+            **gateway_env,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            url = get_a2a_endpoint_url("localhost", 8000)
+        assert url == "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/"
