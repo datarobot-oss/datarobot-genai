@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
+from opentelemetry import baggage
 from opentelemetry.sdk.trace import Span
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -163,3 +164,59 @@ def test_full_dispatcher_lifecycle_does_not_raise(outcome: str) -> None:
         handler.span_drop(id_="x", bound_args=bound_args, instance=None, err=RuntimeError("boom"))
 
     assert handler.open_spans == {}
+
+
+# ---------------------------------------------------------------------------
+# Agent name propagated as Baggage for the duration of the span
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("outcome", ["exit", "drop"])
+def test_span_enter_attaches_baggage_and_span_exit_or_drop_detaches_it(
+    recording_span: Span, outcome: str
+) -> None:
+    handler = telemetry._AgentNameSpanHandler()
+    ev = SimpleNamespace(current_agent_name="researcher")
+    bound_args = MagicMock(arguments={"ev": ev})
+
+    handler.span_enter(id_="step-1", bound_args=bound_args)
+    assert baggage.get_baggage("gen_ai.agent.name") == "researcher"
+
+    if outcome == "exit":
+        handler.span_exit(id_="step-1", bound_args=bound_args, result=None)
+    else:
+        handler.span_drop(id_="step-1", bound_args=bound_args, err=RuntimeError("boom"))
+
+    assert baggage.get_baggage("gen_ai.agent.name") is None
+    assert handler._baggage_tokens == {}
+
+
+def test_span_enter_without_a_usable_agent_name_attaches_no_baggage(recording_span: Span) -> None:
+    handler = telemetry._AgentNameSpanHandler()
+    bound_args = MagicMock(arguments={})
+
+    handler.span_enter(id_="step-1", bound_args=bound_args)
+
+    assert baggage.get_baggage("gen_ai.agent.name") is None
+    assert handler._baggage_tokens == {}
+
+
+def test_nested_spans_each_detach_their_own_baggage_independently(recording_span: Span) -> None:
+    """Baggage attach/detach must layer like a stack: the inner span's detach
+    must not clobber the outer span's still-active baggage.
+    """
+    handler = telemetry._AgentNameSpanHandler()
+    outer_ev = SimpleNamespace(current_agent_name="outer_agent")
+    inner_ev = SimpleNamespace(current_agent_name="inner_agent")
+
+    handler.span_enter(id_="outer", bound_args=MagicMock(arguments={"ev": outer_ev}))
+    assert baggage.get_baggage("gen_ai.agent.name") == "outer_agent"
+
+    handler.span_enter(id_="inner", bound_args=MagicMock(arguments={"ev": inner_ev}))
+    assert baggage.get_baggage("gen_ai.agent.name") == "inner_agent"
+
+    handler.span_exit(id_="inner", bound_args=MagicMock(arguments={}), result=None)
+    assert baggage.get_baggage("gen_ai.agent.name") == "outer_agent"
+
+    handler.span_exit(id_="outer", bound_args=MagicMock(arguments={}), result=None)
+    assert baggage.get_baggage("gen_ai.agent.name") is None
