@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.19
+- `drmcp/core/middleware.py`: Add well-known metadata info in MCP 403 authorization error response
+
 ## 0.29.18 - 2026-09-01
 - Add a minimum version for `hydra-core`: `>=1.3.4`.
 - Raise the minimum `nltk` version from `>=3.10.2` to `>=3.10.3`.
