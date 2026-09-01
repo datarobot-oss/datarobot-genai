@@ -26,7 +26,7 @@ core = [
     "requests>=2.32.4,<3.0.0",
     # datarobot.core.config's LLMConfig / LLMType / resolve_llm_config, which
     # datarobot_genai.core.config consumes instead of redefining, ship in stable 3.18.0.
-    "datarobot[core]>=3.18.0,<4.0.0",
+    "datarobot-early-access[core]>=3.19.0.2026.8.31.172953,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
@@ -94,12 +94,12 @@ dragent = core + [
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
     # Memory Service light ORM (DRMemorySpace/DRSession/DREvent), used to back the
     # agent card registry's MemorySpace L2 cache instead of a hand-rolled Session client.
-    "datarobot[application-utils]>=3.19.0rc0,<4.0.0",  # rc0: application_utils.persistence is unreleased
+    "datarobot-early-access[application-utils]>=3.19.0.2026.8.31.172953,<4.0.0",  # rc0: application_utils.persistence is unreleased
 ]
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot[auth]>=3.18.0,<4.0.0",
+  "datarobot-early-access[auth]>=3.19.0.2026.8.31.172953,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
@@ -110,7 +110,7 @@ auth = [
 
 # drmcputils is a leaf subpackage: no imports from other datarobot_genai subpackages.
 drmcputils = auth + [
-    "datarobot[fs]>=3.18.0,<4.0.0",
+    "datarobot-early-access[fs]>=3.19.0.2026.8.31.172953,<4.0.0",
 ]
 
 # drtools: no subpackages dependencies other than auth and drmcputils.
