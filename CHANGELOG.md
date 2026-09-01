@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.15 - 2026-08-31
 - Include `"content"` in the body of the request when storing an agent card in the memory space.
+- `dragent`: fixed the agent card registry's MemorySpace (L2) cache raising `requests.exceptions.ConnectionError` (`RemoteDisconnected`/`ProtocolError`, "Remote end closed connection without response") when a pooled keep-alive connection sat idle across the infrequent L1-cache-miss / 30-minute registry-refresh calls in `memory_space_cache.py` for longer than the remote end's idle-connection timeout. That error isn't retried by the DataRobot client's own `handle_connection_reset` wrapper (which only retries `ConnectionResetError`), so it previously surfaced on every stale-connection hit even though the cache already degrades gracefully to a miss. All memory-space Session API calls in the module now retry once on `ConnectionError` before giving up.
 
 ## 0.29.14 - 2026-08-31
 - Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.

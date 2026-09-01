@@ -19,10 +19,13 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+import requests
 
+from datarobot_genai.dragent.memory_space_cache import _STALE_CONNECTION_RETRIES
 from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import _find_cache_session
 from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
@@ -211,3 +214,62 @@ class TestMemorySpaceKVCache:
             await kv_cache.delete_value("dep-1")
 
         session.delete.assert_called_once()
+
+
+class TestStaleConnectionRetry:
+    """Regression tests for the stale pooled-connection retry (RemoteDisconnected)."""
+
+    async def test_find_cache_session_retries_transient_connection_error(self) -> None:
+        session = _FakeSession()
+        list_mock = MagicMock(
+            side_effect=[
+                requests.exceptions.ConnectionError("stale connection"),
+                [session],
+            ]
+        )
+
+        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
+            result = _find_cache_session("space-1", "dragent:agent_card:dep-1")
+
+        assert result is session
+        assert list_mock.call_count == 2
+
+    async def test_find_cache_session_raises_after_exhausting_retries(self) -> None:
+        list_mock = MagicMock(side_effect=requests.exceptions.ConnectionError("stale connection"))
+
+        with (
+            patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock),
+            pytest.raises(requests.exceptions.ConnectionError),
+        ):
+            _find_cache_session("space-1", "dragent:agent_card:dep-1")
+
+        assert list_mock.call_count == _STALE_CONNECTION_RETRIES + 1
+
+    async def test_get_value_survives_a_single_transient_connection_error(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        session = _FakeSession()
+        session.post_event(body={"v": 1, "payload": "cached"})
+        list_mock = MagicMock(
+            side_effect=[
+                requests.exceptions.ConnectionError("stale connection"),
+                [session],
+            ]
+        )
+
+        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
+            assert await kv_cache.get_value("dep-1") == "cached"
+
+        assert list_mock.call_count == 2
+
+    async def test_get_value_falls_back_to_none_once_retries_are_exhausted(
+        self, kv_cache: MemorySpaceKVCache
+    ) -> None:
+        list_mock = MagicMock(side_effect=requests.exceptions.ConnectionError("stale connection"))
+
+        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
+            # Still degrades to a cache miss rather than raising -- get_value's own
+            # try/except is the last line of defense once the retry is exhausted.
+            assert await kv_cache.get_value("dep-1") is None
+
+        assert list_mock.call_count == _STALE_CONNECTION_RETRIES + 1

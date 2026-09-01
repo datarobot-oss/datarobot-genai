@@ -29,10 +29,13 @@ import asyncio
 import hashlib
 import logging
 import os
+from collections.abc import Callable
 from typing import Any
+from typing import TypeVar
 from typing import cast
 
 import datarobot as dr
+import requests
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.errors import MemorySessionDeduplicationError
 from datarobot.models.memory import Session
@@ -41,6 +44,48 @@ from pydantic import Field
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# `dr.Client()` keeps a single process-lifetime `requests.Session` (and pooled
+# `HTTPAdapter`) shared by every DataRobot API call -- see
+# `datarobot.rest.RESTClientObject`. Memory-space cache calls are infrequent
+# (on-demand L1-cache misses, plus the agent card registry's 30-minute
+# background refresh), so a pooled keep-alive connection can sit idle longer
+# than the server side's (or an intervening proxy's) idle-connection timeout.
+# The next reuse then fails with a `ConnectionError` wrapping
+# `RemoteDisconnected`/`ProtocolError` ("Remote end closed connection without
+# response") -- not the `ConnectionResetError` that the DataRobot client's own
+# `handle_connection_reset` retry wrapper looks for, so it is never retried
+# there and surfaces on every call that lands on a stale connection.
+#
+# Retrying here is a cheap, safe mitigation: the failed attempt evicts the
+# dead connection from the pool, so the retry opens a fresh one.
+_STALE_CONNECTION_RETRIES = 2
+
+
+def _call_with_stale_connection_retry(func: Callable[[], T], *, op: str) -> T:
+    """Call *func*, retrying on a stale pooled-connection ``ConnectionError``.
+
+    Only ``requests.exceptions.ConnectionError`` (e.g. a stale keep-alive
+    connection closed by the remote end) is retried; any other exception --
+    including a real API error -- propagates immediately.
+    """
+    for attempt in range(_STALE_CONNECTION_RETRIES + 1):
+        try:
+            return func()
+        except requests.exceptions.ConnectionError as exc:
+            if attempt >= _STALE_CONNECTION_RETRIES:
+                raise
+            logger.debug(
+                "MemorySpace %s hit a connection error (attempt %d/%d), retrying: %s",
+                op,
+                attempt + 1,
+                _STALE_CONNECTION_RETRIES + 1,
+                exc,
+            )
+    raise AssertionError("unreachable")  # pragma: no cover
+
 
 # Stable 24-hex participant id (BSON ObjectId length) for cache sessions.
 DRAGENT_CACHE_PARTICIPANT_ID = hashlib.sha256(b"datarobot-genai:dragent-cache").hexdigest()[:24]
@@ -161,32 +206,42 @@ def _create_cache_session(
 ) -> Session:
     """Create a cache session, adopting an existing one on deduplication collision."""
     try:
-        return Session.create(
-            memory_space_id,
-            [DRAGENT_CACHE_PARTICIPANT_ID],
-            metadata=_cache_session_metadata(logical_key),
-            description=_cache_session_description(logical_key),
-            deduplication_key=_cache_deduplication_key(logical_key),
+        return _call_with_stale_connection_retry(
+            lambda: Session.create(
+                memory_space_id,
+                [DRAGENT_CACHE_PARTICIPANT_ID],
+                metadata=_cache_session_metadata(logical_key),
+                description=_cache_session_description(logical_key),
+                deduplication_key=_cache_deduplication_key(logical_key),
+            ),
+            op="create_cache_session",
         )
     except MemorySessionDeduplicationError as exc:
         if exc.existing_session_id is None:
             raise
-        return Session.get(memory_space_id, exc.existing_session_id)
+        existing_session_id = exc.existing_session_id
+        return _call_with_stale_connection_retry(
+            lambda: Session.get(memory_space_id, existing_session_id),
+            op="get_cache_session",
+        )
 
 
 def _find_cache_session(memory_space_id: str, logical_key: str) -> Session | None:
     description = _cache_session_description(logical_key)
-    sessions = Session.list(
-        memory_space_id,
-        participants=[DRAGENT_CACHE_PARTICIPANT_ID],
-        description=description,
-        limit=1,
+    sessions = _call_with_stale_connection_retry(
+        lambda: Session.list(
+            memory_space_id,
+            participants=[DRAGENT_CACHE_PARTICIPANT_ID],
+            description=description,
+            limit=1,
+        ),
+        op="find_cache_session",
     )
     return sessions[0] if sessions else None
 
 
 def _read_payload(session: Session) -> str | None:
-    events = session.events(last_n=1)
+    events = _call_with_stale_connection_retry(lambda: session.events(last_n=1), op="read_payload")
     if not events:
         return None
     return _payload_from_event_body(events[0].body)
@@ -194,14 +249,23 @@ def _read_payload(session: Session) -> str | None:
 
 def _write_payload(session: Session, payload: str) -> None:
     body = _payload_event_body(payload)
-    events = session.events(last_n=1)
+    events = _call_with_stale_connection_retry(
+        lambda: session.events(last_n=1), op="write_payload_read"
+    )
     if events and events[0].sequence_id is not None:
-        session.update_event(events[0].sequence_id, body=body)
+        sequence_id = events[0].sequence_id
+        _call_with_stale_connection_retry(
+            lambda: session.update_event(sequence_id, body=body),
+            op="write_payload_update",
+        )
         return
-    session.post_event(
-        body=body,
-        emitter={"type": "agent"},
-        event_type=CACHE_EVENT_TYPE,
+    _call_with_stale_connection_retry(
+        lambda: session.post_event(
+            body=body,
+            emitter={"type": "agent"},
+            event_type=CACHE_EVENT_TYPE,
+        ),
+        op="write_payload_post",
     )
 
 
@@ -227,7 +291,10 @@ class MemorySpaceKVCache:
         """Return the cache session, using a process-local session-id cache when possible."""
         if session_id := self._session_ids.get(logical_key):
             try:
-                return Session.get(self._memory_space_id, session_id)
+                return _call_with_stale_connection_retry(
+                    lambda: Session.get(self._memory_space_id, session_id),
+                    op="resolve_session_get",
+                )
             except Exception:
                 logger.debug(
                     "MemorySpace session cache miss for %s (session_id=%s)",
@@ -283,7 +350,7 @@ class MemorySpaceKVCache:
         def _delete() -> None:
             session = self._resolve_session(logical_key)
             if session is not None:
-                session.delete()
+                _call_with_stale_connection_retry(session.delete, op="delete_session")
             self._invalidate_session_id(logical_key)
 
         try:
