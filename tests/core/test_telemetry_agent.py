@@ -14,6 +14,7 @@
 
 from unittest.mock import patch
 
+from datarobot_genai.core.telemetry.agent import _INSTRUMENTATION_STATE
 from datarobot_genai.core.telemetry.agent import instrument
 
 
@@ -79,3 +80,24 @@ def test_instrument_skips_metrics_bootstrap_without_hosted_runtime(monkeypatch) 
     ) as mock:
         instrument()
     mock.assert_not_called()
+
+
+def test_otel_exporter_posts_are_not_traced(monkeypatch) -> None:
+    # Both exporters POST through requests, so without the exclusion every periodic
+    # metric export would come back as an HTTP client span in the traces pipeline.
+    from opentelemetry.util.http import parse_excluded_urls
+
+    from datarobot_genai.core.telemetry.agent import _instrument_http_clients
+
+    monkeypatch.setitem(_INSTRUMENTATION_STATE, "http", False)
+    with patch("opentelemetry.instrumentation.requests.RequestsInstrumentor") as instrumentor:
+        _instrument_http_clients()
+
+    kwargs = instrumentor.return_value.instrument.call_args.kwargs
+    excluded = parse_excluded_urls(kwargs["excluded_urls"])
+    for url in (
+        "https://app.datarobot.com/otel/v1/traces",
+        "https://app.datarobot.com/otel/v1/metrics",
+    ):
+        assert excluded.url_disabled(url), url
+    assert not excluded.url_disabled("https://api.example.com/v1/chat/completions")
