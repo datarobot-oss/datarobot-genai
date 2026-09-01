@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.15 - 2026-08-28
+- `dragent`: the agent card registry's MemorySpace L2 cache is now built on the `datarobot.application_utils.persistence` Memory Service light ORM (`datarobot[application-utils]`) instead of a hand-rolled client against `datarobot.models.memory.Session`. Same on-the-wire cache behavior (soft TTL, stale-if-error, write-behind, session-id reuse) — no dependent-facing change.
+
 ## 0.29.14 - 2026-08-31
 - Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
 
