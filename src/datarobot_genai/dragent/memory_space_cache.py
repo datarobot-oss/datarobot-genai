@@ -48,6 +48,18 @@ migration to the ORM should pick back up:
   without giving up the pooled, keep-alive ``requests.Session`` this module
   relies on (see the note on ``_STALE_CONNECTION_RETRIES`` below).
 
+  ``datarobot.client.client_configuration()`` -- the ``ContextVar``-scoped,
+  non-mutating pattern ``drmcputils.clients.datarobot`` uses for per-request
+  credentials -- was considered here and rejected: it calls the SDK's
+  ``_create_client()`` (and, through it, a live ``GET {endpoint}/version/``
+  compatibility check) on *every* entry, with no bypass. Wrapping each
+  ``get_value``/``set_value``/``delete_value`` call in it would silently double
+  this cache's API traffic. That check runs once today, at startup, as a side
+  effect of ``configure_datarobot_memory_client``'s one-time ``dr.Client()``
+  call -- which is a real reason (not just inertia) to keep the client
+  process-global here, unlike the per-request ``drmcputils`` clients, which
+  already pay a fresh round trip per call for a different token each time.
+
 Once ``application_utils.persistence`` ships in a stable ``datarobot`` release,
 this module should be replaced with that ORM the same way BUZZOK-32180 did.
 """
