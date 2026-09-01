@@ -56,6 +56,7 @@ overrides = [
 ]
 excludes = [
     "build",
+    "datarobot",
     "flask",
     "kubernetes",
     "lancedb",
@@ -1080,28 +1081,6 @@ wheels = [
 ]
 
 [[package]]
-name = "datarobot"
-version = "3.19.0rc0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "python-dateutil" },
-    { name = "pytz" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "requests-toolbelt" },
-    { name = "strenum" },
-    { name = "trafaret" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/55/51ef34d52e66bb8215c29a0ec59a4d05e673426cabf2e88abf71340a897c/datarobot-3.19.0rc0.tar.gz", hash = "sha256:b23b4d5be1f9bf2a4e3250ab52ebba1016be065b28d8ac0027daa3ecd6e71536", size = 850577, upload-time = "2026-08-18T20:21:57.999Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/4f/5b0c9ac1afdc55cd70c67d988df95cff444ef9be0e1c415816cc8cdbd507/datarobot-3.19.0rc0-py3-none-any.whl", hash = "sha256:b8238fe5fe5f566057d2cd9bb1dcce67dfe7bdb616f6747efb8e88fa49536876", size = 916997, upload-time = "2026-08-18T20:21:56.346Z" },
-]
-
-[[package]]
 name = "datarobot-asgi-middleware"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1653,7 +1632,6 @@ wheels = [
 
 [package.optional-dependencies]
 all = [
-    { name = "datarobot" },
     { name = "datarobot-predict" },
     { name = "deepeval" },
     { name = "google-cloud-aiplatform" },
@@ -1687,7 +1665,6 @@ version = "1.13.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "datarobot" },
     { name = "pandas" },
     { name = "py4j" },
     { name = "requests" },
