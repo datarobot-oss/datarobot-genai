@@ -29,6 +29,9 @@ from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecut
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
 
 from datarobot_genai.core.utils.logging import setup_logging
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
@@ -328,7 +331,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         chat_completion_paths = self._chat_completion_paths()
 
         @app.middleware("http")
-        async def add_model_monitoring_header(request, call_next):
+        async def add_model_monitoring_header(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             response = await call_next(request)
             if request.url.path in chat_completion_paths:
                 response.headers[DATAROBOT_MODEL_MONITORING_HEADER] = "true"
