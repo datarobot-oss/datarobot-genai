@@ -28,6 +28,7 @@ from datarobot_genai.core.mcp import MCPServerRef
 from datarobot_genai.core.mcp import build_headers
 from datarobot_genai.core.mcp import build_target
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPClientConfig
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPFunctionGroup
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import _make_input_schema_enum_safe
 
@@ -304,3 +305,45 @@ def test_make_input_schema_enum_safe_returns_input_unchanged_when_no_schema():
         single_fn = None
 
     assert _make_input_schema_enum_safe(FakeFnInfo) is FakeFnInfo
+
+
+class TestPerUserSessionClientsAreRefused:
+    """The session-client factory is a guard, not an implementation.
+
+    Tool calls reach the build-time client because NAT derives a session id only from a
+    ``nat-session`` cookie, NAT issues that cookie only from its WebSocket route, and
+    ``dragent`` registers no ``websocket_path``. That makes the factory unreachable
+    today -- but it is a property of the front-end configuration, not of MCP, so the
+    guard has to keep failing loudly if that ever changes.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_raises_and_names_the_fix(self):
+        group = DataRobotMCPFunctionGroup(
+            config=DataRobotMCPClientConfig(server=DataRobotMCPServerConfig(name="analytics"))
+        )
+        with pytest.raises(RuntimeError, match="session_aware_tools"):
+            await group._create_session_client("some-user")
+
+    @pytest.mark.asyncio
+    async def test_it_raises_even_with_a_resolved_target(self):
+        """The guard is unconditional. A target does not make the path supported: NAT's
+        own adapter still could not carry it.
+        """
+        group = DataRobotMCPFunctionGroup(
+            config=DataRobotMCPClientConfig(server=DataRobotMCPServerConfig(name="analytics"))
+        )
+        group._target = build_target(
+            MCPServerRef(name="analytics", deployment_id=DEPLOYMENT_ID),
+            datarobot_endpoint=API_ENDPOINT,
+            datarobot_api_token="token",
+        )
+        with pytest.raises(RuntimeError, match="does not support per-user MCP session"):
+            await group._create_session_client("some-user")
+
+    def test_nat_still_declares_the_method_we_override(self):
+        """Pins the coupling. If a NAT upgrade renames or removes this, the override
+        silently stops being an override and the base implementation runs instead --
+        building a client with no URL and no credentials.
+        """
+        assert hasattr(MCPFunctionGroup, "_create_session_client")

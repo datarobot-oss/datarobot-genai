@@ -177,17 +177,28 @@ class DataRobotMCPStreamableHTTPClient(MCPStreamableHTTPClient):
 class DataRobotMCPFunctionGroup(MCPFunctionGroup):  # type: ignore[misc]
     """An MCP function group that remembers which server it resolved to.
 
-    The build-time client is not the one that serves most traffic. For a per-user
-    function group NAT builds a fresh client per user in ``_create_session_client``,
-    from ``config.server.url`` -- a field this client no longer has -- and wires it to
-    NAT's own ``AuthAdapter``, which carries no target and would make our auth provider
-    raise. So the override below rebuilds that client from this block's own target.
+    ``_target`` is the block's own resolved server. It is set at build time and read by
+    every client this group creates, so credentials follow the block's kind rather than
+    whatever the environment happened to resolve.
 
-    Cost, stated plainly: it duplicates NAT's session lifetime logic (the ready/stop
-    events and the ``_lifetime`` task) because client construction is inline rather than
-    behind a factory hook. Same category of coupling as
-    ``_make_input_schema_enum_safe``; worth an upstream request for a hook so this can
-    be deleted.
+    Per-user session clients are deliberately unsupported. NAT builds those in
+    ``_create_session_client`` from ``config.server.url`` -- a field this client no longer
+    has, because the address comes from ``MCP_SERVERS`` -- and wires them to NAT's own
+    ``AuthAdapter``, which carries no target and would make our auth provider raise. An
+    earlier version reimplemented that factory, which meant duplicating NAT's session
+    lifetime logic (the ready/stop events and the ``_lifetime`` task, whose cancel scope
+    must be entered and exited in the same task). That is replaced by the guard below.
+
+    The guard is currently unreachable. ``_get_session_id_from_context`` only returns a
+    session id when the request carries a ``nat-session`` cookie, NAT issues that cookie
+    only from its WebSocket route, and ``DRAgentFastApiFrontEndConfig`` registers no
+    ``websocket_path`` (see ``dragent/frontends/claim_validation.py``). So every call
+    falls through to ``_default_user_id`` and uses the build-time client. The guard exists
+    because that is a property of the front-end configuration, not of MCP: if a WebSocket
+    route is ever registered, this path becomes live, and a loud failure naming the fix is
+    much better than the alternative -- NAT's base implementation would build a client
+    pointed at the string ``"None"`` with no credentials, and every tool call would return
+    "Tool temporarily unavailable" to the model while the agent reported healthy.
     """
 
     _target: MCPTarget | None = None
@@ -195,78 +206,14 @@ class DataRobotMCPFunctionGroup(MCPFunctionGroup):  # type: ignore[misc]
     async def _create_session_client(
         self, session_id: str
     ) -> tuple[Any, asyncio.Event, asyncio.Task[None]]:
-        from nat.plugins.mcp.client.client_impl import truncate_session_id  # noqa: PLC0415
-
-        config = self._client_config
-        if not config:
-            raise RuntimeError("Client config not initialized")
-        if self._target is None:
-            raise RuntimeError(
-                "MCP function group has no resolved target; the build-time resolution "
-                "must have been skipped."
-            )
-
-        client = DataRobotMCPStreamableHTTPClient(
-            self._target.url,
-            auth_provider=self._shared_auth_provider,
-            user_id=session_id,  # per-user cache isolation
-            target=self._target,  # this block's kind, not the environment's
-            tool_call_timeout=config.tool_call_timeout,
-            auth_flow_timeout=config.auth_flow_timeout,
-            reconnect_enabled=config.reconnect_enabled,
-            reconnect_max_attempts=config.reconnect_max_attempts,
-            reconnect_initial_backoff=config.reconnect_initial_backoff,
-            reconnect_max_backoff=config.reconnect_max_backoff,
+        """Refuse to create a per-user session client. See the class docstring."""
+        raise RuntimeError(
+            "datarobot_mcp_client does not support per-user MCP session clients. The "
+            "server address comes from MCP_SERVERS rather than from workflow.yaml, so "
+            "NAT's session factory has no URL to connect to and its auth adapter cannot "
+            "carry this block's target. Set `session_aware_tools: false` on this function "
+            "group so tool calls use the build-time client, which resolves both."
         )
-
-        ready = asyncio.Event()
-        stop_event = asyncio.Event()
-
-        async def _lifetime() -> None:
-            # Keeps the cancel scope entered and exited in the same task.
-            try:
-                async with client:
-                    ready.set()
-                    await stop_event.wait()
-            except Exception:
-                ready.set()  # do not hang the waiter
-                raise
-
-        task = asyncio.create_task(
-            _lifetime(), name=f"mcp-session-{truncate_session_id(session_id)}"
-        )
-
-        timeout = config.tool_call_timeout.total_seconds()
-        try:
-            await asyncio.wait_for(ready.wait(), timeout=timeout)
-        except TimeoutError:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            logger.error(
-                "Session client initialization timed out after %ds for %s",
-                timeout,
-                truncate_session_id(session_id),
-            )
-            raise RuntimeError(
-                f"Session client initialization timed out after {timeout}s"
-            ) from None
-
-        if task.done():
-            try:
-                await task  # re-raise if the task failed
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize session client for %s: %s",
-                    truncate_session_id(session_id),
-                    e,
-                )
-                raise RuntimeError(f"Failed to initialize session client: {e}") from e
-
-        logger.info("Created session client for session: %s", truncate_session_id(session_id))
-        return client, stop_event, task
 
 
 def _make_input_schema_enum_safe(tool_fn: Any) -> Any:
