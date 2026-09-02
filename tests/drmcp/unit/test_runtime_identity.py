@@ -191,14 +191,29 @@ class TestDeploymentEndpointResolver:
         with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "dep1"}, clear=True):
             assert DeploymentEndpointResolver.is_workload_deployment() is False
 
-    def test_get_gateway_url_prefers_non_public_over_public(self) -> None:
-        env = {"DR_WORKLOAD_EXTERNAL_URL_HOST": "host", "DATAROBOT_PUBLIC_API_ENDPOINT": "afdafds"}
+    @pytest.mark.parametrize(
+        "url_host_env_var, output",
+        [("https://aaa/bbb", "https://aaa/bbb"), ("aaa/bbb", "https://aaa/bbb")],
+        ids=str,
+    )
+    def get_get_gateway_url(self, url_host_env_var: str, output: str) -> None:
+        env = {"DR_WORKLOAD_EXTERNAL_URL_HOST": url_host_env_var}
         with patch.dict(os.environ, env, clear=True):
-            assert DeploymentEndpointResolver.get_gateway_url() == "host"
+            assert DeploymentEndpointResolver.get_gateway_url() == output
+
+    def test_get_gateway_url_prefers_non_public_over_public(self) -> None:
+        env = {
+            "DR_WORKLOAD_EXTERNAL_URL_HOST": "https://aaa/bbb",
+            "DATAROBOT_PUBLIC_API_ENDPOINT": "afdafds",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
 
     def test_get_gateway_url_falls_back_to_public(self) -> None:
-        with patch.dict(os.environ, {"DATAROBOT_PUBLIC_API_ENDPOINT": "endpoint"}, clear=True):
-            assert DeploymentEndpointResolver.get_gateway_url() == "endpoint"
+        with patch.dict(
+            os.environ, {"DATAROBOT_PUBLIC_API_ENDPOINT": "https://aaa/bbb"}, clear=True
+        ):
+            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
 
     def test_get_gateway_url_none_when_nothing_configured(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

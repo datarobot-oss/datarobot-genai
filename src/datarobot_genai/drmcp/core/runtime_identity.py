@@ -162,10 +162,13 @@ class DeploymentEndpointResolver:
 
     @staticmethod
     def get_gateway_url() -> str | None:
-        return (
+        gateway_url = (
             DeploymentEndpointResolver.get_non_public_api_based_gateway_url()
             or DeploymentEndpointResolver.get_public_api_based_gateway_url()
         )
+        if gateway_url and "://" not in gateway_url:
+            gateway_url = f"https://{gateway_url}"
+        return gateway_url
 
     def build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
         self, gateway_url: str, deployment_id: str
@@ -183,7 +186,7 @@ class DeploymentEndpointResolver:
         self, gateway_url: str, workload_deployment_segment: str
     ) -> str:
         gateway_url = gateway_url.rstrip("/")
-        workload_deployment_segment = workload_deployment_segment.rstrip("/")
+        workload_deployment_segment = workload_deployment_segment.strip("/")
         url_segment = f"{workload_deployment_segment}/{self.mcp_path_segment}"
         return f"{gateway_url}/{url_segment}"
 
@@ -213,7 +216,7 @@ class DeploymentEndpointResolver:
             )
             return self.build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
                 gateway_url,
-                workload_deployment_url_segment,
+                workload_deployment_url_segment,  # type: ignore[arg-type]
             )
         if self.is_workload_deployment():
             return self.build_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
