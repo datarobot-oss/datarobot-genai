@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.21
+- `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
+
 ## 0.29.20
 - `dragent`: the A2A agent card's `url` now honours the API gateway route. Envoy-fronted clusters serve a workload from a per-enclave host and path prefix that `DATAROBOT_ENDPOINT` cannot derive, so the composed `{endpoint}/endpoints/workloads/{id}/a2a/` URL is unreachable there. When both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set, the card advertises `{host}/{prefix}/a2a/` instead; otherwise nothing changes.
 

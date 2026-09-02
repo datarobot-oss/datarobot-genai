@@ -38,6 +38,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
@@ -210,6 +211,52 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
+
+    def test_model_monitoring_header_is_added_to_chat_routes(self, worker):
+        """The header is always added to chat routes but not unrelated routes."""
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            app = worker.build_app()
+            with TestClient(app) as client:
+                # GIVEN no chat route is mounted because configure() is mocked out
+                # WHEN the configured chat path is requested
+                chat_response = client.get("/chat")
+                # THEN its 404 response still carries the monitoring header.
+                assert chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER] == "true"
+
+                # WHEN an unrelated health route is requested
+                health_response = client.get("/health")
+                # THEN it does not carry the monitoring header.
+                assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
+
+    def test_chat_completion_paths_built_from_config(self, worker):
+        """_chat_completion_paths() derives paths from front_end_config, not hardcoded strings."""
+        paths = worker._chat_completion_paths()
+        assert paths == {
+            "/v1/chat/completions",
+            "/v1/chat",
+            "/v1/chat/stream",
+            "/chat",
+            "/chat/stream",
+        }
+
+    def test_chat_completion_paths_excludes_legacy_when_disabled(self):
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(disable_legacy_routes=True),
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+        paths = worker._chat_completion_paths()
+        assert paths == {"/chat/completions"}
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker
