@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.24
+- `dragent`: agent card registry MemorySpace L2 talks to the enclave memory service when `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set. The DataRobot client uses `{host}/api/v2` instead of `DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`, which point at the control hub and are unreachable from an isolated enclave.
+
 ## 0.29.23 - 2026-09-03
 - `dragent`: fixed the `X-DataRobot-Model-Monitoring` response header never being set when the server runs under a `--root_path`.
 
