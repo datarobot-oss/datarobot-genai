@@ -31,6 +31,7 @@ from nat.middleware.function_middleware import FunctionMiddleware
 from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
+from opentelemetry import baggage
 from opentelemetry import trace
 from opentelemetry.trace import Status
 from opentelemetry.trace import StatusCode
@@ -38,6 +39,7 @@ from opentelemetry.trace import StatusCode
 from datarobot_genai.core.agents import RUN_ERROR_CODE
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents import track_open_text_in_events
+from datarobot_genai.core.telemetry.agent_identity import GEN_AI_AGENT_NAME_BAGGAGE_KEY
 from datarobot_genai.core.telemetry.agent_identity import agent_name_baggage
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
@@ -58,6 +60,17 @@ ERROR_TYPE = "error.type"  # Failed span classification
 
 # AG-UI event types that carry assistant text deltas.
 _TEXT_EVENT_TYPES = (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK)
+
+
+def _thread_id_from_args(args: tuple[Any, ...]) -> str | None:
+    """Return the AG-UI ``thread_id`` from a supported agent input, if present.
+
+    Only ``RunAgentInput`` (AG-UI) carries a thread id; NAT's own
+    ``ChatRequestOrMessage`` has no equivalent concept, so any other input
+    type returns ``None`` (no attribute set) - matching ``_last_user_message_content``.
+    """
+    value = args[0] if args else None
+    return value.thread_id if isinstance(value, RunAgentInput) else None
 
 
 def _last_user_message_content(value: Any) -> str | None:
@@ -112,11 +125,22 @@ def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
     the Tracing table Tools column - using the semconv name directly (rather
     than the bare ``tool_name`` this used to set) keeps these calls out of
     Datavolt's deprecated-attribute bucket.
+
+    Also stamps ``gen_ai.agent.name`` from the active baggage (set by the
+    caller's ``agent_name_baggage`` context around this call) directly onto
+    the span, not just left in baggage: baggage auto-propagates across an
+    outgoing HTTP hop (e.g. a networked MCP tool), but this span is created
+    in-process for every tool call, and Datavolt's agent/tool cross-tab query
+    (``get_agent_tool_stats``) requires both attributes on the same span to
+    attribute a call to its agent - baggage alone never reaches Datavolt.
     """
     for event in response.events:
         if isinstance(event, ToolCallStartEvent):
             with tracer.start_as_current_span(event.tool_call_name) as span:
                 span.set_attribute(DataRobotSpanAttributes.GEN_AI_TOOL_NAME, event.tool_call_name)
+                agent_name = baggage.get_baggage(GEN_AI_AGENT_NAME_BAGGAGE_KEY)
+                if agent_name:
+                    span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, str(agent_name))
 
 
 class DataRobotOtelConventionsMiddlewareConfig(
@@ -176,6 +200,9 @@ class DataRobotOtelConventionsMiddleware(
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
+            thread_id = _thread_id_from_args(args)
+            if thread_id is not None:
+                span.set_attribute(DataRobotSpanAttributes.DATAROBOT_SESSION_ID, thread_id)
             output = await call_next(*args, **kwargs)
             if isinstance(output, DRAgentEventResponse):
                 _emit_tool_call_spans(output)
@@ -201,6 +228,9 @@ class DataRobotOtelConventionsMiddleware(
             prompt = self._prompt_from_args(args)
             if prompt is not None:
                 span.set_attribute(GEN_AI_PROMPT, prompt)
+            thread_id = _thread_id_from_args(args)
+            if thread_id is not None:
+                span.set_attribute(DataRobotSpanAttributes.DATAROBOT_SESSION_ID, thread_id)
             # Per-invocation accumulator; no cross-session state to manage.
             parts: list[str] = []
             open_text_ids: set[str] = set()

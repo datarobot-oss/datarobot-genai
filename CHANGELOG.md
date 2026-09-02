@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.24
 - `dragent`: agent card registry MemorySpace L2 and the Mem0 DataRobot memory client talk to the enclave memory service when `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set. Both use `{host}/api/v2` instead of `DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`, which point at the control hub and are unreachable from an isolated enclave.
+- `dragent`: agent tracing now sets `datarobot.session_id` from AG-UI `thread_id`, and tool-call spans now carry `gen_ai.agent.name` so Datavolt can attribute tool usage to the invoking agent.
 
 ## 0.29.23 - 2026-09-03
 - `dragent`: fixed the `X-DataRobot-Model-Monitoring` response header never being set when the server runs under a `--root_path`.
