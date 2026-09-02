@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.22 - 2026-09-02
+- Raise the minimum `pypdf` version from `>=6.15.0` to `>=6.16.1`.
+- Raise the minimum `tornado` version from `>=6.5.7` to `>=6.5.8`.
+
 ## 0.29.21
 - `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
 
