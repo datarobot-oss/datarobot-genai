@@ -144,11 +144,9 @@ class JWTTokenClaimsValidator:
 
     def validate_audience_claim(self, expected_audience_claim: str | None) -> None:
         if expected_audience_claim is None:
-            logger.info(
-                "Authorization audience claim validation is not executed. "
-                "There is no expected audience claim provided."
-            )
-            return
+            error_message = "No expected audience claim is configured."
+            logger.error(error_message)
+            raise AudienceClaimValidationError(error_message)
         if self.claims.audience_is_none():
             error_message = (
                 "Authorization audience claim is not found in the inbound JWT bearer token."

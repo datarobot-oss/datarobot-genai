@@ -67,6 +67,16 @@ def is_path_exempt_from_oauth_validation(path: str) -> bool:
     return path == health_path or path.startswith(well_known_prefix + "/")
 
 
+def should_run_claim_validation(request: Request) -> bool:
+    """Whether the AuthZ validators run for this request.
+
+    ``oauth_claim_validation`` gates all of them; exempt paths never run one.
+    """
+    return get_config().oauth_claim_validation and not is_path_exempt_from_oauth_validation(
+        request.url.path
+    )
+
+
 def create_oauth_middleware(
     extract_auth_context: AuthContextExtractor | None = None,
 ) -> OAuthMiddleWare:
@@ -142,11 +152,8 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
     HTTP_HEADER_TO_VALIDATE = "x-datarobot-external-access-token"
 
     @classmethod
-    def to_run_jwt_token_handling(cls, request: Request) -> bool:
-        is_oauth_claim_validation_enabled = get_config().oauth_claim_validation
-        return is_oauth_claim_validation_enabled and not is_path_exempt_from_oauth_validation(
-            request.url.path
-        )
+    def should_run_jwt_token_handling(cls, request: Request) -> bool:
+        return should_run_claim_validation(request)
 
     @staticmethod
     def update_scope_with_authenticated_user(
@@ -167,7 +174,7 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Any,
     ) -> Response:
-        if not self.to_run_jwt_token_handling(request):
+        if not self.should_run_jwt_token_handling(request):
             return await call_next(request)
 
         access_token = JWTTokenHandler.parse_to_access_token(
@@ -209,6 +216,9 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Any,
     ) -> Response:
+        if not should_run_claim_validation(request):
+            return await call_next(request)
+
         user = get_user_from_request_scope(request)
         if not user:
             return await call_next(request)
@@ -259,6 +269,9 @@ class OAuthMCPToolCallScopeValidationMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Any,
     ) -> Response:
+        if not should_run_claim_validation(request):
+            return await call_next(request)
+
         mcp_tool_name = await self.get_mcp_tool_name_in_request(request)
         if not mcp_tool_name:
             return await call_next(request)
