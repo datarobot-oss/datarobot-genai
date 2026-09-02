@@ -4,9 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.17
-
+## 0.29.21
 - `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
+
+## 0.29.20
+- `dragent`: the A2A agent card's `url` now honours the API gateway route. Envoy-fronted clusters serve a workload from a per-enclave host and path prefix that `DATAROBOT_ENDPOINT` cannot derive, so the composed `{endpoint}/endpoints/workloads/{id}/a2a/` URL is unreachable there. When both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set, the card advertises `{host}/{prefix}/a2a/` instead; otherwise nothing changes.
+
+## 0.29.19
+- `drmcp/core/middleware.py`: Add well-known metadata info in MCP 403 authorization error response
+
+## 0.29.18 - 2026-09-01
+- Add a minimum version for `hydra-core`: `>=1.3.4`.
+- Raise the minimum `nltk` version from `>=3.10.2` to `>=3.10.3`.
+
+## 0.29.17 - 2026-09-01
+- `crewai`, `dragent`, `langgraph`, `llama_index`: `gen_ai.agent.name` is now propagated as OTel Baggage for the duration of an agent's own execution.
+- Adds `datarobot_genai.core.telemetry.agent_identity`
 
 ## 0.29.16
 - `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.

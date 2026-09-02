@@ -48,8 +48,10 @@ def _instrument_http_clients() -> None:
     try:
         requests_module = importlib.import_module("opentelemetry.instrumentation.requests")
         requests_instrumentor = getattr(requests_module, "RequestsInstrumentor")
-        # Don't trace the OTel exporter's own POST to the collector
-        requests_instrumentor().instrument(excluded_urls="otel/v1/traces")
+        # Don't trace the OTel exporters' own POSTs to the collector (traces and,
+        # since the meter provider bootstrap, metrics too - both OTLP HTTP
+        # exporters are requests-based).
+        requests_instrumentor().instrument(excluded_urls="otel/v1/(traces|metrics)")
     except Exception as e:
         logger.debug(f"requests instrumentation skipped: {e}")
     try:
@@ -106,9 +108,14 @@ def instrument() -> None:
     # (via setup_otel_env_variables) are not double-bootstrapped. See
     # https://github.com/datarobot/datarobot-user-models/blob/master/public_dropin_environments/python311_genai_agents/run_agent.py#L188
     if is_hosted_runtime():
+        from .datarobot_otel import bootstrap_otel_meter_provider_for_datarobot
         from .datarobot_otel import bootstrap_otel_provider_for_datarobot
 
         bootstrap_otel_provider_for_datarobot()
+        # Same rationale as the tracer bootstrap above, for datarobot_dome's
+        # guard metrics: without this, they record through a no-op meter and
+        # never reach the DataRobot OTel ingest.
+        bootstrap_otel_meter_provider_for_datarobot()
 
     _instrument_threading()
     _instrument_http_clients()

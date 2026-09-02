@@ -14,9 +14,12 @@
 
 import os
 from collections.abc import Iterator
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from opentelemetry import baggage
+from opentelemetry import trace
 
 from datarobot_genai.crewai import telemetry
 
@@ -102,3 +105,42 @@ def test_subclass_unwraps_async_methods() -> None:
         ("crewai.task.Task", "aexecute_sync"),
         ("crewai.llm.LLM", "acall"),
     }
+
+
+class TestWrapAexecuteTaskPropagatesAgentNameAsBaggage:
+    """gen_ai.agent.name must be visible as Baggage for the duration of the
+    wrapped call, so a tool call made from inside it can read which agent
+    triggered it.
+    """
+
+    async def test_agent_role_is_visible_as_baggage_during_the_call(self) -> None:
+        instance = MagicMock()
+        instance.role = "researcher"
+        seen_agent_name = None
+
+        async def wrapped(*args: object, **kwargs: object) -> str:
+            nonlocal seen_agent_name
+            seen_agent_name = baggage.get_baggage("gen_ai.agent.name")
+            return "ok"
+
+        wrapper = telemetry.wrap_aexecute_task(trace.get_tracer(__name__), None, None)
+        result = await wrapper(wrapped, instance, (), {})
+
+        assert result == "ok"
+        assert seen_agent_name == "researcher"
+        assert baggage.get_baggage("gen_ai.agent.name") is None
+
+    async def test_missing_role_leaves_baggage_untouched(self) -> None:
+        instance = MagicMock()
+        del instance.role
+        seen_agent_name = "sentinel"
+
+        async def wrapped(*args: object, **kwargs: object) -> str:
+            nonlocal seen_agent_name
+            seen_agent_name = baggage.get_baggage("gen_ai.agent.name")
+            return "ok"
+
+        wrapper = telemetry.wrap_aexecute_task(trace.get_tracer(__name__), None, None)
+        await wrapper(wrapped, instance, (), {})
+
+        assert seen_agent_name is None
