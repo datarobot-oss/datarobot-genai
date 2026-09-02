@@ -62,6 +62,21 @@ _PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?
 logger = logging.getLogger(__name__)
 
 
+def _route_path(request: Request) -> str:
+    """Request path relative to the ASGI ``root_path`` the app is mounted under.
+
+    In a DataRobot deployment the server runs with ``--root_path /<model_id>/<lrs_id>`` and the
+    LRS ingress forwards the full, prefixed path. Since Starlette 0.33 ``scope["path"]`` (and so
+    ``request.url.path``) includes that prefix, so comparing against the unprefixed route paths
+    NAT registers requires stripping ``root_path`` first.
+    """
+    path: str = request.scope["path"]
+    root_path: str = request.scope.get("root_path", "").rstrip("/")
+    if root_path and path.startswith(root_path):
+        return path[len(root_path) :] or "/"
+    return path
+
+
 def _instrument_fastapi_app(app: FastAPI) -> None:
     """Open a server span per request that continues the caller's ``traceparent``.
 
@@ -335,7 +350,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             request: Request, call_next: RequestResponseEndpoint
         ) -> Response:
             response = await call_next(request)
-            if request.url.path in chat_completion_paths:
+            if _route_path(request) in chat_completion_paths:
                 response.headers[DATAROBOT_MODEL_MONITORING_HEADER] = "true"
             return response
 

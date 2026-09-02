@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.22 - 2026-09-02
+- `dragent`: fixed the `X-DataRobot-Model-Monitoring` response header never being set when the server runs under a `--root_path`.
+
 ## 0.29.21
 - `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
 
