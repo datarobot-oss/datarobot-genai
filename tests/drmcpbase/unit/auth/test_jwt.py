@@ -21,6 +21,7 @@ import pytest
 from fastmcp.server.auth import AccessToken
 
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import AuthorizationClaims
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
@@ -41,6 +42,7 @@ class TestAuthorizationClaims:
         )
         claims = AuthorizationClaims.from_access_token(access_token)
         assert claims.audience == "audience"
+        assert claims.scopes == frozenset(["scope"])
 
     @pytest.mark.parametrize(
         "claim, is_none",
@@ -99,6 +101,41 @@ class TestAuthorizationClaims:
         )
         claims = AuthorizationClaims.from_access_token(access_token)
         assert claims.contain_expected_audience("expected_aud") is contain_expected_audience
+
+    @pytest.mark.parametrize(
+        "scopes, has_scope",
+        [(["dsafa"], True), ([], False)],
+        ids=str,
+    )
+    def test_has_scope_claims(self, scopes: list[str], has_scope: bool) -> None:
+        access_token = AccessToken(
+            token="token",
+            client_id="client_id",
+            scopes=scopes,
+            claims={},
+        )
+        claims = AuthorizationClaims.from_access_token(access_token)
+        assert claims.has_scope_claims() is has_scope
+
+    @pytest.mark.parametrize(
+        "expected_scopes, is_subset_of_expected_scopes",
+        [
+            (frozenset(["expected_scope_one"]), True),
+            (frozenset(["expected_scope_one", "expected_scope_two"]), True),
+            (frozenset([]), True),
+            (frozenset(["expected_scope_unknown"]), False),
+        ],
+        ids=str,
+    )
+    def test_are_expected_scopes_subset_of_scope_claims(
+        self, expected_scopes: frozenset[str], is_subset_of_expected_scopes
+    ) -> None:
+        scope_claims = ["expected_scope_one", "expected_scope_two"]
+        authorization_claims = AuthorizationClaims(scopes=frozenset(scope_claims))
+        assert (
+            authorization_claims.are_expected_scopes_subset_of_scope_claims(expected_scopes)
+            is is_subset_of_expected_scopes
+        )
 
 
 class TestJWTTokenHandler:
@@ -437,6 +474,7 @@ class TestJWTTokenClaimsValidator:
     ) -> None:
         audience_value = "expected-aud"
         mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(),
             audience=audience_value,
         )
 
@@ -450,6 +488,7 @@ class TestJWTTokenClaimsValidator:
         mock_logger: Mock,
     ) -> None:
         mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(),
             audience="expected-aud",
         )
 
@@ -465,6 +504,7 @@ class TestJWTTokenClaimsValidator:
         mock_authorization_claims_from_access_token: Mock,
     ) -> None:
         mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(),
             audience="other-aud",
         )
 
@@ -477,9 +517,70 @@ class TestJWTTokenClaimsValidator:
         mock_authorization_claims_from_access_token: Mock,
     ) -> None:
         mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(),
             audience=None,
         )
 
         validator = JWTTokenClaimsValidator(Mock())
         with pytest.raises(AudienceClaimValidationError):
             validator.validate_audience_claim(ANY)
+
+    def test_validate_mcp_tool_scope_claim_passes(
+        self,
+        mock_authorization_claims_from_access_token: Mock,
+        mock_logger: Mock,
+    ) -> None:
+        expected_scope_value = frozenset(["expected-scope"])
+        mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=expected_scope_value,
+        )
+
+        validator = JWTTokenClaimsValidator(Mock())
+        validator.validate_mcp_tool_scope_claims(expected_scope_value)
+        mock_logger.info.assert_called_once_with("MCP tool scope claim validation succeeded.")
+
+    @pytest.mark.parametrize("expected_scopes", [frozenset([]), None], ids=str)
+    def test_validate_mcp_tool_scope_claim_ignored_when_no_expected_scope_is_provided(
+        self,
+        expected_scopes: frozenset[str] | None,
+        mock_authorization_claims_from_access_token: Mock,
+        mock_logger: Mock,
+    ) -> None:
+        mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(["scope-to-validate"]),
+        )
+
+        validator = JWTTokenClaimsValidator(Mock())
+        validator.validate_mcp_tool_scope_claims(expected_scopes)
+        mock_logger.info.assert_called_once_with(
+            "Authorization MCP tool scope claim validation is not executed. "
+            "There is no expected scope claim provided."
+        )
+
+    def test_validate_mcp_tool_scope_claim_fails_when_scope_mismatches(
+        self,
+        mock_authorization_claims_from_access_token: Mock,
+        mock_logger: Mock,
+    ) -> None:
+        expected_scope_value = frozenset(["expected-scope"])
+        mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=expected_scope_value,
+        )
+
+        validator = JWTTokenClaimsValidator(Mock())
+        with pytest.raises(MCPToolScopeClaimValidationError):
+            scope_to_validate = frozenset(["not-expected-scope"])
+            validator.validate_mcp_tool_scope_claims(scope_to_validate)
+
+    def test_validate_mcp_tool_scope_claim_fails_if_no_valid_claim(
+        self,
+        mock_authorization_claims_from_access_token: Mock,
+    ) -> None:
+        mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
+            scopes=frozenset(),
+            audience=None,
+        )
+
+        validator = JWTTokenClaimsValidator(Mock())
+        with pytest.raises(MCPToolScopeClaimValidationError):
+            validator.validate_mcp_tool_scope_claims(frozenset(["scope-to-validate"]))

@@ -21,6 +21,7 @@ from fastmcp.server.auth import AccessToken
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ class JWTTokenHandler:
 
 @dataclass
 class AuthorizationClaims:
+    scopes: frozenset[str]
     # RFC-7519: aud can be a single string or a list (case-sensitive); None when absent.
     audience: str | list[str] | None = None
 
@@ -115,6 +117,7 @@ class AuthorizationClaims:
     def from_access_token(cls, access_token: AccessToken) -> "AuthorizationClaims":
         return cls(
             audience=access_token.claims.get("aud", None),
+            scopes=frozenset(access_token.scopes) if access_token.scopes else frozenset(),
         )
 
     def audience_is_a_list(self) -> bool:
@@ -127,6 +130,12 @@ class AuthorizationClaims:
         if isinstance(self.audience, list):
             return expected_audience in self.audience
         return expected_audience == self.audience
+
+    def has_scope_claims(self) -> bool:
+        return len(self.scopes) > 0
+
+    def are_expected_scopes_subset_of_scope_claims(self, expected_scopes: frozenset[str]) -> bool:
+        return expected_scopes.issubset(self.scopes)
 
 
 class JWTTokenClaimsValidator:
@@ -151,3 +160,22 @@ class JWTTokenClaimsValidator:
             raise AudienceClaimValidationError("Authorization audience claim validation failed")
 
         logger.info("Audience claim validation succeeded.")
+
+    def validate_mcp_tool_scope_claims(self, expected_scopes: frozenset[str] | None) -> None:
+        if expected_scopes is None or not len(expected_scopes):
+            logger.info(
+                "Authorization MCP tool scope claim validation is not executed. "
+                "There is no expected scope claim provided."
+            )
+            return
+        if not self.claims.has_scope_claims():
+            error_message = (
+                "Authorization MCP tool scope claim is not found in the inbound JWT bearer token."
+            )
+            logger.info(error_message)
+            raise MCPToolScopeClaimValidationError(error_message)
+
+        if not self.claims.are_expected_scopes_subset_of_scope_claims(expected_scopes):  # type: ignore[union-attr]
+            raise MCPToolScopeClaimValidationError("Authorization scope claim validation failed")
+
+        logger.info("MCP tool scope claim validation succeeded.")

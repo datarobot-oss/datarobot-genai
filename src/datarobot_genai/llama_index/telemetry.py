@@ -32,7 +32,13 @@ from llama_index.core.instrumentation import get_dispatcher
 from llama_index.core.instrumentation.span.base import BaseSpan
 from llama_index.core.instrumentation.span_handlers import BaseSpanHandler
 from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.context import Token
 from opentelemetry.instrumentation.llamaindex import LlamaIndexInstrumentor
+from pydantic import PrivateAttr
+
+from datarobot_genai.core.telemetry.agent_identity import attach_agent_name_baggage
+from datarobot_genai.core.telemetry.agent_identity import detach_agent_name_baggage
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +56,18 @@ class _AgentNameSpanHandler(BaseSpanHandler[BaseSpan]):
     current span in context - this only tags it, it never creates one.
     """
 
+    # Keyed by span id so each span's own baggage detach is independent of any
+    # other span's - nested agent spans must unwind in the same order they
+    # attached, like a stack.
+    _baggage_tokens: dict[str, Token[Context]] = PrivateAttr(default_factory=dict)
+
     @classmethod
     def class_name(cls) -> str:
         return "DataRobotAgentNameSpanHandler"
 
     def span_enter(
         self,
-        id_: str,  # noqa: ARG002
+        id_: str,
         bound_args: inspect.BoundArguments,
         instance: Any | None = None,  # noqa: ARG002
         parent_id: str | None = None,  # noqa: ARG002
@@ -69,9 +80,32 @@ class _AgentNameSpanHandler(BaseSpanHandler[BaseSpan]):
             trace.get_current_span().set_attribute(
                 DataRobotSpanAttributes.GEN_AI_AGENT_NAME, agent_name
             )
+            token = attach_agent_name_baggage(agent_name)
+            if token is not None:
+                self._baggage_tokens[id_] = token
 
     def new_span(self, *args: Any, **kwargs: Any) -> None:
         return None
+
+    def span_exit(
+        self,
+        id_: str,
+        bound_args: inspect.BoundArguments,  # noqa: ARG002
+        instance: Any | None = None,  # noqa: ARG002
+        result: Any | None = None,  # noqa: ARG002
+        **kwargs: Any,  # noqa: ARG002
+    ) -> None:
+        detach_agent_name_baggage(self._baggage_tokens.pop(id_, None))
+
+    def span_drop(
+        self,
+        id_: str,
+        bound_args: inspect.BoundArguments,  # noqa: ARG002
+        instance: Any | None = None,  # noqa: ARG002
+        err: BaseException | None = None,  # noqa: ARG002
+        **kwargs: Any,  # noqa: ARG002
+    ) -> None:
+        detach_agent_name_baggage(self._baggage_tokens.pop(id_, None))
 
     def prepare_to_exit_span(self, *args: Any, **kwargs: Any) -> None:
         return None

@@ -14,9 +14,11 @@
 
 """Wire drmcpbase FastMCP middleware to drtools auth resolution."""
 
+import json
 import logging
 from enum import Enum
 from enum import auto
+from http import HTTPMethod
 from http import HTTPStatus
 from typing import Any
 
@@ -30,12 +32,19 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from datarobot_genai.drmcp.core.config import get_config
+from datarobot_genai.drmcp.core.runtime_identity import resolve_self_url
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
 from datarobot_genai.drmcpbase.middleware import AuthContextExtractor
 from datarobot_genai.drmcpbase.middleware import OAuthMiddleWare
 from datarobot_genai.drmcpbase.middleware import register_oauth_middleware
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import AuthErrorResponse
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    ErrorCodeInAuthErrorResponse,
+)
+from datarobot_genai.drmcpbase.oauth_scopes import declared_scopes_for_one_tool
 from datarobot_genai.drmcputils.auth import extract_auth_context_from_headers
 from datarobot_genai.drmcputils.auth import set_auth_context
 from datarobot_genai.drmcputils.auth import set_request_headers
@@ -98,6 +107,33 @@ class ErrorResponse(Enum):
         return mapping[self]
 
 
+def build_well_known_protected_resource_url(request: Request) -> str:
+    self_url = resolve_self_url()
+    if self_url:
+        return f"{self_url.rstrip('/')}/.well-known/oauth-protected-resource"
+    return str(
+        request.url.replace(
+            path=prefix_mount_path("/.well-known/oauth-protected-resource"),
+            query="",
+        )
+    )
+
+
+def build_http_response_from_auth_error(
+    status_code: HTTPStatus,
+    auth_error_response: AuthErrorResponse,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=auth_error_response.to_response_content(),
+        headers={auth_error_response.get_header_name(): auth_error_response.to_header_value()},
+    )
+
+
+def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
+    return request.scope.get("user")
+
+
 class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
     """ASGI middleware parsing OAuth JWT token and setting it in request scope.
     The parsed JWT token can be reused in the downstream validation (e.g., audience, tool scope).
@@ -139,7 +175,14 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
             request.headers,
         )
         if not access_token:
-            return ErrorResponse.INVALID_JWT_TOKEN.to_starlette_response()
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.UNAUTHORIZED,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+                    error_description="Invalid JWT token.",
+                ),
+            )
 
         scope = request.scope
         self.update_scope_with_auth_credentials(scope, access_token)
@@ -161,22 +204,13 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         mcp_server_config = get_config()
         return mcp_server_config.mcp_xaa_token_audience
 
-    @staticmethod
-    def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
-        return request.scope.get("user")
-
     async def dispatch(
         self,
         request: Request,
         call_next: Any,
     ) -> Response:
-        user = self.get_user_from_request_scope(request)
+        user = get_user_from_request_scope(request)
         if not user:
-            message = (
-                "No AuthenticatedUser is found in inbound request scope. "
-                f"Skip {self.__class__.__name__}."
-            )
-            logger.info(message)
             return await call_next(request)
 
         try:
@@ -185,6 +219,75 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         except AudienceClaimValidationError as ex:
             error_message = str(ex)
             logger.info(error_message)
-            return ErrorResponse.INVALID_OAUTH_AUDIENCE_CLAIM.to_starlette_response(error_message)
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.FORBIDDEN,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+                    error_description=error_message,
+                ),
+            )
+
+        return await call_next(request)
+
+
+class OAuthMCPToolCallScopeValidationMiddleware(BaseHTTPMiddleware):
+    """ASGI middleware validating the scope claim in a JWT token. It is now enforced only on
+    ``tools/call`` requests.
+    This middleware is expected to be triggered after OAuthJWTTokenHandlerMiddleware which
+    parses JWT token and sets it the request scope which is to be validated in this middleware.
+    """
+
+    @staticmethod
+    async def get_mcp_tool_name_in_request(request: Request) -> str | None:
+        if request.method != HTTPMethod.POST:
+            return None
+        request_body = await request.body()
+        try:
+            payload = json.loads(request_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+        if not isinstance(payload, dict) or payload.get("method") != "tools/call":
+            return None
+        params = payload.get("params")
+        name = params.get("name") if isinstance(params, dict) else None
+        return name if isinstance(name, str) else None
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response:
+        mcp_tool_name = await self.get_mcp_tool_name_in_request(request)
+        if not mcp_tool_name:
+            return await call_next(request)
+
+        declared_scopes = await declared_scopes_for_one_tool(
+            request.app.state.fastmcp_server,
+            mcp_tool_name,
+        )
+        if not declared_scopes:
+            return await call_next(request)
+
+        user = get_user_from_request_scope(request)
+        if not user:
+            return await call_next(request)
+
+        try:
+            claims_validator = JWTTokenClaimsValidator(user)
+            claims_validator.validate_mcp_tool_scope_claims(declared_scopes)
+        except MCPToolScopeClaimValidationError as ex:
+            error_message = str(ex)
+            logger.info(error_message)
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.FORBIDDEN,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INSUFFICIENT_SCOPE,
+                    error_description=error_message,
+                    scopes=sorted(declared_scopes),
+                ),
+            )
 
         return await call_next(request)

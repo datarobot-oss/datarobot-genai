@@ -27,3 +27,7 @@ class NoDataRobotBearerTokenFoundInRequestContextError(Exception):
 
 class AudienceClaimValidationError(Exception):
     pass
+
+
+class MCPToolScopeClaimValidationError(Exception):
+    pass
