@@ -31,6 +31,11 @@ MCP_PATH = "mcp"
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 _API_V2_SUFFIX = "/api/v2"
 
+#: Enclave host an Envoy API gateway serves this workload from. Injected only there.
+WORKLOAD_EXTERNAL_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
+#: Path prefix the Envoy API gateway routes to this workload. Injected only there.
+WORKLOAD_EXTERNAL_PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
+
 
 def normalize_api_v2_endpoint(endpoint: str) -> str:
     """Return ``endpoint`` with exactly one trailing ``/api/v2`` and no trailing slash.
@@ -92,6 +97,31 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     if require:
         raise ValueError("DATAROBOT_PUBLIC_API_ENDPOINT or DATAROBOT_ENDPOINT must be set.")
     return _DEFAULT_DATAROBOT_ENDPOINT
+
+
+def resolve_external_workload_base() -> str | None:
+    """Return the API gateway's base URL for this workload, or *None* when not behind one.
+
+    An Envoy API gateway serves a workload from a per-enclave host and path prefix that
+    ``DATAROBOT_ENDPOINT`` cannot derive, so it injects both as env vars.  Their presence is
+    the signal that the URLs composed elsewhere in this module are unreachable; both are
+    required.  The host is accepted with or without a scheme (``https://`` assumed).
+
+    Returns
+    -------
+    str | None
+        ``https://{host}/{prefix}``, no trailing slash, or *None* when either var is unset.
+    """
+    host = os.getenv(WORKLOAD_EXTERNAL_HOST_ENV, "").strip()
+    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
+
+    if not (host and prefix):
+        return None
+
+    if "://" not in host:
+        host = f"https://{host}"
+
+    return f"{host.rstrip('/')}/{prefix.strip('/')}"
 
 
 def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
