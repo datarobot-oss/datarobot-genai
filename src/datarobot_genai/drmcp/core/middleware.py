@@ -32,7 +32,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from datarobot_genai.drmcp.core.config import get_config
-from datarobot_genai.drmcp.core.runtime_identity import resolve_self_url
+from datarobot_genai.drmcp.core.runtime_identity import DeploymentEndpointResolver
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
@@ -108,7 +108,7 @@ class ErrorResponse(Enum):
 
 
 def build_well_known_protected_resource_url(request: Request) -> str:
-    self_url = resolve_self_url()
+    self_url = DeploymentEndpointResolver().get_deployment_url()
     if self_url:
         return f"{self_url.rstrip('/')}/.well-known/oauth-protected-resource"
     return str(

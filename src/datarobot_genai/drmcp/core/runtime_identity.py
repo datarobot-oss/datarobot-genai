@@ -49,6 +49,8 @@ independently evolvable is worth more than removing this much duplication.
 from __future__ import annotations
 
 import os
+from enum import Enum
+from enum import auto
 
 WORKLOAD_ID_ENV = "WORKLOAD_ID"
 DEPLOYMENT_ID_ENV = "MLOPS_DEPLOYMENT_ID"
@@ -100,21 +102,125 @@ def build_workload_url(endpoint: str, workload_id: str, path: str) -> str:
     return f"{base}/{WORKLOAD_ENDPOINTS_SEGMENT}/{workload_id}/{path}"
 
 
-def resolve_self_url(path: str = DEFAULT_MCP_PATH) -> str | None:
-    """Return this server's own externally reachable URL for ``path``.
+class DeploymentRelatedConfig(Enum):
+    WORKLOAD_ID = auto()
+    MLOPS_DEPLOYMENT_ID = auto()
+    DATAROBOT_PUBLIC_API_ENDPOINT = auto()
+    DATAROBOT_ENDPOINT = auto()
+    DR_WORKLOAD_EXTERNAL_URL_HOST = auto()
+    DR_WORKLOAD_EXTERNAL_URL_PREFIX = auto()
 
-    Returns ``None`` when the process is not in a DataRobot-hosted runtime, or
-    when the endpoint is unset. That is the local-development case: there is no
-    platform-assigned id to compose a URL from, and the caller decides what to
-    publish instead.
-    """
-    endpoint = resolve_datarobot_endpoint()
-    if not endpoint:
-        return None
+    def get_from_os_env(self) -> str | None:
+        return os.getenv(self.name, "").strip() or None
 
-    path = path.strip("/")
-    if deployment_id := get_deployment_id():
-        return build_deployment_url(endpoint, deployment_id, path)
-    if workload_id := get_workload_id():
-        return build_workload_url(endpoint, workload_id, path)
-    return None
+    @staticmethod
+    def get_datarobot_public_api_endpoint() -> str | None:
+        return (
+            DeploymentRelatedConfig.DATAROBOT_PUBLIC_API_ENDPOINT.get_from_os_env()
+            or DeploymentRelatedConfig.DATAROBOT_ENDPOINT.get_from_os_env()
+        )
+
+    @staticmethod
+    def get_workload_deployment_path_segment() -> str | None:
+        return DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_PREFIX.get_from_os_env()
+
+
+class DeploymentEndpointResolver:
+    def __init__(self, mcp_path_segment: str = DEFAULT_MCP_PATH):
+        self.mcp_path_segment = mcp_path_segment.strip("/")
+
+    @staticmethod
+    def get_workload_deployment_id() -> str | None:
+        return DeploymentRelatedConfig.WORKLOAD_ID.get_from_os_env()
+
+    @staticmethod
+    def get_mlops_deployment_id() -> str | None:
+        return DeploymentRelatedConfig.MLOPS_DEPLOYMENT_ID.get_from_os_env()
+
+    @staticmethod
+    def is_workload_deployment() -> bool:
+        return DeploymentEndpointResolver.get_workload_deployment_id() is not None
+
+    @staticmethod
+    def get_deployment_id() -> str | None:
+        return (
+            DeploymentEndpointResolver.get_workload_deployment_id()
+            or DeploymentEndpointResolver.get_mlops_deployment_id()
+        )
+
+    @staticmethod
+    def get_non_public_api_based_gateway_url() -> str | None:
+        return DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env()
+
+    @staticmethod
+    def get_public_api_based_gateway_url() -> str | None:
+        return DeploymentRelatedConfig.get_datarobot_public_api_endpoint()
+
+    @staticmethod
+    def is_deployed_behind_non_public_api_based_gateway() -> bool:
+        return DeploymentEndpointResolver.get_non_public_api_based_gateway_url() is not None
+
+    @staticmethod
+    def get_gateway_url() -> str | None:
+        return (
+            DeploymentEndpointResolver.get_non_public_api_based_gateway_url()
+            or DeploymentEndpointResolver.get_public_api_based_gateway_url()
+        )
+
+    def build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
+        self, gateway_url: str, deployment_id: str
+    ) -> str:
+        gateway_url = gateway_url.rstrip("/")
+        return f"{gateway_url}/deployments/{deployment_id}/directAccess/{self.mcp_path_segment}"
+
+    def build_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
+        self, gateway_url: str, workload_id: str
+    ) -> str:
+        gateway_url = gateway_url.rstrip("/")
+        return f"{gateway_url}/endpoints/workloads/{workload_id}/{self.mcp_path_segment}"
+
+    def build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
+        self, gateway_url: str, workload_deployment_segment: str
+    ) -> str:
+        gateway_url = gateway_url.rstrip("/")
+        workload_deployment_segment = workload_deployment_segment.rstrip("/")
+        url_segment = f"{workload_deployment_segment}/{self.mcp_path_segment}"
+        return f"{gateway_url}/{url_segment}"
+
+    @staticmethod
+    def is_workload_deployment_behind_non_public_api_gateway() -> bool:
+        return (
+            DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_PREFIX.get_from_os_env() is not None
+            and DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env() is not None
+        )
+
+    def get_deployment_url(self) -> str | None:
+        gateway_url = self.get_gateway_url()
+        if not gateway_url:
+            return None
+        deployment_id = self.get_deployment_id()
+        if not deployment_id:
+            return None
+
+        # DR_WORKLOAD_EXTERNAL_URL_HOST/_PREFIX are only ever set by the platform for
+        # a genuine workload deployment (MLOps deployments are only ever valid behind
+        # the public API gateway), so no separate deployment-type cross-check is
+        # needed here — this trusts that platform-level invariant rather than
+        # re-verifying it.
+        if self.is_workload_deployment_behind_non_public_api_gateway():
+            workload_deployment_url_segment = (
+                DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_PREFIX.get_from_os_env()
+            )
+            return self.build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
+                gateway_url,
+                workload_deployment_url_segment,
+            )
+        if self.is_workload_deployment():
+            return self.build_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
+                gateway_url,
+                deployment_id,
+            )
+        return self.build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
+            gateway_url,
+            deployment_id,
+        )
