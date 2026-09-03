@@ -28,7 +28,6 @@ from enum import auto
 from datarobot_genai.drmcp.core.constants import MCP_PATH_ENDPOINT
 from datarobot_genai.drmcp.core.deployment_config import DeploymentConfig
 from datarobot_genai.drmcp.core.deployment_config import MCPDeploymentType
-from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
 WORKLOAD_ID_ENV = "WORKLOAD_ID"
 DEPLOYMENT_ID_ENV = "MLOPS_DEPLOYMENT_ID"
@@ -102,7 +101,7 @@ class GatewayType(Enum):
 
 class DeploymentEndpointResolver:
     def __init__(self) -> None:
-        self.mcp_path_suffix = prefix_mount_path(MCP_PATH_ENDPOINT).strip("/")
+        self.mcp_path_suffix = MCP_PATH_ENDPOINT.strip("/")
         self.gateway_url = self.get_gateway_url()
         self.gateway_type = self.get_gateway_type()
         self.deployment_id = self.get_deployment_id()
@@ -158,5 +157,5 @@ class DeploymentEndpointResolver:
         if not self.gateway_url or not self.deployment_id:
             return None
         deployment_segment_url = self.get_deployment_segment_url(self.deployment_id)
-        sub_path = prefix_mount_path(".well-known/oauth-protected-resource").lstrip("/")
+        sub_path = ".well-known/oauth-protected-resource"
         return f"{self.gateway_url}/{deployment_segment_url}/{sub_path}"

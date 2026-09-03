@@ -241,6 +241,31 @@ class TestDeploymentEndpointResolver:
         mock_get_deployment_segment_url.assert_called_once_with(resolver.deployment_id)
         assert output == f"{expected_gateway_url}/{expected_deployment_segment_url}/mcp"
 
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
+    @pytest.mark.usefixtures(
+        "mock_get_gateway_url",
+        "mock_get_deployment_id",
+    )
+    def test_get_deployment_url_ignores_the_container_local_url_prefix(
+        self,
+        mock_get_config: Mock,
+        mock_get_gateway_url: Mock,
+        mock_get_deployment_segment_url: Mock,
+    ) -> None:
+        mock_config = Mock()
+        mock_config.mount_path = "/6a99e1b61797dcf7df5b0c84/6a99e1d136348c69953581fc"
+        mock_get_config.return_value = mock_config
+
+        expected_gateway_url = "https://gateway_url"
+        mock_get_gateway_url.return_value = expected_gateway_url
+        expected_deployment_segment_url = "deployments/dep1/directAccess"
+        mock_get_deployment_segment_url.return_value = expected_deployment_segment_url
+
+        resolver = DeploymentEndpointResolver()
+        output = resolver.get_deployment_url()
+
+        assert output == f"{expected_gateway_url}/{expected_deployment_segment_url}/mcp"
+
     def test_get_well_known_url_return_none_when_gateway_url_is_none(
         self,
         mock_get_gateway_url: Mock,
@@ -277,6 +302,34 @@ class TestDeploymentEndpointResolver:
         output = resolver.get_well_known_protected_resource_metadata_url()
 
         mock_get_deployment_segment_url.assert_called_once_with(resolver.deployment_id)
+        assert output == (
+            f"{expected_gateway_url}/{expected_deployment_segment_url}"
+            "/.well-known/oauth-protected-resource"
+        )
+
+    @patch("datarobot_genai.drmcp.core.routes_utils.get_config")
+    @pytest.mark.usefixtures(
+        "mock_get_gateway_url",
+        "mock_get_deployment_id",
+    )
+    def test_get_well_known_url_ignores_the_container_local_url_prefix(
+        self,
+        mock_get_config: Mock,
+        mock_get_gateway_url: Mock,
+        mock_get_deployment_segment_url: Mock,
+    ) -> None:
+        mock_config = Mock()
+        mock_config.mount_path = "/6a99e1b61797dcf7df5b0c84/6a99e1d136348c69953581fc"
+        mock_get_config.return_value = mock_config
+
+        expected_gateway_url = "https://gateway_url"
+        mock_get_gateway_url.return_value = expected_gateway_url
+        expected_deployment_segment_url = "deployments/dep1/directAccess"
+        mock_get_deployment_segment_url.return_value = expected_deployment_segment_url
+
+        resolver = DeploymentEndpointResolver()
+        output = resolver.get_well_known_protected_resource_metadata_url()
+
         assert output == (
             f"{expected_gateway_url}/{expected_deployment_segment_url}"
             "/.well-known/oauth-protected-resource"
