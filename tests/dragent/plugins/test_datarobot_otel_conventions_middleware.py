@@ -290,11 +290,13 @@ async def test_invoke_event_response_sets_completion_and_tool_spans(
             TextMessageContentEvent(message_id="m1", delta="done"),
         ]
     )
+    context = MagicMock()
+    context.name = "my_agent_function"
 
     output = await middleware.function_middleware_invoke(
         _ag_ui_input(UserMessage(id="1", content="hi")),
         call_next=_call_next(response),
-        context=MagicMock(),
+        context=context,
     )
 
     assert output is response
@@ -304,6 +306,54 @@ async def test_invoke_event_response_sets_completion_and_tool_spans(
 
     tool_span = _span_named(span_exporter, "lookup")
     assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_TOOL_NAME] == "lookup"
+    # Baggage-propagated agent name must land on the tool span itself, not just
+    # in baggage - Datavolt's agent/tool cross-tab query needs both attributes
+    # on the same span to attribute a call to its agent.
+    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "my_agent_function"
+
+
+async def test_invoke_ag_ui_input_sets_session_id_from_thread_id(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    """AG-UI's thread_id is the closest real signal to a "session" this middleware
+    ever sees - stamping it as datarobot.session_id is what lets Datavolt's
+    require_session scoping (an end-to-end flow query) find real flows at all;
+    without it, no span anywhere ever carries a session id.
+    """
+    context = MagicMock()
+    context.name = "my_agent_function"
+
+    await middleware.function_middleware_invoke(
+        _ag_ui_input(UserMessage(id="1", content="hi")),
+        call_next=_call_next("ok"),
+        context=context,
+    )
+
+    agent_span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert agent_span.attributes[DataRobotSpanAttributes.DATAROBOT_SESSION_ID] == "thread-1"
+
+
+async def test_invoke_nat_input_sets_no_session_id(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    """NAT's own ChatRequestOrMessage has no thread/session concept - unlike a
+    missing prompt (which still sets no GEN_AI_PROMPT), there is no sensible
+    fallback value, so the attribute must be entirely absent rather than set
+    to some placeholder that would be misread as a real session.
+    """
+    context = MagicMock()
+    context.name = "my_agent_function"
+
+    await middleware.function_middleware_invoke(
+        _nat_input("hi"),
+        call_next=_call_next("ok"),
+        context=context,
+    )
+
+    agent_span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert DataRobotSpanAttributes.DATAROBOT_SESSION_ID not in agent_span.attributes
 
 
 async def test_invoke_unknown_input_sets_no_prompt(
@@ -510,17 +560,45 @@ async def test_stream_emits_tool_spans(
         ),
         DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="result")]),
     ]
+    context = MagicMock()
+    context.name = "my_streaming_agent"
 
     await _drain(
         middleware.function_middleware_stream(
             _nat_input("find"),
             call_next=_call_next_stream(chunks),
-            context=MagicMock(),
+            context=context,
         )
     )
 
     tool_span = _span_named(span_exporter, "search")
     assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_TOOL_NAME] == "search"
+    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "my_streaming_agent"
+
+
+async def test_stream_ag_ui_input_sets_session_id_from_thread_id(
+    middleware: DataRobotOtelConventionsMiddleware,
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    context = MagicMock()
+    context.name = "my_streaming_agent"
+
+    await _drain(
+        middleware.function_middleware_stream(
+            _ag_ui_input(UserMessage(id="1", content="hi")),
+            call_next=_call_next_stream(
+                [
+                    DRAgentEventResponse(
+                        events=[TextMessageContentEvent(message_id="m1", delta="ok")]
+                    )
+                ]
+            ),
+            context=context,
+        )
+    )
+
+    agent_span = _span_named(span_exporter, AGENT_SPAN_NAME)
+    assert agent_span.attributes[DataRobotSpanAttributes.DATAROBOT_SESSION_ID] == "thread-1"
 
 
 async def test_stream_without_text_sets_no_completion(
