@@ -598,9 +598,20 @@ def _build_tool_to_categories() -> dict[str, frozenset[str]]:
 TOOL_TO_CATEGORIES: dict[str, frozenset[str]] = _build_tool_to_categories()
 
 
-def categories_for_tool(tool_name: str) -> list[str]:
-    """Return the sorted category labels (leaf + parent) for *tool_name*.
+def category_kind(name: str) -> str:
+    """Return ``"parent"`` for a category that owns leaf children, ``"leaf"`` otherwise."""
+    return "parent" if name in PARENT_TO_CHILDREN else "leaf"
 
-    Empty list for hosted/dynamic tools and any name not in the static taxonomy.
+
+def category_entry(name: str) -> dict[str, str]:
+    """Serialise one category as the ``{name, label, kind}`` dict the REST responses carry."""
+    return {"name": str(name), "label": category_label(name), "kind": category_kind(name)}
+
+
+def categories_for_tool(tool_name: str) -> list[dict[str, str]]:
+    """Return the categories (leaf + parent) for *tool_name* as ``{name, label, kind}`` dicts.
+
+    Sorted by category name. Empty list for hosted/dynamic tools and any name not in
+    the static taxonomy.
     """
-    return sorted(TOOL_TO_CATEGORIES.get(tool_name, frozenset()))
+    return [category_entry(name) for name in sorted(TOOL_TO_CATEGORIES.get(tool_name, frozenset()))]

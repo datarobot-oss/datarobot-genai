@@ -34,7 +34,7 @@ from datarobot_genai.drtools.workload.build_status import raise_tool_error_for_w
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "settings", "get", "update"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—settings] Read or update a workload's runtime settings "
         "(containerGroups, replicaCount, resourceBundles). "
@@ -93,7 +93,7 @@ async def workload_settings(
 
 
 @tool_metadata(
-    tags={"workload", "replacement", "datarobot", "get", "create", "delete"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—replacement] Manage a rolling replacement (zero-downtime artifact "
         "swap) for a workload. Modes:\n"

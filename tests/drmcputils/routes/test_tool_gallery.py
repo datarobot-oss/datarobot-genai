@@ -45,6 +45,12 @@ class TestIsHosted:
         assert not is_hosted(_FakeTool("t", meta={}))
 
 
+_JIRA_CATEGORIES = [
+    {"name": "dr_connector_jira", "label": "Jira", "kind": "leaf"},
+    {"name": "dr_connectors", "label": "Data connectors", "kind": "parent"},
+]
+
+
 class TestMergeToolInfo:
     def test_merges_ui_metadata_and_derived_categories(self) -> None:
         tool = _FakeTool("jira_search_issues", tags={"jira", "search"})
@@ -61,8 +67,19 @@ class TestMergeToolInfo:
         assert merged["description_ui"] == "Find Jira issues matching a JQL query."
         assert merged["auth_provider"] == "jira"
         assert merged["tags"] == ["jira", "search"]
-        assert merged["categories"] == ["dr_connector_jira", "dr_connectors"]
+        assert merged["categories"] == _JIRA_CATEGORIES
         assert merged["hosted"] is False
+
+    def test_registry_tags_keep_declaration_order(self) -> None:
+        # The FastMCP tool carries tags as a set; the registry's ordered tags win.
+        tool = _FakeTool("jira_search_issues", tags={"jira", "atlassian"})
+        ui = {"jira_search_issues": {"tags": ["Atlassian", "Jira"]}}
+        merged = merge_tool_info(tool, ui)
+        assert merged["tags"] == ["Atlassian", "Jira"]
+
+    def test_tool_without_registry_tags_falls_back_to_sorted(self) -> None:
+        merged = merge_tool_info(_FakeTool("t", tags={"zeta", "alpha"}), {})
+        assert merged["tags"] == ["alpha", "zeta"]
 
     def test_tool_without_ui_metadata_gets_none_fields(self) -> None:
         merged = merge_tool_info(_FakeTool("jira_search_issues"), {})
@@ -70,7 +87,7 @@ class TestMergeToolInfo:
         assert merged["description_ui"] is None
         assert merged["auth_provider"] is None
         # Categories still derived from the static taxonomy.
-        assert merged["categories"] == ["dr_connector_jira", "dr_connectors"]
+        assert merged["categories"] == _JIRA_CATEGORIES
 
     def test_hosted_tool_has_no_categories(self) -> None:
         tool = _FakeTool("user_xyz", meta={"tool_category": "USER_TOOL_DEPLOYMENT"})

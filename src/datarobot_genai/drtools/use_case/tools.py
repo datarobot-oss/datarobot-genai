@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"use_case", "read", "list", "daria"},
+    tags=("DataRobot", "Use Case"),
     description=(
         "[Use case—list] Use when the user needs DataRobot use cases (workspace bundles) as "
         "ID+name, optionally filtered by name search. Read-only. Not assets inside a known case "
@@ -71,7 +71,7 @@ async def datarobot_usecases_list(
 
 
 @tool_metadata(
-    tags={"use_case", "read", "assets", "daria"},
+    tags=("DataRobot", "Use Case"),
     description=(
         "[Use case—assets] Use when you have one or more use_case_id values and need what is "
         "linked: datasets, deployments, and experiments as ID+name per case. Read-only. Not "

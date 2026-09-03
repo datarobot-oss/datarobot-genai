@@ -39,7 +39,7 @@ _DRIVE_PERMISSIONS_DOCS = "https://developers.google.com/drive/api/guides/manage
 
 
 @tool_metadata(
-    tags={"gdrive", "google", "list", "search", "files", "find", "contents"},
+    tags=("Google", "Google Drive"),
     description=(
         "[GDrive—find files] Use when the user needs Google Drive file names and IDs with "
         "optional folder scope, Drive query string, and pagination. Not file body text "
@@ -108,7 +108,7 @@ async def gdrive_find_contents(
 
 
 @tool_metadata(
-    tags={"gdrive", "google", "read", "content", "file", "download"},
+    tags=("Google", "Google Drive"),
     description=(
         "[GDrive—read file] Use when you have a Drive file_id (from gdrive_find_contents) and need "
         "exported text or markdown for Workspace types. Not listing files, not binary media "
@@ -151,7 +151,7 @@ async def gdrive_read_and_export_content(
 
 
 @tool_metadata(
-    tags={"gdrive", "google", "create", "write", "file", "folder"},
+    tags=("Google", "Google Drive"),
     enabled=False,
     description=(
         "[GDrive—create file] Use when creating a new Drive file or folder from name + MIME type, "
@@ -207,7 +207,7 @@ async def gdrive_create_file(
 
 
 @tool_metadata(
-    tags={"gdrive", "google", "update", "metadata", "rename", "star", "trash"},
+    tags=("Google", "Google Drive", "Rename", "Star", "Trash", "Update"),
     enabled=False,
     description=(
         "[GDrive—metadata] Use when renaming, starring, or trashing an existing "
@@ -267,7 +267,7 @@ async def gdrive_update_metadata(
 
 
 @tool_metadata(
-    tags={"gdrive", "google", "manage", "access", "acl"},
+    tags=("Google", "Google Drive"),
     enabled=False,
     description=(
         "[GDrive—permissions] Use when adding, changing, or removing sharing on "

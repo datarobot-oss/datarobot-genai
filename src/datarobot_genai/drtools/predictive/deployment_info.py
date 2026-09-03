@@ -49,7 +49,7 @@ def _feature_importance_value(feature: Any) -> float:
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "info", "metadata", "daria"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—scoring contract] Use when you need a deployment's scoring semantics: target "
         "name/type, model family, all input features (name, type, importance), plus time-series "
@@ -131,7 +131,7 @@ async def deployment_get_info(
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "template", "data"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—sample prediction rows] Use whenever the user asks for sample/example/template "
         "rows, a payload skeleton, or what the scoring input should look like for one deployment. "
@@ -236,7 +236,7 @@ async def deployment_generate_prediction_sample(
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "validation", "data"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—validate CSV only] Use when the user has inline CSV text and wants a schema "
         "check against one deployment before scoring (columns, basic types, time-series "
@@ -384,7 +384,7 @@ async def deployment_validate_prediction_data(
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "features", "info"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—features slice] Use when you only need feature list, target summary, and "
         "optional time_series_config for a deployment without the full scoring contract "
