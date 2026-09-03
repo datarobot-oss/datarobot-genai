@@ -79,9 +79,14 @@ import datarobot as dr
 import requests
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.errors import MemorySessionDeduplicationError
+from datarobot.errors import MemorySpaceDeduplicationError
+from datarobot.models.memory import MemorySpace
 from datarobot.models.memory import Session
 from pydantic import Field
 
+from datarobot_genai.core.runtime import get_deployment_id
+from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.core.runtime import is_hosted_runtime
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 
@@ -141,6 +146,14 @@ _MEMORY_SPACE_REQUIRED_MSG = (
     "Set AGENT_CARD_REGISTRY_MEMORY_SPACE_ID."
 )
 
+_REGISTRY_CACHE_SPACE_DEDUP_PREFIX = "dragent:agent-card-registry"
+
+
+class _ProvisionedRegistryCacheSpaceState:
+    """Mutable container for the provisioned registry L2 MemorySpace ID."""
+
+    space_id: str | None = None
+
 
 class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
     """Connection settings for DataRobot MemorySpace cache backends."""
@@ -161,13 +174,88 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
     )
 
 
-def try_resolve_memory_space_id(explicit: str | None = None) -> str | None:
+def _registry_cache_memory_space_deduplication_key() -> str | None:
+    """Return a stable deduplication key for the hosted agent, or ``None`` when local."""
+    if deployment_id := get_deployment_id():
+        return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:deployment:{deployment_id}"
+    if workload_id := get_workload_id():
+        return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:workload:{workload_id}"
+    return None
+
+
+def try_provision_registry_cache_memory_space() -> str | None:
+    """Create or adopt the registry L2 MemorySpace on a hosted deployment.
+
+    Uses the deployment/workload ID injected by the platform as a
+    ``deduplication_key`` so every replica shares one space. No-op when not on a
+    hosted runtime, when credentials are unavailable, or after the first
+    successful provision in this process.
+    """
+    if _ProvisionedRegistryCacheSpaceState.space_id is not None:
+        return _ProvisionedRegistryCacheSpaceState.space_id
+
+    if not is_hosted_runtime():
+        return None
+
+    deduplication_key = _registry_cache_memory_space_deduplication_key()
+    if deduplication_key is None:
+        return None
+
+    if not try_configure_datarobot_memory_client():
+        return None
+
+    description = "Agent card registry L2 cache"
+
+    def _create() -> MemorySpace:
+        try:
+            return _call_with_stale_connection_retry(
+                lambda: MemorySpace.create(
+                    description=description,
+                    deduplication_key=deduplication_key,
+                ),
+                op="provision_registry_cache_memory_space",
+            )
+        except MemorySpaceDeduplicationError as exc:
+            if exc.existing_memory_space_id is None:
+                raise
+            existing_space_id = exc.existing_memory_space_id
+            return _call_with_stale_connection_retry(
+                lambda: MemorySpace.get(existing_space_id),
+                op="get_registry_cache_memory_space",
+            )
+
+    try:
+        space = _create()
+    except Exception:
+        logger.exception(
+            "Failed to provision agent card registry L2 MemorySpace (dedup_key=%s)",
+            deduplication_key,
+        )
+        return None
+
+    _ProvisionedRegistryCacheSpaceState.space_id = space.id
+    os.environ["AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"] = space.id
+    logger.info(
+        "Provisioned agent card registry L2 MemorySpace %s (dedup_key=%s)",
+        space.id,
+        deduplication_key,
+    )
+    return space.id
+
+
+def try_resolve_memory_space_id(
+    explicit: str | None = None,
+    *,
+    provision_if_missing: bool = True,
+) -> str | None:
     """Return the agent card registry MemorySpace ID, or ``None`` when unset."""
     cfg = MemorySpaceCacheConfig()
     space_id = explicit or cfg.agent_card_registry_memory_space_id
-    if not space_id or not space_id.strip():
-        return None
-    return space_id.strip()
+    if space_id and space_id.strip():
+        return space_id.strip()
+    if provision_if_missing:
+        return try_provision_registry_cache_memory_space()
+    return None
 
 
 def resolve_memory_space_id(explicit: str | None = None) -> str:

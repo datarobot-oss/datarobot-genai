@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.27
+- `dragent`: provision the agent card registry L2 MemorySpace automatically on hosted deployments (custom model or workload) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset. Uses a deployment/workload-scoped `deduplication_key` so replicas share one space without Pulumi or `task deploy-dev` wiring.
 
 ## 0.29.26
 - `drmcp/core/runtime_identity.py`: Fix logic of resolving MCP deployment URL
