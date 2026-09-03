@@ -28,7 +28,7 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import
 from datarobot_genai.drmcpbase.oauth_scopes import derived_scopes
 
 from .config import get_config
-from .runtime_identity import resolve_self_url
+from .runtime_identity import DeploymentEndpointResolver
 
 
 def build_protected_resource_metadata_config() -> MCPOAuthProtectedResourceMetadataConfig:
@@ -45,7 +45,7 @@ def build_protected_resource_metadata_config() -> MCPOAuthProtectedResourceMetad
     """
     config = get_config()
     return MCPOAuthProtectedResourceMetadataConfig.from_settings(
-        resource=config.mcp_oauth_resource or resolve_self_url(),
+        resource=config.mcp_oauth_resource or DeploymentEndpointResolver().get_deployment_url(),
         authorization_servers=config.mcp_oauth_authorization_servers,
         scopes_supported=derived_scopes(),
         xaa_trusted_issuer=config.mcp_xaa_trusted_issuer,

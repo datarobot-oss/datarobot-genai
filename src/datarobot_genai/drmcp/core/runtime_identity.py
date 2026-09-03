@@ -12,35 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Where this MCP server is reachable from outside.
-
-Neither hosting mode knows its own public URL when the image is built, because
-the id is assigned at deploy time. Both can compose it once running, from the id
-DataRobot injects into the container and the platform's fixed routing patterns:
-
-===========  =====================================================
-deployment   ``{endpoint}/deployments/{id}/directAccess/{path}``
-workload     ``{endpoint}/endpoints/workloads/{id}/{path}``
-===========  =====================================================
-
-Both are routed through the DataRobot API host, so composing the URL needs no
-API call: there is nothing to time out, retry, or cache, and a server can always
-answer the question about itself.
-
-Two deliberate choices worth knowing about:
-
-``DATAROBOT_PUBLIC_API_ENDPOINT`` wins over ``DATAROBOT_ENDPOINT``
-    An on-prem install commonly points ``DATAROBOT_ENDPOINT`` at an internal
-    cluster address. A resource identifier built from it is one no external
-    client can reach, and RFC 9728 §7.3 has the client compare the metadata URL
-    it fetched against ``resource``, so a wrong value fails discovery outright.
-
-No fallback endpoint
-    When neither variable is set this returns ``None`` rather than guessing a
-    default host. The value is published as this server's identity, and a
-    confidently wrong identity is worse than an absent one.
-
-This module is intentionally standalone: ``drmcp`` does not depend on
+"""
+The module is intentionally standalone: ``drmcp`` does not depend on
 ``datarobot_genai.core`` or on ``dragent``, so the few env var names and URL
 patterns are restated here rather than shared. Keeping the MCP and agent trees
 independently evolvable is worth more than removing this much duplication.
@@ -49,6 +22,13 @@ independently evolvable is worth more than removing this much duplication.
 from __future__ import annotations
 
 import os
+from enum import Enum
+from enum import auto
+
+from datarobot_genai.drmcp.core.constants import MCP_PATH_ENDPOINT
+from datarobot_genai.drmcp.core.deployment_config import DeploymentConfig
+from datarobot_genai.drmcp.core.deployment_config import MCPDeploymentType
+from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
 WORKLOAD_ID_ENV = "WORKLOAD_ID"
 DEPLOYMENT_ID_ENV = "MLOPS_DEPLOYMENT_ID"
@@ -59,9 +39,6 @@ ENDPOINT_ENV = "DATAROBOT_ENDPOINT"
 DEPLOYMENT_DIRECT_ACCESS_SEGMENT = "directAccess"
 #: Prefix the platform routes workload traffic through.
 WORKLOAD_ENDPOINTS_SEGMENT = "endpoints/workloads"
-
-#: Path this server is served from, relative to whichever prefix its mode uses.
-DEFAULT_MCP_PATH = "mcp"
 
 
 def _env(name: str) -> str | None:
@@ -100,21 +77,86 @@ def build_workload_url(endpoint: str, workload_id: str, path: str) -> str:
     return f"{base}/{WORKLOAD_ENDPOINTS_SEGMENT}/{workload_id}/{path}"
 
 
-def resolve_self_url(path: str = DEFAULT_MCP_PATH) -> str | None:
-    """Return this server's own externally reachable URL for ``path``.
+class GatewayType(Enum):
+    """It is the gateway behind which MCP is deployed."""
 
-    Returns ``None`` when the process is not in a DataRobot-hosted runtime, or
-    when the endpoint is unset. That is the local-development case: there is no
-    platform-assigned id to compose a URL from, and the caller decides what to
-    publish instead.
-    """
-    endpoint = resolve_datarobot_endpoint()
-    if not endpoint:
-        return None
+    PUBLIC_API_BASED_GATEWAY = auto()
+    NON_PUBLIC_API_BASED_GATEWAY = auto()
 
-    path = path.strip("/")
-    if deployment_id := get_deployment_id():
-        return build_deployment_url(endpoint, deployment_id, path)
-    if workload_id := get_workload_id():
-        return build_workload_url(endpoint, workload_id, path)
-    return None
+    def get_workload_deployment_url_segment(self, deployment_id: str) -> str:
+        if self == GatewayType.PUBLIC_API_BASED_GATEWAY:
+            url_segment = f"/endpoints/workloads/{deployment_id}/"
+        else:
+            url_segment = f"/workloads/{deployment_id}/"
+        return url_segment.strip("/")
+
+    def get_mlops_deployment_url_segment(self, deployment_id: str) -> str:
+        if self == GatewayType.PUBLIC_API_BASED_GATEWAY:
+            url_segment = f"/deployments/{deployment_id}/directAccess/"
+            return url_segment.strip("/")
+        else:
+            raise ValueError(
+                "MLOps deployment URL is not supported in a non-public-API-based gateway."
+            )
+
+
+class DeploymentEndpointResolver:
+    def __init__(self) -> None:
+        self.mcp_path_suffix = prefix_mount_path(MCP_PATH_ENDPOINT).strip("/")
+        self.gateway_url = self.get_gateway_url()
+        self.gateway_type = self.get_gateway_type()
+        self.deployment_id = self.get_deployment_id()
+        self.deployment_type = self.get_deployment_type()
+
+    @staticmethod
+    def get_gateway_url() -> str | None:
+        gateway_url = (
+            DeploymentConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env()
+            or DeploymentConfig.get_datarobot_public_api_endpoint()
+        )
+        if gateway_url and "://" not in gateway_url:
+            gateway_url = f"https://{gateway_url}"
+        if gateway_url:
+            gateway_url = gateway_url.rstrip("/")
+        return gateway_url
+
+    @staticmethod
+    def get_gateway_type() -> GatewayType:
+        if DeploymentConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env() is not None:
+            return GatewayType.NON_PUBLIC_API_BASED_GATEWAY
+        else:
+            return GatewayType.PUBLIC_API_BASED_GATEWAY
+
+    @staticmethod
+    def get_deployment_id() -> str | None:
+        return (
+            DeploymentConfig.WORKLOAD_ID.get_from_os_env()
+            or DeploymentConfig.MLOPS_DEPLOYMENT_ID.get_from_os_env()
+        )
+
+    @staticmethod
+    def get_deployment_type() -> MCPDeploymentType:
+        if DeploymentConfig.WORKLOAD_ID.get_from_os_env() is not None:
+            return MCPDeploymentType.WORKLOAD
+        else:
+            return MCPDeploymentType.MLOPS
+
+    def get_deployment_segment_url(self, deployment_id: str) -> str:
+        return (
+            self.gateway_type.get_workload_deployment_url_segment(deployment_id)
+            if self.deployment_type == MCPDeploymentType.WORKLOAD
+            else self.gateway_type.get_mlops_deployment_url_segment(deployment_id)
+        )
+
+    def get_deployment_url(self) -> str | None:
+        if not self.gateway_url or not self.deployment_id:
+            return None
+        deployment_segment_url = self.get_deployment_segment_url(self.deployment_id)
+        return f"{self.gateway_url}/{deployment_segment_url}/{self.mcp_path_suffix}"
+
+    def get_well_known_protected_resource_metadata_url(self) -> str | None:
+        if not self.gateway_url or not self.deployment_id:
+            return None
+        deployment_segment_url = self.get_deployment_segment_url(self.deployment_id)
+        sub_path = prefix_mount_path(".well-known/oauth-protected-resource").lstrip("/")
+        return f"{self.gateway_url}/{deployment_segment_url}/{sub_path}"
