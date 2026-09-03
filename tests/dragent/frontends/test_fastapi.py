@@ -236,6 +236,34 @@ class TestDRAgentFastApiFrontEndPluginWorker:
                 # THEN it does not carry the monitoring header.
                 assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
 
+    def test_model_monitoring_header_is_added_under_root_path(self, worker):
+        """Regression: with ``--root_path /<model_id>/<lrs_id>`` (how DataRobot deployments run
+        the server) the LRS ingress forwards the full prefixed path and Starlette exposes it in
+        ``request.url.path``. The header must still be set on the chat routes.
+        """
+        root_path = "/6a983b0b73f5f93c12b3be0c/6a983c7931cd39434aacda20"
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            app = worker.build_app()
+            # Mirrors uvicorn --root-path: scope["root_path"] is set AND the request path keeps
+            # the prefix, which is what the model pod receives from the LRS ingress.
+            with TestClient(app, root_path=root_path) as client:
+                chat_paths = worker._chat_completion_paths()
+                assert chat_paths, "fixture must configure at least one chat route"
+                for path in chat_paths:
+                    response = client.post(f"{root_path}{path}", json={})
+                    assert response.headers.get(DATAROBOT_MODEL_MONITORING_HEADER) == "true", path
+
+                health_response = client.get(f"{root_path}/health")
+                assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
+
     def test_chat_completion_paths_built_from_config(self, worker):
         """_chat_completion_paths() derives paths from front_end_config, not hardcoded strings."""
         paths = worker._chat_completion_paths()
