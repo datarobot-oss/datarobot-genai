@@ -101,7 +101,7 @@ class GatewayType(Enum):
 
 
 class DeploymentEndpointResolver:
-    def __init__(self):
+    def __init__(self) -> None:
         self.mcp_path_suffix = prefix_mount_path(MCP_PATH_ENDPOINT).strip("/")
         self.gateway_url = self.get_gateway_url()
         self.gateway_type = self.get_gateway_type()
