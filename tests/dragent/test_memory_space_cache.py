@@ -68,11 +68,18 @@ class _FakeSession:
         raise KeyError(sequence_id)
 
 
+_REGISTRY_MEMORY_SPACE_ENV = "AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"
+
+
 @pytest.fixture(autouse=True)
-def _reset_provisioned_registry_cache_space_id() -> None:
+def _reset_provisioned_registry_cache_space_state() -> None:
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    previous_env = os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
     yield
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
+    if previous_env is not None:
+        os.environ[_REGISTRY_MEMORY_SPACE_ENV] = previous_env
 
 
 @pytest.fixture
@@ -94,6 +101,10 @@ class TestResolveMemorySpaceId:
     def test_agent_memory_space_id_is_not_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
+        assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
+
+    def test_memory_space_id_env_not_leaked_from_prior_provision(self) -> None:
+        assert os.environ.get(_REGISTRY_MEMORY_SPACE_ENV) is None
         assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
 
 
@@ -125,7 +136,7 @@ class TestProvisionRegistryCacheMemorySpace:
             description="Agent card registry L2 cache",
             deduplication_key="dragent:agent-card-registry:deployment:dep-abc123",
         )
-        assert os.environ["AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"] == "space-new"
+        assert os.environ[_REGISTRY_MEMORY_SPACE_ENV] == "space-new"
 
     def test_adopts_existing_space_on_dedup_collision(
         self, monkeypatch: pytest.MonkeyPatch
