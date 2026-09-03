@@ -120,7 +120,7 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 
 While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
 
-On hosted deployments (custom model or workload), dragent **provisions** a shared MemorySpace for the L2 cache at startup when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset. The space is keyed to `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Locally, only in-process L1 caching is used unless you set `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` yourself.
+On hosted deployments (custom model or workload), dragent provisions a shared MemorySpace for the L2 cache when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Locally, only in-process L1 caching is used unless you set `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` yourself.
 
 #### Registry environment variables
 
@@ -131,7 +131,7 @@ On hosted deployments (custom model or workload), dragent **provisions** a share
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
-| `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` | No | MemorySpace ID for the registry L2 cache. Provisioned automatically on hosted deployments when unset; optional override for local testing. |
+| `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` | No | MemorySpace ID for the registry L2 cache. Provisioned automatically on hosted deployments when unset and registry-backed A2A clients are configured; optional override for local testing. |
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
 files, file secrets, Runtime Parameters, and Pulumi config.

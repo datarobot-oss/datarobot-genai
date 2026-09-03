@@ -18,10 +18,13 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from nat.data_models.config import Config
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
+from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 
@@ -127,7 +130,14 @@ class TestRegistryRefreshLifespan:
     async def test_lifespan_starts_and_stops_task(self):
         mock_registry = MagicMock()
         mock_registry.has_registered_lookups.return_value = True
-        config = MagicMock()
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
 
         class _FakeTask:
             def __init__(self) -> None:
@@ -166,10 +176,24 @@ class TestRegistryRefreshLifespan:
             patch(
                 f"{_MODULE}.get_default_registry",
                 AsyncMock(return_value=mock_registry),
-            ),
+            ) as mock_get_registry,
             patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
         ):
             async with registry_refresh_lifespan(config):
                 pass
 
+            mock_get_registry.assert_not_awaited()
+            mock_create_task.assert_not_called()
+
+    async def test_lifespan_no_op_without_registry_backed_clients(self):
+        config = Config(function_groups={})
+
+        with (
+            patch(f"{_MODULE}.get_default_registry", AsyncMock()) as mock_get_registry,
+            patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
+        ):
+            async with registry_refresh_lifespan(config):
+                pass
+
+            mock_get_registry.assert_not_awaited()
             mock_create_task.assert_not_called()
