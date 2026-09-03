@@ -108,9 +108,9 @@ class ErrorResponse(Enum):
 
 
 def build_well_known_protected_resource_url(request: Request) -> str:
-    self_url = DeploymentEndpointResolver().get_deployment_url()
-    if self_url:
-        return f"{self_url.rstrip('/')}/.well-known/oauth-protected-resource"
+    well_known_url = DeploymentEndpointResolver().get_well_known_protected_resource_metadata_url()
+    if well_known_url:
+        return well_known_url
     return str(
         request.url.replace(
             path=prefix_mount_path("/.well-known/oauth-protected-resource"),

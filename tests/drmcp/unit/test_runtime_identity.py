@@ -22,6 +22,8 @@ import pytest
 
 from datarobot_genai.drmcp.core.runtime_identity import DeploymentEndpointResolver
 from datarobot_genai.drmcp.core.runtime_identity import DeploymentRelatedConfig
+from datarobot_genai.drmcp.core.runtime_identity import GatewayType
+from datarobot_genai.drmcp.core.runtime_identity import MCPDeploymentType
 from datarobot_genai.drmcp.core.runtime_identity import build_deployment_url
 from datarobot_genai.drmcp.core.runtime_identity import build_workload_url
 from datarobot_genai.drmcp.core.runtime_identity import get_deployment_id
@@ -88,136 +90,239 @@ class TestPlatformIds:
             assert get_deployment_id() is None
 
 
+class TestDeploymentRelatedConfig:
+    @pytest.mark.parametrize(
+        "enum_value",
+        [enum_value for enum_value in DeploymentRelatedConfig],
+        ids=str,
+    )
+    def test_get_from_os_env_strip_surrounding_spaces(
+        self, enum_value: DeploymentRelatedConfig
+    ) -> None:
+        expected_value = "value_without_surrounding_space"
+        with patch.dict(
+            os.environ,
+            {enum_value.name: f" {expected_value} "},
+            clear=True,
+        ):
+            assert enum_value.get_from_os_env() == expected_value
+
+    def test_get_public_api_endpoint_prefer_env_var_datarobot_public_api_endpoint(self) -> None:
+        expected_value = "https://foo/bar"
+        with patch.dict(
+            os.environ,
+            {"DATAROBOT_PUBLIC_API_ENDPOINT": expected_value, "DATAROBOT_ENDPOINT": "dsafas"},
+            clear=True,
+        ):
+            assert DeploymentRelatedConfig.get_datarobot_public_api_endpoint() == expected_value
+
+    def test_get_public_api_endpoint_fallback_env_var_datarobot_endpoint(self) -> None:
+        expected_value = "https://foo/bar"
+        with patch.dict(
+            os.environ,
+            {"DATAROBOT_ENDPOINT": expected_value},
+            clear=True,
+        ):
+            assert DeploymentRelatedConfig.get_datarobot_public_api_endpoint() == expected_value
+
+
+class TestGatewayType:
+    def test_get_url_segment_of_workload_deployment_deployed_behind_non_public_api_based_gateway(
+        self,
+    ) -> None:
+        mock_deployment_id = "123"
+        output = GatewayType.NON_PUBLIC_API_BASED_GATEWAY.get_workload_deployment_url_segment(
+            mock_deployment_id
+        )
+
+        assert output == f"workloads/{mock_deployment_id}"
+
+    def test_get_url_segment_of_workload_deployment_deployed_behind_public_api_based_gateway(
+        self,
+    ) -> None:
+        mock_deployment_id = "123"
+        output = GatewayType.PUBLIC_API_BASED_GATEWAY.get_workload_deployment_url_segment(
+            mock_deployment_id,
+        )
+
+        assert output == f"endpoints/workloads/{mock_deployment_id}"
+
+    def test_get_url_segment_of_mlops_deployment_deployed_behind_non_public_api_based_gateway(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError):
+            GatewayType.NON_PUBLIC_API_BASED_GATEWAY.get_mlops_deployment_url_segment(Mock())
+
+    def test_get_url_segment_of_mlops_deployment_deployed_behind_public_api_based_gateway(
+        self,
+    ) -> None:
+        mock_deployment_id = "123"
+        output = GatewayType.PUBLIC_API_BASED_GATEWAY.get_mlops_deployment_url_segment(
+            mock_deployment_id,
+        )
+
+        assert output == f"deployments/{mock_deployment_id}/directAccess"
+
+
 class TestDeploymentEndpointResolver:
     @pytest.fixture
-    def mock_mcp_url_segment(self) -> str:
-        return "mcp"
-
-    @pytest.fixture
-    def mock_get_datarobot_public_api_endpoint(self) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentRelatedConfig, "get_datarobot_public_api_endpoint"
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_is_workload_deployment(self) -> Iterator[Mock]:
-        with patch.object(DeploymentEndpointResolver, "is_workload_deployment") as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_is_workload_deployment_behind_non_public_api_gateway(self) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver, "is_workload_deployment_behind_non_public_api_gateway"
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_build_url_of_mcp_workload_behind_non_public_api_based_gateway(
-        self,
-    ) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway",
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_build_url_of_mcp_workload_behind_public_api_based_gateway(
-        self,
-    ) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "build_url_of_mcp_workload_deployment_behind_public_api_based_gateway",
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
-        self,
-    ) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway",
-        ) as mock_func:
-            yield mock_func
-
-    @pytest.fixture
     def mock_get_gateway_url(self) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "get_gateway_url",
-        ) as mock_func:
+        with patch.object(DeploymentEndpointResolver, "get_gateway_url") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_gateway_type(self) -> Iterator[Mock]:
+        with patch.object(DeploymentEndpointResolver, "get_gateway_type") as mock_func:
             yield mock_func
 
     @pytest.fixture
     def mock_get_deployment_id(self) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "get_deployment_id",
-        ) as mock_func:
+        with patch.object(DeploymentEndpointResolver, "get_deployment_id") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_get_non_public_api_based_gateway_url(self) -> Iterator[Mock]:
-        with patch.object(
-            DeploymentEndpointResolver,
-            "get_non_public_api_based_gateway_url",
-        ) as mock_func:
+    def mock_get_deployment_type(self) -> Iterator[Mock]:
+        with patch.object(DeploymentEndpointResolver, "get_deployment_type") as mock_func:
             yield mock_func
 
-    @pytest.mark.parametrize(
-        "mcp_path, output",
-        [("/mcp/", "mcp"), ("mcp", "mcp"), ("mcp/", "mcp")],
-        ids=str,
+    @pytest.fixture
+    def mock_get_deployment_segment_url(self) -> Iterator[Mock]:
+        with patch.object(DeploymentEndpointResolver, "get_deployment_segment_url") as mock_func:
+            yield mock_func
+
+    def test_init(
+        self,
+        mock_get_gateway_url: Mock,
+        mock_get_gateway_type: Mock,
+        mock_get_deployment_id: Mock,
+        mock_get_deployment_type: Mock,
+    ) -> None:
+        resolver = DeploymentEndpointResolver()
+
+        assert resolver.mcp_path_suffix == "mcp"
+        assert resolver.gateway_url == mock_get_gateway_url.return_value
+        assert resolver.gateway_type == mock_get_gateway_type.return_value
+        assert resolver.deployment_id == mock_get_deployment_id.return_value
+        assert resolver.deployment_type == mock_get_deployment_type.return_value
+
+    def test_get_deployment_url_return_none_when_gateway_url_is_none(
+        self,
+        mock_get_gateway_url: Mock,
+    ) -> None:
+        mock_get_gateway_url.return_value = None
+
+        resolver = DeploymentEndpointResolver()
+        assert resolver.get_deployment_url() is None
+
+    def test_get_deployment_url_return_none_when_deployment_id_is_none(
+        self,
+        mock_get_deployment_id: Mock,
+    ) -> None:
+        mock_get_deployment_id.return_value = None
+
+        resolver = DeploymentEndpointResolver()
+        assert resolver.get_deployment_url() is None
+
+    @pytest.mark.usefixtures(
+        "mock_get_gateway_url",
+        "mock_get_deployment_id",
     )
-    def test_init_strip_mcp_path_segment(self, mcp_path: str, output: str) -> None:
-        resolver = DeploymentEndpointResolver(mcp_path)
-        assert resolver.mcp_path_segment == output
+    def test_get_deployment_url(
+        self,
+        mock_get_gateway_url: Mock,
+        mock_get_deployment_segment_url: Mock,
+    ) -> None:
+        expected_gateway_url = "https://gateway_url"
+        mock_get_gateway_url.return_value = expected_gateway_url
+        expected_deployment_segment_url = "mcp/deployment"
+        mock_get_deployment_segment_url.return_value = expected_deployment_segment_url
 
-    def test_get_workload_deployment_id(self) -> None:
-        with patch.dict(os.environ, {"WORKLOAD_ID": "wl1"}, clear=True):
-            assert DeploymentEndpointResolver.get_workload_deployment_id() == "wl1"
+        resolver = DeploymentEndpointResolver()
+        output = resolver.get_deployment_url()
 
-    def test_get_mlops_deployment_id(self) -> None:
-        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "dep1"}, clear=True):
-            assert DeploymentEndpointResolver.get_mlops_deployment_id() == "dep1"
+        mock_get_deployment_segment_url.assert_called_once_with(resolver.deployment_id)
+        assert output == f"{expected_gateway_url}/{expected_deployment_segment_url}/mcp"
 
-    def test_is_workload_deployment_true(self) -> None:
-        with patch.dict(os.environ, {"WORKLOAD_ID": "wl1"}, clear=True):
-            assert DeploymentEndpointResolver.is_workload_deployment() is True
+    def test_get_well_known_url_return_none_when_gateway_url_is_none(
+        self,
+        mock_get_gateway_url: Mock,
+    ) -> None:
+        mock_get_gateway_url.return_value = None
 
-    def test_is_workload_deployment_false(self) -> None:
-        with patch.dict(os.environ, {"MLOPS_DEPLOYMENT_ID": "dep1"}, clear=True):
-            assert DeploymentEndpointResolver.is_workload_deployment() is False
+        resolver = DeploymentEndpointResolver()
+        assert resolver.get_well_known_protected_resource_metadata_url() is None
 
-    @pytest.mark.parametrize(
-        "url_host_env_var, output",
-        [("https://aaa/bbb", "https://aaa/bbb"), ("aaa/bbb", "https://aaa/bbb")],
-        ids=str,
+    def test_get_well_known_url_return_none_when_deployment_id_is_none(
+        self,
+        mock_get_deployment_id: Mock,
+    ) -> None:
+        mock_get_deployment_id.return_value = None
+
+        resolver = DeploymentEndpointResolver()
+        assert resolver.get_well_known_protected_resource_metadata_url() is None
+
+    @pytest.mark.usefixtures(
+        "mock_get_gateway_url",
+        "mock_get_deployment_id",
     )
-    def get_get_gateway_url(self, url_host_env_var: str, output: str) -> None:
-        env = {"DR_WORKLOAD_EXTERNAL_URL_HOST": url_host_env_var}
-        with patch.dict(os.environ, env, clear=True):
-            assert DeploymentEndpointResolver.get_gateway_url() == output
+    def test_get_well_known_url(
+        self,
+        mock_get_gateway_url: Mock,
+        mock_get_deployment_segment_url: Mock,
+    ) -> None:
+        expected_gateway_url = "https://gateway_url"
+        mock_get_gateway_url.return_value = expected_gateway_url
+        expected_deployment_segment_url = "mcp/deployment"
+        mock_get_deployment_segment_url.return_value = expected_deployment_segment_url
 
-    def test_get_gateway_url_prefers_non_public_over_public(self) -> None:
-        env = {
-            "DR_WORKLOAD_EXTERNAL_URL_HOST": "https://aaa/bbb",
-            "DATAROBOT_PUBLIC_API_ENDPOINT": "afdafds",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
+        resolver = DeploymentEndpointResolver()
+        output = resolver.get_well_known_protected_resource_metadata_url()
 
-    def test_get_gateway_url_falls_back_to_public(self) -> None:
-        with patch.dict(
-            os.environ, {"DATAROBOT_PUBLIC_API_ENDPOINT": "https://aaa/bbb"}, clear=True
-        ):
-            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
+        mock_get_deployment_segment_url.assert_called_once_with(resolver.deployment_id)
+        assert output == (
+            f"{expected_gateway_url}/{expected_deployment_segment_url}"
+            "/.well-known/oauth-protected-resource"
+        )
 
-    def test_get_gateway_url_none_when_nothing_configured(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            assert DeploymentEndpointResolver.get_gateway_url() is None
+    def test_get_segment_url_of_mlops_deployment(
+        self,
+        mock_get_gateway_type: Mock,
+    ) -> None:
+        mock_gateway_type = mock_get_gateway_type.return_value
+
+        resolver = DeploymentEndpointResolver()
+        resolver.deployment_type = MCPDeploymentType.MLOPS
+
+        mock_deployment_id = Mock()
+        output = resolver.get_deployment_segment_url(mock_deployment_id)
+        mock_gateway_type.get_mlops_deployment_url_segment.assert_called_once_with(
+            mock_deployment_id
+        )
+        assert output == mock_gateway_type.get_mlops_deployment_url_segment.return_value
+
+    def test_get_segment_url_of_workload_deployment(
+        self,
+        mock_get_gateway_type: Mock,
+    ) -> None:
+        mock_gateway_type = mock_get_gateway_type.return_value
+
+        resolver = DeploymentEndpointResolver()
+        resolver.deployment_type = MCPDeploymentType.WORKLOAD
+
+        mock_deployment_id = Mock()
+        output = resolver.get_deployment_segment_url(mock_deployment_id)
+        mock_gateway_type.get_workload_deployment_url_segment.assert_called_once_with(
+            mock_deployment_id
+        )
+        assert output == mock_gateway_type.get_workload_deployment_url_segment.return_value
+
+    def test_get_deployment_type_return_mlops_type(self) -> None:
+        with patch.dict(os.environ, {"MLOPS": "adfsa"}, clear=True):
+            assert DeploymentEndpointResolver.get_deployment_type() == MCPDeploymentType.MLOPS
+
+    def test_get_deployment_type_return_workload_type(self) -> None:
+        with patch.dict(os.environ, {"WORKLOAD_ID": "adfsa"}, clear=True):
+            assert DeploymentEndpointResolver.get_deployment_type() == MCPDeploymentType.WORKLOAD
 
     def test_get_deployment_id_prefers_workload_over_mlops(self) -> None:
         env = {"WORKLOAD_ID": "wl1", "MLOPS_DEPLOYMENT_ID": "dep1"}
@@ -232,145 +337,30 @@ class TestDeploymentEndpointResolver:
         with patch.dict(os.environ, {}, clear=True):
             assert DeploymentEndpointResolver.get_deployment_id() is None
 
-    def test_get_non_public_api_based_gateway_url(self) -> None:
-        with patch.dict(os.environ, {"DR_WORKLOAD_EXTERNAL_URL_HOST": "host"}, clear=True):
-            assert DeploymentEndpointResolver.get_non_public_api_based_gateway_url() == "host"
+    def test_get_gateway_url_prefers_non_public_api_based_gateway(self) -> None:
+        env = {
+            "DR_WORKLOAD_EXTERNAL_URL_HOST": "https://aaa/bbb",
+            "DATAROBOT_PUBLIC_API_ENDPOINT": "afdafds",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
 
-    def test_get_public_api_based_gateway_url(
-        self, mock_get_datarobot_public_api_endpoint: Mock
-    ) -> None:
-        output = DeploymentEndpointResolver.get_public_api_based_gateway_url()
+    def test_get_gateway_url_falls_back_to_non_public_api_based_gateway(self) -> None:
+        with patch.dict(
+            os.environ, {"DATAROBOT_PUBLIC_API_ENDPOINT": "https://aaa/bbb"}, clear=True
+        ):
+            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
 
-        mock_get_datarobot_public_api_endpoint.assert_called_once_with()
-        assert output == mock_get_datarobot_public_api_endpoint.return_value
+    def test_get_gateway_url_none_when_nothing_configured(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            assert DeploymentEndpointResolver.get_gateway_url() is None
 
     @pytest.mark.parametrize(
-        "gateway_url, output",
-        [("dsafa", True), (None, False)],
+        "url_host_env_var",
+        ["https://aaa/bbb", "https://aaa/bbb/", "aaa/bbb"],
         ids=str,
     )
-    def test_is_deployed_behind_non_public_api_based_gateway(
-        self,
-        gateway_url: str | None,
-        output: bool,
-        mock_get_non_public_api_based_gateway_url: Mock,
-    ) -> None:
-        mock_get_non_public_api_based_gateway_url.return_value = gateway_url
-
-        assert (
-            DeploymentEndpointResolver.is_deployed_behind_non_public_api_based_gateway() is output
-        )
-
-    def test_build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
-        self, mock_mcp_url_segment: str
-    ) -> None:
-        resolver = DeploymentEndpointResolver(mock_mcp_url_segment)
-        gateway_url = "http://localhost/foo/bar"
-        deployment_id = "1234"
-        output = resolver.build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
-            gateway_url, deployment_id
-        )
-
-        assert (
-            output
-            == f"{gateway_url}/deployments/{deployment_id}/directAccess/{mock_mcp_url_segment}"
-        )
-
-    def test_build_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
-        self, mock_mcp_url_segment: str
-    ) -> None:
-        resolver = DeploymentEndpointResolver(mock_mcp_url_segment)
-        gateway_url = "http://localhost/foo/bar"
-        deployment_id = "1234"
-        output = resolver.build_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
-            gateway_url, deployment_id
-        )
-
-        assert output == f"{gateway_url}/endpoints/workloads/{deployment_id}/{mock_mcp_url_segment}"
-
-    def test_build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
-        self, mock_mcp_url_segment: str
-    ) -> None:
-        resolver = DeploymentEndpointResolver(mock_mcp_url_segment)
-        gateway_url = "http://localhost/foo/bar"
-        workload_deployment_segment = "workload/1234"
-        output = resolver.build_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
-            gateway_url,
-            workload_deployment_segment,
-        )
-
-        assert output == f"{gateway_url}/{workload_deployment_segment}/{mock_mcp_url_segment}"
-
-    @pytest.mark.usefixtures("mock_get_deployment_id")
-    def test_return_url_of_mcp_workload_deployment_behind_public_api_based_gateway(
-        self,
-        mock_is_workload_deployment_behind_non_public_api_gateway: Mock,
-        mock_build_url_of_mcp_workload_behind_non_public_api_based_gateway: Mock,
-        mock_get_gateway_url: Mock,
-    ) -> None:
-        expected_mcp_workload_deployment_segment = "dsafda"
-        with patch.dict(
-            os.environ,
-            {"DR_WORKLOAD_EXTERNAL_URL_PREFIX": expected_mcp_workload_deployment_segment},
-            clear=True,
-        ):
-            mock_is_workload_deployment_behind_non_public_api_gateway.return_value = True
-
-            resolver = DeploymentEndpointResolver(Mock())
-            output = resolver.get_deployment_url()
-
-            mock_get_gateway_url.assert_called_once_with()
-            mock_build_url_of_mcp_workload_behind_non_public_api_based_gateway.assert_called_once_with(
-                mock_get_gateway_url.return_value,
-                expected_mcp_workload_deployment_segment,
-            )
-            assert (
-                output
-                == mock_build_url_of_mcp_workload_behind_non_public_api_based_gateway.return_value
-            )
-
-    def test_return_url_of_mcp_workload_deployment_behind_non_public_api_based_gateway(
-        self,
-        mock_get_gateway_url: Mock,
-        mock_is_workload_deployment: Mock,
-        mock_get_deployment_id: Mock,
-        mock_is_workload_deployment_behind_non_public_api_gateway: Mock,
-        mock_build_url_of_mcp_workload_behind_public_api_based_gateway: Mock,
-    ) -> None:
-        mock_is_workload_deployment_behind_non_public_api_gateway.return_value = False
-
-        resolver = DeploymentEndpointResolver(Mock())
-        output = resolver.get_deployment_url()
-
-        mock_get_gateway_url.assert_called_once_with()
-        mock_get_deployment_id.assert_called_once_with()
-        mock_build_url_of_mcp_workload_behind_public_api_based_gateway.assert_called_once_with(
-            mock_get_gateway_url.return_value,
-            mock_get_deployment_id.return_value,
-        )
-        assert output == mock_build_url_of_mcp_workload_behind_public_api_based_gateway.return_value
-
-    def test_return_url_of_mcp_mlops_deployment_behind_public_api_based_gateway(
-        self,
-        mock_get_gateway_url: Mock,
-        mock_is_workload_deployment: Mock,
-        mock_get_deployment_id: Mock,
-        mock_is_workload_deployment_behind_non_public_api_gateway: Mock,
-        mock_build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway: Mock,
-    ) -> None:
-        mock_is_workload_deployment_behind_non_public_api_gateway.return_value = False
-        mock_is_workload_deployment.return_value = False
-
-        resolver = DeploymentEndpointResolver(Mock())
-        output = resolver.get_deployment_url()
-
-        mock_get_gateway_url.assert_called_once_with()
-        mock_get_deployment_id.assert_called_once_with()
-        mock_build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway.assert_called_once_with(
-            mock_get_gateway_url.return_value,
-            mock_get_deployment_id.return_value,
-        )
-        assert (
-            output
-            == mock_build_url_of_mcp_mlops_deployment_behind_public_api_based_gateway.return_value
-        )
+    def get_get_gateway_url(self, url_host_env_var: str) -> None:
+        env = {"DR_WORKLOAD_EXTERNAL_URL_HOST": url_host_env_var}
+        with patch.dict(os.environ, env, clear=True):
+            assert DeploymentEndpointResolver.get_gateway_url() == "https://aaa/bbb"
