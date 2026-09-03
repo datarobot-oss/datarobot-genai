@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.29.24"
+version = "0.29.25"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -96,7 +96,7 @@ constraint-dependencies = [
     "pyarrow>=23.0.1",
     "pyasn1>=0.6.4",
     "pygments>=2.20.0",
-    "pypdf>=6.15.0",
+    "pypdf>=6.16.1",
     "pytest>=9.0.3",
     "python-multipart>=0.0.31",
     "requests>=2.33.0",
