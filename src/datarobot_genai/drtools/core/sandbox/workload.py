@@ -15,11 +15,12 @@
 """DataRobot workload-api backed sandbox implementation.
 
 Submits a single-container workload to the DataRobot workload-api console
-endpoints, polls the workload until terminal, fetches container output
-(stdout + stderr, split by OTEL severity) from the OTEL log endpoint, and
-parses the ``__DR_SANDBOX_RESULT__:`` marker
+endpoints, watches container output (stdout + stderr, split by OTEL severity)
+from the OTEL log endpoint *concurrently* with workload status, and returns as
+soon as the ``__DR_SANDBOX_RESULT__:`` marker
 (see :mod:`datarobot_genai.drtools.core.sandbox.protocol`) emitted by the
-container runner shipped in the sandbox image (datarobot-user-models#2137).
+container runner shipped in the sandbox image (datarobot-user-models#2137) is
+available.
 
 Endpoint surface
 ----------------
@@ -36,14 +37,66 @@ datarobot-user-models#2137) is picked up by the OTEL collector and surfaces
 here. ``statusDetails.logTail`` from the terminal
 workload response is used as a secondary source in case the OTEL pipeline
 hasn't flushed by the time the workload reaches a terminal state.
+
+Why the marker gates the return, and not the status (MODEL-24537)
+----------------------------------------------------------------
+The runner is a ONE-SHOT job, but the workload-api only schedules long-running
+"service" (or "nim") artifacts. So the container runs the snippet in well under
+a second, prints its marker, and exits 0 — and Kubernetes treats an exit-0
+service container as a crash and restarts it
+(``Running (recovered from termination) last_reason=Completed
+last_exit_code=0``). It runs again, emits the marker again, and only after
+repeated restarts does k8s declare ``CrashLoopBackOff`` (``back-off 10s``, then
+``back-off 20s``) and the workload-api finally report ``errored``.
+
+Gating the return on a terminal status therefore meant waiting for Kubernetes
+to give up on a container that had already done its job. Measured against
+staging, the marker was available at a mean of 18.3s while terminal status
+arrived at 32.8s — 30-54% of every call spent waiting for a decision that could
+not change the answer. So the status poll still runs (its terminal record is
+the only place a ``timeout`` status or ``logTail`` fallback comes from, and it
+is what fails a container that never starts), but it is no longer the gate.
+
+Consequences that had to be handled, and how:
+
+exit code
+    The workload record's ``exitCode`` is the only place a container exit
+    status could come from, and returning early means not having a terminal
+    record. Measured on staging, that record reports ``exitCode: null`` for
+    every sandbox workload — it describes a *service*, not a job — so
+    ``exit_code`` was already always 0 here and a marker-first return loses
+    nothing. That also means the ``exitCode == 124`` timeout check could never
+    have fired on this backend; the runner's ``sandbox exceeded timeout of Ns``
+    stderr line (:func:`has_timeout_marker`) is now the signal that surfaces a
+    user-code timeout, and the exit-code check is kept only for backends /
+    future API versions that do populate it.
+
+null marker ambiguity
+    The runner emits its marker from a ``finally``, so EVERY path that starts
+    produces one — including its own timeout path, which emits
+    ``__DR_SANDBOX_RESULT__:null``. A marker alone is therefore never proof of
+    success. A null payload with no timeout sentinel yet in hand triggers one
+    short confirming re-read (:data:`_NULL_MARKER_RECHECK_S`) before the run is
+    allowed to return successfully.
+
+multiple markers
+    Restarts emit the marker once per container attempt. This is safe because
+    the code and inputs are baked into the workload at create time, so every
+    attempt runs the identical snippet — there is no "previous run with a
+    different result" to pick up. Returning at the FIRST marker observed also
+    strictly narrows the window in which duplicates can accumulate: measured
+    on staging, a terminal-gated run had 2-3 markers to choose between.
 """
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import time
 import uuid
+from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 from urllib.parse import urljoin
 
@@ -55,6 +108,7 @@ from datarobot_genai.drtools.core.sandbox.base import SandboxSecurityContext
 from datarobot_genai.drtools.core.sandbox.base import SandboxTimeout
 from datarobot_genai.drtools.core.sandbox.protocol import SANDBOX_TIMEOUT_EXIT_CODE
 from datarobot_genai.drtools.core.sandbox.protocol import has_result_marker
+from datarobot_genai.drtools.core.sandbox.protocol import has_timeout_marker
 from datarobot_genai.drtools.core.sandbox.protocol import parse_result_marker
 
 logger = logging.getLogger(__name__)
@@ -105,6 +159,26 @@ _LOG_FLUSH_TIMEOUT_S = 30.0
 # exists for.
 _STABLE_OUTPUT_NONEMPTY_QUIET_S = 30.0
 
+# Grace spent re-reading the logs before a NULL result marker is allowed to
+# return successfully on the marker-first path.
+#
+# The runner's timeout path prints "sandbox exceeded timeout of Ns" to stderr
+# and THEN emits `__DR_SANDBOX_RESULT__:null` — same process, that order, so
+# the accumulated log read that carries the marker essentially always carries
+# the sentinel too. "Essentially always" is not "always": a collector batch
+# boundary landing between the two lines would let a timed-out run return as a
+# successful `None`. Since a marker-first return has no terminal record to
+# check an exit code against, spend one short re-read on the exact ambiguous
+# shape (null payload, no sentinel seen, no terminal record) and nothing else.
+_NULL_MARKER_RECHECK_S = 1.0
+
+# Log-poll backoff: first interval and its cap. The logs endpoint is now polled
+# from submit rather than from terminal status, so the cap keeps a long
+# provisioning wait from turning into a request flood.
+_LOG_POLL_INITIAL_DELAY_S = 0.5
+_LOG_POLL_MAX_DELAY_S = 3.0
+
+
 # Provisioning allowance added on top of the caller's ``timeout_s`` when
 # computing the status-poll deadline. ``timeout_s`` bounds USER CODE, and is
 # already enforced inside the container (DR_SANDBOX_TIMEOUT_SECS → SIGALRM →
@@ -125,20 +199,54 @@ _SANDBOX_GROUP_NAME = "default"
 _SANDBOX_CONTAINER_NAME = "sandbox"
 
 
+@dataclass
+class _StatusWatch:
+    """Handoff from the concurrent status poll to the log watcher.
+
+    The status poll no longer gates the return, so it writes what it learns
+    here instead of being awaited for it:
+
+    ``terminal``
+        The terminal workload record, once one exists. Source of the
+        ``timeout`` status, ``statusDetails.logTail``, and ``exitCode``.
+    ``terminal_at``
+        When it arrived — the marker wait's flush budget is measured from this,
+        not from submit.
+    ``error``
+        Anything :meth:`DataRobotWorkloadSandbox._poll` raised. Deliberately
+        NOT fatal on its own: a result marker outranks a status-fetch failure
+        (the marker proves the snippet ran), so this is only re-raised when no
+        marker was found either.
+    """
+
+    terminal: dict[str, Any] | None = None
+    terminal_at: float | None = None
+    error: BaseException | None = field(default=None, repr=False)
+
+    @property
+    def status(self) -> str:
+        return str((self.terminal or {}).get("status", "")).lower()
+
+
 class DataRobotWorkloadSandbox:
     """Sandbox implementation backed by the DataRobot workload-api.
 
     Submits a single-container workload running the configured ``image``
     with the user code and inputs base64-encoded in env vars
-    (``DR_SANDBOX_CODE_B64`` / ``DR_SANDBOX_INPUTS_B64``). Polls workload
-    status with exponential backoff (capped at 2s) until terminal, fetches
-    container output from the OTEL log endpoint (splitting stdout from
-    stderr by log severity), and parses the final
-    ``__DR_SANDBOX_RESULT__:`` line on stdout for the return value.
+    (``DR_SANDBOX_CODE_B64`` / ``DR_SANDBOX_INPUTS_B64``). Watches the OTEL log
+    endpoint (splitting stdout from stderr by log severity) CONCURRENTLY with
+    workload status, and returns as soon as the ``__DR_SANDBOX_RESULT__:`` line
+    is available on stdout — not when the workload reaches a terminal status,
+    which on this backend means waiting out a Kubernetes CrashLoopBackOff for a
+    one-shot container that already finished (MODEL-24537; see the module
+    docstring). Status is still polled with exponential backoff (capped at 2s):
+    it is what fails a container that never starts, and the only source of a
+    terminal ``timeout`` status or the ``logTail`` fallback.
 
     The workload is always deleted in a ``finally`` block (success,
     failure, timeout, cancellation), so callers don't leave orphan
-    workloads behind.
+    workloads behind — and the result marker is always read before the
+    delete fires.
 
     Parameters
     ----------
@@ -382,65 +490,119 @@ class DataRobotWorkloadSandbox:
                 parts.append(str(entry.get("message", "")))
         return "\n".join(p for p in parts if p)
 
-    async def _fetch_logs(
+    async def _read_logs_once(
         self,
         client: httpx.AsyncClient,
         workload_id: str,
-        terminal: dict[str, Any],
-        marker_deadline: float | None = None,
     ) -> tuple[str, str]:
-        """Return ``(stdout, stderr)``, preferring OTEL logs over ``logTail``.
+        """One read of the OTEL logs endpoint as ``(stdout, stderr)``.
 
-        The OTEL endpoint returns the paginated shape
-        ``{"count", "next", "previous", "data": [{"message", "level", ...}, ...]}``.
-        Entries are partitioned into stdout/stderr by severity (see
-        :meth:`_partition_log_entries`). If the OTEL pipeline hasn't flushed
-        yet (empty data), we fall back to the ``statusDetails.logTail`` array
-        from the terminal workload response (treated as stdout, since logTail
-        carries no per-line severity).
+        The endpoint returns the paginated shape
+        ``{"count", "next", "previous", "data": [{"message", "level", ...}, ...]}``
+        and always carries the run's ACCUMULATED records, so a single read is a
+        full snapshot rather than an increment. Entries are partitioned into
+        stdout/stderr by severity (see :meth:`_partition_log_entries`).
+
+        Never raises: a transport error or a 4xx/5xx yields ``("", "")`` and the
+        caller retries. The logs endpoint is the source of truth for the result,
+        so one bad read must not fail the run.
         """
-        # logTail (from the terminal workload response) is available immediately
-        # and can carry the marker before — or instead of — the OTEL flush.
-        tail = self._extract_log_tail(terminal)
+        try:
+            resp = await client.get(self._logs_url(workload_id), headers=self._headers())
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("workload-api logs fetch raised; will retry / fall back to logTail")
+            return "", ""
+        if resp.status_code >= 400:
+            logger.warning(
+                "workload-api logs fetch failed: %s %s",
+                resp.status_code,
+                resp.text,
+            )
+            return "", ""
+        try:
+            data = resp.json().get("data") or []
+            return self._partition_log_entries(data)
+        except Exception:  # pragma: no cover — defensive
+            # A 200 that is not the documented JSON shape must not fail the run:
+            # this endpoint is the source of truth for the result, so a bad read
+            # is retried like a transport error. Kept inside the same contract
+            # as the fetch above rather than escaping to _watch_logs.
+            logger.exception(
+                "workload-api logs response was not the expected JSON shape; "
+                "will retry / fall back to logTail"
+            )
+            return "", ""
+
+    @staticmethod
+    def _marker_deadline(deadline: float, watch: _StatusWatch) -> float:
+        """How long to keep waiting for the result marker, given what status knows.
+
+        Reproduces the budgets the terminal-gated implementation used, with the
+        terminal record now arriving mid-wait instead of before it:
+
+        - **Status not terminal yet** → the overall run ``deadline``. The
+          container may not even have started (image pull), which is exactly
+          what the provisioning allowance exists for.
+        - **Terminal FAILURE status** → ``max(deadline, terminal + flush)``. A
+          one-shot's normal exit is flagged ``errored``, and a transient
+          ``ErrImagePull`` errors the workload BEFORE the runner starts, with
+          the marker arriving a minute later (#638).
+        - **Any other terminal status** → ``terminal + flush``. The run is over;
+          all that is left is collector latency.
+        """
+        if watch.terminal is None or watch.terminal_at is None:
+            return deadline
+        flush_deadline = watch.terminal_at + _LOG_FLUSH_TIMEOUT_S
+        if watch.status in _TERMINAL_FAILURE:
+            return max(deadline, flush_deadline)
+        return flush_deadline
+
+    async def _watch_logs(
+        self,
+        client: httpx.AsyncClient,
+        workload_id: str,
+        deadline: float,
+        watch: _StatusWatch,
+    ) -> tuple[str, str]:
+        """Poll the logs endpoint until the result marker is available.
+
+        Returns ``(stdout, stderr)``, preferring whichever source carries the
+        marker: OTEL stdout first, then ``statusDetails.logTail`` off the
+        terminal record once ``watch`` has one (logTail carries no per-line
+        severity, so it is treated as stdout).
+
+        Runs concurrently with the status poll, so it starts at submit rather
+        than at terminal status — that is the marker-first latency win. Giving
+        up therefore needs *both* halves of the old terminal-gated rule:
+        non-empty-but-still output ends the wait after
+        :data:`_STABLE_OUTPUT_NONEMPTY_QUIET_S` **only once ``watch`` has a
+        terminal record**, because before that, still output means the container
+        is running quietly rather than finished without a marker. Every other
+        case (empty output, or still output pre-terminal) polls to
+        :meth:`_marker_deadline`.
+        """
         stdout = ""
         stderr = ""
+        tail = ""
         prev_stdout: str | None = None
         stdout_settled_at = time.monotonic()
-        # Poll until the marker appears (in OTEL or logTail) or the budget
-        # elapses: a one-shot runner exits, so the workload can reach a terminal
-        # status before the OTEL collector flushes the container's stdout.
-        # ``marker_deadline`` (from run(), for failure-status workloads) can
-        # extend this well beyond the flush budget: after a transient
-        # ErrImagePull the container starts a minute+ after terminal status.
-        deadline = (
-            marker_deadline
-            if marker_deadline is not None
-            else time.monotonic() + _LOG_FLUSH_TIMEOUT_S
-        )
-        delay = 0.5
+        delay = _LOG_POLL_INITIAL_DELAY_S
         while True:
-            try:
-                resp = await client.get(
-                    self._logs_url(workload_id),
-                    headers=self._headers(),
-                )
-                if resp.status_code < 400:
-                    data = resp.json().get("data") or []
-                    stdout, stderr = self._partition_log_entries(data)
-                else:
-                    logger.warning(
-                        "workload-api logs fetch failed: %s %s",
-                        resp.status_code,
-                        resp.text,
-                    )
-            except Exception:  # pragma: no cover — defensive
-                logger.exception(
-                    "workload-api logs fetch raised; will retry / fall back to logTail"
-                )
+            stdout, stderr = await self._read_logs_once(client, workload_id)
+            # logTail only exists once the status poll has a terminal record; it
+            # can carry the marker before — or instead of — the OTEL flush.
+            if watch.terminal is not None:
+                tail = self._extract_log_tail(watch.terminal)
 
             if has_result_marker(stdout) or has_result_marker(tail):
                 break
-            if time.monotonic() > deadline:
+            # A terminal `timeout` status raises SandboxTimeout in run()
+            # regardless of what the logs say, so there is nothing left to wait
+            # for. Break with the records already in hand rather than burning
+            # the flush budget on an answer that cannot change.
+            if watch.status in _TERMINAL_TIMEOUT:
+                break
+            if time.monotonic() > self._marker_deadline(deadline, watch):
                 break
             # No marker yet. Decide whether one is still coming.
             #
@@ -457,13 +619,30 @@ class DataRobotWorkloadSandbox:
             if stdout != prev_stdout:
                 prev_stdout = stdout
                 stdout_settled_at = now
-            elif stdout and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S:
-                # Non-empty and long since still: the marker is not coming.
-                # Empty output falls through and keeps polling to the deadline
-                # (see the constant above) — it may be a pull still retrying.
+            elif (
+                stdout
+                and watch.terminal is not None
+                and now - stdout_settled_at >= _STABLE_OUTPUT_NONEMPTY_QUIET_S
+            ):
+                # Non-empty, still, AND the workload has reached a terminal
+                # status: the container can no longer produce output, so the
+                # marker is not coming.
+                #
+                # The terminal condition is load-bearing now that this watcher
+                # starts at submit instead of after the status poll. The runner
+                # prints a startup line ("sandbox process limit ...") BEFORE
+                # user code, so stdout goes non-empty immediately and then sits
+                # unchanged for as long as the snippet runs quietly. Without the
+                # terminal gate, a snippet that prints nothing for
+                # _STABLE_OUTPUT_NONEMPTY_QUIET_S would be abandoned while its
+                # container was still working, and `timeout_s` would stop
+                # bounding user code the moment that first line appeared.
+                # Before terminal status, still output means "running", not
+                # "finished without a marker"; the wait is bounded by
+                # _marker_deadline instead.
                 break
             await asyncio.sleep(delay)
-            delay = min(delay * 2, 3.0)
+            delay = min(delay * 2, _LOG_POLL_MAX_DELAY_S)
 
         # Return whichever source carries the marker so the caller's
         # parse_result_marker finds it; otherwise prefer non-empty OTEL, then
@@ -475,6 +654,107 @@ class DataRobotWorkloadSandbox:
         if stdout.strip() or stderr.strip():
             return stdout, stderr
         return tail, stderr
+
+    async def _watch_status(
+        self,
+        client: httpx.AsyncClient,
+        workload_id: str,
+        deadline: float,
+        watch: _StatusWatch,
+    ) -> None:
+        """Run :meth:`_poll` and record its outcome on ``watch``.
+
+        Swallows the poll's exceptions rather than propagating them, because
+        status is no longer the gate: a result marker outranks a status-fetch
+        failure or a poll deadline. :meth:`run` re-raises ``watch.error`` only
+        when no marker was found either, so a genuine never-starts workload
+        still fails with the poll's own error.
+        """
+        try:
+            terminal = await self._poll(client, workload_id, deadline)
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:  # noqa: BLE001 — recorded, re-raised by run()
+            watch.error = exc
+            return
+        watch.terminal = terminal
+        watch.terminal_at = time.monotonic()
+
+    async def _await_result(
+        self,
+        client: httpx.AsyncClient,
+        workload_id: str,
+        deadline: float,
+    ) -> tuple[str, str, _StatusWatch]:
+        """Watch container logs and workload status CONCURRENTLY (MODEL-24537).
+
+        Returns ``(stdout, stderr, watch)`` as soon as the result marker is
+        available, without waiting for Kubernetes to give up on a container that
+        already ran (see the module docstring). ``watch`` carries whatever the
+        status poll learned — possibly nothing, on a marker-first return.
+
+        The status task is always cancelled and drained on the way out, so
+        neither a marker-first return, an exception, nor caller cancellation
+        leaves it pending.
+        """
+        watch = _StatusWatch()
+        status_task = asyncio.create_task(
+            self._watch_status(client, workload_id, deadline, watch),
+            name=f"dr-sandbox-status-{workload_id}",
+        )
+        try:
+            stdout, stderr = await self._watch_logs(client, workload_id, deadline, watch)
+            stdout, stderr = await self._confirm_not_a_timeout(
+                client, workload_id, stdout, stderr, watch
+            )
+        finally:
+            status_task.cancel()
+            # Drain it so nothing is left pending. _watch_status swallows every
+            # non-cancellation exception, so the only thing awaiting can raise
+            # here is the CancelledError we just requested — and if an OUTER
+            # cancellation interrupts this await, the task is already cancelled
+            # and finishes on its own without an unretrieved exception.
+            with contextlib.suppress(asyncio.CancelledError):
+                await status_task
+        return stdout, stderr, watch
+
+    async def _confirm_not_a_timeout(
+        self,
+        client: httpx.AsyncClient,
+        workload_id: str,
+        stdout: str,
+        stderr: str,
+        watch: _StatusWatch,
+    ) -> tuple[str, str]:
+        """Re-read the logs once when a null marker could be hiding a timeout.
+
+        The runner's timeout path emits ``__DR_SANDBOX_RESULT__:null`` — the
+        same bytes as a snippet that returned nothing — and identifies itself
+        only by the stderr line it prints immediately beforehand
+        (:func:`has_timeout_marker`). On a marker-first return there is no
+        terminal record to check ``exitCode`` against, so that line is the whole
+        signal, and it must not be missed to a collector batch boundary.
+
+        Applies to the ambiguous shape ONLY: marker present, payload null, no
+        sentinel seen yet, no terminal record. Everything else returns
+        untouched, so the cost is bounded to :data:`_NULL_MARKER_RECHECK_S` on
+        null-returning snippets and zero elsewhere.
+        """
+        if watch.terminal is not None:
+            return stdout, stderr  # terminal record is authoritative
+        if not has_result_marker(stdout):
+            return stdout, stderr
+        if has_timeout_marker(f"{stdout}\n{stderr}"):
+            return stdout, stderr  # already decided — run() will raise
+        if parse_result_marker(stdout)[1] is not None:
+            return stdout, stderr  # a real return value is never the timeout path
+        await asyncio.sleep(_NULL_MARKER_RECHECK_S)
+        rechecked_stdout, rechecked_stderr = await self._read_logs_once(client, workload_id)
+        # Only trust the re-read if it still has the marker; a transient bad
+        # read returns ("", "") and must not erase what we already had.
+        if has_result_marker(rechecked_stdout):
+            return rechecked_stdout, rechecked_stderr
+        return stdout, stderr
 
     async def _delete(self, workload_id: str) -> None:
         """Best-effort DELETE; swallow all errors and never raise."""
@@ -524,21 +804,10 @@ class DataRobotWorkloadSandbox:
         workload_id: str | None = None
         try:
             workload_id = await self._submit(client, payload)
-            terminal = await self._poll(client, workload_id, deadline)
-            status = str(terminal.get("status", "")).lower()
-            # A failure status is often not the end of the story: the one-shot
-            # runner's normal exit is flagged errored/stopped, and a transient
-            # infra event (ErrImagePull that k8s then retries) marks the
-            # workload errored BEFORE the container ever starts — with the
-            # result marker arriving in the logs a minute later. In both cases
-            # the marker is the source of truth, so give the marker wait the
-            # remaining overall budget instead of only the flush budget.
-            marker_deadline = time.monotonic() + _LOG_FLUSH_TIMEOUT_S
-            if status in _TERMINAL_FAILURE:
-                marker_deadline = max(deadline, marker_deadline)
-            stdout_raw, stderr = await self._fetch_logs(
-                client, workload_id, terminal, marker_deadline=marker_deadline
-            )
+            # Logs and status are watched CONCURRENTLY and this returns at the
+            # result marker, not at terminal status (MODEL-24537 — see the module
+            # docstring for why terminal status is 15-20s of pure waiting).
+            stdout_raw, stderr, watch = await self._await_result(client, workload_id, deadline)
         except asyncio.CancelledError:
             # Make sure cleanup still fires even when the caller cancels
             # our task. The finally below will run; we just need to
@@ -552,7 +821,13 @@ class DataRobotWorkloadSandbox:
 
         stdout, return_value = parse_result_marker(stdout_raw)
         duration = time.monotonic() - start
-        exit_code = int(terminal.get("exitCode", 0) or 0)
+        status = watch.status
+        # ``exitCode`` only exists on a terminal record, which a marker-first
+        # return does not have — and which, measured on staging, reports null
+        # for every sandbox workload anyway (the record describes a long-running
+        # *service*, not a job). So this was already always 0 here; see the
+        # module docstring.
+        exit_code = int((watch.terminal or {}).get("exitCode", 0) or 0)
         # The runner is a one-shot job, but the workload-api only supports
         # long-running "service" (or "nim") artifacts — so when the runner
         # finishes and its process exits, the workload-api marks the workload
@@ -563,23 +838,51 @@ class DataRobotWorkloadSandbox:
         # when no marker was produced (genuine startup/crash before any output).
         marker_found = has_result_marker(stdout_raw)
 
+        if not marker_found and watch.terminal is None:
+            # Nothing to go on from either source. The status poll's own error —
+            # its deadline, or a status-fetch failure — is the real one. (When a
+            # marker WAS found we deliberately ignore that error: the marker
+            # proves the snippet ran, which outranks a status-endpoint problem.)
+            raise watch.error or SandboxTimeout(
+                f"sandbox exceeded timeout waiting for a result from workload {workload_id}"
+            )
+
         if status in _TERMINAL_TIMEOUT:
-            raise SandboxTimeout(f"workload-api workload {workload_id} timed out: {terminal!r}")
-        # The runner exits SANDBOX_TIMEOUT_EXIT_CODE (124) when its
-        # in-process SIGALRM cap fires before the caller / workload-api
-        # cap. Surface as SandboxTimeout so callers see one unified
-        # timeout path regardless of which layer tripped first. See
-        # datarobot/datarobot-user-models#2137 for the runner-side cap.
-        if exit_code == SANDBOX_TIMEOUT_EXIT_CODE:
+            raise SandboxTimeout(
+                f"workload-api workload {workload_id} timed out: {watch.terminal!r}",
+                exit_code=exit_code,
+                stderr=stderr,
+            )
+        # The runner self-kills on its in-process SIGALRM cap. Surface that as
+        # SandboxTimeout so callers see one unified timeout path regardless of
+        # which layer tripped first (datarobot/datarobot-user-models#2137).
+        #
+        # Two signals, because neither covers every case:
+        #   * exit 124 on the terminal record — the original check. Kept for
+        #     backends / API versions that populate exitCode, but measured on
+        #     staging the sandbox workload record never does, so this cannot be
+        #     relied on and never fires there.
+        #   * the runner's own "sandbox exceeded timeout of Ns" line, which it
+        #     prints before emitting its (null) result marker. This is in-band,
+        #     so it works on a marker-first return where there is no terminal
+        #     record at all. Checked across stdout AND stderr: measured on
+        #     staging, the OTEL endpoint tags the runner's own writes to fd 2 as
+        #     INFO (only the platform's own lrs-* records come through at ERROR
+        #     severity), so the line arrives on the stdout side.
+        if exit_code == SANDBOX_TIMEOUT_EXIT_CODE or has_timeout_marker(f"{stdout_raw}\n{stderr}"):
             raise SandboxTimeout(
                 f"workload-api workload {workload_id} runner exceeded its "
                 f"in-process timeout (exit {SANDBOX_TIMEOUT_EXIT_CODE}); "
-                f"caller timeout_s={timeout_s}"
+                f"caller timeout_s={timeout_s}",
+                exit_code=SANDBOX_TIMEOUT_EXIT_CODE,
+                stderr=stderr,
             )
         if status in _TERMINAL_FAILURE and not marker_found:
             raise SandboxError(
                 f"workload-api workload {workload_id} failed: status={status} "
-                "(no result marker in logs — container did not run to completion)"
+                "(no result marker in logs — container did not run to completion)",
+                exit_code=exit_code,
+                stderr=stderr,
             )
 
         return SandboxResult(

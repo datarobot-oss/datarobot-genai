@@ -76,13 +76,26 @@ def _logs_response(message: str) -> httpx.Response:
     )
 
 
+# Captured before any test monkeypatches ``asyncio.sleep`` so ``_noop_sleep``
+# can still yield to the event loop without recursing into itself.
+_REAL_SLEEP = asyncio.sleep
+
+
 async def _noop_sleep(_seconds: float) -> None:
     """Collapse the poll backoff so flush-timing tests run instantly.
 
     The behaviour under test is *how many* polls are required before giving up,
     not the wall-clock between them.
+
+    This still yields to the event loop (``sleep(0)``) rather than returning
+    outright. ``run()`` drives the status poller and the log watcher as two
+    concurrent tasks, so a sleep that never suspends lets the log watcher spin
+    and *starve the status poller* -- ``watch.terminal`` would stay ``None`` for
+    the whole test even though the mocked status endpoint reports a terminal
+    state. That is a test-harness artifact with no production analogue, since a
+    real ``asyncio.sleep(delay)`` always suspends.
     """
-    return None
+    await _REAL_SLEEP(0)
 
 
 def _logs_response_entries(entries: list[dict[str, object]]) -> httpx.Response:
@@ -812,3 +825,537 @@ async def test_stderr_only_records_do_not_end_the_wait(
         result = await _sandbox(client).run("code", timeout_s=5)
 
     assert result.return_value == 7
+
+
+# --------------------------------------------------------------------------- #
+# MODEL-24537: return at the result marker, not at terminal status
+#
+# Most tests below mock the status endpoint as permanently ``running`` /
+# ``provisioning``. That is deliberate: a terminal-gated implementation would
+# poll such a workload to its deadline and raise SandboxTimeout, so these tests
+# only pass if the return is genuinely gated on the marker. On staging the wait
+# they remove was 15-20s of a ~33s call.
+# --------------------------------------------------------------------------- #
+
+
+@respx.mock
+async def test_marker_returns_without_waiting_for_terminal_status() -> None:
+    """The headline behaviour: a marker in the logs ends the call.
+
+    Status never leaves ``running``, so a terminal-gated implementation would
+    poll until its deadline and raise SandboxTimeout. The marker is available
+    immediately, so this must return promptly with the value.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    status_route = respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    # One empty read first, so the status poll gets requests in alongside us and
+    # the concurrency is observable rather than short-circuited by an instant
+    # marker.
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(""),
+            _logs_response("hi\n__DR_SANDBOX_RESULT__:42"),
+        ]
+    )
+    delete_route = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    started = time.monotonic()
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client, provisioning_timeout_s=300.0).run(
+            "_return = 42", timeout_s=30.0
+        )
+    elapsed = time.monotonic() - started
+
+    assert result.return_value == 42
+    assert result.stdout == "hi"
+    # Nowhere near the 330s poll deadline a terminal-gated wait would have used.
+    assert elapsed < 5.0
+    # The status poll must NOT have disappeared — it ran concurrently the whole
+    # time (repeatedly, on its own faster backoff), it just stopped being the gate.
+    assert status_route.call_count > 1
+    # Hazard 3: teardown still happens, and the marker was read before it.
+    assert delete_route.called
+
+
+@respx.mock
+async def test_marker_first_return_reports_exit_code_zero() -> None:
+    """Hazard 1: ``exit_code`` on a marker-first return.
+
+    There is no terminal record to read ``exitCode`` from, and measured on
+    staging that record reports ``exitCode: null`` for every sandbox workload
+    anyway — so 0 is both what a caller already got and the only honest answer.
+    Locked in so a future change has to think about it.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response("__DR_SANDBOX_RESULT__:1"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("_return = 1")
+
+    assert result.exit_code == 0
+
+
+@respx.mock
+async def test_runner_timeout_detected_in_band_without_terminal_record() -> None:
+    """Hazard 1: a user-code timeout still surfaces as SandboxTimeout.
+
+    The runner exits 124 AND emits ``__DR_SANDBOX_RESULT__:null``, so the
+    marker alone never means success. Without a terminal record the exit code
+    is unavailable, so detection rides on the ``sandbox exceeded timeout of Ns``
+    line the runner prints first.
+
+    Captured from staging: that line arrives on the STDOUT side, because the
+    OTEL endpoint tags the runner's own writes to fd 2 as INFO — only the
+    platform's ``lrs-*`` records come through at ERROR severity.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(
+        return_value=_logs_response_entries(
+            [
+                {"level": "INFO", "message": "sandbox process limit (RLIMIT_NPROC) set to 4096"},
+                {"level": "INFO", "message": "sandbox exceeded timeout of 5s"},
+                {"level": "INFO", "message": "__DR_SANDBOX_RESULT__:null"},
+            ]
+        )
+    )
+    delete_route = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxTimeout, match="in-process timeout") as excinfo:
+            await _sandbox(client).run("import time; time.sleep(30)", timeout_s=5.0)
+
+    assert excinfo.value.exit_code == 124
+    assert delete_route.called
+
+
+@respx.mock
+async def test_runner_timeout_detected_when_sentinel_lands_on_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same detection must work if the collector ever tags fd 2 as ERROR.
+
+    Staging routes the sentinel to stdout today, but that is a collector
+    mapping, not a contract — so the check spans stdout AND stderr.
+    """
+    monkeypatch.setattr(workload_mod, "_NULL_MARKER_RECHECK_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(
+        return_value=_logs_response_entries(
+            [
+                {"level": "ERROR", "message": "sandbox exceeded timeout of 5s"},
+                {"level": "INFO", "message": "__DR_SANDBOX_RESULT__:null"},
+            ]
+        )
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxTimeout, match="in-process timeout"):
+            await _sandbox(client).run("import time; time.sleep(30)", timeout_s=5.0)
+
+
+@respx.mock
+async def test_null_marker_rechecks_logs_before_returning_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A null marker gets one confirming re-read, which can still find a timeout.
+
+    Guards the batch-boundary case: the runner prints the sentinel and THEN the
+    null marker, so a collector batch that splits the two would otherwise let a
+    timed-out run return as a successful ``None``.
+    """
+    monkeypatch.setattr(workload_mod, "_NULL_MARKER_RECHECK_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    logs_route = respx.get(LOGS_URL).mock(
+        side_effect=[
+            # Marker only — the sentinel has not been flushed yet.
+            _logs_response("__DR_SANDBOX_RESULT__:null"),
+            # The confirming re-read catches up with it.
+            _logs_response("sandbox exceeded timeout of 5s\n__DR_SANDBOX_RESULT__:null"),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxTimeout, match="in-process timeout"):
+            await _sandbox(client).run("import time; time.sleep(30)", timeout_s=5.0)
+
+    assert logs_route.call_count == 2
+
+
+@respx.mock
+async def test_null_return_value_still_succeeds_after_the_recheck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A snippet that legitimately returns nothing is not mistaken for a timeout."""
+    monkeypatch.setattr(workload_mod, "_NULL_MARKER_RECHECK_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response("all done\n__DR_SANDBOX_RESULT__:null"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("print('all done')")
+
+    assert result.return_value is None
+    assert result.stdout == "all done"
+    assert result.exit_code == 0
+
+
+@respx.mock
+async def test_non_null_marker_pays_no_recheck_cost() -> None:
+    """The confirming re-read is scoped to the ambiguous shape only.
+
+    A real return value can never be the runner's timeout path (that path
+    always emits null), so it must return on the first read.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    logs_route = respx.get(LOGS_URL).mock(
+        return_value=_logs_response('__DR_SANDBOX_RESULT__:{"ok": true}')
+    )
+    respx_delete = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("_return = {'ok': True}")
+
+    assert result.return_value == {"ok": True}
+    assert logs_route.call_count == 1
+    assert respx_delete.called
+
+
+@respx.mock
+async def test_terminal_record_skips_the_recheck() -> None:
+    """With a terminal record in hand the exit code is authoritative, so no re-read."""
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": WORKLOAD_ID,
+                "status": "succeeded",
+                "statusDetails": {"logTail": ["__DR_SANDBOX_RESULT__:null"]},
+            },
+        )
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response(""))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    started = time.monotonic()
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("print('x')")
+
+    assert result.return_value is None
+    # Would have cost _NULL_MARKER_RECHECK_S (1s, unpatched) had it re-read.
+    assert time.monotonic() - started < 1.0
+
+
+def test_duplicate_markers_from_restarts_resolve_deterministically() -> None:
+    """Hazard 2: which marker instance gets parsed, given newest-first records.
+
+    Verified against staging: the OTEL endpoint returns records NEWEST-FIRST
+    (a timed-out run's stdout read back as attempt-2's lines, then attempt-1's),
+    and ``_partition_log_entries`` joins them in that order. ``parse_result_marker``
+    takes the LAST marker line, so it resolves to the OLDEST marker — the FIRST
+    container attempt.
+
+    That is safe rather than merely lucky: code and inputs are baked into the
+    workload at create time, so every restart re-runs the identical snippet and
+    there is no earlier run with a different result to inherit. This locks the
+    resolution down so a change in either ordering has to be deliberate.
+    """
+    newest_first = [
+        {"level": "INFO", "message": '__DR_SANDBOX_RESULT__:"attempt-2"'},
+        {"level": "INFO", "message": "sandbox process limit (RLIMIT_NPROC) set to 4096"},
+        {"level": "INFO", "message": '__DR_SANDBOX_RESULT__:"attempt-1"'},
+        {"level": "INFO", "message": "sandbox process limit (RLIMIT_NPROC) set to 4096"},
+    ]
+    stdout, _ = DataRobotWorkloadSandbox._partition_log_entries(newest_first)
+    clean, value = workload_mod.parse_result_marker(stdout)
+    assert value == "attempt-1"
+    # Only the resolved marker line is stripped; the duplicate stays visible in
+    # stdout rather than being silently swallowed.
+    assert '__DR_SANDBOX_RESULT__:"attempt-2"' in clean
+
+
+@respx.mock
+async def test_marker_first_return_sees_only_one_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returning early narrows the duplicate-marker window to nothing.
+
+    The restart markers observed on staging (2-3 per terminal-gated run) only
+    accumulate while we keep waiting. Returning at the first marker means there
+    is a single instance to resolve.
+    """
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_INITIAL_DELAY_S", 0.01)
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_MAX_DELAY_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response("sandbox process limit (RLIMIT_NPROC) set to 4096"),
+            _logs_response("__DR_SANDBOX_RESULT__:7\nsandbox process limit set"),
+            # A restart's second marker — must never be reached.
+            _logs_response("__DR_SANDBOX_RESULT__:7\n__DR_SANDBOX_RESULT__:7"),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("_return = 7")
+
+    assert result.return_value == 7
+    assert result.stdout.count("__DR_SANDBOX_RESULT__") == 0
+
+
+@respx.mock
+async def test_empty_output_keeps_polling_while_status_is_not_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hazard 4: the ErrImagePull-retry case survives the concurrency change.
+
+    #638 made empty output poll to the deadline rather than give up, because a
+    transient pull failure keeps stdout empty while k8s retries and the
+    container can start a minute later. Now that log-watching begins at submit
+    instead of at terminal status, that has to hold with NO terminal record at
+    all — which is the common shape while a pull is retrying.
+    """
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_INITIAL_DELAY_S", 0.01)
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_MAX_DELAY_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "provisioning"})
+    )
+    pull_err = {"level": "ERROR", "message": "Image pull failed reason=ErrImagePull"}
+    marker = {"level": "INFO", "message": "__DR_SANDBOX_RESULT__:99"}
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response_entries([]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err]),
+            _logs_response_entries([pull_err, marker]),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client, provisioning_timeout_s=30.0).run("code", timeout_s=5.0)
+
+    assert result.return_value == 99
+    assert "ErrImagePull" in result.stderr
+
+
+@respx.mock
+async def test_container_that_never_starts_still_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hazard 4: an unrecoverable failure must still fail, not return empty."""
+    monkeypatch.setattr(workload_mod, "_LOG_FLUSH_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_INITIAL_DELAY_S", 0.01)
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_MAX_DELAY_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "errored"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response_entries([]))
+    delete_route = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxError, match="no result marker"):
+            await _sandbox(client, provisioning_timeout_s=0.0).run("code", timeout_s=0.05)
+
+    assert delete_route.called
+
+
+@respx.mock
+async def test_status_poll_failure_is_not_fatal_when_the_marker_arrives() -> None:
+    """The marker outranks a broken status endpoint.
+
+    Status is no longer the gate, so a 500 from it must not fail a run whose
+    snippet demonstrably completed. Previously this aborted before the logs
+    were ever read.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(return_value=httpx.Response(500, text="upstream boom"))
+    respx.get(LOGS_URL).mock(return_value=_logs_response("__DR_SANDBOX_RESULT__:5"))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("_return = 5")
+
+    assert result.return_value == 5
+
+
+@respx.mock
+async def test_status_poll_failure_is_fatal_when_no_marker_arrives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """...but with nothing from either source, the status error is the real one."""
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_INITIAL_DELAY_S", 0.01)
+    monkeypatch.setattr(workload_mod, "_LOG_POLL_MAX_DELAY_S", 0.01)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(return_value=httpx.Response(500, text="upstream boom"))
+    respx.get(LOGS_URL).mock(return_value=_logs_response_entries([]))
+    delete_route = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxError, match="status fetch failed"):
+            await _sandbox(client, provisioning_timeout_s=0.0).run("code", timeout_s=0.05)
+
+    assert delete_route.called
+
+
+@respx.mock
+async def test_terminal_timeout_status_does_not_burn_the_flush_budget() -> None:
+    """A terminal ``timeout`` status raises regardless of the logs, so stop waiting.
+
+    Locks in the short-circuit: the outcome cannot change, so spending
+    _LOG_FLUSH_TIMEOUT_S looking for a marker is pure latency.
+    """
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "timeout"})
+    )
+    respx.get(LOGS_URL).mock(return_value=_logs_response_entries([]))
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    started = time.monotonic()
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(SandboxTimeout):
+            await _sandbox(client).run("_return = 1")
+
+    assert time.monotonic() - started < workload_mod._LOG_FLUSH_TIMEOUT_S / 2
+
+
+@respx.mock
+async def test_cancellation_leaves_no_pending_status_task() -> None:
+    """Hazard 5: both concurrent tasks are cancelled cleanly."""
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    logs_started = asyncio.Event()
+
+    async def _slow_logs(request: httpx.Request) -> httpx.Response:
+        logs_started.set()
+        await asyncio.sleep(5.0)
+        return _logs_response("")
+
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"id": WORKLOAD_ID, "status": "running"})
+    )
+    respx.get(LOGS_URL).mock(side_effect=_slow_logs)
+    delete_route = respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        task = asyncio.create_task(_sandbox(client).run("_return = 1", timeout_s=30.0))
+        await logs_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    # Give the loop a turn to finish reaping anything that was cancelled.
+    await asyncio.sleep(0)
+    leftover = [
+        t
+        for t in asyncio.all_tasks()
+        if t.get_name().startswith("dr-sandbox-status-") and not t.done()
+    ]
+    assert leftover == []
+    assert delete_route.called
+
+
+@respx.mock
+async def test_quiet_snippet_is_not_abandoned_before_terminal_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for the review finding on #658.
+
+    The log watcher now starts at submit, and the image runner prints a startup
+    line BEFORE user code. So stdout goes non-empty immediately and then sits
+    unchanged for as long as the snippet runs quietly. The stillness rule must
+    not fire in that window, or a still-running container is abandoned and
+    ``timeout_s`` stops bounding user code once that first line appeared.
+
+    The quiet window is set to ``0.0`` so stillness is provably reached on the
+    very next poll -- a small-but-nonzero value would not reliably elapse
+    between mocked polls, which would make this test vacuous. Status never
+    reaches a terminal state, so the ONLY thing that can keep the wait alive is
+    the terminal gate. The marker arrives on a late poll; without the gate the
+    wait breaks on poll 2 with no marker and the run fails.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    monkeypatch.setattr(workload_mod, "_STABLE_OUTPUT_NONEMPTY_QUIET_S", 0.0)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    # Never terminal: mirrors a container still executing a quiet snippet.
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "running"})
+    )
+    startup = "sandbox process limit (RLIMIT_NPROC) set to 4096"
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(startup),
+            _logs_response(f'{startup}\n__DR_SANDBOX_RESULT__:{{"slow": true}}'),
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=30)
+
+    assert result.return_value == {"slow": True}
+
+
+@respx.mock
+async def test_non_json_logs_response_does_not_fail_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 200 that is not the documented JSON shape must be retried, not raised.
+
+    `_read_logs_once` documents that it never raises, because the logs endpoint
+    is the source of truth for the result and one bad read must not fail an
+    execution. Regression for the review finding that `resp.json()` and
+    `_partition_log_entries` sat outside its try.
+    """
+    monkeypatch.setattr(asyncio, "sleep", _noop_sleep)
+    respx.post(CREATE_URL).mock(return_value=_create_response())
+    respx.get(GET_URL).mock(
+        return_value=httpx.Response(200, json={"workloadId": WORKLOAD_ID, "status": "errored"})
+    )
+    respx.get(LOGS_URL).mock(
+        side_effect=[
+            httpx.Response(200, text="<html>gateway</html>"),  # not JSON at all
+            httpx.Response(200, json={"data": "not-a-list"}),  # wrong shape
+            _logs_response("__DR_SANDBOX_RESULT__:5"),  # then the real thing
+        ]
+    )
+    respx.delete(DELETE_URL).mock(return_value=httpx.Response(204))
+
+    async with httpx.AsyncClient() as client:
+        result = await _sandbox(client).run("code", timeout_s=5)
+
+    assert result.return_value == 5
