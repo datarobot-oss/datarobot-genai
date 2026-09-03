@@ -29,6 +29,9 @@ from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecut
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
 
 from datarobot_genai.core.utils.logging import setup_logging
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
@@ -49,11 +52,29 @@ from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
+# Instructs predictions-gateway to run monitoring for chat-completions endpoints.
+DATAROBOT_MODEL_MONITORING_HEADER = "X-DataRobot-Model-Monitoring"
+
 # Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
 # named endpoints (/chat/completions, /a2a/, ...) keep a path segment and their server span.
 _PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?$,/ping/?$"
 
 logger = logging.getLogger(__name__)
+
+
+def _route_path(request: Request) -> str:
+    """Request path relative to the ASGI ``root_path`` the app is mounted under.
+
+    In a DataRobot deployment the server runs with ``--root_path /<model_id>/<lrs_id>`` and the
+    LRS ingress forwards the full, prefixed path. Since Starlette 0.33 ``scope["path"]`` (and so
+    ``request.url.path``) includes that prefix, so comparing against the unprefixed route paths
+    NAT registers requires stripping ``root_path`` first.
+    """
+    path: str = request.scope["path"]
+    root_path: str = request.scope.get("root_path", "").rstrip("/")
+    if root_path and path.startswith(root_path):
+        return path[len(root_path) :] or "/"
+    return path
 
 
 def _instrument_fastapi_app(app: FastAPI) -> None:
@@ -272,6 +293,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         self._register_agent_manifest_route(app)
 
         self._add_audience_validation_middleware(app)
+        self._add_model_monitoring_header_middleware(app)
 
         # app.router.lifespan_context is the lifespan set by the parent's build_app().
         # We wrap it to ensure the A2A worker's httpx client is closed on shutdown.
@@ -294,6 +316,43 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         setup_logging()
         return app
+
+    def _chat_completion_paths(self) -> frozenset[str]:
+        """Paths served by the OpenAI-compatible chat endpoints NAT registers.
+
+        Mirrors the route construction in ``nat.front_ends.fastapi.routes.chat.add_chat_routes``.
+        Built from config rather than hardcoded, since ``endpoints`` entries can add more of
+        these at arbitrary paths.
+        """
+        disable_legacy_routes = self.front_end_config.disable_legacy_routes
+        paths: set[str] = set()
+        for endpoint in [self.front_end_config.workflow, *self.front_end_config.endpoints]:
+            if endpoint.openai_api_v1_path:
+                paths.add(endpoint.openai_api_v1_path)
+            if endpoint.openai_api_path and endpoint.openai_api_path != endpoint.openai_api_v1_path:
+                paths.add(endpoint.openai_api_path)
+                paths.add(f"{endpoint.openai_api_path}/stream")
+            if not disable_legacy_routes and endpoint.legacy_openai_api_path:
+                paths.add(endpoint.legacy_openai_api_path)
+                paths.add(f"{endpoint.legacy_openai_api_path}/stream")
+        return frozenset(paths)
+
+    def _add_model_monitoring_header_middleware(self, app: FastAPI) -> None:
+        """Set X-DataRobot-Model-Monitoring on chat-completions responses.
+
+        Scoped to the OpenAI-compatible chat routes: predictions-gateway uses it to decide whether
+        to run its own chat-completions monitoring.
+        """
+        chat_completion_paths = self._chat_completion_paths()
+
+        @app.middleware("http")
+        async def add_model_monitoring_header(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
+            response = await call_next(request)
+            if _route_path(request) in chat_completion_paths:
+                response.headers[DATAROBOT_MODEL_MONITORING_HEADER] = "true"
+            return response
 
     def _register_health_routes(self, app: FastAPI) -> None:
         """Register DataRobot health check endpoints."""

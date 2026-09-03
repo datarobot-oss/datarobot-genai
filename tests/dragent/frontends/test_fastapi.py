@@ -38,6 +38,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
@@ -210,6 +211,80 @@ class TestDRAgentFastApiFrontEndPluginWorker:
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
+
+    def test_model_monitoring_header_is_added_to_chat_routes(self, worker):
+        """The header is always added to chat routes but not unrelated routes."""
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            app = worker.build_app()
+            with TestClient(app) as client:
+                # GIVEN no chat route is mounted because configure() is mocked out
+                # WHEN the configured chat path is requested
+                chat_response = client.get("/chat")
+                # THEN its 404 response still carries the monitoring header.
+                assert chat_response.headers[DATAROBOT_MODEL_MONITORING_HEADER] == "true"
+
+                # WHEN an unrelated health route is requested
+                health_response = client.get("/health")
+                # THEN it does not carry the monitoring header.
+                assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
+
+    def test_model_monitoring_header_is_added_under_root_path(self, worker):
+        """Regression: with ``--root_path /<model_id>/<lrs_id>`` (how DataRobot deployments run
+        the server) the LRS ingress forwards the full prefixed path and Starlette exposes it in
+        ``request.url.path``. The header must still be set on the chat routes.
+        """
+        root_path = "/6a983b0b73f5f93c12b3be0c/6a983c7931cd39434aacda20"
+
+        @asynccontextmanager
+        async def mock_from_config(_config):
+            yield MagicMock()
+
+        with (
+            patch.object(worker, "configure", new_callable=AsyncMock),
+            patch.object(WorkflowBuilder, "from_config", side_effect=mock_from_config),
+        ):
+            app = worker.build_app()
+            # Mirrors uvicorn --root-path: scope["root_path"] is set AND the request path keeps
+            # the prefix, which is what the model pod receives from the LRS ingress.
+            with TestClient(app, root_path=root_path) as client:
+                chat_paths = worker._chat_completion_paths()
+                assert chat_paths, "fixture must configure at least one chat route"
+                for path in chat_paths:
+                    response = client.post(f"{root_path}{path}", json={})
+                    assert response.headers.get(DATAROBOT_MODEL_MONITORING_HEADER) == "true", path
+
+                health_response = client.get(f"{root_path}/health")
+                assert DATAROBOT_MODEL_MONITORING_HEADER not in health_response.headers
+
+    def test_chat_completion_paths_built_from_config(self, worker):
+        """_chat_completion_paths() derives paths from front_end_config, not hardcoded strings."""
+        paths = worker._chat_completion_paths()
+        assert paths == {
+            "/v1/chat/completions",
+            "/v1/chat",
+            "/v1/chat/stream",
+            "/chat",
+            "/chat/stream",
+        }
+
+    def test_chat_completion_paths_excludes_legacy_when_disabled(self):
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(disable_legacy_routes=True),
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            worker = DRAgentFastApiFrontEndPluginWorker(config)
+        paths = worker._chat_completion_paths()
+        assert paths == {"/chat/completions"}
 
     async def test_add_routes_inherits_host_port_from_fastapi_config(
         self, dragent_worker, mock_builder, mock_a2a_worker

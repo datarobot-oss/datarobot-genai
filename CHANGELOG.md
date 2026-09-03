@@ -4,13 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.20
+## 0.29.25
 - `drtools/core/sandbox`: **the workload sandbox now returns as soon as the `__DR_SANDBOX_RESULT__:` marker is available, instead of waiting for a terminal workload status** (MODEL-24537). Container logs and workload status are watched concurrently rather than sequentially. The status poll has not gone away — it is still what fails a container that never starts, and the only source of a terminal `timeout` status or the `statusDetails.logTail` fallback — it just stopped being the gate. Measured against staging, the marker was available at a mean of 15.9s while terminal status arrived at a mean of 22.5s and ranged to 48s; the wait removed was 30-54% of every call. Ihar Baravy measured the user-visible half on the BPA demo flow: `transform_panel_dataset` 14.0s → 33.0s over 18 calls (+308s) and `create_chart_panel` 11.0s → 39.3s over 6 calls (+170s), with non-sandbox tools unchanged within ±2s.
   The gap existed because the runner is a one-shot job scheduled as a long-running service: it finishes in under a second and exits 0, Kubernetes reads exit-0 as a crash and restarts it, and only after repeated restarts does it declare `CrashLoopBackOff` and the workload-api report `errored`. The old code waited for Kubernetes to give up on a container that had already done its job.
 - `drtools/core/sandbox`: **a user-code timeout is now actually detected on this backend.** The `exitCode == 124` check could never fire against the workload-api, because the workload record reports `exitCode: null` for every sandbox workload (it describes a service, not a job) — verified across 7 staging runs, including a deliberately timing-out one. Detection now also keys on the `sandbox exceeded timeout of Ns` line the runner prints before emitting its `__DR_SANDBOX_RESULT__:null` marker (`protocol.has_timeout_marker`), which is in-band and therefore works without a terminal record. The check spans stdout *and* stderr: staging tags the runner's own writes to fd 2 as INFO, so the line arrives on the stdout side, and only the platform's own `lrs-*` records come through at ERROR severity. Because that marker is byte-identical to a snippet returning nothing, a null payload with no sentinel in hand costs one short confirming re-read before the run is allowed to succeed.
 - `drtools/core/sandbox`: `SandboxError` / `SandboxTimeout` raised by the workload backend now carry `exit_code` and `stderr`, which `observability.classify_outcome` already expected — previously it received neither, so every OOM was classified as `crash`.
 - `drtools/core/sandbox`: a failing status endpoint no longer fails a run whose snippet demonstrably completed. A status-fetch error is recorded and only re-raised when no result marker was found either.
 - `drtools/core/sandbox`: a terminal `timeout` status no longer spends the 30s log-flush budget looking for a marker that cannot change the outcome.
+
+## 0.29.24
+- `dragent`: agent card registry MemorySpace L2 and the Mem0 DataRobot memory client talk to the enclave memory service when `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set. Both use `{host}/api/v2` instead of `DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`, which point at the control hub and are unreachable from an isolated enclave.
+
+## 0.29.23 - 2026-09-03
+- `dragent`: fixed the `X-DataRobot-Model-Monitoring` response header never being set when the server runs under a `--root_path`.
+
+## 0.29.22 - 2026-09-02
+- Raise the minimum `pypdf` version from `>=6.15.0` to `>=6.16.1`.
+- Raise the minimum `tornado` version from `>=6.5.7` to `>=6.5.8`.
+
+## 0.29.21
+- `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
+
+## 0.29.20
+- `dragent`: the A2A agent card's `url` now honours the API gateway route. Envoy-fronted clusters serve a workload from a per-enclave host and path prefix that `DATAROBOT_ENDPOINT` cannot derive, so the composed `{endpoint}/endpoints/workloads/{id}/a2a/` URL is unreachable there. When both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set, the card advertises `{host}/{prefix}/a2a/` instead; otherwise nothing changes.
 
 ## 0.29.19
 - `drmcp/core/middleware.py`: Add well-known metadata info in MCP 403 authorization error response

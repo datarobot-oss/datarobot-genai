@@ -31,6 +31,8 @@ from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_agent_card_url
 from datarobot_genai.dragent.deployment_urls import normalize_api_v2_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
+from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
+from datarobot_genai.dragent.deployment_urls import resolve_external_workload_base
 from datarobot_genai.dragent.deployment_urls import workload_mcp_url_from_endpoint
 
 
@@ -258,6 +260,150 @@ class TestResolveDataRobotEndpoint:
         }
         with patch.dict(os.environ, env, clear=True):
             assert resolve_datarobot_endpoint() == "https://app.datarobot.com/api/v2"
+
+
+HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
+PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
+
+
+class TestResolveExternalWorkloadBase:
+    @pytest.mark.parametrize(
+        "host,prefix,expected",
+        [
+            # Host with a scheme, prefix with a leading slash — the documented shape.
+            (
+                "https://enclave-x.datarobot.com",
+                "/workloads/abc123",
+                "https://enclave-x.datarobot.com/workloads/abc123",
+            ),
+            # Bare host: https:// is assumed.
+            (
+                "enclave-x.datarobot.com",
+                "/workloads/abc123",
+                "https://enclave-x.datarobot.com/workloads/abc123",
+            ),
+            # Slashes on either side of the join are normalised, not doubled.
+            (
+                "https://enclave-x.datarobot.com/",
+                "workloads/abc123/",
+                "https://enclave-x.datarobot.com/workloads/abc123",
+            ),
+            (
+                "enclave-x.datarobot.com/",
+                "/workloads/abc123/",
+                "https://enclave-x.datarobot.com/workloads/abc123",
+            ),
+            # Surrounding whitespace from the injected value is stripped.
+            (
+                "  enclave-x.datarobot.com  ",
+                "  /workloads/abc123  ",
+                "https://enclave-x.datarobot.com/workloads/abc123",
+            ),
+            # An explicit http:// scheme is preserved rather than replaced.
+            (
+                "http://enclave-x.local:8080",
+                "/wl/1",
+                "http://enclave-x.local:8080/wl/1",
+            ),
+            # Multi-segment prefix survives verbatim.
+            (
+                "https://enclave-x.datarobot.com",
+                "/api/v2/endpoints/workloads/abc123",
+                "https://enclave-x.datarobot.com/api/v2/endpoints/workloads/abc123",
+            ),
+        ],
+    )
+    def test_builds_base_url(self, host, prefix, expected):
+        env = {HOST_ENV: host, PREFIX_ENV: prefix}
+        with patch.dict(os.environ, env, clear=True):
+            assert resolve_external_workload_base() == expected
+
+    def test_returns_none_when_neither_set(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_external_workload_base() is None
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {HOST_ENV: "enclave-x.datarobot.com"},
+            {PREFIX_ENV: "/workloads/abc123"},
+            {HOST_ENV: "enclave-x.datarobot.com", PREFIX_ENV: ""},
+            {HOST_ENV: "", PREFIX_ENV: "/workloads/abc123"},
+            {HOST_ENV: "   ", PREFIX_ENV: "   "},
+        ],
+    )
+    def test_returns_none_unless_both_are_set(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            assert resolve_external_workload_base() is None
+
+
+class TestResolveExternalWorkloadApiEndpoint:
+    @pytest.mark.parametrize(
+        "host,prefix,expected",
+        [
+            (
+                "https://enclave-x.datarobot.com",
+                "/workloads/abc123",
+                "https://enclave-x.datarobot.com/api/v2",
+            ),
+            (
+                "enclave-x.datarobot.com",
+                "/workloads/abc123",
+                "https://enclave-x.datarobot.com/api/v2",
+            ),
+            (
+                "https://enclave-x.datarobot.com/",
+                "workloads/abc123/",
+                "https://enclave-x.datarobot.com/api/v2",
+            ),
+            (
+                "http://enclave-x.local:8080",
+                "/wl/1",
+                "http://enclave-x.local:8080/api/v2",
+            ),
+            (
+                "https://enclave-x.datarobot.com/api/v2",
+                "/endpoints/workloads/abc123",
+                "https://enclave-x.datarobot.com/api/v2",
+            ),
+        ],
+    )
+    def test_builds_enclave_api_endpoint(self, host, prefix, expected):
+        # GIVEN an Envoy-fronted enclave (both gateway vars set)
+        # WHEN the memory/API endpoint is resolved
+        # THEN it is {host}/api/v2 — the workload prefix is this agent's route,
+        # not the platform API base, so it must not appear in the result
+        env = {HOST_ENV: host, PREFIX_ENV: prefix}
+        with patch.dict(os.environ, env, clear=True):
+            assert resolve_external_workload_api_endpoint() == expected
+
+    def test_returns_none_when_neither_set(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert resolve_external_workload_api_endpoint() is None
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {HOST_ENV: "enclave-x.datarobot.com"},
+            {PREFIX_ENV: "/workloads/abc123"},
+            {HOST_ENV: "enclave-x.datarobot.com", PREFIX_ENV: ""},
+            {HOST_ENV: "", PREFIX_ENV: "/workloads/abc123"},
+            {HOST_ENV: "   ", PREFIX_ENV: "   "},
+        ],
+    )
+    def test_returns_none_unless_both_are_set(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            assert resolve_external_workload_api_endpoint() is None
+
+    def test_does_not_include_workload_prefix(self):
+        env = {
+            HOST_ENV: "enclave-x.datarobot.com",
+            PREFIX_ENV: "/api/v2/endpoints/workloads/abc123",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            endpoint = resolve_external_workload_api_endpoint()
+        assert endpoint == "https://enclave-x.datarobot.com/api/v2"
+        assert "workloads" not in endpoint
 
 
 class TestUrlConsistency:
