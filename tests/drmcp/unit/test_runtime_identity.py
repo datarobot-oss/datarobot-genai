@@ -20,10 +20,10 @@ from unittest.mock import patch
 
 import pytest
 
+from datarobot_genai.drmcp.core.deployment_config import DeploymentConfig
+from datarobot_genai.drmcp.core.deployment_config import MCPDeploymentType
 from datarobot_genai.drmcp.core.runtime_identity import DeploymentEndpointResolver
-from datarobot_genai.drmcp.core.runtime_identity import DeploymentRelatedConfig
 from datarobot_genai.drmcp.core.runtime_identity import GatewayType
-from datarobot_genai.drmcp.core.runtime_identity import MCPDeploymentType
 from datarobot_genai.drmcp.core.runtime_identity import build_deployment_url
 from datarobot_genai.drmcp.core.runtime_identity import build_workload_url
 from datarobot_genai.drmcp.core.runtime_identity import get_deployment_id
@@ -93,12 +93,10 @@ class TestPlatformIds:
 class TestDeploymentRelatedConfig:
     @pytest.mark.parametrize(
         "enum_value",
-        [enum_value for enum_value in DeploymentRelatedConfig],
+        [enum_value for enum_value in DeploymentConfig],
         ids=str,
     )
-    def test_get_from_os_env_strip_surrounding_spaces(
-        self, enum_value: DeploymentRelatedConfig
-    ) -> None:
+    def test_get_from_os_env_strip_surrounding_spaces(self, enum_value: DeploymentConfig) -> None:
         expected_value = "value_without_surrounding_space"
         with patch.dict(
             os.environ,
@@ -114,7 +112,7 @@ class TestDeploymentRelatedConfig:
             {"DATAROBOT_PUBLIC_API_ENDPOINT": expected_value, "DATAROBOT_ENDPOINT": "dsafas"},
             clear=True,
         ):
-            assert DeploymentRelatedConfig.get_datarobot_public_api_endpoint() == expected_value
+            assert DeploymentConfig.get_datarobot_public_api_endpoint() == expected_value
 
     def test_get_public_api_endpoint_fallback_env_var_datarobot_endpoint(self) -> None:
         expected_value = "https://foo/bar"
@@ -123,7 +121,7 @@ class TestDeploymentRelatedConfig:
             {"DATAROBOT_ENDPOINT": expected_value},
             clear=True,
         ):
-            assert DeploymentRelatedConfig.get_datarobot_public_api_endpoint() == expected_value
+            assert DeploymentConfig.get_datarobot_public_api_endpoint() == expected_value
 
 
 class TestGatewayType:

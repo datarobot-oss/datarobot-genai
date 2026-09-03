@@ -53,6 +53,8 @@ from enum import Enum
 from enum import auto
 
 from datarobot_genai.drmcp.core.constants import MCP_PATH_ENDPOINT
+from datarobot_genai.drmcp.core.deployment_config import DeploymentConfig
+from datarobot_genai.drmcp.core.deployment_config import MCPDeploymentType
 from datarobot_genai.drmcp.core.routes_utils import prefix_mount_path
 
 WORKLOAD_ID_ENV = "WORKLOAD_ID"
@@ -102,27 +104,6 @@ def build_workload_url(endpoint: str, workload_id: str, path: str) -> str:
     return f"{base}/{WORKLOAD_ENDPOINTS_SEGMENT}/{workload_id}/{path}"
 
 
-class DeploymentRelatedConfig(Enum):
-    WORKLOAD_ID = auto()
-    MLOPS_DEPLOYMENT_ID = auto()
-    DATAROBOT_PUBLIC_API_ENDPOINT = auto()
-    DATAROBOT_ENDPOINT = auto()
-    DR_WORKLOAD_EXTERNAL_URL_HOST = auto()
-
-    def get_from_os_env(self) -> str | None:
-        return os.getenv(self.name, "").strip() or None
-
-    @staticmethod
-    def get_datarobot_public_api_endpoint() -> str | None:
-        """Prefer ``DATAROBOT_PUBLIC_API_ENDPOINT`` over ``DATAROBOT_ENDPOINT``; see
-        the module docstring for why that order matters and why there is no default.
-        """
-        return (
-            DeploymentRelatedConfig.DATAROBOT_PUBLIC_API_ENDPOINT.get_from_os_env()
-            or DeploymentRelatedConfig.DATAROBOT_ENDPOINT.get_from_os_env()
-        )
-
-
 class GatewayType(Enum):
     """It is the gateway behind which MCP is deployed."""
 
@@ -146,11 +127,6 @@ class GatewayType(Enum):
             )
 
 
-class MCPDeploymentType(Enum):
-    MLOPS = auto()
-    WORKLOAD = auto()
-
-
 class DeploymentEndpointResolver:
     def __init__(self):
         self.mcp_path_suffix = prefix_mount_path(MCP_PATH_ENDPOINT).strip("/")
@@ -162,8 +138,8 @@ class DeploymentEndpointResolver:
     @staticmethod
     def get_gateway_url() -> str | None:
         gateway_url = (
-            DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env()
-            or DeploymentRelatedConfig.get_datarobot_public_api_endpoint()
+            DeploymentConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env()
+            or DeploymentConfig.get_datarobot_public_api_endpoint()
         )
         if gateway_url and "://" not in gateway_url:
             gateway_url = f"https://{gateway_url}"
@@ -173,7 +149,7 @@ class DeploymentEndpointResolver:
 
     @staticmethod
     def get_gateway_type() -> GatewayType:
-        if DeploymentRelatedConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env() is not None:
+        if DeploymentConfig.DR_WORKLOAD_EXTERNAL_URL_HOST.get_from_os_env() is not None:
             return GatewayType.NON_PUBLIC_API_BASED_GATEWAY
         else:
             return GatewayType.PUBLIC_API_BASED_GATEWAY
@@ -181,13 +157,13 @@ class DeploymentEndpointResolver:
     @staticmethod
     def get_deployment_id() -> str | None:
         return (
-            DeploymentRelatedConfig.WORKLOAD_ID.get_from_os_env()
-            or DeploymentRelatedConfig.MLOPS_DEPLOYMENT_ID.get_from_os_env()
+            DeploymentConfig.WORKLOAD_ID.get_from_os_env()
+            or DeploymentConfig.MLOPS_DEPLOYMENT_ID.get_from_os_env()
         )
 
     @staticmethod
     def get_deployment_type() -> MCPDeploymentType:
-        if DeploymentRelatedConfig.WORKLOAD_ID.get_from_os_env() is not None:
+        if DeploymentConfig.WORKLOAD_ID.get_from_os_env() is not None:
             return MCPDeploymentType.WORKLOAD
         else:
             return MCPDeploymentType.MLOPS
