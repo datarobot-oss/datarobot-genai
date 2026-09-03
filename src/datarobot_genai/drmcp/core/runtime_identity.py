@@ -12,35 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Where this MCP server is reachable from outside.
-
-Neither hosting mode knows its own public URL when the image is built, because
-the id is assigned at deploy time. Both can compose it once running, from the id
-DataRobot injects into the container and the platform's fixed routing patterns:
-
-===========  =====================================================
-deployment   ``{endpoint}/deployments/{id}/directAccess/{path}``
-workload     ``{endpoint}/endpoints/workloads/{id}/{path}``
-===========  =====================================================
-
-Both are routed through the DataRobot API host, so composing the URL needs no
-API call: there is nothing to time out, retry, or cache, and a server can always
-answer the question about itself.
-
-Two deliberate choices worth knowing about:
-
-``DATAROBOT_PUBLIC_API_ENDPOINT`` wins over ``DATAROBOT_ENDPOINT``
-    An on-prem install commonly points ``DATAROBOT_ENDPOINT`` at an internal
-    cluster address. A resource identifier built from it is one no external
-    client can reach, and RFC 9728 §7.3 has the client compare the metadata URL
-    it fetched against ``resource``, so a wrong value fails discovery outright.
-
-No fallback endpoint
-    When neither variable is set this returns ``None`` rather than guessing a
-    default host. The value is published as this server's identity, and a
-    confidently wrong identity is worse than an absent one.
-
-This module is intentionally standalone: ``drmcp`` does not depend on
+"""
+The module is intentionally standalone: ``drmcp`` does not depend on
 ``datarobot_genai.core`` or on ``dragent``, so the few env var names and URL
 patterns are restated here rather than shared. Keeping the MCP and agent trees
 independently evolvable is worth more than removing this much duplication.

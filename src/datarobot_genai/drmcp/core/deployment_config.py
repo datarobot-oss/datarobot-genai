@@ -35,8 +35,16 @@ class DeploymentConfig(Enum):
 
     @staticmethod
     def get_datarobot_public_api_endpoint() -> str | None:
-        """Prefer ``DATAROBOT_PUBLIC_API_ENDPOINT`` over ``DATAROBOT_ENDPOINT``; see
-        the module docstring for why that order matters and why there is no default.
+        """
+        ``DATAROBOT_PUBLIC_API_ENDPOINT`` wins over ``DATAROBOT_ENDPOINT``
+        An on-prem install commonly points ``DATAROBOT_ENDPOINT`` at an internal
+        cluster address. A resource identifier built from it is one no external
+        client can reach, and RFC 9728 §7.3 has the client compare the metadata URL
+        it fetched against ``resource``, so a wrong value fails discovery outright.
+
+        When neither variable is set this returns ``None`` rather than guessing a
+        default host. The value is published as this server's identity, and a
+        confidently wrong identity is worse than an absent one.
         """
         return (
             DeploymentConfig.DATAROBOT_PUBLIC_API_ENDPOINT.get_from_os_env()
