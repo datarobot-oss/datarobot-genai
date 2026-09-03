@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.34
+- `dragent`: provision the agent card registry L2 MemorySpace automatically on hosted deployments (custom model or workload) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset. Uses a deployment/workload-scoped `deduplication_key` so replicas share one space without Pulumi or `task deploy-dev` wiring.
+
 ## 0.29.33 - 2026-09-08
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
 - Add a minimum version for `langchain-core`: `>=1.3.3`.
