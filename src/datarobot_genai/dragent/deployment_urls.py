@@ -19,6 +19,12 @@ a DataRobot-hosted A2A agent and to look up its agent card from the central
 registry.  Both the server side (advertising its own URL in the agent card) and
 the client side (deriving the RPC base URL from a ``deployment_id``) use these
 functions so that the patterns stay in sync automatically.
+
+When a workload is served from an Envoy-fronted enclave,
+:func:`resolve_external_workload_base` is the agent's own gateway route and
+:func:`resolve_external_workload_api_endpoint` is the enclave's ``/api/v2``
+base (memory service, and so on) — distinct from the control-hub
+``DATAROBOT_ENDPOINT``.
 """
 
 import os
@@ -99,6 +105,22 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     return _DEFAULT_DATAROBOT_ENDPOINT
 
 
+def _external_workload_host() -> str | None:
+    """Return the Envoy host with a scheme, or *None* when the gateway vars are incomplete.
+
+    Both ``DR_WORKLOAD_EXTERNAL_URL_HOST`` and ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` are
+    required — the same presence signal as :func:`resolve_external_workload_base`.  The
+    prefix is this workload's own route and is not returned here.
+    """
+    host = os.getenv(WORKLOAD_EXTERNAL_HOST_ENV, "").strip()
+    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
+    if not (host and prefix):
+        return None
+    if "://" not in host:
+        host = f"https://{host}"
+    return host.rstrip("/")
+
+
 def resolve_external_workload_base() -> str | None:
     """Return the API gateway's base URL for this workload, or *None* when not behind one.
 
@@ -112,16 +134,30 @@ def resolve_external_workload_base() -> str | None:
     str | None
         ``https://{host}/{prefix}``, no trailing slash, or *None* when either var is unset.
     """
-    host = os.getenv(WORKLOAD_EXTERNAL_HOST_ENV, "").strip()
-    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
-
-    if not (host and prefix):
+    host = _external_workload_host()
+    if host is None:
         return None
+    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
+    return f"{host}/{prefix.strip('/')}"
 
-    if "://" not in host:
-        host = f"https://{host}"
 
-    return f"{host.rstrip('/')}/{prefix.strip('/')}"
+def resolve_external_workload_api_endpoint() -> str | None:
+    """Return the enclave API gateway's ``/api/v2`` endpoint, or *None* when not behind one.
+
+    Same presence signal as :func:`resolve_external_workload_base` (both host and prefix).
+    The prefix is this workload's own route and is not part of the platform API base —
+    only the host is used, so the DataRobot client talks to services on the enclave
+    (memory, and so on) rather than the control hub.
+
+    Returns
+    -------
+    str | None
+        ``https://{host}/api/v2``, no trailing slash, or *None* when either var is unset.
+    """
+    host = _external_workload_host()
+    if host is None:
+        return None
+    return normalize_api_v2_endpoint(host)
 
 
 def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:

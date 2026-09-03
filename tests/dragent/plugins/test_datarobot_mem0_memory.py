@@ -633,10 +633,63 @@ def test_dr_mem0_endpoint_prefers_public_api_endpoint_over_internal_endpoint(
     )
 
 
+def test_dr_mem0_endpoint_enclave_gateway_wins_over_control_hub(monkeypatch: Any) -> None:
+    # GIVEN a workload on an Envoy-fronted enclave whose control-hub URLs
+    # still point at staging
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    # WHEN the mem0 endpoint is built
+    # THEN it talks to the enclave memory service, not the control hub
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://enclave-x.datarobot.com/api/v2/memory/space-123"
+    )
+
+
+def test_dr_mem0_endpoint_partial_gateway_config_falls_back_to_public_api(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
+    )
+
+
+def test_dr_mem0_endpoint_explicit_endpoint_wins_over_enclave(monkeypatch: Any) -> None:
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
+    config = DRMem0MemoryClientConfig(
+        agent_memory_space_id="space-123",
+        datarobot_endpoint="https://override.example/api/v2",
+    )
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://override.example/api/v2/memory/space-123"
+    )
+
+
 def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
     # GIVEN no datarobot_endpoint configured and no env var.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
     monkeypatch.delenv("DATAROBOT_PUBLIC_API_ENDPOINT", raising=False)
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_HOST", raising=False)
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
     config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
 
     # THEN the builder refuses to fabricate a URL — better to fail loud than to

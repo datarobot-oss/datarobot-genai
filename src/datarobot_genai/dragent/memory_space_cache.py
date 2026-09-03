@@ -83,6 +83,7 @@ from datarobot.models.memory import Session
 from pydantic import Field
 
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
+from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +203,26 @@ def configure_datarobot_memory_client(
     endpoint: str | None = None,
     api_token: str | None = None,
 ) -> None:
-    """Configure the process-global DataRobot client for memory Session API calls."""
+    """Configure the process-global DataRobot client for memory Session API calls.
+
+    Endpoint resolution, most specific first:
+
+    1. Explicit ``endpoint`` argument.
+    2. Enclave API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
+       ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``) — ``{host}/api/v2``, so L2 talks to
+       the memory service on this enclave rather than the control hub.
+    3. ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
+    """
     cfg = MemorySpaceCacheConfig()
     token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
-    base = cast(str, endpoint or resolve_datarobot_endpoint(require=True))
+    base = cast(
+        str,
+        endpoint
+        or resolve_external_workload_api_endpoint()
+        or resolve_datarobot_endpoint(require=True),
+    )
     dr.Client(token=token, endpoint=base.rstrip("/"))
 
 
