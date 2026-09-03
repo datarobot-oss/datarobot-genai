@@ -434,6 +434,42 @@ class TestCreateAgentCard:
 
         assert card.url == "https://custom.example.com/agent"
 
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "http://localhost:8000/a2a/"),
+            ("custom", "http://localhost:8000/custom/"),
+            ("", "http://localhost:8000/"),
+        ],
+    )
+    async def test_mount_path_shapes_agent_card_url(
+        self, a2a_frontend_config, mount_path, expected
+    ):
+        """GIVEN a mount path WHEN create_agent_card is called THEN the card url points at
+        that mount, so clients reach the live RPC endpoint rather than the default /a2a/.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            card = await create_agent_card(
+                a2a_frontend_config, cross_app_access=None, skills=[], mount_path=mount_path
+            )
+
+        assert card.url == expected
+
+    async def test_external_url_wins_over_mount_path(self, a2a_frontend_config):
+        """GIVEN both external.url and a mount path are set WHEN create_agent_card is called
+        THEN external.url is used untouched, since it is already the caller's final answer.
+        """
+        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent/")
+        card = await create_agent_card(
+            a2a_frontend_config,
+            cross_app_access=None,
+            skills=[],
+            external=external,
+            mount_path="",
+        )
+
+        assert card.url == "https://custom.example.com/agent/"
+
     async def test_all_extensions_combined(self, a2a_frontend_config):
         """GIVEN cross_app_access, MLOPS_DEPLOYMENT_ID, and external.id are all set WHEN
         create_agent_card is called THEN all three extensions are present.
@@ -669,3 +705,80 @@ class TestGetA2aEndpointUrl:
         with patch.dict(os.environ, env, clear=True):
             url = get_a2a_endpoint_url("localhost", 8000)
         assert url == "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/"
+
+
+class TestGetA2aEndpointUrlMountPath:
+    """Every tier's URL has to follow the suffix A2A was actually mounted under."""
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "http://localhost:8000/a2a/"),
+            ("custom", "http://localhost:8000/custom/"),
+            ("api/a2a", "http://localhost:8000/api/a2a/"),
+            ("", "http://localhost:8000/"),
+        ],
+    )
+    def test_local_fallback(self, mount_path, expected):
+        """GIVEN no hosting env vars WHEN get_a2a_endpoint_url is called with a mount path
+        THEN the local URL carries that suffix, and none at all when it is empty.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"),
+            ("custom", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/custom/"),
+            ("", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/"),
+        ],
+    )
+    def test_deployment(self, mount_path, expected):
+        """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN get_a2a_endpoint_url is called with a mount
+        path THEN the directAccess URL ends with that suffix.
+        """
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/"),
+            ("custom", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/custom/"),
+            ("", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/"),
+        ],
+    )
+    def test_workload(self, mount_path, expected):
+        """GIVEN WORKLOAD_ID is set WHEN get_a2a_endpoint_url is called with a mount path
+        THEN the workload URL ends with that suffix.
+        """
+        env = {
+            "WORKLOAD_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://enclave-x.datarobot.com/workloads/abc123/a2a/"),
+            ("custom", "https://enclave-x.datarobot.com/workloads/abc123/custom/"),
+            ("", "https://enclave-x.datarobot.com/workloads/abc123/"),
+        ],
+    )
+    def test_api_gateway(self, mount_path, expected):
+        """GIVEN the Envoy gateway env vars are injected WHEN get_a2a_endpoint_url is called
+        with a mount path THEN the gateway URL ends with that suffix.
+        """
+        env = {
+            WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+            WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected

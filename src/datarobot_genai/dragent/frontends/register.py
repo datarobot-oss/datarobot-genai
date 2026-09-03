@@ -24,7 +24,9 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
+from pydantic import model_validator
 
+from ..constants import A2A_MOUNT_PATH
 from ..cross_app_access_config import CrossApplicationAccessConfig
 from .converters import convert_chat_request_to_run_agent_input
 from .converters import convert_dragent_event_response_to_chat_response
@@ -100,6 +102,44 @@ class DRAgentA2AConfig(BaseModel):
             "redacted agent card."
         ),
     )
+    mount_path: str = Field(
+        default=A2A_MOUNT_PATH,
+        description=(
+            "Path suffix the A2A server is mounted under, relative to the app root. "
+            'Defaults to "a2a"; set to a different value, e.g. "agent" or "api/a2a", to '
+            'mount it elsewhere. Leading and trailing slashes are stripped, so "/a2a/" '
+            'and "a2a" are equivalent. The advertised agent card URL follows this value '
+            "automatically, and the agent card is additionally served at the root "
+            ".well-known/agent-card.json as a discovery fallback. Mounting at the "
+            "application root is not supported: an empty value is rejected."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _normalize_mount_path(self) -> "DRAgentA2AConfig":
+        """Strip surrounding slashes so ``"a2a"`` and ``"/a2a/"`` agree, and reject empty.
+
+        Every consumer composes ``f"/{mount_path}"``, so normalising once here keeps
+        ``//a2a`` and a trailing-slash mount out of both the real mount point and the
+        agent card URL derived from it. Interior slashes are preserved for
+        multi-segment mounts such as ``"api/a2a"``.
+
+        A mount path that normalizes to empty (``""``, ``"/"``, all-slash input) is
+        rejected rather than silently mounting A2A at the application root: that would
+        make A2A's own catch-all ``Mount`` shadow any route DataRobot or NAT registers
+        after it, with no error to signal the collision — a correctness risk with no
+        corresponding requirement to justify it.
+        """
+        normalized = self.mount_path.strip().strip("/")
+        if not normalized:
+            raise ValueError(
+                f"a2a.mount_path must not be empty (got {self.mount_path!r}). Mounting A2A "
+                "at the application root is not supported. Set it to a non-empty path "
+                'segment, e.g. "agent" or "api/a2a", or omit it to use the default "a2a".'
+            )
+        if normalized != self.mount_path:
+            self.mount_path = normalized
+        return self
 
 
 # Register frontend
@@ -107,7 +147,8 @@ class DRAgentFastApiFrontEndConfig(FastApiFrontEndConfig, name="dragent_fastapi"
     a2a: DRAgentA2AConfig | None = Field(
         default=None,
         description="Expose this agent via the Agent2Agent protocol. "
-        "A2A server endpoints are mounted under /a2a/.",
+        "A2A server endpoints are mounted under /a2a/ by default; set a2a.mount_path "
+        "to serve them from a different suffix.",
     )
     workflow: typing.Annotated[
         FastApiFrontEndConfig.EndpointBase,

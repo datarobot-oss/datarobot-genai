@@ -29,8 +29,11 @@ base (memory service, and so on) — distinct from the control-hub
 
 import os
 
-DEPLOYMENT_A2A_PATH = "directAccess/a2a"
-WORKLOAD_A2A_PATH = "a2a"
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
+
+DEPLOYMENT_DIRECT_ACCESS_PATH = "directAccess"
+DEPLOYMENT_A2A_PATH = f"{DEPLOYMENT_DIRECT_ACCESS_PATH}/{A2A_MOUNT_PATH}"
+WORKLOAD_A2A_PATH = A2A_MOUNT_PATH
 DEPLOYMENT_MCP_PATH = "directAccess/mcp"
 MCP_PATH = "mcp"
 
@@ -41,6 +44,33 @@ _API_V2_SUFFIX = "/api/v2"
 WORKLOAD_EXTERNAL_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
 #: Path prefix the Envoy API gateway routes to this workload. Injected only there.
 WORKLOAD_EXTERNAL_PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
+
+
+def join_mount_path(base: str, mount_path: str) -> str:
+    """Append ``mount_path`` to ``base``, returning a single trailing slash either way.
+
+    A generic composer, not an A2A-specific policy: ``DRAgentA2AConfig`` never actually
+    produces an empty ``mount_path`` (mounting A2A at the application root is rejected
+    there), but this function still handles it, collapsing to ``base``'s own trailing
+    slash rather than leaving a ``//`` behind. Slashes on both sides are stripped before
+    joining so callers need not agree on which side owns the separator.
+
+    Parameters
+    ----------
+    base:
+        Path the mount hangs off, e.g. ``"deployments/xyz/directAccess"``.
+    mount_path:
+        Path suffix A2A is mounted under, possibly empty.
+
+    Returns
+    -------
+    str
+        ``"{base}/{mount_path}/"``, or ``"{base}/"`` when ``mount_path`` is empty.
+    """
+    suffix = mount_path.strip("/")
+    if not suffix:
+        return f"{base.rstrip('/')}/"
+    return f"{base.rstrip('/')}/{suffix}/"
 
 
 def normalize_api_v2_endpoint(endpoint: str) -> str:
@@ -160,8 +190,14 @@ def resolve_external_workload_api_endpoint() -> str | None:
     return normalize_api_v2_endpoint(host)
 
 
-def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
+def build_deployment_a2a_url(
+    endpoint: str, deployment_id: str, mount_path: str = A2A_MOUNT_PATH
+) -> str:
     """Construct the A2A direct-access URL for a DataRobot deployment.
+
+    ``directAccess`` forwards the full prefixed path to the container, so the suffix
+    the agent actually mounted A2A under has to appear here too or the advertised URL
+    would not resolve.
 
     Parameters
     ----------
@@ -170,14 +206,21 @@ def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
         A trailing slash is stripped before composing the URL.
     deployment_id:
         The DataRobot deployment ID.
+    mount_path:
+        Path suffix A2A is mounted under inside the container, ``"a2a"`` by default.
+        ``DRAgentA2AConfig`` never passes ``""`` (it rejects mounting A2A at the
+        application root), but this generic composer still accepts it.
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``.
+        A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``,
+        with ``a2a`` replaced by ``mount_path`` and omitted entirely when it is empty.
     """
     base = endpoint.rstrip("/")
-    return f"{base}/deployments/{deployment_id}/{DEPLOYMENT_A2A_PATH}/"
+    return join_mount_path(
+        f"{base}/deployments/{deployment_id}/{DEPLOYMENT_DIRECT_ACCESS_PATH}", mount_path
+    )
 
 
 def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
@@ -200,8 +243,14 @@ def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
     return f"{base}/deployments/{deployment_id}/agentCard/"
 
 
-def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
+def build_workload_a2a_url(
+    endpoint: str, workload_id: str, mount_path: str = A2A_MOUNT_PATH
+) -> str:
     """Construct the A2A URL for a DataRobot workload.
+
+    The workload route forwards the full prefixed path to the container, so the suffix
+    the agent actually mounted A2A under has to appear here too or the advertised URL
+    would not resolve.
 
     Parameters
     ----------
@@ -210,14 +259,19 @@ def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
         A trailing slash is stripped before composing the URL.
     workload_id:
         The DataRobot workload ID.
+    mount_path:
+        Path suffix A2A is mounted under inside the container, ``"a2a"`` by default.
+        ``DRAgentA2AConfig`` never passes ``""`` (it rejects mounting A2A at the
+        application root), but this generic composer still accepts it.
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/endpoints/workloads/{workload_id}/a2a/``.
+        A URL of the form ``{endpoint}/endpoints/workloads/{workload_id}/a2a/``, with
+        ``a2a`` replaced by ``mount_path`` and omitted entirely when it is empty.
     """
     base = endpoint.removesuffix("/")
-    return f"{base}/endpoints/workloads/{workload_id}/{WORKLOAD_A2A_PATH}/"
+    return join_mount_path(f"{base}/endpoints/workloads/{workload_id}", mount_path)
 
 
 def build_deployment_mcp_url(endpoint: str, deployment_id: str) -> str:

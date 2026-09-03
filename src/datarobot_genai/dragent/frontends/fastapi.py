@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
+from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from fastapi import FastAPI
 from nat.data_models.user_info import UserInfo
@@ -37,8 +38,8 @@ from datarobot_genai.core.utils.logging import setup_logging
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
-from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
+from .a2a import DRAgentA2AStarletteApplication
 from .a2a import create_agent_card
 from .agent_manifest import AgentManifest
 from .agent_manifest import build_agent_manifest
@@ -262,6 +263,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             cross_app_access=a2a.cross_application_access,
             skills=a2a.skills,
             external=a2a.external,
+            mount_path=a2a.mount_path,
         )
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
@@ -278,10 +280,52 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         a2a_app = a2a_server.build()
 
-        app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)
+        # Registered before the mount purely to keep this file's "specific routes before
+        # catch-alls" convention; the two don't actually overlap since mount_path is
+        # always a non-empty suffix and the fallback lives at the disjoint app root.
+        self._register_root_agent_card_fallback(app, a2a_server, a2a.mount_path)
+
+        app.mount(f"/{a2a.mount_path}", a2a_app)
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
+
+    def _register_root_agent_card_fallback(
+        self, app: FastAPI, a2a_server: DRAgentA2AStarletteApplication, mount_path: str
+    ) -> None:
+        """Serve the agent card at the app root as well, for discovery fallback.
+
+        Clients resolve an agent card by trying ``{url}/.well-known/agent-card.json`` and
+        falling back to the same path at the host root. That fallback only exists if the
+        root actually answers, which it does not by default — the card lives at
+        ``/{mount_path}/.well-known/agent-card.json`` and nowhere else since A2A cannot be
+        mounted at the root itself (``DRAgentA2AConfig.mount_path`` rejects an empty value).
+
+        The route delegates to the *same* bound handler the mounted app uses, so the
+        unauthenticated-access policy and card redaction stay in one place instead of
+        being reimplemented (and drifting) here.
+        """
+
+        async def agent_card_fallback(request: Request) -> Response:
+            return await a2a_server._handle_get_agent_card(request)
+
+        app.add_api_route(
+            path=AGENT_CARD_WELL_KNOWN_PATH,
+            endpoint=agent_card_fallback,
+            # Unlike plain Starlette's Route, FastAPI's APIRoute does not add HEAD
+            # automatically when GET is present, so it has to be listed explicitly or
+            # HEAD gets a 405. Once matched, the ASGI server (uvicorn) strips the body
+            # for HEAD on the wire; the handler itself needs no method-specific branch.
+            methods=["GET", "HEAD"],
+            response_model=None,
+            description=(
+                "Agent card, served at the root as a discovery fallback for clients that "
+                f"do not know it is mounted under /{mount_path}/"
+            ),
+            tags=["A2A"],
+        )
+
+        logger.info(f"Added root agent card fallback at {AGENT_CARD_WELL_KNOWN_PATH}")
 
     def build_app(self) -> FastAPI:
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
@@ -368,7 +412,10 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             app.add_api_route(
                 path=path,
                 endpoint=health_check,
-                methods=["GET"],
+                # FastAPI's APIRoute, unlike plain Starlette's Route, does not add HEAD
+                # automatically alongside GET, so external load balancers/monitors that
+                # probe with HEAD would otherwise get a 405 instead of a health check.
+                methods=["GET", "HEAD"],
                 response_model=HealthResponse,
                 description="Health check endpoint for liveness/readiness probes",
                 tags=["Health"],
@@ -398,7 +445,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.add_api_route(
             path="/.well-known/agent-manifest.json",
             endpoint=agent_manifest,
-            methods=["GET"],
+            # See the matching comment in _register_health_routes: FastAPI's APIRoute
+            # needs HEAD listed explicitly, unlike plain Starlette's Route.
+            methods=["GET", "HEAD"],
             response_model=AgentManifest,
             description="Declared components, tools, and root agent for this running agent",
             tags=["Agent Manifest"],

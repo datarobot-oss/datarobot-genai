@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.29.26
 - `drmcp/core/runtime_identity.py`: Fix logic of resolving MCP deployment URL
 
+## 0.29.26 - 2026-09-03
+- `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is not supported — an empty `mount_path` is rejected.
+- `dragent`: the agent card is additionally served at the root `/.well-known/agent-card.json` as a discovery fallback, whatever suffix A2A is mounted under.
+- `dragent`: fixed `HEAD` requests to the health, agent-manifest, and root agent-card fallback routes returning 405 instead of 200. FastAPI's `APIRoute`, unlike plain Starlette's `Route`, does not add `HEAD` automatically alongside a registered `GET`.
+
 ## 0.29.24
 - `dragent`: agent card registry MemorySpace L2 and the Mem0 DataRobot memory client talk to the enclave memory service when `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set. Both use `{host}/api/v2` instead of `DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`, which point at the control hub and are unreachable from an isolated enclave.
 - `dragent`: agent tracing now sets `datarobot.session_id` from AG-UI `thread_id`, and tool-call spans now carry `gen_ai.agent.name` so Datavolt can attribute tool usage to the invoking agent.
