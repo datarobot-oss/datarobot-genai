@@ -108,7 +108,6 @@ class DeploymentRelatedConfig(Enum):
     DATAROBOT_PUBLIC_API_ENDPOINT = auto()
     DATAROBOT_ENDPOINT = auto()
     DR_WORKLOAD_EXTERNAL_URL_HOST = auto()
-    DR_WORKLOAD_EXTERNAL_URL_PREFIX = auto()
 
     def get_from_os_env(self) -> str | None:
         return os.getenv(self.name, "").strip() or None
