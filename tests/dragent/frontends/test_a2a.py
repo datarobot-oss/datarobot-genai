@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import logging
 import os
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -26,6 +27,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_HOST_ENV
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_PREFIX_ENV
+from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_SCHEME_NAME
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
@@ -498,13 +500,37 @@ class TestUnauthenticatedWellKnownRoute:
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
 
-    async def test_unauthenticated_without_opt_in_returns_401(self, a2a_frontend_config):
+    async def test_unauthenticated_without_opt_in_returns_generic_404(self, a2a_frontend_config):
+        """A not-opted-in agent must be indistinguishable from one that does not exist."""
         server = await self._make_server(a2a_frontend_config)
         response = await server._handle_get_agent_card(self._make_request())
-        assert response.status_code == 401
-        body = json.loads(response.body)
-        assert "error" in body
-        assert "enable_unauthenticated_well_known_route" in body["error"]
+        assert response.status_code == 404
+        assert json.loads(response.body) == AGENT_CARD_NOT_FOUND_BODY
+
+    async def test_unauthenticated_without_opt_in_leaks_nothing_in_the_body(
+        self, a2a_frontend_config
+    ):
+        """The refusal must not name the opt-in flag, the agent, or the reason it was refused."""
+        server = await self._make_server(a2a_frontend_config)
+        response = await server._handle_get_agent_card(self._make_request())
+        body = response.body.decode()
+        for leak in (
+            "enable_unauthenticated_well_known_route",
+            "workflow.yaml",
+            "unauthenticated",
+            "platform-level",
+            a2a_frontend_config.name,
+        ):
+            assert leak.lower() not in body.lower(), f"agent-card 404 leaks {leak!r}"
+
+    async def test_unauthenticated_without_opt_in_logs_the_reason_server_side(
+        self, a2a_frontend_config, caplog
+    ):
+        """The reason stays debuggable in the log even though it is kept out of the response."""
+        server = await self._make_server(a2a_frontend_config)
+        with caplog.at_level(logging.INFO, logger="datarobot_genai.dragent.frontends.a2a"):
+            await server._handle_get_agent_card(self._make_request())
+        assert "enable_unauthenticated_well_known_route" in caplog.text
 
     async def test_unauthenticated_with_opt_in_returns_redacted_card(self, a2a_frontend_config):
         server = await self._make_server(
