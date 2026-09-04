@@ -113,7 +113,7 @@ async def _run_transform(
 
 
 @tool_metadata(
-    tags={"panels", "write", "transform", "sandbox", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—transform] Run Python over a Dataset panel in the sandbox and save the result "
         "as a derived child panel (lineage preserved). The source dataset is bound as a polars "
@@ -140,7 +140,7 @@ async def transform_panel(
 
 
 @tool_metadata(
-    tags={"panels", "write", "filter", "sandbox", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—filter] Filter a Dataset panel by a polars boolean expression in the sandbox, "
         "saving the filtered rows as a derived child panel. `where` is a polars expression over "

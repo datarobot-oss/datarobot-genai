@@ -38,7 +38,7 @@ _FOOTER_COMMENTS_DOCS = (
 
 
 @tool_metadata(
-    tags={"confluence", "read", "get", "page"},
+    tags=("Atlassian", "Confluence"),
     description=(
         "[Confluence—get page] Use when you have a numeric page ID, or an exact page title plus "
         "space_key, and need the page body (storage HTML). Not CQL multi-page search "
@@ -86,7 +86,7 @@ async def confluence_get_page(
 
 
 @tool_metadata(
-    tags={"confluence", "write", "create", "page"},
+    tags=("Atlassian", "Confluence"),
     description=(
         "[Confluence—create page] Use when publishing a new page in a space (space_key, title, "
         "body storage format), optional parent page ID. Not updating an existing page "
@@ -134,7 +134,7 @@ async def confluence_create_page(
 
 
 @tool_metadata(
-    tags={"confluence", "write", "add", "comment"},
+    tags=("Atlassian", "Confluence"),
     description=(
         "[Confluence—comment] Use when appending a page-level comment on an existing page by "
         "numeric page_id. Not page body edits (confluence_update_page), not new pages "
@@ -180,7 +180,7 @@ async def confluence_add_comment(
 
 
 @tool_metadata(
-    tags={"confluence", "search", "content"},
+    tags=("Atlassian", "Confluence"),
     description=(
         "[Confluence—CQL search] Use when finding pages or content with Confluence Query Language "
         "(type, space, text filters). Optional full body per hit. "
@@ -247,7 +247,7 @@ async def confluence_search_space(
 
 
 @tool_metadata(
-    tags={"confluence", "write", "update", "page"},
+    tags=("Atlassian", "Confluence"),
     description=(
         "[Confluence—update page] Use when replacing page body content for an existing page_id; "
         "version_number must match current version from confluence_get_page (optimistic lock). "

@@ -72,6 +72,11 @@ def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
     for key in DRTOOLS_PRIVATE_METADATA_KEYS:
         metadata.pop(key, None)
 
+    # @tool_metadata declares tags as an ordered tuple (the gallery reports them in
+    # declaration order); FastMCP wants a set.
+    if metadata.get("tags") is not None:
+        metadata["tags"] = set(metadata["tags"])
+
     # Apply the dr_mcp_tool decorator with the metadata
     dr_mcp_tool(tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL, **metadata)(func)
 

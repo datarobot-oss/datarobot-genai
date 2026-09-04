@@ -38,7 +38,7 @@ _PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
 
 
 @tool_metadata(
-    tags={"perplexity", "web", "search", "websearch", "daria"},
+    tags=("Perplexity",),
     description=(
         "[Perplexity—web search] Use when the user needs ranked web sources/snippets for a "
         "question or multi-part research (string or list of sub-queries), with optional domain "
@@ -49,7 +49,7 @@ _PPLX_STRUCTURED = "https://docs.perplexity.ai/guides/structured-outputs"
         f"and max_tokens_per_page (1-{MAX_TOKENS_PER_PAGE}).\n\n"
         f"Reference: {_PPLX_SEARCH_GUIDE}"
     ),
-    display_name="Perplexity — Search",
+    display_name="Perplexity — Search Web",
     description_ui=(
         "Search the public web and return ranked source URLs and snippets "
         "(not synthesized answers)."
@@ -167,7 +167,7 @@ async def perplexity_search(
 
 
 @tool_metadata(
-    tags={"perplexity", "think", "research", "answer", "daria"},
+    tags=("Perplexity", "Web Research"),
     description=(
         "[Perplexity—answer / reason] Use when the user wants a model-authored reply with "
         "citations: fast Q&A, deeper reasoning, or long research report (set model to one of "

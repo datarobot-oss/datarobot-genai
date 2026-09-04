@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
+## 0.29.27
+- `drtools`: reworked every tool's gallery tags into human-readable UI tags (e.g. `DataRobot, Predictive, Catalog`; action tags like `Delete`/`Promote` on the run-action tools), replacing the lowercase functional tags. Tags are now declared as ordered tuples so the gallery reports them in declaration order.
+- `drtools/perplexity`: renamed the `perplexity_search` display name from "Perplexity — Search" to "Perplexity — Search Web".
+- `drmcputils` tool gallery (`GET /toolGallery/*`):
+  - `tools/` items report `tags` in declaration order (no longer alphabetized), a new `ui_display_name` (the action half of the display name, e.g. "Workload — List bundles" → "List bundles"), and a new `provider_name` carrying the provider's brand ("DataRobot", "Perplexity", "Atlassian", ...; `null` for proxied user-MCP tools).
+  - each item's `categories` entries are now `{name, label, kind}` dicts (`kind` is `parent` or `leaf`) instead of bare `dr_*` strings; `categories_for_tool` returns the same shape.
+  - `categories/` nodes (and their children) are ordered alphabetically by label.
+  - `providers/` label for `third_party` is now "Third-party".
+
 ## 0.29.26
 - `drmcp/core/runtime_identity.py`: Fix logic of resolving MCP deployment URL
 

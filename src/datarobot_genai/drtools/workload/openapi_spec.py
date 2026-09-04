@@ -199,7 +199,7 @@ def _overview(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"workload", "openapi", "spec", "datarobot", "get", "search"},
+    tags=("DataRobot", "Workload"),
     enabled=False,
     description=(
         "[Workload—OpenAPI spec] Query the Workload API OpenAPI specification. Use "
