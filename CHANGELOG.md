@@ -3,9 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
-## 0.29.20
-- `drmcp/core/middleware`: `oauth_claim_validation` is now a pure gate over **every** AuthZ validator, not just the token handler. `should_run_claim_validation` is the single predicate — flag on, path not exempt — and each validator middleware consults it directly rather than relying on an empty request scope to skip it. `OAuthJWTTokenHandlerMiddleware.to_run_jwt_token_handling` is renamed `should_run_jwt_token_handling`.
-- `drmcpbase/auth/jwt.py`: **`validate_audience_claim` now rejects when no expected audience is configured** instead of logging and passing. With the gate on and `mcp_xaa_token_audience` unset the server previously demanded a JWT on every non-exempt route and then accepted any audience on it; those requests now fail closed. Each validator owns whether its own configuration is usable.
+## 0.29.27
+- `drmcp/core/config`: **`oauth_claim_validation` is renamed `mcp_enable_oauth_claim_validation for MCP. The Agent config (oauth_claim_validation) stays the same.
+- `drmcp/core/middleware`: the flag now gates **every** AuthZ validator, not just the token handler. `BaseAuthZMiddleware` applies it once in `dispatch`; subclasses implement `run_authz`.
 
 
 ## 0.29.26

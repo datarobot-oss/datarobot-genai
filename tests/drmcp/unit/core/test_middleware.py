@@ -34,6 +34,7 @@ from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthMCPToolCallScopeValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import build_http_response_from_auth_error
 from datarobot_genai.drmcp.core.middleware import is_path_exempt_from_oauth_validation
+from datarobot_genai.drmcp.core.middleware import should_run_claim_validation
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
@@ -133,19 +134,15 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.fixture
-    def mock_should_run_jwt_token_handling(self, module_under_test: str) -> Iterator[Mock]:
-        with patch.object(
-            OAuthJWTTokenHandlerMiddleware, "should_run_jwt_token_handling"
-        ) as mock_func:
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_should_run_jwt_token_handling_returns_true(
+    def mock_should_run_claim_validation_returns_true(
         self, module_under_test: str
     ) -> Iterator[Mock]:
-        with patch.object(
-            OAuthJWTTokenHandlerMiddleware, "should_run_jwt_token_handling"
-        ) as mock_func:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             mock_func.return_value = True
             yield mock_func
 
@@ -166,35 +163,32 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.mark.parametrize(
-        "is_path_exempt_from_validation, is_oauth_validation_enabled, should_run_handling",
+        "is_path_exempt_from_validation, is_oauth_validation_enabled, should_handle_claims",
         [(True, True, False), (True, False, False), (False, False, False), (False, True, True)],
         ids=str,
     )
-    def test_should_run_jwt_token_handling(
+    def test_should_run_claim_validation(
         self,
         is_path_exempt_from_validation: bool,
         is_oauth_validation_enabled: bool,
-        should_run_handling: bool,
+        should_handle_claims: bool,
         mock_get_config: Mock,
         mock_is_path_exempt_from_oauth_validation: Mock,
     ) -> None:
         mock_is_path_exempt_from_oauth_validation.return_value = is_path_exempt_from_validation
         mock_config = mock_get_config.return_value
-        mock_config.oauth_claim_validation = is_oauth_validation_enabled
+        mock_config.mcp_enable_oauth_claim_validation = is_oauth_validation_enabled
 
-        mock_request = Mock()
-        output = OAuthJWTTokenHandlerMiddleware.should_run_jwt_token_handling(mock_request)
-
-        assert output is should_run_handling
+        assert should_run_claim_validation(Mock()) is should_handle_claims
 
     def test_bypass_jwt_token_handling(
         self,
-        mock_should_run_jwt_token_handling: Mock,
+        mock_should_run_claim_validation: Mock,
         mock_parse_to_access_token: Mock,
         mock_update_scope_with_auth_credentials: Mock,
         mock_update_scope_with_authenticated_user: Mock,
     ) -> None:
-        mock_should_run_jwt_token_handling.return_value = False
+        mock_should_run_claim_validation.return_value = False
 
         client = TestClient(mock_app())
         response = client.get("/")
@@ -204,7 +198,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         mock_update_scope_with_auth_credentials.assert_not_called()
         mock_update_scope_with_authenticated_user.assert_not_called()
 
-    @pytest.mark.usefixtures("mock_should_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     async def test_run_jwt_token_handling(
         self,
         mock_parse_to_access_token: Mock,
@@ -226,7 +220,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         )
         mock_call_next.assert_called_once_with(request)
 
-    @pytest.mark.usefixtures("mock_should_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     def test_return_error_when_there_is_no_valid_jwt_token(
         self,
         mock_parse_to_access_token: Mock,

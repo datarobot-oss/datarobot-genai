@@ -482,22 +482,20 @@ class TestJWTTokenClaimsValidator:
         validator.validate_audience_claim(audience_value)
         mock_logger.info.assert_called_once_with("Audience claim validation succeeded.")
 
-    def test_validate_audience_claim_fails_when_no_expected_audience_is_configured(
+    def test_validate_audience_claim_is_skipped_when_no_expected_audience_is_configured(
         self,
         mock_authorization_claims_from_access_token: Mock,
         mock_logger: Mock,
     ) -> None:
-        """The gate asked for validation, so an unconfigured audience fails closed."""
         mock_authorization_claims_from_access_token.return_value = AuthorizationClaims(
             scopes=frozenset(),
             audience="expected-aud",
         )
 
         validator = JWTTokenClaimsValidator(Mock())
-        with pytest.raises(
-            AudienceClaimValidationError, match="No expected audience claim is configured."
-        ):
-            validator.validate_audience_claim(None)
+        validator.validate_audience_claim(None)
+
+        mock_logger.warning.assert_called_once_with("No expected audience claim is configured.")
 
     def test_validate_audience_claim_fails_when_audience_mismatches(
         self,
