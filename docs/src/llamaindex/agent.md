@@ -14,13 +14,13 @@
   ~ limitations under the License.
 -->
 
-# LlamaIndex sample: what you configure
+# LlamaIndex sample: configuration surface
 
 Aligned with [`e2e-tests/dragent/llamaindex/`](../../e2e-tests/dragent/llamaindex/).
 
 ## `workflow.yaml`
 
-| Piece | What you see |
+| Piece | Field |
 |---|---|
 | **`llms:`** + **`datarobot-llm-component`** | Named LLM for the app; see [LLM configuration](../llm.md). |
 | **`workflow._type: llamaindex_agent`** | DRAgent uses the LlamaIndex integration. |
@@ -28,6 +28,6 @@ Aligned with [`e2e-tests/dragent/llamaindex/`](../../e2e-tests/dragent/llamainde
 
 ## `myagent.py`
 
-You define the **AgentWorkflow**, **agents** (e.g. planner / writer), and how the **final answer** is read from streamed events—the sample shows one way to extract text. The **`{chat_history}`** placeholder in the user message string is filled by the integration when you opt in (see the example’s string patterns).
+Define the **AgentWorkflow**, **agents** (e.g. planner / writer), and how the **final answer** is read from streamed events—the sample shows one way to extract text. The **`{chat_history}`** placeholder in the user message string is filled by the integration when history opt-in is enabled (see the example’s string patterns).
 
 [`register.py`](../../e2e-tests/dragent/llamaindex/register.py) wires the package for DRAgent.

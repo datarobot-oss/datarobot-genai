@@ -1,6 +1,6 @@
 # LlamaIndex + DataRobot
 
-**What you edit:** [`e2e-tests/dragent/llamaindex/myagent.py`](../../e2e-tests/dragent/llamaindex/myagent.py) (workflow + agents) and [`workflow.yaml`](../../e2e-tests/dragent/llamaindex/workflow.yaml).
+**What to edit:** [`e2e-tests/dragent/llamaindex/myagent.py`](../../e2e-tests/dragent/llamaindex/myagent.py) (workflow + agents) and [`workflow.yaml`](../../e2e-tests/dragent/llamaindex/workflow.yaml).
 
 ## Installation
 

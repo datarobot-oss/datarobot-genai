@@ -14,13 +14,13 @@
   ~ limitations under the License.
 -->
 
-# LangGraph sample: what you configure
+# LangGraph sample: configuration surface
 
 Aligned with [`e2e-tests/dragent/langgraph/`](../../e2e-tests/dragent/langgraph/).
 
 ## `workflow.yaml`
 
-| Piece | What you see |
+| Piece | Field |
 |---|---|
 | **`general.front_end._type: dragent_fastapi`** | DRAgent’s HTTP/SSE front end. |
 | **`llms.datarobot_llm._type: datarobot-llm-component`** | One named LLM; routing follows [LLM configuration](../llm.md) and env. |
@@ -28,18 +28,18 @@ Aligned with [`e2e-tests/dragent/langgraph/`](../../e2e-tests/dragent/langgraph/
 | **`workflow.llm_name`** | Must match the key under **`llms:`**. |
 | **`workflow.description` / `verbose`** | Shown in tooling and logs. |
 
-You do **not** describe the graph in YAML—the Python module supplies it.
+The graph is **not** described in YAML—the Python module supplies it.
 
 ## `myagent.py`
 
-This is where the **StateGraph**, **prompt template**, and **your own tools** live. The platform may also pass **additional tools** (for example MCP): your factory should **combine** those with yours so the model can call everything listed for the deployment.
+This is where the **StateGraph**, **prompt template**, and **local tools** live. The platform may also pass **additional tools** (for example MCP): the factory must **combine** those with local tools so the model can call everything listed for the deployment.
 
 Patterns visible in the file:
 
 - **Chat history**&mdash;included only if the prompt template expects a `chat_history` variable (see the sample template).
 - **Graph factory**&mdash;receives the LLM, injected tools, and verbosity from the runner so one codebase works locally and on DataRobot.
 
-[`register.py`](../../e2e-tests/dragent/langgraph/register.py) connects this module to NAT/DRAgent; copy its shape when you add a new agent package.
+[`register.py`](../../e2e-tests/dragent/langgraph/register.py) connects this module to NAT/DRAgent; copy its shape when adding a new agent package.
 
 ## Human in the loop
 

@@ -44,7 +44,7 @@ memory:
     # project_id: ...
 ```
 
-**`mem0_memory`** is the local name you reference from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider reads `MEM0_API_KEY` through DataRobot app framework settings by default; use `api_key` only when you need an explicit workflow-level override.
+**`mem0_memory`** is the local name referenced from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider reads `MEM0_API_KEY` through DataRobot app framework settings by default; use `api_key` only for an explicit workflow-level override.
 
 ## Wrap an agent with automatic memory
 

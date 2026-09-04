@@ -14,12 +14,12 @@
   ~ limitations under the License.
 -->
 
-# A2A Authentication
+# A2A authentication
 
 This guide covers how to configure authentication for Agent-to-Agent (A2A)
 communication. There are two supported authentication methods:
 
-1. **DataRobot API key** — simple bearer token auth for DataRobot-hosted agents.
+1. **DataRobot API key** — bearer token auth for DataRobot-hosted agents.
 2. **Okta cross-application access (XAA)** — two-step token exchange for
    federated Okta environments (hybrid RFC 8693 / RFC 7523 flow).
 
@@ -34,7 +34,7 @@ requirements in the agent card.
 pip install "datarobot-genai[dragent,langgraph,auth]>=0.15.40"
 ```
 
-Replace `langgraph` with `crewai` or `llamaindex` depending on your framework.
+Replace `langgraph` with `crewai` or `llamaindex` depending on the target framework.
 
 ## Option 1: DataRobot API key authentication
 
@@ -45,7 +45,7 @@ DataRobot API token.
 
 | Variable | Description |
 |----------|-------------|
-| `DATAROBOT_API_TOKEN` | Your DataRobot API token. |
+| `DATAROBOT_API_TOKEN` | DataRobot API token. |
 
 The token is loaded automatically — no need to put it in `workflow.yaml`.
 
@@ -321,7 +321,7 @@ remote XAA-protected agent.
 > Any other value — including `fallback_token_headers: []`, which used to disable the fallback —
 > is rejected at startup, because honouring it would read a header audience validation does not
 > inspect. To upgrade, remove the `okta_token_header` and `fallback_token_headers` lines from the
-> `authentication:` entry in your agent's `workflow.yaml`; nothing replaces them.
+> `authentication:` entry in the agent's `workflow.yaml`; nothing replaces them.
 
 ### Agent card mapping
 
@@ -358,7 +358,7 @@ in `securitySchemes`, while flow-specific parameters go in
 | `401 Authorization audience claim validation failed` | The token was issued for a different resource. | Request a token whose `aud` matches the serving agent's `token_request.audience`. |
 | `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
 | `RuntimeError: No IdP access token in request context` | Neither carrier header holds a token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`, or `authorization: Bearer <jwt>` locally. A non-JWT in `authorization` is ignored, since that header also carries DataRobot API tokens. |
-| `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
-| `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
+| `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in the environment or Runtime Parameters. |
+| `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify the JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
-| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in your `function_groups` config and network connectivity. |
+| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in the `function_groups` config and network connectivity. |
