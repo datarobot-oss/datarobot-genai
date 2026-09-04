@@ -69,7 +69,7 @@ def _serialize_datastore_params(params: Any) -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"predictive", "data", "write", "upload", "catalog", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—register new data] Use when the user has file bytes or a public HTTPS URL "
         "and needs a new AI Catalog dataset ID (nothing registered yet). Exactly one of "
@@ -156,7 +156,7 @@ async def catalog_upload_dataset(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "list", "catalog", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—list datasets] Use when the user needs catalog datasets they already have "
         "as ID-to-name map. Read-only. Not project-attached datasets "
@@ -222,7 +222,7 @@ async def catalog_list_datasets(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "dataset", "metadata", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—one dataset metadata] Use when you already have catalog dataset_id and "
         "need name, row count, timestamps, optional column list and sample rows. Read-only. "
@@ -268,7 +268,7 @@ async def catalog_get_preview(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "datastore", "list", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Datastore—list connections] Use when the user works with saved external connections "
         "(DB, warehouse, bucket, etc.) and needs datastore IDs. Returns JDBC, native-database, "
@@ -349,7 +349,7 @@ async def catalog_list_datastores(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "datastore", "browse", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Datastore—browse objects] Use after catalog_list_datastores when the user needs schemas, "
         "tables, or folders inside one connection. Read-only; optional path, search filter, "
@@ -414,7 +414,7 @@ async def catalog_browse_datastore(
 
 
 @tool_metadata(
-    tags={"predictive", "data", "read", "datastore", "query", "sql", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Datastore—run SQL] Use when the user wants to execute a SQL SELECT against "
         "one saved external connection. Requires datastore_id from catalog_list_datastores; "

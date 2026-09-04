@@ -36,7 +36,7 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "stats"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—stats] Get aggregated performance statistics for a workload: "
         "request count, error rate, response time quantile, slow requests. "
@@ -97,7 +97,7 @@ async def workload_stats_get(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "logs", "otel"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—logs] Retrieve OTel log lines for a workload. Supports "
         "filtering by log level, time window, body text (includes/excludes), "
@@ -187,7 +187,7 @@ _ACTIVITY_RESULT_KEY: dict[str, str] = {
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "history", "events", "related"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—activity] Inspect a workload's activity. kind is one of:\n"
         "  'history' — artifact deployment history (which version was deployed, "
@@ -254,7 +254,7 @@ async def workload_activity_get(
 
 
 @tool_metadata(
-    tags={"workload", "proton", "datarobot", "get", "list", "status", "debug"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—proton get] Inspect proton (deployed pod) instances for a "
         "workload.\n"

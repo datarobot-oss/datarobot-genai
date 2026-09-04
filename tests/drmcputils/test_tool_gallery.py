@@ -48,7 +48,7 @@ class TestToolProvidersFilterEnum:
         # THEN it maps exactly the two provider values to their display labels
         assert TOOL_PROVIDER_LABELS == {
             PROVIDER_DATAROBOT: "DataRobot",
-            PROVIDER_THIRD_PARTY: "Third party",
+            PROVIDER_THIRD_PARTY: "Third-party",
         }
 
     def test_values_match_what_the_builder_emits(self) -> None:
@@ -72,10 +72,12 @@ class TestBuildToolGalleryItems:
         item = result[0]
         assert item["name"] == "my_tool"
         assert item["display_name"] == "my_tool"
+        assert item["ui_display_name"] == "my_tool"
         assert item["description"] == ""
         assert item["tags"] == []
         assert item["categories"] == []
         assert item["provider"] == "datarobot"
+        assert item["provider_name"] == "DataRobot"
         assert item["oauth_provider_type"] is None
         assert item["hosted"] is False
 
@@ -84,7 +86,7 @@ class TestBuildToolGalleryItems:
             "name": "jira_search_issues",
             "display_name": "Jira — Search Issues",
             "description_ui": "Find Jira issues matching a JQL query.",
-            "tags": ["jira", "search"],
+            "tags": ["Atlassian", "Jira"],
             "categories": ["dr_connectors", "dr_connector_jira"],
             "auth_provider": "jira",
             "hosted": False,
@@ -93,8 +95,10 @@ class TestBuildToolGalleryItems:
         item = result[0]
         assert item["name"] == "jira_search_issues"
         assert item["display_name"] == "Jira — Search Issues"
+        assert item["ui_display_name"] == "Search Issues"
         assert item["description"] == "Find Jira issues matching a JQL query."
         assert item["provider"] == "third_party"
+        assert item["provider_name"] == "Atlassian"
         assert item["oauth_provider_type"] == "jira"
         assert item["hosted"] is False
 
@@ -123,6 +127,51 @@ class TestBuildToolGalleryItems:
         )
         assert result[0]["display_name"] == "Human Friendly Name"
 
+    # ── ui_display_name (the action half of "<group> — <action>") ────────────
+
+    def test_ui_display_name_strips_the_group_prefix(self) -> None:
+        result = build_tool_gallery_items(
+            [{"name": "workload_bundle_list", "display_name": "Workload — List bundles"}]
+        )
+        assert result[0]["ui_display_name"] == "List bundles"
+
+    def test_ui_display_name_splits_on_the_first_separator_only(self) -> None:
+        result = build_tool_gallery_items(
+            [{"name": "t", "display_name": "Artifact Build — Run action"}]
+        )
+        assert result[0]["ui_display_name"] == "Run action"
+
+    def test_ui_display_name_without_separator_is_the_display_name(self) -> None:
+        result = build_tool_gallery_items([{"name": "t", "display_name": "Plain Name"}])
+        assert result[0]["ui_display_name"] == "Plain Name"
+
+    def test_ui_display_name_falls_back_to_name_with_display_name_absent(self) -> None:
+        result = build_tool_gallery_items([{"name": "raw_name"}])
+        assert result[0]["ui_display_name"] == "raw_name"
+
+    # ── provider_name (the provider's brand) ─────────────────────────────────
+
+    def test_provider_name_is_datarobot_without_auth_provider(self) -> None:
+        result = build_tool_gallery_items([{"name": "t"}])
+        assert result[0]["provider_name"] == "DataRobot"
+
+    def test_provider_name_maps_third_party_brands(self) -> None:
+        expected = {
+            "jira": "Atlassian",
+            "confluence": "Atlassian",
+            "gdrive": "Google",
+            "microsoft_graph": "Microsoft",
+            "perplexity": "Perplexity",
+            "tavily": "Tavily",
+        }
+        for auth_provider, brand in expected.items():
+            result = build_tool_gallery_items([{"name": "t", "auth_provider": auth_provider}])
+            assert result[0]["provider_name"] == brand
+
+    def test_provider_name_falls_back_to_humanised_auth_provider(self) -> None:
+        result = build_tool_gallery_items([{"name": "t", "auth_provider": "some_new_thing"}])
+        assert result[0]["provider_name"] == "Some New Thing"
+
     # ── description (sourced from description_ui) ────────────────────────────
 
     def test_description_absent_becomes_empty_string(self) -> None:
@@ -137,15 +186,17 @@ class TestBuildToolGalleryItems:
         result = build_tool_gallery_items([{"name": "t", "description_ui": "Search the web."}])
         assert result[0]["description"] == "Search the web."
 
-    # ── tags sorting ─────────────────────────────────────────────────────────
+    # ── tags order ───────────────────────────────────────────────────────────
 
-    def test_tags_are_sorted_alphabetically(self) -> None:
+    def test_tags_preserve_declaration_order(self) -> None:
+        # Tags are reported exactly as merged — declaration order, never re-sorted.
         result = build_tool_gallery_items([{"name": "t", "tags": ["zzz", "aaa", "mmm"]}])
-        assert result[0]["tags"] == ["aaa", "mmm", "zzz"]
+        assert result[0]["tags"] == ["zzz", "aaa", "mmm"]
 
-    def test_tags_set_input_is_sorted(self) -> None:
+    def test_tags_set_input_becomes_a_list(self) -> None:
+        # A set input carries no order to preserve; the members still all land in the list.
         result = build_tool_gallery_items([{"name": "t", "tags": {"beta", "alpha"}}])
-        assert result[0]["tags"] == ["alpha", "beta"]
+        assert sorted(result[0]["tags"]) == ["alpha", "beta"]
 
     def test_tags_absent_becomes_empty_list(self) -> None:
         result = build_tool_gallery_items([{"name": "t"}])
@@ -157,17 +208,22 @@ class TestBuildToolGalleryItems:
 
     # ── categories ───────────────────────────────────────────────────────────
 
-    def test_categories_list_preserved(self) -> None:
+    def test_categories_are_name_label_kind_dicts(self) -> None:
         cats = ["dr_connectors", "dr_connector_jira"]
         result = build_tool_gallery_items([{"name": "t", "categories": cats}])
-        assert result[0]["categories"] == cats
+        assert result[0]["categories"] == [
+            {"name": "dr_connectors", "label": "Data connectors", "kind": "parent"},
+            {"name": "dr_connector_jira", "label": "Jira", "kind": "leaf"},
+        ]
 
     def test_categories_frozenset_converted_to_list(self) -> None:
         result = build_tool_gallery_items(
             [{"name": "t", "categories": frozenset({"dr_connectors"})}]
         )
         assert isinstance(result[0]["categories"], list)
-        assert result[0]["categories"] == ["dr_connectors"]
+        assert result[0]["categories"] == [
+            {"name": "dr_connectors", "label": "Data connectors", "kind": "parent"}
+        ]
 
     def test_categories_absent_becomes_empty_list(self) -> None:
         result = build_tool_gallery_items([{"name": "t"}])
@@ -249,8 +305,11 @@ class TestHostedToolClassification:
         )
         item = result[0]
         assert item["provider"] == "datarobot"
+        assert item["provider_name"] == "DataRobot"
         assert item["oauth_provider_type"] is None
-        assert item["categories"] == ["dr_user_tools"]
+        assert item["categories"] == [
+            {"name": "dr_user_tools", "label": "Your own tools", "kind": "leaf"}
+        ]
         assert item["hosted"] is False
 
     def test_user_tool_deployment_is_datarobot_dynamic(self) -> None:
@@ -260,8 +319,11 @@ class TestHostedToolClassification:
         )
         item = result[0]
         assert item["provider"] == "datarobot"
+        assert item["provider_name"] == "DataRobot"
         assert item["oauth_provider_type"] is None
-        assert item["categories"] == ["dr_dynamic_tools"]
+        assert item["categories"] == [
+            {"name": "dr_dynamic_tools", "label": "Deployed tools", "kind": "leaf"}
+        ]
         assert item["hosted"] is True
 
     def test_proxied_user_mcp_is_third_party(self) -> None:
@@ -273,6 +335,8 @@ class TestHostedToolClassification:
         )
         item = result[0]
         assert item["provider"] == "third_party"
+        # No brand name is known for a tool proxied from a user's own MCP server.
+        assert item["provider_name"] is None
         assert item["oauth_provider_type"] is None
         assert item["categories"] == []
         assert item["hosted"] is True
@@ -289,7 +353,9 @@ class TestHostedToolClassification:
                 }
             ]
         )
-        assert result[0]["categories"] == ["dr_dynamic_tools"]
+        assert result[0]["categories"] == [
+            {"name": "dr_dynamic_tools", "label": "Deployed tools", "kind": "leaf"}
+        ]
         assert result[0]["provider"] == "datarobot"
         assert result[0]["oauth_provider_type"] is None
 

@@ -67,7 +67,7 @@ def _rows_to_parquet(rows: list[dict[str, Any]], columns: list[str] | None = Non
 
 
 @tool_metadata(
-    tags={"panels", "write", "connector", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—from connector] Run SQL against a DataRobot connector/datastore and "
         "materialize the result as a Dataset panel (Parquet payload stored via the Files API). "
@@ -121,7 +121,7 @@ async def create_dataset_panel_from_connector(
 
 
 @tool_metadata(
-    tags={"panels", "read", "dataset", "preview", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—preview dataset] Preview a Dataset panel's tabular payload: columns, "
         "dtypes, row count, and the first sample_size rows. Read-only; tabular panels "

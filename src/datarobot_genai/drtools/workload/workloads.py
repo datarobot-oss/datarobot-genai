@@ -44,7 +44,7 @@ from datarobot_genai.drtools.workload.build_status import raise_tool_error_for_w
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "list", "search"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—list] Discover workloads: returns ID, name, status, "
         "artifactId, importance, and runtime for each. Use workload_get for a "
@@ -94,7 +94,7 @@ async def workload_list(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "get", "status"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—get] Fetch a single workload by ID: status, runtime, artifact "
         "reference, endpoint URL, creator, and timestamps. This is also the status "
@@ -161,7 +161,7 @@ async def workload_get(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "payload", "helper"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—build create payload] Build a valid workload create payload "
         "without making an API call. Pass the returned payload dict to "
@@ -314,7 +314,7 @@ async def workload_create_payload_build(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "create"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—create] Create a new workload from a payload dict. "
         "Use workload_create_payload_build to build the payload first. "
@@ -364,7 +364,7 @@ async def workload_create(
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "update"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—update] Partially update a workload's name, description, or "
         "importance. Only supplied fields are changed. At least one field is required.\n\n"
@@ -416,7 +416,7 @@ _ACTION_TARGET_STATUS: dict[str, str] = {"start": "running", "stop": "stopped"}
 
 
 @tool_metadata(
-    tags={"workload", "datarobot", "start", "stop", "delete", "promote"},
+    tags=("DataRobot", "Workload", "Delete", "Promote", "Start", "Stop"),
     description=(
         "[Workload—action] Run a lifecycle action on a workload. action is one of:\n"
         "  'start'   — request a stopped workload to start (returns immediately, 202).\n"
@@ -479,7 +479,7 @@ async def workload_action_run(
 
 
 @tool_metadata(
-    tags={"workload", "bundle", "datarobot", "list"},
+    tags=("DataRobot", "Workload"),
     description=(
         "[Workload—bundle list] Discover available compute resource bundles "
         "(CPU count, memory, GPU type and VRAM). GPU type and VRAM are always "

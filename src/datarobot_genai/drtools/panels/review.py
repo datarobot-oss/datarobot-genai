@@ -58,7 +58,7 @@ def _node_summary(panel: Any) -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"panels", "read", "lineage", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—inspect] Walk a panel's parent lineage recursively: execution context "
         "and parent graph for the panel and its ancestors, without reading payload data. "
@@ -110,7 +110,7 @@ async def inspect_panel(
 
 
 @tool_metadata(
-    tags={"panels", "read", "json", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—view json] View a Json panel's structured data (large structures are "
         "truncated to preserve shape: first 5 array items, 200-char strings, 6 levels). "
