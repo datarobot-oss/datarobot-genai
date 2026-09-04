@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -21,6 +22,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
+import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
 from datarobot_genai.dragent.memory_space_cache import _STALE_CONNECTION_RETRIES
 from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
@@ -28,6 +30,7 @@ from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import _find_cache_session
 from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_provision_registry_cache_memory_space
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 
@@ -65,6 +68,20 @@ class _FakeSession:
         raise KeyError(sequence_id)
 
 
+_REGISTRY_MEMORY_SPACE_ENV = "AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"
+
+
+@pytest.fixture(autouse=True)
+def _reset_provisioned_registry_cache_space_state() -> None:
+    memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    previous_env = os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
+    yield
+    memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
+    if previous_env is not None:
+        os.environ[_REGISTRY_MEMORY_SPACE_ENV] = previous_env
+
+
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
     return MemorySpaceKVCache(memory_space_id="space-1")
@@ -76,13 +93,97 @@ class TestResolveMemorySpaceId:
 
     def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
+        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
         with pytest.raises(ValueError, match="MemorySpace ID"):
             resolve_memory_space_id(None)
 
     def test_agent_memory_space_id_is_not_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
-        assert try_resolve_memory_space_id(None) is None
+        assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
+
+    def test_memory_space_id_env_not_leaked_from_prior_provision(self) -> None:
+        assert os.environ.get(_REGISTRY_MEMORY_SPACE_ENV) is None
+        assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
+
+
+class TestProvisionRegistryCacheMemorySpace:
+    def test_skips_when_not_hosted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        assert try_provision_registry_cache_memory_space() is None
+
+    def test_creates_space_on_deployment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "dep-abc123")
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        space = MagicMock(id="space-new")
+        create_mock = MagicMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+                create_mock,
+            ),
+        ):
+            assert try_provision_registry_cache_memory_space() == "space-new"
+
+        create_mock.assert_called_once_with(
+            description="Agent card registry L2 cache",
+            deduplication_key="dragent:agent-card-registry:deployment:dep-abc123",
+        )
+        assert os.environ[_REGISTRY_MEMORY_SPACE_ENV] == "space-new"
+
+    def test_adopts_existing_space_on_dedup_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datarobot.errors import MemorySpaceDeduplicationError
+
+        monkeypatch.setenv("WORKLOAD_ID", "wl-xyz")
+        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
+        existing = MagicMock(id="space-existing")
+        create_mock = MagicMock(
+            side_effect=MemorySpaceDeduplicationError(
+                "conflict",
+                409,
+                json={"existingMemorySpaceId": "space-existing"},
+            )
+        )
+        get_mock = MagicMock(return_value=existing)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+                create_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.get",
+                get_mock,
+            ),
+        ):
+            assert try_provision_registry_cache_memory_space() == "space-existing"
+
+        get_mock.assert_called_once_with("space-existing")
+
+    def test_resolve_provisions_when_unset_on_hosted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
+        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "dep-abc123")
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache.try_provision_registry_cache_memory_space",
+            return_value="space-auto",
+        ) as provision_mock:
+            assert try_resolve_memory_space_id(None) == "space-auto"
+
+        provision_mock.assert_called_once_with()
 
 
 class TestConfigureDatarobotMemoryClient:

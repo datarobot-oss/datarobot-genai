@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.27
+- `dragent`: provision the agent card registry L2 MemorySpace automatically on hosted deployments (custom model or workload) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). Uses a deployment/workload-scoped `deduplication_key` so replicas share one space without Pulumi or `task deploy-dev` wiring.
 
 ## 0.29.27
 - `drtools`: reworked every tool's gallery tags into human-readable UI tags (e.g. `DataRobot, Predictive, Catalog`; action tags like `Delete`/`Promote` on the run-action tools), replacing the lowercase functional tags. Tags are now declared as ordered tuples so the gallery reports them in declaration order.
