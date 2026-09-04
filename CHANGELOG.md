@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
-## 0.29.27
+## 0.29.28
 - `drmcp/core/config`: **`oauth_claim_validation` is renamed `mcp_enable_oauth_claim_validation for MCP. The Agent config (oauth_claim_validation) stays the same.
 - `drmcp/core/middleware`: the flag now gates **every** AuthZ validator, not just the token handler. `BaseAuthZMiddleware` applies it once in `dispatch`; subclasses implement `run_authz`.
 
