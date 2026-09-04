@@ -258,9 +258,16 @@ def build_target(
     kind = ref.kind
 
     if kind is MCPServerKind.EXTERNAL:
-        # No DataRobot identity, by construction: `url` means third-party.
+        # `url` defaults to sending no DataRobot identity, but that is now the ref's
+        # DEFAULT rather than this branch's decision -- a DataRobot-hosted server that
+        # happens to be addressed by URL can declare otherwise. The host guard is what
+        # keeps the deliberate case from becoming an accidental leak.
         assert ref.url is not None  # the exactly-one-address validator guarantees it
-        return MCPTarget(ref=ref, url=ref.url.rstrip("/"), api_token=None)
+        ref.assert_credentials_allowed(datarobot_endpoint)
+        token = None
+        if ref.sends_datarobot_credentials:
+            _, token = _require_datarobot_credentials(ref, datarobot_endpoint, datarobot_api_token)
+        return MCPTarget(ref=ref, url=ref.url.rstrip("/"), api_token=ref.api_token or token)
 
     if kind is MCPServerKind.WORKLOAD:
         endpoint, token = _require_datarobot_credentials(
@@ -297,7 +304,7 @@ def build_target(
     return MCPTarget(
         ref=ref,
         url=build_local_mcp_url(ref.local_port, host=ref.local_host),
-        api_token=datarobot_api_token or None,
+        api_token=ref.api_token or datarobot_api_token or None,
     )
 
 
@@ -350,7 +357,10 @@ def build_headers(
     Parameters
     ----------
     target:
-        The server being called. Its ``kind`` decides steps 2-4.
+        The server being called. Its ``ref.resolved_auth_provider`` decides steps 2-4,
+        **not** its kind: how a server was addressed no longer decides how it is
+        authenticated. The kind is consulted once, in :func:`build_target`, to work out
+        a URL; it reaches this function only through the derived defaults on the ref.
     forwarded:
         Headers forwarded from the inbound request (``x-datarobot-*`` and
         ``x-untrusted-*`` only).
@@ -359,12 +369,14 @@ def build_headers(
     extra:
         Headers configured explicitly for this connection. Merged last.
     """
-    # `external` skips steps 1-4 entirely. That IS "no DataRobot credentials", and it is
-    # why a loopback `url` is rejected at config load.
-    if target.kind is MCPServerKind.EXTERNAL:
+    # Sending nothing skips steps 1-4 entirely. This used to be `kind is EXTERNAL`; it
+    # is now the ref's resolved auth provider, which defaults to exactly that for a
+    # `url` server. Static headers still apply -- they are how a third-party server is
+    # authenticated at all.
+    if not target.ref.sends_datarobot_credentials:
         return {**target.ref.headers, **(extra or {})}
 
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = {**target.ref.headers}
     if forwarded:
         headers.update(forwarded)
 
@@ -376,7 +388,7 @@ def build_headers(
         # extractor passes only x-datarobot-* and x-untrusted-*), so this is the only
         # step where a forwarded credential can actually be overwritten.
         forwarded_names = {name.lower() for name in (forwarded or {})}
-        if target.kind is MCPServerKind.WORKLOAD and "x-datarobot-api-key" not in forwarded_names:
+        if target.ref.resolved_api_key_header and "x-datarobot-api-key" not in forwarded_names:
             headers["x-datarobot-api-key"] = token.removeprefix("Bearer ").strip()
 
     try:

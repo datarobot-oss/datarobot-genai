@@ -31,6 +31,7 @@ from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPCli
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPFunctionGroup
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import _make_input_schema_enum_safe
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import resolve_auth_provider_name
 
 DEPLOYMENT_ID = "69331f1f30548f83b668d9dc"
 WORKLOAD_ID = "6a72dd6d4417b3136f64fef0"
@@ -347,3 +348,43 @@ class TestPerUserSessionClientsAreRefused:
         building a client with no URL and no credentials.
         """
         assert hasattr(MCPFunctionGroup, "_create_session_client")
+
+
+class TestResolveAuthProviderName:
+    """Which identity, when it can be declared in two places (#26).
+
+    `workflow.yaml`'s `server.auth_provider` and the ref's `auth_provider` (from
+    `<name>_mcp_auth_provider`) are two sources for one value. `model_fields_set` is
+    what distinguishes an explicit YAML value from the field's non-None default.
+    """
+
+    def test_yaml_only(self):
+        s = DataRobotMCPServerConfig(name="w", auth_provider="okta_auth_of_mcp")
+        r = MCPServerRef(name="w", deployment_id="a" * 24)
+        assert resolve_auth_provider_name(s, r) == "okta_auth_of_mcp"
+
+    def test_env_only_when_yaml_left_at_default(self):
+        s = DataRobotMCPServerConfig(name="w")
+        r = MCPServerRef(name="w", deployment_id="a" * 24, auth_provider="okta_auth_of_mcp")
+        assert resolve_auth_provider_name(s, r) == "okta_auth_of_mcp"
+
+    def test_neither_falls_back_to_the_yaml_default(self):
+        s = DataRobotMCPServerConfig(name="w")
+        r = MCPServerRef(name="w", deployment_id="a" * 24)
+        assert resolve_auth_provider_name(s, r) == "datarobot_mcp_auth"
+
+    def test_none_means_no_provider(self):
+        s = DataRobotMCPServerConfig(name="p")
+        r = MCPServerRef(name="p", url="https://p.example.com/mcp", auth_provider="none")
+        assert resolve_auth_provider_name(s, r) is None
+
+    def test_both_set_and_conflicting_raises_naming_both(self):
+        s = DataRobotMCPServerConfig(name="w", auth_provider="datarobot_mcp_auth")
+        r = MCPServerRef(name="w", deployment_id="a" * 24, auth_provider="okta_auth_of_mcp")
+        with pytest.raises(ValueError, match="auth provider in two places"):
+            resolve_auth_provider_name(s, r)
+
+    def test_both_set_and_agreeing_is_fine(self):
+        s = DataRobotMCPServerConfig(name="w", auth_provider="datarobot_mcp_auth")
+        r = MCPServerRef(name="w", deployment_id="a" * 24, auth_provider="datarobot_mcp_auth")
+        assert resolve_auth_provider_name(s, r) == "datarobot_mcp_auth"

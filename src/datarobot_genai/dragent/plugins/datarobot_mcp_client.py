@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from datarobot.core.config import DEFAULT_MCP_SERVER_NAME
+from datarobot.core.config import NO_MCP_AUTH_PROVIDER
+from datarobot.core.config import MCPServerRef
 from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client.client_base import AuthAdapter
@@ -98,6 +100,37 @@ class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  #
         default_factory=DataRobotMCPServerConfig,
         description="DataRobot MCP Server configuration",
     )
+
+
+def resolve_auth_provider_name(
+    server: DataRobotMCPServerConfig, ref: MCPServerRef
+) -> str | AuthenticationRef | None:
+    """Decide which auth provider this block uses, from the two places it may be set.
+
+    ``workflow.yaml``'s ``server.auth_provider`` and the ref's ``auth_provider`` (from
+    ``<name>_mcp_auth_provider``) are two sources for one value. Setting both is an
+    error rather than a precedence rule -- there is no correct answer to pick, and
+    picking one silently reintroduces exactly the kind of hidden layer this design
+    removes.
+
+    ``model_fields_set`` is what distinguishes an explicit YAML value from the field's
+    default, which is non-``None`` and so otherwise always looks set.
+    """
+    yaml_set = "auth_provider" in server.model_fields_set
+    ref_set = ref.auth_provider is not None
+
+    if yaml_set and ref_set and str(server.auth_provider) != ref.auth_provider:
+        raise ValueError(
+            f"MCP server {ref.name!r} has an auth provider in two places: "
+            f"workflow.yaml says {server.auth_provider!r} and "
+            f"{ref.name}_mcp_auth_provider says {ref.auth_provider!r}. Set it in one "
+            f"place; there is no precedence between them."
+        )
+
+    name = ref.auth_provider if ref_set and not yaml_set else server.auth_provider
+    if name is None or name == NO_MCP_AUTH_PROVIDER:
+        return None
+    return name
 
 
 class DataRobotAuthAdapter(AuthAdapter):
@@ -264,12 +297,17 @@ async def datarobot_mcp_client_function_group(
         datarobot_api_token=app_config.resolve_datarobot_api_token(),
     )
 
+    # Which identity, reconciled between the two places it may be declared. Setting it
+    # in both is an error, not a precedence rule: there is no correct answer to pick,
+    # and choosing one silently is the failure this design removes.
+    provider_name = resolve_auth_provider_name(config.server, target.ref)
+
     # Resolve auth provider if specified. NAT returns ONE SHARED instance per name, so
-    # every block naming `dr_service` gets the same object -- which is why the target
-    # travels with each call rather than being stored on the provider.
+    # every block naming `datarobot_mcp_auth` gets the same object -- which is why the
+    # target travels with each call rather than being stored on the provider.
     auth_provider = None
-    if config.server.auth_provider:
-        auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
+    if provider_name:
+        auth_provider = await _builder.get_auth_provider(provider_name)
 
     # Build the appropriate client
     if target.ref.transport == "sse":
