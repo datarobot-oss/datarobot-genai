@@ -16,6 +16,8 @@
 
 import json
 import logging
+from abc import ABC
+from abc import abstractmethod
 from enum import Enum
 from enum import auto
 from http import HTTPMethod
@@ -65,6 +67,17 @@ def is_path_exempt_from_oauth_validation(path: str) -> bool:
     health_path = _normalize_path(prefix_mount_path("/"))
     well_known_prefix = _normalize_path(prefix_mount_path("/.well-known"))
     return path == health_path or path.startswith(well_known_prefix + "/")
+
+
+def should_run_claim_validation(request: Request) -> bool:
+    """Whether the AuthZ validators run for this request.
+
+    ``mcp_enable_oauth_claim_validation`` gates all of them; exempt paths never run one.
+    """
+    return (
+        get_config().mcp_enable_oauth_claim_validation
+        and not is_path_exempt_from_oauth_validation(request.url.path)
+    )
 
 
 def create_oauth_middleware(
@@ -134,19 +147,36 @@ def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
     return request.scope.get("user")
 
 
-class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
+class BaseAuthZMiddleware(BaseHTTPMiddleware, ABC):
+    """Applies the ``mcp_enable_oauth_claim_validation`` gate before any AuthZ work runs.
+
+    Subclasses implement ``run_authz`` and in order not to repeat the gate check, the
+    dispatch method is overridden to call the ``run_authz`` method.
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response:
+        if not should_run_claim_validation(request):
+            return await call_next(request)
+        return await self.run_authz(request, call_next)
+
+    @abstractmethod
+    async def run_authz(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response: ...
+
+
+class OAuthJWTTokenHandlerMiddleware(BaseAuthZMiddleware):
     """ASGI middleware parsing OAuth JWT token and setting it in request scope.
     The parsed JWT token can be reused in the downstream validation (e.g., audience, tool scope).
     """
 
     HTTP_HEADER_TO_VALIDATE = "x-datarobot-external-access-token"
-
-    @classmethod
-    def to_run_jwt_token_handling(cls, request: Request) -> bool:
-        is_oauth_claim_validation_enabled = get_config().oauth_claim_validation
-        return is_oauth_claim_validation_enabled and not is_path_exempt_from_oauth_validation(
-            request.url.path
-        )
 
     @staticmethod
     def update_scope_with_authenticated_user(
@@ -162,14 +192,11 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
     ) -> None:
         scope["auth"] = AuthCredentials(access_token.scopes)
 
-    async def dispatch(
+    async def run_authz(
         self,
         request: Request,
         call_next: Any,
     ) -> Response:
-        if not self.to_run_jwt_token_handling(request):
-            return await call_next(request)
-
         access_token = JWTTokenHandler.parse_to_access_token(
             self.HTTP_HEADER_TO_VALIDATE,
             request.headers,
@@ -191,7 +218,7 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
+class GeneralOAuthClaimValidationMiddleware(BaseAuthZMiddleware):
     """ASGI middleware validating the audience claim in a JWT token. The naming general in this
     context means claim validations in this middleware is not MCP protocol specific check to be only
     triggerd by a specific MCP protocol (e.g., call a tool).
@@ -204,7 +231,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         mcp_server_config = get_config()
         return mcp_server_config.mcp_xaa_token_audience
 
-    async def dispatch(
+    async def run_authz(
         self,
         request: Request,
         call_next: Any,
@@ -231,7 +258,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-class OAuthMCPToolCallScopeValidationMiddleware(BaseHTTPMiddleware):
+class OAuthMCPToolCallScopeValidationMiddleware(BaseAuthZMiddleware):
     """ASGI middleware validating the scope claim in a JWT token. It is now enforced only on
     ``tools/call`` requests.
     This middleware is expected to be triggered after OAuthJWTTokenHandlerMiddleware which
@@ -254,7 +281,7 @@ class OAuthMCPToolCallScopeValidationMiddleware(BaseHTTPMiddleware):
         name = params.get("name") if isinstance(params, dict) else None
         return name if isinstance(name, str) else None
 
-    async def dispatch(
+    async def run_authz(
         self,
         request: Request,
         call_next: Any,

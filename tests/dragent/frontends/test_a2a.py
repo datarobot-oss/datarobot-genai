@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import logging
 import os
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -26,6 +27,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_HOST_ENV
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_PREFIX_ENV
+from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_DESCRIPTION
 from datarobot_genai.dragent.frontends.a2a import BEARER_SECURITY_SCHEME_NAME
 from datarobot_genai.dragent.frontends.a2a import CROSS_APP_EXTENSION_DESCRIPTION
@@ -432,6 +434,42 @@ class TestCreateAgentCard:
 
         assert card.url == "https://custom.example.com/agent"
 
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "http://localhost:8000/a2a/"),
+            ("custom", "http://localhost:8000/custom/"),
+            ("", "http://localhost:8000/"),
+        ],
+    )
+    async def test_mount_path_shapes_agent_card_url(
+        self, a2a_frontend_config, mount_path, expected
+    ):
+        """GIVEN a mount path WHEN create_agent_card is called THEN the card url points at
+        that mount, so clients reach the live RPC endpoint rather than the default /a2a/.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            card = await create_agent_card(
+                a2a_frontend_config, cross_app_access=None, skills=[], mount_path=mount_path
+            )
+
+        assert card.url == expected
+
+    async def test_external_url_wins_over_mount_path(self, a2a_frontend_config):
+        """GIVEN both external.url and a mount path are set WHEN create_agent_card is called
+        THEN external.url is used untouched, since it is already the caller's final answer.
+        """
+        external = DRAgentA2AExternalConfig(url="https://custom.example.com/agent/")
+        card = await create_agent_card(
+            a2a_frontend_config,
+            cross_app_access=None,
+            skills=[],
+            external=external,
+            mount_path="",
+        )
+
+        assert card.url == "https://custom.example.com/agent/"
+
     async def test_all_extensions_combined(self, a2a_frontend_config):
         """GIVEN cross_app_access, MLOPS_DEPLOYMENT_ID, and external.id are all set WHEN
         create_agent_card is called THEN all three extensions are present.
@@ -498,13 +536,37 @@ class TestUnauthenticatedWellKnownRoute:
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
 
-    async def test_unauthenticated_without_opt_in_returns_401(self, a2a_frontend_config):
+    async def test_unauthenticated_without_opt_in_returns_generic_404(self, a2a_frontend_config):
+        """A not-opted-in agent must be indistinguishable from one that does not exist."""
         server = await self._make_server(a2a_frontend_config)
         response = await server._handle_get_agent_card(self._make_request())
-        assert response.status_code == 401
-        body = json.loads(response.body)
-        assert "error" in body
-        assert "enable_unauthenticated_well_known_route" in body["error"]
+        assert response.status_code == 404
+        assert json.loads(response.body) == AGENT_CARD_NOT_FOUND_BODY
+
+    async def test_unauthenticated_without_opt_in_leaks_nothing_in_the_body(
+        self, a2a_frontend_config
+    ):
+        """The refusal must not name the opt-in flag, the agent, or the reason it was refused."""
+        server = await self._make_server(a2a_frontend_config)
+        response = await server._handle_get_agent_card(self._make_request())
+        body = response.body.decode()
+        for leak in (
+            "enable_unauthenticated_well_known_route",
+            "workflow.yaml",
+            "unauthenticated",
+            "platform-level",
+            a2a_frontend_config.name,
+        ):
+            assert leak.lower() not in body.lower(), f"agent-card 404 leaks {leak!r}"
+
+    async def test_unauthenticated_without_opt_in_logs_the_reason_server_side(
+        self, a2a_frontend_config, caplog
+    ):
+        """The reason stays debuggable in the log even though it is kept out of the response."""
+        server = await self._make_server(a2a_frontend_config)
+        with caplog.at_level(logging.INFO, logger="datarobot_genai.dragent.frontends.a2a"):
+            await server._handle_get_agent_card(self._make_request())
+        assert "enable_unauthenticated_well_known_route" in caplog.text
 
     async def test_unauthenticated_with_opt_in_returns_redacted_card(self, a2a_frontend_config):
         server = await self._make_server(
@@ -643,3 +705,80 @@ class TestGetA2aEndpointUrl:
         with patch.dict(os.environ, env, clear=True):
             url = get_a2a_endpoint_url("localhost", 8000)
         assert url == "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/"
+
+
+class TestGetA2aEndpointUrlMountPath:
+    """Every tier's URL has to follow the suffix A2A was actually mounted under."""
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "http://localhost:8000/a2a/"),
+            ("custom", "http://localhost:8000/custom/"),
+            ("api/a2a", "http://localhost:8000/api/a2a/"),
+            ("", "http://localhost:8000/"),
+        ],
+    )
+    def test_local_fallback(self, mount_path, expected):
+        """GIVEN no hosting env vars WHEN get_a2a_endpoint_url is called with a mount path
+        THEN the local URL carries that suffix, and none at all when it is empty.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/a2a/"),
+            ("custom", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/custom/"),
+            ("", "https://app.datarobot.com/api/v2/deployments/abc123/directAccess/"),
+        ],
+    )
+    def test_deployment(self, mount_path, expected):
+        """GIVEN MLOPS_DEPLOYMENT_ID is set WHEN get_a2a_endpoint_url is called with a mount
+        path THEN the directAccess URL ends with that suffix.
+        """
+        env = {
+            "MLOPS_DEPLOYMENT_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/a2a/"),
+            ("custom", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/custom/"),
+            ("", "https://app.datarobot.com/api/v2/endpoints/workloads/abc123/"),
+        ],
+    )
+    def test_workload(self, mount_path, expected):
+        """GIVEN WORKLOAD_ID is set WHEN get_a2a_endpoint_url is called with a mount path
+        THEN the workload URL ends with that suffix.
+        """
+        env = {
+            "WORKLOAD_ID": "abc123",
+            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "https://enclave-x.datarobot.com/workloads/abc123/a2a/"),
+            ("custom", "https://enclave-x.datarobot.com/workloads/abc123/custom/"),
+            ("", "https://enclave-x.datarobot.com/workloads/abc123/"),
+        ],
+    )
+    def test_api_gateway(self, mount_path, expected):
+        """GIVEN the Envoy gateway env vars are injected WHEN get_a2a_endpoint_url is called
+        with a mount path THEN the gateway URL ends with that suffix.
+        """
+        env = {
+            WORKLOAD_EXTERNAL_HOST_ENV: "enclave-x.datarobot.com",
+            WORKLOAD_EXTERNAL_PREFIX_ENV: "/workloads/abc123",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected

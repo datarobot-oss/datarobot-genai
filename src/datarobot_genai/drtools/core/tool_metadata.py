@@ -69,14 +69,17 @@ def get_registered_tools() -> list[tuple[Callable, dict[str, Any]]]:
 
 
 def get_tool_ui_metadata() -> dict[str, dict[str, Any]]:
-    """Build ``tool_name -> {display_name, description_ui, auth_provider}`` from the registry.
+    """Build ``tool_name -> {display_name, description_ui, auth_provider, tags}``.
 
-    These UI-only keys are stripped before FastMCP registration (see
+    The UI-only keys are stripped before FastMCP registration (see
     ``DRTOOLS_PRIVATE_METADATA_KEYS``), so agents/LLMs never see them. The tools-gallery
     route re-attaches them by calling this — it is injected into
     ``register_tool_gallery_routes`` as the ``ui_metadata_provider`` because ``drmcputils``
     (where the route lives) may not import ``drtools``. Owning this here keeps the metadata
     keys with the registry that defines them.
+
+    ``tags`` preserves the declaration order of ``@tool_metadata(tags=(...))`` — FastMCP
+    stores tags as a set, so this is the only place the gallery can read them ordered.
     """
     lookup: dict[str, dict[str, Any]] = {}
     for func, metadata in get_registered_tools():
@@ -85,5 +88,6 @@ def get_tool_ui_metadata() -> dict[str, dict[str, Any]]:
             "display_name": metadata.get("display_name"),
             "description_ui": metadata.get("description_ui"),
             "auth_provider": metadata.get("auth_provider"),
+            "tags": list(metadata.get("tags") or []),
         }
     return lookup

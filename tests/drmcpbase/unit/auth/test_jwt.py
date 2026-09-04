@@ -482,7 +482,7 @@ class TestJWTTokenClaimsValidator:
         validator.validate_audience_claim(audience_value)
         mock_logger.info.assert_called_once_with("Audience claim validation succeeded.")
 
-    def test_validate_audience_claim_ignored_when_no_expected_audience_is_provided(
+    def test_validate_audience_claim_is_skipped_when_no_expected_audience_is_configured(
         self,
         mock_authorization_claims_from_access_token: Mock,
         mock_logger: Mock,
@@ -494,10 +494,8 @@ class TestJWTTokenClaimsValidator:
 
         validator = JWTTokenClaimsValidator(Mock())
         validator.validate_audience_claim(None)
-        mock_logger.info.assert_called_once_with(
-            "Authorization audience claim validation is not executed. "
-            "There is no expected audience claim provided."
-        )
+
+        mock_logger.warning.assert_called_once_with("No expected audience claim is configured.")
 
     def test_validate_audience_claim_fails_when_audience_mismatches(
         self,

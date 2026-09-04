@@ -81,7 +81,7 @@ def _instance_url(endpoint: str) -> str:
 
 
 @tool_metadata(
-    tags={"panels", "write", "catalog", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—from catalog] Convert a DataRobot AI Catalog dataset into a Dataset panel "
         "(Parquet payload stored via the Files API) for use with the panel tools. Records "
@@ -135,7 +135,7 @@ async def create_dataset_panel_from_catalog(
 
 
 @tool_metadata(
-    tags={"panels", "read", "catalog", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—to catalog] Upload a Dataset panel's tabular data to the DataRobot AI "
         "Catalog as a new dataset (CSV-backed). Name defaults to the panel title."
@@ -194,7 +194,7 @@ async def _materialize_frames(dataset_ids: list[str]) -> dict[str, pl.DataFrame]
 
 
 @tool_metadata(
-    tags={"panels", "write", "catalog", "dataset", "sql", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—query datasets] Query one or more DataRobot AI Catalog datasets with SQL "
         "and store the result as a Dataset panel. Datasets are bound positionally as t0, "
@@ -264,7 +264,7 @@ async def query_datasets_to_panel(
 
 
 @tool_metadata(
-    tags={"panels", "write", "deployment", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—prediction history] Retrieve a deployment's stored prediction history "
         "and store it as a Dataset panel (in 'staging'). Supports limit/offset paging and "
@@ -324,7 +324,7 @@ async def get_prediction_history(
 
 
 @tool_metadata(
-    tags={"panels", "read", "modeling", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—autopilot status] Check the progress of an AutoPilot run: whether it is "
         "complete, queued/running model counts, leaderboard size, and the leaderboard URL. "
@@ -415,7 +415,7 @@ async def get_autopilot_status(
 
 
 @tool_metadata(
-    tags={"panels", "write", "deployment", "predictions", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—predict] Make predictions using a DataRobot deployment on a scoring "
         "Dataset panel and store the results as a lineage-linked child Dataset panel "
@@ -643,7 +643,7 @@ async def _datetime_partition_columns(deployment_id: str) -> tuple[str, str | No
 
 
 @tool_metadata(
-    tags={"panels", "write", "deployment", "dataset", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—what-if] Apply deterministic what-if adjustments (mul/add/set, optionally "
         "scoped by inclusive date window and series) to a scoring Dataset panel and store "

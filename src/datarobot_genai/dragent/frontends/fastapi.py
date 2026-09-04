@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
+from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from fastapi import FastAPI
 from nat.data_models.user_info import UserInfo
@@ -37,8 +38,8 @@ from datarobot_genai.core.utils.logging import setup_logging
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
-from .a2a import A2A_MOUNT_PATH
 from .a2a import DRAgentA2AFrontEndPluginWorker
+from .a2a import DRAgentA2AStarletteApplication
 from .a2a import create_agent_card
 from .agent_manifest import AgentManifest
 from .agent_manifest import build_agent_manifest
@@ -60,6 +61,12 @@ DATAROBOT_MODEL_MONITORING_HEADER = "X-DataRobot-Model-Monitoring"
 _PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?$,/ping/?$"
 
 logger = logging.getLogger(__name__)
+
+# FastAPI's APIRoute, unlike plain Starlette's Route, does not add HEAD automatically
+# alongside GET, so anything probing with HEAD — load balancers, monitors, agent-card
+# clients — would get a 405. Once matched, the ASGI server (uvicorn) strips the body for
+# HEAD on the wire, so handlers need no method-specific branch.
+_GET_AND_HEAD = ["GET", "HEAD"]
 
 
 def _route_path(request: Request) -> str:
@@ -262,6 +269,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             cross_app_access=a2a.cross_application_access,
             skills=a2a.skills,
             external=a2a.external,
+            mount_path=a2a.mount_path,
         )
         session_manager = await DRAgentAGUISessionManager.create(
             config=self._config,
@@ -278,10 +286,107 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         a2a_app = a2a_server.build()
 
-        app.mount(f"/{A2A_MOUNT_PATH}", a2a_app)
+        # Before we add anything of our own, so what we inspect is exactly the set of
+        # foreign routes. (Our own fallback could not collide anyway — it lives under
+        # /.well-known/ and mount_path segments cannot start with a dot — but checking
+        # first means that argument isn't load-bearing.)
+        self._check_mount_path_conflicts(app, a2a.mount_path)
+
+        # Registered before the mount purely to keep this file's "specific routes before
+        # catch-alls" convention; the two don't actually overlap since mount_path is
+        # always a non-empty suffix and the fallback lives at the disjoint app root.
+        self._register_root_agent_card_fallback(app, a2a_server, a2a.mount_path)
+
+        app.mount(f"/{a2a.mount_path}", a2a_app)
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
+
+    def _check_mount_path_conflicts(self, app: FastAPI, mount_path: str) -> None:
+        """Fail (or warn) when ``mount_path`` lands on ground another route already owns.
+
+        Checked here rather than in ``DRAgentA2AConfig`` because this is the one moment the
+        real answer is knowable: the A2A mount is the last thing registered on the app, so
+        ``app.routes`` now holds every route DataRobot, NAT and the installed plugins
+        actually added — including endpoints composed from ``front_end.endpoints`` at
+        arbitrary paths. A hardcoded reserved-name list would both miss those and drift
+        from whatever NAT registers next.
+
+        An **exact** conflict is fatal. A mount is normally reachable without its trailing
+        slash because Starlette answers ``POST /{mount_path}`` with a 307 to
+        ``/{mount_path}/``, preserving method and body. A route sitting on the mount point
+        pre-empts that redirect, so the collision does not merely add ambiguity — it
+        removes the mechanism that makes the slashless form work, and an A2A client using
+        it silently gets that other route's response instead of the JSON-RPC endpoint.
+
+        A **nested** conflict only warns: the foreign route keeps winning for its own path
+        (it was registered first) and A2A still works at its advertised URL, so the result
+        is confusing rather than broken — not worth refusing to boot over, especially since
+        a future NAT route could otherwise brick a previously working config.
+        """
+        mount_point = f"/{mount_path}"
+        nested_prefix = f"{mount_point}/"
+
+        # Not every BaseRoute carries a ``path`` (Host and WebSocketRoute do not), so read
+        # it defensively and keep only the string ones.
+        paths = {
+            path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
+        }
+
+        if mount_point in paths:
+            raise ValueError(
+                f"a2a.mount_path {mount_path!r} is already served by another route at "
+                f"{mount_point}. That route was registered first, so it wins there and "
+                f"also suppresses the redirect that would otherwise send {mount_point} "
+                f"to {nested_prefix} — an A2A client that omits the trailing slash would "
+                "silently get that route's response instead of the JSON-RPC endpoint. "
+                'Choose a mount path that is not already routed, e.g. "a2a" or "api/a2a".'
+            )
+
+        if nested := sorted(path for path in paths if path.startswith(nested_prefix)):
+            logger.warning(
+                "a2a.mount_path %r overlaps existing route(s): %s. Those keep working and "
+                "A2A is still reachable at %s, but paths under %s are now split between "
+                "two apps, which will be confusing to debug. Consider a mount path that "
+                "does not overlap.",
+                mount_path,
+                ", ".join(nested),
+                nested_prefix,
+                nested_prefix,
+            )
+
+    def _register_root_agent_card_fallback(
+        self, app: FastAPI, a2a_server: DRAgentA2AStarletteApplication, mount_path: str
+    ) -> None:
+        """Serve the agent card at the app root as well, for discovery fallback.
+
+        Clients resolve an agent card by trying ``{url}/.well-known/agent-card.json`` and
+        falling back to the same path at the host root. That fallback only exists if the
+        root actually answers, which it does not by default — the card lives at
+        ``/{mount_path}/.well-known/agent-card.json`` and nowhere else since A2A cannot be
+        mounted at the root itself (``DRAgentA2AConfig.mount_path`` rejects an empty value).
+
+        The route delegates to the *same* bound handler the mounted app uses, so the
+        unauthenticated-access policy and card redaction stay in one place instead of
+        being reimplemented (and drifting) here.
+        """
+
+        async def agent_card_fallback(request: Request) -> Response:
+            return await a2a_server._handle_get_agent_card(request)
+
+        app.add_api_route(
+            path=AGENT_CARD_WELL_KNOWN_PATH,
+            endpoint=agent_card_fallback,
+            methods=_GET_AND_HEAD,
+            response_model=None,
+            description=(
+                "Agent card, served at the root as a discovery fallback for clients that "
+                f"do not know it is mounted under /{mount_path}/"
+            ),
+            tags=["A2A"],
+        )
+
+        logger.info(f"Added root agent card fallback at {AGENT_CARD_WELL_KNOWN_PATH}")
 
     def build_app(self) -> FastAPI:
         """Build the FastAPI app, wrapping the parent lifespan to clean up the A2A worker."""
@@ -368,7 +473,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             app.add_api_route(
                 path=path,
                 endpoint=health_check,
-                methods=["GET"],
+                methods=_GET_AND_HEAD,
                 response_model=HealthResponse,
                 description="Health check endpoint for liveness/readiness probes",
                 tags=["Health"],
@@ -398,7 +503,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.add_api_route(
             path="/.well-known/agent-manifest.json",
             endpoint=agent_manifest,
-            methods=["GET"],
+            methods=_GET_AND_HEAD,
             response_model=AgentManifest,
             description="Declared components, tools, and root agent for this running agent",
             tags=["Agent Manifest"],

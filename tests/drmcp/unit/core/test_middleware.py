@@ -34,6 +34,7 @@ from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthMCPToolCallScopeValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import build_http_response_from_auth_error
 from datarobot_genai.drmcp.core.middleware import is_path_exempt_from_oauth_validation
+from datarobot_genai.drmcp.core.middleware import should_run_claim_validation
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
@@ -133,13 +134,15 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.fixture
-    def mock_to_run_jwt_token_handling(self, module_under_test: str) -> Iterator[Mock]:
-        with patch.object(OAuthJWTTokenHandlerMiddleware, "to_run_jwt_token_handling") as mock_func:
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_to_run_jwt_token_handling_returns_true(self, module_under_test: str) -> Iterator[Mock]:
-        with patch.object(OAuthJWTTokenHandlerMiddleware, "to_run_jwt_token_handling") as mock_func:
+    def mock_should_run_claim_validation_returns_true(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             mock_func.return_value = True
             yield mock_func
 
@@ -160,35 +163,32 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.mark.parametrize(
-        "is_path_exempt_from_validation, is_oauth_validation_enabled, to_run_jwt_token_handling",
+        "is_path_exempt_from_validation, is_oauth_validation_enabled, should_handle_claims",
         [(True, True, False), (True, False, False), (False, False, False), (False, True, True)],
         ids=str,
     )
-    def test_to_run_jwt_token_handling(
+    def test_should_run_claim_validation(
         self,
         is_path_exempt_from_validation: bool,
         is_oauth_validation_enabled: bool,
-        to_run_jwt_token_handling: bool,
+        should_handle_claims: bool,
         mock_get_config: Mock,
         mock_is_path_exempt_from_oauth_validation: Mock,
     ) -> None:
         mock_is_path_exempt_from_oauth_validation.return_value = is_path_exempt_from_validation
         mock_config = mock_get_config.return_value
-        mock_config.oauth_claim_validation = is_oauth_validation_enabled
+        mock_config.mcp_enable_oauth_claim_validation = is_oauth_validation_enabled
 
-        mock_request = Mock()
-        output = OAuthJWTTokenHandlerMiddleware.to_run_jwt_token_handling(mock_request)
-
-        assert output is to_run_jwt_token_handling
+        assert should_run_claim_validation(Mock()) is should_handle_claims
 
     def test_bypass_jwt_token_handling(
         self,
-        mock_to_run_jwt_token_handling: Mock,
+        mock_should_run_claim_validation: Mock,
         mock_parse_to_access_token: Mock,
         mock_update_scope_with_auth_credentials: Mock,
         mock_update_scope_with_authenticated_user: Mock,
     ) -> None:
-        mock_to_run_jwt_token_handling.return_value = False
+        mock_should_run_claim_validation.return_value = False
 
         client = TestClient(mock_app())
         response = client.get("/")
@@ -198,7 +198,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         mock_update_scope_with_auth_credentials.assert_not_called()
         mock_update_scope_with_authenticated_user.assert_not_called()
 
-    @pytest.mark.usefixtures("mock_to_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     async def test_run_jwt_token_handling(
         self,
         mock_parse_to_access_token: Mock,
@@ -220,7 +220,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         )
         mock_call_next.assert_called_once_with(request)
 
-    @pytest.mark.usefixtures("mock_to_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     def test_return_error_when_there_is_no_valid_jwt_token(
         self,
         mock_parse_to_access_token: Mock,
@@ -246,6 +246,12 @@ class TestOAuthJWTTokenHandlerMiddleware:
 
 
 class TestGeneralOAuthClaimValidationMiddleware:
+    @pytest.fixture(autouse=True)
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
+            mock_func.return_value = True
+            yield mock_func
+
     @pytest.fixture
     def mock_get_config(self, module_under_test: str) -> Iterator[Mock]:
         with patch(f"{module_under_test}.get_config") as mock_func:
@@ -277,6 +283,24 @@ class TestGeneralOAuthClaimValidationMiddleware:
 
         mock_get_config.assert_called_once_with()
         assert output == mock_get_config.return_value.mcp_xaa_token_audience
+
+    async def test_skip_claim_validation_if_the_gate_is_off(
+        self,
+        mock_should_run_claim_validation: Mock,
+        mock_get_user_from_request_scope: Mock,
+        mock_jwt_token_claims_validator_cls: Mock,
+    ) -> None:
+        """OAUTH_CLAIM_VALIDATION gates this validator, not only the token handler."""
+        mock_should_run_claim_validation.return_value = False
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = GeneralOAuthClaimValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_get_user_from_request_scope.assert_not_called()
+        mock_jwt_token_claims_validator_cls.assert_not_called()
+        mock_call_next.assert_called_once_with(request)
 
     async def test_skip_claim_validation_if_no_user_to_validate_in_inbound_request(
         self,
@@ -350,6 +374,12 @@ class TestGeneralOAuthClaimValidationMiddleware:
 
 
 class TestOAuthMCPToolCallScopeValidationMiddleware:
+    @pytest.fixture(autouse=True)
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
+            mock_func.return_value = True
+            yield mock_func
+
     @pytest.fixture
     def mock_json_loads(self) -> Iterator[Mock]:
         with patch.object(json, "loads") as mock_func:
@@ -547,6 +577,22 @@ class TestOAuthMCPToolCallScopeValidationMiddleware:
             request.app.state.fastmcp_server,
             mock_get_mcp_tool_name_in_request.return_value,
         )
+        mock_call_next.assert_called_once_with(request)
+
+    async def test_skip_validation_if_the_gate_is_off(
+        self,
+        mock_should_run_claim_validation: Mock,
+        mock_get_mcp_tool_name_in_request: AsyncMock,
+    ) -> None:
+        """OAUTH_CLAIM_VALIDATION gates this validator, not only the token handler."""
+        mock_should_run_claim_validation.return_value = False
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_get_mcp_tool_name_in_request.assert_not_called()
         mock_call_next.assert_called_once_with(request)
 
     @pytest.mark.usefixtures(

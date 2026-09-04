@@ -36,6 +36,7 @@ class TestGetToolUiMetadata:
                     "display_name": "My Tool",
                     "description_ui": "Does a thing.",
                     "auth_provider": "jira",
+                    "tags": ("Atlassian", "Jira"),
                 },
             )
         ]
@@ -45,6 +46,8 @@ class TestGetToolUiMetadata:
             "display_name": "My Tool",
             "description_ui": "Does a thing.",
             "auth_provider": "jira",
+            # Declaration order preserved — the gallery reports tags in this order.
+            "tags": ["Atlassian", "Jira"],
         }
 
     def test_falls_back_to_func_name_when_no_name_key(self) -> None:
@@ -65,6 +68,7 @@ class TestGetToolUiMetadata:
             "display_name": None,
             "description_ui": None,
             "auth_provider": None,
+            "tags": [],
         }
 
     def test_empty_registry_returns_empty_lookup(self) -> None:

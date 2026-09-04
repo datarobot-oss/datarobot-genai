@@ -74,7 +74,7 @@ def _list_browse_hint(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "list", "search", "glob", "tree"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—list] Browse the DataRobot filesystem. Paths look like "
         "dr://<catalog_id>/path. Call with path='dr://' to list catalog items "
@@ -187,7 +187,7 @@ async def file_list(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "info", "metadata"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—info] Fetch metadata for a single file or directory: name, type "
         "('file'|'directory'), size in bytes, format, and created_at. Append a "
@@ -215,7 +215,7 @@ async def file_info(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "read", "download"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—read] Read a file's content. Content is returned as UTF-8 text "
         "when valid, otherwise base64 (check the 'encoding' field). Reads are "
@@ -300,7 +300,7 @@ async def file_read(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "sign", "url", "download"},
+    tags=("DataRobot", "Files", "URL"),
     description=(
         "[Files—sign] Create a temporary signed URL granting direct download "
         "access to a file. Use this for large files (over the inline read cap) "

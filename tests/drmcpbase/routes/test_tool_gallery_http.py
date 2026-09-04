@@ -69,12 +69,12 @@ class TestToolGalleryRoute:
             body = client.get("/toolGallery/tools/").json()
         by_name = {t["name"]: t for t in body["tools"]}
         assert by_name["jira_search_issues"]["categories"] == [
-            "dr_connector_jira",
-            "dr_connectors",
+            {"name": "dr_connector_jira", "label": "Jira", "kind": "leaf"},
+            {"name": "dr_connectors", "label": "Data connectors", "kind": "parent"},
         ]
         assert by_name["perplexity_search"]["categories"] == [
-            "dr_web_search",
-            "dr_web_search_perplexity",
+            {"name": "dr_web_search", "label": "Web search", "kind": "parent"},
+            {"name": "dr_web_search_perplexity", "label": "Perplexity", "kind": "leaf"},
         ]
 
     def test_every_item_has_required_fields(self) -> None:
@@ -84,10 +84,12 @@ class TestToolGalleryRoute:
         required = {
             "name",
             "display_name",
+            "ui_display_name",
             "description",
             "tags",
             "categories",
             "provider",
+            "provider_name",
             "oauth_provider_type",
             "hosted",
         }
@@ -373,6 +375,19 @@ class TestToolGalleryCategoriesRoute:
         assert values == set(ordered_top_level())
         assert {"dr_user_tools", "dr_dynamic_tools", "dr_db", "dr_deployments"} <= values
 
+    def test_nodes_are_ordered_alphabetically_by_label(self) -> None:
+        # GIVEN the gallery routes
+        mcp = _make_server_with_route()
+        # WHEN the categories route is fetched
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/toolGallery/categories/").json()
+        # THEN top-level nodes and each parent's children are alphabetical by label
+        labels = [item["label"].casefold() for item in body["categories"]]
+        assert labels == sorted(labels)
+        for item in body["categories"]:
+            child_labels = [child["label"].casefold() for child in item["children"]]
+            assert child_labels == sorted(child_labels)
+
     def test_nodes_carry_live_counts_children_and_applies_to(self) -> None:
         # GIVEN a server exposing one jira tool
         mcp = _make_server_with_route()
@@ -420,7 +435,7 @@ class TestToolGalleryProvidersRoute:
         body = resp.json()
         assert body["count"] == len(body["providers"]) == 2
         by_value = {item["value"]: item["label"] for item in body["providers"]}
-        assert by_value == {"datarobot": "DataRobot", "third_party": "Third party"}
+        assert by_value == {"datarobot": "DataRobot", "third_party": "Third-party"}
 
 
 class TestToolGalleryEnumRoutesAreGated:

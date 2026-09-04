@@ -4,10 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.27 - 2026-09-03
+## 0.29.32 - 2026-09-03
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
 - Add a minimum version for `langchain-core`: `>=1.3.3`.
 - Raise the minimum `mistune` version from `>=3.3.0` to `>=3.3.3`.
+
+## 0.29.31
+- `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is rejected.
+- `dragent`: the agent card is also served at the root `/.well-known/agent-card.json` as a discovery fallback, whatever suffix A2A is mounted under. It shares the mounted route's handler, so the unauthenticated-access policy — including the generic `404` from 0.29.29 — holds on both paths.
+- `dragent`: `a2a.mount_path` is validated at config load instead of accepted verbatim: every segment must be RFC 3986 unreserved characters (letters, digits, `- . _ ~`) and must not start with a dot. Values that used to fail silently are now rejected — Starlette path-parameter syntax (`{id}`, `{path}`), URI syntax (`?`, `#`, `%`), empty segments, and the RFC 8615 `.well-known` namespace.
+- `dragent`: mounting A2A where another route already answers now fails at startup, naming that route; a merely overlapping prefix warns instead. An exact collision would otherwise suppress the redirect that makes the slashless `POST /{mount_path}` reach the JSON-RPC endpoint, silently serving the other route's response.
+- `dragent`: fixed `HEAD` on the health, agent-manifest, and root agent-card routes returning 405 instead of 200; FastAPI's `APIRoute` does not add `HEAD` alongside a registered `GET` the way Starlette's `Route` does.
+
+## 0.29.30
+- `drmcp/core/runtime_identity.py`: Fix MCP deployment URL generation error (URL_PREFIX related)
+
+## 0.29.29
+- `dragent/frontends`: **an agent that has not opted in to unauthenticated agent-card access now returns the generic `404 {"detail": "Not Found"}`, not a `401` explaining the opt-in.** The old refusal was an existence oracle twice over: the status code alone distinguished a live, not-opted-in agent from a nonexistent one, so an anonymous scanner could enumerate agents without reading a body, and the body then named `enable_unauthenticated_well_known_route` and its two required scopes. A blocked request is now indistinguishable from one for an agent that does not exist. The reason is logged server-side instead, so the refusal stays debuggable. Behaviour is unchanged for authenticated callers (full card) and for agents that have opted in (redacted card).
+
+## 0.29.28
+- `drmcp/core/config`: **`oauth_claim_validation` is renamed `mcp_enable_oauth_claim_validation for MCP. The Agent config (oauth_claim_validation) stays the same.
+- `drmcp/core/middleware`: the flag now gates **every** AuthZ validator, not just the token handler. `BaseAuthZMiddleware` applies it once in `dispatch`; subclasses implement `run_authz`.
+
+
+## 0.29.27
+- `drtools`: reworked every tool's gallery tags into human-readable UI tags (e.g. `DataRobot, Predictive, Catalog`; action tags like `Delete`/`Promote` on the run-action tools), replacing the lowercase functional tags. Tags are now declared as ordered tuples so the gallery reports them in declaration order.
+- `drtools/perplexity`: renamed the `perplexity_search` display name from "Perplexity — Search" to "Perplexity — Search Web".
+- `drmcputils` tool gallery (`GET /toolGallery/*`):
+  - `tools/` items report `tags` in declaration order (no longer alphabetized), a new `ui_display_name` (the action half of the display name, e.g. "Workload — List bundles" → "List bundles"), and a new `provider_name` carrying the provider's brand ("DataRobot", "Perplexity", "Atlassian", ...; `null` for proxied user-MCP tools).
+  - each item's `categories` entries are now `{name, label, kind}` dicts (`kind` is `parent` or `leaf`) instead of bare `dr_*` strings; `categories_for_tool` returns the same shape.
+  - `categories/` nodes (and their children) are ordered alphabetically by label.
+  - `providers/` label for `third_party` is now "Third-party".
 
 ## 0.29.26
 - `drmcp/core/runtime_identity.py`: Fix logic of resolving MCP deployment URL
