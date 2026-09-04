@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## 0.29.32 - 2026-09-03
+- Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
+- Add a minimum version for `langchain-core`: `>=1.3.3`.
+- Raise the minimum `mistune` version from `>=3.3.0` to `>=3.3.3`.
 
 ## 0.29.31
 - `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is rejected.
