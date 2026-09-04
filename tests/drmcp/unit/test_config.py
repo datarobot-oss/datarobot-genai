@@ -487,7 +487,6 @@ class TestMCPCLIConfigs:
             self._reset_config()
 
 
-
 class TestOtelStandardFields:
     """Test standard OTel env var fields on MCPServerConfig."""
 
