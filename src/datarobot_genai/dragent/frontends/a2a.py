@@ -106,6 +106,12 @@ EXTERNAL_IDENTITY_DESCRIPTION = (
 
 _IDENTITY_EXTENSION_URIS = frozenset({INTERNAL_IDENTITY_URI, EXTERNAL_IDENTITY_URI})
 
+# Body served for every negative agent-card case, including an agent that has not opted in to
+# unauthenticated discovery.  A distinguishable response is an oracle: a 401 confirms to an
+# anonymous scanner that the agent exists, and naming the opt-in flag hands it the knob that
+# unlocks the card.  A not-opted-in agent must look exactly like one that does not exist.
+AGENT_CARD_NOT_FOUND_BODY = {"detail": "Not Found"}
+
 
 # ---------------------------------------------------------------------------
 # Endpoint URL
@@ -496,17 +502,15 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
                 resolve_identity_from_headers(headers, on_invalid_auth_context="none") is None
                 and not self._enable_unauthenticated_well_known_route
             ):
-                return JSONResponse(
-                    status_code=401,
-                    content={
-                        "error": (
-                            "Unauthenticated access to /.well-known/agent-card.json is "
-                            "disabled. Set enable_unauthenticated_well_known_route: true in "
-                            "workflow.yaml to allow anonymous access (also requires "
-                            "platform-level opt-in per cluster)."
-                        ),
-                    },
+                # The reason belongs in the log, not the response: the caller is anonymous and
+                # telling it why it was refused is what leaks the agent's existence.
+                logger.info(
+                    "Serving 404 for unauthenticated agent-card request: "
+                    "enable_unauthenticated_well_known_route is disabled for this agent "
+                    "(set it to true in workflow.yaml to allow anonymous access; also "
+                    "requires platform-level opt-in per cluster)"
                 )
+                return JSONResponse(status_code=404, content=AGENT_CARD_NOT_FOUND_BODY)
             return await super()._handle_get_agent_card(request)
         finally:
             _a2a_headers.reset(token)
@@ -531,8 +535,10 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         flag only.
 
         When the agent flag is disabled (default), unauthenticated callers receive
-        401. When enabled, they receive a redacted card. Authenticated callers
-        always receive the full card. ``extended_agent_card`` is also wired for
+        the generic 404 -- indistinguishable from a nonexistent agent, so the
+        refusal is not an existence oracle. When enabled, they receive a redacted
+        card. Authenticated callers always receive the full card.
+        ``extended_agent_card`` is also wired for
         ``agent/getAuthenticatedExtendedCard`` clients.
         """
         base_server = super().create_a2a_server(agent_card, agent_executor)

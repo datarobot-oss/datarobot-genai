@@ -94,8 +94,10 @@ class DRAgentA2AConfig(BaseModel):
             "Per-agent developer opt-in for unauthenticated "
             "GET /.well-known/agent-card.json. Also requires platform-level "
             "opt-in per cluster to route unauthenticated traffic to the agent. "
-            "When disabled (default), unauthenticated requests receive 401. "
-            "When enabled, anonymous callers receive a redacted agent card."
+            "When disabled (default), unauthenticated requests receive the same "
+            "generic 404 as a nonexistent agent, so the refusal does not reveal "
+            "that the agent exists. When enabled, anonymous callers receive a "
+            "redacted agent card."
         ),
     )
 

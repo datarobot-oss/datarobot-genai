@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+## 0.29.29
+- `dragent/frontends`: **an agent that has not opted in to unauthenticated agent-card access now returns the generic `404 {"detail": "Not Found"}`, not a `401` explaining the opt-in.** The old refusal was an existence oracle twice over: the status code alone distinguished a live, not-opted-in agent from a nonexistent one, so an anonymous scanner could enumerate agents without reading a body, and the body then named `enable_unauthenticated_well_known_route` and its two required scopes. A blocked request is now indistinguishable from one for an agent that does not exist. The reason is logged server-side instead, so the refusal stays debuggable. Behaviour is unchanged for authenticated callers (full card) and for agents that have opted in (redacted card).
+
 ## 0.29.28
 - `drmcp/core/config`: **`oauth_claim_validation` is renamed `mcp_enable_oauth_claim_validation for MCP. The Agent config (oauth_claim_validation) stays the same.
 - `drmcp/core/middleware`: the flag now gates **every** AuthZ validator, not just the token handler. `BaseAuthZMiddleware` applies it once in `dispatch`; subclasses implement `run_authz`.

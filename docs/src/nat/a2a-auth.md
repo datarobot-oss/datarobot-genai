@@ -254,8 +254,9 @@ DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
 - No route is exempt, agent-card discovery included. Auth there is optional, so an
   unauthenticated request still reaches the handler and
-  `enable_unauthenticated_well_known_route` decides what it sees; a request that *does* carry a
-  token is validated first, and one naming another agent gets `401` instead of a card.
+  `enable_unauthenticated_well_known_route` decides whether it sees a redacted card or a
+  generic `404`; a request that *does* carry a token is validated first, and one naming
+  another agent gets `401` instead of a card.
 - Off unless `a2a.oauth_claim_validation: true` is set. With the flag on but no
   `cross_application_access.token_request.audience` to enforce, startup fails rather than
   pretending to. Either state is logged at startup.
@@ -285,10 +286,17 @@ Both must be enabled for anonymous callers to reach the agent card endpoint.
 The agent-side flag is enforced by the A2A server in this library; platform
 routing is enforced before the request reaches the agent process.
 
+When the agent-side flag is off, an anonymous request gets the same generic
+`404 {"detail": "Not Found"}` as a request for an agent that does not exist —
+never a `401`, and never a body naming the flag. A distinguishable refusal is an
+existence oracle: it would let an anonymous scanner enumerate live agents by
+status code alone and tell it which knob unlocks the card. The reason is logged
+server-side instead, so the refusal stays debuggable from the agent's own logs.
+
 | Field | Default | Purpose |
 |-------|---------|---------|
 | `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
-| `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive 401. Authenticated callers always receive the full card regardless of this setting. |
+| `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive the generic `404 {"detail": "Not Found"}` — indistinguishable from a nonexistent agent, so the refusal reveals nothing. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 
