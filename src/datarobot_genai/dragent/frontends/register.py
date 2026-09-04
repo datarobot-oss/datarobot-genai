@@ -25,7 +25,7 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic import model_validator
+from pydantic import field_validator
 
 from ..constants import A2A_MOUNT_PATH
 from ..cross_app_access_config import CrossApplicationAccessConfig
@@ -58,6 +58,22 @@ _MOUNT_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
 
 #: Generous ceiling; a mount path far shorter than this is already a design smell.
 _MOUNT_PATH_MAX_LENGTH = 200
+
+#: Closing advice shared by every ``mount_path`` rejection, so the messages carry the
+#: fix once rather than each restating it.
+_MOUNT_PATH_ADVICE = (
+    'Use a plain path segment, e.g. "agent" or "api/a2a", or omit it to use the default "a2a".'
+)
+
+
+def _reject_mount_path(reason: str, got: str) -> typing.NoReturn:
+    """Raise a ``mount_path`` rejection: what is wrong, what was seen, then shared advice.
+
+    ``got`` is pre-rendered rather than a value to repr, so each rejection can show the
+    part that is actually useful — the whole value, just the offending segment, or a
+    length where echoing a too-long value would only add noise.
+    """
+    raise ValueError(f"a2a.mount_path {reason} (got {got}). {_MOUNT_PATH_ADVICE}")
 
 
 class DRAgentA2AExternalConfig(BaseModel):
@@ -116,6 +132,9 @@ class DRAgentA2AConfig(BaseModel):
     )
     mount_path: str = Field(
         default=A2A_MOUNT_PATH,
+        # Pydantic skips validators for defaults unless asked; without this the default
+        # would be the one value never normalized or checked.
+        validate_default=True,
         description=(
             "Path suffix the A2A server is mounted under, relative to the app root. "
             'Defaults to "a2a"; set to a different value, e.g. "agent" or "api/a2a", to '
@@ -130,8 +149,9 @@ class DRAgentA2AConfig(BaseModel):
         ),
     )
 
-    @model_validator(mode="after")
-    def _normalize_mount_path(self) -> "DRAgentA2AConfig":
+    @field_validator("mount_path")
+    @classmethod
+    def _normalize_mount_path(cls, value: str) -> str:
         """Normalize ``mount_path`` and reject values that cannot safely be a path suffix.
 
         This value is interpolated raw into two different places — a Starlette route
@@ -160,45 +180,42 @@ class DRAgentA2AConfig(BaseModel):
           ``/.well-known/`` as a registry-controlled namespace which the A2A protocol
           itself uses for agent card discovery.
         """
-        normalized = self.mount_path.strip().strip("/")
+        normalized = value.strip().strip("/")
         if not normalized:
-            raise ValueError(
-                f"a2a.mount_path must not be empty (got {self.mount_path!r}). Mounting A2A "
-                "at the application root is not supported. Set it to a non-empty path "
-                'segment, e.g. "agent" or "api/a2a", or omit it to use the default "a2a".'
+            _reject_mount_path(
+                "must not be empty; mounting A2A at the application root is not supported",
+                repr(value),
             )
         if len(normalized) > _MOUNT_PATH_MAX_LENGTH:
-            raise ValueError(
-                f"a2a.mount_path must be at most {_MOUNT_PATH_MAX_LENGTH} characters "
-                f"(got {len(normalized)}). Set it to a short path segment, "
-                'e.g. "agent" or "api/a2a".'
+            # Length only: echoing an over-long value back would bury the message in it.
+            _reject_mount_path(
+                f"must be at most {_MOUNT_PATH_MAX_LENGTH} characters",
+                f"{len(normalized)}",
             )
         for segment in normalized.split("/"):
             if not segment:
-                raise ValueError(
-                    f"a2a.mount_path must not contain an empty path segment (got "
-                    f"{self.mount_path!r}). Use a single slash between segments, "
-                    'e.g. "api/a2a".'
+                _reject_mount_path(
+                    "must not contain an empty path segment; use a single slash between segments",
+                    repr(value),
                 )
             if segment.startswith("."):
-                raise ValueError(
-                    f"a2a.mount_path segments must not start with a dot (got "
-                    f"{self.mount_path!r}). Dot segments are relative-reference syntax "
-                    "that clients resolve away, and /.well-known/ is reserved by RFC 8615 "
-                    'for discovery. Use a plain path segment, e.g. "agent" or "api/a2a".'
+                _reject_mount_path(
+                    "segments must not start with a dot: dot segments are "
+                    "relative-reference syntax that clients resolve away, and "
+                    "/.well-known/ is reserved by RFC 8615 for discovery",
+                    repr(value),
                 )
             if not _MOUNT_PATH_SEGMENT_RE.fullmatch(segment):
-                raise ValueError(
-                    f"a2a.mount_path segments must be made of letters, digits, and "
-                    f"- . _ ~ (RFC 3986 unreserved characters); got {segment!r} in "
-                    f"{self.mount_path!r}. The value is used both as the mount point and "
-                    "in the agent card URL, so anything needing percent-encoding or "
-                    "carrying URI syntax would make one of the two wrong. Use a plain "
-                    'path segment, e.g. "agent" or "api/a2a".'
+                _reject_mount_path(
+                    "segments must be made of letters, digits, and - . _ ~ (RFC 3986 "
+                    "unreserved characters): the value is used both as the mount point "
+                    "and in the agent card URL, so anything needing percent-encoding or "
+                    "carrying URI syntax would make one of the two wrong",
+                    # Names the offending segment, which a multi-segment value would
+                    # otherwise leave the reader to spot.
+                    repr(segment) if segment == normalized else f"{segment!r} in {value!r}",
                 )
-        if normalized != self.mount_path:
-            self.mount_path = normalized
-        return self
+        return normalized
 
 
 # Register frontend

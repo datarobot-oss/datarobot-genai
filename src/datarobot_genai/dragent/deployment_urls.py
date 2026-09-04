@@ -67,10 +67,9 @@ def join_mount_path(base: str, mount_path: str) -> str:
     str
         ``"{base}/{mount_path}/"``, or ``"{base}/"`` when ``mount_path`` is empty.
     """
+    root = base.rstrip("/")
     suffix = mount_path.strip("/")
-    if not suffix:
-        return f"{base.rstrip('/')}/"
-    return f"{base.rstrip('/')}/{suffix}/"
+    return f"{root}/{suffix}/" if suffix else f"{root}/"
 
 
 def normalize_api_v2_endpoint(endpoint: str) -> str:

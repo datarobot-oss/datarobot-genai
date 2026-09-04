@@ -62,6 +62,12 @@ _PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?
 
 logger = logging.getLogger(__name__)
 
+# FastAPI's APIRoute, unlike plain Starlette's Route, does not add HEAD automatically
+# alongside GET, so anything probing with HEAD — load balancers, monitors, agent-card
+# clients — would get a 405. Once matched, the ASGI server (uvicorn) strips the body for
+# HEAD on the wire, so handlers need no method-specific branch.
+_GET_AND_HEAD = ["GET", "HEAD"]
+
 
 def _route_path(request: Request) -> str:
     """Request path relative to the ASGI ``root_path`` the app is mounted under.
@@ -321,36 +327,30 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         mount_point = f"/{mount_path}"
         nested_prefix = f"{mount_point}/"
 
-        exact: set[str] = set()
-        nested: set[str] = set()
-        for route in app.routes:
-            path = getattr(route, "path", None)
-            if not isinstance(path, str):
-                continue
-            if path == mount_point:
-                exact.add(path)
-            elif path.startswith(nested_prefix):
-                nested.add(path)
+        # Not every BaseRoute carries a ``path`` (Host and WebSocketRoute do not), so read
+        # it defensively and keep only the string ones.
+        paths = {
+            path for route in app.routes if isinstance(path := getattr(route, "path", None), str)
+        }
 
-        if exact:
+        if mount_point in paths:
             raise ValueError(
-                f"a2a.mount_path {mount_path!r} is already served by another route "
-                f"({', '.join(sorted(exact))}). That route was registered first, so it "
-                f"wins for {mount_point} and also suppresses the redirect that would "
-                f"otherwise send {mount_point} to {nested_prefix} — an A2A client that "
-                "omits the trailing slash would silently get that route's response "
-                "instead of the JSON-RPC endpoint. Choose a mount path that is not "
-                'already routed, e.g. "a2a" or "api/a2a".'
+                f"a2a.mount_path {mount_path!r} is already served by another route at "
+                f"{mount_point}. That route was registered first, so it wins there and "
+                f"also suppresses the redirect that would otherwise send {mount_point} "
+                f"to {nested_prefix} — an A2A client that omits the trailing slash would "
+                "silently get that route's response instead of the JSON-RPC endpoint. "
+                'Choose a mount path that is not already routed, e.g. "a2a" or "api/a2a".'
             )
 
-        if nested:
+        if nested := sorted(path for path in paths if path.startswith(nested_prefix)):
             logger.warning(
                 "a2a.mount_path %r overlaps existing route(s): %s. Those keep working and "
                 "A2A is still reachable at %s, but paths under %s are now split between "
                 "two apps, which will be confusing to debug. Consider a mount path that "
                 "does not overlap.",
                 mount_path,
-                ", ".join(sorted(nested)),
+                ", ".join(nested),
                 nested_prefix,
                 nested_prefix,
             )
@@ -377,11 +377,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.add_api_route(
             path=AGENT_CARD_WELL_KNOWN_PATH,
             endpoint=agent_card_fallback,
-            # Unlike plain Starlette's Route, FastAPI's APIRoute does not add HEAD
-            # automatically when GET is present, so it has to be listed explicitly or
-            # HEAD gets a 405. Once matched, the ASGI server (uvicorn) strips the body
-            # for HEAD on the wire; the handler itself needs no method-specific branch.
-            methods=["GET", "HEAD"],
+            methods=_GET_AND_HEAD,
             response_model=None,
             description=(
                 "Agent card, served at the root as a discovery fallback for clients that "
@@ -477,10 +473,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             app.add_api_route(
                 path=path,
                 endpoint=health_check,
-                # FastAPI's APIRoute, unlike plain Starlette's Route, does not add HEAD
-                # automatically alongside GET, so external load balancers/monitors that
-                # probe with HEAD would otherwise get a 405 instead of a health check.
-                methods=["GET", "HEAD"],
+                methods=_GET_AND_HEAD,
                 response_model=HealthResponse,
                 description="Health check endpoint for liveness/readiness probes",
                 tags=["Health"],
@@ -510,9 +503,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         app.add_api_route(
             path="/.well-known/agent-manifest.json",
             endpoint=agent_manifest,
-            # See the matching comment in _register_health_routes: FastAPI's APIRoute
-            # needs HEAD listed explicitly, unlike plain Starlette's Route.
-            methods=["GET", "HEAD"],
+            methods=_GET_AND_HEAD,
             response_model=AgentManifest,
             description="Declared components, tools, and root agent for this running agent",
             tags=["Agent Manifest"],
