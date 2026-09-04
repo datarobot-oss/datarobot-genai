@@ -60,7 +60,7 @@ Other samples in the repo use different **`workflow._type`** values for LangGrap
 
 ## Optional Python beside the YAML
 
-[`register.py`](../../e2e-tests/dragent/nat/register.py) only registers extra tools so names like `generate_objectid` resolve. The graph is not duplicated in code—the **declared structure is the YAML**.
+[`register.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/nat/register.py) only registers extra tools so names like `generate_objectid` resolve. The graph is not duplicated in code—the **declared structure is the YAML**.
 
 ---
 

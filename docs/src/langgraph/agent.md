@@ -39,7 +39,7 @@ Patterns visible in the file:
 - **Chat history**&mdash;included only if the prompt template expects a `chat_history` variable (see the sample template).
 - **Graph factory**&mdash;receives the LLM, injected tools, and verbosity from the runner so one codebase works locally and on DataRobot.
 
-[`register.py`](../../e2e-tests/dragent/langgraph/register.py) connects this module to NAT/DRAgent; copy its shape when adding a new agent package.
+[`register.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/langgraph/register.py) connects this module to NAT/DRAgent; copy its shape when adding a new agent package.
 
 ## Human in the loop
 

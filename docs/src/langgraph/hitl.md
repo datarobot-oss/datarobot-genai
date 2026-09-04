@@ -24,7 +24,7 @@ LangGraph only **remembers** a paused run if the compiled graph was built with a
 
 ### Passing a checkpointer
 
-`LangGraphAgent` forwards the `checkpointer=` argument to `StateGraph.compile(...)` (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)). If omitted, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
+`LangGraphAgent` forwards the `checkpointer=` argument to `StateGraph.compile(...)` (see [`langgraph/agent.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/src/datarobot_genai/langgraph/agent.py)). If omitted, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
 
 ```mermaid
 flowchart TD

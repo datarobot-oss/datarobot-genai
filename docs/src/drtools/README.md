@@ -12,4 +12,4 @@ Install:
 pip install "datarobot-genai[drtools]"
 ```
 
-For MCP servers, also see `datarobot-genai[drmcpbase]` and `datarobot-genai[drmcp]` in the [repository README](../../../README.md).
+For MCP servers, also see `datarobot-genai[drmcpbase]` and `datarobot-genai[drmcp]` in the [repository README](https://github.com/datarobot-oss/datarobot-genai/blob/main/README.md).

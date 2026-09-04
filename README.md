@@ -57,7 +57,7 @@ The following requirements apply before installing or running samples:
 |---|---|
 | Python 3.11–3.13 | Required for all installs |
 | DataRobot account | Required for gateway, deployments, MCP, and platform features |
-| Framework extra | One of `crewai`, `langgraph`, `llamaindex`, or `nat` |
+| Agent framework extra | One of `crewai`, `langgraph`, or `llamaindex`; use `dragent` for NAT/DRAgent |
 
 For local development, also install [`uv`](https://docs.astral.sh/uv/), [Task](https://taskfile.dev/), and [pre-commit](https://pre-commit.com/).
 

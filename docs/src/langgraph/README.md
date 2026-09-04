@@ -1,6 +1,6 @@
 # LangGraph + DataRobot
 
-**What to edit in the example:** [`e2e-tests/dragent/langgraph/myagent.py`](../../e2e-tests/dragent/langgraph/myagent.py) (graph + prompt) and [`e2e-tests/dragent/langgraph/workflow.yaml`](../../e2e-tests/dragent/langgraph/workflow.yaml) (LLM wiring + `workflow._type`). DRAgent runs the pair.
+**What to edit in the example:** [`e2e-tests/dragent/langgraph/myagent.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/langgraph/myagent.py) (graph + prompt) and [`e2e-tests/dragent/langgraph/workflow.yaml`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/langgraph/workflow.yaml) (LLM wiring + `workflow._type`). DRAgent runs the pair.
 
 ## Installation
 

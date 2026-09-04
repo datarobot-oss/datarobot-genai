@@ -1,6 +1,6 @@
 # CrewAI + DataRobot
 
-**What to edit:** [`e2e-tests/dragent/crewai/myagent.py`](../../e2e-tests/dragent/crewai/myagent.py) (agents, tasks, crew, kickoff inputs) and [`workflow.yaml`](../../e2e-tests/dragent/crewai/workflow.yaml).
+**What to edit:** [`e2e-tests/dragent/crewai/myagent.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/crewai/myagent.py) (agents, tasks, crew, kickoff inputs) and [`workflow.yaml`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/crewai/workflow.yaml).
 
 ## Installation
 

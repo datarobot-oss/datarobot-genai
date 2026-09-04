@@ -85,7 +85,7 @@ Agentic tools and credential/auth resolution for MCP servers and in-process agen
 
 ## Troubleshooting and best practices
 
-Symptom-based troubleshooting and recommended patterns live in the [documentation index](../README.md#troubleshooting). Framework-specific caveats are linked from the guides table above.
+Symptom-based troubleshooting and recommended patterns live in the [documentation index](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md#troubleshooting). Framework-specific caveats are linked from the guides table above.
 
 ## License
 

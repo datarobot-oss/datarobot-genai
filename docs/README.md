@@ -28,7 +28,7 @@ Install and runtime requirements before using the library:
 | Python 3.11–3.13 | Required for all installs |
 | DataRobot account | Required for gateway, deployments, MCP, and platform features |
 | `DATAROBOT_API_TOKEN` / `DATAROBOT_ENDPOINT` | See [configuration reference](src/index.md#configuration-reference) |
-| Framework extra | Install `datarobot-genai[langgraph]`, `[llamaindex]`, `[crewai]`, or `[nat]` |
+| Agent framework extra | Install `datarobot-genai[langgraph]`, `[llamaindex]`, `[crewai]`, or `[dragent]` for NAT/DRAgent |
 
 For local development, also install [`uv`](https://docs.astral.sh/uv/), [Task](https://taskfile.dev/), and [pre-commit](https://pre-commit.com/). See the [root README](../README.md#develop).
 
