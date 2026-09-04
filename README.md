@@ -40,6 +40,9 @@ A toolkit for building agents on DataRobot.
   - [Standalone end-to-end examples](#standalone-end-to-end-examples)
   - [In-depth documentation](#in-depth-documentation)
 - [Develop](#develop)
+  - [Semantic versioning](#semantic-versioning)
+  - [TestPyPI](#testpypi)
+  - [Excluded upstream dependencies](#excluded-upstream-dependencies)
 - [Troubleshooting](#troubleshooting)
 - [Next steps](#next-steps)
 - [Publishing](#publishing)
@@ -68,7 +71,7 @@ Requires Python 3.11–3.13. Install the extra that matches the target framework
 pip install "datarobot-genai[crewai]"
 pip install "datarobot-genai[langgraph]"
 pip install "datarobot-genai[llamaindex]"
-pip install "datarobot-genai[nat]"
+pip install "datarobot-genai[dragent]"
 ```
 
 Optional extras:
