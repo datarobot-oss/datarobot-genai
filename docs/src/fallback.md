@@ -16,7 +16,7 @@
 
 # LLM provider fallback (router)
 
-Use this when you want one primary LLM provider/model and one-or-more fallback providers/models in case the primary fails.
+Use this for one primary LLM provider/model and one-or-more fallback providers/models in case the primary fails.
 
 This is the native `datarobot-genai` router path backed by `litellm.Router`.
 
@@ -28,7 +28,7 @@ When updating an existing agent component, do these changes in order:
 2. Add a `primary:` config.
 3. Add at least one item in `fallbacks:`.
 4. Keep `workflow.llm_name` pointing to the same LLM key.
-5. Do not change your `myagent.py` graph/crew/workflow code just for fallback support.
+5. Do not change the `myagent.py` graph/crew/workflow code just for fallback support.
 
 ## Required `workflow.yaml` change
 
@@ -109,7 +109,7 @@ Reference examples:
 
 ## Python API (non-NAT path)
 
-If you create LLM objects directly in Python, use `get_router_llm(primary, fallbacks, router_settings)`.
+When creating LLM objects directly in Python, use `get_router_llm(primary, fallbacks, router_settings)`.
 
 Import paths by framework:
 
@@ -139,8 +139,8 @@ llm = get_router_llm(primary, fallbacks, {"num_retries": 3})
 
 ## What does not need to change
 
-- Your agent graph/crew/workflow-building code in `myagent.py`
+- The agent graph/crew/workflow-building code in `myagent.py`
 - Tool definitions and MCP wiring
 - `workflow._type` (`langgraph_agent`, `crewai_agent`, `llamaindex_agent`, etc.)
 
-Only the LLM provider block changes unless you are also redesigning your agent behavior.
+Only the LLM provider block changes unless the agent behavior is also being redesigned.

@@ -16,7 +16,7 @@
 
 # LLM configuration
 
-Whether you use **`workflow.yaml`** (`llms:` blocks) or Python agents, the same **routing idea** applies: DataRobot **LLM Gateway**, a **model deployment**, **NIM**, or an **external** provider via LiteLLM.
+Whether using **`workflow.yaml`** (`llms:` blocks) or Python agents, the same **routing idea** applies: DataRobot **LLM Gateway**, a **model deployment**, **NIM**, or an **external** provider via LiteLLM.
 
 In Python, each integration exposes the same helpers from its `llm` submodule&mdash;swap the import path only:
 
@@ -26,21 +26,21 @@ In Python, each integration exposes the same helpers from its `llm` submodule&md
 | LlamaIndex | `datarobot_genai.llama_index.llm` |
 | CrewAI | `datarobot_genai.crewai.llm` |
 
-Values are read from the process environment (and `.env` in the working directory when your runner loads it). For DataRobot-hosted routes you typically set `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` (see [Example.ipynb](Example.ipynb)).
+Values are read from the process environment (and `.env` in the working directory when the runner loads it). For DataRobot-hosted routes, set `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` (see [Example.ipynb](Example.ipynb)).
 
 ## DataRobot LLM Gateway
 
-Use **`get_datarobot_gateway_llm()`** when you always want the gateway regardless of `LLM_USE_DATAROBOT_LLM_GATEWAY`. Calls go through the gateway URL derived from `DATAROBOT_ENDPOINT`; use `DATAROBOT_API_TOKEN` as the API key.
+Use **`get_datarobot_gateway_llm()`** to always route through the gateway regardless of `LLM_USE_DATAROBOT_LLM_GATEWAY`. Calls go through the gateway URL derived from `DATAROBOT_ENDPOINT`; use `DATAROBOT_API_TOKEN` as the API key.
 
-**Pick a real gateway model id.** Do **not** rely on the default model name for gateway use: `get_datarobot_gateway_llm()` falls back to `LLM_DEFAULT_MODEL` which might be empty in your env.
+**Pick a real gateway model id.** Do **not** rely on the default model name for gateway use: `get_datarobot_gateway_llm()` falls back to `LLM_DEFAULT_MODEL`, which might be empty in the environment.
 
-1. Install `dr` CLI plugin that lists models your account can use ([get-datarobot-llms](https://github.com/carsongee/get-datarobot-llms)):
+1. Install the `dr` CLI plugin that lists models the account can use ([get-datarobot-llms](https://github.com/carsongee/get-datarobot-llms)):
 
    ```bash
    uv tool install git+https://github.com/carsongee/get-datarobot-llms.git
    ```
 
-2. With `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` set, list ids you can pass as `datarobot-model`:
+2. With `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` set, list ids to pass as `datarobot-model`:
 
    ```bash
    dr get-llms
@@ -56,7 +56,7 @@ Use **`get_datarobot_gateway_llm()`** when you always want the gateway regardles
 
 ## LLM deployment
 
-Use **`get_datarobot_deployment_llm(deployment_id, ...)`** to send chat completions to a specific DataRobot deployment. The client uses `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` to build `{endpoint}/deployments/{deployment_id}/chat/completions`. You may pass `model_name` and `parameters` like other helpers.
+Use **`get_datarobot_deployment_llm(deployment_id, ...)`** to send chat completions to a specific DataRobot deployment. The client uses `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` to build `{endpoint}/deployments/{deployment_id}/chat/completions`. Pass `model_name` and `parameters` like other helpers.
 
 ```python
 from datarobot_genai.langgraph.llm import get_datarobot_deployment_llm
@@ -76,7 +76,7 @@ llm = get_datarobot_nim_llm("your-nim-deployment-id", model_name="optional-model
 
 ## External providers (LiteLLM)
 
-Use **`get_external_llm()`** when you want LiteLLM to call **external** providers (for example OpenAI) using **their** environment variables (for example `OPENAI_API_KEY`). Model names should **not** rely on the `datarobot/` prefix in this mode.
+Use **`get_external_llm()`** for LiteLLM to call **external** providers (for example OpenAI) using **their** environment variables (for example `OPENAI_API_KEY`). Do **not** rely on the `datarobot/` prefix for model names in this mode.
 
 ```python
 from datarobot_genai.langgraph.llm import get_external_llm
@@ -86,9 +86,9 @@ llm = get_external_llm("gpt-4o-mini")
 
 To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `LLM_NIM_DEPLOYMENT_ID` (see **get_llm()** below).
 
-## LLM Provider Fallback (Router)
+## LLM provider fallback (router)
 
-Use router fallback when you want a **primary** model/provider plus an ordered list of **fallback** models/providers. Calls start at primary and fail over automatically when the primary fails.
+Use router fallback for a **primary** model/provider plus an ordered list of **fallback** models/providers. Calls start at primary and fail over automatically when the primary fails.
 
 In `workflow.yaml`, this uses:
 
@@ -121,7 +121,7 @@ Lower-level helpers live in **`datarobot_genai.core.llm_parameters`** (`default_
 
 ## `get_llm()` (environment-driven routing)
 
-Prefer the explicit **`get_*`** helpers above when you know the route. Use **`get_llm()`** as a single entry point when you want one code path and you steer behavior entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
+Prefer the explicit **`get_*`** helpers above when the route is known. Use **`get_llm()`** as a single entry point for one code path steered entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
 
 Routing order:
 
@@ -139,7 +139,7 @@ These variables control **`get_llm()`** specifically:
 | `LLM_USE_DATAROBOT_LLM_GATEWAY` | When `true` (default), use the **DataRobot LLM Gateway**. |
 | `LLM_DEPLOYMENT_ID` | When the gateway is off, use this **LLM deployment** chat endpoint. |
 | `LLM_NIM_DEPLOYMENT_ID` | When the gateway is off and no LLM deployment id is set, use this **NIM** deployment. |
-| `LLM_DEFAULT_MODEL` | Default model id when you omit `model_name` on **`get_llm()`** |
+| `LLM_DEFAULT_MODEL` | Default model id when `model_name` is omitted on **`get_llm()`** |
 
 Every variable in that table is namespaced by the LLM instance it configures. `LLM_` is the
 prefix for the default instance, which is named `llm`; an application that registers its own

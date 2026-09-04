@@ -16,6 +16,6 @@
 
 # Tools and MCP (LlamaIndex sample)
 
-When the platform injects tools (including MCP), they are **added to** each workflow agent’s existing tools in the DataRobot integration so your hand-authored tools stay available.
+When the platform injects tools (including MCP), they are **added to** each workflow agent’s existing tools in the DataRobot integration so hand-authored tools stay available.
 
-Configure MCP deployment / URLs in your environment; the minimal **`workflow.yaml`** in the LlamaIndex folder does not show **`function_groups`**—see [nat/mcp.md](../nat/mcp.md) for the YAML-heavy pattern.
+Configure MCP deployment / URLs in the environment; the minimal **`workflow.yaml`** in the LlamaIndex folder does not show **`function_groups`**—see [nat/mcp.md](../nat/mcp.md) for the YAML-heavy pattern.

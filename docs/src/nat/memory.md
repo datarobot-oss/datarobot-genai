@@ -18,10 +18,10 @@
 
 `datarobot-genai` includes a NAT `MemoryEditor` provider that adapts the DataRobot Mem0 client for NAT's `auto_memory_agent`. This avoids the upstream `nvidia-nat-mem0ai` plugin while still using NAT's standard `memory:` configuration.
 
-Install the NAT extra (includes `mem0ai`):
+Install the `dragent` extra (includes `mem0ai`):
 
 ```bash
-pip install "datarobot-genai[nat]"
+pip install "datarobot-genai[dragent]"
 ```
 
 Set the Mem0 API key at runtime:
@@ -44,7 +44,7 @@ memory:
     # project_id: ...
 ```
 
-**`mem0_memory`** is the local name you reference from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider reads `MEM0_API_KEY` through DataRobot app framework settings by default; use `api_key` only when you need an explicit workflow-level override.
+**`mem0_memory`** is the local name referenced from the workflow. **`dr_mem0_memory`** is the DataRobot provider type registered by this package. The provider reads `MEM0_API_KEY` through DataRobot app framework settings by default; use `api_key` only for an explicit workflow-level override.
 
 ## Wrap an agent with automatic memory
 

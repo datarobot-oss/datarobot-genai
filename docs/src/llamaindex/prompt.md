@@ -1,8 +1,8 @@
 
 
-# Using DataRobot Prompt Templates with LlamaIndex
+# Using DataRobot prompt templates with LlamaIndex
 
-The `datarobot_genai.llama_index.prompt` module converts a DataRobot prompt template version into a LlamaIndex `PromptTemplate` so you can use centrally managed prompts in your agents.
+The `datarobot_genai.llama_index.prompt` module converts a DataRobot prompt template version into a LlamaIndex `PromptTemplate` for centrally managed prompts in agents.
 
 ## Fetch and convert
 
@@ -17,9 +17,9 @@ prompt_template_from_dr = get_prompt_template(prompt_template_version)
 
 `get_prompt_template` takes a `PromptTemplateVersion` and returns a LlamaIndex `PromptTemplate` with the template string already set.
 
-## Use as a system prompt in a FunctionAgent (most prefarable variant, state_prompt is not reliable)
+## Use as a system prompt in a FunctionAgent (preferred variant; `state_prompt` is not reliable)
 
-Pass the formatted template to `system_prompt` when creating your agent:
+Pass the formatted template to `system_prompt` when creating the agent:
 
 ```python
 from llama_index.core.agent.workflow import AgentWorkflow, FunctionAgent

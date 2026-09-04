@@ -1,8 +1,8 @@
 # NAT + DRAgent (YAML workflows)
 
-**What you edit:** a single **`workflow.yaml`** (plus optional small Python modules that register extra tools). **DRAgent** is the runner and HTTP front end: it loads that file and exposes AG-UI over SSE.
+**What to edit:** a single **`workflow.yaml`** (plus optional small Python modules that register extra tools). **DRAgent** is the runner and HTTP front end: it loads that file and exposes AG-UI over SSE.
 
-The canonical example is [`e2e-tests/dragent/nat/workflow.yaml`](../../e2e-tests/dragent/nat/workflow.yaml). The sections below match what you see there.
+The canonical example is [`e2e-tests/dragent/nat/workflow.yaml`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/nat/workflow.yaml). The sections below match that file.
 
 ## Installation
 

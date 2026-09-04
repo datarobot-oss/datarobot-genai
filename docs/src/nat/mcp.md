@@ -26,7 +26,7 @@ function_groups:
     _type: datarobot_mcp_client
 ```
 
-**`mcp_tools`** is an arbitrary label. DRAgent resolves the MCP server URL, transport, and default auth from **deployment settings and environment** (MCP deployment id, external URL, etc.—what you configure for your app). You do not paste secrets into this block in the example; per-request headers are read from NAT context at runtime.
+**`mcp_tools`** is an arbitrary label. DRAgent resolves the MCP server URL, transport, and default auth from **deployment settings and environment** (MCP deployment id, external URL, etc.). Do not paste secrets into this block in the example; per-request headers are read from NAT context at runtime.
 
 ## `authentication` — MCP auth block
 
@@ -40,7 +40,7 @@ This ties MCP HTTP calls to DataRobot-style auth. Per-request headers (API token
 
 ## `workflow.tool_names` — expose MCP to the orchestrator
 
-The orchestrator only sees tools you list. Include the **group name** (`mcp_tools` in the example), not individual MCP tool names:
+The orchestrator only sees listed tools. Include the **group name** (`mcp_tools` in the example), not individual MCP tool names:
 
 ```yaml
 workflow:

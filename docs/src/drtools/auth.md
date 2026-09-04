@@ -17,7 +17,7 @@ export AUTH_RESOLUTION_STRATEGY=config
 | `http` (default) | Injected request headers only |
 | `config` | Config/env only (ignore headers) |
 
-> **Personal agents only:** Use `config` for single-user, personal setups (local scripts, your own dev agent). Do **not** use it for shared or multi-tenant deployments—every caller would use the same server-side tokens from env/config, so you end up sharing your API keys and OAuth tokens with everyone who can reach that agent.
+> **Personal agents only:** Use `config` for single-user, personal setups (local scripts, a personal dev agent). Do **not** use it for shared or multi-tenant deployments—every caller would use the same server-side tokens from env/config, which shares API keys and OAuth tokens with everyone who can reach that agent.
 
 Credentials are defined in `datarobot_genai.drtools.core.credentials.ToolsAuthCredentials`.
 
