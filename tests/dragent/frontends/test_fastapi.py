@@ -38,6 +38,7 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
 from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
@@ -717,17 +718,52 @@ class TestRootAgentCardFallbackBehaviour:
         await TestConfigurableA2AMountPath._add_routes(worker, app, MagicMock(), mock_a2a_worker)
         return TestClient(app)
 
-    async def test_unauthenticated_without_opt_in_returns_401_on_both_paths(self):
+    async def test_unauthenticated_without_opt_in_returns_generic_404_on_both_paths(self):
         """GIVEN unauthenticated access is not opted in WHEN either card path is fetched
-        THEN both return 401 — the fallback does not bypass the opt-in.
+        THEN both return the same generic 404 — the fallback neither bypasses the opt-in
+        nor answers more revealingly than the mounted route.
         """
         client = await self._client(unauthenticated_well_known=False)
 
         fallback = client.get(AGENT_CARD_WELL_KNOWN_PATH)
         nested = client.get(self.NESTED_CARD_PATH)
 
-        assert fallback.status_code == nested.status_code == 401
-        assert "enable_unauthenticated_well_known_route" in fallback.json()["error"]
+        assert fallback.status_code == nested.status_code == 404
+        assert fallback.json() == nested.json() == AGENT_CARD_NOT_FOUND_BODY
+
+    async def test_blocked_card_is_indistinguishable_from_an_unrouted_path(self):
+        """GIVEN unauthenticated access is not opted in THEN a blocked card answers exactly
+        as an unrouted path does, on *both* card paths.
+
+        Adding a second card route doubles the surface this has to hold on: the root
+        fallback is reachable without knowing the mount path at all, so if it answered
+        differently it would be the easier oracle of the two. Status code, body and
+        content type all have to match, since the status code alone is enough to
+        enumerate live, not-opted-in agents.
+        """
+        client = await self._client(unauthenticated_well_known=False)
+        unrouted = client.get("/no-such-route")
+
+        for path in (AGENT_CARD_WELL_KNOWN_PATH, self.NESTED_CARD_PATH):
+            blocked = client.get(path)
+            assert blocked.status_code == unrouted.status_code, path
+            assert blocked.json() == unrouted.json(), path
+            assert blocked.headers["content-type"] == unrouted.headers["content-type"], path
+
+    async def test_blocked_card_body_leaks_nothing_on_both_paths(self):
+        """Neither card path may name the opt-in flag, its config file, or the agent."""
+        client = await self._client(unauthenticated_well_known=False)
+
+        for path in (AGENT_CARD_WELL_KNOWN_PATH, self.NESTED_CARD_PATH):
+            body = client.get(path).text.lower()
+            for leak in (
+                "enable_unauthenticated_well_known_route",
+                "workflow.yaml",
+                "unauthenticated",
+                "platform-level",
+                "test agent",
+            ):
+                assert leak not in body, f"{path} leaks {leak!r}"
 
     async def test_unauthenticated_with_opt_in_returns_redacted_card_on_both_paths(self):
         """GIVEN unauthenticated access is opted in WHEN either card path is fetched
