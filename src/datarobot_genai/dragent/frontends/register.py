@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import typing
 import warnings
 from collections.abc import AsyncGenerator
@@ -46,6 +47,17 @@ logging_handler_setup()
 
 # Suppress UserWarning from langchain about non-default parameters (uses warnings.warn, not logging)
 warnings.filterwarnings("ignore", message=".*stream_options is not default parameter.*")
+
+
+#: Characters RFC 3986 §2.3 calls ``unreserved`` — the set that never needs percent-encoding
+#: anywhere in a URI. ``a2a.mount_path`` segments are held to exactly this alphabet: the value
+#: is interpolated raw into both a Starlette route pattern and the advertised agent card URL,
+#: so anything requiring encoding (or carrying URI syntax like ``?``/``#``/``%``) would make one
+#: of the two wrong. See :meth:`DRAgentA2AConfig._normalize_mount_path`.
+_MOUNT_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
+
+#: Generous ceiling; a mount path far shorter than this is already a design smell.
+_MOUNT_PATH_MAX_LENGTH = 200
 
 
 class DRAgentA2AExternalConfig(BaseModel):
@@ -110,25 +122,43 @@ class DRAgentA2AConfig(BaseModel):
             'mount it elsewhere. Leading and trailing slashes are stripped, so "/a2a/" '
             'and "a2a" are equivalent. The advertised agent card URL follows this value '
             "automatically, and the agent card is additionally served at the root "
-            ".well-known/agent-card.json as a discovery fallback. Mounting at the "
-            "application root is not supported: an empty value is rejected."
+            ".well-known/agent-card.json as a discovery fallback. "
+            "Each slash-separated segment must be made of RFC 3986 unreserved characters "
+            "(letters, digits, and - . _ ~) and must not begin with a dot. Mounting at "
+            "the application root is not supported: an empty value is rejected. Mounting "
+            "on a path already served by another route is rejected at startup."
         ),
     )
 
     @model_validator(mode="after")
     def _normalize_mount_path(self) -> "DRAgentA2AConfig":
-        """Strip surrounding slashes so ``"a2a"`` and ``"/a2a/"`` agree, and reject empty.
+        """Normalize ``mount_path`` and reject values that cannot safely be a path suffix.
 
-        Every consumer composes ``f"/{mount_path}"``, so normalising once here keeps
-        ``//a2a`` and a trailing-slash mount out of both the real mount point and the
-        agent card URL derived from it. Interior slashes are preserved for
-        multi-segment mounts such as ``"api/a2a"``.
+        This value is interpolated raw into two different places — a Starlette route
+        pattern (``app.mount(f"/{mount_path}", ...)``) and the ``url`` advertised in the
+        agent card — so it has to be valid as both. Nothing downstream re-checks it:
+        ``a2a.types.AgentCard.url`` is an unvalidated ``str`` despite documenting that it
+        must be a valid absolute URL, so this validator is the only enforcement point.
 
-        A mount path that normalizes to empty (``""``, ``"/"``, all-slash input) is
-        rejected rather than silently mounting A2A at the application root: that would
-        make A2A's own catch-all ``Mount`` shadow any route DataRobot or NAT registers
-        after it, with no error to signal the collision — a correctness risk with no
-        corresponding requirement to justify it.
+        Surrounding slashes are stripped, so ``"a2a"`` and ``"/a2a/"`` agree; interior
+        slashes are kept for multi-segment mounts such as ``"api/a2a"``.
+
+        Four rejections, each covering a failure that is otherwise silent:
+
+        * **Empty** (``""``, ``"/"``): would mount A2A at the application root, where its
+          catch-all ``Mount`` shadows any route registered after it, with no error.
+        * **Characters outside RFC 3986 §2.3 ``unreserved``**: ``{``/``}`` are Starlette
+          path-parameter syntax — ``"{id}"`` compiles to a wildcard that swallows unrelated
+          paths, and ``"{path}"`` collides with ``Mount``'s own parameter and crashes at
+          startup. ``?``, ``#``, ``%`` and whitespace are URI syntax or need encoding, so
+          the advertised URL resolves somewhere other than the mount and A2A becomes
+          silently undiscoverable.
+        * **Empty interior segments** (``"a2a//nested"``): advertises a URL clients and
+          proxies normalize differently than the route matches.
+        * **Dot-leading segments** (``"."``, ``".."``, ``".well-known"``): ``.``/``..`` are
+          relative-reference syntax that clients resolve away, and RFC 8615 reserves
+          ``/.well-known/`` as a registry-controlled namespace which the A2A protocol
+          itself uses for agent card discovery.
         """
         normalized = self.mount_path.strip().strip("/")
         if not normalized:
@@ -137,6 +167,35 @@ class DRAgentA2AConfig(BaseModel):
                 "at the application root is not supported. Set it to a non-empty path "
                 'segment, e.g. "agent" or "api/a2a", or omit it to use the default "a2a".'
             )
+        if len(normalized) > _MOUNT_PATH_MAX_LENGTH:
+            raise ValueError(
+                f"a2a.mount_path must be at most {_MOUNT_PATH_MAX_LENGTH} characters "
+                f"(got {len(normalized)}). Set it to a short path segment, "
+                'e.g. "agent" or "api/a2a".'
+            )
+        for segment in normalized.split("/"):
+            if not segment:
+                raise ValueError(
+                    f"a2a.mount_path must not contain an empty path segment (got "
+                    f"{self.mount_path!r}). Use a single slash between segments, "
+                    'e.g. "api/a2a".'
+                )
+            if segment.startswith("."):
+                raise ValueError(
+                    f"a2a.mount_path segments must not start with a dot (got "
+                    f"{self.mount_path!r}). Dot segments are relative-reference syntax "
+                    "that clients resolve away, and /.well-known/ is reserved by RFC 8615 "
+                    'for discovery. Use a plain path segment, e.g. "agent" or "api/a2a".'
+                )
+            if not _MOUNT_PATH_SEGMENT_RE.fullmatch(segment):
+                raise ValueError(
+                    f"a2a.mount_path segments must be made of letters, digits, and "
+                    f"- . _ ~ (RFC 3986 unreserved characters); got {segment!r} in "
+                    f"{self.mount_path!r}. The value is used both as the mount point and "
+                    "in the agent card URL, so anything needing percent-encoding or "
+                    "carrying URI syntax would make one of the two wrong. Use a plain "
+                    'path segment, e.g. "agent" or "api/a2a".'
+                )
         if normalized != self.mount_path:
             self.mount_path = normalized
         return self

@@ -280,6 +280,12 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         )
         a2a_app = a2a_server.build()
 
+        # Before we add anything of our own, so what we inspect is exactly the set of
+        # foreign routes. (Our own fallback could not collide anyway — it lives under
+        # /.well-known/ and mount_path segments cannot start with a dot — but checking
+        # first means that argument isn't load-bearing.)
+        self._check_mount_path_conflicts(app, a2a.mount_path)
+
         # Registered before the mount purely to keep this file's "specific routes before
         # catch-alls" convention; the two don't actually overlap since mount_path is
         # always a non-empty suffix and the fallback lives at the disjoint app root.
@@ -289,6 +295,65 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
 
         logger.info(f"A2A endpoint URL: {agent_card.url}")
         logger.info(f"A2A agent card URL: {agent_card.url}.well-known/agent-card.json")
+
+    def _check_mount_path_conflicts(self, app: FastAPI, mount_path: str) -> None:
+        """Fail (or warn) when ``mount_path`` lands on ground another route already owns.
+
+        Checked here rather than in ``DRAgentA2AConfig`` because this is the one moment the
+        real answer is knowable: the A2A mount is the last thing registered on the app, so
+        ``app.routes`` now holds every route DataRobot, NAT and the installed plugins
+        actually added — including endpoints composed from ``front_end.endpoints`` at
+        arbitrary paths. A hardcoded reserved-name list would both miss those and drift
+        from whatever NAT registers next.
+
+        An **exact** conflict is fatal. A mount is normally reachable without its trailing
+        slash because Starlette answers ``POST /{mount_path}`` with a 307 to
+        ``/{mount_path}/``, preserving method and body. A route sitting on the mount point
+        pre-empts that redirect, so the collision does not merely add ambiguity — it
+        removes the mechanism that makes the slashless form work, and an A2A client using
+        it silently gets that other route's response instead of the JSON-RPC endpoint.
+
+        A **nested** conflict only warns: the foreign route keeps winning for its own path
+        (it was registered first) and A2A still works at its advertised URL, so the result
+        is confusing rather than broken — not worth refusing to boot over, especially since
+        a future NAT route could otherwise brick a previously working config.
+        """
+        mount_point = f"/{mount_path}"
+        nested_prefix = f"{mount_point}/"
+
+        exact: set[str] = set()
+        nested: set[str] = set()
+        for route in app.routes:
+            path = getattr(route, "path", None)
+            if not isinstance(path, str):
+                continue
+            if path == mount_point:
+                exact.add(path)
+            elif path.startswith(nested_prefix):
+                nested.add(path)
+
+        if exact:
+            raise ValueError(
+                f"a2a.mount_path {mount_path!r} is already served by another route "
+                f"({', '.join(sorted(exact))}). That route was registered first, so it "
+                f"wins for {mount_point} and also suppresses the redirect that would "
+                f"otherwise send {mount_point} to {nested_prefix} — an A2A client that "
+                "omits the trailing slash would silently get that route's response "
+                "instead of the JSON-RPC endpoint. Choose a mount path that is not "
+                'already routed, e.g. "a2a" or "api/a2a".'
+            )
+
+        if nested:
+            logger.warning(
+                "a2a.mount_path %r overlaps existing route(s): %s. Those keep working and "
+                "A2A is still reachable at %s, but paths under %s are now split between "
+                "two apps, which will be confusing to debug. Consider a mount path that "
+                "does not overlap.",
+                mount_path,
+                ", ".join(sorted(nested)),
+                nested_prefix,
+                nested_prefix,
+            )
 
     def _register_root_agent_card_fallback(
         self, app: FastAPI, a2a_server: DRAgentA2AStarletteApplication, mount_path: str

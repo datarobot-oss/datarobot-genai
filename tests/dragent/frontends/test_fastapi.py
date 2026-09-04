@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import sys
 import types
@@ -490,6 +491,75 @@ class TestConfigurableA2AMountPath:
             )
 
     @pytest.mark.parametrize(
+        "mount_path,expected_message",
+        [
+            # Starlette path-parameter syntax: "{id}" compiles to a wildcard that swallows
+            # unrelated paths, and "{path}" collides with Mount's own parameter and would
+            # crash app.mount() outright.
+            ("{id}", "RFC 3986 unreserved"),
+            ("{path}", "RFC 3986 unreserved"),
+            ("a2a{", "RFC 3986 unreserved"),
+            # URI syntax / characters needing percent-encoding: the advertised agent card
+            # URL would resolve somewhere other than the mount, so A2A goes undiscoverable.
+            ("a2a?x=1", "RFC 3986 unreserved"),
+            ("a2a#frag", "RFC 3986 unreserved"),
+            ("a2a%2f", "RFC 3986 unreserved"),
+            ("my a2a", "RFC 3986 unreserved"),
+            ("ką", "RFC 3986 unreserved"),
+            ("*", "RFC 3986 unreserved"),
+            # Relative-reference syntax and the RFC 8615 reserved discovery namespace.
+            (".", "must not start with a dot"),
+            ("..", "must not start with a dot"),
+            (".well-known", "must not start with a dot"),
+            ("api/.hidden", "must not start with a dot"),
+            # Empty interior segment: clients and proxies normalize "//" differently than
+            # the route matches.
+            ("a2a//nested", "must not contain an empty path segment"),
+            # Length ceiling.
+            ("a" * 201, "at most 200 characters"),
+        ],
+    )
+    def test_malformed_mount_path_is_rejected(self, mount_path, expected_message):
+        """GIVEN a mount_path that cannot safely be both a route pattern and a URL segment
+        WHEN DRAgentA2AConfig is built THEN it is rejected at config load.
+
+        Nothing downstream re-checks the value — ``AgentCard.url`` is an unvalidated ``str``
+        — so this validator is the only thing standing between a malformed value and an
+        agent that advertises an unreachable endpoint with no error anywhere.
+        """
+        with pytest.raises(ValidationError, match=expected_message):
+            DRAgentA2AConfig(
+                server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                mount_path=mount_path,
+            )
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "a2a"),
+            ("agent", "agent"),
+            ("api/a2a", "api/a2a"),
+            ("my-agent", "my-agent"),
+            ("v1.2", "v1.2"),
+            ("a_b~c", "a_b~c"),
+            ("A2A", "A2A"),
+            ("/a2a/", "a2a"),
+            ("//a2a//", "a2a"),
+            ("a" * 200, "a" * 200),
+        ],
+    )
+    def test_wellformed_mount_path_is_accepted(self, mount_path, expected):
+        """GIVEN a mount_path of RFC 3986 unreserved characters WHEN DRAgentA2AConfig is
+        built THEN it is accepted, normalized to its slash-stripped form.
+        """
+        config = DRAgentA2AConfig(
+            server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+            mount_path=mount_path,
+        )
+
+        assert config.mount_path == expected
+
+    @pytest.mark.parametrize(
         "mount_path,expected_url",
         [
             ("custom", "http://localhost:8000/custom/"),
@@ -539,6 +609,81 @@ class TestConfigurableA2AMountPath:
         paths = [getattr(route, "path", None) for route in app.routes]
         mount_index = next(i for i, r in enumerate(app.routes) if isinstance(r, Mount))
         assert paths.index(AGENT_CARD_WELL_KNOWN_PATH) < mount_index
+
+
+class TestA2AMountPathConflicts:
+    """A mount path landing on ground another route owns must not fail silently.
+
+    The conflict check runs at mount time rather than in the config model because the A2A
+    mount is registered last: only then does ``app.routes`` hold the real route set,
+    including endpoints composed from ``front_end.endpoints`` at arbitrary paths.
+    """
+
+    @staticmethod
+    def _app_with_foreign_routes() -> FastAPI:
+        """Build an app carrying the routes a real agent registers before the A2A mount."""
+        app = FastAPI()
+        for path in ["/", "/ping", "/ping/", "/health", "/health/"]:
+            app.add_api_route(path, lambda: None, methods=["GET", "HEAD"])
+        app.add_api_route("/.well-known/agent-manifest.json", lambda: None, methods=["GET"])
+        for path in ["/v1/workflow", "/generate", "/chat", "/chat/completions"]:
+            app.add_api_route(path, lambda: None, methods=["POST"])
+        return app
+
+    async def _add_routes(self, mount_path: str, mock_builder, mock_a2a_worker) -> FastAPI:
+        worker = TestConfigurableA2AMountPath._worker(mount_path)
+        app = self._app_with_foreign_routes()
+        await TestConfigurableA2AMountPath._add_routes(worker, app, mock_builder, mock_a2a_worker)
+        return app
+
+    @pytest.mark.parametrize(
+        "mount_path,conflicting_route",
+        [("chat", "/chat"), ("health", "/health"), ("generate", "/generate")],
+    )
+    async def test_exact_conflict_is_fatal(
+        self, mount_path, conflicting_route, mock_builder, mock_a2a_worker
+    ):
+        """GIVEN a mount_path already served by another route WHEN routes are added THEN it
+        raises, naming the conflicting route.
+
+        Fatal because the collision removes a safety net rather than merely competing: a
+        mount is normally reachable without its trailing slash via Starlette's 307
+        redirect, and a route on the mount point pre-empts that redirect, so an A2A client
+        omitting the slash silently receives the other route's response.
+        """
+        with pytest.raises(ValueError, match="is already served by another route") as excinfo:
+            await self._add_routes(mount_path, mock_builder, mock_a2a_worker)
+
+        assert conflicting_route in str(excinfo.value)
+
+    async def test_nested_conflict_warns_but_starts(self, mock_builder, mock_a2a_worker, caplog):
+        """GIVEN a mount_path that merely overlaps another route's prefix WHEN routes are
+        added THEN it warns and still starts.
+
+        Only a warning: the foreign route was registered first so it keeps winning for its
+        own path, and A2A still works at its advertised URL. Refusing to boot would let a
+        future NAT route addition brick a previously working config.
+        """
+        with caplog.at_level(logging.WARNING):
+            app = await self._add_routes("v1", mock_builder, mock_a2a_worker)
+
+        assert "/v1" in TestConfigurableA2AMountPath._mount_paths(app)
+        overlap_warnings = [
+            r.getMessage() for r in caplog.records if "overlaps existing route" in r.getMessage()
+        ]
+        assert len(overlap_warnings) == 1
+        assert "/v1/workflow" in overlap_warnings[0]
+
+    @pytest.mark.parametrize("mount_path", ["a2a", "agent", "api/a2a"])
+    async def test_no_conflict_is_silent(self, mount_path, mock_builder, mock_a2a_worker, caplog):
+        """GIVEN a mount_path nothing else routes WHEN routes are added THEN it mounts with
+        neither an error nor an overlap warning.
+        """
+        with caplog.at_level(logging.WARNING):
+            app = await self._add_routes(mount_path, mock_builder, mock_a2a_worker)
+
+        assert f"/{mount_path}" in TestConfigurableA2AMountPath._mount_paths(app)
+        assert not [r for r in caplog.records if "overlaps existing route" in r.getMessage()]
 
 
 class TestRootAgentCardFallbackBehaviour:
