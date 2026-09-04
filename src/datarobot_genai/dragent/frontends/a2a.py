@@ -53,6 +53,7 @@ from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_workload_a2a_url
+from datarobot_genai.dragent.deployment_urls import join_mount_path
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_base
 
@@ -118,7 +119,7 @@ AGENT_CARD_NOT_FOUND_BODY = {"detail": "Not Found"}
 # ---------------------------------------------------------------------------
 
 
-def get_a2a_endpoint_url(host: str, port: int) -> str:
+def get_a2a_endpoint_url(host: str, port: int, mount_path: str = A2A_MOUNT_PATH) -> str:
     """Construct the A2A endpoint URL for the running server.
 
     Three tiers, most specific first:
@@ -131,23 +132,31 @@ def get_a2a_endpoint_url(host: str, port: int) -> str:
        (``WORKLOAD_ID``), composes the platform URL from
        ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
     3. Otherwise falls back to the local ``http://{host}:{port}/a2a/`` URL.
+
+    ``mount_path`` is the suffix A2A is actually mounted under inside the container.
+    Every tier forwards the full prefixed path through to the app, so the suffix has
+    to appear in the advertised URL or clients would address a route that does not
+    exist. ``DRAgentA2AConfig`` never passes an empty ``mount_path`` (it rejects
+    mounting A2A at the application root), but this function stays a generic URL
+    composer rather than re-asserting that policy: an empty value here just yields
+    the tier's own base with a single trailing slash.
     """
     if external_base := resolve_external_workload_base():
-        return f"{external_base}/{A2A_MOUNT_PATH}/"
+        return join_mount_path(external_base, mount_path)
 
     deployment_id = get_deployment_id()
     workload_id = get_workload_id()
 
     if not (deployment_id or workload_id):
-        return f"http://{host}:{port}/{A2A_MOUNT_PATH}/"
+        return join_mount_path(f"http://{host}:{port}", mount_path)
 
     datarobot_endpoint = resolve_datarobot_endpoint(require=True)
     assert datarobot_endpoint is not None  # guaranteed by require=True
 
     if deployment_id:
-        return build_deployment_a2a_url(datarobot_endpoint, deployment_id)
+        return build_deployment_a2a_url(datarobot_endpoint, deployment_id, mount_path)
     assert workload_id is not None  # non-None guaranteed by the early-return above
-    return build_workload_a2a_url(datarobot_endpoint, workload_id)
+    return build_workload_a2a_url(datarobot_endpoint, workload_id, mount_path)
 
 
 # ---------------------------------------------------------------------------
@@ -299,11 +308,16 @@ def _collect_extensions(
 def _resolve_url(
     frontend_config: A2AFrontEndConfig,
     external: DRAgentA2AExternalConfig | None,
+    mount_path: str = A2A_MOUNT_PATH,
 ) -> str:
-    """Return the agent card URL, preferring ``external.url`` when provided."""
+    """Return the agent card URL, preferring ``external.url`` when provided.
+
+    ``mount_path`` only shapes the derived URL — an explicit ``external.url`` is
+    already the caller's final answer and is passed through untouched.
+    """
     if external and external.url:
         return external.url
-    return get_a2a_endpoint_url(frontend_config.host, frontend_config.port)
+    return get_a2a_endpoint_url(frontend_config.host, frontend_config.port, mount_path)
 
 
 def build_default_bearer_security_schemes() -> tuple[
@@ -372,11 +386,15 @@ async def create_agent_card(
     cross_app_access: CrossApplicationAccessConfig | None,
     skills: list[AgentSkill],
     external: DRAgentA2AExternalConfig | None = None,
+    mount_path: str = A2A_MOUNT_PATH,
 ) -> AgentCard:
     """Build an :class:`~a2a.types.AgentCard` for a DataRobot-hosted A2A agent.
 
     When ``skills`` is empty, a single default skill is generated from
     ``frontend_config.name`` / ``frontend_config.description``.
+
+    ``mount_path`` must match where the A2A app is actually mounted, so the card's
+    ``url`` points at the live RPC endpoint rather than the default ``/a2a/``.
     """
     security_schemes, security = await build_security_schemes(frontend_config, cross_app_access)
     extensions = _collect_extensions(cross_app_access, external)
@@ -391,7 +409,7 @@ async def create_agent_card(
         )
     ]
 
-    url = _resolve_url(frontend_config, external)
+    url = _resolve_url(frontend_config, external, mount_path)
 
     return AgentCard(
         name=frontend_config.name,

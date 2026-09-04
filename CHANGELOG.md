@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.31
+- `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is rejected.
+- `dragent`: the agent card is also served at the root `/.well-known/agent-card.json` as a discovery fallback, whatever suffix A2A is mounted under. It shares the mounted route's handler, so the unauthenticated-access policy — including the generic `404` from 0.29.29 — holds on both paths.
+- `dragent`: `a2a.mount_path` is validated at config load instead of accepted verbatim: every segment must be RFC 3986 unreserved characters (letters, digits, `- . _ ~`) and must not start with a dot. Values that used to fail silently are now rejected — Starlette path-parameter syntax (`{id}`, `{path}`), URI syntax (`?`, `#`, `%`), empty segments, and the RFC 8615 `.well-known` namespace.
+- `dragent`: mounting A2A where another route already answers now fails at startup, naming that route; a merely overlapping prefix warns instead. An exact collision would otherwise suppress the redirect that makes the slashless `POST /{mount_path}` reach the JSON-RPC endpoint, silently serving the other route's response.
+- `dragent`: fixed `HEAD` on the health, agent-manifest, and root agent-card routes returning 405 instead of 200; FastAPI's `APIRoute` does not add `HEAD` alongside a registered `GET` the way Starlette's `Route` does.
+
 ## 0.29.30
 - `drmcp/core/runtime_identity.py`: Fix MCP deployment URL generation error (URL_PREFIX related)
 

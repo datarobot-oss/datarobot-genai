@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import sys
 import types
@@ -23,6 +24,7 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import InvalidParamsError
+from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
 from a2a.utils.errors import ServerError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -36,6 +38,10 @@ from pydantic import ValidationError
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
+from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
+from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
+from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
@@ -193,6 +199,20 @@ class TestDRAgentFastApiFrontEndPluginWorker:
             assert response.status_code == 200, f"Expected 200 at {path}"
             assert response.json() == {"status": "healthy"}, f"Unexpected response at {path}"
 
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_answer_head(self, app_with_health, path):
+        """GIVEN a health route WHEN a HEAD request is made THEN it matches with 200, not 405.
+
+        FastAPI's APIRoute (unlike plain Starlette's Route) does not add HEAD alongside
+        GET automatically, so this regresses to a 405 if ``methods=`` ever drops back to
+        just ``["GET"]``. Whether the body is actually empty on the wire is the ASGI
+        server's (uvicorn's) job, not observable through TestClient's in-process
+        transport, so that part was verified separately against a real running server.
+        """
+        with TestClient(app_with_health) as client:
+            response = client.head(path)
+            assert response.status_code == 200, f"Expected 200 at {path}"
+
     def test_agent_manifest_route_returns_declared_structure(self, app_with_health):
         """Served alongside the health routes by the same build_app() call - proves
         the route is actually wired up, not just that build_agent_manifest() works
@@ -208,6 +228,12 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         # EmptyFunctionConfig - same empty-config shape asserted directly
         # against build_agent_manifest() in test_agent_manifest.py.
         assert body["root_agent"]["type"] == "EmptyFunctionConfig"
+
+    def test_agent_manifest_route_answers_head(self, app_with_health):
+        """See test_health_routes_answer_head: same FastAPI/Starlette APIRoute gap."""
+        with TestClient(app_with_health) as client:
+            response = client.head("/.well-known/agent-manifest.json")
+        assert response.status_code == 200
 
     def test_step_adaptor(self, worker):
         assert isinstance(worker.get_step_adaptor(), DRAgentNestedReasoningStepAdaptor)
@@ -387,6 +413,398 @@ class TestDRAgentFastApiFrontEndPluginWorker:
         ) as mock_a2a_worker_cls:
             await disabled_worker.add_routes(app, mock_builder)
             mock_a2a_worker_cls.assert_not_called()
+
+
+class TestConfigurableA2AMountPath:
+    """a2a.mount_path has to govern the real mount, the advertised URL, and the fallback."""
+
+    @staticmethod
+    def _worker(mount_path: str | None) -> DRAgentFastApiFrontEndPluginWorker:
+        a2a_kwargs = {} if mount_path is None else {"mount_path": mount_path}
+        config = Config(
+            general=GeneralConfig(
+                front_end=DRAgentFastApiFrontEndConfig(
+                    a2a=DRAgentA2AConfig(
+                        server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                        **a2a_kwargs,
+                    ),
+                )
+            )
+        )
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}):
+            return DRAgentFastApiFrontEndPluginWorker(config)
+
+    @staticmethod
+    async def _add_routes(worker, app, mock_builder, mock_a2a_worker):
+        with (
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.DRAgentA2AFrontEndPluginWorker",
+                return_value=mock_a2a_worker,
+            ),
+            patch(
+                "datarobot_genai.dragent.frontends.fastapi.SessionManager.create",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch(
+                "nat.front_ends.fastapi.fastapi_front_end_plugin_worker."
+                "FastApiFrontEndPluginWorker.add_routes",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await worker.add_routes(app, mock_builder)
+
+    @staticmethod
+    def _mount_paths(app: FastAPI) -> list[str]:
+        from starlette.routing import Mount
+
+        return [route.path for route in app.routes if isinstance(route, Mount)]
+
+    @pytest.mark.parametrize(
+        "mount_path,expected_mount",
+        [
+            (None, "/a2a"),
+            ("a2a", "/a2a"),
+            ("custom", "/custom"),
+            ("/slashes/", "/slashes"),
+        ],
+    )
+    async def test_mounts_at_configured_path(
+        self, mount_path, expected_mount, mock_builder, mock_a2a_worker
+    ):
+        """GIVEN a2a.mount_path WHEN routes are added THEN the A2A app is mounted there."""
+        worker = self._worker(mount_path)
+        app = FastAPI()
+
+        await self._add_routes(worker, app, mock_builder, mock_a2a_worker)
+
+        assert expected_mount in self._mount_paths(app)
+
+    @pytest.mark.parametrize("mount_path", ["", "/", "  /  "])
+    def test_empty_mount_path_is_rejected(self, mount_path):
+        """GIVEN a mount_path that normalizes to empty WHEN DRAgentA2AConfig is built THEN it
+        raises rather than silently mounting A2A at the application root.
+        """
+        with pytest.raises(ValidationError, match="mount_path must not be empty"):
+            DRAgentA2AConfig(
+                server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                mount_path=mount_path,
+            )
+
+    @pytest.mark.parametrize(
+        "mount_path,expected_message",
+        [
+            # Starlette path-parameter syntax: "{id}" compiles to a wildcard that swallows
+            # unrelated paths, and "{path}" collides with Mount's own parameter and would
+            # crash app.mount() outright.
+            ("{id}", "RFC 3986 unreserved"),
+            ("{path}", "RFC 3986 unreserved"),
+            ("a2a{", "RFC 3986 unreserved"),
+            # URI syntax / characters needing percent-encoding: the advertised agent card
+            # URL would resolve somewhere other than the mount, so A2A goes undiscoverable.
+            ("a2a?x=1", "RFC 3986 unreserved"),
+            ("a2a#frag", "RFC 3986 unreserved"),
+            ("a2a%2f", "RFC 3986 unreserved"),
+            ("my a2a", "RFC 3986 unreserved"),
+            ("ką", "RFC 3986 unreserved"),
+            ("*", "RFC 3986 unreserved"),
+            # Relative-reference syntax and the RFC 8615 reserved discovery namespace.
+            (".", "must not start with a dot"),
+            ("..", "must not start with a dot"),
+            (".well-known", "must not start with a dot"),
+            ("api/.hidden", "must not start with a dot"),
+            # Empty interior segment: clients and proxies normalize "//" differently than
+            # the route matches.
+            ("a2a//nested", "must not contain an empty path segment"),
+            # Length ceiling.
+            ("a" * 201, "at most 200 characters"),
+        ],
+    )
+    def test_malformed_mount_path_is_rejected(self, mount_path, expected_message):
+        """GIVEN a mount_path that cannot safely be both a route pattern and a URL segment
+        WHEN DRAgentA2AConfig is built THEN it is rejected at config load.
+
+        Nothing downstream re-checks the value — ``AgentCard.url`` is an unvalidated ``str``
+        — so this validator is the only thing standing between a malformed value and an
+        agent that advertises an unreachable endpoint with no error anywhere.
+        """
+        with pytest.raises(ValidationError, match=expected_message):
+            DRAgentA2AConfig(
+                server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+                mount_path=mount_path,
+            )
+
+    @pytest.mark.parametrize(
+        "mount_path,expected",
+        [
+            ("a2a", "a2a"),
+            ("agent", "agent"),
+            ("api/a2a", "api/a2a"),
+            ("my-agent", "my-agent"),
+            ("v1.2", "v1.2"),
+            ("a_b~c", "a_b~c"),
+            ("A2A", "A2A"),
+            ("/a2a/", "a2a"),
+            ("//a2a//", "a2a"),
+            ("a" * 200, "a" * 200),
+        ],
+    )
+    def test_wellformed_mount_path_is_accepted(self, mount_path, expected):
+        """GIVEN a mount_path of RFC 3986 unreserved characters WHEN DRAgentA2AConfig is
+        built THEN it is accepted, normalized to its slash-stripped form.
+        """
+        config = DRAgentA2AConfig(
+            server=A2AFrontEndConfig(name="Test Agent", description="A test agent"),
+            mount_path=mount_path,
+        )
+
+        assert config.mount_path == expected
+
+    @pytest.mark.parametrize(
+        "mount_path,expected_url",
+        [
+            ("custom", "http://localhost:8000/custom/"),
+        ],
+    )
+    async def test_agent_card_url_follows_mount_path(
+        self, mount_path, expected_url, mock_builder, mock_a2a_worker
+    ):
+        """GIVEN a non-default a2a.mount_path WHEN routes are added THEN the agent card the
+        A2A server is built with advertises that mount, not the default /a2a/.
+        """
+        worker = self._worker(mount_path)
+        app = FastAPI()
+
+        with patch.dict(os.environ, {"NAT_CONFIG_FILE": "unused"}, clear=True):
+            await self._add_routes(worker, app, mock_builder, mock_a2a_worker)
+
+        agent_card = mock_a2a_worker.create_a2a_server.call_args[0][0]
+        assert agent_card.url == expected_url
+
+    @pytest.mark.parametrize("mount_path", [None, "a2a", "custom"])
+    async def test_root_agent_card_fallback_registration(
+        self, mount_path, mock_builder, mock_a2a_worker
+    ):
+        """GIVEN any mount path WHEN routes are added THEN the root agent card fallback
+        exists, since A2A can never be mounted at the root itself.
+        """
+        worker = self._worker(mount_path)
+        app = FastAPI()
+
+        await self._add_routes(worker, app, mock_builder, mock_a2a_worker)
+
+        paths = [getattr(route, "path", None) for route in app.routes]
+        assert AGENT_CARD_WELL_KNOWN_PATH in paths
+
+    async def test_root_fallback_registered_before_mount(self, mock_builder, mock_a2a_worker):
+        """GIVEN A2A is mounted under a suffix WHEN routes are added THEN the fallback route
+        precedes the mount, so a future root mount could not shadow it.
+        """
+        worker = self._worker("a2a")
+        app = FastAPI()
+
+        await self._add_routes(worker, app, mock_builder, mock_a2a_worker)
+
+        from starlette.routing import Mount
+
+        paths = [getattr(route, "path", None) for route in app.routes]
+        mount_index = next(i for i, r in enumerate(app.routes) if isinstance(r, Mount))
+        assert paths.index(AGENT_CARD_WELL_KNOWN_PATH) < mount_index
+
+
+class TestA2AMountPathConflicts:
+    """A mount path landing on ground another route owns must not fail silently.
+
+    The conflict check runs at mount time rather than in the config model because the A2A
+    mount is registered last: only then does ``app.routes`` hold the real route set,
+    including endpoints composed from ``front_end.endpoints`` at arbitrary paths.
+    """
+
+    @staticmethod
+    def _app_with_foreign_routes() -> FastAPI:
+        """Build an app carrying the routes a real agent registers before the A2A mount."""
+        app = FastAPI()
+        for path in ["/", "/ping", "/ping/", "/health", "/health/"]:
+            app.add_api_route(path, lambda: None, methods=["GET", "HEAD"])
+        app.add_api_route("/.well-known/agent-manifest.json", lambda: None, methods=["GET"])
+        for path in ["/v1/workflow", "/generate", "/chat", "/chat/completions"]:
+            app.add_api_route(path, lambda: None, methods=["POST"])
+        return app
+
+    async def _add_routes(self, mount_path: str, mock_builder, mock_a2a_worker) -> FastAPI:
+        worker = TestConfigurableA2AMountPath._worker(mount_path)
+        app = self._app_with_foreign_routes()
+        await TestConfigurableA2AMountPath._add_routes(worker, app, mock_builder, mock_a2a_worker)
+        return app
+
+    @pytest.mark.parametrize(
+        "mount_path,conflicting_route",
+        [("chat", "/chat"), ("health", "/health"), ("generate", "/generate")],
+    )
+    async def test_exact_conflict_is_fatal(
+        self, mount_path, conflicting_route, mock_builder, mock_a2a_worker
+    ):
+        """GIVEN a mount_path already served by another route WHEN routes are added THEN it
+        raises, naming the conflicting route.
+
+        Fatal because the collision removes a safety net rather than merely competing: a
+        mount is normally reachable without its trailing slash via Starlette's 307
+        redirect, and a route on the mount point pre-empts that redirect, so an A2A client
+        omitting the slash silently receives the other route's response.
+        """
+        with pytest.raises(ValueError, match="is already served by another route") as excinfo:
+            await self._add_routes(mount_path, mock_builder, mock_a2a_worker)
+
+        assert conflicting_route in str(excinfo.value)
+
+    async def test_nested_conflict_warns_but_starts(self, mock_builder, mock_a2a_worker, caplog):
+        """GIVEN a mount_path that merely overlaps another route's prefix WHEN routes are
+        added THEN it warns and still starts.
+
+        Only a warning: the foreign route was registered first so it keeps winning for its
+        own path, and A2A still works at its advertised URL. Refusing to boot would let a
+        future NAT route addition brick a previously working config.
+        """
+        with caplog.at_level(logging.WARNING):
+            app = await self._add_routes("v1", mock_builder, mock_a2a_worker)
+
+        assert "/v1" in TestConfigurableA2AMountPath._mount_paths(app)
+        overlap_warnings = [
+            r.getMessage() for r in caplog.records if "overlaps existing route" in r.getMessage()
+        ]
+        assert len(overlap_warnings) == 1
+        assert "/v1/workflow" in overlap_warnings[0]
+
+    @pytest.mark.parametrize("mount_path", ["a2a", "agent", "api/a2a"])
+    async def test_no_conflict_is_silent(self, mount_path, mock_builder, mock_a2a_worker, caplog):
+        """GIVEN a mount_path nothing else routes WHEN routes are added THEN it mounts with
+        neither an error nor an overlap warning.
+        """
+        with caplog.at_level(logging.WARNING):
+            app = await self._add_routes(mount_path, mock_builder, mock_a2a_worker)
+
+        assert f"/{mount_path}" in TestConfigurableA2AMountPath._mount_paths(app)
+        assert not [r for r in caplog.records if "overlaps existing route" in r.getMessage()]
+
+
+class TestRootAgentCardFallbackBehaviour:
+    """The fallback must answer identically to the mounted route, policy included."""
+
+    NESTED_CARD_PATH = f"/a2a{AGENT_CARD_WELL_KNOWN_PATH}"
+    AUTH_HEADERS = {"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"}
+
+    @staticmethod
+    async def _client(*, unauthenticated_well_known: bool) -> TestClient:
+        """Wire the real A2A server through _add_a2a_routes so both paths share a handler."""
+        worker = TestConfigurableA2AMountPath._worker("a2a")
+        a2a_frontend_config = A2AFrontEndConfig(
+            name="Test Agent", description="A test agent", host="localhost", port=8000
+        )
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        a2a_server = DRAgentA2AStarletteApplication(
+            agent_card=card,
+            http_handler=MagicMock(),
+            extended_agent_card=card,
+            card_modifier=_public_card_modifier,
+            enable_unauthenticated_well_known_route=unauthenticated_well_known,
+        )
+
+        mock_a2a_worker = MagicMock()
+        mock_a2a_worker.front_end_config = a2a_frontend_config
+        mock_a2a_worker.create_a2a_server = MagicMock(return_value=a2a_server)
+        mock_a2a_worker.cleanup = AsyncMock()
+
+        app = FastAPI()
+        await TestConfigurableA2AMountPath._add_routes(worker, app, MagicMock(), mock_a2a_worker)
+        return TestClient(app)
+
+    async def test_unauthenticated_without_opt_in_returns_generic_404_on_both_paths(self):
+        """GIVEN unauthenticated access is not opted in WHEN either card path is fetched
+        THEN both return the same generic 404 — the fallback neither bypasses the opt-in
+        nor answers more revealingly than the mounted route.
+        """
+        client = await self._client(unauthenticated_well_known=False)
+
+        fallback = client.get(AGENT_CARD_WELL_KNOWN_PATH)
+        nested = client.get(self.NESTED_CARD_PATH)
+
+        assert fallback.status_code == nested.status_code == 404
+        assert fallback.json() == nested.json() == AGENT_CARD_NOT_FOUND_BODY
+
+    async def test_blocked_card_is_indistinguishable_from_an_unrouted_path(self):
+        """GIVEN unauthenticated access is not opted in THEN a blocked card answers exactly
+        as an unrouted path does, on *both* card paths.
+
+        Adding a second card route doubles the surface this has to hold on: the root
+        fallback is reachable without knowing the mount path at all, so if it answered
+        differently it would be the easier oracle of the two. Status code, body and
+        content type all have to match, since the status code alone is enough to
+        enumerate live, not-opted-in agents.
+        """
+        client = await self._client(unauthenticated_well_known=False)
+        unrouted = client.get("/no-such-route")
+
+        for path in (AGENT_CARD_WELL_KNOWN_PATH, self.NESTED_CARD_PATH):
+            blocked = client.get(path)
+            assert blocked.status_code == unrouted.status_code, path
+            assert blocked.json() == unrouted.json(), path
+            assert blocked.headers["content-type"] == unrouted.headers["content-type"], path
+
+    async def test_blocked_card_body_leaks_nothing_on_both_paths(self):
+        """Neither card path may name the opt-in flag, its config file, or the agent."""
+        client = await self._client(unauthenticated_well_known=False)
+
+        for path in (AGENT_CARD_WELL_KNOWN_PATH, self.NESTED_CARD_PATH):
+            body = client.get(path).text.lower()
+            for leak in (
+                "enable_unauthenticated_well_known_route",
+                "workflow.yaml",
+                "unauthenticated",
+                "platform-level",
+                "test agent",
+            ):
+                assert leak not in body, f"{path} leaks {leak!r}"
+
+    async def test_unauthenticated_with_opt_in_returns_redacted_card_on_both_paths(self):
+        """GIVEN unauthenticated access is opted in WHEN either card path is fetched
+        THEN both return the same redacted card, so redaction is not duplicated logic.
+        """
+        client = await self._client(unauthenticated_well_known=True)
+
+        fallback = client.get(AGENT_CARD_WELL_KNOWN_PATH)
+        nested = client.get(self.NESTED_CARD_PATH)
+
+        assert fallback.status_code == nested.status_code == 200
+        assert fallback.json() == nested.json()
+        assert fallback.json()["skills"] == []
+
+    async def test_authenticated_returns_full_card_on_both_paths(self):
+        """GIVEN an authenticated caller WHEN either card path is fetched THEN both return the
+        same full card, so the fallback is a genuine alias rather than a reduced view.
+        """
+        client = await self._client(unauthenticated_well_known=False)
+
+        fallback = client.get(AGENT_CARD_WELL_KNOWN_PATH, headers=self.AUTH_HEADERS)
+        nested = client.get(self.NESTED_CARD_PATH, headers=self.AUTH_HEADERS)
+
+        assert fallback.status_code == nested.status_code == 200
+        assert fallback.json() == nested.json()
+        assert fallback.json()["skills"]
+
+    async def test_fallback_answers_head(self):
+        """GIVEN an authenticated caller WHEN either card path gets a HEAD request THEN both
+        match with 200, not 405.
+
+        FastAPI's APIRoute needs HEAD listed explicitly alongside GET (see the comment at
+        its registration site); the nested route is a plain Starlette Route, which adds
+        HEAD automatically — this asserts the fallback keeps parity with it.
+        """
+        client = await self._client(unauthenticated_well_known=False)
+
+        fallback = client.head(AGENT_CARD_WELL_KNOWN_PATH, headers=self.AUTH_HEADERS)
+        nested = client.head(self.NESTED_CARD_PATH, headers=self.AUTH_HEADERS)
+
+        assert fallback.status_code == nested.status_code == 200
 
 
 class TestInboundAudienceValidation:
