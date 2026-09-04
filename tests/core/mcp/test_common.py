@@ -680,3 +680,90 @@ class TestLookupWorkloadEndpoint:
         # THEN the transient failure was not remembered
         assert resolved == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
         assert route.call_count == 2
+
+
+class TestCredentialsAreDeclaredNotInferred:
+    """The #29 decoupling: the address decides the URL, `auth_provider` the credentials.
+
+    The point of every case here is that the *derived defaults* reproduce the previous
+    behaviour exactly, so a configuration that never sets `auth_provider` cannot notice
+    this change -- while a configuration that does set it can reach cases that were
+    previously unexpressible.
+    """
+
+    ENDPOINT = "https://app.datarobot.com/api/v2"
+
+    def test_a_url_server_can_now_carry_datarobot_credentials(self):
+        """Previously impossible: `if kind == "external": headers = {}` was unreachable.
+
+        This is what makes the platform's global MCP reachable at all -- pasting its URL
+        into EXTERNAL_MCP_URL got a DataRobot-hosted server treated as a third party.
+        """
+        ref = MCPServerRef(
+            name="global",
+            url=f"{self.ENDPOINT}/genai/globalmcp/mcp",
+            auth_provider="datarobot_mcp_auth",
+        )
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        assert build_headers(target)["Authorization"] == "Bearer tok"
+
+    def test_credentials_to_a_foreign_host_fail_the_build(self):
+        """#30. Without this, declarable auth is a service-token leak waiting to be typed."""
+        ref = MCPServerRef(
+            name="partner",
+            url="https://partner.example.com/mcp",
+            auth_provider="datarobot_mcp_auth",
+        )
+        with pytest.raises(ValueError, match="would send DataRobot credentials"):
+            build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+
+    def test_trust_host_is_the_deliberate_admission(self):
+        ref = MCPServerRef(
+            name="partner",
+            url="https://partner.example.com/mcp",
+            auth_provider="datarobot_mcp_auth",
+            trust_host=True,
+        )
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        assert build_headers(target)["Authorization"] == "Bearer tok"
+
+    def test_a_datarobot_hosted_server_can_be_reached_anonymously(self):
+        """The other direction, also previously unexpressible."""
+        ref = MCPServerRef(name="docs", local_port=9001, auth_provider="none")
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        assert "Authorization" not in build_headers(target)
+
+    def test_static_headers_survive_on_an_authenticated_server(self):
+        """They used to be reachable only on the `external` branch."""
+        ref = MCPServerRef(name="docs", local_port=9001, headers={"x-team": "search"})
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        headers = build_headers(target)
+        assert headers["x-team"] == "search"
+        assert headers["Authorization"] == "Bearer tok"
+
+    def test_api_key_header_follows_the_route_not_the_identity(self):
+        """A url server behind the workload gateway can ask for the header."""
+        ref = MCPServerRef(
+            name="wl",
+            url="https://app.datarobot.com/wl/mcp",
+            auth_provider="datarobot_mcp_auth",
+            api_key_header=True,
+        )
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        assert build_headers(target)["x-datarobot-api-key"] == "tok"
+
+    def test_a_forwarded_key_still_outranks_the_service_one(self):
+        """The guard the docstring says not to simplify, re-asserted after the rewrite."""
+        ref = MCPServerRef(name="wl", workload_id="a" * 24)
+        with patch(
+            "datarobot_genai.core.mcp.target.lookup_workload_endpoint",
+            return_value="https://wl.example.com",
+        ):
+            target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        headers = build_headers(target, forwarded={"x-datarobot-api-key": "caller-key"})
+        assert headers["x-datarobot-api-key"] == "caller-key"
+
+    def test_a_per_server_token_overrides_the_service_one(self):
+        ref = MCPServerRef(name="docs", local_port=9001, api_token="per-server")
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="service")
+        assert build_headers(target)["Authorization"] == "Bearer per-server"
