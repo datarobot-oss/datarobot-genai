@@ -37,10 +37,14 @@ run:
 function_groups:
   analytics:
     _type: datarobot_mcp_client
-    server: { name: analytics, auth_provider: datarobot_mcp_auth }
+    server:
+      name: analytics
+      auth_provider: datarobot_mcp_auth
   docs:
     _type: datarobot_mcp_client
-    server: { name: docs, auth_provider: datarobot_mcp_auth }
+    server:
+      name: docs
+      auth_provider: datarobot_mcp_auth
 ```
 
 ```bash
