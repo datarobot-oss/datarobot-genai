@@ -62,11 +62,9 @@ class Config(DataRobotAppFrameworkBaseSettings):
     datarobot_api_token: str | None = None
 
     # App-wide settings (genai-specific tunables).
-    # Named for its environment variable rather than aliased to it: GetenvSettingsSource
-    # keys strictly on `field_name.upper()` and ignores aliases, so under `alias=` this
-    # field had no runtime-parameter path at all -- it could only ever be set by a plain
-    # environment variable.
-    datarobot_genai_max_history_messages: int = Field(default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0)
+    max_history_messages: int = Field(
+        default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
+    )    
     assume_native_tool_calling_when_unmapped: bool = Field(
         default=False,
         description=(
