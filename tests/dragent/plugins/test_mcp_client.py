@@ -293,9 +293,9 @@ class TestOneSharedAuthProviderServesTheWholeFleet:
 
     def test_a_third_party_server_gets_no_datarobot_identity(self):
         """`url` defaults to `auth_provider: none`, so the provider never runs for it."""
-        partner = build_target(MCPServerRef(name="partner", url="https://mcp.example.com/mcp"))
-        assert not partner.ref.sends_datarobot_credentials
-        assert build_headers(partner) == {}
+        vendor = build_target(MCPServerRef(name="vendor", url="https://mcp.example.com/mcp"))
+        assert not vendor.ref.sends_datarobot_credentials
+        assert build_headers(vendor) == {}
 
 
 # Tests for the BUZZOK-30556 enum-safe input schema patch.

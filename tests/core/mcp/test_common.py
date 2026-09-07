@@ -117,12 +117,12 @@ class TestResolveMCPServers:
             '{"name":"catalog","deployment_id":"7a4402ab30548f83b668e1fe"},'
             '{"name":"search","workload_id":"6a6b3d359e6b2c11158c2a13"},'
             '{"name":"docs","local_port":9001},'
-            '{"name":"partner","url":"https://mcp.example.com/mcp"}]'
+            '{"name":"vendor","url":"https://mcp.example.com/mcp"}]'
         )
         with patch.dict(os.environ, {"MCP_SERVERS": fleet}, clear=True):
             servers = Config().resolve_mcp_servers()
         # THEN every one of them is reachable, and kind is a per-server property
-        assert [s.name for s in servers] == ["analytics", "catalog", "search", "docs", "partner"]
+        assert [s.name for s in servers] == ["analytics", "catalog", "search", "docs", "vendor"]
         assert [s.kind.value for s in servers] == [
             "deployment",
             "deployment",
@@ -189,12 +189,14 @@ class TestResolveMCPServers:
             with pytest.raises(ValueError, match="mutually exclusive"):
                 Config().resolve_mcp_servers()
 
-    def test_a_declared_fleet_supersedes_the_singular_variables_wholesale(self):
-        # Not merged per name: the list you declare is the fleet you get. Merging would
-        # silently add a `default` from MCP_SERVER_PORT -- which the application
-        # templates set unconditionally for their bundled server -- so a declared fleet
-        # would gain a server nobody asked for, whose tools do not change when
-        # MCP_SERVERS does.
+    def test_a_fleet_keeps_the_remote_singular_variable_but_not_the_bundled_port(self):
+        # A *remote* singular variable names a server somebody chose, so a fleet must
+        # not silently unconfigure it -- especially now the fleet can be discovered from
+        # flat variables rather than written out by hand.
+        #
+        # MCP_SERVER_PORT is the exception it earned: it names the port an MCP *server*
+        # process binds, and the application templates set it unconditionally, so
+        # merging it would add a `default` local server nobody asked for.
         with patch.dict(
             os.environ,
             {
@@ -205,7 +207,10 @@ class TestResolveMCPServers:
             clear=True,
         ):
             servers = Config().resolve_mcp_servers()
-        assert [(s.name, s.kind.value) for s in servers] == [("analytics", "local")]
+        assert sorted((s.name, s.kind.value) for s in servers) == [
+            ("analytics", "local"),
+            ("default", "deployment"),
+        ]
 
     def test_an_empty_variable_does_not_shadow_the_runtime_parameter(self):
         # GIVEN an empty MCP_DEPLOYMENT_ID left in a container image, and the runtime
@@ -281,7 +286,7 @@ class TestBuildTarget:
         # The invariant the loopback validator protects: `external` implies no token,
         # enforced at construction so no call site has to remember it.
         target = build_target(
-            MCPServerRef(name="partner", url="https://mcp.example.com/mcp/"),
+            MCPServerRef(name="vendor", url="https://mcp.example.com/mcp/"),
             datarobot_endpoint=API_ENDPOINT,
             datarobot_api_token="tok",
         )
@@ -439,7 +444,7 @@ class TestAMixedFleetIsCredentialUniform:
         fleet = (
             f'[{{"name":"analytics","deployment_id":"{DEPLOYMENT_ID}"}},'
             f'{{"name":"search","workload_id":"{WORKLOAD_ID}"}},'
-            f'{{"name":"partner","url":"https://mcp.example.com/mcp"}}]'
+            f'{{"name":"vendor","url":"https://mcp.example.com/mcp"}}]'
         )
         with patch.dict(
             os.environ,
@@ -467,7 +472,7 @@ class TestAMixedFleetIsCredentialUniform:
         assert headers["analytics"]["Authorization"] == "Bearer tok"
         assert headers["analytics"]["x-datarobot-api-key"] == "tok"
         # ...and the third-party server receives no DataRobot identity at all.
-        assert headers["partner"] == {}
+        assert headers["vendor"] == {}
 
 
 class TestCredentialsAreDeclaredNotInferred:
@@ -498,22 +503,27 @@ class TestCredentialsAreDeclaredNotInferred:
     def test_credentials_to_a_foreign_host_fail_the_build(self):
         """#30. Without this, declarable auth is a service-token leak waiting to be typed."""
         ref = MCPServerRef(
-            name="partner",
+            name="vendor",
             url="https://mcp.example.com/mcp",
             auth_provider="datarobot_mcp_auth",
         )
         with pytest.raises(ValueError, match="would send DataRobot credentials"):
             build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
 
-    def test_trust_host_is_the_deliberate_admission(self):
+    def test_there_is_no_override_for_a_foreign_host(self):
+        """An earlier draft had `trust_host`. The guard is now absolute.
+
+        The remedies named in the error are the two that keep the invariant: say
+        `auth_provider: none`, or address the server by workload/deployment id so its
+        URL is derived rather than asserted.
+        """
         ref = MCPServerRef(
-            name="partner",
+            name="vendor",
             url="https://mcp.example.com/mcp",
             auth_provider="datarobot_mcp_auth",
-            trust_host=True,
         )
-        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
-        assert build_headers(target)["Authorization"] == "Bearer tok"
+        with pytest.raises(ValueError, match="auth_provider=none"):
+            build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
 
     def test_a_datarobot_hosted_server_can_be_reached_anonymously(self):
         """The other direction, also previously unexpressible."""
@@ -547,7 +557,34 @@ class TestCredentialsAreDeclaredNotInferred:
         headers = build_headers(target, forwarded={"x-datarobot-api-key": "caller-key"})
         assert headers["x-datarobot-api-key"] == "caller-key"
 
-    def test_a_per_server_token_overrides_the_service_one(self):
-        ref = MCPServerRef(name="docs", local_port=9001, api_token="per-server")
-        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="service")
-        assert build_headers(target)["Authorization"] == "Bearer per-server"
+    def test_a_url_server_is_authenticated_one_of_exactly_two_ways(self):
+        """DataRobot-hosted on the endpoint host, or externally hosted with own headers.
+
+        No per-server token setting exists for either. The first uses the global
+        DATAROBOT_API_TOKEN (or an exchanged XAA token); the second carries whatever
+        credential the server wants in `headers`, which is what EXTERNAL_MCP_HEADERS
+        always did.
+        """
+        hosted = build_target(
+            MCPServerRef(
+                name="global_mcp",
+                url=f"{self.ENDPOINT}/genai/globalmcp/mcp",
+                auth_provider="datarobot_mcp_auth",
+            ),
+            datarobot_endpoint=self.ENDPOINT,
+            datarobot_api_token="tok",
+        )
+        assert build_headers(hosted)["Authorization"] == "Bearer tok"
+
+        external = build_target(
+            MCPServerRef(
+                name="vendor",
+                url="https://mcp.vendor.example.com/mcp",
+                headers={"Authorization": "Bearer vendors-own-token"},
+            ),
+            datarobot_endpoint=self.ENDPOINT,
+            datarobot_api_token="tok",
+        )
+        headers = build_headers(external)
+        assert headers["Authorization"] == "Bearer vendors-own-token"
+        assert "x-datarobot-api-key" not in headers, "no DataRobot identity leaves here"

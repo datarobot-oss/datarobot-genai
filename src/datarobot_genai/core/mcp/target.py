@@ -129,8 +129,6 @@ def _resolve_service_token(ref: MCPServerRef, token: str | None) -> str | None:
     ``DATAROBOT_API_TOKEN`` -- which is the normal state for XAA, where the identity is
     an exchanged per-user token rather than a service one.
     """
-    if ref.api_token:
-        return ref.api_token
     if not ref.sends_datarobot_credentials:
         return None
     if not token:
@@ -206,7 +204,7 @@ def build_target(
     return MCPTarget(
         ref=ref,
         url=build_local_mcp_url(ref.local_port, host=ref.local_host),
-        api_token=ref.api_token or datarobot_api_token or None,
+        api_token=datarobot_api_token or None,
     )
 
 
