@@ -24,49 +24,59 @@ Practical rule: **merge** platform tools with yours wherever you bind tools to t
 
 ## Declaring the servers an agent can reach
 
-Every MCP server lives in one variable, `MCP_SERVERS`: a JSON array in which each entry
-is a **name** plus **exactly one address**. There is no limit of one server, and no limit
-of one server per kind.
+Each server is one small group of flat variables, prefixed by the server's name. There is
+no limit of one server, and no limit of one server per kind. Nothing in `config.py` names
+them: adding a server is two lines in `.env`.
 
 ```bash
-# .env -- python-dotenv reads a quoted value across newlines. Keep it on one line if the
-# same file is fed to `docker --env-file`, which does no quote processing.
-MCP_SERVERS='[
-  {"name": "analytics", "deployment_id": "69331f1f30548f83b668d9dc"},
-  {"name": "search",    "workload_id":   "6a72dd6d4417b3136f64fef0"},
-  {"name": "docs",      "local_port":    9001},
-  {"name": "partner",   "url": "https://partner.example.com/mcp"}
-]'
+analytics_mcp_deployment_id=69331f1f30548f83b668d9dc
+search_mcp_workload_id=6a72dd6d4417b3136f64fef0
+docs_mcp_local_port=9001
+docs_mcp_local_host=mcp-docs          # for docker compose
+external_mcp_url=https://mcp.example.com/mcp
+external_mcp_headers={"x-api-key": "..."}
 ```
 
-| Address         | Where the server is                | What it receives                          |
-| --------------- | ---------------------------------- | ----------------------------------------- |
-| `deployment_id` | a DataRobot custom model deployment | bearer token, auth context                |
-| `workload_id`   | a Workload API container            | bearer token, auth context, `x-datarobot-api-key` |
-| `local_port`    | a local process (`local_host` too, for compose) | bearer token, auth context   |
-| `url`           | a third-party server                | **no DataRobot credentials**, plus any `headers` you declare |
+The address fields also accept a short form without `_mcp` — `docs_local_port`.
 
-Setting two addresses on one entry is an error, not a precedence contest. So is a
+| Address field | Where the server is |
+| --- | --- |
+| `<name>_mcp_deployment_id` | a DataRobot custom model deployment |
+| `<name>_mcp_workload_id` | a Workload API container |
+| `<name>_mcp_local_port` (+ `_local_host`) | a local process |
+| `<name>_mcp_url` | a server addressed verbatim |
+
+**How it is addressed no longer decides how it is authenticated.** That is
+`<name>_mcp_auth_provider`, naming an `authentication:` entry or `none`:
+
+| `auth_provider` | What the server receives |
+| --- | --- |
+| `datarobot_mcp_auth` *(default for the DataRobot-hosted kinds)* | forwarded headers, `Authorization: Bearer`, `x-datarobot-api-key`, auth context |
+| an `okta_cross_app_access` entry | an exchanged per-user token — and **no** `DATAROBOT_API_TOKEN` is required to resolve the server |
+| `none` *(default for `url`)* | only the static `<name>_mcp_headers` |
+
+`x-datarobot-api-key` goes to every DataRobot-hosted server, not workloads only: the
+Workload API gateway needs it and a deployment or local process ignores it. Because
+nothing then varies per server, one auth provider instance serves the whole fleet.
+
+Setting two addresses on one server is an error, not a precedence contest. So is a
 loopback host under `url`: that would silently send no credentials, which works on a
-laptop and fails once deployed. Use `local_port` for a local server.
+laptop and fails once deployed. Use `local_port` for a local server. Sending DataRobot
+credentials to a `url` on a host other than `DATAROBOT_ENDPOINT` also raises, unless you
+set `<name>_mcp_trust_host=true`.
 
-Deployed, the same variable arrives as a runtime parameter and nothing else changes:
+Deployed, the same variables arrive as runtime parameters and nothing else changes:
 
 ```python
-CustomModelRuntimeParameterValueArgs(
-    key="MCP_SERVERS", type="string",
-    value=pulumi.Output.json_dumps([
-        {"name": "analytics", "deployment_id": analytics_mcp.id},
-        {"name": "search",    "workload_id":   search_mcp.id},
-    ]),
-)
+[
+    CustomModelRuntimeParameterValueArgs(
+        key="ANALYTICS_MCP_DEPLOYMENT_ID", type="string", value=analytics_mcp.id),
+    CustomModelRuntimeParameterValueArgs(
+        key="SEARCH_MCP_WORKLOAD_ID", type="string", value=search_mcp.id),
+]
 ```
 
-A `workload_id` costs one lookup: the agent asks the platform where that workload is
-served (`GET /api/v2/workloads/<id>/`) and appends `/mcp` to the endpoint it reports, so
-the same entry works however your cluster routes workloads. The agent's API token
-therefore needs read access to the workload. If the lookup cannot answer, the build fails
-naming the server rather than guessing a URL that would be wrong on some clusters.
+Resolution performs no network call: every kind composes its URL, a workload included.
 
 ## Attaching the tools
 
@@ -92,8 +102,9 @@ async with AsyncExitStack() as stack:
     agent = MyAgent(llm=llm, tools=tools + my_own_tools)
 ```
 
-`aresolve_mcp_targets()` resolves every configured server, running the workload lookups
-concurrently; pass a list of names to resolve only some of them.
+`aresolve_mcp_targets()` resolves every configured server; pass a list of names to
+resolve only some of them. `mcp_tools_context` also takes `extra=` — headers merged last,
+which is how a caller that runs its own token exchange presents the exchanged token.
 
 Each server's tools are namespaced `<server name>__<tool>`, matching how NAT names
 function-group tools. That is what lets two servers each exposing `search` coexist —
@@ -116,16 +127,16 @@ The NAT workflow example declares servers in YAML instead; see [nat/mcp.md](../n
 ## Migrating from the single-server variables
 
 `MCP_DEPLOYMENT_ID`, `MCP_WORKLOAD_ID`, `MCP_SERVER_PORT` and `EXTERNAL_MCP_URL` keep
-working: each resolves as the entry named `default`, so no existing `.env` breaks. Setting
+working: each resolves as the server named `default`, so no existing `.env` breaks. Setting
 two of the three *remote* ones is now an error rather than a silent precedence.
 `MCP_SERVER_PORT` is exempt — it names the port an MCP *server* binds, which the
 application templates set unconditionally for their bundled server — and stays a fallback
 used only when no remote address is set.
 
-**Declaring `MCP_SERVERS` supersedes all of them wholesale.** They are a fallback for a
-configuration that has not adopted the list, not entries merged into one that has, so the
-fleet you declare is the fleet you get — a leftover `MCP_SERVER_PORT` or `MCP_DEPLOYMENT_ID`
-cannot add a server you did not ask for.
+**Declaring any per-server variables supersedes all of them wholesale.** They are a
+fallback for a configuration that has not adopted the per-server form, not entries merged
+into one that has, so the fleet you declare is the fleet you get — a leftover
+`MCP_SERVER_PORT` cannot add a server you did not ask for.
 
 `MCPConfig` is deprecated and no longer reads the environment or builds headers.
 `mcp_tools_context` takes an `MCPTarget` from `aresolve_mcp_targets()` or `build_target()`,
@@ -135,4 +146,4 @@ copy between requests.
 
 ## Automated tests
 
-`e2e-tests/dragent_tests/test_mcp.py` exercises MCP tool calls when **`MCP_SERVERS`** declares a server (or one of the single-server variables it supersedes is set) and a tool-capable agent is configured.
+`e2e-tests/dragent_tests/test_mcp.py` exercises MCP tool calls when per-server variables declare a server (or one of the single-server variables they supersede is set) and a tool-capable agent is configured.

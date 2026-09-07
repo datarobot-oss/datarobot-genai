@@ -93,6 +93,7 @@ async def mcp_tools_context(
     prefix: str | None = None,
     forwarded: dict[str, str] | None = None,
     auth_context: dict[str, Any] | None = None,
+    extra: dict[str, str] | None = None,
     strict: bool = True,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """Yield the CrewAI tools one MCP server exposes, managing the connection lifecycle.
@@ -108,11 +109,18 @@ async def mcp_tools_context(
         Headers forwarded from the inbound request.
     auth_context : dict[str, Any] | None
         Authorization context to encode for the MCP connection.
+    extra : dict[str, str] | None
+        Headers merged last, so they override the resolved ones. This is how a caller
+        that performs its own token exchange -- Okta cross-application access, say --
+        presents the exchanged token, since that flow needs a NAT auth provider and so
+        cannot be expressed as the server's `auth_provider` on this path.
     strict : bool
         Raise when the server cannot be reached, rather than yielding no tools.
     """
     prefix = target.name if prefix is None else prefix
-    server_config = build_server_config(target, forwarded=forwarded, auth_context=auth_context)
+    server_config = build_server_config(
+        target, forwarded=forwarded, auth_context=auth_context, extra=extra
+    )
     url = server_config["url"]
 
     # A local MCP server that isn't running would otherwise block ~30s and dump

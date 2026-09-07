@@ -42,6 +42,7 @@ async def mcp_tools_context(
     prefix: str | None = None,
     forwarded: dict[str, str] | None = None,
     auth_context: dict[str, Any] | None = None,
+    extra: dict[str, str] | None = None,
     strict: bool = True,
 ) -> AsyncGenerator[list[BaseTool], None]:
     """
@@ -53,6 +54,9 @@ async def mcp_tools_context(
             name; pass ``""`` to keep raw names, which is safe only with a single server.
         forwarded: Headers forwarded from the inbound request.
         auth_context: Authorization context to encode for the MCP connection.
+        extra: Headers merged last, so they override the resolved ones. How a caller
+            that runs its own token exchange (Okta cross-application access) presents
+            the exchanged token on this path.
         strict: Raise when the server cannot be reached, rather than yielding no tools.
 
     Returns
@@ -60,7 +64,9 @@ async def mcp_tools_context(
         List of MCP tools.
     """
     prefix = target.name if prefix is None else prefix
-    server_params = build_server_config(target, forwarded=forwarded, auth_context=auth_context)
+    server_params = build_server_config(
+        target, forwarded=forwarded, auth_context=auth_context, extra=extra
+    )
 
     url = server_params["url"]
     headers = server_params.get("headers", {})

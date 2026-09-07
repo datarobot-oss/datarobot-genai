@@ -31,13 +31,10 @@ neither can be resolved once from the environment for a whole fleet.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 from functools import lru_cache
 from typing import Any
 
-import httpx
 from datarobot.core.config import MCPServerKind
 from datarobot.core.config import MCPServerRef
 from pydantic import BaseModel
@@ -46,36 +43,13 @@ from pydantic import ConfigDict
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.dragent.deployment_urls import build_deployment_mcp_url
 from datarobot_genai.dragent.deployment_urls import build_local_mcp_url
-from datarobot_genai.dragent.deployment_urls import normalize_api_v2_endpoint
-from datarobot_genai.dragent.deployment_urls import workload_mcp_url_from_endpoint
+from datarobot_genai.dragent.deployment_urls import build_workload_mcp_url
 
 logger = logging.getLogger(__name__)
 
 #: ``MCPTargetKind`` is ``MCPServerKind``. The kind is a property of the declared ref,
 #: so it is owned by the SDK; this alias is the name the resolution side reads better by.
 MCPTargetKind = MCPServerKind
-
-#: Timeout for the workload endpoint lookup.
-WORKLOAD_LOOKUP_TIMEOUT_SECONDS = 10.0
-
-#: How long a resolved workload endpoint stays usable before it is looked up again.
-#:
-#: This cache used to have no expiry and was cleared only by tests, so a workload that
-#: moved needed a process restart -- an emergent property of a module dict rather than
-#: anyone's decision. A bounded lifetime makes the answer "a moved workload is picked up
-#: within this window", which is a policy that can be argued with.
-WORKLOAD_ENDPOINT_CACHE_TTL_SECONDS = 300.0
-
-# (endpoint, workload_id) -> (resolved endpoint, monotonic expiry)
-_WORKLOAD_ENDPOINT_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
-
-#: The one workload status whose reported endpoint is settled.
-_WORKLOAD_RUNNING_STATUS = "running"
-
-
-def clear_workload_endpoint_cache() -> None:
-    """Forget every cached workload endpoint (used by tests)."""
-    _WORKLOAD_ENDPOINT_CACHE.clear()
 
 
 @lru_cache(maxsize=1)
@@ -88,89 +62,6 @@ def auth_context_handler() -> AuthContextHeaderHandler:
     ``auth_context_handler.cache_clear()`` to rebuild it after changing that key.
     """
     return AuthContextHeaderHandler()
-
-
-def lookup_workload_endpoint(
-    workload_id: str,
-    *,
-    endpoint: str,
-    token: str,
-    timeout: float = WORKLOAD_LOOKUP_TIMEOUT_SECONDS,
-) -> str | None:
-    """Return the endpoint the platform serves ``workload_id`` from, or *None*.
-
-    A workload's URL cannot be composed from its ID and the caller's endpoint, because
-    the shape depends on a server-side Workload API setting the caller cannot see.
-
-    Parameters
-    ----------
-    workload_id:
-        The DataRobot workload ID.
-    endpoint:
-        DataRobot API endpoint.
-    token:
-        DataRobot API token used for the lookup.
-    timeout:
-        Seconds to wait for the Workload API.
-
-    Returns
-    -------
-    str | None
-        The workload's ``endpoint`` field, or *None* when the workload cannot be read
-        or reports no endpoint yet.
-    """
-    cache_key = (endpoint, workload_id)
-    cached = _WORKLOAD_ENDPOINT_CACHE.get(cache_key)
-    if cached is not None:
-        value, expires_at = cached
-        if time.monotonic() < expires_at:
-            return value
-        del _WORKLOAD_ENDPOINT_CACHE[cache_key]
-
-    url = f"{normalize_api_v2_endpoint(endpoint)}/workloads/{workload_id}/"
-    try:
-        response = httpx.get(
-            url,
-            headers={"Authorization": f"Bearer {token.removeprefix('Bearer ').strip()}"},
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        # ValueError covers a non-JSON body (json.JSONDecodeError subclasses it).
-        payload: dict[str, Any] = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        logger.warning(
-            "Could not read the endpoint of workload %s from %s: %s. Check that the "
-            "agent's API token may read the workload.",
-            workload_id,
-            url,
-            exc,
-        )
-        return None
-
-    resolved = payload.get("endpoint")
-    if not isinstance(resolved, str) or not resolved.strip():
-        logger.warning(
-            "Workload %s reported no endpoint (status %r); it may not be running yet.",
-            workload_id,
-            payload.get("status"),
-        )
-        return None
-
-    resolved = resolved.strip()
-    status = payload.get("status")
-    if status == _WORKLOAD_RUNNING_STATUS:
-        _WORKLOAD_ENDPOINT_CACHE[cache_key] = (
-            resolved,
-            time.monotonic() + WORKLOAD_ENDPOINT_CACHE_TTL_SECONDS,
-        )
-    else:
-        logger.info(
-            "Workload %s is %r, so its endpoint is not cached; it will be resolved again.",
-            workload_id,
-            status,
-        )
-    logger.info("Workload %s is served from %s", workload_id, resolved)
-    return resolved
 
 
 class MCPTarget(BaseModel):
@@ -219,20 +110,37 @@ class MCPTarget(BaseModel):
         return self.ref.name
 
 
-def _require_datarobot_credentials(
-    ref: MCPServerRef, endpoint: str | None, token: str | None
-) -> tuple[str, str]:
+def _require_endpoint(ref: MCPServerRef, endpoint: str | None) -> str:
+    """Return the endpoint, which composes the URL, so a DataRobot kind always needs it."""
     if not endpoint:
         raise ValueError(
             f"MCP server {ref.name!r} is a DataRobot {ref.kind.value}, so DATAROBOT_ENDPOINT "
             f"must be set."
         )
+    return endpoint
+
+
+def _resolve_service_token(ref: MCPServerRef, token: str | None) -> str | None:
+    """Return the service token, requiring it only of servers that actually present it.
+
+    Deliberately separate from :func:`_require_endpoint`: composing a URL needs the
+    endpoint and never the token. Demanding both together is what made a
+    cross-application-access server fail to build on a deployment with no
+    ``DATAROBOT_API_TOKEN`` -- which is the normal state for XAA, where the identity is
+    an exchanged per-user token rather than a service one.
+    """
+    if ref.api_token:
+        return ref.api_token
+    if not ref.sends_datarobot_credentials:
+        return None
     if not token:
         raise ValueError(
-            f"MCP server {ref.name!r} is a DataRobot {ref.kind.value}, so DATAROBOT_API_TOKEN "
-            f"must be set."
+            f"MCP server {ref.name!r} is a DataRobot {ref.kind.value} reached with "
+            f"`auth_provider: {ref.resolved_auth_provider}`, so DATAROBOT_API_TOKEN must be "
+            f"set. Servers using cross-application access do not need it; those reached "
+            f"anonymously can set {ref.name}_mcp_auth_provider=none."
         )
-    return endpoint, token
+    return token
 
 
 def build_target(
@@ -247,13 +155,17 @@ def build_target(
     configured", which is a legitimate state and therefore indistinguishable from
     success; here it fails at build, naming the server.
 
+    Pure: every kind composes its URL, so this performs no network call and cannot
+    block. A workload used to cost an HTTP GET against the Workload API, on the
+    reasoning that its route could not be derived from its ID; it can, from the same
+    ``DR_WORKLOAD_EXTERNAL_URL_HOST`` signal the MCP server itself uses to publish that
+    route. See :func:`build_workload_mcp_url` for the two shapes and the two cases that
+    still need an explicit ``url``.
+
     Raises
     ------
     ValueError
         A DataRobot-hosted kind with no endpoint or no API token.
-    LookupError
-        A workload whose endpoint cannot be read. There is no URL template to fall back
-        on -- a guess would be right on some clusters and quietly wrong on others.
     """
     kind = ref.kind
 
@@ -264,38 +176,28 @@ def build_target(
         # keeps the deliberate case from becoming an accidental leak.
         assert ref.url is not None  # the exactly-one-address validator guarantees it
         ref.assert_credentials_allowed(datarobot_endpoint)
-        token = None
-        if ref.sends_datarobot_credentials:
-            _, token = _require_datarobot_credentials(ref, datarobot_endpoint, datarobot_api_token)
-        return MCPTarget(ref=ref, url=ref.url.rstrip("/"), api_token=ref.api_token or token)
+        return MCPTarget(
+            ref=ref,
+            url=ref.url.rstrip("/"),
+            api_token=_resolve_service_token(ref, datarobot_api_token),
+        )
 
     if kind is MCPServerKind.WORKLOAD:
-        endpoint, token = _require_datarobot_credentials(
-            ref, datarobot_endpoint, datarobot_api_token
-        )
         assert ref.workload_id is not None
-        workload_endpoint = lookup_workload_endpoint(
-            ref.workload_id, endpoint=endpoint, token=token
-        )
-        if workload_endpoint is None:
-            raise LookupError(
-                f"MCP server {ref.name!r} is workload {ref.workload_id}, whose endpoint could "
-                f"not be read from {endpoint}. A workload's route cannot be composed from its "
-                f"ID, so there is nothing to fall back to."
-            )
         return MCPTarget(
-            ref=ref, url=workload_mcp_url_from_endpoint(workload_endpoint), api_token=token
+            ref=ref,
+            url=build_workload_mcp_url(_require_endpoint(ref, datarobot_endpoint), ref.workload_id),
+            api_token=_resolve_service_token(ref, datarobot_api_token),
         )
 
     if kind is MCPServerKind.DEPLOYMENT:
-        endpoint, token = _require_datarobot_credentials(
-            ref, datarobot_endpoint, datarobot_api_token
-        )
         assert ref.deployment_id is not None
         return MCPTarget(
             ref=ref,
-            url=build_deployment_mcp_url(endpoint, ref.deployment_id),
-            api_token=token,
+            url=build_deployment_mcp_url(
+                _require_endpoint(ref, datarobot_endpoint), ref.deployment_id
+            ),
+            api_token=_resolve_service_token(ref, datarobot_api_token),
         )
 
     # LOCAL: DataRobot-hosted for credential purposes, but the token is optional --
@@ -314,82 +216,73 @@ async def build_targets(
     datarobot_endpoint: str | None = None,
     datarobot_api_token: str | None = None,
 ) -> list[MCPTarget]:
-    """Resolve a whole fleet, running the workload lookups concurrently.
+    """Resolve a whole fleet.
 
-    Every workload costs one HTTP call at :data:`WORKLOAD_LOOKUP_TIMEOUT_SECONDS`, so
-    four workloads resolved in sequence is up to forty seconds of startup. Deployment,
-    local and external refs need no call at all and complete immediately.
+    Stays ``async`` for its callers' sake, but no longer needs to be: resolution became
+    pure when the workload lookup was replaced by composition, so there is nothing left
+    to overlap. It previously fanned the lookups out across threads because four
+    workloads resolved in sequence was up to forty seconds of startup.
 
     Raises whatever :func:`build_target` raises, for the first server that fails.
     """
-    if not refs:
-        return []
-    return list(
-        await asyncio.gather(
-            *(
-                asyncio.to_thread(
-                    build_target,
-                    ref,
-                    datarobot_endpoint=datarobot_endpoint,
-                    datarobot_api_token=datarobot_api_token,
-                )
-                for ref in refs
-            )
+    return [
+        build_target(
+            ref,
+            datarobot_endpoint=datarobot_endpoint,
+            datarobot_api_token=datarobot_api_token,
         )
-    )
+        for ref in refs
+    ]
 
 
-def build_headers(
-    target: MCPTarget,
+def build_datarobot_mcp_headers(
     *,
+    endpoint: str | None = None,
+    api_token: str | None = None,
     forwarded: dict[str, str] | None = None,
     auth_context: dict[str, Any] | None = None,
     extra: dict[str, str] | None = None,
+    base: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Build the headers to send one MCP server, in an order that is load-bearing.
+    """Build the DataRobot credentials to present to an MCP server.
 
-    1. forwarded headers from the inbound request
-    2. ``Authorization: Bearer <service token>``
-    3. ``x-datarobot-api-key`` -- workloads only, and only if not already forwarded
-    4. ``X-DataRobot-Authorization-Context``
-    5. ``extra`` -- an explicit override, so it wins
+    The same for **every** DataRobot-hosted server, which is what lets one auth provider
+    instance be shared by name -- the ordinary NAT model. Nothing here is per-server:
 
-    Parameters
-    ----------
-    target:
-        The server being called. Its ``ref.resolved_auth_provider`` decides steps 2-4,
-        **not** its kind: how a server was addressed no longer decides how it is
-        authenticated. The kind is consulted once, in :func:`build_target`, to work out
-        a URL; it reaches this function only through the derived defaults on the ref.
-    forwarded:
-        Headers forwarded from the inbound request (``x-datarobot-*`` and
-        ``x-untrusted-*`` only).
-    auth_context:
-        The authorization context to encode into step 4's header.
-    extra:
-        Headers configured explicitly for this connection. Merged last.
+    1. ``base`` -- static headers configured for this connection
+    2. forwarded headers from the inbound request
+    3. ``Authorization: Bearer <service token>``
+    4. ``x-datarobot-api-key`` -- unless already forwarded
+    5. ``X-DataRobot-Authorization-Context``
+    6. ``extra`` -- an explicit override, so it wins
+
+    The order is load-bearing and the numbering is the contract.
+
+    Step 4 used to be workload-only, on the theory that the Workload API gateway needs
+    it and nothing else does. It is now unconditional: a deployment or a local process
+    ignores an unknown header, so sending it always costs nothing and removes the only
+    fact that varied per server -- which is what made a shared provider unsafe. A
+    third-party server never reaches this function, because it names
+    ``auth_provider: none``.
+
+    ``endpoint`` is accepted for symmetry with the callers and is not read; the token is
+    what authenticates.
     """
-    # Sending nothing skips steps 1-4 entirely. This used to be `kind is EXTERNAL`; it
-    # is now the ref's resolved auth provider, which defaults to exactly that for a
-    # `url` server. Static headers still apply -- they are how a third-party server is
-    # authenticated at all.
-    if not target.ref.sends_datarobot_credentials:
-        return {**target.ref.headers, **(extra or {})}
-
-    headers: dict[str, str] = {**target.ref.headers}
+    headers: dict[str, str] = dict(base or {})
     if forwarded:
         headers.update(forwarded)
 
-    if target.api_token:
-        token = target.api_token
-        headers["Authorization"] = token if token.startswith("Bearer ") else f"Bearer {token}"
+    if api_token:
+        headers["Authorization"] = (
+            api_token if api_token.startswith("Bearer ") else f"Bearer {api_token}"
+        )
         # DO NOT SIMPLIFY: a forwarded key is the caller's own scoped token and outranks
         # the service one. `Authorization` itself is never forwarded (the context
         # extractor passes only x-datarobot-* and x-untrusted-*), so this is the only
         # step where a forwarded credential can actually be overwritten.
         forwarded_names = {name.lower() for name in (forwarded or {})}
-        if target.ref.resolved_api_key_header and "x-datarobot-api-key" not in forwarded_names:
-            headers["x-datarobot-api-key"] = token.removeprefix("Bearer ").strip()
+        if "x-datarobot-api-key" not in forwarded_names:
+            headers["x-datarobot-api-key"] = api_token.removeprefix("Bearer ").strip()
 
     try:
         headers.update(auth_context_handler().get_header(auth_context))
@@ -400,6 +293,34 @@ def build_headers(
     if extra:
         headers.update(extra)
     return headers
+
+
+def build_headers(
+    target: MCPTarget,
+    *,
+    forwarded: dict[str, str] | None = None,
+    auth_context: dict[str, Any] | None = None,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Headers for one resolved target, for callers that build clients themselves.
+
+    Used by the framework adapters (``register.py`` / ``agent.py``), where there is no
+    NAT auth provider to delegate to. On the NAT path the provider does this instead,
+    via :func:`build_datarobot_mcp_headers`; the two agree by construction, because this
+    is a thin wrapper over it.
+    """
+    # A server that sends no DataRobot identity gets its static headers and nothing
+    # else. That is what `auth_provider: none` means, and it is the default for `url`.
+    if not target.ref.sends_datarobot_credentials:
+        return {**target.ref.headers, **(extra or {})}
+
+    return build_datarobot_mcp_headers(
+        api_token=target.api_token,
+        forwarded=forwarded,
+        auth_context=auth_context,
+        extra=extra,
+        base=target.ref.headers,
+    )
 
 
 def build_server_config(
