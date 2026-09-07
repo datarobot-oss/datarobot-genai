@@ -27,7 +27,8 @@ from pydantic import Field
 from pydantic import SecretStr
 
 from datarobot_genai.core.config import default_api_key
-from datarobot_genai.core.mcp.target import build_headers
+from datarobot_genai.core.config import resolve_config
+from datarobot_genai.core.mcp.target import build_datarobot_mcp_headers
 from datarobot_genai.dragent.context import extract_authorization_from_context
 from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
 
@@ -90,35 +91,27 @@ class DataRobotMCPAuthProvider(AuthProviderBase[DataRobotMCPAuthProviderConfig])
 
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
         """
-        Build the credentials for one MCP server.
+        Build the DataRobot credentials to present to an MCP server.
 
-        Args:
-            user_id (str): The user ID to authenticate.
-            target (MCPTarget): The server being called, passed by the caller's auth
-                adapter. Required.
+        The same credentials for every server that names this provider, which is what
+        lets NAT share one instance per name -- the ordinary NAT model, with no
+        per-server state and nothing that has to travel with the call.
+
+        That works because none of the four header groups actually varies per server.
+        ``x-datarobot-api-key`` is required by the Workload API gateway and simply
+        ignored by a deployment or a local process, so it is always sent rather than
+        being decided per server; a third-party server never reaches here at all,
+        because it names ``auth_provider: none``.
 
         Returns
         -------
-            AuthenticatedContext: The authenticated context containing headers
+            AuthResult: the credentials, as headers.
         """
-        # NAT shares ONE provider instance across every block naming it
-        # (workflow_builder.get_auth_provider returns self._auth_providers[name].instance),
-        # so the target MUST arrive with the call. Storing it on `self` would mean the
-        # last block to build wins and every block got that block's credentials -- the
-        # same defect this replaces, relocated into a different object.
-        target = kwargs.get("target")
-        if target is None:
-            raise ValueError(
-                "datarobot_mcp_auth requires a resolved MCPTarget passed as `target=`. It "
-                "must never fall back to reading the environment: which credentials a "
-                "server receives depends on that server's kind, so a fleet would get one "
-                "server's credentials for all of them."
-            )
-
         # In dragent the forwarded headers and authorization context come from Context;
         # in drum a custom loader writes self.config.headers instead.
-        auth_headers = build_headers(
-            target,
+        auth_headers = build_datarobot_mcp_headers(
+            endpoint=resolve_config().resolve_datarobot_endpoint(),
+            api_token=resolve_config().resolve_datarobot_api_token(),
             forwarded=extract_datarobot_headers_from_context(),
             auth_context=extract_authorization_from_context(),
             extra=self.config.headers,  # merged last: an explicit override wins

@@ -64,7 +64,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
     # App-wide settings (genai-specific tunables).
     max_history_messages: int = Field(
         default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
-    )    
+    )
     assume_native_tool_calling_when_unmapped: bool = Field(
         default=False,
         description=(
@@ -355,7 +355,9 @@ def get_max_history_messages_default() -> int:
     read off genai's own :class:`Config`, not per-LLM config. Invalid values fall
     back to the built-in default; negative values are treated as 0 (disable history).
     """
-    return max(Config().datarobot_genai_max_history_messages, 0)
+    # Read by field name, not by its `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` alias: an
+    # alias names the *environment variable*, never the attribute.
+    return max(Config().max_history_messages, 0)
 
 
 def default_api_key() -> str | None:

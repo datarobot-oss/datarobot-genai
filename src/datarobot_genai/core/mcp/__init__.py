@@ -11,8 +11,6 @@ from .target import build_headers
 from .target import build_server_config
 from .target import build_target
 from .target import build_targets
-from .target import clear_workload_endpoint_cache
-from .target import lookup_workload_endpoint
 from .target import resolve_mcp_targets
 
 __all__ = [
@@ -28,7 +26,5 @@ __all__ = [
     "build_server_config",
     "build_target",
     "build_targets",
-    "clear_workload_endpoint_cache",
-    "lookup_workload_endpoint",
     "resolve_mcp_targets",
 ]

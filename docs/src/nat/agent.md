@@ -34,16 +34,19 @@ Those names are what you list under **`workflow.tool_names`**.
 ## `function_groups` — bundled tools (MCP)
 
 Each MCP block is a **group** (`_type: datarobot_mcp_client`), not a single function, and
-expands to the tools one server exposes. A block names a configured server; the address
-comes from `MCP_SERVERS`, never from the YAML. Add one block per server, and add each
-group to **`tool_names`** so the orchestrator may call them. Details: [mcp.md](mcp.md).
+expands to the tools one server exposes. A block gives the address in one of three ways —
+`server.name` with `<name>_mcp_*` in the environment, an inline `server.url`, or a stdio
+`command` — and never in two at once. Add one block per server, and add each group to
+**`tool_names`** so the orchestrator may call them. Details: [mcp.md](mcp.md).
 
 ## `authentication` — credentials MCP calls should use
 
 The example defines **`datarobot_mcp_auth`** so MCP requests carry the same kind of auth
-as the rest of the DataRobot stack. One provider serves every block that names it, and
-each block supplies its own server, so a fleet mixing deployments, workloads and
-third-party servers gets the right credentials per server. See [mcp.md](mcp.md).
+as the rest of the DataRobot stack. One provider instance serves every block that names
+it, which is correct because it produces the same credentials for every server. A
+third-party server names `auth_provider: none` and receives none; a server on
+`okta_cross_app_access` presents an exchanged per-user token instead. See
+[mcp.md](mcp.md).
 
 ## `memory` — optional long-term memory (NAT workflows)
 

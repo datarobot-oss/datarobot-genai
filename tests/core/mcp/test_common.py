@@ -15,9 +15,7 @@
 import os
 from unittest.mock import patch
 
-import httpx
 import pytest
-import respx
 from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.core.config import Config
@@ -27,8 +25,6 @@ from datarobot_genai.core.mcp import MCPTargetKind
 from datarobot_genai.core.mcp import build_headers
 from datarobot_genai.core.mcp import build_server_config
 from datarobot_genai.core.mcp import build_target
-from datarobot_genai.core.mcp import clear_workload_endpoint_cache
-from datarobot_genai.core.mcp import lookup_workload_endpoint
 
 WORKLOAD_ID = "6a6b3d359e6b2c11158c2a13"
 DEPLOYMENT_ID = "69331f1f30548f83b668d9dc"
@@ -38,10 +34,10 @@ WORKLOAD_ENDPOINT = f"https://test.datarobot.com/workloads/{WORKLOAD_ID}"
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache():
-    clear_workload_endpoint_cache()
-    yield
-    clear_workload_endpoint_cache()
+def _no_inherited_gateway_env(monkeypatch):
+    """Resolution reads the enclave gateway vars, so a real one must not leak in."""
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_HOST", raising=False)
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +60,7 @@ class TestMCPServerRef:
         assert MCPServerRef(deployment_id=DEPLOYMENT_ID).kind is MCPTargetKind.DEPLOYMENT
         assert MCPServerRef(workload_id=WORKLOAD_ID).kind is MCPTargetKind.WORKLOAD
         assert MCPServerRef(local_port=9001).kind is MCPTargetKind.LOCAL
-        assert MCPServerRef(url="https://partner.example.com/mcp").kind is MCPTargetKind.EXTERNAL
+        assert MCPServerRef(url="https://mcp.example.com/mcp").kind is MCPTargetKind.EXTERNAL
 
     def test_the_name_defaults_so_a_single_server_need_not_be_named(self):
         assert MCPServerRef(deployment_id=DEPLOYMENT_ID).name == "default"
@@ -121,7 +117,7 @@ class TestResolveMCPServers:
             '{"name":"catalog","deployment_id":"7a4402ab30548f83b668e1fe"},'
             '{"name":"search","workload_id":"6a6b3d359e6b2c11158c2a13"},'
             '{"name":"docs","local_port":9001},'
-            '{"name":"partner","url":"https://partner.example.com/mcp"}]'
+            '{"name":"partner","url":"https://mcp.example.com/mcp"}]'
         )
         with patch.dict(os.environ, {"MCP_SERVERS": fleet}, clear=True):
             servers = Config().resolve_mcp_servers()
@@ -158,7 +154,7 @@ class TestResolveMCPServers:
             pytest.param({"MCP_WORKLOAD_ID": WORKLOAD_ID}, "workload", id="workload"),
             pytest.param({"MCP_SERVER_PORT": "9001"}, "local", id="local"),
             pytest.param(
-                {"EXTERNAL_MCP_URL": "https://partner.example.com/mcp"}, "external", id="external"
+                {"EXTERNAL_MCP_URL": "https://mcp.example.com/mcp"}, "external", id="external"
             ),
         ],
     )
@@ -246,32 +242,32 @@ class TestBuildTarget:
         assert target.kind is MCPTargetKind.DEPLOYMENT
         assert target.api_token == "tok"
 
-    @respx.mock
-    def test_a_workload_url_is_read_from_the_platform(self):
-        respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200, json={"status": "running", "endpoint": WORKLOAD_ENDPOINT}
-            )
-        )
+    def test_a_workload_url_is_composed_via_the_public_api_gateway(self):
+        # No mocked HTTP: resolution is pure. This used to cost a Workload API GET
+        # behind a 10s timeout and a TTL cache, on the reasoning that a workload's
+        # route could not be derived from its ID.
         target = build_target(
             MCPServerRef(name="search", workload_id=WORKLOAD_ID),
             datarobot_endpoint=API_ENDPOINT,
             datarobot_api_token="tok",
         )
-        assert target.url == f"{WORKLOAD_ENDPOINT}/mcp"
+        assert target.url == f"{API_ENDPOINT}/endpoints/workloads/{WORKLOAD_ID}/mcp"
         assert target.kind is MCPTargetKind.WORKLOAD
 
-    @respx.mock
-    def test_an_unreadable_workload_raises_naming_the_server(self):
-        # GIVEN a workload whose endpoint cannot be read. This used to yield no server
-        # at all, which is indistinguishable from "no MCP configured".
-        respx.get(LOOKUP_URL).mock(return_value=httpx.Response(403, json={"message": "nope"}))
-        with pytest.raises(LookupError, match="'search'"):
-            build_target(
-                MCPServerRef(name="search", workload_id=WORKLOAD_ID),
-                datarobot_endpoint=API_ENDPOINT,
-                datarobot_api_token="tok",
-            )
+    def test_a_workload_url_uses_the_enclave_gateway_when_one_is_injected(self, monkeypatch):
+        # GIVEN this process is behind the Envoy gateway. The host is per-enclave and
+        # shared by every workload on it, so it addresses OTHER workloads too; only the
+        # id changes. DR_WORKLOAD_EXTERNAL_URL_PREFIX is this process's own route.
+        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-01.k8s.int.datarobot.com")
+        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/someone-else")
+        target = build_target(
+            MCPServerRef(name="search", workload_id=WORKLOAD_ID),
+            datarobot_endpoint=API_ENDPOINT,
+            datarobot_api_token="tok",
+        )
+        assert target.url == (
+            f"https://enclave-01.k8s.int.datarobot.com/workloads/{WORKLOAD_ID}/mcp"
+        )
 
     def test_a_local_server_uses_its_own_host_and_port(self):
         target = build_target(
@@ -285,11 +281,11 @@ class TestBuildTarget:
         # The invariant the loopback validator protects: `external` implies no token,
         # enforced at construction so no call site has to remember it.
         target = build_target(
-            MCPServerRef(name="partner", url="https://partner.example.com/mcp/"),
+            MCPServerRef(name="partner", url="https://mcp.example.com/mcp/"),
             datarobot_endpoint=API_ENDPOINT,
             datarobot_api_token="tok",
         )
-        assert target.url == "https://partner.example.com/mcp"
+        assert target.url == "https://mcp.example.com/mcp"
         assert target.api_token is None
 
     @pytest.mark.parametrize(
@@ -326,7 +322,7 @@ class TestBuildHeaders:
         refs = {
             "deployment": MCPServerRef(name="s", deployment_id=DEPLOYMENT_ID),
             "local": MCPServerRef(name="s", local_port=9001),
-            "external": MCPServerRef(name="s", url="https://partner.example.com/mcp"),
+            "external": MCPServerRef(name="s", url="https://mcp.example.com/mcp"),
         }
         if kind == "workload":
             return MCPTarget(
@@ -336,19 +332,19 @@ class TestBuildHeaders:
             )
         return build_target(refs[kind], datarobot_endpoint=API_ENDPOINT, datarobot_api_token=token)
 
-    @pytest.mark.parametrize(
-        ("kind", "expect_api_key"),
-        [
-            pytest.param("workload", True, id="workload-gets-the-api-key-header"),
-            pytest.param("deployment", False, id="deployment-does-not"),
-            pytest.param("local", False, id="local-does-not"),
-        ],
-    )
-    def test_only_workloads_receive_the_extra_api_key_header(self, kind, expect_api_key):
-        # This single line is why credentials cannot be decided once for a whole fleet.
+    @pytest.mark.parametrize("kind", ["workload", "deployment", "local"])
+    def test_every_datarobot_hosted_kind_receives_the_same_credentials(self, kind):
+        """The property that lets one auth provider serve a whole fleet.
+
+        `x-datarobot-api-key` used to be workload-only, which meant credentials could
+        not be decided once for a fleet -- and that is what forced a per-block target
+        into the shared auth provider, and four NAT subclasses with it. The Workload API
+        gateway needs the header and a deployment or local process ignores it, so it is
+        now sent to all of them and nothing varies per server.
+        """
         headers = build_headers(self._target(kind))
         assert headers["Authorization"] == "Bearer tok"
-        assert ("x-datarobot-api-key" in headers) is expect_api_key
+        assert headers["x-datarobot-api-key"] == "tok"
 
     def test_a_third_party_server_receives_no_datarobot_credentials(self):
         headers = build_headers(self._target("external"))
@@ -357,7 +353,7 @@ class TestBuildHeaders:
 
     def test_a_third_party_servers_static_headers_are_sent(self):
         target = build_target(
-            MCPServerRef(name="s", url="https://partner.example.com/mcp", headers={"x-key": "abc"})
+            MCPServerRef(name="s", url="https://mcp.example.com/mcp", headers={"x-key": "abc"})
         )
         assert build_headers(target) == {"x-key": "abc"}
 
@@ -426,31 +422,24 @@ class TestBuildHeaders:
 
     def test_a_third_party_server_may_use_sse(self):
         target = build_target(
-            MCPServerRef(name="s", url="https://partner.example.com/mcp", transport="sse")
+            MCPServerRef(name="s", url="https://mcp.example.com/mcp", transport="sse")
         )
         assert build_server_config(target)["transport"] == "sse"
 
 
-class TestAMixedFleetGetsPerServerCredentials:
-    """The defect a single-server test cannot catch.
+class TestAMixedFleetIsCredentialUniform:
+    """A mixed fleet is what a single-server test cannot exercise.
 
-    NAT hands ONE auth provider instance to every block that names it. If the target
-    lived on the provider, the last block to build would win and every server would
-    receive that block's credentials -- which is wrong for at least one server under
-    every possible global resolution, because `x-datarobot-api-key` depends on the kind.
+    Every DataRobot-hosted server gets the same credentials and a third-party one gets
+    none. That uniformity is the whole reason one shared auth provider is safe, and it
+    is what let four NAT subclasses and a per-block target be deleted.
     """
 
-    @respx.mock
-    def test_three_servers_of_three_kinds_each_get_their_own_credentials(self):
-        respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200, json={"status": "running", "endpoint": WORKLOAD_ENDPOINT}
-            )
-        )
+    def test_a_mixed_fleet_splits_only_into_datarobot_hosted_and_not(self):
         fleet = (
             f'[{{"name":"analytics","deployment_id":"{DEPLOYMENT_ID}"}},'
             f'{{"name":"search","workload_id":"{WORKLOAD_ID}"}},'
-            f'{{"name":"partner","url":"https://partner.example.com/mcp"}}]'
+            f'{{"name":"partner","url":"https://mcp.example.com/mcp"}}]'
         )
         with patch.dict(
             os.environ,
@@ -473,213 +462,12 @@ class TestAMixedFleetGetsPerServerCredentials:
                 for ref in config.resolve_mcp_servers()
             }
 
-        # The workload needs the extra key header; the deployment must not get it; and
-        # the third-party server must receive no DataRobot identity at all.
-        assert "x-datarobot-api-key" in headers["search"]
-        assert "x-datarobot-api-key" not in headers["analytics"]
+        # The workload and the deployment are indistinguishable, credential-wise...
+        assert headers["search"] == headers["analytics"]
         assert headers["analytics"]["Authorization"] == "Bearer tok"
+        assert headers["analytics"]["x-datarobot-api-key"] == "tok"
+        # ...and the third-party server receives no DataRobot identity at all.
         assert headers["partner"] == {}
-
-
-class TestLookupWorkloadEndpoint:
-    @respx.mock
-    def test_returns_the_endpoint_the_platform_reports(self):
-        # GIVEN a cluster that serves workloads, so the
-        # workload's host differs from the API host
-        route = respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "status": "running",
-                    "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
-                },
-            )
-        )
-        # WHEN the endpoint is looked up
-        resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # THEN the platform's answer is used verbatim, host and prefix included
-        assert resolved == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
-        assert route.called
-
-    @respx.mock
-    def test_endpoint_is_normalized_before_the_lookup(self):
-        # GIVEN DATAROBOT_ENDPOINT spelled without /api/v2
-        route = respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
-            )
-        )
-        # WHEN the endpoint is looked up
-        lookup_workload_endpoint(
-            WORKLOAD_ID,
-            endpoint="https://test.datarobot.com/",
-            token="tok",
-        )
-        # THEN the request still goes to /api/v2/workloads/<id>/
-        assert route.called
-
-    @respx.mock
-    def test_bearer_token_is_sent_once(self):
-        # GIVEN a token that already carries the Bearer prefix
-        route = respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
-            )
-        )
-        # WHEN the endpoint is looked up
-        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="Bearer tok")
-        # THEN the prefix is not doubled
-        assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
-
-    @respx.mock
-    def test_running_workloads_answer_is_cached(self):
-        # GIVEN a running workload whose endpoint has been resolved once
-        route = respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "status": "running",
-                    "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
-                },
-            )
-        )
-        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # WHEN it is looked up again
-        second_lookup = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # THEN the platform is asked only once — a running workload's route is settled
-        assert second_lookup == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
-        assert route.call_count == 1
-
-    @pytest.mark.parametrize("status", ["submitted", "provisioning", "launching", "suspended"])
-    @respx.mock
-    def test_a_workload_that_is_not_running_is_not_cached(self, status):
-        """GIVEN a workload that has not been scheduled yet.
-
-        On a cluster that advertises the Covalent-reported inference endpoint, the
-        API answers with the prediction-gateway URL until the workload is scheduled
-        — the wrong route there. Remembering it would pin the agent to it for the
-        life of the process, so the answer is used but not cached.
-        """
-        gateway_url = f"https://app.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
-        route = respx.get(LOOKUP_URL).mock(
-            side_effect=[
-                httpx.Response(200, json={"status": status, "endpoint": gateway_url}),
-                httpx.Response(
-                    200,
-                    json={
-                        "status": "running",
-                        "endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
-                    },
-                ),
-            ]
-        )
-        # WHEN it is looked up while starting, and again once it is running
-        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") == (
-            gateway_url
-        )
-        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") == (
-            "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
-        )
-        # THEN the stale answer was re-resolved rather than kept
-        assert route.call_count == 2
-
-    @respx.mock
-    def test_a_different_api_endpoint_is_looked_up_separately(self):
-        # GIVEN the same workload ID resolved against two clusters
-        respx.get(LOOKUP_URL).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "status": "running",
-                    "endpoint": f"https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
-                },
-            )
-        )
-        other = respx.get(f"https://other.datarobot.com/api/v2/workloads/{WORKLOAD_ID}/").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "status": "running",
-                    "endpoint": (
-                        f"https://other.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
-                    ),
-                },
-            )
-        )
-        lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # WHEN the second cluster is asked
-        resolved = lookup_workload_endpoint(
-            WORKLOAD_ID, endpoint="https://other.datarobot.com/api/v2", token="tok"
-        )
-        # THEN the cache does not leak one cluster's answer into the other
-        assert other.called
-        assert resolved == f"https://other.datarobot.com/api/v2/endpoints/workloads/{WORKLOAD_ID}/"
-
-    @pytest.mark.parametrize(
-        "response",
-        [
-            pytest.param(httpx.Response(403, json={"message": "no permission"}), id="forbidden"),
-            pytest.param(httpx.Response(404, json={"message": "not found"}), id="not-found"),
-            pytest.param(httpx.Response(500, text="boom"), id="server-error"),
-            pytest.param(httpx.Response(200, text="not json"), id="non-json-body"),
-        ],
-    )
-    @respx.mock
-    def test_unreadable_workload_yields_no_answer(self, response, caplog):
-        # GIVEN a lookup the platform will not answer
-        respx.get(LOOKUP_URL).mock(return_value=response)
-        # WHEN the endpoint is looked up
-        with caplog.at_level("WARNING"):
-            resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # THEN the caller is told nothing was resolved, and what to do about it
-        assert resolved is None
-        assert "may read the workload" in caplog.text
-
-    @respx.mock
-    def test_transport_error_yields_no_answer(self, caplog):
-        # GIVEN an unreachable API host
-        respx.get(LOOKUP_URL).mock(side_effect=httpx.ConnectError("unreachable"))
-        # WHEN the endpoint is looked up
-        with caplog.at_level("WARNING"):
-            assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") is None
-        assert "Could not read the endpoint of workload" in caplog.text
-
-    @pytest.mark.parametrize(
-        "payload",
-        [
-            pytest.param({"status": "stopped"}, id="missing"),
-            pytest.param({"status": "stopped", "endpoint": None}, id="null"),
-            pytest.param({"status": "stopped", "endpoint": "   "}, id="blank"),
-        ],
-    )
-    @respx.mock
-    def test_workload_without_an_endpoint_yields_no_answer(self, payload, caplog):
-        # GIVEN a workload that is not serving yet, so it has no endpoint
-        respx.get(LOOKUP_URL).mock(return_value=httpx.Response(200, json=payload))
-        # WHEN the endpoint is looked up
-        with caplog.at_level("WARNING"):
-            resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # THEN nothing is invented, and the log says it may not be running
-        assert resolved is None
-        assert "may not be running yet" in caplog.text
-
-    @respx.mock
-    def test_a_failed_lookup_is_not_cached(self):
-        # GIVEN a lookup that fails once and then succeeds
-        route = respx.get(LOOKUP_URL).mock(
-            side_effect=[
-                httpx.Response(503, text="unavailable"),
-                httpx.Response(
-                    200, json={"endpoint": "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"}
-                ),
-            ]
-        )
-        assert lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok") is None
-        # WHEN it is retried
-        resolved = lookup_workload_endpoint(WORKLOAD_ID, endpoint=API_ENDPOINT, token="tok")
-        # THEN the transient failure was not remembered
-        assert resolved == "https://test.datarobot.com/workloads/{WORKLOAD_ID}/"
-        assert route.call_count == 2
 
 
 class TestCredentialsAreDeclaredNotInferred:
@@ -711,7 +499,7 @@ class TestCredentialsAreDeclaredNotInferred:
         """#30. Without this, declarable auth is a service-token leak waiting to be typed."""
         ref = MCPServerRef(
             name="partner",
-            url="https://partner.example.com/mcp",
+            url="https://mcp.example.com/mcp",
             auth_provider="datarobot_mcp_auth",
         )
         with pytest.raises(ValueError, match="would send DataRobot credentials"):
@@ -720,7 +508,7 @@ class TestCredentialsAreDeclaredNotInferred:
     def test_trust_host_is_the_deliberate_admission(self):
         ref = MCPServerRef(
             name="partner",
-            url="https://partner.example.com/mcp",
+            url="https://mcp.example.com/mcp",
             auth_provider="datarobot_mcp_auth",
             trust_host=True,
         )
@@ -755,11 +543,7 @@ class TestCredentialsAreDeclaredNotInferred:
     def test_a_forwarded_key_still_outranks_the_service_one(self):
         """The guard the docstring says not to simplify, re-asserted after the rewrite."""
         ref = MCPServerRef(name="wl", workload_id="a" * 24)
-        with patch(
-            "datarobot_genai.core.mcp.target.lookup_workload_endpoint",
-            return_value="https://wl.example.com",
-        ):
-            target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
         headers = build_headers(target, forwarded={"x-datarobot-api-key": "caller-key"})
         assert headers["x-datarobot-api-key"] == "caller-key"
 
