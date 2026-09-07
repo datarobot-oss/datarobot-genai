@@ -33,8 +33,7 @@ analytics_mcp_deployment_id=69331f1f30548f83b668d9dc
 search_mcp_workload_id=6a72dd6d4417b3136f64fef0
 docs_mcp_local_port=9001
 docs_mcp_local_host=mcp-docs          # for docker compose
-external_mcp_url=https://mcp.example.com/mcp
-external_mcp_headers={"x-api-key": "..."}
+externally_deployed_mcp_url=https://mcp.example.com/mcp
 ```
 
 The address fields also accept a short form without `_mcp` — `docs_local_port`.
@@ -59,11 +58,22 @@ The address fields also accept a short form without `_mcp` — `docs_local_port`
 Workload API gateway needs it and a deployment or local process ignores it. Because
 nothing then varies per server, one auth provider instance serves the whole fleet.
 
+An externally hosted server gets no DataRobot identity, so if it needs a credential of
+its own that credential goes in `<name>_mcp_headers`, under whatever header name the
+server expects:
+
+```bash
+vendor_mcp_url=https://vendor.example.com/mcp
+vendor_mcp_headers={"Authorization": "Bearer the-vendors-own-token"}
+```
+
 Setting two addresses on one server is an error, not a precedence contest. So is a
 loopback host under `url`: that would silently send no credentials, which works on a
 laptop and fails once deployed. Use `local_port` for a local server. Sending DataRobot
-credentials to a `url` on a host other than `DATAROBOT_ENDPOINT` also raises, unless you
-set `<name>_mcp_trust_host=true`.
+credentials to a `url` on a host other than `DATAROBOT_ENDPOINT` also raises, with no
+override: say `<name>_mcp_auth_provider=none`, or address the server by
+`<name>_mcp_workload_id` / `<name>_mcp_deployment_id` so its URL is derived rather than
+asserted.
 
 Deployed, the same variables arrive as runtime parameters and nothing else changes:
 

@@ -69,6 +69,10 @@ function_groups:
       auth_provider: none
 ```
 
+`auth_provider: none` means no DataRobot identity is sent. If that server needs a
+credential of its own, it goes in the server's `<name>_mcp_headers` under whatever
+header name the server expects — the same role `EXTERNAL_MCP_HEADERS` played.
+
 **A local stdio process**, also as NAT documents it:
 
 ```yaml

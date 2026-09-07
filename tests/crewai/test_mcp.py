@@ -127,7 +127,7 @@ class TestMCPToolsContext:
     API_BASE = "https://app.datarobot.com/api/v2"
     API_KEY = "test-api-key"
 
-    def external_target(self, name="partner"):
+    def external_target(self, name="vendor"):
         return build_target(MCPServerRef(name=name, url=self.EXTERNAL_URL))
 
     def deployment_target(self):

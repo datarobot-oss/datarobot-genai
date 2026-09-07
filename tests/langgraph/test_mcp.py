@@ -114,7 +114,7 @@ EXTERNAL_URL = "https://mcp-server.example.com/mcp"
 DEPLOYMENT_ID = "abc123def456789012345678"
 
 
-def external_target(name="partner", url=EXTERNAL_URL, **kwargs):
+def external_target(name="vendor", url=EXTERNAL_URL, **kwargs):
     return build_target(MCPServerRef(name=name, url=url, **kwargs))
 
 
