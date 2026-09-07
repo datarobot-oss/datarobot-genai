@@ -69,7 +69,7 @@ Follow [quickstart.ipynb](e2e-tests/examples/quickstart.ipynb) to walk through a
 * Running the agent with an AG-UI interface.
 
 ## In-depth documentation
-See [docs/README.md](docs/README.md) for guides on every framework and feature in `datarobot-genai`.
+See [genai.datarobot.com](https://genai.datarobot.com/) for guides on every framework and feature in `datarobot-genai`.
 
 # Develop
 You need Python 3.11–3.13, uv, Task CLI, and pre-commit.
