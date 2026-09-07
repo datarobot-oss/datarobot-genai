@@ -61,11 +61,11 @@ same in every environment:
 
 ```yaml
 function_groups:
-  partner:
+  external_mcp:
     _type: datarobot_mcp_client
     server:
       transport: streamable-http
-      url: "https://partner.example.com/mcp"
+      url: "https://mcp.example.com/mcp"
       auth_provider: none
 ```
 
