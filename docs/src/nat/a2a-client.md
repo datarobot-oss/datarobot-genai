@@ -120,7 +120,7 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 
 While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
 
-On hosted deployments (custom model or workload), dragent provisions a shared MemorySpace for the L2 cache when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Locally, only in-process L1 caching is used unless you set `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` yourself.
+On hosted deployments (custom model or workload), dragent provisions a shared MemorySpace for the L2 cache when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `MLOPS_DEPLOYMENT_ID` or `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Locally, only in-process L1 caching is used unless you set `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` yourself. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub.
 
 #### Registry environment variables
 

@@ -190,6 +190,10 @@ def try_provision_registry_cache_memory_space() -> str | None:
     ``deduplication_key`` so every replica shares one space. No-op when not on a
     hosted runtime, when credentials are unavailable, or after the first
     successful provision in this process.
+
+    This is the agent card registry L2 cache, not agent memory
+    (``AGENT_MEMORY_SPACE_ID``). Agent memory is provisioned on the control hub
+    (Pulumi / ``task deploy-dev``) and the Mem0 client talks to that same host.
     """
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id
