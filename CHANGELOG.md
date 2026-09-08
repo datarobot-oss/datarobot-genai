@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
 ## 0.29.34
-- `dragent`: provision the agent card registry L2 MemorySpace automatically on hosted deployments (custom model or workload) when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). Uses a deployment/workload-scoped `deduplication_key` so replicas share one space without Pulumi or `task deploy-dev` wiring.
+- `dragent`: provision the agent card registry L2 MemorySpace automatically on enclave workloads when `AGENT_CARD_REGISTRY_MEMORY_SPACE_ID` is unset and the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). Requires the enclave API gateway env vars (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX`) and `WORKLOAD_ID`; other hosted runtimes should set the space ID via Pulumi / `task deploy-dev`. Uses a workload-scoped `deduplication_key` so replicas share one space.
 - `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there; the enclave API gateway (`DR_WORKLOAD_EXTERNAL_URL_HOST`) is only for the agent card registry L2 cache.
 
 ## 0.29.33 - 2026-09-08

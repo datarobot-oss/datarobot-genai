@@ -84,9 +84,8 @@ from datarobot.models.memory import MemorySpace
 from datarobot.models.memory import Session
 from pydantic import Field
 
-from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
-from datarobot_genai.core.runtime import is_hosted_runtime
+from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 
@@ -175,30 +174,31 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
 
 
 def _registry_cache_memory_space_deduplication_key() -> str | None:
-    """Return a stable deduplication key for the hosted agent, or ``None`` when local."""
-    if deployment_id := get_deployment_id():
-        return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:deployment:{deployment_id}"
+    """Return a stable deduplication key for an enclave workload, or ``None`` when local."""
     if workload_id := get_workload_id():
         return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:workload:{workload_id}"
     return None
 
 
 def try_provision_registry_cache_memory_space() -> str | None:
-    """Create or adopt the registry L2 MemorySpace on a hosted deployment.
+    """Create or adopt the registry L2 MemorySpace on an enclave workload.
 
-    Uses the deployment/workload ID injected by the platform as a
-    ``deduplication_key`` so every replica shares one space. No-op when not on a
-    hosted runtime, when credentials are unavailable, or after the first
-    successful provision in this process.
+    Uses the workload ID injected by the platform as a ``deduplication_key`` so
+    every replica shares one space. No-op when not behind the enclave API gateway
+    (``DR_WORKLOAD_EXTERNAL_URL_HOST`` + ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``),
+    when credentials are unavailable, or after the first successful provision in
+    this process.
 
     This is the agent card registry L2 cache, not agent memory
     (``AGENT_MEMORY_SPACE_ID``). Agent memory is provisioned on the control hub
     (Pulumi / ``task deploy-dev``) and the Mem0 client talks to that same host.
+    Non-enclave hosted runtimes should set ``AGENT_CARD_REGISTRY_MEMORY_SPACE_ID``
+    via Pulumi / ``task deploy-dev`` instead.
     """
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id
 
-    if not is_hosted_runtime():
+    if resolve_external_workload_api_endpoint() is None or not is_workload_mode():
         return None
 
     deduplication_key = _registry_cache_memory_space_deduplication_key()
