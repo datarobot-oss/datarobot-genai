@@ -63,6 +63,56 @@ functions:
     llm_name: datarobot_llm
     description: LangGraph planner/writer agent
     verbose: true
+    # One entry per MCP server. NAT builds these groups once and keeps their
+    # connections open; the agent no longer connects per prompt.
+    tool_names:
+      - docs
+    #   - weather
+    #   - analytics
+
+# One block per MCP server. The address is not here: `server.name` picks a server out
+# of the flat `<name>_mcp_*` variables, so the same file works locally and deployed.
+function_groups:
+  docs:
+    _type: datarobot_mcp_client
+    server:
+      # `default` is the server the pre-existing single-server variables
+      # configure -- MCP_DEPLOYMENT_ID or MCP_WORKLOAD_ID in the e2e env.
+      name: default
+      auth_provider: datarobot_mcp_auth
+
+  # Add a server by setting its variables in .env and uncommenting a block. The entry
+  # name is the tool prefix, so `weather` gives `weather__get_forecast` and two servers
+  # exposing `search` never collide:
+  #
+  #   weather_mcp_deployment_id=69331f1f30548f83b668d9dc
+  #   analytics_mcp_workload_id=6a72dd6d4417b3136f64fef0
+  #   vendor_mcp_url=https://mcp.vendor.example.com/mcp
+  #   vendor_mcp_headers={"Authorization": "Bearer the-vendors-own-token"}
+  #
+  # weather:
+  #   _type: datarobot_mcp_client
+  #   server:
+  #     name: weather
+  #     auth_provider: datarobot_mcp_auth
+  #
+  # analytics:
+  #   _type: datarobot_mcp_client
+  #   server:
+  #     name: analytics
+  #     auth_provider: datarobot_mcp_auth
+  #
+  # A third-party server sends no DataRobot identity; its own credential rides in
+  # vendor_mcp_headers.
+  # vendor:
+  #   _type: datarobot_mcp_client
+  #   server:
+  #     name: vendor
+  #     auth_provider: none
+
+authentication:
+  datarobot_mcp_auth:
+    _type: datarobot_mcp_auth
 
 memory:
   mem0_memory:

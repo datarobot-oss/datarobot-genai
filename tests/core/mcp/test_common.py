@@ -192,7 +192,7 @@ class TestResolveMCPServers:
     def test_a_fleet_keeps_the_remote_singular_variable_but_not_the_bundled_port(self):
         # A *remote* singular variable names a server somebody chose, so a fleet must
         # not silently unconfigure it -- especially now the fleet can be discovered from
-        # flat variables rather than written out by hand.
+        # per-server variables rather than written out by hand.
         #
         # MCP_SERVER_PORT is the exception it earned: it names the port an MCP *server*
         # process binds, and the application templates set it unconditionally, so

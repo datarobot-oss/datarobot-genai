@@ -45,7 +45,7 @@ MCP_TOOL_PROMPT = (
 
 EXPECTED_TOOL_CALL_NAMES = {
     "search_datarobot_agentic_docs",
-    "mcp_tools__search_datarobot_agentic_docs"
+    "docs__search_datarobot_agentic_docs"
 }
 
 # The MCP client holds a single persistent streamable-http session, opened at

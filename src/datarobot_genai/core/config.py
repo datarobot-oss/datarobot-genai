@@ -114,7 +114,7 @@ class Config(DataRobotAppFrameworkBaseSettings):
         dotenv_settings: Any,
         file_secret_settings: Any,
     ) -> tuple[Any, ...]:
-        """Append the MCP servers source, so flat per-server variables resolve.
+        """Append the MCP servers source, so per-server variables resolve.
 
         A standalone genai -- no application, no registered provider -- must still be
         able to reach an MCP server, for the same reason this class holds the default
