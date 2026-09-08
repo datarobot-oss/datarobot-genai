@@ -45,6 +45,7 @@ class JWTTokenHandler:
         elif bearer_token_header_can_be_missing:
             return bearer_token_header
         else:
+            logger.info("No Bearer token value found")
             return None
 
     @staticmethod
@@ -104,6 +105,7 @@ class JWTTokenHandler:
             except (jwt.exceptions.PyJWTError, ValueError, TypeError):
                 logger.error("Failed to decode JWT", exc_info=True)
                 return None
+        logger.info("No JWT bearer token found in inbound request")
         return None
 
 
