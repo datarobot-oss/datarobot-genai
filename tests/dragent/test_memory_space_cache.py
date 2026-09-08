@@ -81,12 +81,8 @@ def _set_enclave_gateway_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _reset_provisioned_registry_cache_space_state() -> None:
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
-    previous_env = os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
     yield
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
-    os.environ.pop(_REGISTRY_MEMORY_SPACE_ENV, None)
-    if previous_env is not None:
-        os.environ[_REGISTRY_MEMORY_SPACE_ENV] = previous_env
 
 
 @pytest.fixture
@@ -103,15 +99,6 @@ class TestResolveMemorySpaceId:
             resolve_memory_space_id("   ")
 
     def test_returns_none_when_not_on_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("WORKLOAD_ID", raising=False)
-        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
-        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
-        assert try_resolve_memory_space_id() is None
-
-    def test_ignores_agent_card_registry_memory_space_id_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv(_REGISTRY_MEMORY_SPACE_ENV, "space-from-env")
         monkeypatch.delenv("WORKLOAD_ID", raising=False)
         monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
         monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)

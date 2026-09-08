@@ -247,8 +247,8 @@ def try_provision_registry_cache_memory_space() -> str | None:
 def try_resolve_memory_space_id() -> str | None:
     """Return the registry L2 MemorySpace ID on enclave workloads, else ``None``.
 
-    The space is created at runtime on first use. ``AGENT_CARD_REGISTRY_MEMORY_SPACE_ID``
-    is not read from the environment; other runtimes use L1 caching only.
+    The space is created at runtime on first use on enclave workloads only.
+    Other runtimes use L1 caching only.
     """
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id

@@ -145,14 +145,6 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_registry_memory_space_id: str | None = Field(
-        default=None,
-        description=(
-            "Deprecated and ignored. Registry L2 caching is enabled only on enclave "
-            "workloads, where the MemorySpace is created at runtime."
-        ),
-    )
-
 
 class AgentCardRegistryError(RuntimeError):
     """Raised when the central agent card registry lookup fails."""
