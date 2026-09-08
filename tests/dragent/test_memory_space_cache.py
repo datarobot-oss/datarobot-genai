@@ -98,21 +98,24 @@ class TestResolveMemorySpaceId:
     def test_explicit_id(self) -> None:
         assert resolve_memory_space_id("space-explicit") == "space-explicit"
 
-    def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
-        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
-        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+    def test_blank_id_raises(self) -> None:
         with pytest.raises(ValueError, match="MemorySpace ID"):
-            resolve_memory_space_id(None)
+            resolve_memory_space_id("   ")
 
-    def test_agent_memory_space_id_is_not_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
-        monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
-        assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
+    def test_returns_none_when_not_on_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
+        assert try_resolve_memory_space_id() is None
 
-    def test_memory_space_id_env_not_leaked_from_prior_provision(self) -> None:
-        assert os.environ.get(_REGISTRY_MEMORY_SPACE_ENV) is None
-        assert try_resolve_memory_space_id(None, provision_if_missing=False) is None
+    def test_ignores_agent_card_registry_memory_space_id_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(_REGISTRY_MEMORY_SPACE_ENV, "space-from-env")
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
+        assert try_resolve_memory_space_id() is None
 
 
 class TestProvisionRegistryCacheMemorySpace:
@@ -165,7 +168,7 @@ class TestProvisionRegistryCacheMemorySpace:
             description="Agent card registry L2 cache",
             deduplication_key="dragent:agent-card-registry:workload:wl-abc123",
         )
-        assert os.environ[_REGISTRY_MEMORY_SPACE_ENV] == "space-new"
+        assert os.environ.get(_REGISTRY_MEMORY_SPACE_ENV) is None
 
     def test_adopts_existing_space_on_dedup_collision(
         self, monkeypatch: pytest.MonkeyPatch
@@ -206,7 +209,6 @@ class TestProvisionRegistryCacheMemorySpace:
     def test_resolve_provisions_when_unset_on_enclave(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
         monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
         _set_enclave_gateway_env(monkeypatch)
 
@@ -214,7 +216,7 @@ class TestProvisionRegistryCacheMemorySpace:
             "datarobot_genai.dragent.memory_space_cache.try_provision_registry_cache_memory_space",
             return_value="space-auto",
         ) as provision_mock:
-            assert try_resolve_memory_space_id(None) == "space-auto"
+            assert try_resolve_memory_space_id() == "space-auto"
 
         provision_mock.assert_called_once_with()
 

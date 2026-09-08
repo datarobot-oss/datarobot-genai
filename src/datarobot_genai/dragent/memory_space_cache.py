@@ -141,8 +141,7 @@ DEDUPLICATION_KEY_LENGTH = 64
 CACHE_KIND = "agent_card"
 
 _MEMORY_SPACE_REQUIRED_MSG = (
-    "Memory space cache backends require a provisioned DataRobot MemorySpace ID. "
-    "Set AGENT_CARD_REGISTRY_MEMORY_SPACE_ID."
+    "Memory space cache backends require a provisioned DataRobot MemorySpace ID."
 )
 
 _REGISTRY_CACHE_SPACE_DEDUP_PREFIX = "dragent:agent-card-registry"
@@ -157,11 +156,6 @@ class _ProvisionedRegistryCacheSpaceState:
 class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
     """Connection settings for DataRobot MemorySpace cache backends."""
 
-    agent_card_registry_memory_space_id: str | None = Field(
-        default=None,
-        description="DataRobot MemorySpace ID for the agent card registry L2 cache.",
-    )
-
     datarobot_endpoint: str | None = Field(
         default=None,
         description="DataRobot API base URL (DATAROBOT_ENDPOINT).",
@@ -171,6 +165,11 @@ class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
         default=None,
         description="DataRobot API token (DATAROBOT_API_TOKEN).",
     )
+
+
+def _is_enclave_workload() -> bool:
+    """Return True when running as a workload behind the enclave API gateway."""
+    return resolve_external_workload_api_endpoint() is not None and is_workload_mode()
 
 
 def _registry_cache_memory_space_deduplication_key() -> str | None:
@@ -192,13 +191,12 @@ def try_provision_registry_cache_memory_space() -> str | None:
     This is the agent card registry L2 cache, not agent memory
     (``AGENT_MEMORY_SPACE_ID``). Agent memory is provisioned on the control hub
     (Pulumi / ``task deploy-dev``) and the Mem0 client talks to that same host.
-    Non-enclave hosted runtimes should set ``AGENT_CARD_REGISTRY_MEMORY_SPACE_ID``
-    via Pulumi / ``task deploy-dev`` instead.
+    Other runtimes use in-process L1 caching only.
     """
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id
 
-    if resolve_external_workload_api_endpoint() is None or not is_workload_mode():
+    if not _is_enclave_workload():
         return None
 
     deduplication_key = _registry_cache_memory_space_deduplication_key()
@@ -238,7 +236,6 @@ def try_provision_registry_cache_memory_space() -> str | None:
         return None
 
     _ProvisionedRegistryCacheSpaceState.space_id = space.id
-    os.environ["AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"] = space.id
     logger.info(
         "Provisioned agent card registry L2 MemorySpace %s (dedup_key=%s)",
         space.id,
@@ -247,27 +244,23 @@ def try_provision_registry_cache_memory_space() -> str | None:
     return space.id
 
 
-def try_resolve_memory_space_id(
-    explicit: str | None = None,
-    *,
-    provision_if_missing: bool = True,
-) -> str | None:
-    """Return the agent card registry MemorySpace ID, or ``None`` when unset."""
-    cfg = MemorySpaceCacheConfig()
-    space_id = explicit or cfg.agent_card_registry_memory_space_id
-    if space_id and space_id.strip():
-        return space_id.strip()
-    if provision_if_missing:
-        return try_provision_registry_cache_memory_space()
-    return None
+def try_resolve_memory_space_id() -> str | None:
+    """Return the registry L2 MemorySpace ID on enclave workloads, else ``None``.
+
+    The space is created at runtime on first use. ``AGENT_CARD_REGISTRY_MEMORY_SPACE_ID``
+    is not read from the environment; other runtimes use L1 caching only.
+    """
+    if _ProvisionedRegistryCacheSpaceState.space_id is not None:
+        return _ProvisionedRegistryCacheSpaceState.space_id
+    return try_provision_registry_cache_memory_space()
 
 
-def resolve_memory_space_id(explicit: str | None = None) -> str:
-    """Return the MemorySpace ID for cache backends."""
-    space_id = try_resolve_memory_space_id(explicit)
-    if space_id is None:
+def resolve_memory_space_id(memory_space_id: str) -> str:
+    """Return *memory_space_id* after stripping whitespace."""
+    stripped = memory_space_id.strip()
+    if not stripped:
         raise ValueError(_MEMORY_SPACE_REQUIRED_MSG)
-    return space_id
+    return stripped
 
 
 def try_configure_datarobot_memory_client(

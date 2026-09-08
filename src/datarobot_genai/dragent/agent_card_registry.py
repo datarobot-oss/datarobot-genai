@@ -148,8 +148,8 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     agent_card_registry_memory_space_id: str | None = Field(
         default=None,
         description=(
-            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
-            "When unset, only in-process L1 caching is used."
+            "Deprecated and ignored. Registry L2 caching is enabled only on enclave "
+            "workloads, where the MemorySpace is created at runtime."
         ),
     )
 
