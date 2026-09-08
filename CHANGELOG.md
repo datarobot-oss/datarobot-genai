@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.32
+- `langgraph/llm`: fixed `base_url` being silently dropped when constructing an external `ChatLiteLLM` client.
+
 ## 0.29.31
 - `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is rejected.
 - `dragent`: the agent card is also served at the root `/.well-known/agent-card.json` as a discovery fallback, whatever suffix A2A is mounted under. It shares the mounted route's handler, so the unauthenticated-access policy — including the generic `404` from 0.29.29 — holds on both paths.
