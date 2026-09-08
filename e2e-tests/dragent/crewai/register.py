@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator
-from contextlib import AsyncExitStack
 from typing import Annotated
 
 from ag_ui.core.types import RunAgentInput
@@ -24,6 +23,9 @@ from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
+from nat.data_models.component_ref import FunctionGroupRef
+from nat.data_models.component_ref import FunctionRef
+from pydantic import Field
 
 # INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
 instrument()
@@ -50,6 +52,15 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     reasoning: bool | None = None
     max_reasoning_attempts: int | None = None
 
+    tool_names: list[FunctionRef | FunctionGroupRef] = Field(
+        default_factory=list,
+        description=(
+            "Tools and function groups to give the agent, by name. An MCP server is a "
+            "`function_groups` entry, so listing its name here attaches every tool it "
+            "exposes. NAT builds those groups once and keeps the connections open."
+        ),
+    )
+
 
 @register_per_user_function(
     config_type=CrewaiAgentConfig,
@@ -58,15 +69,23 @@ class CrewaiAgentConfig(AgentBaseConfig, name="crewai_agent"):
     framework_wrappers=[LLMFrameworkEnum.CREWAI],
 )
 async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGenerator:
-    from datarobot_genai.core.mcp import aresolve_mcp_targets
-    from datarobot_genai.crewai.mcp import mcp_tools_context
-    from datarobot_genai.dragent.context import extract_authorization_from_context
     from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
     from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
     from nat.builder.function_info import FunctionInfo
     from nat.builder.function_info import Streaming
 
     from dragent.crewai.myagent import MyAgent
+
+    # Built ONCE, here, not per request. NAT owns the MCP connections: each
+    # `function_groups` entry named in `tool_names` is built at workflow build and its
+    # client stays open, while `DataRobotAuthAdapter` recomputes the credentials on
+    # every HTTP request from the request context. Connecting per prompt instead --
+    # which is what an AsyncExitStack inside the response function does -- pays a
+    # connect and a tool-discovery round trip per server per prompt, and buys nothing,
+    # because the headers were the only per-request part.
+    tools = await builder.get_tools(
+        tool_names=config.tool_names, wrapper_type=LLMFrameworkEnum.CREWAI
+    )
 
     async def _response_fn(
         input_message: RunAgentInput,
@@ -81,42 +100,27 @@ async def crewai_agent(config: CrewaiAgentConfig, builder: Builder) -> AsyncGene
 
         # Agent contains user-specific headers and authorization context
         forwarded_headers = extract_datarobot_headers_from_context()
-        authorization_context = extract_authorization_from_context()
 
-        # Every configured MCP server, not just one. Each entry in MCP_SERVERS resolves
-        # to its own target, and each target carries its own credentials, so a fleet can
-        # mix deployments, workloads, local processes and third-party servers freely.
-        # Tools are namespaced by server name, so two servers exposing `search` coexist.
-        async with AsyncExitStack() as stack:
-            tools = []
-            for target in await aresolve_mcp_targets():
-                tools += await stack.enter_async_context(
-                    mcp_tools_context(
-                        target,
-                        forwarded=forwarded_headers,
-                        auth_context=authorization_context,
-                    )
-                )
-            agent = MyAgent(
-                llm=llm,
-                forwarded_headers=forwarded_headers,
-                tools=tools,
-                verbose=config.verbose,
-                max_iter=config.max_iter,
-                max_rpm=config.max_rpm,
-                max_execution_time=config.max_execution_time,
-                allow_delegation=config.allow_delegation,
-                max_retry_limit=config.max_retry_limit,
-                reasoning=config.reasoning,
-                max_reasoning_attempts=config.max_reasoning_attempts,
+        agent = MyAgent(
+            llm=llm,
+            forwarded_headers=forwarded_headers,
+            tools=tools,
+            verbose=config.verbose,
+            max_iter=config.max_iter,
+            max_rpm=config.max_rpm,
+            max_execution_time=config.max_execution_time,
+            allow_delegation=config.allow_delegation,
+            max_retry_limit=config.max_retry_limit,
+            reasoning=config.reasoning,
+            max_reasoning_attempts=config.max_reasoning_attempts,
+        )
+
+        async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
+            yield DRAgentEventResponse(
+                events=[event],
+                usage_metrics=usage_metrics,
+                pipeline_interactions=pipeline_interactions,
             )
-
-            async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
-                yield DRAgentEventResponse(
-                    events=[event],
-                    usage_metrics=usage_metrics,
-                    pipeline_interactions=pipeline_interactions,
-                )
 
     yield FunctionInfo.from_fn(
         _response_fn,
