@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.33 - 2026-09-08
+- Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
+- Add a minimum version for `langchain-core`: `>=1.3.3`.
+- Raise the minimum `mistune` version from `>=3.3.0` to `>=3.3.3`.
+
 ## 0.29.32
 - `langgraph/llm`: fixed `base_url` being silently dropped when constructing an external `ChatLiteLLM` client.
 
