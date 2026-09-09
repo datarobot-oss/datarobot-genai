@@ -71,7 +71,7 @@ def _log_memory_api_probe_response(
     response: requests.Response,
 ) -> None:
     body_preview = (response.text or "")[:1000]
-    logger.error(
+    logger.info(
         "Agent card registry L2 memory API probe: %s %s -> status=%s content-type=%s body=%r",
         method,
         url,
