@@ -24,7 +24,7 @@ application template's docs. This page documents only what this library adds to 
 NAT's `mcp_client` with one added field and one relaxed rule:
 
 - **`server.name`** — which configured server the block connects to. The address is not in
-  the YAML; it comes from that server's `<name>_mcp_*` variables. Defaults to `default`,
+  the YAML; it comes from that server's `<name>_MCP_*` variables. Defaults to `default`,
   the server the single-server variables configure, so a block that omits it keeps working.
 - `server.url` is optional. NAT requires it; here an inline URL is the other way to address
   a server, and setting both an inline URL and environment variables for one name is an

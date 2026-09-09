@@ -24,7 +24,7 @@ Practical rule: **merge** platform tools with yours wherever you bind tools to t
 
 ## Where the servers are configured
 
-`workflow.yaml` says **what** the agent may reach — one `function_groups` entry per server, listed in `tool_names`. The **address** is not in the YAML: it comes from that server's `<name>_mcp_*` variables in your deployment or environment, so the same file runs locally and deployed. `server.name` is the join. See **MCP servers** in the agent application template's docs for the full setup, and [nat/mcp.md](../nat/mcp.md) for what this library adds to NAT.
+`workflow.yaml` says **what** the agent may reach — one `function_groups` entry per server, listed in `tool_names`. The **address** is not in the YAML: it comes from that server's `<name>_MCP_*` variables in your deployment or environment, so the same file runs locally and deployed. `server.name` is the join. See **MCP servers** in the agent application template's docs for the full setup, and [nat/mcp.md](../nat/mcp.md) for what this library adds to NAT.
 
 
 ## Getting the tools
