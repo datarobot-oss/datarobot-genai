@@ -19,12 +19,12 @@ import pytest
 from datarobot.models.genai.agent.auth import set_authorization_context
 
 from datarobot_genai.core.config import Config
-from datarobot_genai.core.mcp import MCPServerRef
-from datarobot_genai.core.mcp import MCPTarget
-from datarobot_genai.core.mcp import MCPTargetKind
-from datarobot_genai.core.mcp import build_headers
-from datarobot_genai.core.mcp import build_server_config
-from datarobot_genai.core.mcp import build_target
+from datarobot.core.config import MCPServerRef
+from datarobot_genai.core.mcp_target import MCPTarget
+from datarobot_genai.core.mcp_target import MCPTargetKind
+from datarobot_genai.core.mcp_target import build_headers
+from datarobot_genai.core.mcp_target import build_server_config
+from datarobot_genai.core.mcp_target import build_target
 
 WORKLOAD_ID = "6a6b3d359e6b2c11158c2a13"
 DEPLOYMENT_ID = "69331f1f30548f83b668d9dc"

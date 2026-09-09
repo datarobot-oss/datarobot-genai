@@ -28,7 +28,7 @@ from pydantic import SecretStr
 
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.config import resolve_config
-from datarobot_genai.core.mcp.target import build_datarobot_mcp_headers
+from datarobot_genai.core.mcp_target import build_datarobot_mcp_headers
 from datarobot_genai.dragent.context import extract_authorization_from_context
 from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
 
