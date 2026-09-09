@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DataRobot MemorySpace-backed KV cache for dragent shared caches.
+"""DataRobot MemorySpace-backed KV cache for the agent card registry L2 layer.
 
-Uses the agentic memory **Session API** (``datarobot.models.memory.Session``) — the same
-surface the agent-application recipe uses for chat history when
-``USE_APPLICATION_MEMORY_SPACE`` is enabled — not the mem0-compatible sub-route.
+Used only on enclave workloads (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
+``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` with ``WORKLOAD_ID``). Other runtimes use
+in-process L1 caching only.
+
+Uses the agentic memory **Session API** (``datarobot.models.memory.Session``) — not the
+mem0-compatible sub-route used by agent memory on the control hub.
 
 Each provisioned memory space has a unique ``memory_space_id`` and platform-level
 access control scoped to the deploying user or workload API token. Unlike shared
@@ -40,25 +43,15 @@ migration to the ORM should pick back up:
   point lookup — the stable SDK's ``Session.list`` has no such filter, so a
   ``deduplication_key`` here only dedupes concurrent *creates*
   (``MemorySessionDeduplicationError``), not reads.
-* **The DataRobot client is process-global** (``dr.Client()``, configured once by
+* **The DataRobot client is process-global** (configured once by
   ``configure_datarobot_memory_client``), not an object explicitly threaded into
   ``MemorySpaceKVCache`` the way ``DRMemoryServiceClient`` is. Stable
   ``datarobot.models.memory.Session`` always resolves credentials through
   ``datarobot.client.get_client()``; there's no per-instance client to inject
   without giving up the pooled, keep-alive ``requests.Session`` this module
-  relies on (see the note on ``_STALE_CONNECTION_RETRIES`` below).
-
-  ``datarobot.client.client_configuration()`` -- the ``ContextVar``-scoped,
-  non-mutating pattern ``drmcputils.clients.datarobot`` uses for per-request
-  credentials -- was considered here and rejected: it calls the SDK's
-  ``_create_client()`` (and, through it, a live ``GET {endpoint}/version/``
-  compatibility check) on *every* entry, with no bypass. Wrapping each
-  ``get_value``/``set_value``/``delete_value`` call in it would silently double
-  this cache's API traffic. That check runs once today, at startup, as a side
-  effect of ``configure_datarobot_memory_client``'s one-time ``dr.Client()``
-  call -- which is a real reason (not just inertia) to keep the client
-  process-global here, unlike the per-request ``drmcputils`` clients, which
-  already pay a fresh round trip per call for a different token each time.
+  relies on (see the note on ``_STALE_CONNECTION_RETRIES`` below). Enclave
+  gateways expose the memory Session API but not ``GET /version/``, so the
+  client is built with ``RESTClientObject.from_config`` instead of ``dr.Client()``.
 
 Once ``application_utils.persistence`` ships in a stable ``datarobot`` release,
 this module should be replaced with that ORM the same way BUZZOK-32180 did.
@@ -73,9 +66,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 from typing import TypeVar
-from typing import cast
 
-import datarobot as dr
 import requests
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.errors import MemorySessionDeduplicationError
@@ -86,7 +77,6 @@ from pydantic import Field
 
 from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.core.runtime import is_workload_mode
-from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 
 logger = logging.getLogger(__name__)
@@ -140,10 +130,6 @@ CACHE_EVENT_TYPE = "status"
 DEDUPLICATION_KEY_LENGTH = 64
 CACHE_KIND = "agent_card"
 
-_MEMORY_SPACE_REQUIRED_MSG = (
-    "Memory space cache backends require a provisioned DataRobot MemorySpace ID."
-)
-
 _REGISTRY_CACHE_SPACE_DEDUP_PREFIX = "dragent:agent-card-registry"
 
 
@@ -154,12 +140,7 @@ class _ProvisionedRegistryCacheSpaceState:
 
 
 class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
-    """Connection settings for DataRobot MemorySpace cache backends."""
-
-    datarobot_endpoint: str | None = Field(
-        default=None,
-        description="DataRobot API base URL (DATAROBOT_ENDPOINT).",
-    )
+    """Connection settings for enclave MemorySpace cache backends."""
 
     datarobot_api_token: str | None = Field(
         default=None,
@@ -255,15 +236,7 @@ def try_resolve_memory_space_id() -> str | None:
     return try_provision_registry_cache_memory_space()
 
 
-def resolve_memory_space_id(memory_space_id: str) -> str:
-    """Return *memory_space_id* after stripping whitespace."""
-    stripped = memory_space_id.strip()
-    if not stripped:
-        raise ValueError(_MEMORY_SPACE_REQUIRED_MSG)
-    return stripped
-
-
-def _configure_enclave_memory_client_without_version_check(
+def _configure_enclave_memory_client(
     *,
     endpoint: str,
     api_token: str,
@@ -283,18 +256,11 @@ def _configure_enclave_memory_client_without_version_check(
 
 def try_configure_datarobot_memory_client(
     *,
-    endpoint: str | None = None,
     api_token: str | None = None,
 ) -> bool:
-    """Configure the DataRobot client for memory Session API calls when possible.
-
-    Mirrors the ``client is None`` gate BUZZOK-32180's
-    ``try_build_memory_service_client`` uses, but returns ``bool`` rather than a
-    client object: stable ``datarobot.models.memory.Session`` has no per-instance
-    client to construct and hand back -- see the module docstring.
-    """
+    """Configure the enclave memory client when possible; return ``False`` on failure."""
     try:
-        configure_datarobot_memory_client(endpoint=endpoint, api_token=api_token)
+        configure_datarobot_memory_client(api_token=api_token)
     except Exception as exc:
         logger.debug("MemorySpace client unavailable: %s", exc)
         return False
@@ -303,40 +269,30 @@ def try_configure_datarobot_memory_client(
 
 def configure_datarobot_memory_client(
     *,
-    endpoint: str | None = None,
     api_token: str | None = None,
 ) -> None:
-    """Configure the process-global DataRobot client for memory Session API calls.
+    """Configure the process-global DataRobot client for enclave memory Session API calls.
 
-    Endpoint resolution, most specific first:
-
-    1. Explicit ``endpoint`` argument.
-    2. Enclave API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
-       ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``) — ``{host}/api/v2``, so L2 talks to
-       the memory service on this enclave rather than the control hub.
-    3. ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
+    Uses the enclave API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
+    ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` → ``{host}/api/v2``). Skips ``dr.Client()``'s
+    ``GET /version/`` probe because enclave gateways expose the memory API only.
     """
+    enclave_endpoint = resolve_external_workload_api_endpoint()
+    if enclave_endpoint is None:
+        raise ValueError(
+            "MemorySpace cache backends require an enclave API gateway "
+            "(DR_WORKLOAD_EXTERNAL_URL_HOST and DR_WORKLOAD_EXTERNAL_URL_PREFIX)."
+        )
     cfg = MemorySpaceCacheConfig()
     token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
-    enclave_endpoint = resolve_external_workload_api_endpoint()
-    base = cast(
-        str,
-        endpoint or enclave_endpoint or resolve_datarobot_endpoint(require=True),
+    logger.info(
+        "Configuring DataRobot memory client for enclave gateway %s "
+        "(skipping dr.Client /version/ compatibility check).",
+        enclave_endpoint,
     )
-    if enclave_endpoint is not None and base.rstrip("/") == enclave_endpoint.rstrip("/"):
-        logger.info(
-            "Configuring DataRobot memory client for enclave gateway %s "
-            "(skipping dr.Client /version/ compatibility check).",
-            enclave_endpoint,
-        )
-        _configure_enclave_memory_client_without_version_check(
-            endpoint=base,
-            api_token=token,
-        )
-        return
-    dr.Client(token=token, endpoint=base.rstrip("/"))
+    _configure_enclave_memory_client(endpoint=enclave_endpoint, api_token=token)
 
 
 def _cache_deduplication_key(logical_key: str) -> str:

@@ -22,7 +22,7 @@ import datarobot_genai.dragent.registry_l2_bootstrap as bootstrap
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
 
-def test_configure_enclave_memory_client_skips_dr_client_version_check() -> None:
+def test_configure_enclave_memory_client_skips_dr_client() -> None:
     mock_client = MagicMock()
     mock_config = MagicMock()
 
@@ -35,7 +35,7 @@ def test_configure_enclave_memory_client_skips_dr_client_version_check() -> None
         patch("datarobot.client.set_client") as set_client_mock,
         patch("datarobot.Client") as client_ctor_mock,
     ):
-        memory_space_cache_module._configure_enclave_memory_client_without_version_check(
+        memory_space_cache_module._configure_enclave_memory_client(
             endpoint="https://enclave.example.com/api/v2",
             api_token="token-123",
         )
@@ -58,7 +58,7 @@ def test_configure_datarobot_memory_client_uses_version_check_skip_on_enclave(
 
     with patch.object(
         memory_space_cache_module,
-        "_configure_enclave_memory_client_without_version_check",
+        "_configure_enclave_memory_client",
     ) as configure_mock:
         memory_space_cache_module.configure_datarobot_memory_client()
 
