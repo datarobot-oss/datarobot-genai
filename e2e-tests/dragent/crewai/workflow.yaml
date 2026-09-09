@@ -88,10 +88,10 @@ function_groups:
   # Add a server by setting its variables in .env and uncommenting a block. The entry
   # name is the tool prefix: `weather` gives `weather__get_forecast`.
   #
-  #   weather_mcp_deployment_id=69331f1f30548f83b668d9dc
-  #   analytics_mcp_workload_id=6a72dd6d4417b3136f64fef0
-  #   vendor_mcp_url=https://mcp.vendor.example.com/mcp
-  #   vendor_mcp_headers={"Authorization": "Bearer the-vendors-own-token"}
+  #   WEATHER_MCP_DEPLOYMENT_ID=69331f1f30548f83b668d9dc
+  #   ANALYTICS_MCP_WORKLOAD_ID=6a72dd6d4417b3136f64fef0
+  #   VENDOR_MCP_URL=https://mcp.vendor.example.com/mcp
+  #   VENDOR_MCP_HEADERS={"Authorization": "Bearer the-vendors-own-token"}
   #
   # weather:
   #   _type: datarobot_mcp_client
