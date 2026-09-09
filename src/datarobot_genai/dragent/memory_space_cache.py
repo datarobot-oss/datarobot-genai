@@ -263,6 +263,24 @@ def resolve_memory_space_id(memory_space_id: str) -> str:
     return stripped
 
 
+def _configure_enclave_memory_client_without_version_check(
+    *,
+    endpoint: str,
+    api_token: str,
+) -> None:
+    """Configure the process-global DataRobot client for enclave memory APIs.
+
+    ``dr.Client()`` always calls ``GET /version/``. Enclave gateways do not implement
+    that route, so use the REST client constructor directly instead.
+    """
+    from datarobot.client import set_client
+    from datarobot.config import create_drconfig
+    from datarobot.rest import RESTClientObject
+
+    drconfig = create_drconfig(token=api_token, endpoint=endpoint.rstrip("/"))
+    set_client(RESTClientObject.from_config(drconfig))
+
+
 def try_configure_datarobot_memory_client(
     *,
     endpoint: str | None = None,
@@ -302,12 +320,22 @@ def configure_datarobot_memory_client(
     token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
+    enclave_endpoint = resolve_external_workload_api_endpoint()
     base = cast(
         str,
-        endpoint
-        or resolve_external_workload_api_endpoint()
-        or resolve_datarobot_endpoint(require=True),
+        endpoint or enclave_endpoint or resolve_datarobot_endpoint(require=True),
     )
+    if enclave_endpoint is not None and base.rstrip("/") == enclave_endpoint.rstrip("/"):
+        logger.info(
+            "Configuring DataRobot memory client for enclave gateway %s "
+            "(skipping dr.Client /version/ compatibility check).",
+            enclave_endpoint,
+        )
+        _configure_enclave_memory_client_without_version_check(
+            endpoint=base,
+            api_token=token,
+        )
+        return
     dr.Client(token=token, endpoint=base.rstrip("/"))
 
 

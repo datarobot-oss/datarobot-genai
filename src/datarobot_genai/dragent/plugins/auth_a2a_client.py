@@ -47,8 +47,12 @@ from pydantic import model_validator
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
+from datarobot_genai.dragent.registry_l2_bootstrap import bootstrap_registry_l2_cache
 
 logger = logging.getLogger(__name__)
+
+# Provision registry L2 before config validation creates the registry singleton.
+bootstrap_registry_l2_cache()
 
 
 def _extract_auth_headers(auth_result: Any) -> dict[str, str]:

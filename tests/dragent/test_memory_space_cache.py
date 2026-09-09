@@ -237,15 +237,22 @@ class TestConfigureDatarobotMemoryClient:
         monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
         monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
 
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache."
+                "_configure_enclave_memory_client_without_version_check",
+            ) as configure_mock,
+            patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock,
+        ):
             configure_datarobot_memory_client()
 
         # WHEN the L2 memory client is configured
-        # THEN it talks to the enclave API, not the control hub
-        client_mock.assert_called_once_with(
-            token="token",
+        # THEN it talks to the enclave API without dr.Client's /version/ probe
+        configure_mock.assert_called_once_with(
             endpoint="https://enclave-x.datarobot.com/api/v2",
+            api_token="token",
         )
+        client_mock.assert_not_called()
 
     def test_partial_gateway_config_falls_back_to_public_api(
         self, monkeypatch: pytest.MonkeyPatch
