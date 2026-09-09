@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -29,7 +28,8 @@ from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import _find_cache_session
 from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
-from datarobot_genai.dragent.memory_space_cache import try_provision_registry_cache_memory_space
+from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
+from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 
@@ -67,7 +67,6 @@ class _FakeSession:
         raise KeyError(sequence_id)
 
 
-_REGISTRY_MEMORY_SPACE_ENV = "AGENT_CARD_REGISTRY_MEMORY_SPACE_ID"
 _ENCLAVE_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
 _ENCLAVE_PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
 
@@ -89,6 +88,26 @@ def kv_cache() -> MemorySpaceKVCache:
     return MemorySpaceKVCache(memory_space_id="space-1")
 
 
+class TestEnclaveL2Workload:
+    def test_is_false_without_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
+        assert is_enclave_l2_workload() is False
+
+    def test_is_false_on_enclave_gateway_without_workload_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        _set_enclave_gateway_env(monkeypatch)
+        assert is_enclave_l2_workload() is False
+
+    def test_deduplication_key(self) -> None:
+        assert registry_cache_deduplication_key("wl-abc123") == (
+            "dragent:agent-card-registry:workload:wl-abc123"
+        )
+
+
 class TestResolveMemorySpaceId:
     def test_returns_none_when_not_on_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("WORKLOAD_ID", raising=False)
@@ -96,37 +115,15 @@ class TestResolveMemorySpaceId:
         monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
         assert try_resolve_memory_space_id() is None
 
-
-class TestProvisionRegistryCacheMemorySpace:
-    def test_skips_when_not_on_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
-        monkeypatch.delenv("WORKLOAD_ID", raising=False)
-        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
-        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
-        assert try_provision_registry_cache_memory_space() is None
-
-    def test_skips_on_hosted_deployment_without_enclave_gateway(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "dep-abc123")
-        monkeypatch.delenv("WORKLOAD_ID", raising=False)
-        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
-        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
-
-        assert try_provision_registry_cache_memory_space() is None
-
     def test_skips_on_enclave_gateway_without_workload_id(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("WORKLOAD_ID", raising=False)
-        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
         _set_enclave_gateway_env(monkeypatch)
-
-        assert try_provision_registry_cache_memory_space() is None
+        assert try_resolve_memory_space_id() is None
 
     def test_creates_space_on_enclave_workload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
-        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
         _set_enclave_gateway_env(monkeypatch)
         space = MagicMock(id="space-new")
         create_mock = MagicMock(return_value=space)
@@ -141,13 +138,12 @@ class TestProvisionRegistryCacheMemorySpace:
                 create_mock,
             ),
         ):
-            assert try_provision_registry_cache_memory_space() == "space-new"
+            assert try_resolve_memory_space_id() == "space-new"
 
         create_mock.assert_called_once_with(
             description="Agent card registry L2 cache",
             deduplication_key="dragent:agent-card-registry:workload:wl-abc123",
         )
-        assert os.environ.get(_REGISTRY_MEMORY_SPACE_ENV) is None
 
     def test_adopts_existing_space_on_dedup_collision(
         self, monkeypatch: pytest.MonkeyPatch
@@ -155,7 +151,6 @@ class TestProvisionRegistryCacheMemorySpace:
         from datarobot.errors import MemorySpaceDeduplicationError
 
         monkeypatch.setenv("WORKLOAD_ID", "wl-xyz")
-        monkeypatch.delenv("MLOPS_DEPLOYMENT_ID", raising=False)
         _set_enclave_gateway_env(monkeypatch)
         existing = MagicMock(id="space-existing")
         create_mock = MagicMock(
@@ -181,39 +176,52 @@ class TestProvisionRegistryCacheMemorySpace:
                 get_mock,
             ),
         ):
-            assert try_provision_registry_cache_memory_space() == "space-existing"
+            assert try_resolve_memory_space_id() == "space-existing"
 
         get_mock.assert_called_once_with("space-existing")
 
-    def test_resolve_provisions_when_unset_on_enclave(
+    def test_returns_cached_space_id_without_reprovisioning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
-        _set_enclave_gateway_env(monkeypatch)
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
+        create_mock = MagicMock()
 
         with patch(
-            "datarobot_genai.dragent.memory_space_cache.try_provision_registry_cache_memory_space",
-            return_value="space-auto",
-        ) as provision_mock:
-            assert try_resolve_memory_space_id() == "space-auto"
+            "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+            create_mock,
+        ):
+            assert try_resolve_memory_space_id() == "space-cached"
 
-        provision_mock.assert_called_once_with()
+        create_mock.assert_not_called()
 
 
 class TestConfigureDatarobotMemoryClient:
-    def test_configures_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_configures_enclave_gateway_without_dr_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         _set_enclave_gateway_env(monkeypatch)
+        mock_client = MagicMock()
+        mock_config = MagicMock()
 
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache._configure_enclave_memory_client",
-        ) as configure_mock:
+        with (
+            patch("datarobot.config.create_drconfig", return_value=mock_config) as create_mock,
+            patch(
+                "datarobot.rest.RESTClientObject.from_config",
+                return_value=mock_client,
+            ) as from_config_mock,
+            patch("datarobot.client.set_client") as set_client_mock,
+            patch("datarobot.Client") as client_ctor_mock,
+        ):
             configure_datarobot_memory_client()
 
-        configure_mock.assert_called_once_with(
+        create_mock.assert_called_once_with(
+            token="token",
             endpoint="https://enclave-x.datarobot.com/api/v2",
-            api_token="token",
         )
+        from_config_mock.assert_called_once_with(mock_config)
+        set_client_mock.assert_called_once_with(mock_client)
+        client_ctor_mock.assert_not_called()
 
     def test_raises_without_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")

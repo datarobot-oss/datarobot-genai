@@ -301,9 +301,8 @@ class TestCreateAgentCardCacheBackend:
     def test_l1_only_when_cache_ttl_zero(self):
         config = AgentCardRegistryConfig(agent_card_registry_cache_ttl=0)
         with patch(
-            "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-            return_value=True,
-        ) as configure_mock:
+            "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
+        ) as resolve_mock:
             from datarobot_genai.dragent.agent_card_registry_backends import (
                 MemoryAgentCardCacheBackend,
             )
@@ -311,50 +310,18 @@ class TestCreateAgentCardCacheBackend:
             backend = create_agent_card_cache_backend(config)
 
         assert type(backend) is MemoryAgentCardCacheBackend
-        configure_mock.assert_not_called()
-
-    def test_l1_only_when_memory_client_unconfigured(self):
-        config = AgentCardRegistryConfig()
-        with (
-            patch(
-                "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
-                return_value="space-123",
-            ),
-            patch(
-                "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-                return_value=False,
-            ),
-        ):
-            from datarobot_genai.dragent.agent_card_registry_backends import (
-                MemoryAgentCardCacheBackend,
-            )
-
-            backend = create_agent_card_cache_backend(config)
-
-        assert type(backend) is MemoryAgentCardCacheBackend
+        resolve_mock.assert_not_called()
 
     def test_creates_layered_backend_on_enclave_workload(self):
         config = AgentCardRegistryConfig()
-        env = {
-            "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-            "DATAROBOT_API_TOKEN": "token",
-        }
-        with patch.dict("os.environ", env, clear=False):
-            with (
-                patch(
-                    "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
-                    return_value="space-runtime",
-                ) as resolve_mock,
-                patch(
-                    "datarobot_genai.dragent.agent_card_registry_backends.try_configure_datarobot_memory_client",
-                    return_value=True,
-                ) as configure_mock,
-            ):
-                backend = create_agent_card_cache_backend(config)
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
+            return_value="space-runtime",
+        ) as resolve_mock:
+            backend = create_agent_card_cache_backend(config)
 
         assert isinstance(backend, LayeredAgentCardCacheBackend)
         resolve_mock.assert_called_once_with()
-        configure_mock.assert_called_once()
 
 
 class TestLayeredAgentCardCacheBackend:

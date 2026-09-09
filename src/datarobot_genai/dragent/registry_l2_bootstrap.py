@@ -14,10 +14,10 @@
 
 """Ensure agent card registry L2 provisioning runs before the registry singleton locks in L1.
 
-On enclave workloads, ``memory_space_cache`` provisions the registry L2 MemorySpace via
-``try_provision_registry_cache_memory_space()``. ``configure_datarobot_memory_client`` skips
-``dr.Client()``'s ``GET /version/`` compatibility check on enclave endpoints because
-gateways expose the memory Session API but not the full control-hub ``/api/v2`` surface.
+On enclave workloads, ``memory_space_cache.try_resolve_memory_space_id`` provisions the
+registry L2 MemorySpace. ``configure_datarobot_memory_client`` skips ``dr.Client()``'s
+``GET /version/`` compatibility check on enclave endpoints because gateways expose the
+memory Session API but not the full control-hub ``/api/v2`` surface.
 
 This module retries provisioning at lifespan startup, resets the registry singleton when a
 space is adopted, and logs raw HTTP probes when SDK error handling masks the real failure.
@@ -32,12 +32,13 @@ import requests
 
 from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.runtime import get_workload_id
-from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_HOST_ENV
 from datarobot_genai.dragent.deployment_urls import WORKLOAD_EXTERNAL_PREFIX_ENV
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
-from datarobot_genai.dragent.memory_space_cache import try_provision_registry_cache_memory_space
+from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
+from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +58,6 @@ def _resolve_api_token() -> str | None:
     if token:
         return token
     return os.getenv("DATAROBOT_API_TOKEN", "").strip() or None
-
-
-def _registry_cache_deduplication_key(workload_id: object) -> str | None:
-    """Return the deduplication key used for registry L2 MemorySpace provisioning."""
-    if not workload_id:
-        return None
-    return f"dragent:agent-card-registry:workload:{workload_id}"
 
 
 def _memory_api_auth_headers(api_token: str) -> dict[str, str]:
@@ -161,7 +155,7 @@ def _registry_l2_gate_status() -> dict[str, object]:
         "enclave_prefix_set": bool(prefix),
         "enclave_api_endpoint": resolve_external_workload_api_endpoint(),
         "workload_id": get_workload_id(),
-        "workload_mode": is_workload_mode(),
+        "enclave_l2_workload": is_enclave_l2_workload(),
         "api_token_set": _resolve_api_token() is not None,
     }
 
@@ -171,33 +165,32 @@ def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
     gates = _registry_l2_gate_status()
     logger.info(
         "Agent card registry L2 cache check (%s): enclave_host=%s enclave_prefix=%s "
-        "enclave_api_endpoint=%s workload_id=%s workload_mode=%s api_token_set=%s",
+        "enclave_api_endpoint=%s workload_id=%s enclave_l2_workload=%s api_token_set=%s",
         phase,
         gates["enclave_host_set"],
         gates["enclave_prefix_set"],
         gates["enclave_api_endpoint"],
         gates["workload_id"],
-        gates["workload_mode"],
+        gates["enclave_l2_workload"],
         gates["api_token_set"],
     )
 
-    if gates["enclave_api_endpoint"] is None:
-        logger.info(
-            "Agent card registry L2 cache skipped (%s): not behind enclave API gateway "
-            "(%s and %s must both be set).",
-            phase,
-            WORKLOAD_EXTERNAL_HOST_ENV,
-            WORKLOAD_EXTERNAL_PREFIX_ENV,
-        )
-        return None
-
-    if not gates["workload_mode"]:
-        logger.info(
-            "Agent card registry L2 cache skipped (%s): %s is unset "
-            "(required for enclave workload deduplication).",
-            phase,
-            "WORKLOAD_ID",
-        )
+    if not gates["enclave_l2_workload"]:
+        if gates["enclave_api_endpoint"] is None:
+            logger.info(
+                "Agent card registry L2 cache skipped (%s): not behind enclave API gateway "
+                "(%s and %s must both be set).",
+                phase,
+                WORKLOAD_EXTERNAL_HOST_ENV,
+                WORKLOAD_EXTERNAL_PREFIX_ENV,
+            )
+        else:
+            logger.info(
+                "Agent card registry L2 cache skipped (%s): %s is unset "
+                "(required for enclave workload deduplication).",
+                phase,
+                "WORKLOAD_ID",
+            )
         return None
 
     if not gates["api_token_set"]:
@@ -207,15 +200,17 @@ def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
         )
         return None
 
+    workload_id = gates["workload_id"]
+    assert isinstance(workload_id, str)
+    deduplication_key = registry_cache_deduplication_key(workload_id)
     logger.info(
         "Agent card registry L2 cache provisioning (%s): creating or adopting MemorySpace "
-        "(dedup_key=dragent:agent-card-registry:workload:%s, endpoint=%s).",
+        "(dedup_key=%s, endpoint=%s).",
         phase,
-        gates["workload_id"],
+        deduplication_key,
         gates["enclave_api_endpoint"],
     )
-    deduplication_key = _registry_cache_deduplication_key(gates["workload_id"])
-    space_id = try_provision_registry_cache_memory_space()
+    space_id = try_resolve_memory_space_id()
     if space_id:
         reset_default_registry()
         logger.info(
@@ -227,7 +222,7 @@ def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
 
     enclave_endpoint = gates["enclave_api_endpoint"]
     api_token = _resolve_api_token()
-    if isinstance(enclave_endpoint, str) and api_token and deduplication_key is not None:
+    if isinstance(enclave_endpoint, str) and api_token:
         _log_memory_api_probes_on_failure(
             endpoint=enclave_endpoint,
             api_token=api_token,

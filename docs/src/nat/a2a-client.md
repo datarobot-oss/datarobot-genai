@@ -126,11 +126,16 @@ On enclave workloads (both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTE
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry authentication. |
-| `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. |
+| `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry lookups and enclave L2 memory API calls. |
+| `DATAROBOT_ENDPOINT` | Yes | Control-hub API base URL for central registry lookups, e.g. `https://app.datarobot.com/api/v2`. |
+| `DR_WORKLOAD_EXTERNAL_URL_HOST` | Enclave L2 | Hostname of the enclave API gateway (injected on workload deployments). |
+| `DR_WORKLOAD_EXTERNAL_URL_PREFIX` | Enclave L2 | Path prefix routed to this workload on the enclave gateway. |
+| `WORKLOAD_ID` | Enclave L2 | Platform-injected workload ID; scopes the shared L2 MemorySpace via `deduplication_key`. |
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
+
+Enclave L2 variables are required only when running behind the enclave API gateway; other runtimes use L1 caching only.
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
 files, file secrets, Runtime Parameters, and Pulumi config.

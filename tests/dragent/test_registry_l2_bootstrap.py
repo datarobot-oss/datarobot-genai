@@ -17,55 +17,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
 import datarobot_genai.dragent.registry_l2_bootstrap as bootstrap
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
-
-
-def test_configure_enclave_memory_client_skips_dr_client() -> None:
-    mock_client = MagicMock()
-    mock_config = MagicMock()
-
-    with (
-        patch("datarobot.config.create_drconfig", return_value=mock_config) as create_mock,
-        patch(
-            "datarobot.rest.RESTClientObject.from_config",
-            return_value=mock_client,
-        ) as from_config_mock,
-        patch("datarobot.client.set_client") as set_client_mock,
-        patch("datarobot.Client") as client_ctor_mock,
-    ):
-        memory_space_cache_module._configure_enclave_memory_client(
-            endpoint="https://enclave.example.com/api/v2",
-            api_token="token-123",
-        )
-
-    create_mock.assert_called_once_with(
-        token="token-123",
-        endpoint="https://enclave.example.com/api/v2",
-    )
-    from_config_mock.assert_called_once_with(mock_config)
-    set_client_mock.assert_called_once_with(mock_client)
-    client_ctor_mock.assert_not_called()
-
-
-def test_configure_datarobot_memory_client_uses_version_check_skip_on_enclave(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "token-123")
-    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave.example.com")
-    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc")
-
-    with patch.object(
-        memory_space_cache_module,
-        "_configure_enclave_memory_client",
-    ) as configure_mock:
-        memory_space_cache_module.configure_datarobot_memory_client()
-
-    configure_mock.assert_called_once_with(
-        endpoint="https://enclave.example.com/api/v2",
-        api_token="token-123",
-    )
 
 
 def test_ensure_registry_l2_cache_provisioned_resets_singleton_on_success() -> None:
@@ -78,20 +31,20 @@ def test_ensure_registry_l2_cache_provisioned_resets_singleton_on_success() -> N
                 "enclave_prefix_set": True,
                 "enclave_api_endpoint": "https://example.com/api/v2",
                 "workload_id": "wl-123",
-                "workload_mode": True,
+                "enclave_l2_workload": True,
                 "api_token_set": True,
             },
         ),
         patch.object(
             bootstrap,
-            "try_provision_registry_cache_memory_space",
+            "try_resolve_memory_space_id",
             return_value="space-abc",
-        ) as provision_mock,
+        ) as resolve_mock,
         patch.object(bootstrap, "reset_default_registry") as reset_mock,
     ):
         assert bootstrap.ensure_registry_l2_cache_provisioned(phase="test") == "space-abc"
 
-    provision_mock.assert_called_once()
+    resolve_mock.assert_called_once()
     reset_mock.assert_called_once()
 
 
@@ -105,18 +58,18 @@ def test_ensure_registry_l2_cache_provisioned_skips_without_enclave_gateway() ->
                 "enclave_prefix_set": False,
                 "enclave_api_endpoint": None,
                 "workload_id": None,
-                "workload_mode": False,
+                "enclave_l2_workload": False,
                 "api_token_set": False,
             },
         ),
         patch.object(
             bootstrap,
-            "try_provision_registry_cache_memory_space",
-        ) as provision_mock,
+            "try_resolve_memory_space_id",
+        ) as resolve_mock,
     ):
         assert bootstrap.ensure_registry_l2_cache_provisioned(phase="test") is None
 
-    provision_mock.assert_not_called()
+    resolve_mock.assert_not_called()
 
 
 async def test_warmup_retries_provision_before_prefetch() -> None:
@@ -171,13 +124,13 @@ def test_ensure_registry_l2_cache_provisioned_logs_probe_on_failure() -> None:
                 "enclave_prefix_set": True,
                 "enclave_api_endpoint": "https://enclave.example.com/api/v2",
                 "workload_id": "wl-123",
-                "workload_mode": True,
+                "enclave_l2_workload": True,
                 "api_token_set": True,
             },
         ),
         patch.object(
             bootstrap,
-            "try_provision_registry_cache_memory_space",
+            "try_resolve_memory_space_id",
             return_value=None,
         ),
         patch.object(bootstrap, "_resolve_api_token", return_value="token-123"),

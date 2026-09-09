@@ -68,12 +68,10 @@ from typing import Any
 from typing import TypeVar
 
 import requests
-from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.errors import MemorySessionDeduplicationError
 from datarobot.errors import MemorySpaceDeduplicationError
 from datarobot.models.memory import MemorySpace
 from datarobot.models.memory import Session
-from pydantic import Field
 
 from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.core.runtime import is_workload_mode
@@ -139,35 +137,23 @@ class _ProvisionedRegistryCacheSpaceState:
     space_id: str | None = None
 
 
-class MemorySpaceCacheConfig(DataRobotAppFrameworkBaseSettings):
-    """Connection settings for enclave MemorySpace cache backends."""
-
-    datarobot_api_token: str | None = Field(
-        default=None,
-        description="DataRobot API token (DATAROBOT_API_TOKEN).",
-    )
-
-
-def _is_enclave_workload() -> bool:
-    """Return True when running as a workload behind the enclave API gateway."""
+def is_enclave_l2_workload() -> bool:
+    """Return True when this process can use the registry L2 MemorySpace cache."""
     return resolve_external_workload_api_endpoint() is not None and is_workload_mode()
 
 
-def _registry_cache_memory_space_deduplication_key() -> str | None:
-    """Return a stable deduplication key for an enclave workload, or ``None`` when local."""
-    if workload_id := get_workload_id():
-        return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:workload:{workload_id}"
-    return None
+def registry_cache_deduplication_key(workload_id: str) -> str:
+    """Return the stable deduplication key for an enclave workload's registry L2 space."""
+    return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:workload:{workload_id}"
 
 
-def try_provision_registry_cache_memory_space() -> str | None:
-    """Create or adopt the registry L2 MemorySpace on an enclave workload.
+def try_resolve_memory_space_id() -> str | None:
+    """Return the registry L2 MemorySpace ID on enclave workloads, else ``None``.
 
-    Uses the workload ID injected by the platform as a ``deduplication_key`` so
-    every replica shares one space. No-op when not behind the enclave API gateway
-    (``DR_WORKLOAD_EXTERNAL_URL_HOST`` + ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``),
-    when credentials are unavailable, or after the first successful provision in
-    this process.
+    Creates or adopts the space on first call. Uses ``WORKLOAD_ID`` as a
+    ``deduplication_key`` so replicas share one space. No-op when not on an enclave
+    workload, when credentials are unavailable, or after the first successful
+    provision in this process.
 
     This is the agent card registry L2 cache, not agent memory
     (``AGENT_MEMORY_SPACE_ID``). Agent memory is provisioned on the control hub
@@ -177,12 +163,12 @@ def try_provision_registry_cache_memory_space() -> str | None:
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id
 
-    if not _is_enclave_workload():
+    if not is_enclave_l2_workload():
         return None
 
-    deduplication_key = _registry_cache_memory_space_deduplication_key()
-    if deduplication_key is None:
-        return None
+    workload_id = get_workload_id()
+    assert workload_id is not None  # guaranteed by is_enclave_l2_workload()
+    deduplication_key = registry_cache_deduplication_key(workload_id)
 
     if not try_configure_datarobot_memory_client():
         return None
@@ -225,35 +211,6 @@ def try_provision_registry_cache_memory_space() -> str | None:
     return space.id
 
 
-def try_resolve_memory_space_id() -> str | None:
-    """Return the registry L2 MemorySpace ID on enclave workloads, else ``None``.
-
-    The space is created at runtime on first use on enclave workloads only.
-    Other runtimes use L1 caching only.
-    """
-    if _ProvisionedRegistryCacheSpaceState.space_id is not None:
-        return _ProvisionedRegistryCacheSpaceState.space_id
-    return try_provision_registry_cache_memory_space()
-
-
-def _configure_enclave_memory_client(
-    *,
-    endpoint: str,
-    api_token: str,
-) -> None:
-    """Configure the process-global DataRobot client for enclave memory APIs.
-
-    ``dr.Client()`` always calls ``GET /version/``. Enclave gateways do not implement
-    that route, so use the REST client constructor directly instead.
-    """
-    from datarobot.client import set_client
-    from datarobot.config import create_drconfig
-    from datarobot.rest import RESTClientObject
-
-    drconfig = create_drconfig(token=api_token, endpoint=endpoint.rstrip("/"))
-    set_client(RESTClientObject.from_config(drconfig))
-
-
 def try_configure_datarobot_memory_client(
     *,
     api_token: str | None = None,
@@ -283,8 +240,7 @@ def configure_datarobot_memory_client(
             "MemorySpace cache backends require an enclave API gateway "
             "(DR_WORKLOAD_EXTERNAL_URL_HOST and DR_WORKLOAD_EXTERNAL_URL_PREFIX)."
         )
-    cfg = MemorySpaceCacheConfig()
-    token = api_token or cfg.datarobot_api_token or os.getenv("DATAROBOT_API_TOKEN")
+    token = api_token or os.getenv("DATAROBOT_API_TOKEN")
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
     logger.info(
@@ -292,7 +248,12 @@ def configure_datarobot_memory_client(
         "(skipping dr.Client /version/ compatibility check).",
         enclave_endpoint,
     )
-    _configure_enclave_memory_client(endpoint=enclave_endpoint, api_token=token)
+    from datarobot.client import set_client
+    from datarobot.config import create_drconfig
+    from datarobot.rest import RESTClientObject
+
+    drconfig = create_drconfig(token=token, endpoint=enclave_endpoint.rstrip("/"))
+    set_client(RESTClientObject.from_config(drconfig))
 
 
 def _cache_deduplication_key(logical_key: str) -> str:
