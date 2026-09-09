@@ -145,14 +145,6 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
-    agent_card_registry_memory_space_id: str | None = Field(
-        default=None,
-        description=(
-            "DataRobot MemorySpace ID for the agent card registry L2 cache. "
-            "When unset, only in-process L1 caching is used."
-        ),
-    )
-
 
 class AgentCardRegistryError(RuntimeError):
     """Raised when the central agent card registry lookup fails."""

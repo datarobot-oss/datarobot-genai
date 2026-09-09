@@ -120,6 +120,8 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 
 While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
 
+On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
+
 #### Registry environment variables
 
 | Variable | Required | Description |

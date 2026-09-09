@@ -132,14 +132,6 @@ class TestAgentCardRegistryConfig:
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
 
-    def test_memory_space_id_from_env(self):
-        with patch.dict(
-            "os.environ",
-            {"AGENT_CARD_REGISTRY_MEMORY_SPACE_ID": "space-123"},
-        ):
-            config = AgentCardRegistryConfig()
-            assert config.agent_card_registry_memory_space_id == "space-123"
-
 
 # ---------------------------------------------------------------------------
 # Tests: AgentCardCacheRecord

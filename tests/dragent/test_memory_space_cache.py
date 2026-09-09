@@ -21,13 +21,15 @@ from unittest.mock import patch
 import pytest
 import requests
 
+import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
 from datarobot_genai.dragent.memory_space_cache import _STALE_CONNECTION_RETRIES
 from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import _find_cache_session
 from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
-from datarobot_genai.dragent.memory_space_cache import resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
+from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 
@@ -65,96 +67,169 @@ class _FakeSession:
         raise KeyError(sequence_id)
 
 
+_ENCLAVE_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
+_ENCLAVE_PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
+
+
+def _set_enclave_gateway_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_ENCLAVE_HOST_ENV, "enclave-x.datarobot.com")
+    monkeypatch.setenv(_ENCLAVE_PREFIX_ENV, "/workloads/abc123")
+
+
+@pytest.fixture(autouse=True)
+def _reset_provisioned_registry_cache_space_state() -> None:
+    memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    yield
+    memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+
+
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
     return MemorySpaceKVCache(memory_space_id="space-1")
 
 
+class TestEnclaveL2Workload:
+    def test_is_false_without_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
+        assert is_enclave_l2_workload() is False
+
+    def test_is_false_on_enclave_gateway_without_workload_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        _set_enclave_gateway_env(monkeypatch)
+        assert is_enclave_l2_workload() is False
+
+    def test_deduplication_key(self) -> None:
+        assert registry_cache_deduplication_key("wl-abc123") == (
+            "dragent:agent-card-registry:workload:wl-abc123"
+        )
+
+
 class TestResolveMemorySpaceId:
-    def test_explicit_id(self) -> None:
-        assert resolve_memory_space_id("space-explicit") == "space-explicit"
+    def test_returns_none_when_not_on_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
+        assert try_resolve_memory_space_id() is None
 
-    def test_missing_id_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
-        with pytest.raises(ValueError, match="MemorySpace ID"):
-            resolve_memory_space_id(None)
+    def test_skips_on_enclave_gateway_without_workload_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("WORKLOAD_ID", raising=False)
+        _set_enclave_gateway_env(monkeypatch)
+        assert try_resolve_memory_space_id() is None
 
-    def test_agent_memory_space_id_is_not_used(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("AGENT_CARD_REGISTRY_MEMORY_SPACE_ID", raising=False)
-        monkeypatch.setenv("AGENT_MEMORY_SPACE_ID", "mem0-space")
-        assert try_resolve_memory_space_id(None) is None
+    def test_creates_space_on_enclave_workload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        space = MagicMock(id="space-new")
+        create_mock = MagicMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+                create_mock,
+            ),
+        ):
+            assert try_resolve_memory_space_id() == "space-new"
+
+        create_mock.assert_called_once_with(
+            description="Agent card registry L2 cache",
+            deduplication_key="dragent:agent-card-registry:workload:wl-abc123",
+        )
+
+    def test_adopts_existing_space_on_dedup_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datarobot.errors import MemorySpaceDeduplicationError
+
+        monkeypatch.setenv("WORKLOAD_ID", "wl-xyz")
+        _set_enclave_gateway_env(monkeypatch)
+        existing = MagicMock(id="space-existing")
+        create_mock = MagicMock(
+            side_effect=MemorySpaceDeduplicationError(
+                "conflict",
+                409,
+                json={"existingMemorySpaceId": "space-existing"},
+            )
+        )
+        get_mock = MagicMock(return_value=existing)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+                create_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.MemorySpace.get",
+                get_mock,
+            ),
+        ):
+            assert try_resolve_memory_space_id() == "space-existing"
+
+        get_mock.assert_called_once_with("space-existing")
+
+    def test_returns_cached_space_id_without_reprovisioning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
+        create_mock = MagicMock()
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
+            create_mock,
+        ):
+            assert try_resolve_memory_space_id() == "space-cached"
+
+        create_mock.assert_not_called()
 
 
 class TestConfigureDatarobotMemoryClient:
-    def test_uses_public_api_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        monkeypatch.setenv(
-            "DATAROBOT_PUBLIC_API_ENDPOINT",
-            "https://staging.datarobot.com/api/v2",
-        )
-        monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
-
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
-            configure_datarobot_memory_client()
-
-        client_mock.assert_called_once_with(
-            token="token",
-            endpoint="https://staging.datarobot.com/api/v2",
-        )
-
-    def test_enclave_gateway_wins_over_control_hub(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # GIVEN a workload on an Envoy-fronted enclave whose control-hub URLs
-        # still point at staging
-        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        monkeypatch.setenv(
-            "DATAROBOT_PUBLIC_API_ENDPOINT",
-            "https://staging.datarobot.com/api/v2",
-        )
-        monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
-        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
-        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
-
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
-            configure_datarobot_memory_client()
-
-        # WHEN the L2 memory client is configured
-        # THEN it talks to the enclave API, not the control hub
-        client_mock.assert_called_once_with(
-            token="token",
-            endpoint="https://enclave-x.datarobot.com/api/v2",
-        )
-
-    def test_partial_gateway_config_falls_back_to_public_api(
+    def test_configures_enclave_gateway_without_dr_client(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        monkeypatch.setenv(
-            "DATAROBOT_PUBLIC_API_ENDPOINT",
-            "https://staging.datarobot.com/api/v2",
-        )
-        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
-        monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
+        _set_enclave_gateway_env(monkeypatch)
+        mock_client = MagicMock()
+        mock_config = MagicMock()
 
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
+        with (
+            patch("datarobot.config.create_drconfig", return_value=mock_config) as create_mock,
+            patch(
+                "datarobot.rest.RESTClientObject.from_config",
+                return_value=mock_client,
+            ) as from_config_mock,
+            patch("datarobot.client.set_client") as set_client_mock,
+            patch("datarobot.Client") as client_ctor_mock,
+        ):
             configure_datarobot_memory_client()
 
-        client_mock.assert_called_once_with(
+        create_mock.assert_called_once_with(
             token="token",
-            endpoint="https://staging.datarobot.com/api/v2",
+            endpoint="https://enclave-x.datarobot.com/api/v2",
         )
+        from_config_mock.assert_called_once_with(mock_config)
+        set_client_mock.assert_called_once_with(mock_client)
+        client_ctor_mock.assert_not_called()
 
-    def test_explicit_endpoint_wins_over_enclave(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_without_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
-        monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
+        monkeypatch.delenv(_ENCLAVE_HOST_ENV, raising=False)
+        monkeypatch.delenv(_ENCLAVE_PREFIX_ENV, raising=False)
 
-        with patch("datarobot_genai.dragent.memory_space_cache.dr.Client") as client_mock:
-            configure_datarobot_memory_client(endpoint="https://override.example/api/v2")
-
-        client_mock.assert_called_once_with(
-            token="token",
-            endpoint="https://override.example/api/v2",
-        )
+        with pytest.raises(ValueError, match="enclave API gateway"):
+            configure_datarobot_memory_client()
 
 
 class TestMemorySpaceKVCache:

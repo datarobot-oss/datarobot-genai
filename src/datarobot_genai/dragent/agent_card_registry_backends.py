@@ -33,7 +33,6 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import try_configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 if TYPE_CHECKING:
@@ -497,16 +496,9 @@ def create_agent_card_cache_backend(
         logger.debug("Agent card registry cache: L1 only (cache_ttl=0)")
         return l1
 
-    memory_space_id = try_resolve_memory_space_id(config.agent_card_registry_memory_space_id)
+    memory_space_id = try_resolve_memory_space_id()
     if memory_space_id is None:
-        logger.debug("Agent card registry cache: L1 only (no MemorySpace ID configured)")
-        return l1
-
-    if not try_configure_datarobot_memory_client():
-        logger.warning(
-            "Agent card registry cache: L1 only — MemorySpace L2 unavailable "
-            "(set DATAROBOT_API_TOKEN and DATAROBOT_ENDPOINT)"
-        )
+        logger.debug("Agent card registry cache: L1 only (not on an enclave workload)")
         return l1
 
     kv_cache = MemorySpaceKVCache(memory_space_id=memory_space_id)

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.34
+- `dragent`: the agent card registry L2 MemorySpace is created at runtime on enclave workloads only (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID`, with registry-backed A2A clients). Uses a workload-scoped `deduplication_key` so replicas share one space. Other runtimes use in-process L1 caching only.
+- `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there via Pulumi / `task deploy-dev`; the enclave API gateway is only for the agent card registry L2 cache.
+- `dragent`: bootstrap registry L2 cache provisioning at import and lifespan warmup so enclave workloads adopt MemorySpace L2 without recipe-side wiring. Skips `dr.Client()`'s `/version/` probe on enclave gateways (memory API only) and resets the registry singleton after provisioning.
+
 ## 0.29.33 - 2026-09-08
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
 - Add a minimum version for `langchain-core`: `>=1.3.3`.
