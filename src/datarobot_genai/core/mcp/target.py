@@ -12,21 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Resolving a declared MCP server into one you can actually connect to.
+"""Resolving a declared MCP server into one you can connect to.
 
-Two types, and the split between them is the point:
-
-``MCPServerRef`` (from ``datarobot.core.config``)
-    Declared intent -- "the analytics server is workload ``6a72...``". Pure, validated
-    at config load, no I/O.
-``MCPTarget``
-    Resolved fact -- "it is reachable at ``https://.../mcp``". Built by
-    :func:`build_target`, which may perform a network call and may fail.
-
-The kind is consulted twice, and that is the whole reason the target exists: once in
-:func:`build_target` to decide *how to find the server*, and again in
-:func:`build_headers` to decide *what to send it*. Both answers are per-server, so
-neither can be resolved once from the environment for a whole fleet.
+``MCPServerRef`` is declared intent -- "analytics is workload ``6a72...``" -- and lives
+in the SDK. :class:`MCPTarget` is the resolved fact, "it is at ``https://.../mcp``".
 """
 
 from __future__ import annotations
@@ -56,10 +45,8 @@ MCPTargetKind = MCPServerKind
 def auth_context_handler() -> AuthContextHeaderHandler:
     """Return the process-wide authorization-context header handler.
 
-    Stateless apart from the signing key it reads once from ``SESSION_SECRET_KEY``, and
-    the context it encodes arrives as an argument. Holding one of these on a config
-    object is what made that object unsafe to copy, so it lives here instead. Call
-    ``auth_context_handler.cache_clear()`` to rebuild it after changing that key.
+    Stateless apart from the ``SESSION_SECRET_KEY`` it reads once; call
+    ``auth_context_handler.cache_clear()`` after changing that key.
     """
     return AuthContextHeaderHandler()
 
@@ -67,32 +54,19 @@ def auth_context_handler() -> AuthContextHeaderHandler:
 class MCPTarget(BaseModel):
     """One MCP server, resolved: where it is, and what identity it accepts.
 
-    Constructed by :func:`build_target` at workflow build and nowhere else. It appears
-    in no ``.env``, no ``config.py`` and no ``workflow.yaml`` -- the thing you configure
-    is the :class:`MCPServerRef`.
-
-    Holds the ref rather than copying out of it, so the source ID stays available for
-    telemetry ("which deployment") instead of being consumed into a URL. ``url`` is the
-    only genuinely new fact this type adds.
-
-    Frozen, and it carries no request state, which is what makes "resolve once, share
-    across every request and user" safe rather than risky. (Frozen but not hashable --
-    the static-headers dict rules that out -- so it is shared by reference, never used
-    as a cache key.)
+    Built by :func:`build_target` and nowhere else; the thing you configure is the
+    :class:`MCPServerRef`. Holds the ref rather than copying out of it, so the source ID
+    stays available for telemetry. Frozen and carrying no request state, so it is safe
+    to resolve once and share across requests.
 
     Attributes
     ----------
     ref : MCPServerRef
-        The declaration this was resolved from: name, transport, static headers, and
-        the source ID.
+        The declaration this was resolved from.
     url : str
         The resolved address.
     api_token : str or None
-        The DataRobot service token to present, and **always** ``None`` for a
-        third-party server. Making this a field rather than an argument to
-        :func:`build_headers` is a security property: "external implies no token" is
-        then a construction-time invariant enforced in one place, instead of a rule
-        every call site has to remember.
+        The token to present; ``None`` when the server gets no DataRobot identity.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -121,13 +95,11 @@ def _require_endpoint(ref: MCPServerRef, endpoint: str | None) -> str:
 
 
 def _resolve_service_token(ref: MCPServerRef, token: str | None) -> str | None:
-    """Return the service token, requiring it only of servers that actually present it.
+    """Return the service token, required only of servers that present it.
 
-    Deliberately separate from :func:`_require_endpoint`: composing a URL needs the
-    endpoint and never the token. Demanding both together is what made a
-    cross-application-access server fail to build on a deployment with no
-    ``DATAROBOT_API_TOKEN`` -- which is the normal state for XAA, where the identity is
-    an exchanged per-user token rather than a service one.
+    Separate from :func:`_require_endpoint` because composing a URL never needs the
+    token: a cross-application-access server must build where no ``DATAROBOT_API_TOKEN``
+    exists.
     """
     if not ref.sends_datarobot_credentials:
         return None
@@ -149,16 +121,10 @@ def build_target(
 ) -> MCPTarget:
     """Resolve a declared server into a reachable target, or raise.
 
-    Never returns ``None``. An unresolvable server used to degrade into "no MCP server
-    configured", which is a legitimate state and therefore indistinguishable from
-    success; here it fails at build, naming the server.
-
-    Pure: every kind composes its URL, so this performs no network call and cannot
-    block. A workload used to cost an HTTP GET against the Workload API, on the
-    reasoning that its route could not be derived from its ID; it can, from the same
-    ``DR_WORKLOAD_EXTERNAL_URL_HOST`` signal the MCP server itself uses to publish that
-    route. See :func:`build_workload_mcp_url` for the two shapes and the two cases that
-    still need an explicit ``url``.
+    Never returns ``None``: an unresolvable server fails here, naming itself, rather
+    than degrading into "no MCP configured". Pure -- every kind composes its URL, so
+    there is no network call. See :func:`build_workload_mcp_url` for the workload
+    shapes.
 
     Raises
     ------
@@ -168,10 +134,8 @@ def build_target(
     kind = ref.kind
 
     if kind is MCPServerKind.EXTERNAL:
-        # `url` defaults to sending no DataRobot identity, but that is now the ref's
-        # DEFAULT rather than this branch's decision -- a DataRobot-hosted server that
-        # happens to be addressed by URL can declare otherwise. The host guard is what
-        # keeps the deliberate case from becoming an accidental leak.
+        # Whether a `url` server gets an identity is the ref's decision, not this
+        # branch's; the host guard keeps the deliberate case from becoming a leak.
         assert ref.url is not None  # the exactly-one-address validator guarantees it
         ref.assert_credentials_allowed(datarobot_endpoint)
         return MCPTarget(
@@ -244,27 +208,18 @@ def build_datarobot_mcp_headers(
 ) -> dict[str, str]:
     """Build the DataRobot credentials to present to an MCP server.
 
-    The same for **every** DataRobot-hosted server, which is what lets one auth provider
-    instance be shared by name -- the ordinary NAT model. Nothing here is per-server:
+    The same for every DataRobot-hosted server, which is what lets one auth provider
+    instance be shared by name. The order is load-bearing:
 
-    1. ``base`` -- static headers configured for this connection
+    1. ``base`` -- static headers for this connection
     2. forwarded headers from the inbound request
     3. ``Authorization: Bearer <service token>``
     4. ``x-datarobot-api-key`` -- unless already forwarded
     5. ``X-DataRobot-Authorization-Context``
     6. ``extra`` -- an explicit override, so it wins
 
-    The order is load-bearing and the numbering is the contract.
-
-    Step 4 used to be workload-only, on the theory that the Workload API gateway needs
-    it and nothing else does. It is now unconditional: a deployment or a local process
-    ignores an unknown header, so sending it always costs nothing and removes the only
-    fact that varied per server -- which is what made a shared provider unsafe. A
-    third-party server never reaches this function, because it names
-    ``auth_provider: none``.
-
-    ``endpoint`` is accepted for symmetry with the callers and is not read; the token is
-    what authenticates.
+    Step 4 goes to every server: the workload gateway needs it and the others ignore it,
+    so nothing varies per server. ``endpoint`` is unused; the token authenticates.
     """
     headers: dict[str, str] = dict(base or {})
     if forwarded:
@@ -274,10 +229,8 @@ def build_datarobot_mcp_headers(
         headers["Authorization"] = (
             api_token if api_token.startswith("Bearer ") else f"Bearer {api_token}"
         )
-        # DO NOT SIMPLIFY: a forwarded key is the caller's own scoped token and outranks
-        # the service one. `Authorization` itself is never forwarded (the context
-        # extractor passes only x-datarobot-* and x-untrusted-*), so this is the only
-        # step where a forwarded credential can actually be overwritten.
+        # A forwarded key is the caller's own scoped token and
+        # outranks the service one.
         forwarded_names = {name.lower() for name in (forwarded or {})}
         if "x-datarobot-api-key" not in forwarded_names:
             headers["x-datarobot-api-key"] = api_token.removeprefix("Bearer ").strip()
@@ -302,13 +255,10 @@ def build_headers(
 ) -> dict[str, str]:
     """Headers for one resolved target, for callers that build clients themselves.
 
-    Used by the framework adapters (``register.py`` / ``agent.py``), where there is no
-    NAT auth provider to delegate to. On the NAT path the provider does this instead,
-    via :func:`build_datarobot_mcp_headers`; the two agree by construction, because this
-    is a thin wrapper over it.
+    A thin wrapper over :func:`build_datarobot_mcp_headers`, which the NAT auth provider
+    calls instead, so the two paths agree by construction.
     """
-    # A server that sends no DataRobot identity gets its static headers and nothing
-    # else. That is what `auth_provider: none` means, and it is the default for `url`.
+    # `auth_provider: none` -- static headers only.
     if not target.ref.sends_datarobot_credentials:
         return {**target.ref.headers, **(extra or {})}
 
@@ -330,8 +280,7 @@ def build_server_config(
 ) -> dict[str, Any]:
     """Render a target as the ``{url, transport, headers}`` dict the MCP clients take.
 
-    A fresh dict every call, with no memoisation, so two requests can never share one
-    header set.
+    A fresh dict every call, so two requests never share one header set.
     """
     return {
         "url": target.url,

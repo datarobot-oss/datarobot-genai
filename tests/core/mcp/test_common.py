@@ -476,12 +476,10 @@ class TestAMixedFleetIsCredentialUniform:
 
 
 class TestCredentialsAreDeclaredNotInferred:
-    """The #29 decoupling: the address decides the URL, `auth_provider` the credentials.
+    """The address decides the URL, `auth_provider` the credentials.
 
-    The point of every case here is that the *derived defaults* reproduce the previous
-    behaviour exactly, so a configuration that never sets `auth_provider` cannot notice
-    this change -- while a configuration that does set it can reach cases that were
-    previously unexpressible.
+    The derived defaults reproduce the previous behaviour, so a configuration that
+    never sets `auth_provider` cannot notice the change.
     """
 
     ENDPOINT = "https://app.datarobot.com/api/v2"
@@ -489,8 +487,7 @@ class TestCredentialsAreDeclaredNotInferred:
     def test_a_url_server_can_now_carry_datarobot_credentials(self):
         """Previously impossible: `if kind == "external": headers = {}` was unreachable.
 
-        This is what makes the platform's global MCP reachable at all -- pasting its URL
-        into EXTERNAL_MCP_URL got a DataRobot-hosted server treated as a third party.
+        This is what makes the platform's global MCP reachable at all.
         """
         ref = MCPServerRef(
             name="global",
@@ -511,12 +508,7 @@ class TestCredentialsAreDeclaredNotInferred:
             build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
 
     def test_there_is_no_override_for_a_foreign_host(self):
-        """An earlier draft had `trust_host`. The guard is now absolute.
-
-        The remedies named in the error are the two that keep the invariant: say
-        `auth_provider: none`, or address the server by workload/deployment id so its
-        URL is derived rather than asserted.
-        """
+        """No override: name `auth_provider: none`, or use a workload/deployment id."""
         ref = MCPServerRef(
             name="vendor",
             url="https://mcp.example.com/mcp",
@@ -539,16 +531,24 @@ class TestCredentialsAreDeclaredNotInferred:
         assert headers["x-team"] == "search"
         assert headers["Authorization"] == "Bearer tok"
 
-    def test_api_key_header_follows_the_route_not_the_identity(self):
-        """A url server behind the workload gateway can ask for the header."""
-        ref = MCPServerRef(
-            name="wl",
-            url="https://app.datarobot.com/wl/mcp",
-            auth_provider="datarobot_mcp_auth",
-            api_key_header=True,
+    def test_the_api_key_header_needs_no_per_server_setting(self):
+        """Sent to every credentialed server: the workload gateway needs it, the other
+        kinds ignore it, and a `none` server never reaches this code.
+        """
+        for ref in (
+            MCPServerRef(name="wl", workload_id="a" * 24),
+            MCPServerRef(name="dep", deployment_id="b" * 24),
+            MCPServerRef(name="docs", local_port=9001),
+        ):
+            target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
+            assert build_headers(target)["x-datarobot-api-key"] == "tok", ref.name
+
+        vendor = build_target(
+            MCPServerRef(name="vendor", url="https://mcp.vendor.example.com/mcp"),
+            datarobot_endpoint=self.ENDPOINT,
+            datarobot_api_token="tok",
         )
-        target = build_target(ref, datarobot_endpoint=self.ENDPOINT, datarobot_api_token="tok")
-        assert build_headers(target)["x-datarobot-api-key"] == "tok"
+        assert "x-datarobot-api-key" not in build_headers(vendor)
 
     def test_a_forwarded_key_still_outranks_the_service_one(self):
         """The guard the docstring says not to simplify, re-asserted after the rewrite."""
@@ -560,10 +560,7 @@ class TestCredentialsAreDeclaredNotInferred:
     def test_a_url_server_is_authenticated_one_of_exactly_two_ways(self):
         """DataRobot-hosted on the endpoint host, or externally hosted with own headers.
 
-        No per-server token setting exists for either. The first uses the global
-        DATAROBOT_API_TOKEN (or an exchanged XAA token); the second carries whatever
-        credential the server wants in `headers`, which is what EXTERNAL_MCP_HEADERS
-        always did.
+        Neither needs a per-server token setting.
         """
         hosted = build_target(
             MCPServerRef(

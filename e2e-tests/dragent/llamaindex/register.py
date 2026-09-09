@@ -46,8 +46,7 @@ class LlamaindexAgentConfig(AgentBaseConfig, name="llamaindex_agent"):
         default_factory=list,
         description=(
             "Tools and function groups to give the agent, by name. An MCP server is a "
-            "`function_groups` entry, so listing its name here attaches every tool it "
-            "exposes. NAT builds those groups once and keeps the connections open."
+            "`function_groups` entry; naming it here attaches every tool it exposes."
         ),
     )
 
@@ -65,13 +64,8 @@ async def llamaindex_agent(config: LlamaindexAgentConfig, builder: Builder) -> A
 
     from dragent.llamaindex.myagent import MyAgent
 
-    # Built ONCE, here, not per request. NAT owns the MCP connections: each
-    # `function_groups` entry named in `tool_names` is built at workflow build and its
-    # client stays open, while `DataRobotAuthAdapter` recomputes the credentials on
-    # every HTTP request from the request context. Connecting per prompt instead --
-    # which is what an AsyncExitStack inside the response function does -- pays a
-    # connect and a tool-discovery round trip per server per prompt, and buys nothing,
-    # because the headers were the only per-request part.
+    # Built once, not per request: NAT keeps the MCP clients connected and the auth
+    # provider recomputes credentials per HTTP request.
     tools = await builder.get_tools(
         tool_names=config.tool_names, wrapper_type=LLMFrameworkEnum.LLAMA_INDEX
     )
