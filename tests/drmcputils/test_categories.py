@@ -19,9 +19,9 @@ from datarobot_genai.drmcputils.categories import TOOL_CATEGORY_LABELS
 from datarobot_genai.drmcputils.categories import MCPToolCategory
 from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.categories import category_label
+from datarobot_genai.drmcputils.categories import ordered_top_level
 from datarobot_genai.drmcputils.categories import parse_tool_allowlist_header
 from datarobot_genai.drmcputils.categories import resolve_to_tool_names
-from datarobot_genai.drmcputils.categories import ordered_top_level
 from datarobot_genai.drmcputils.categories import resolve_tool_allowlist
 
 
