@@ -19,7 +19,6 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drmcp.core.feature_flags import FeatureFlag
 from datarobot_genai.drmcp.core.lineage.manager import LineageManager
 
 
@@ -69,16 +68,6 @@ def mock_all_telemetry(request: pytest.FixtureRequest) -> Generator[None, None, 
         ),
     ):
         yield
-
-
-@pytest.fixture
-def mock_is_mcp_tools_gallery_support_enabled() -> Iterator[AsyncMock]:
-    with patch.object(
-        FeatureFlag,
-        "is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user",
-        new_callable=AsyncMock,
-    ) as mock_func:
-        yield mock_func
 
 
 @pytest.fixture

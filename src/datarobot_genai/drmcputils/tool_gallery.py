@@ -12,16 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tool gallery utilities — shared between MCP servers and the ARD catalog.
+"""Tool marker classification — shared by request-time filtering and registration.
 
 This module has no fastmcp dependency and no MCP-protocol imports so it can be
 imported by drtools, drmcputils, and drmcpbase alike.
+
+The gallery-*response*-building half of this (``merge_tool_info``,
+``build_tool_gallery_items``, ``TOOL_PROVIDER_LABELS``, ...) moved to global-mcp's
+``tool_gallery/builders.py`` alongside the ``GET /toolGallery/*`` routes it
+serves — global-mcp is now the only server exposing that gallery. What stays here is
+the marker-classification genai's own request-time filtering
+(``drmcpbase.fastmcp_transforms.utils.is_tool_allowed``) and tool registration
+(``drmcp.core.drtools_registry``) depend on independent of any HTTP route.
 """
 
 from typing import Any
-
-from datarobot_genai.drmcputils.categories import categories_for_tool
-from datarobot_genai.drmcputils.categories import category_entry
 
 # Keys present in @tool_metadata(...) that carry UI/gallery metadata. These must be stripped
 # before the metadata dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
@@ -36,42 +41,13 @@ DRTOOLS_PRIVATE_METADATA_KEYS: frozenset[str] = frozenset(
 )
 
 
-# ``auth_provider`` → OAuth identity ``provider_type``, matching the drtools OAuth token
-# lookup (``get_oauth_access_token_with_header_fallback(<provider_type>)``). The connector
-# packages are OAuth-first, so they carry an OAuth provider type; the web-search packages
-# (perplexity, tavily) authenticate with an API key and have no OAuth provider (→ null).
-_OAUTH_PROVIDER_TYPES: dict[str, str] = {
-    "jira": "jira",
-    "confluence": "confluence",
-    "gdrive": "google",
-    "microsoft_graph": "microsoft",
-}
-
-
-# Provider classification reported on each gallery item and exposed as the
-# ``GET /toolGallery/providers/`` filter enum.
+# Provider classification reported on each gallery item (see global-mcp's
+# ``tool_gallery/builders.py``) and exposed as the ``GET /toolGallery/providers/``
+# filter enum.
 # ``datarobot`` = served by the DataRobot API.
 # ``third_party`` = served from outside it (OAuth / API-key connectors, proxied MCPs).
 PROVIDER_DATAROBOT = "datarobot"
 PROVIDER_THIRD_PARTY = "third_party"
-
-# Ordered provider ``value -> display label``. Single source of truth for the providers
-# filter endpoint; the values match what ``build_tool_gallery_items`` emits as ``provider``.
-TOOL_PROVIDER_LABELS: dict[str, str] = {
-    PROVIDER_DATAROBOT: "DataRobot",
-    PROVIDER_THIRD_PARTY: "Third-party",
-}
-
-# ``auth_provider`` → the provider's brand name, reported as each item's
-# ``provider_name``. DataRobot-served tools (no ``auth_provider``) report "DataRobot".
-_PROVIDER_NAMES: dict[str, str] = {
-    "jira": "Atlassian",
-    "confluence": "Atlassian",
-    "gdrive": "Google",
-    "microsoft_graph": "Microsoft",
-    "perplexity": "Perplexity",
-    "tavily": "Tavily",
-}
 
 
 # Marker-classified tools: registrars stamp ``meta.tool_category`` and each marker maps
@@ -115,158 +91,3 @@ def marked_kind(tool_category: str | None) -> dict[str, Any] | None:
     if not tool_category:
         return None
     return _MARKED_TOOL_KINDS.get(tool_category)
-
-
-def _tool_category(tool: Any) -> str | None:
-    """Read the provider's ``meta.tool_category`` marker (None for static drtools tools)."""
-    meta = getattr(tool, "meta", None) or {}
-    return meta.get("tool_category")
-
-
-def is_hosted(tool: Any) -> bool:
-    """Return True for dynamic/proxied tools — resolved at request time, not registered."""
-    kind = marked_kind(_tool_category(tool))
-    return bool(kind and kind["hosted"])
-
-
-def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """Combine a FastMCP ``Tool`` with drtools UI metadata + derived categories.
-
-    Carries the raw ``tool_category`` marker and the tool's own ``description`` so the
-    builder can classify hosted tools (provider/categories) and fall back to the MCP
-    description when there is no curated UI copy.
-
-    Tags come from the drtools registry when available, preserving the declaration
-    order of ``@tool_metadata(tags=(...))``. FastMCP stores tags as a set, so tools
-    outside the registry fall back to a sorted list — the only deterministic order a
-    set can offer.
-    """
-    ui = ui_metadata.get(tool.name, {})
-    ordered_tags = ui.get("tags")
-    return {
-        "name": tool.name,
-        "display_name": ui.get("display_name"),
-        "description_ui": ui.get("description_ui"),
-        "description": getattr(tool, "description", None),
-        "auth_provider": ui.get("auth_provider"),
-        "tags": list(ordered_tags) if ordered_tags else sorted(tool.tags or []),
-        "categories": categories_for_tool(tool.name),
-        "tool_category": _tool_category(tool),
-        "hosted": is_hosted(tool),
-    }
-
-
-def _provider_for(auth_provider: str | None) -> str:
-    """Classify a tool's provider as ``datarobot`` or ``third_party``.
-
-    Third-party = served from outside the DataRobot API: the connector / web-search
-    packages (jira, confluence, gdrive, microsoft_graph, perplexity, tavily — the ones
-    carrying an ``auth_provider``). External proxied HTTP MCPs (not supported yet) would
-    also be third-party once added. Everything else — DataRobot-native tools and DataRobot
-    dynamic deployments — is ``datarobot``.
-    """
-    if auth_provider:
-        return PROVIDER_THIRD_PARTY
-    return PROVIDER_DATAROBOT
-
-
-def _provider_name_for(auth_provider: str | None) -> str:
-    """Return the provider's brand name (``provider_name`` on each gallery item).
-
-    DataRobot-served tools (no ``auth_provider``) are provided by DataRobot; third
-    parties map to their brand (jira/confluence → Atlassian, gdrive → Google, ...).
-    An unmapped ``auth_provider`` falls back to a humanised form of itself so a new
-    connector degrades to something readable instead of nothing.
-    """
-    if not auth_provider:
-        return "DataRobot"
-    return _PROVIDER_NAMES.get(auth_provider, auth_provider.replace("_", " ").title())
-
-
-def _oauth_provider_type_for(auth_provider: str | None) -> str | None:
-    """Describe a tool's third-party auth type.
-
-    - OAuth-first connectors → their OAuth ``provider_type`` (jira/confluence as-is,
-      gdrive→google, microsoft_graph→microsoft).
-    - Other third parties (perplexity, tavily) → ``"api_key"``.
-    - DataRobot-native tools (no ``auth_provider``) → ``None`` (no separate credential).
-    """
-    if not auth_provider:
-        return None
-    return _OAUTH_PROVIDER_TYPES.get(auth_provider, "api_key")
-
-
-def build_tool_gallery_items(tools: list[dict]) -> list[dict]:
-    """Build the tools-gallery JSON response items from merged tool dicts.
-
-    Each dict in *tools* should contain at minimum ``name`` and ``hosted``.
-    All other keys are optional and fall back to safe defaults.
-
-    Args:
-        tools: List of dicts with merged FastMCP tool attrs + drtools metadata.
-
-    Returns
-    -------
-        Serialisable list of tool gallery item dicts.
-    """
-    items: list[dict] = []
-    for t in tools:
-        kind = marked_kind(t.get("tool_category"))
-        if kind is not None:
-            # Marker-classified tool (user/dynamic/proxied): classification comes from
-            # its meta marker, not the static taxonomy or a drtools auth_provider.
-            provider = kind["provider"]
-            provider_name = kind["provider_name"]
-            oauth_provider_type = None
-            # Proxied tools have no category (kind["category"] is None) → [].
-            categories = [kind["category"]] if kind["category"] else []
-            hosted = bool(kind["hosted"])
-        else:
-            auth_provider = t.get("auth_provider")
-            provider = _provider_for(auth_provider)
-            provider_name = _provider_name_for(auth_provider)
-            oauth_provider_type = _oauth_provider_type_for(auth_provider)
-            categories = list(t.get("categories") or [])
-            hosted = bool(t.get("hosted", False))
-        display_name = t.get("display_name") or t["name"]
-        items.append(
-            {
-                "name": t["name"],
-                "display_name": display_name,
-                "ui_display_name": _ui_display_name(display_name),
-                # Prefer the curated UI copy (drtools ``description_ui``); fall back to the
-                # tool's own MCP description (the only copy dynamic/proxied tools carry).
-                "description": t.get("description_ui") or t.get("description") or "",
-                # Declaration order, as merged from the drtools registry — never re-sorted.
-                "tags": list(t.get("tags") or []),
-                "categories": [_category_item(category) for category in categories],
-                "provider": provider,
-                "provider_name": provider_name,
-                "oauth_provider_type": oauth_provider_type,
-                "hosted": hosted,
-            }
-        )
-    return items
-
-
-# Display names read "<group> — <action>" (em dash); ``ui_display_name`` is the action
-# half alone, e.g. "Workload — List bundles" → "List bundles".
-_DISPLAY_NAME_SEPARATOR = " — "
-
-
-def _ui_display_name(display_name: str) -> str:
-    """Strip the group prefix off a display name (identity when there is no separator)."""
-    _, separator, action = display_name.partition(_DISPLAY_NAME_SEPARATOR)
-    return action if separator else display_name
-
-
-def _category_item(category: Any) -> dict[str, str]:
-    """Normalise one category to the ``{name, label, kind}`` dict items report.
-
-    ``merge_tool_info`` already supplies dicts; bare ``dr_*`` strings (the marker
-    buckets, or callers feeding raw names) are expanded here so the response shape
-    is uniform.
-    """
-    if isinstance(category, dict):
-        return category
-    return category_entry(str(category))

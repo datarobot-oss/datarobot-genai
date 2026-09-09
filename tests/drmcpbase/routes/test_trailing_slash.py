@@ -35,7 +35,6 @@ from starlette.testclient import TestClient
 
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
 from datarobot_genai.drmcputils.routes import register_metadata_routes
-from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 
 
 def _ok(_request: Any) -> PlainTextResponse:
@@ -213,19 +212,12 @@ class TestEndToEnd:
             """List."""
             return 1
 
-        register_tool_gallery_routes(mcp)
         register_metadata_routes(mcp)
         return TestClient(mcp.http_app(middleware=[Middleware(TrailingSlashNormalizer)]))
 
     @pytest.mark.parametrize(
         "path",
         [
-            "/toolGallery/tools",
-            "/toolGallery/tools/",
-            "/toolGallery/categories",
-            "/toolGallery/categories/",
-            "/toolGallery/providers",
-            "/toolGallery/providers/",
             "/metadata",
             "/metadata/",
         ],

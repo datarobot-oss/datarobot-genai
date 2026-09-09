@@ -64,7 +64,7 @@ def _tags(item: Any) -> list[str]:
 def _tool_category(tool: Any) -> str | None:
     """Read the provider's ``meta.tool_category`` marker (None for static drtools tools).
 
-    Mirrors ``drmcputils.tool_gallery._tool_category``.
+    Mirrors the private helper behind global-mcp's ``tool_gallery/builders.py``.
     """
     meta = getattr(tool, "meta", None) or {}
     return meta.get("tool_category")

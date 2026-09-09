@@ -23,10 +23,9 @@ This evaluator is per-user: it requires a request-scoped
 and caches results per ``(flag, principal)``. It is the building block for per-user,
 live tool gating (e.g. hiding the sandbox tool unless an entitlement is set).
 
-It is intentionally separate from
-:mod:`datarobot_genai.drmcp.core.feature_flags`, which evaluates the
-application-static MCP-container account against ``drmcpbase`` for dynamic
-tool/prompt registration. The two may be consolidated later.
+It is intentionally separate from the application-static, per-container evaluation
+used for dynamic tool/prompt registration (see ``FeatureFlag.is_enabled`` below vs.
+a per-user evaluator supplied by the caller).
 """
 
 from __future__ import annotations
@@ -126,9 +125,9 @@ class FeatureFlag:
     ) -> FeatureFlag:
         """Evaluate a DR entitlement against the principal owning ``client``.
 
-        ``client`` is required at this layer. If you need the historical
-        "use the application-static client by default" behavior, use
-        ``datarobot_genai.drmcp.core.feature_flags.FeatureFlag`` instead.
+        ``client`` is required at this layer — callers that want the
+        application-static container account rather than a per-user principal
+        pass that client explicitly (e.g. ``drmcp.core.drtools_registry``).
         """
         response = client.post(
             "entitlements/evaluate/",

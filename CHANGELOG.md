@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.34
+- **`drmcp` (user-mcp) no longer serves `/toolGallery/*`.** The tools-gallery HTTP routes (`tools/`, `categories/`, `providers/`) — plus the response-building helpers exclusive to them (`drmcputils/routes/tool_gallery.py`, `drmcputils/category_tree.py`, and the `merge_tool_info`/`build_tool_gallery_items`/`TOOL_PROVIDER_LABELS` half of `drmcputils/tool_gallery.py`) — moved to global-mcp, the only server that still exposes them, same paths (`/toolGallery/{tools,categories,providers}/`). global-mcp was already the only *other* consumer, and this repo had no other caller of the user-mcp routes. `drmcputils/tool_gallery.py` keeps the marker-classification pieces (`DRTOOLS_PRIVATE_METADATA_KEYS`, `marked_kind`, `PROVIDER_DATAROBOT`/`PROVIDER_THIRD_PARTY`) that genai's own request-time filtering and tool registration still depend on. `ordered_top_level` (top-level category ordering) moved from the deleted `category_tree.py` into `drmcputils/categories.py`, alongside the rest of the taxonomy it draws from. `drmcp/core/feature_flags.py` (the static-container-user gallery gate, only used by the removed route) is also deleted.
+
 ## 0.29.33 - 2026-09-08
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
 - Add a minimum version for `langchain-core`: `>=1.3.3`.

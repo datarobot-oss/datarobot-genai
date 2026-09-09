@@ -189,7 +189,6 @@ class TestPromptTemplatesAdd:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures(
-        "mock_is_mcp_tools_gallery_support_enabled",
         "mock_lineage_manager_init",
         "mock_sync_mcp_prompts",
     )

@@ -15,11 +15,9 @@
 """Custom (non-MCP) HTTP routes shared by the DataRobot MCP servers."""
 
 from datarobot_genai.drmcputils.routes.metadata import register_metadata_routes
-from datarobot_genai.drmcputils.routes.tool_gallery import register_tool_gallery_routes
 from datarobot_genai.drmcputils.routes.trailing_slash import TrailingSlashNormalizer
 
 __all__ = [
     "TrailingSlashNormalizer",
     "register_metadata_routes",
-    "register_tool_gallery_routes",
 ]

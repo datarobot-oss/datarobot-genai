@@ -365,7 +365,7 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
 
 # The human-readable name of every category, in UI display order. Single source of
 # truth for the ``label`` on each node of ``GET /toolGallery/categories/`` (see
-# ``drmcputils/category_tree.py``) and, through it, for the legal values of the
+# global-mcp's ``tool_gallery/category_tree.py``) and, through it, for the legal values of the
 # gallery's ``category`` filter param — the keys here are the same ``dr_*`` strings
 # emitted in each tool item's ``categories``.
 #
@@ -615,3 +615,32 @@ def categories_for_tool(tool_name: str) -> list[dict[str, str]]:
     the static taxonomy.
     """
     return [category_entry(name) for name in sorted(TOOL_TO_CATEGORIES.get(tool_name, frozenset()))]
+
+
+# ── top-level ordering ────────────────────────────────────────────────────────
+
+# Every leaf that appears under a parent — a top-level node is anything that is
+# either a parent or not somebody else's child.
+_CHILDREN: frozenset[str] = frozenset(
+    str(child) for children in PARENT_TO_CHILDREN.values() for child in children
+)
+
+
+def _label_sort_key(name: str) -> tuple[str, str]:
+    """Alphabetical-by-label ordering (case-insensitive), value as the tie-breaker."""
+    return (category_label(name).casefold(), name)
+
+
+def ordered_top_level() -> list[str]:
+    """Top-level categories, ordered alphabetically by display label.
+
+    A "top-level" category is a parent or a standalone leaf (one with no parent) —
+    exactly the nodes the ``GET /toolGallery/categories/`` tree (built by
+    global-mcp's ``tool_gallery/category_tree.py``) renders at its root. Derived from
+    the taxonomy (not hard-coded) so a new category flows through to the filter panel
+    by existing. Alphabetical (case-insensitive, value as the tie-breaker) so the
+    response order matches how a picker lists them.
+    """
+    parents = frozenset(str(parent) for parent in PARENT_TO_CHILDREN)
+    tops = [c.value for c in MCPToolCategory if c.value in parents or c.value not in _CHILDREN]
+    return sorted(tops, key=_label_sort_key)

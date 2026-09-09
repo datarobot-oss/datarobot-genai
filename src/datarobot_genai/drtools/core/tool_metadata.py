@@ -73,10 +73,10 @@ def get_tool_ui_metadata() -> dict[str, dict[str, Any]]:
 
     The UI-only keys are stripped before FastMCP registration (see
     ``DRTOOLS_PRIVATE_METADATA_KEYS``), so agents/LLMs never see them. The tools-gallery
-    route re-attaches them by calling this — it is injected into
-    ``register_tool_gallery_routes`` as the ``ui_metadata_provider`` because ``drmcputils``
-    (where the route lives) may not import ``drtools``. Owning this here keeps the metadata
-    keys with the registry that defines them.
+    route (global-mcp's ``register_tool_gallery_routes``) re-attaches them by calling
+    this — it is injected as the ``ui_metadata_provider`` because ``drmcputils``/global-mcp
+    may not import ``drtools``. Owning this here keeps the metadata keys with the registry
+    that defines them.
 
     ``tags`` preserves the declaration order of ``@tool_metadata(tags=(...))`` — FastMCP
     stores tags as a set, so this is the only place the gallery can read them ordered.

@@ -342,11 +342,11 @@ _UNFILTERED_REQUEST_CONTEXT = MCPRequestContext(mode=MCPRequestMode.TOOLS, tool_
 def unfiltered_catalog_provider(mcp: Any) -> Callable[[], Awaitable[Sequence[Tool]]]:
     """Build a catalog provider that ignores the caller's ``x-datarobot-mcp-*`` headers.
 
-    For the describe-the-server REST routes (``/toolGallery/tools/``,
-    ``/toolGallery/categories/``,
-    ``/metadata``), which report what the server registers rather than what the current
-    request may call. ``list_tools(run_middleware=False)`` is not enough on its own —
-    FastMCP still applies registered catalog transforms, and
+    For the describe-the-server REST routes — this package's own ``/metadata``, plus
+    global-mcp's ``/toolGallery/tools/``, ``/toolGallery/categories/`` and
+    ``/toolGallery/toolSets/*`` — which report what the server registers rather than what
+    the current request may call. ``list_tools(run_middleware=False)`` is not enough on
+    its own — FastMCP still applies registered catalog transforms, and
     :class:`DataRobotMCPCatalogTransform` is exactly where the session filter is enforced.
 
     Pre-seeding the per-request context cache with a neutral context is what turns the
