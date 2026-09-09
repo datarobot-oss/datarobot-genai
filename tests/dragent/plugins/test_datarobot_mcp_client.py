@@ -25,11 +25,11 @@ from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 from pydantic import create_model
 
+from datarobot.core.config import MCPServerRef
 from datarobot_genai.core.config import Config
-from datarobot_genai.core.mcp import MCPServerRef
-from datarobot_genai.core.mcp import build_headers
-from datarobot_genai.core.mcp import build_target
-from datarobot_genai.core.mcp.target import build_datarobot_mcp_headers
+from datarobot_genai.core.mcp_target import build_headers
+from datarobot_genai.core.mcp_target import build_target
+from datarobot_genai.core.mcp_target import build_datarobot_mcp_headers
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPClientConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPFunctionGroup
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig

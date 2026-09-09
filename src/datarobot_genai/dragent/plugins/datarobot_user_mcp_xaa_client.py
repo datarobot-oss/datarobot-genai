@@ -26,7 +26,7 @@ from nat.plugins.mcp.client.client_impl import per_user_mcp_client_function_grou
 from pydantic import Field
 from pydantic import HttpUrl
 
-from datarobot_genai.core.mcp.target import build_target
+from datarobot_genai.core.mcp_target import build_target
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client

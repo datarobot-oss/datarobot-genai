@@ -35,8 +35,8 @@ from nat.plugins.mcp.exception_handler import extract_primary_exception
 from pydantic import Field
 from pydantic import model_validator
 
-from datarobot_genai.core.mcp.target import MCPTarget
-from datarobot_genai.core.mcp.target import build_target
+from datarobot_genai.core.mcp_target import MCPTarget
+from datarobot_genai.core.mcp_target import build_target
 
 if TYPE_CHECKING:
     from nat.builder.builder import Builder
