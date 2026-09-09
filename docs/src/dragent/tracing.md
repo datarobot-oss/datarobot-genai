@@ -22,9 +22,9 @@ How to wire DRAgent spans and view tracing in the deployment's **Monitoring -> D
 
 Two independent span sources reach DataRobot, each wired through its own switch:
 
-- **NAT lifecycle spans** — workflow runs, tool calls, and other `IntermediateStep`-derived events NAT emits as `workflow.yaml` executes. Enabled by a block in `workflow.yaml` (see below).
+- **NAT lifecycle spans** — workflow runs, tool calls, and other `IntermediateStep`-derived events NAT emits as `workflow.yaml` executes. Enabled by a block in `workflow.yaml` (see [`workflow.yaml`: enable the NAT exporter](#workflowyaml-enable-the-nat-exporter)).
 - **Framework auto-instrumentor spans** — spans emitted by `opentelemetry-instrumentation-crewai`, `-langchain`, `-llamaindex`, and `-openai`. HTTP-client and OpenAI SDK spans are enabled by calling the core `instrument()`; framework spans are enabled by calling the matching framework `instrument()` (e.g. `datarobot_genai.langgraph.telemetry.instrument`) from agent `register.py`.
-- **Mem0 memory spans** — `update_memory`, `search_memory`, and `delete_memory` spans emitted by the `dr_mem0_memory` NAT provider when `streaming_memory_agent` / `auto_memory_agent` store or retrieve long-term memory. Enabled automatically once the OTel SDK bootstrap from `instrument()` is active (same env vars as above); no extra YAML config.
+- **Mem0 memory spans** — `update_memory`, `search_memory`, and `delete_memory` spans emitted by the `dr_mem0_memory` NAT provider when `streaming_memory_agent` / `auto_memory_agent` store or retrieve long-term memory. Enabled automatically once the OTel SDK bootstrap from `instrument()` is active (same env vars as the NAT exporter); no extra YAML config.
 
 When both the NAT exporter and SDK bootstrap are active, `datarobot_otelcollector` mirrors NAT span hierarchy into the OTel SDK context and the SDK bootstrap wraps the global `TracerProvider` so framework, HTTP, and memory spans nest under the active workflow trace instead of exporting as separate trees.
 
@@ -76,7 +76,7 @@ The per-framework helpers live alongside each framework package:
 | LangChain / LangGraph | `from datarobot_genai.langgraph.telemetry import instrument` |
 | LlamaIndex | `from datarobot_genai.llama_index.telemetry import instrument` |
 
-All of these are idempotent — repeat calls are no-ops — and safe to keep in `register.py` during local development: when the DataRobot deployment environment variables below are not all set, the underlying `bootstrap_otel_provider_for_datarobot()` silently skips installing the SDK provider, so framework spans are discarded instead of erroring.
+All of these are idempotent — repeat calls are no-ops — and safe to keep in `register.py` during local development: when the DataRobot deployment environment variables in [Required environment](#required-environment) are not all set, the underlying `bootstrap_otel_provider_for_datarobot()` silently skips installing the SDK provider, so framework spans are discarded instead of erroring.
 
 ## Required environment
 
@@ -116,7 +116,7 @@ os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
 bootstrap_otel_provider_for_datarobot()
 ```
 
-Then call `instrument()` and the framework `instrument()` as above. View the traces with the
+Then call `instrument()` and the framework `instrument()` as in [`register.py`: call `instrument()`](#registerpy-call-instrument). View the traces with the
 [`dr xp` plugin](https://docs.datarobot.com/en/docs/agentic-ai/cli/experimentation-plugin.html),
 after `dr auth login` in that terminal:
 

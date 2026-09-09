@@ -62,6 +62,14 @@ def _create_datarobot_chat_litellm(config: dict[str, Any]) -> Any:
     from langchain_litellm import ChatLiteLLM  # noqa: PLC0415
 
     config.pop("assume_native_tool_calling_when_unmapped", None)
+    # ChatLiteLLM's pydantic model has no `base_url` field (it's `api_base`) and is
+    # extra="ignore", so a `base_url` key here is silently dropped rather than raising --
+    # the client then falls back to litellm's default endpoint for the custom provider
+    # instead of the caller's real one. get_external_llm/get_datarobot_*_llm build this
+    # dict from an OpenAI-style config (`base_url`), so translate it here rather than at
+    # every call site.
+    if "base_url" in config:
+        config["api_base"] = config.pop("base_url")
     if config.get("streaming"):
         config["stream_options"] = {"include_usage": True}
     else:

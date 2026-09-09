@@ -148,6 +148,20 @@ def test_get_external_llm_merges_parameters() -> None:
     assert llm.temperature == 0.7
 
 
+def test_get_external_llm_translates_base_url_to_api_base() -> None:
+    """Regression test: ChatLiteLLM has no `base_url` field (only `api_base`) and is
+    extra="ignore", so an untranslated `base_url` silently drops -- the client then
+    falls back to litellm's default endpoint for the custom provider instead of the
+    caller's real one, breaking LLM Gateway auth for any LangChain-framework NAT
+    agent using `datarobot-llm-component` with an explicit `base_url` (its config
+    class is `OpenAIModelConfig`-derived, so its field is `base_url`, not `api_base`).
+    """
+    llm = langgraph_llm.get_external_llm(
+        parameters={"base_url": "https://example.test/genai/llmgw"}
+    )
+    assert llm.api_base == "https://example.test/genai/llmgw"
+
+
 def test_get_llm_routes_to_gateway() -> None:
     config = MagicMock()
     config.get_llm_type.return_value = LLMType.GATEWAY

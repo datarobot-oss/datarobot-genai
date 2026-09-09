@@ -105,7 +105,7 @@ Follow [quickstart.ipynb](e2e-tests/examples/quickstart.ipynb) to walk through s
 
 ## In-depth documentation
 
-See [docs/README.md](docs/README.md) for guides on every framework and feature in `datarobot-genai`. The published site is at [datarobot-oss.github.io/datarobot-genai](https://datarobot-oss.github.io/datarobot-genai/).
+See [docs/README.md](docs/README.md) for in-repo guides on every framework and feature in `datarobot-genai`. The published site is at [genai.datarobot.com](https://genai.datarobot.com/).
 
 # Develop
 
@@ -116,12 +116,12 @@ pre-commit install
 task test
 ```
 
-### Semantic versioning
+## Semantic versioning
 
 Bump the patch version and add an entry to `CHANGELOG.md` for each library change.
 Bump the minor version for backward-incompatible changes.
 
-### TestPyPI
+## TestPyPI
 
 Comment `/build` on a PR to build and publish a dev version of the package to TestPyPI.
 
@@ -164,7 +164,7 @@ After installation, continue with these resources:
 
 - Pick a framework guide from [docs/README.md](docs/README.md) and start from the matching sample under `e2e-tests/dragent/`.
 - Read [DRAgent CLI](docs/src/dragent/README.md) for `serve`, `run`, and `query`.
-- Browse the [API reference](https://datarobot-oss.github.io/datarobot-genai/api/) on the published docs site.
+- Browse the [API reference](https://genai.datarobot.com/api/) on the published docs site.
 
 # Publishing
 

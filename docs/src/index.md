@@ -56,7 +56,7 @@ For shared **LLM routing** (gateway vs deployment vs NIM vs external), see [LLM 
 For native **primary/fallback failover** changes in an existing component, see [LLM provider fallback (router)](fallback.md).
 For NAT automatic memory with Mem0, see [nat/memory.md](nat/memory.md).
 
-**Note:** With NAT, edit **`workflow.yaml`** as the contract. Host workflows with DRAgent for the supported path. The same YAML can still load in process without DRAgent (legacy); target DRAgent for new work.
+**Note:** With NAT, edit **`workflow.yaml`** as the contract. Host workflows with DRAgent for the supported path. The same YAML can still load in process without DRAgent (legacy); prefer DRAgent for supported deployments.
 
 For a minimal custom agent without a framework wrapper, start from [`e2e-tests/dragent/base/myagent.py`](../e2e-tests/dragent/base/myagent.py) and its [`workflow.yaml`](../e2e-tests/dragent/base/workflow.yaml).
 
@@ -66,7 +66,7 @@ The standalone CLI runs and queries DRAgent workflows over NAT. See [docs/dragen
 
 ## Configuration reference
 
-The examples and `workflow.yaml` expect the variables below; see [LLM configuration](llm.md) for the full table and details.
+The examples and `workflow.yaml` expect the variables in the configuration reference table; see [LLM configuration](llm.md) for the full table and details.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -85,7 +85,7 @@ Agentic tools and credential/auth resolution for MCP servers and in-process agen
 
 ## Troubleshooting and best practices
 
-Symptom-based troubleshooting and recommended patterns live in the [documentation index](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md#troubleshooting). Framework-specific caveats are linked from the guides table above.
+Symptom-based troubleshooting and recommended patterns live in the [documentation index](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md#troubleshooting). Framework-specific caveats are linked from the guides table.
 
 ## License
 

@@ -223,7 +223,7 @@ on the A2A agent card.
 | `token_exchange.trusted_issuer` | Yes | — | Org-level Authorization Server issuer URL. |
 | `token_exchange.audience` | Yes | — | Resource AS base URL (where ID-JAG is fetched from). |
 | `token_request.token_url` | Yes | — | Token endpoint of the resource AS. |
-| `token_request.audience` | Yes | — | Final resource identifier for the agent. Advertised on the agent card **and enforced on inbound requests** — see below. |
+| `token_request.audience` | Yes | — | Final resource identifier for the agent. Advertised on the agent card **and enforced on inbound requests** — see [Inbound audience validation](#inbound-audience-validation). |
 | `token_request.scopes` | No | `["read_data"]` | Scopes the caller must request. |
 
 > **Note:** `grant_type` URNs are injected automatically by the generator — do not
@@ -236,7 +236,7 @@ on the A2A agent card.
 The serving agent **enforces** `token_request.audience`, not just publishes it. The gateway
 validates an incoming JWT and forwards it as-is, so without this a token minted for a
 *different* agent would be accepted and exchanged here. It is an audience check, not an
-authentication check: a caller with no IdP token — using a DataRobot API token, Option 1 above
+authentication check: a caller with no IdP token — using a DataRobot API token, [Option 1: DataRobot API key authentication](#option-1-datarobot-api-key-authentication)
 — passes through.
 
 | Condition | Result |

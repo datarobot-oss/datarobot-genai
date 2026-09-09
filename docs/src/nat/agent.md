@@ -64,4 +64,4 @@ Other samples in the repo use different **`workflow._type`** values for LangGrap
 
 ---
 
-**Legacy note:** a Python-only path can load this YAML without DRAgent. Prefer **`nat dragent run`** / **`nat dragent serve`** and the file above; that path is what this documentation covers and extends.
+**Legacy note:** a Python-only path can load this YAML without DRAgent. Prefer **`nat dragent run`** / **`nat dragent serve`** and the canonical `workflow.yaml` example; that path is what this documentation covers and extends.

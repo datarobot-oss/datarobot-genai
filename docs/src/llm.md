@@ -84,7 +84,7 @@ from datarobot_genai.langgraph.llm import get_external_llm
 llm = get_external_llm("gpt-4o-mini")
 ```
 
-To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `LLM_NIM_DEPLOYMENT_ID` (see **get_llm()** below).
+To reach this route via **`get_llm()`**, turn the gateway off and unset both `LLM_DEPLOYMENT_ID` and `LLM_NIM_DEPLOYMENT_ID` (see [get_llm() (environment-driven routing)](#get_llm-environment-driven-routing)).
 
 ## LLM provider fallback (router)
 
@@ -121,7 +121,7 @@ Lower-level helpers live in **`datarobot_genai.core.llm_parameters`** (`default_
 
 ## `get_llm()` (environment-driven routing)
 
-Prefer the explicit **`get_*`** helpers above when the route is known. Use **`get_llm()`** as a single entry point for one code path steered entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
+Prefer the explicit **`get_*`** helpers when the route is known. Use **`get_llm()`** as a single entry point for one code path steered entirely with configuration. It inspects settings and delegates to the same underlying helpers as those sections.
 
 Routing order:
 

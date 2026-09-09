@@ -1,6 +1,6 @@
 # DataRobot GenAI library documentation
 
-Documentation for building agents with **LangGraph**, **LlamaIndex**, **CrewAI**, and **NAT** on DataRobot. The published site is at [datarobot-oss.github.io/datarobot-genai](https://datarobot-oss.github.io/datarobot-genai/).
+Documentation for building agents with **LangGraph**, **LlamaIndex**, **CrewAI**, and **NAT** on DataRobot. The published site is at [genai.datarobot.com](https://genai.datarobot.com/).
 
 Source files live under [`src/`](src/). Use the [e2e samples](../e2e-tests/dragent/) as the source of truth for configuration and runtime wiring.
 
@@ -17,7 +17,7 @@ Source files live under [`src/`](src/). Use the [e2e samples](../e2e-tests/drage
 - [DRAgent CLI](src/dragent/README.md) and [tracing](src/dragent/tracing.md)
 - [drtools](src/drtools/README.md) — agentic tools and auth resolution
 - [Design notes](src/design/nat-1.6-streaming.md)
-- [API reference](https://datarobot-oss.github.io/datarobot-genai/api/) (generated from source)
+- [API reference](https://genai.datarobot.com/api/) (generated from source)
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ Core environment variables are listed in the [configuration reference](src/index
 
 ## Troubleshooting
 
-Use the table below to find documentation for common symptoms:
+Use the following table to find documentation for common symptoms:
 
 | Symptom | Where to look |
 |---|---|
