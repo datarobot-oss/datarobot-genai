@@ -183,14 +183,10 @@ def resolve_auth_provider_name(
 ) -> str | AuthenticationRef | None:
     """Decide which auth provider this block uses, from the two places it may be set.
 
-    ``workflow.yaml``'s ``server.auth_provider`` and the ref's ``auth_provider`` (from
-    ``<name>_mcp_auth_provider``) are two sources for one value. Setting both is an
-    error rather than a precedence rule -- there is no correct answer to pick, and
-    picking one silently reintroduces exactly the kind of hidden layer this design
-    removes.
-
-    ``model_fields_set`` is what distinguishes an explicit YAML value from the field's
-    default, which is non-``None`` and so otherwise always looks set.
+    ``workflow.yaml``'s ``server.auth_provider`` and ``<name>_mcp_auth_provider`` are two
+    sources for one value; setting both is an error rather than a precedence rule.
+    ``model_fields_set`` distinguishes an explicit YAML value from the non-``None``
+    default.
     """
     yaml_set = "auth_provider" in server.model_fields_set
     ref_set = ref.auth_provider is not None
@@ -285,9 +281,8 @@ async def datarobot_mcp_client_function_group(
             "MCP server %r is a local stdio process: %s", config.server.name, config.server.command
         )
     else:
-        # Resolved once, at build, for this block alone. Raising here fails the build
-        # naming the server, instead of yielding a client pointed at a dead port carrying
-        # no credentials -- which is what an unresolvable address used to produce.
+        # Resolved once, at build. Raising here fails the build naming the server,
+        # rather than yielding a client pointed at a dead port.
         app_config = resolve_config()
         target = build_target(
             resolve_server_ref(config.server, app_config),

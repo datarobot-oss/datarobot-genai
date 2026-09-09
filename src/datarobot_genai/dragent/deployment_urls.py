@@ -314,8 +314,7 @@ def workload_mcp_url_from_endpoint(workload_endpoint: str, path: str = MCP_PATH)
 def build_workload_mcp_url(endpoint: str, workload_id: str, path: str = MCP_PATH) -> str:
     """Construct the MCP URL for a DataRobot workload, without asking the platform.
 
-    A workload is served under one of two route shapes, and which applies is a property
-    of the *enclave* rather than of the workload being addressed:
+    Two route shapes, chosen by the enclave rather than by the workload addressed:
 
     ====================  ==========================================================
     Gateway               Route
@@ -324,24 +323,13 @@ def build_workload_mcp_url(endpoint: str, workload_id: str, path: str = MCP_PATH
     Public API            ``{endpoint}/endpoints/workloads/{id}/{path}``
     ====================  ==========================================================
 
-    ``DR_WORKLOAD_EXTERNAL_URL_HOST`` is the signal, the same one
-    ``drmcp.core.runtime_identity.RuntimeIdentity.get_gateway_type`` uses: present means
-    the Envoy gateway, absent means the public API. Only the *host* is read from this
-    process's own variables -- it is shared by every workload on the enclave -- while
-    the id comes from the caller. ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``, this process's
-    own route, is what confirms the ``/workloads/{id}`` shape the id substitutes into.
+    ``DR_WORKLOAD_EXTERNAL_URL_HOST`` picks between them, the same signal
+    ``drmcp.core.runtime_identity.RuntimeIdentity.get_gateway_type`` uses -- so a change
+    to either shape has to be made in both places. Only the host is read from this
+    process; the id comes from the caller, and the host is shared across the enclave.
 
-    That the same rule lives in ``runtime_identity`` is deliberate, not an oversight:
-    that module restates these patterns precisely so ``drmcp`` and ``dragent`` stay
-    independently evolvable, and this is the client-side half of the same trade. A
-    change to either route shape has to be made in both places.
-
-    Two cases this cannot compose, both of which want an explicit ``<name>_mcp_url``:
-
-    * the target workload is on a **different enclave**, so the shared host is wrong;
-    * this process is **not itself behind the Envoy gateway** (a deployment, or local
-      development) while the target workload is -- there is no host to read, so the
-      public-API shape is assumed.
+    Use an explicit ``<name>_mcp_url`` when the target is on a different enclave, or
+    when this process is not itself behind the Envoy gateway while the target is.
 
     Parameters
     ----------
@@ -355,7 +343,7 @@ def build_workload_mcp_url(endpoint: str, workload_id: str, path: str = MCP_PATH
     Returns
     -------
     str
-        The composed MCP URL. Performs no network call.
+        The composed MCP URL. No network call.
     """
     if host := _external_workload_host():
         return workload_mcp_url_from_endpoint(f"{host}/workloads/{workload_id}", path)
