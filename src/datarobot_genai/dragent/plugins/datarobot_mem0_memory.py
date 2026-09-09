@@ -20,13 +20,9 @@ interface so ``auto_memory_agent`` can store and retrieve long-term memory.
 Backend selection is driven by config:
 
 * ``agent_memory_space_id`` → the DataRobot Memory Service's mem0-compatible API,
-  reached at ``{endpoint}/memory/{agent_memory_space_id}/`` and authenticated
-  with the DataRobot API token. The endpoint is the control hub
-  (``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``), not the enclave
-  API gateway. Agent memory spaces are provisioned on the control hub (Pulumi /
-  ``task deploy-dev``); the enclave host is only for the agent card registry L2
-  cache. See PBMP-7431 ("Agentic Memory Service"), section "Connect to DataRobot
-  memory" / "API Layout".
+  reached at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}/`` and
+  authenticated with the DataRobot API token. See PBMP-7431 ("Agentic Memory
+  Service"), section "Connect to DataRobot memory" / "API Layout".
 * ``api_key`` (or ``MEM0_API_KEY``) → Mem0's hosted SaaS at
   ``https://api.mem0.ai``. Used when no ``agent_memory_space_id`` is configured.
 
@@ -145,10 +141,8 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 
     * If ``agent_memory_space_id`` is set, requests go to the DataRobot Memory
       Service's mem0-compatible endpoint at
-      ``{endpoint}/memory/{agent_memory_space_id}/`` authenticated with
-      ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``). The endpoint is the
-      control hub (``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``),
-      not the enclave API gateway used by the agent card registry L2 cache.
+      ``{datarobot_endpoint}/memory/{agent_memory_space_id}/`` authenticated with
+      ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``).
     * Otherwise, ``api_key`` (or ``MEM0_API_KEY``) is used against Mem0's
       hosted SaaS (``host`` defaults to ``https://api.mem0.ai``).
     """
@@ -178,8 +172,7 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
         description=(
             "DataRobot API base URL used to build the mem0 endpoint when "
             "``agent_memory_space_id`` is set (e.g. ``https://app.datarobot.com/api/v2``). "
-            "When unset, uses ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT`` "
-            "(control hub). Agent memory does not use the enclave API gateway."
+            "Defaults to the ``DATAROBOT_ENDPOINT`` env var."
         ),
     )
     datarobot_api_token: str | None = Field(
@@ -393,14 +386,7 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     """Build the DataRobot Memory Service mem0 endpoint for an agent memory space.
 
     Per PBMP-7431 ("API Layout"), the DR memory service exposes a
-    mem0-compatible API at ``{endpoint}/memory/{agent_memory_space_id}``.
-
-    Endpoint resolution, most specific first. Agent memory stays on the
-    control hub — unlike the agent card registry L2 cache, which talks to the
-    enclave memory service when ``DR_WORKLOAD_EXTERNAL_URL_HOST`` is set:
-
-    1. Explicit ``config.datarobot_endpoint``.
-    2. ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
+    mem0-compatible API at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}``.
 
     No trailing slash: mem0's ``AsyncMemoryClient._validate_api_key`` builds
     its ping URL as ``f"{host}/v1/ping/"`` via raw string concat (it does not

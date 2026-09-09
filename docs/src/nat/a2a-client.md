@@ -120,22 +120,16 @@ On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in 
 
 While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
 
-On enclave workloads (both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` set, with `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
+On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
 
 #### Registry environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry lookups and enclave L2 memory API calls. |
-| `DATAROBOT_ENDPOINT` | Yes | Control-hub API base URL for central registry lookups, e.g. `https://app.datarobot.com/api/v2`. |
-| `DR_WORKLOAD_EXTERNAL_URL_HOST` | Enclave L2 | Hostname of the enclave API gateway (injected on workload deployments). |
-| `DR_WORKLOAD_EXTERNAL_URL_PREFIX` | Enclave L2 | Path prefix routed to this workload on the enclave gateway. |
-| `WORKLOAD_ID` | Enclave L2 | Platform-injected workload ID; scopes the shared L2 MemorySpace via `deduplication_key`. |
-| `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
+| `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry authentication. |
+| `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. || `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
-
-Enclave L2 variables are required only when running behind the enclave API gateway; other runtimes use L1 caching only.
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
 files, file secrets, Runtime Parameters, and Pulumi config.
