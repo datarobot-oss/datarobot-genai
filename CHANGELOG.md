@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.34
+- Docs: added [`docs/README.md`](docs/README.md) hub; applied DataRobot style guide across guides; restructured root README with prerequisites, troubleshooting, and cross-links.
+
 ## 0.29.33 - 2026-09-08
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
 - Add a minimum version for `langchain-core`: `>=1.3.3`.

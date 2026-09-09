@@ -107,8 +107,7 @@ function_groups:
     auth_provider: okta_auth
 ```
 
-> [!NOTE]
-> When using the registry the RPC base URL is derived from the card's advertised `url` — you do not need to specify it.
+> **Note:** When using the registry the RPC base URL is derived from the card's advertised `url` — no separate URL is required.
 
 #### Batch fetching
 
@@ -161,7 +160,7 @@ Exactly one of the three fields must be set.
 | `RuntimeError: Failed to fetch agent card from …` | Direct-fetch URL unreachable or auth failed. | Verify `url` and `auth_provider` configuration. |
 | `AgentCardRegistryError: DataRobot API token is required` | `DATAROBOT_API_TOKEN` not set. | Export the variable or add it to `.env`. |
 | `AgentCardRegistryError: DataRobot API endpoint is required` | `DATAROBOT_ENDPOINT` not set. | Export the variable or add it to `.env`. |
-| `AgentCardRegistryError: … HTTP 401` | Token invalid or expired. | Regenerate your API token in the DataRobot console. |
+| `AgentCardRegistryError: … HTTP 401` | Token invalid or expired. | Regenerate the API token in the DataRobot console. |
 | `AgentCardRegistryError: No agent card found …` | The deployment or workload is not in the registry. | Confirm the agent is running and has an A2A agent card published. |
 | `ValueError: … 'url' … or 'registry' …, not both` | Both fields set. | Remove one — they are mutually exclusive. |
 | `ValueError: Specify exactly one of 'deployment_id', 'external_id' or 'workload_id' …` | More than one identifier set inside `registry`. | Keep only the one that identifies the agent. |

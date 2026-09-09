@@ -1,6 +1,6 @@
-# Using DataRobot Prompt Templates with LangGraph
+# Using DataRobot prompt templates with LangGraph
 
-The `datarobot_genai.langgraph.prompt` module converts a DataRobot prompt template version into a LangChain `ChatPromptTemplate` so you can use centrally managed prompts in your agents.
+The `datarobot_genai.langgraph.prompt` module converts a DataRobot prompt template version into a LangChain `ChatPromptTemplate` for centrally managed prompts in agents.
 
 ## Usage
 

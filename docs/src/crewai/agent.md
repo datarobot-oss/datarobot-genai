@@ -14,19 +14,19 @@
   ~ limitations under the License.
 -->
 
-# CrewAI sample: what you configure
+# CrewAI sample: configuration surface
 
 Aligned with [`e2e-tests/dragent/crewai/`](../../e2e-tests/dragent/crewai/).
 
 ## `workflow.yaml`
 
-| Piece | What you see |
+| Piece | Field |
 |---|---|
 | **`workflow._type: crewai_agent`** | DRAgent runs the CrewAI integration. |
 | **`llms`** + **`workflow.llm_name`** | Same naming pattern as other samples. |
 
 ## `myagent.py`
 
-You define **agents**, **tasks**, the **crew**, and the **kickoff input mapping** (placeholders like `{topic}` / `{chat_history}` in task text must match the keys you return). The sample shows history opt-in and optional tools.
+Define **agents**, **tasks**, the **crew**, and the **kickoff input mapping** (placeholders like `{topic}` / `{chat_history}` in task text must match the returned keys). The sample shows history opt-in and optional tools.
 
 [`register.py`](../../e2e-tests/dragent/crewai/register.py) registers the package with DRAgent.

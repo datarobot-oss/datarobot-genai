@@ -16,5 +16,5 @@
 
 # Caveats
 
-- **`POST /chat/completions` with `stream=true`**: streamed chunks are **not** in the standard OpenAI Chat Completions delta shape&mdash;do not point a strict OpenAI client at streaming here unless you accept that mismatch.
-- **Non-streaming `POST /generate`**: the JSON body may **not** match what a minimal “single AG-UI blob” client expects when the workflow behaves like a chat-completions response&mdash;validate against your client assumptions.
+- **`POST /chat/completions` with `stream=true`**: streamed chunks are **not** in the standard OpenAI Chat Completions delta shape&mdash;do not point a strict OpenAI client at streaming here unless that mismatch is acceptable.
+- **Non-streaming `POST /generate`**: the JSON body may **not** match what a minimal “single AG-UI blob” client expects when the workflow behaves like a chat-completions response&mdash;validate against client assumptions.

@@ -16,15 +16,15 @@
 
 # Human in the loop (LangGraph + DRAgent)
 
-This page describes how **interrupt / resume** works when you use LangGraph inside `datarobot_genai` and the e2e DRAgent sample.
+This page describes how **interrupt / resume** works with LangGraph inside `datarobot_genai` and the e2e DRAgent sample.
 
-## Why you need a checkpointer
+## Why a checkpointer is required
 
 LangGraph only **remembers** a paused run if the compiled graph was built with a [`Checkpointer`](https://langchain-ai.github.io/langgraph/reference/checkpoints/). The `LangGraphAgent` constructor accepts **`checkpointer=...`** and passes it to `StateGraph.compile(...)`.
 
 ### Passing a checkpointer
 
-`LangGraphAgent` forwards whatever you pass as `checkpointer=` to `StateGraph.compile(...)` (see [`langgraph/agent.py`](../../src/datarobot_genai/langgraph/agent.py)). If you omit it, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
+`LangGraphAgent` forwards the `checkpointer=` argument to `StateGraph.compile(...)` (see [`langgraph/agent.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/src/datarobot_genai/langgraph/agent.py)). If omitted, the graph compiles **without** persistence and `interrupt()` / resume will not restore prior state.
 
 ```mermaid
 flowchart TD
@@ -60,13 +60,13 @@ When the graph reports an `__interrupt__` update, streaming emits a **`CUSTOM`**
 
 ## Compile-time breakpoints (optional)
 
-You can also pass **`interrupt_before`** / **`interrupt_after`** when constructing the agent; they are forwarded to `StateGraph.compile(...)`, for example to pause *before* a node without custom `interrupt()` code in that node.
+Pass **`interrupt_before`** / **`interrupt_after`** when constructing the agent; they are forwarded to `StateGraph.compile(...)`, for example to pause *before* a node without custom `interrupt()` code in that node.
 
 ## DRAgent / NAT: passing the checkpointer (example from e2e-tests)
 
 The minimal [`register.py`](../../e2e-tests/dragent/langgraph/register.py) builds `MyAgent(..., checkpointer=HITL_E2E_CHECKPOINTER)`.
 
-A **new** `InMemorySaver()` on every request would **drop** checkpoint state, so the interrupt response and the resume request would not see the same graph state. The sample uses a **module-level shared** `InMemorySaver` for e2e only. Real deployments should use a **durable** checkpointer appropriate to your environment.
+A **new** `InMemorySaver()` on every request **drops** checkpoint state, so the interrupt response and the resume request would not see the same graph state. The sample uses a **module-level shared** `InMemorySaver` for e2e only. Production deployments need a **durable** checkpointer appropriate to the environment.
 
 ## Further reading and tests
 
@@ -77,7 +77,7 @@ A **new** `InMemorySaver()` on every request would **drop** checkpoint state, so
 
 Env reference for the LLM: [LLM configuration (shared)](../llm.md).
 
-## Sequence Diagram
+## Sequence diagram
 ```mermaid
 sequenceDiagram
     participant UI as AG-UI
