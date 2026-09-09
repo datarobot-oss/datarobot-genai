@@ -20,7 +20,7 @@ handed back a connection dict with credentials already baked in. That is why an 
 could reach only one MCP server, why the way you *addressed* a server decided which
 credentials it received, and why a second configured address was discarded in silence.
 
-It is now a plain shape with no sources and no behaviour. The environment read belongs
+It is now a plain shape with no sources and no behavior. The environment read belongs
 to the application's own config; addresses are declared as ``MCP_SERVERS`` entries and
 resolved through :mod:`datarobot_genai.core.mcp.target`:
 

@@ -151,7 +151,7 @@ def resolve_server_ref(server: DataRobotMCPServerConfig, app_config: Any) -> MCP
     Declaring a server in *both* places is an error rather than a precedence rule. It is
     only reachable when the block explicitly names a server, because the default name
     (``default``) is not a name anyone chose -- the application templates set
-    ``MCP_SERVER_PORT`` unconditionally, so treating that synthesised ``default`` as a
+    ``MCP_SERVER_PORT`` unconditionally, so treating that synthesized ``default`` as a
     competing definition would break a stock template the moment it added an inline URL.
     """
     if server.url is None:

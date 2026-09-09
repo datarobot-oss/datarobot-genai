@@ -411,7 +411,7 @@ class TestBuildHeaders:
         assert headers["Authorization"] == "Bearer tok"
 
     def test_each_call_builds_a_fresh_dict_so_requests_cannot_share_headers(self):
-        # The memoised `server_config` property this replaces was copied between
+        # The memoized `server_config` property this replaces was copied between
         # requests, which is how one request's headers reached another's connection.
         target = self._target("deployment")
         first = build_headers(target, forwarded={"x-datarobot-entity-id": "one"})
@@ -478,7 +478,7 @@ class TestAMixedFleetIsCredentialUniform:
 class TestCredentialsAreDeclaredNotInferred:
     """The address decides the URL, `auth_provider` the credentials.
 
-    The derived defaults reproduce the previous behaviour, so a configuration that
+    The derived defaults reproduce the previous behavior, so a configuration that
     never sets `auth_provider` cannot notice the change.
     """
 
