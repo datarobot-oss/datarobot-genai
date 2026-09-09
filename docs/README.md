@@ -40,11 +40,12 @@ For local development, also install [`uv`](https://docs.astral.sh/uv/), [Task](h
    pip install "datarobot-genai[langgraph]"
    ```
 
-2. Export DataRobot credentials:
+2. Export DataRobot credentials and select a gateway model:
 
    ```bash
    export DATAROBOT_API_TOKEN=YOUR_DATAROBOT_API_TOKEN
    export DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
+   export LLM_DEFAULT_MODEL=YOUR_GATEWAY_MODEL_ID
    ```
 
 3. Follow a framework guide or the [quickstart notebook](../e2e-tests/examples/quickstart.ipynb).

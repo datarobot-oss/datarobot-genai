@@ -29,7 +29,7 @@ A toolkit for building agents on DataRobot.
 - **AG-UI integration**&mdash;agents expose a standard **AG-UI** event stream (`RunAgentInput` in, lifecycle + text + tool-call events out), so UIs and the DataRobot platform render runs consistently without bespoke adapters per framework.
 - **Multi-agent systems out of the box**&mdash;first-class patterns for **planner/writer crews**, **LangGraph** multi-node graphs, and **LlamaIndex** `AgentWorkflow` handoffs; wrap them with one helper and keep the same streaming contract.
 - **Orchestration**&mdash;build agents from universal pieces in the low-code `workflow.yaml` interface. Combine and reuse LLMs, tools, agents, and evaluators. The design stays compatible with and draws inspiration from [NeMo Agentic Toolkit](https://github.com/NVIDIA/NeMo-Agent-Toolkit).
-- **Serving and evaluating with DRAgent**&mdash;run a front-end server to plug an agent into a real-world application. DRAgent supports distributed tracing, generation and evaluation endpoints, async generations, and two-way communication over WebSockets.
+- **Serving and evaluating with DRAgent**&mdash;run a front-end server to plug an agent into a real-world application. DRAgent supports distributed tracing, generation and evaluation endpoints, and async generations.
 
 # Table of contents
 
