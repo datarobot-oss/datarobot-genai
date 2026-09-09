@@ -1,6 +1,9 @@
 # Default: Buzok owns everything
 * @datarobot-oss/buzok
 
+# Markdown files: docs review required
+**/*.md @datarobot-oss/buzok @datarobot/api-docs
+
 # Shared files: either Buzok or MCP can approve
 /.github/CODEOWNERS @datarobot-oss/buzok @datarobot-oss/mcp
 /CHANGELOG.md @datarobot-oss/buzok @datarobot-oss/mcp
@@ -12,7 +15,7 @@
 # shared dragent e2e suite, so either team can approve.
 /e2e-tests/dragent_tests/otel_helpers.py @datarobot-oss/buzok @datarobot-oss/mcp
 /e2e-tests/dragent_tests/test_otel_metrics.py @datarobot-oss/buzok @datarobot-oss/mcp
-/README.md @datarobot-oss/buzok @datarobot-oss/mcp
+/README.md @datarobot-oss/buzok @datarobot-oss/mcp @datarobot/api-docs
 /.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
 /.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
 /scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
