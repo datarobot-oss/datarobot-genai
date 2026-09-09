@@ -22,6 +22,7 @@ from typing import cast
 
 from datarobot.core.config import DEFAULT_MCP_SERVER_NAME
 from datarobot.core.config import NO_MCP_AUTH_PROVIDER
+from datarobot.core.config import MCPServerKind
 from datarobot.core.config import MCPServerRef
 from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.component_ref import AuthenticationRef
@@ -148,27 +149,29 @@ def resolve_server_ref(server: DataRobotMCPServerConfig, app_config: Any) -> MCP
     and `transport`/`custom_headers` on the block travel with it. Otherwise the block's
     ``name`` is resolved against the environment-configured fleet.
 
-    Declaring a server in *both* places is an error rather than a precedence rule. It is
-    only reachable when the block explicitly names a server, because the default name
-    (``default``) is not a name anyone chose -- the application templates set
-    ``MCP_SERVER_PORT`` unconditionally, so treating that synthesized ``default`` as a
-    competing definition would break a stock template the moment it added an inline URL.
+    Declaring a server in *both* places is an error rather than a precedence rule.
+
+    One exemption: a block that names no server addresses ``default``, which templates
+    configure unconditionally via ``MCP_SERVER_PORT`` for their bundled local server.
+    An inline URL may replace that, but not a ``default`` someone pointed at a
+    deployment, workload or URL of their own.
     """
     if server.url is None:
         return cast(MCPServerRef, app_config.resolve_mcp_server(server.name))
 
+    try:
+        existing: MCPServerRef | None = app_config.resolve_mcp_server(server.name)
+    except LookupError:
+        existing = None
+
     named_explicitly = "name" in server.model_fields_set
-    if named_explicitly:
-        try:
-            app_config.resolve_mcp_server(server.name)
-        except LookupError:
-            pass
-        else:
-            raise ValueError(
-                f"MCP server {server.name!r} is defined twice: `url` is set on the "
-                f"workflow.yaml block and {server.name}_mcp_* is set in the environment. "
-                f"There is no precedence between them -- remove one."
-            )
+    if existing is not None and (named_explicitly or existing.kind is not MCPServerKind.LOCAL):
+        source = f"{server.name}_mcp_*" if named_explicitly else "the singular MCP_* variables"
+        raise ValueError(
+            f"MCP server {server.name!r} is defined twice: `url` is set on the "
+            f"workflow.yaml block and {source} in the environment. There is no "
+            f"precedence between them -- remove one."
+        )
 
     return MCPServerRef(
         name=server.name,

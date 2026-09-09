@@ -235,17 +235,38 @@ class TestInlineUrlIsSupported:
                     Config(),
                 )
 
-    def test_an_unnamed_inline_block_does_not_collide_with_the_synthesised_default(self):
-        """MCP_SERVER_PORT synthesises `default`, and templates set it unconditionally.
+    def test_an_unnamed_inline_block_may_replace_the_bundled_local_default(self):
+        """MCP_SERVER_PORT synthesizes `default`, and templates set it unconditionally.
 
         Treating that as a competing definition would break a stock template the moment
-        it added an inline URL, so the conflict check only fires on an explicit `name`.
+        it added an inline URL.
         """
         with patch.dict(os.environ, {"MCP_SERVER_PORT": "9000"}, clear=True):
             ref = resolve_server_ref(
                 DataRobotMCPServerConfig(url="https://mcp.example.com/mcp"), Config()
             )
         assert ref.url == "https://mcp.example.com/mcp"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {"MCP_DEPLOYMENT_ID": DEPLOYMENT_ID},
+            {"MCP_WORKLOAD_ID": DEPLOYMENT_ID},
+            {"EXTERNAL_MCP_URL": "https://configured.example.com/mcp"},
+        ],
+        ids=["deployment", "workload", "url"],
+    )
+    def test_an_unnamed_inline_block_does_not_silently_replace_a_remote_default(self, env):
+        """The exemption covers the bundled local server, not a `default` someone chose.
+
+        These three were dropped without a word, which is the failure the exemption was
+        never meant to cover.
+        """
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="defined twice"):
+                resolve_server_ref(
+                    DataRobotMCPServerConfig(url="https://mcp.example.com/mcp"), Config()
+                )
 
 
 class TestOneSharedAuthProviderServesTheWholeFleet:

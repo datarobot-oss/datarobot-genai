@@ -1,6 +1,7 @@
 from datarobot.core.config import MCPServerKind
 from datarobot.core.config import MCPServerRef
 from datarobot.core.config import MCPServersSettingsSource
+from datarobot.core.config import include_mcp_servers_settings_source
 
 from .config import MCPConfig
 from .target import MCPTarget
@@ -26,5 +27,6 @@ __all__ = [
     "build_server_config",
     "build_target",
     "build_targets",
+    "include_mcp_servers_settings_source",
     "resolve_mcp_targets",
 ]

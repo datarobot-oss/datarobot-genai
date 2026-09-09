@@ -24,9 +24,9 @@ from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import MCPServerRef
-from datarobot.core.config import MCPServersSettingsSource
 from datarobot.core.config import deployment_url
 from datarobot.core.config import getenv
+from datarobot.core.config import include_mcp_servers_settings_source
 from datarobot.core.config import llm_gateway_url
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
@@ -114,25 +114,25 @@ class Config(DataRobotAppFrameworkBaseSettings):
         dotenv_settings: Any,
         file_secret_settings: Any,
     ) -> tuple[Any, ...]:
-        """Append the MCP servers source, so per-server variables resolve.
+        """Add the MCP servers source, so per-server variables resolve.
 
         A standalone genai -- no application, no registered provider -- must still be
-        able to reach an MCP server, for the same reason this class holds the default
-        LLM instance's flat fields. Without the source, `weather_mcp_deployment_id`
-        resolves to nothing here and the symptom is an empty fleet rather than an error.
+        able to reach an MCP server. Without the source, `weather_mcp_deployment_id`
+        resolves to nothing and the symptom is an empty fleet rather than an error.
 
         An application that registers its own config adds the same source to it. Both
-        must, or whether a server resolves depends on whether registration happened --
-        which is the hardest class of configuration bug to reproduce.
+        must, or whether a server resolves depends on whether registration happened.
         """
-        base = super().settings_customise_sources(
+        return include_mcp_servers_settings_source(
+            super().settings_customise_sources(
+                settings_cls,
+                init_settings,
+                env_settings,
+                dotenv_settings,
+                file_secret_settings,
+            ),
             settings_cls,
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
         )
-        return (*base, MCPServersSettingsSource(settings_cls))
 
 
 # --- App config injection seam ---------------------------------------------
