@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.35
+- `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
+- Fixed Nemo Guardrails moderation e2e tests
+- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.6`.
+
 ## 0.29.34
 - `dragent`: the agent card registry L2 MemorySpace is created at runtime on enclave workloads only (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID`, with registry-backed A2A clients). Uses a workload-scoped `deduplication_key` so replicas share one space. Other runtimes use in-process L1 caching only.
 - `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there via Pulumi / `task deploy-dev`; the enclave API gateway is only for the agent card registry L2 cache.
@@ -109,14 +114,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
 - `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
 - `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
-
-## 0.29.9
-- `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
-
-## 0.29.8
-- `dragent`: **fixed streaming moderation skipping the response guards when a batch mixes tool-call events with the first text delta. Prescore metadata now attaches to whichever batch carries `TEXT_MESSAGE_START` instead of only a batch that leads with it.
-- Fixed Nemo Guardrails moderation e2e tests
-- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.4`.
 
 ## 0.29.7
 - `drmcp/core/config`: Added `oauth_claim_validation` MCP config.
