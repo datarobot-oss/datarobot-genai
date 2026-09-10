@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.36
+- `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
+- Fixed Nemo Guardrails moderation e2e tests
+- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.6`.
+
 ## 0.29.35
 - `drmcp/core/middleware`: Improve MCP JWT token handler middleware error handling
 
