@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.38
+- `dragent/plugins/datarobot_user_mcp_xaa_client` Fixed MCP well-known endpoint in NAT MCP XAA client.
+
 ## 0.29.37
 - Removed `register_metadata_routes` from `drmcpbase/routes` — global-mcp owns `GET /metadata` locally. user-mcp's inline `/metadata` route in `drmcp/core/routes.py` is unchanged.
 
