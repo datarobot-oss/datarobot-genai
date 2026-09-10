@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.37
+- Removed `register_metadata_routes` from `drmcpbase/routes` — global-mcp owns `GET /metadata` locally. user-mcp's inline `/metadata` route in `drmcp/core/routes.py` is unchanged.
+
+- Renamed `parse_gallery_filters` → `parse_list_filters` and `apply_gallery_filters` → `apply_list_filters` in `drmcpbase/routes/helpers.py` (generic names for static and gallery list routes). `register_static_routes` and `STATIC_BASE_PATH` are exported from `drmcpbase/routes`.
+
+- `drmcpbase/routes`: renamed `register_tool_gallery_routes` to `register_static_routes`; discovery routes moved from `GET /toolGallery/*` to `GET /static/*`. Shared query helpers (`parse_pagination`, `parse_list_filters`, `apply_list_filters`) are now public in `drmcpbase/routes/helpers.py`. user-mcp mounts at `{prefix}/static/*`.
+
+- `drmcpbase/routes`: moved shared tool gallery HTTP routes (`register_tool_gallery_routes`, `GET /toolGallery/*`) and route gating helpers from `drmcputils/routes`. Import from `datarobot_genai.drmcpbase.routes` instead of `datarobot_genai.drmcputils.routes`.
+
 ## 0.29.36
 - `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
 - Fixed Nemo Guardrails moderation e2e tests

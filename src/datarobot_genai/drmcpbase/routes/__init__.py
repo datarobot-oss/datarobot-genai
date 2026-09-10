@@ -12,10 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Custom (non-MCP) HTTP routes shared by the DataRobot MCP servers."""
+"""Custom (non-MCP) HTTP routes shared by DataRobot MCP servers."""
 
-from datarobot_genai.drmcputils.routes.trailing_slash import TrailingSlashNormalizer
+from datarobot_genai.drmcpbase.routes.helpers import apply_list_filters
+from datarobot_genai.drmcpbase.routes.helpers import parse_list_filters
+from datarobot_genai.drmcpbase.routes.helpers import parse_pagination
+from datarobot_genai.drmcpbase.routes.static import STATIC_BASE_PATH
+from datarobot_genai.drmcpbase.routes.static import register_static_routes
 
 __all__ = [
-    "TrailingSlashNormalizer",
+    "STATIC_BASE_PATH",
+    "apply_list_filters",
+    "parse_list_filters",
+    "parse_pagination",
+    "register_static_routes",
 ]

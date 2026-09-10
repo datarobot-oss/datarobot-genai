@@ -23,7 +23,7 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import 
     MCPOAuthProtectedResourceMetadataManager,
 )
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
-from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
+from datarobot_genai.drmcpbase.routes import register_static_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
 from .config import get_config
@@ -47,7 +47,7 @@ logger = getLogger(__name__)
 
 
 async def _tools_gallery_enabled(_request: Request) -> bool:
-    """Gate for the user-mcp ``/toolGallery/tools/`` route.
+    """Gate for the user-mcp ``/static/tools/`` route.
 
     user-mcp runs as the static container account behind DataRobot's deployment auth, so
     the gallery is gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT`` for that account (the same
@@ -65,11 +65,11 @@ def register_routes(mcp: DataRobotMCP) -> None:
     # and reject `mode=code` outright.
     unfiltered_catalog = unfiltered_catalog_provider(mcp)
 
-    # Shared toolGallery routes (also exposed by global-mcp), mounted under this
-    # server's configured prefix and gated behind ENABLE_MCP_TOOLS_GALLERY_SUPPORT.
-    register_tool_gallery_routes(
+    # Static discovery routes (global-mcp serves the same paths at /static/*), mounted
+    # under this server's configured prefix and gated behind ENABLE_MCP_TOOLS_GALLERY_SUPPORT.
+    register_static_routes(
         mcp,
-        base_path=prefix_mount_path("/toolGallery"),
+        base_path=prefix_mount_path("/static"),
         gate=_tools_gallery_enabled,
         ui_metadata_provider=get_tool_ui_metadata,
         catalog_provider=unfiltered_catalog,
