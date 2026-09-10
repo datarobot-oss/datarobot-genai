@@ -121,6 +121,7 @@ from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMe
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIToolFunction
 from pydantic import Field
 
+from datarobot_genai.core.agents import UsageMetrics
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents import track_open_text_in_events
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
@@ -1188,7 +1189,7 @@ async def _moderated_dragent_stream(
     accumulated across all batches and attached to the final frame so the downstream
     aggregator totals correctly.
     """
-    accumulated_usage: dict[str, int] = default_usage_metrics()
+    _accumulated_usage: dict[str, int] = cast(dict[str, int], default_usage_metrics())
     open_text_message_ids: set[str] = set()
 
     async def _events_iter() -> AsyncGenerator[Any, None]:
@@ -1196,7 +1197,7 @@ async def _moderated_dragent_stream(
         async with contextlib.aclosing(upstream) as src:
             async for response in src:
                 for key, val in (response.usage_metrics or {}).items():
-                    accumulated_usage[key] = accumulated_usage.get(key, 0) + (val or 0)
+                    _accumulated_usage[key] = _accumulated_usage.get(key, 0) + (val or 0)
                 for event in response.events:
                     yield event
 
@@ -1236,7 +1237,7 @@ async def _moderated_dragent_stream(
         # Attach accumulated upstream usage to the last frame so the downstream aggregator
         # produces the correct total without double-counting.
         if pending is not None:
-            yield pending.model_copy(update={"usage_metrics": accumulated_usage})
+            yield pending.model_copy(update={"usage_metrics": cast(UsageMetrics, _accumulated_usage)})
         # Synthetic TEXT_MESSAGE_END for messages opened but not explicitly closed (e.g. when a
         # block guard emits an intervention TextMessageContentEvent with no matching END in the
         # upstream, or when the upstream omitted the END event entirely).
