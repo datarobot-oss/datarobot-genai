@@ -27,7 +27,9 @@ seven days
 
 All pull requests should include an entry in the [CHANGELOG.md](CHANGELOG.md) file unless the changes are trivial (e.g., fixing typos, minor documentation updates).
 
-If your PR doesn't require a changelog entry (e.g., documentation-only changes, CI configuration), add the `skip-changelog` label to your pull request.
+Docs-only PRs (changes limited to Markdown files and/or anything under `docs/`) are exempt automatically —
+no label needed. For any other PR that doesn't require a changelog entry (e.g., CI configuration), add the
+`skip-changelog` label to your pull request.
 
 For a stack of dependent PRs, one entry anywhere in the stack covers all of them — see
 [Stacks](#stacks) below.
