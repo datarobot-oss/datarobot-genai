@@ -31,3 +31,15 @@ class AudienceClaimValidationError(Exception):
 
 class MCPToolScopeClaimValidationError(Exception):
     pass
+
+
+class NoJWTBearerTokenKeyInRequestHeaderError(Exception):
+    pass
+
+
+class NoTokenWithBearerPrefixError(Exception):
+    pass
+
+
+class JWTDecodeError(Exception):
+    pass
