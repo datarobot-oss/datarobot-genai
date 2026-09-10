@@ -1531,14 +1531,14 @@ requires-dist = [
     { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
-    { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'dragent'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'langgraph'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-llama-index", marker = "extra == 'llamaindex'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-mcp", marker = "extra == 'dragent'", specifier = "==1.8.0" },
-    { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.8.0" },
+    { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'dragent'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-langchain", marker = "extra == 'langgraph'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-llama-index", marker = "extra == 'llamaindex'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-mcp", marker = "extra == 'dragent'", specifier = "==1.7.0" },
+    { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.7.0" },
     { name = "okta-client-python", marker = "extra == 'auth'", specifier = ">=0.2.0,<1.0.0" },
     { name = "okta-client-python", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "okta-client-python", marker = "extra == 'drmcpbase'", specifier = ">=0.2.0,<1.0.0" },
@@ -3336,16 +3336,17 @@ wheels = [
 
 [[package]]
 name = "langchain-nvidia-ai-endpoints"
-version = "1.4.3"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
+    { name = "filetype" },
     { name = "langchain-core" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/70/11/f0bc526fbe1bffcfa053a302f3ac93f59cb0a136a86c16c6fb92c6af0166/langchain_nvidia_ai_endpoints-1.4.3.tar.gz", hash = "sha256:8076a99cecb5318e285e47668ab7ec884b0e188aad5b3d37221e6b155f9f536c", size = 59121, upload-time = "2026-07-02T00:38:06.146Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/30/4acdd906ab2c5da2066d5951ee4fd60fc3a070395c4179b958d7945c543a/langchain_nvidia_ai_endpoints-1.4.0.tar.gz", hash = "sha256:dc43f907c32f5ce559718be1f80789ab84c570fff0e7ee1a50aa71f0424b574b", size = 58038, upload-time = "2026-05-21T03:45:22.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/de/1f0a9a7b464a212c5f8e761f445f7c539c38956fe4e178e19a4a9a27c745/langchain_nvidia_ai_endpoints-1.4.3-py3-none-any.whl", hash = "sha256:f71966a079f1800ae292b4add953509481d149dc3bc4a3f60b9c09742642d043", size = 64484, upload-time = "2026-07-02T00:38:04.983Z" },
+    { url = "https://files.pythonhosted.org/packages/15/fa/f1aeaff47e6e98dde9f8c3e1b63607f97d4e0d6f2df6d52ee18b399bb5e2/langchain_nvidia_ai_endpoints-1.4.0-py3-none-any.whl", hash = "sha256:9557eda9d794373a601afbb9a74d15d650f0c8543d544d81f984bfc89b82d52f", size = 63146, upload-time = "2026-05-21T03:45:21.35Z" },
 ]
 
 [[package]]
@@ -3392,6 +3393,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d2/59/b5959aea96faa9146e2e49a7a22882b3528c62efafe9a6a95beab30c2305/langchain_protocol-0.0.18.tar.gz", hash = "sha256:ec3e11782f1ed0c9db38e5a9ed01b0e7a0d3fba406faa8aef6594b73c56a63e6", size = 6150, upload-time = "2026-06-18T17:08:26.959Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/2e/d82db9eec13ad0f72e7aaad5c4bc730ab111934fdc83c85523206eb9b0a0/langchain_protocol-0.0.18-py3-none-any.whl", hash = "sha256:70b53a86fbf9cedc863555effe44da192ab02d556ddbf2cf95b8873adcf41b5a", size = 7221, upload-time = "2026-06-18T17:08:25.996Z" },
+]
+
+[[package]]
+name = "langchain-tavily"
+version = "0.2.18"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "langchain" },
+    { name = "langchain-core" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/6c/b309ef3062b189a82463dc93553804566e71aa393f9ba8954750793c1a6f/langchain_tavily-0.2.18.tar.gz", hash = "sha256:cd7859ae1a6ce79236580ef67072ff5fc43c7ded94e7eac38ff04209ca85a320", size = 25378, upload-time = "2026-04-16T15:23:24.526Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/9c/0c043e4434b1823f0ac194f66036cbb0569275a99dcb890e0891ecd34fb2/langchain_tavily-0.2.18-py3-none-any.whl", hash = "sha256:dccf3ad1c50e2cb2a89bec11727555805c9df8abd42c1f3ad42ccad86e28aa44", size = 30814, upload-time = "2026-04-16T15:23:23.424Z" },
 ]
 
 [[package]]
@@ -4593,41 +4609,41 @@ wheels = [
 
 [[package]]
 name = "nvidia-nat"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-core" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/e3/3988449b8aca0031a461b891f2b4fbdccc062fa7c39fc9867fbc86c3193a/nvidia_nat-1.8.0-py3-none-any.whl", hash = "sha256:3df0f5f69df0c1a713eeef292d476b54b8fd108c438416b903569e6e91076dc2", size = 49614, upload-time = "2026-06-17T00:25:55.043Z" },
+    { url = "https://files.pythonhosted.org/packages/88/da/d80afea5cc635fe1befd4c952f6fef10b74754c7ece237b96fb4c2926f13/nvidia_nat-1.7.0-py3-none-any.whl", hash = "sha256:d7f36722d529a2e4660d7f153c150289dd45f6e4cf4feb65f26fc26090b3f29a", size = 49724, upload-time = "2026-05-21T19:06:02.778Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-a2a"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk", extra = ["http-server"] },
     { name = "nvidia-nat-core" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/2e/02917e6a235e9bc8594d91fe60b190dff6a2242d672c6de974e4d4e3659c/nvidia_nat_a2a-1.8.0-py3-none-any.whl", hash = "sha256:bc8decf294a87e5c82b848aa2752a380462c70213456e412844b0f4d523153ec", size = 44204, upload-time = "2026-06-17T00:25:35.635Z" },
+    { url = "https://files.pythonhosted.org/packages/52/15/921339011bde19663692214208ff2b0f1bd867a91f2693a02fc75e1b65e4/nvidia_nat_a2a-1.7.0-py3-none-any.whl", hash = "sha256:3d67b14d59fa3c20cbdc897fb936aa39e2dc278ca22fcf7ccd045f57818c424d", size = 44205, upload-time = "2026-05-21T19:05:45.366Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-atif"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/ee/a22d1b5d5d6f3d625f451f5185b7e32a6464058f2c7899f6d98c68f46aef/nvidia_nat_atif-1.8.0-py3-none-any.whl", hash = "sha256:38c97d6e506e8cc151a997bfd6cafa08b969e181b50b9302f28d2229a3b37829", size = 105633, upload-time = "2026-06-17T00:25:16.624Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/fb/d50faa2e9cc0dc4a6a652bcca4bf3282ad98541b97c4469c9251293af2d7/nvidia_nat_atif-1.7.0-py3-none-any.whl", hash = "sha256:65d471a366dfafe75cf94428bdba3007bd3e1368487e2e16fd62484298635334", size = 105803, upload-time = "2026-05-21T19:05:26.386Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-core"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -4662,12 +4678,12 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/17/46f8bb24ba9789064ab6a90a905f31218bca802346adace079256db82c72/nvidia_nat_core-1.8.0-py3-none-any.whl", hash = "sha256:645bcc995f73598016b750f7849decb24bea857549f96f5fcbbd8ff37f0c3fc5", size = 779726, upload-time = "2026-06-17T00:21:24.556Z" },
+    { url = "https://files.pythonhosted.org/packages/28/cf/634983c35ab78e410d0b625181d1b1dfad5a28cbddabd31ca8c33fa8ab68/nvidia_nat_core-1.7.0-py3-none-any.whl", hash = "sha256:fb4691ad3437e0e8b8d84256d36da18085ba1fc6dd47861e7a7e64c6a808390c", size = 808487, upload-time = "2026-05-21T19:01:41.952Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-crewai"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "crewai" },
@@ -4675,23 +4691,23 @@ dependencies = [
     { name = "nvidia-nat-core" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/2f/3f53ab82a64cbbe39955d93b7e0660e803147bd83f4583dea98945bba675/nvidia_nat_crewai-1.8.0-py3-none-any.whl", hash = "sha256:b581d639bc57e145f764ed86e0911c06dde47675fda41df0ed6a6ef017a284bf", size = 54943, upload-time = "2026-06-17T00:26:33.913Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/f8/9ce3ee6834766b55d4417839814d7866382dda51f83da7bb823f6a2f7433/nvidia_nat_crewai-1.7.0-py3-none-any.whl", hash = "sha256:f557ecee0b1f1fa9e54b7790dffd58d60eebea1d74181e5965e43fb19cdd7ff3", size = 55112, upload-time = "2026-05-21T19:06:39.316Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-eval"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-atif" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/25/0fd8109c653d967d82f8ef6fc729c41504e3b4ec51dcfd39c952275d4e67/nvidia_nat_eval-1.8.0-py3-none-any.whl", hash = "sha256:4baebf66289040708c22bfd57f6edb37728409795a260bd0f07b894c9ec8b110", size = 69649, upload-time = "2026-06-17T00:23:20.109Z" },
+    { url = "https://files.pythonhosted.org/packages/06/64/98b02f25d20609b781f7af39ecaee7af1a991d41f443a82b98bebb418ad1/nvidia_nat_eval-1.7.0-py3-none-any.whl", hash = "sha256:724fa6410a7a66050b525d75660d7fb753ed83aba32c37d31111ae322d54a548", size = 69584, upload-time = "2026-05-21T19:03:53.676Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-langchain"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain" },
@@ -4705,8 +4721,8 @@ dependencies = [
     { name = "langchain-nvidia-ai-endpoints" },
     { name = "langchain-oci" },
     { name = "langchain-openai" },
+    { name = "langchain-tavily" },
     { name = "langgraph" },
-    { name = "langsmith" },
     { name = "nvidia-nat-core" },
     { name = "nvidia-nat-eval" },
     { name = "nvidia-nat-opentelemetry" },
@@ -4715,15 +4731,14 @@ dependencies = [
     { name = "wikipedia" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/49/eee7d8f68568e4c994a67ee0def4070e8fdeb0d603a7ef580050b3ee3d34/nvidia_nat_langchain-1.8.0-py3-none-any.whl", hash = "sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403", size = 197395, upload-time = "2026-06-17T00:27:13.69Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/30/5c43dd14e0c5ba1a3e03001646542863a2a8560893ee7a4ba8d7a0a9faff/nvidia_nat_langchain-1.7.0-py3-none-any.whl", hash = "sha256:e00812f9d2c602bb59cc006081a5deef2e71cc46357e70f51503780196f9cc20", size = 197908, upload-time = "2026-05-21T19:07:14.689Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-llama-index"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "banks" },
     { name = "llama-index" },
     { name = "llama-index-core" },
     { name = "llama-index-embeddings-azure-openai" },
@@ -4739,12 +4754,12 @@ dependencies = [
     { name = "nvidia-nat-core" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/85/d69b659e0b133a229587d0702db4417aab01a7d55ef5b03ed9de85b23bca/nvidia_nat_llama_index-1.8.0-py3-none-any.whl", hash = "sha256:6cf274d790ad730859a24934260a6bdd762743803df06d9873e653621db45609", size = 59503, upload-time = "2026-06-17T00:28:29.396Z" },
+    { url = "https://files.pythonhosted.org/packages/82/98/844df74707985741b1bb7de458a7a7d4550e874e871244ca861a5decf2e5/nvidia_nat_llama_index-1.7.0-py3-none-any.whl", hash = "sha256:440a7104ee911e0a49e285845470e2eefae06ebb82bb0369f77d3f23101f4d0d", size = 59657, upload-time = "2026-05-21T19:08:27.078Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-mcp"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiorwlock" },
@@ -4752,12 +4767,12 @@ dependencies = [
     { name = "nvidia-nat-core" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/c5/1cf428635978b8a705d7c35e816ee91278414d1607e91f211e6aa2de6507/nvidia_nat_mcp-1.8.0-py3-none-any.whl", hash = "sha256:b38983d9d94f5f47ead7acc395c86409d19533f0bf0643489bbde01f35603f71", size = 132635, upload-time = "2026-06-17T00:22:22.383Z" },
+    { url = "https://files.pythonhosted.org/packages/93/0a/b529c5cfc6d6d75d972d94ac2e51ab2bb59f7ec7fa768c514d0c0d50b647/nvidia_nat_mcp-1.7.0-py3-none-any.whl", hash = "sha256:ff8f51406925b46e543d1fa800f8795797abd4f38cd39ef75b378224313acd59", size = 132802, upload-time = "2026-05-21T19:02:56.583Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-opentelemetry"
-version = "1.8.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-core" },
@@ -4767,7 +4782,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/df/33cba1fb316f720b075dac2330b588b1a62d9d991cd6e1d5bc8f795b3bba/nvidia_nat_opentelemetry-1.8.0-py3-none-any.whl", hash = "sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec", size = 68449, upload-time = "2026-06-17T00:39:23.758Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/01/9ec9a91d9317158e200d424968d5ea49524fa6e0af85a6ec77f2a9f730d2/nvidia_nat_opentelemetry-1.7.0-py3-none-any.whl", hash = "sha256:e468fb4bd2a9e2fa4fb0d67daa1dea22b900c70301249d2785aa96f305808f7f", size = 68848, upload-time = "2026-05-21T19:19:34.156Z" },
 ]
 
 [[package]]
