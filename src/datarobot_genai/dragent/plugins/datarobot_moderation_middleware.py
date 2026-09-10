@@ -638,8 +638,6 @@ def _postscore_only_datarobot_moderations(
     return cast(dict[str, Any], stripped) if stripped else None
 
 
-
-
 def _infer_parent_message_id_for_tool_calls(
     source_ag_ui_events: list[Any] | None,
     built_text_events: list[Any],
