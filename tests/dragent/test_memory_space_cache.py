@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import warnings
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -31,6 +32,7 @@ from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memor
 from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
 
 
 class _FakeEvent:
@@ -168,6 +170,88 @@ class TestResolveMemorySpaceId:
             assert try_resolve_memory_space_id() == "space-cached"
 
         post_mock.assert_not_called()
+
+    async def test_async_creates_space_from_running_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN an enclave workload WHEN resolved from a running loop
+        THEN the space is provisioned.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        space = MagicMock(id="space-new")
+        post_mock = AsyncMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert await try_resolve_memory_space_id_async() == "space-new"
+
+        post_mock.assert_awaited_once()
+
+    async def test_sync_from_running_loop_does_not_leave_unawaited_coroutine(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN a running loop WHEN the sync helper is used
+        THEN no provision coroutine is created.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        resolve_mock = AsyncMock(return_value="space-new")
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._try_resolve_memory_space_id",
+                resolve_mock,
+            ),
+            warnings.catch_warnings(record=True) as caught,
+        ):
+            warnings.simplefilter("always")
+            assert try_resolve_memory_space_id() is None
+
+        resolve_mock.assert_not_called()
+        assert not any("never awaited" in str(w.message) for w in caught)
+
+    async def test_async_retry_succeeds_after_sync_helper_misses_on_running_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN a missed sync bootstrap from a running loop
+        WHEN async resolve retries THEN L2 is provisioned.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        space = MagicMock(id="space-new")
+        post_mock = AsyncMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert try_resolve_memory_space_id() is None
+            assert await try_resolve_memory_space_id_async() == "space-new"
+
+        post_mock.assert_awaited_once()
 
 
 class TestConfigureDatarobotMemoryClient:

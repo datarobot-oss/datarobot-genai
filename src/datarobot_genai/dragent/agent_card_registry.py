@@ -63,6 +63,7 @@ from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCard
 from datarobot_genai.dragent.agent_card_registry_backends import RegistryIds
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
 
 logger = logging.getLogger(__name__)
 
@@ -739,11 +740,16 @@ async def get_default_registry() -> AgentCardRegistry:
     """Return the module-level :class:`AgentCardRegistry` singleton.
 
     Created lazily on first access.  Credentials are resolved from
-    :class:`DataRobotRegistrySettings` at instantiation time.
+    :class:`DataRobotRegistrySettings` at instantiation time.  On enclave
+    workloads, L2 MemorySpace provisioning runs on this event loop before the
+    singleton is constructed so the cache backend is not stuck on L1-only.
     """
     if _RegistryHolder.instance is None:
         async with _RegistryHolder.lock:
             if _RegistryHolder.instance is None:
+                # Provision L2 on this loop before __init__ builds the cache
+                # backend. The sync helper cannot nest asyncio.run here.
+                await try_resolve_memory_space_id_async()
                 _RegistryHolder.instance = AgentCardRegistry()
     return _RegistryHolder.instance
 

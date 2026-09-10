@@ -906,6 +906,17 @@ class TestGetDefaultRegistry:
         r2 = await get_default_registry()
         assert r1 is r2
 
+    async def test_provisions_l2_before_constructing_registry(self):
+        """GIVEN no singleton WHEN get_default_registry runs THEN L2 is provisioned on this loop."""
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry.try_resolve_memory_space_id_async",
+            new_callable=AsyncMock,
+            return_value="space-1",
+        ) as resolve_mock:
+            await get_default_registry()
+
+        resolve_mock.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # Tests: workload ID lookups

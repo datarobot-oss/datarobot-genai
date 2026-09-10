@@ -114,12 +114,16 @@ def get_memory_service_client() -> DRMemoryServiceClient | None:
     return _MemoryClientState.client
 
 
-def _run_async(coro: Coroutine[Any, Any, T]) -> T:
-    """Run *coro* from a synchronous caller when no event loop is running."""
+def _run_async(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Run *coro_factory* from a synchronous caller when no event loop is running.
+
+    The factory is invoked only after confirming no loop is running, so a
+    coroutine is never left unawaited.
+    """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro)
+        return asyncio.run(coro_factory())
     raise RuntimeError("memory_space_cache sync helper called from a running event loop")
 
 
@@ -157,7 +161,33 @@ def try_resolve_memory_space_id() -> str | None:
     (``AGENT_MEMORY_SPACE_ID``). Agent memory is provisioned on the control hub
     (Pulumi / ``task deploy-dev``) and the Mem0 client talks to that same host.
     Other runtimes use in-process L1 caching only.
+
+    Import-time bootstrap uses this synchronous helper. Lifespan warmup and
+    :func:`~datarobot_genai.dragent.agent_card_registry.get_default_registry`
+    must call :func:`try_resolve_memory_space_id_async` instead — ``asyncio.run``
+    cannot nest inside an already running event loop.
     """
+    try:
+        return _run_async(_try_resolve_memory_space_id)
+    except RuntimeError as exc:
+        if "running event loop" not in str(exc):
+            raise
+        logger.debug(
+            "try_resolve_memory_space_id called from a running event loop; "
+            "use try_resolve_memory_space_id_async"
+        )
+        return None
+
+
+async def try_resolve_memory_space_id_async() -> str | None:
+    """Async counterpart of :func:`try_resolve_memory_space_id`.
+
+    Use this from a running event loop (lifespan warmup, ``get_default_registry``).
+    """
+    return await _try_resolve_memory_space_id()
+
+
+async def _try_resolve_memory_space_id() -> str | None:
     if _ProvisionedRegistryCacheSpaceState.space_id is not None:
         return _ProvisionedRegistryCacheSpaceState.space_id
 
@@ -172,7 +202,7 @@ def try_resolve_memory_space_id() -> str | None:
         return None
 
     try:
-        space_id = _run_async(_provision_registry_cache_memory_space(deduplication_key))
+        space_id = await _provision_registry_cache_memory_space(deduplication_key)
     except Exception:
         logger.exception(
             "Failed to provision agent card registry L2 MemorySpace (dedup_key=%s)",

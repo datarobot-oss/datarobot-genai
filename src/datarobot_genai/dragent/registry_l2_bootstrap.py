@@ -39,6 +39,7 @@ from datarobot_genai.dragent.deployment_urls import resolve_external_workload_ap
 from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +161,8 @@ def _registry_l2_gate_status() -> dict[str, object]:
     }
 
 
-def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
-    """Provision the registry L2 MemorySpace on enclave workloads and reset the singleton."""
+def _begin_registry_l2_provision(phase: str) -> tuple[dict[str, object], str] | None:
+    """Log L2 gates and return ``(gates, dedup_key)`` when provisioning should proceed."""
     gates = _registry_l2_gate_status()
     logger.info(
         "Agent card registry L2 cache check (%s): enclave_host=%s enclave_prefix=%s "
@@ -210,7 +211,17 @@ def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
         deduplication_key,
         gates["enclave_api_endpoint"],
     )
-    space_id = try_resolve_memory_space_id()
+    return gates, deduplication_key
+
+
+def _finish_registry_l2_provision(
+    phase: str,
+    space_id: str | None,
+    *,
+    gates: dict[str, object],
+    deduplication_key: str,
+) -> str | None:
+    """Reset the registry singleton on success, or probe the memory API on failure."""
     if space_id:
         reset_default_registry()
         logger.info(
@@ -238,6 +249,38 @@ def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
         phase,
     )
     return None
+
+
+def ensure_registry_l2_cache_provisioned(*, phase: str) -> str | None:
+    """Provision the registry L2 MemorySpace on enclave workloads and reset the singleton.
+
+    Import-time bootstrap uses this synchronous helper. Lifespan warmup must
+    call :func:`ensure_registry_l2_cache_provisioned_async`.
+    """
+    context = _begin_registry_l2_provision(phase)
+    if context is None:
+        return None
+    gates, deduplication_key = context
+    return _finish_registry_l2_provision(
+        phase,
+        try_resolve_memory_space_id(),
+        gates=gates,
+        deduplication_key=deduplication_key,
+    )
+
+
+async def ensure_registry_l2_cache_provisioned_async(*, phase: str) -> str | None:
+    """Async counterpart of :func:`ensure_registry_l2_cache_provisioned`."""
+    context = _begin_registry_l2_provision(phase)
+    if context is None:
+        return None
+    gates, deduplication_key = context
+    return _finish_registry_l2_provision(
+        phase,
+        await try_resolve_memory_space_id_async(),
+        gates=gates,
+        deduplication_key=deduplication_key,
+    )
 
 
 def bootstrap_registry_l2_cache() -> None:
