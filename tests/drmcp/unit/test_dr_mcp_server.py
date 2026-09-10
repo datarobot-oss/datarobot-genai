@@ -27,6 +27,7 @@ from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import mcp
 from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
+from datarobot_genai.drmcp.core.middleware import OAuthMCPToolCallScopeValidationMiddleware
 from datarobot_genai.drmcp.core.telemetry import OtelASGIMiddleware
 from datarobot_genai.drmcpbase.dynamic_tools.deployment.adapters.default import Metadata
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
@@ -432,6 +433,7 @@ class TestDataRobotMCPServer:
             TrailingSlashNormalizer,
             OAuthJWTTokenHandlerMiddleware,
             GeneralOAuthClaimValidationMiddleware,
+            OAuthMCPToolCallScopeValidationMiddleware,
             RequestHeadersMiddleware,
             OtelASGIMiddleware,
         ]

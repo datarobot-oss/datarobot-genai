@@ -96,17 +96,31 @@ function_groups:
     auth_provider: okta_auth
 ```
 
+**Lookup by workload ID** (for an agent served by the Workload API runtime, where the card is keyed by workload rather than deployment):
+
+```yaml
+function_groups:
+  remote_agent:
+    _type: authenticated_a2a_client
+    registry:
+      workload_id: "64a1b2c3d4e5f6a7b8c9d0e2"
+    auth_provider: okta_auth
+```
+
 > [!NOTE]
 > When using the registry the RPC base URL is derived from the card's advertised `url` — you do not need to specify it.
 
 #### Batch fetching
 
-When a workflow has many registry-backed function groups, all cards are resolved in a maximum of two HTTP calls: one for deployment IDs, one for external IDs. Results are cached in-memory and
-reused until the TTL expires.
+When a workflow has many registry-backed function groups, all cards are resolved in a maximum of three HTTP calls: one per ID kind (deployment, external, workload). ID kinds are never mixed in a single request — `deploymentIds` together with `workloadIds` is rejected with HTTP 400, and either combined with `externalIds` matches nothing. Results are cached in-memory and reused until the TTL expires.
+
+The registry API caps each ID parameter at 20 values, so a longer list of one kind is split into chunks of 20 and issued as consecutive requests; the responses are merged into a single result set before the duplicate strategy is applied.
 
 On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in the same batch before the server accepts traffic.
 
 While the server is running, registered cards are **refreshed in the background** every 30 minutes. Only entries past the soft cache TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
+
+On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
 
 #### Registry environment variables
 
@@ -134,12 +148,13 @@ files, file secrets, Runtime Parameters, and Pulumi config.
 
 ### `registry` block
 
-Exactly one field must be set.
+Exactly one of the three fields must be set.
 
 | Field | Description |
 |-------|-------------|
 | `deployment_id` | DataRobot deployment ID. |
 | `external_id` | External agent catalogue identifier. |
+| `workload_id` | DataRobot workload ID (Workload API runtime). |
 
 ## Troubleshooting
 
@@ -149,6 +164,8 @@ Exactly one field must be set.
 | `AgentCardRegistryError: DataRobot API token is required` | `DATAROBOT_API_TOKEN` not set. | Export the variable or add it to `.env`. |
 | `AgentCardRegistryError: DataRobot API endpoint is required` | `DATAROBOT_ENDPOINT` not set. | Export the variable or add it to `.env`. |
 | `AgentCardRegistryError: … HTTP 401` | Token invalid or expired. | Regenerate your API token in the DataRobot console. |
-| `AgentCardRegistryError: No agent card found …` | Deployment not in the registry. | Confirm the deployment has an A2A agent card published. |
+| `AgentCardRegistryError: No agent card found …` | The deployment or workload is not in the registry. | Confirm the agent is running and has an A2A agent card published. |
 | `ValueError: … 'url' … or 'registry' …, not both` | Both fields set. | Remove one — they are mutually exclusive. |
+| `ValueError: Specify exactly one of 'deployment_id', 'external_id' or 'workload_id' …` | More than one identifier set inside `registry`. | Keep only the one that identifies the agent. |
+| `AgentCardRegistryError: Cannot request 'deploymentIds' and 'workloadIds' in the same … request` | Both ID kinds reached one registry request — the API answers HTTP 400. | Internal invariant; report it, as each kind is meant to be fetched separately. |
 | Stale card after redeployment | Cache TTL has not expired. | Set `AGENT_CARD_REGISTRY_CACHE_TTL=0` or wait for TTL to elapse. |

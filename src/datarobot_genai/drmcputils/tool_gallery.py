@@ -21,6 +21,7 @@ imported by drtools, drmcputils, and drmcpbase alike.
 from typing import Any
 
 from datarobot_genai.drmcputils.categories import categories_for_tool
+from datarobot_genai.drmcputils.categories import category_entry
 
 # Keys present in @tool_metadata(...) that carry UI/gallery metadata. These must be stripped
 # before the metadata dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
@@ -58,7 +59,18 @@ PROVIDER_THIRD_PARTY = "third_party"
 # filter endpoint; the values match what ``build_tool_gallery_items`` emits as ``provider``.
 TOOL_PROVIDER_LABELS: dict[str, str] = {
     PROVIDER_DATAROBOT: "DataRobot",
-    PROVIDER_THIRD_PARTY: "Third party",
+    PROVIDER_THIRD_PARTY: "Third-party",
+}
+
+# ``auth_provider`` → the provider's brand name, reported as each item's
+# ``provider_name``. DataRobot-served tools (no ``auth_provider``) report "DataRobot".
+_PROVIDER_NAMES: dict[str, str] = {
+    "jira": "Atlassian",
+    "confluence": "Atlassian",
+    "gdrive": "Google",
+    "microsoft_graph": "Microsoft",
+    "perplexity": "Perplexity",
+    "tavily": "Tavily",
 }
 
 
@@ -78,15 +90,23 @@ TOOL_PROVIDER_LABELS: dict[str, str] = {
 _MARKED_TOOL_KINDS: dict[str, dict[str, Any]] = {
     "USER_TOOL": {
         "provider": PROVIDER_DATAROBOT,
+        "provider_name": "DataRobot",
         "category": "dr_user_tools",
         "hosted": False,
     },
     "USER_TOOL_DEPLOYMENT": {
         "provider": PROVIDER_DATAROBOT,
+        "provider_name": "DataRobot",
         "category": "dr_dynamic_tools",
         "hosted": True,
     },
-    "PROXIED_USER_MCP": {"provider": PROVIDER_THIRD_PARTY, "category": None, "hosted": True},
+    # Proxied tools come from a user's own MCP server — no brand name to report.
+    "PROXIED_USER_MCP": {
+        "provider": PROVIDER_THIRD_PARTY,
+        "provider_name": None,
+        "category": None,
+        "hosted": True,
+    },
 }
 
 
@@ -115,15 +135,21 @@ def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[s
     Carries the raw ``tool_category`` marker and the tool's own ``description`` so the
     builder can classify hosted tools (provider/categories) and fall back to the MCP
     description when there is no curated UI copy.
+
+    Tags come from the drtools registry when available, preserving the declaration
+    order of ``@tool_metadata(tags=(...))``. FastMCP stores tags as a set, so tools
+    outside the registry fall back to a sorted list — the only deterministic order a
+    set can offer.
     """
     ui = ui_metadata.get(tool.name, {})
+    ordered_tags = ui.get("tags")
     return {
         "name": tool.name,
         "display_name": ui.get("display_name"),
         "description_ui": ui.get("description_ui"),
         "description": getattr(tool, "description", None),
         "auth_provider": ui.get("auth_provider"),
-        "tags": sorted(tool.tags or []),
+        "tags": list(ordered_tags) if ordered_tags else sorted(tool.tags or []),
         "categories": categories_for_tool(tool.name),
         "tool_category": _tool_category(tool),
         "hosted": is_hosted(tool),
@@ -142,6 +168,19 @@ def _provider_for(auth_provider: str | None) -> str:
     if auth_provider:
         return PROVIDER_THIRD_PARTY
     return PROVIDER_DATAROBOT
+
+
+def _provider_name_for(auth_provider: str | None) -> str:
+    """Return the provider's brand name (``provider_name`` on each gallery item).
+
+    DataRobot-served tools (no ``auth_provider``) are provided by DataRobot; third
+    parties map to their brand (jira/confluence → Atlassian, gdrive → Google, ...).
+    An unmapped ``auth_provider`` falls back to a humanised form of itself so a new
+    connector degrades to something readable instead of nothing.
+    """
+    if not auth_provider:
+        return "DataRobot"
+    return _PROVIDER_NAMES.get(auth_provider, auth_provider.replace("_", " ").title())
 
 
 def _oauth_provider_type_for(auth_provider: str | None) -> str | None:
@@ -177,6 +216,7 @@ def build_tool_gallery_items(tools: list[dict]) -> list[dict]:
             # Marker-classified tool (user/dynamic/proxied): classification comes from
             # its meta marker, not the static taxonomy or a drtools auth_provider.
             provider = kind["provider"]
+            provider_name = kind["provider_name"]
             oauth_provider_type = None
             # Proxied tools have no category (kind["category"] is None) → [].
             categories = [kind["category"]] if kind["category"] else []
@@ -184,21 +224,49 @@ def build_tool_gallery_items(tools: list[dict]) -> list[dict]:
         else:
             auth_provider = t.get("auth_provider")
             provider = _provider_for(auth_provider)
+            provider_name = _provider_name_for(auth_provider)
             oauth_provider_type = _oauth_provider_type_for(auth_provider)
             categories = list(t.get("categories") or [])
             hosted = bool(t.get("hosted", False))
+        display_name = t.get("display_name") or t["name"]
         items.append(
             {
                 "name": t["name"],
-                "display_name": t.get("display_name") or t["name"],
+                "display_name": display_name,
+                "ui_display_name": _ui_display_name(display_name),
                 # Prefer the curated UI copy (drtools ``description_ui``); fall back to the
                 # tool's own MCP description (the only copy dynamic/proxied tools carry).
                 "description": t.get("description_ui") or t.get("description") or "",
-                "tags": sorted(t.get("tags") or []),
-                "categories": categories,
+                # Declaration order, as merged from the drtools registry — never re-sorted.
+                "tags": list(t.get("tags") or []),
+                "categories": [_category_item(category) for category in categories],
                 "provider": provider,
+                "provider_name": provider_name,
                 "oauth_provider_type": oauth_provider_type,
                 "hosted": hosted,
             }
         )
     return items
+
+
+# Display names read "<group> — <action>" (em dash); ``ui_display_name`` is the action
+# half alone, e.g. "Workload — List bundles" → "List bundles".
+_DISPLAY_NAME_SEPARATOR = " — "
+
+
+def _ui_display_name(display_name: str) -> str:
+    """Strip the group prefix off a display name (identity when there is no separator)."""
+    _, separator, action = display_name.partition(_DISPLAY_NAME_SEPARATOR)
+    return action if separator else display_name
+
+
+def _category_item(category: Any) -> dict[str, str]:
+    """Normalise one category to the ``{name, label, kind}`` dict items report.
+
+    ``merge_tool_info`` already supplies dicts; bare ``dr_*`` strings (the marker
+    buckets, or callers feeding raw names) are expanded here so the response shape
+    is uniform.
+    """
+    if isinstance(category, dict):
+        return category
+    return category_entry(str(category))

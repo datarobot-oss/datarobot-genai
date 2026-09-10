@@ -40,14 +40,7 @@ _MS_DRIVEITEM_PATCH = "https://learn.microsoft.com/en-us/graph/api/driveitem-upd
 
 
 @tool_metadata(
-    tags={
-        "microsoft_graph",
-        "microsoft",
-        "sharepoint",
-        "onedrive",
-        "search",
-        "files",
-    },
+    tags=("Microsoft", "Microsoft 365", "OneDrive", "Sharepoint"),
     description=(
         "[M365—search files] Use when the user needs SharePoint or OneDrive files and list items "
         "by keywords plus optional KQL filters, paginated. Scope with site_url or site_id when "
@@ -167,7 +160,7 @@ async def microsoft_graph_search_content(
 
 
 @tool_metadata(
-    tags={"microsoft_graph", "sharepoint", "onedrive", "share"},
+    tags=("Microsoft", "Microsoft 365", "OneDrive", "Sharepoint"),
     enabled=False,
     description=(
         "[M365—share item] Use when inviting people to an existing SharePoint/OneDrive file or "
@@ -234,7 +227,7 @@ async def microsoft_graph_share_item(
 
 
 @tool_metadata(
-    tags={"microsoft_graph", "sharepoint", "onedrive", "create", "file", "write"},
+    tags=("Microsoft", "Microsoft 365", "OneDrive", "Sharepoint"),
     enabled=False,
     description=(
         "[M365—create text file] Use when the user wants a new plain-text file in personal "
@@ -301,7 +294,7 @@ async def microsoft_graph_create_file(
 
 
 @tool_metadata(
-    tags={"microsoft_graph", "sharepoint", "onedrive", "metadata", "update"},
+    tags=("Microsoft", "Microsoft 365", "OneDrive", "Sharepoint"),
     enabled=False,
     description=(
         "[M365—update metadata] Use when renaming or updating list/drive item fields: either "

@@ -54,9 +54,10 @@ def nat_config(workflow_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 class TestCollectRegistryLookupIds:
     def test_collects_ids_from_yaml_config(self, nat_config):
-        dep_ids, ext_ids = collect_registry_lookup_ids(nat_config)
-        assert dep_ids == ["1234"]
-        assert ext_ids == ["abcd"]
+        collected = collect_registry_lookup_ids(nat_config)
+        assert collected.deployment_ids == ["1234"]
+        assert collected.external_ids == ["abcd"]
+        assert collected.workload_ids == ["wl-5678"]
 
     def test_deduplicates_ids(self):
         config = MagicMock()
@@ -65,15 +66,28 @@ class TestCollectRegistryLookupIds:
             "a": AuthenticatedA2AClientConfig(registry=shared_registry, auth_provider="x"),
             "b": AuthenticatedA2AClientConfig(registry=shared_registry, auth_provider="x"),
         }
-        dep_ids, ext_ids = collect_registry_lookup_ids(config)
-        assert dep_ids == ["dep-1"]
-        assert ext_ids == []
+        collected = collect_registry_lookup_ids(config)
+        assert collected.deployment_ids == ["dep-1"]
+        assert collected.external_ids == []
+        assert collected.workload_ids == []
+
+    def test_deduplicates_workload_ids(self):
+        """GIVEN two groups sharing a workload ID WHEN collected THEN it appears once."""
+        config = MagicMock()
+        shared_registry = AgentCardRegistryLookup(workload_id="wl-1")
+        config.function_groups = {
+            "a": AuthenticatedA2AClientConfig(registry=shared_registry, auth_provider="x"),
+            "b": AuthenticatedA2AClientConfig(registry=shared_registry, auth_provider="x"),
+        }
+        collected = collect_registry_lookup_ids(config)
+        assert collected.workload_ids == ["wl-1"]
+        assert collected.deployment_ids == []
 
     def test_skips_url_only_a2a_clients(self, nat_config):
-        dep_ids, ext_ids = collect_registry_lookup_ids(nat_config)
+        collected = collect_registry_lookup_ids(nat_config)
         # workflow also has a2a_agent with url only — must not appear
-        assert "http://agent.example.com:8080" not in dep_ids
-        assert len(dep_ids) == 1
+        assert "http://agent.example.com:8080" not in collected.deployment_ids
+        assert len(collected.deployment_ids) == 1
 
     def test_empty_when_no_registry_groups(self):
         config = MagicMock()
@@ -84,9 +98,11 @@ class TestCollectRegistryLookupIds:
                 auth_provider="auth",
             ),
         }
-        dep_ids, ext_ids = collect_registry_lookup_ids(config)
-        assert dep_ids == []
-        assert ext_ids == []
+        collected = collect_registry_lookup_ids(config)
+        assert collected.deployment_ids == []
+        assert collected.external_ids == []
+        assert collected.workload_ids == []
+        assert collected.is_empty() is True
 
 
 class TestWarmupRegistryFromConfig:
@@ -98,6 +114,7 @@ class TestWarmupRegistryFromConfig:
         mock_registry.prefetch.assert_awaited_once_with(
             deployment_ids=["1234"],
             external_ids=["abcd"],
+            workload_ids=["wl-5678"],
         )
         assert is_registry_warm() is True
 

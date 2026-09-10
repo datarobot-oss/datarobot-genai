@@ -39,6 +39,7 @@ from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.client.client_config import A2AClientConfig
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
+from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
@@ -210,9 +211,36 @@ class TestAgentCardRegistryLookup:
         assert lookup.external_id == "ext-456"
         assert lookup.deployment_id is None
 
+    def test_workload_id_only(self):
+        lookup = AgentCardRegistryLookup(workload_id="wl-789")
+        assert lookup.workload_id == "wl-789"
+        assert lookup.deployment_id is None
+        assert lookup.external_id is None
+
     def test_both_ids_raises(self):
-        with pytest.raises(ValueError, match="not both"):
+        with pytest.raises(ValueError, match="not 2"):
             AgentCardRegistryLookup(deployment_id="dep-1", external_id="ext-1")
+
+    @pytest.mark.parametrize(
+        "ids",
+        [
+            {"deployment_id": "dep-1", "external_id": "ext-1"},
+            {"deployment_id": "dep-1", "workload_id": "wl-1"},
+            {"external_id": "ext-1", "workload_id": "wl-1"},
+        ],
+    )
+    def test_any_pair_of_ids_raises(self, ids):
+        """GIVEN two identifiers WHEN validated THEN the pair is rejected by name."""
+        with pytest.raises(ValueError, match="not 2"):
+            AgentCardRegistryLookup(**ids)
+
+    def test_all_three_ids_raises(self):
+        with pytest.raises(ValueError, match="not 3"):
+            AgentCardRegistryLookup(
+                deployment_id="dep-1",
+                external_id="ext-1",
+                workload_id="wl-1",
+            )
 
     def test_neither_id_raises(self):
         with pytest.raises(ValueError, match="requires exactly one"):
@@ -239,6 +267,20 @@ class TestAuthenticatedA2AClientConfig:
         cfg = AuthenticatedA2AClientConfig(registry=AgentCardRegistryLookup(external_id="ext-456"))
         assert cfg.registry is not None
         assert cfg.registry.external_id == "ext-456"
+
+    def test_registry_with_workload_id(self):
+        cfg = AuthenticatedA2AClientConfig(registry=AgentCardRegistryLookup(workload_id="wl-789"))
+        assert cfg.registry is not None
+        assert cfg.registry.workload_id == "wl-789"
+        assert cfg.url is None
+
+    def test_registry_with_workload_id_registers_lookup(self):
+        """GIVEN a workload registry block WHEN parsed THEN the ID is queued for prefetch."""
+        AuthenticatedA2AClientConfig(registry=AgentCardRegistryLookup(workload_id="wl-789"))
+
+        registry = get_default_registry_sync()
+        assert registry.has_registered_lookups() is True
+        assert "wl-789" in registry._registered_workload_ids
 
     def test_url_and_registry_raises(self):
         with pytest.raises(ValueError, match="not both"):
@@ -600,6 +642,12 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
             registry=AgentCardRegistryLookup(external_id="ext-001"),
         )
 
+    @pytest.fixture
+    def registry_config_workload(self):
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(workload_id="wl-001"),
+        )
+
     async def test_registry_fetches_card_and_derives_base_url(
         self, registry_config, mock_builder, patched_fg_env
     ):
@@ -621,6 +669,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
             mock_registry.get.assert_awaited_once_with(
                 deployment_id="dep-001",
                 external_id=None,
+                workload_id=None,
             )
             # Verify base_url derived from card.url
             assert patched_fg_env.call_args.kwargs["base_url"] == "https://agent.example.com/a2a/"
@@ -645,6 +694,36 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
             mock_registry.get.assert_awaited_once_with(
                 deployment_id=None,
                 external_id="ext-001",
+                workload_id=None,
+            )
+
+    async def test_registry_workload_id_path(
+        self, registry_config_workload, mock_builder, patched_fg_env
+    ):
+        """GIVEN a workload registry block WHEN entered THEN the card is looked up by workload ID
+        and the RPC base URL comes from the card.
+        """
+        mock_card = MagicMock()
+        mock_card.url = "https://workload.example.com/a2a/"
+
+        mock_registry = AsyncMock()
+        mock_registry.get = AsyncMock(return_value=mock_card)
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=mock_registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(
+                config=registry_config_workload, builder=mock_builder
+            )
+            await fg.__aenter__()
+
+            mock_registry.get.assert_awaited_once_with(
+                deployment_id=None,
+                external_id=None,
+                workload_id="wl-001",
+            )
+            assert (
+                patched_fg_env.call_args.kwargs["base_url"] == "https://workload.example.com/a2a/"
             )
 
     async def test_registry_pre_resolved_card_skips_discovery(self, registry_config, mock_builder):

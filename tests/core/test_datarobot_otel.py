@@ -15,7 +15,10 @@
 from __future__ import annotations
 
 import pytest
+from opentelemetry import metrics
 from opentelemetry import trace
+from opentelemetry.metrics._internal import _ProxyMeterProvider
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
@@ -37,14 +40,17 @@ _ENV_VARS = (
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    """Strip env vars + reset OTel global TracerProvider + module bootstrap flag."""
+    """Strip env vars + reset OTel global Tracer/MeterProvider + bootstrap flags."""
     for var in _ENV_VARS:
         monkeypatch.delenv(var, raising=False)
-    # OTel guards set_tracer_provider behind Once(); resetting both lets each
-    # test exercise a fresh global slot without leaking to siblings.
+    # OTel guards set_tracer_provider/set_meter_provider behind Once(); resetting
+    # both lets each test exercise a fresh global slot without leaking to siblings.
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER", None)
     monkeypatch.setattr("opentelemetry.trace._TRACER_PROVIDER_SET_ONCE", Once())
+    monkeypatch.setattr("opentelemetry.metrics._internal._METER_PROVIDER", None)
+    monkeypatch.setattr("opentelemetry.metrics._internal._METER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
+    monkeypatch.setitem(datarobot_otel._METER_BOOTSTRAP_STATE, "installed", False)
     return monkeypatch
 
 
@@ -118,6 +124,23 @@ class TestEnvResolvers:
         assert (
             datarobot_otel.resolve_otel_traces_endpoint_from_env()
             == "https://collector.test/v1/traces"
+        )
+
+    def test_metrics_endpoint_strips_api_path(self, clean_env):
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        assert (
+            datarobot_otel.resolve_otel_metrics_endpoint_from_env()
+            == "https://example.test/otel/v1/metrics"
+        )
+
+    def test_metrics_endpoint_empty_when_unset(self, clean_env):
+        assert datarobot_otel.resolve_otel_metrics_endpoint_from_env() == ""
+
+    def test_metrics_explicit_otlp_base_url_appends_metrics_path(self, clean_env):
+        clean_env.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test:4318")
+        assert (
+            datarobot_otel.resolve_otel_metrics_endpoint_from_env()
+            == "https://collector.test:4318/v1/metrics"
         )
 
 
@@ -368,3 +391,118 @@ class TestBootstrapOtelProvider:
         self._set_full_env(clean_env)
         assert datarobot_otel.bootstrap_otel_provider_for_datarobot() is False
         assert trace.get_tracer_provider() is third_party
+
+
+class TestBootstrapOtelMeterProvider:
+    """Covers bootstrap_otel_meter_provider_for_datarobot - without it,
+    datarobot_dome's guard metrics record through the OTel SDK's no-op
+    default MeterProvider and are silently dropped (see module docstring).
+    """
+
+    @staticmethod
+    def _set_full_env(monkeypatch):
+        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
+        monkeypatch.setenv("DATAROBOT_API_TOKEN", "tok")
+        monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+
+    def test_skips_when_env_missing(self, clean_env):
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is False
+        assert isinstance(metrics.get_meter_provider(), _ProxyMeterProvider)
+
+    def test_skips_when_api_key_only(self, clean_env):
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is False
+        assert isinstance(metrics.get_meter_provider(), _ProxyMeterProvider)
+
+    def test_installs_provider_when_env_present(self, clean_env):
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is True
+
+        provider = metrics.get_meter_provider()
+        assert isinstance(provider, MeterProvider)
+        attrs = provider._sdk_config.resource.attributes
+        assert attrs["service.name"] == "deployment-abc123"
+        assert attrs["telemetry.sdk.language"] == "python"
+
+    def test_installs_provider_with_workload_env(self, clean_env):
+        clean_env.setenv("WORKLOAD_ID", "wkl42")
+        clean_env.setenv("DATAROBOT_API_TOKEN", "tok")
+        clean_env.setenv("DATAROBOT_ENDPOINT", "https://example.test/api/v2")
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is True
+
+        provider = metrics.get_meter_provider()
+        assert provider._sdk_config.resource.attributes["service.name"] == "workload-wkl42"
+
+    def test_exporter_endpoint_and_headers(self, clean_env, monkeypatch):
+        captured = {}
+
+        from opentelemetry.exporter.otlp.proto.http import metric_exporter as exporter_module
+
+        real_exporter_cls = exporter_module.OTLPMetricExporter
+
+        def spy_exporter(**kwargs):
+            captured.update(kwargs)
+            return real_exporter_cls(**kwargs)
+
+        monkeypatch.setattr(exporter_module, "OTLPMetricExporter", spy_exporter)
+
+        self._set_full_env(clean_env)
+        datarobot_otel.bootstrap_otel_meter_provider_for_datarobot()
+
+        assert captured["endpoint"] == "https://example.test/otel/v1/metrics"
+        assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
+        assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+
+    def test_idempotent_second_call(self, clean_env):
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is True
+        provider_first = metrics.get_meter_provider()
+
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is False
+        assert metrics.get_meter_provider() is provider_first
+
+    def test_skips_when_sdk_provider_already_installed(self, clean_env):
+        # Unlike traces, an SDK MeterProvider's metric readers are
+        # constructor-only - there's no "attach a reader" fallback, so an
+        # already-installed SDK provider must be left untouched.
+        from opentelemetry.sdk.resources import Resource
+
+        pre_existing = MeterProvider(resource=Resource.create({"service.name": "preexisting"}))
+        metrics.set_meter_provider(pre_existing)
+
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is False
+        assert metrics.get_meter_provider() is pre_existing
+
+    def test_datarobot_dome_metric_session_uses_the_bootstrapped_provider(self, clean_env):
+        """The regression test that matters most here: confirms datarobot_dome's
+        OtelMetricSession - which defers to get_meter_provider() with no
+        provider passed explicitly - picks up the bootstrapped provider and
+        its service.name, rather than the SDK's no-op default. Without the
+        bootstrap this session runs against, every guard metric silently
+        vanishes: confirmed directly (test_no_bootstrap_means_dome_gets_the_
+        no_op_proxy_provider below), not assumed.
+        """
+        from datarobot_dome.otel.metric_session import OtelMetricSession
+
+        self._set_full_env(clean_env)
+        assert datarobot_otel.bootstrap_otel_meter_provider_for_datarobot() is True
+
+        session = OtelMetricSession()
+
+        assert isinstance(session.provider, MeterProvider)
+        assert session.provider is metrics.get_meter_provider()
+        attrs = session.provider._sdk_config.resource.attributes
+        assert attrs["service.name"] == "deployment-abc123"
+
+    def test_no_bootstrap_means_dome_gets_the_no_op_proxy_provider(self, clean_env):
+        """The bug this task exists to fix, proven rather than asserted: with
+        no bootstrap call at all (the state of every guard-emitting process
+        before this task), OtelMetricSession's provider is the SDK's default
+        proxy - metrics recorded against it are never exported anywhere.
+        """
+        from datarobot_dome.otel.metric_session import OtelMetricSession
+
+        session = OtelMetricSession()
+
+        assert isinstance(session.provider, _ProxyMeterProvider)

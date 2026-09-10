@@ -26,7 +26,7 @@ Key options:
 | `--port` | Port to bind the server to. Falls back to `AGENT_PORT` env var. |
 | `--reload` | Enable auto-reload for development (`true`/`false`). |
 | `--use_gunicorn` | Serve under gunicorn (used in DataRobot deployments). Worker timeout defaults to 600s; override with the `AGENT_GUNICORN_WORKER_TIMEOUT` env var / runtime parameter. |
-| `--a2a` | Expose the agent via the Agent2Agent protocol (endpoints mounted under `/a2a/`). |
+| `--a2a` | Expose the agent via the Agent2Agent protocol (endpoints mounted under `/a2a/` by default; set `a2a.mount_path` in `workflow.yaml` to mount under a different suffix — each segment must be RFC 3986 unreserved characters and not start with a dot, and a path another route already serves is rejected at startup). |
 | `--override` | Override config values using dot notation (e.g., `--override llms.nim_llm.temperature 0.7`). |
 
 ### `nat dragent run`

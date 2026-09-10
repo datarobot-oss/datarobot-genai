@@ -14,9 +14,13 @@
 
 """Wire drmcpbase FastMCP middleware to drtools auth resolution."""
 
+import json
 import logging
+from abc import ABC
+from abc import abstractmethod
 from enum import Enum
 from enum import auto
+from http import HTTPMethod
 from http import HTTPStatus
 from typing import Any
 
@@ -30,12 +34,19 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from datarobot_genai.drmcp.core.config import get_config
+from datarobot_genai.drmcp.core.runtime_identity import DeploymentEndpointResolver
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
 from datarobot_genai.drmcpbase.middleware import AuthContextExtractor
 from datarobot_genai.drmcpbase.middleware import OAuthMiddleWare
 from datarobot_genai.drmcpbase.middleware import register_oauth_middleware
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import AuthErrorResponse
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    ErrorCodeInAuthErrorResponse,
+)
+from datarobot_genai.drmcpbase.oauth_scopes import declared_scopes_for_one_tool
 from datarobot_genai.drmcputils.auth import extract_auth_context_from_headers
 from datarobot_genai.drmcputils.auth import set_auth_context
 from datarobot_genai.drmcputils.auth import set_request_headers
@@ -56,6 +67,17 @@ def is_path_exempt_from_oauth_validation(path: str) -> bool:
     health_path = _normalize_path(prefix_mount_path("/"))
     well_known_prefix = _normalize_path(prefix_mount_path("/.well-known"))
     return path == health_path or path.startswith(well_known_prefix + "/")
+
+
+def should_run_claim_validation(request: Request) -> bool:
+    """Whether the AuthZ validators run for this request.
+
+    ``mcp_enable_oauth_claim_validation`` gates all of them; exempt paths never run one.
+    """
+    return (
+        get_config().mcp_enable_oauth_claim_validation
+        and not is_path_exempt_from_oauth_validation(request.url.path)
+    )
 
 
 def create_oauth_middleware(
@@ -98,19 +120,63 @@ class ErrorResponse(Enum):
         return mapping[self]
 
 
-class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
+def build_well_known_protected_resource_url(request: Request) -> str:
+    well_known_url = DeploymentEndpointResolver().get_well_known_protected_resource_metadata_url()
+    if well_known_url:
+        return well_known_url
+    return str(
+        request.url.replace(
+            path=prefix_mount_path("/.well-known/oauth-protected-resource"),
+            query="",
+        )
+    )
+
+
+def build_http_response_from_auth_error(
+    status_code: HTTPStatus,
+    auth_error_response: AuthErrorResponse,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=auth_error_response.to_response_content(),
+        headers={auth_error_response.get_header_name(): auth_error_response.to_header_value()},
+    )
+
+
+def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
+    return request.scope.get("user")
+
+
+class BaseAuthZMiddleware(BaseHTTPMiddleware, ABC):
+    """Applies the ``mcp_enable_oauth_claim_validation`` gate before any AuthZ work runs.
+
+    Subclasses implement ``run_authz`` and in order not to repeat the gate check, the
+    dispatch method is overridden to call the ``run_authz`` method.
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response:
+        if not should_run_claim_validation(request):
+            return await call_next(request)
+        return await self.run_authz(request, call_next)
+
+    @abstractmethod
+    async def run_authz(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response: ...
+
+
+class OAuthJWTTokenHandlerMiddleware(BaseAuthZMiddleware):
     """ASGI middleware parsing OAuth JWT token and setting it in request scope.
     The parsed JWT token can be reused in the downstream validation (e.g., audience, tool scope).
     """
 
     HTTP_HEADER_TO_VALIDATE = "x-datarobot-external-access-token"
-
-    @classmethod
-    def to_run_jwt_token_handling(cls, request: Request) -> bool:
-        is_oauth_claim_validation_enabled = get_config().oauth_claim_validation
-        return is_oauth_claim_validation_enabled and not is_path_exempt_from_oauth_validation(
-            request.url.path
-        )
 
     @staticmethod
     def update_scope_with_authenticated_user(
@@ -126,20 +192,24 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
     ) -> None:
         scope["auth"] = AuthCredentials(access_token.scopes)
 
-    async def dispatch(
+    async def run_authz(
         self,
         request: Request,
         call_next: Any,
     ) -> Response:
-        if not self.to_run_jwt_token_handling(request):
-            return await call_next(request)
-
         access_token = JWTTokenHandler.parse_to_access_token(
             self.HTTP_HEADER_TO_VALIDATE,
             request.headers,
         )
         if not access_token:
-            return ErrorResponse.INVALID_JWT_TOKEN.to_starlette_response()
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.UNAUTHORIZED,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+                    error_description="Invalid JWT token.",
+                ),
+            )
 
         scope = request.scope
         self.update_scope_with_auth_credentials(scope, access_token)
@@ -148,7 +218,7 @@ class OAuthJWTTokenHandlerMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
+class GeneralOAuthClaimValidationMiddleware(BaseAuthZMiddleware):
     """ASGI middleware validating the audience claim in a JWT token. The naming general in this
     context means claim validations in this middleware is not MCP protocol specific check to be only
     triggerd by a specific MCP protocol (e.g., call a tool).
@@ -161,22 +231,13 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         mcp_server_config = get_config()
         return mcp_server_config.mcp_xaa_token_audience
 
-    @staticmethod
-    def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
-        return request.scope.get("user")
-
-    async def dispatch(
+    async def run_authz(
         self,
         request: Request,
         call_next: Any,
     ) -> Response:
-        user = self.get_user_from_request_scope(request)
+        user = get_user_from_request_scope(request)
         if not user:
-            message = (
-                "No AuthenticatedUser is found in inbound request scope. "
-                f"Skip {self.__class__.__name__}."
-            )
-            logger.info(message)
             return await call_next(request)
 
         try:
@@ -185,6 +246,75 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         except AudienceClaimValidationError as ex:
             error_message = str(ex)
             logger.info(error_message)
-            return ErrorResponse.INVALID_OAUTH_AUDIENCE_CLAIM.to_starlette_response(error_message)
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.FORBIDDEN,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+                    error_description=error_message,
+                ),
+            )
+
+        return await call_next(request)
+
+
+class OAuthMCPToolCallScopeValidationMiddleware(BaseAuthZMiddleware):
+    """ASGI middleware validating the scope claim in a JWT token. It is now enforced only on
+    ``tools/call`` requests.
+    This middleware is expected to be triggered after OAuthJWTTokenHandlerMiddleware which
+    parses JWT token and sets it the request scope which is to be validated in this middleware.
+    """
+
+    @staticmethod
+    async def get_mcp_tool_name_in_request(request: Request) -> str | None:
+        if request.method != HTTPMethod.POST:
+            return None
+        request_body = await request.body()
+        try:
+            payload = json.loads(request_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+
+        if not isinstance(payload, dict) or payload.get("method") != "tools/call":
+            return None
+        params = payload.get("params")
+        name = params.get("name") if isinstance(params, dict) else None
+        return name if isinstance(name, str) else None
+
+    async def run_authz(
+        self,
+        request: Request,
+        call_next: Any,
+    ) -> Response:
+        mcp_tool_name = await self.get_mcp_tool_name_in_request(request)
+        if not mcp_tool_name:
+            return await call_next(request)
+
+        declared_scopes = await declared_scopes_for_one_tool(
+            request.app.state.fastmcp_server,
+            mcp_tool_name,
+        )
+        if not declared_scopes:
+            return await call_next(request)
+
+        user = get_user_from_request_scope(request)
+        if not user:
+            return await call_next(request)
+
+        try:
+            claims_validator = JWTTokenClaimsValidator(user)
+            claims_validator.validate_mcp_tool_scope_claims(declared_scopes)
+        except MCPToolScopeClaimValidationError as ex:
+            error_message = str(ex)
+            logger.info(error_message)
+            return build_http_response_from_auth_error(
+                status_code=HTTPStatus.FORBIDDEN,
+                auth_error_response=AuthErrorResponse(
+                    resource_metadata=build_well_known_protected_resource_url(request),
+                    error_code=ErrorCodeInAuthErrorResponse.INSUFFICIENT_SCOPE,
+                    error_description=error_message,
+                    scopes=sorted(declared_scopes),
+                ),
+            )
 
         return await call_next(request)

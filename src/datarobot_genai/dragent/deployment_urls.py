@@ -19,17 +19,57 @@ a DataRobot-hosted A2A agent and to look up its agent card from the central
 registry.  Both the server side (advertising its own URL in the agent card) and
 the client side (deriving the RPC base URL from a ``deployment_id``) use these
 functions so that the patterns stay in sync automatically.
+
+When a workload is served from an Envoy-fronted enclave,
+:func:`resolve_external_workload_base` is the agent's own gateway route and
+:func:`resolve_external_workload_api_endpoint` is the enclave's ``/api/v2``
+base (memory service, and so on) — distinct from the control-hub
+``DATAROBOT_ENDPOINT``.
 """
 
 import os
 
-DEPLOYMENT_A2A_PATH = "directAccess/a2a"
-WORKLOAD_A2A_PATH = "a2a"
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
+
+DEPLOYMENT_DIRECT_ACCESS_PATH = "directAccess"
+DEPLOYMENT_A2A_PATH = f"{DEPLOYMENT_DIRECT_ACCESS_PATH}/{A2A_MOUNT_PATH}"
+WORKLOAD_A2A_PATH = A2A_MOUNT_PATH
 DEPLOYMENT_MCP_PATH = "directAccess/mcp"
 MCP_PATH = "mcp"
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 _API_V2_SUFFIX = "/api/v2"
+
+#: Enclave host an Envoy API gateway serves this workload from. Injected only there.
+WORKLOAD_EXTERNAL_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
+#: Path prefix the Envoy API gateway routes to this workload. Injected only there.
+WORKLOAD_EXTERNAL_PREFIX_ENV = "DR_WORKLOAD_EXTERNAL_URL_PREFIX"
+
+
+def join_mount_path(base: str, mount_path: str) -> str:
+    """Append ``mount_path`` to ``base``, returning a single trailing slash either way.
+
+    A generic composer, not an A2A-specific policy: ``DRAgentA2AConfig`` never actually
+    produces an empty ``mount_path`` (mounting A2A at the application root is rejected
+    there), but this function still handles it, collapsing to ``base``'s own trailing
+    slash rather than leaving a ``//`` behind. Slashes on both sides are stripped before
+    joining so callers need not agree on which side owns the separator.
+
+    Parameters
+    ----------
+    base:
+        Path the mount hangs off, e.g. ``"deployments/xyz/directAccess"``.
+    mount_path:
+        Path suffix A2A is mounted under, possibly empty.
+
+    Returns
+    -------
+    str
+        ``"{base}/{mount_path}/"``, or ``"{base}/"`` when ``mount_path`` is empty.
+    """
+    root = base.rstrip("/")
+    suffix = mount_path.strip("/")
+    return f"{root}/{suffix}/" if suffix else f"{root}/"
 
 
 def normalize_api_v2_endpoint(endpoint: str) -> str:
@@ -94,8 +134,69 @@ def resolve_datarobot_endpoint(require: bool = False) -> str | None:
     return _DEFAULT_DATAROBOT_ENDPOINT
 
 
-def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
+def _external_workload_host() -> str | None:
+    """Return the Envoy host with a scheme, or *None* when the gateway vars are incomplete.
+
+    Both ``DR_WORKLOAD_EXTERNAL_URL_HOST`` and ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` are
+    required — the same presence signal as :func:`resolve_external_workload_base`.  The
+    prefix is this workload's own route and is not returned here.
+    """
+    host = os.getenv(WORKLOAD_EXTERNAL_HOST_ENV, "").strip()
+    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
+    if not (host and prefix):
+        return None
+    if "://" not in host:
+        host = f"https://{host}"
+    return host.rstrip("/")
+
+
+def resolve_external_workload_base() -> str | None:
+    """Return the API gateway's base URL for this workload, or *None* when not behind one.
+
+    An Envoy API gateway serves a workload from a per-enclave host and path prefix that
+    ``DATAROBOT_ENDPOINT`` cannot derive, so it injects both as env vars.  Their presence is
+    the signal that the URLs composed elsewhere in this module are unreachable; both are
+    required.  The host is accepted with or without a scheme (``https://`` assumed).
+
+    Returns
+    -------
+    str | None
+        ``https://{host}/{prefix}``, no trailing slash, or *None* when either var is unset.
+    """
+    host = _external_workload_host()
+    if host is None:
+        return None
+    prefix = os.getenv(WORKLOAD_EXTERNAL_PREFIX_ENV, "").strip()
+    return f"{host}/{prefix.strip('/')}"
+
+
+def resolve_external_workload_api_endpoint() -> str | None:
+    """Return the enclave API gateway's ``/api/v2`` endpoint, or *None* when not behind one.
+
+    Same presence signal as :func:`resolve_external_workload_base` (both host and prefix).
+    The prefix is this workload's own route and is not part of the platform API base —
+    only the host is used, so the DataRobot client talks to services on the enclave
+    (memory, and so on) rather than the control hub.
+
+    Returns
+    -------
+    str | None
+        ``https://{host}/api/v2``, no trailing slash, or *None* when either var is unset.
+    """
+    host = _external_workload_host()
+    if host is None:
+        return None
+    return normalize_api_v2_endpoint(host)
+
+
+def build_deployment_a2a_url(
+    endpoint: str, deployment_id: str, mount_path: str = A2A_MOUNT_PATH
+) -> str:
     """Construct the A2A direct-access URL for a DataRobot deployment.
+
+    ``directAccess`` forwards the full prefixed path to the container, so the suffix
+    the agent actually mounted A2A under has to appear here too or the advertised URL
+    would not resolve.
 
     Parameters
     ----------
@@ -104,14 +205,21 @@ def build_deployment_a2a_url(endpoint: str, deployment_id: str) -> str:
         A trailing slash is stripped before composing the URL.
     deployment_id:
         The DataRobot deployment ID.
+    mount_path:
+        Path suffix A2A is mounted under inside the container, ``"a2a"`` by default.
+        ``DRAgentA2AConfig`` never passes ``""`` (it rejects mounting A2A at the
+        application root), but this generic composer still accepts it.
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``.
+        A URL of the form ``{endpoint}/deployments/{deployment_id}/directAccess/a2a/``,
+        with ``a2a`` replaced by ``mount_path`` and omitted entirely when it is empty.
     """
     base = endpoint.rstrip("/")
-    return f"{base}/deployments/{deployment_id}/{DEPLOYMENT_A2A_PATH}/"
+    return join_mount_path(
+        f"{base}/deployments/{deployment_id}/{DEPLOYMENT_DIRECT_ACCESS_PATH}", mount_path
+    )
 
 
 def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
@@ -134,8 +242,14 @@ def build_deployment_agent_card_url(endpoint: str, deployment_id: str) -> str:
     return f"{base}/deployments/{deployment_id}/agentCard/"
 
 
-def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
+def build_workload_a2a_url(
+    endpoint: str, workload_id: str, mount_path: str = A2A_MOUNT_PATH
+) -> str:
     """Construct the A2A URL for a DataRobot workload.
+
+    The workload route forwards the full prefixed path to the container, so the suffix
+    the agent actually mounted A2A under has to appear here too or the advertised URL
+    would not resolve.
 
     Parameters
     ----------
@@ -144,14 +258,19 @@ def build_workload_a2a_url(endpoint: str, workload_id: str) -> str:
         A trailing slash is stripped before composing the URL.
     workload_id:
         The DataRobot workload ID.
+    mount_path:
+        Path suffix A2A is mounted under inside the container, ``"a2a"`` by default.
+        ``DRAgentA2AConfig`` never passes ``""`` (it rejects mounting A2A at the
+        application root), but this generic composer still accepts it.
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/endpoints/workloads/{workload_id}/a2a/``.
+        A URL of the form ``{endpoint}/endpoints/workloads/{workload_id}/a2a/``, with
+        ``a2a`` replaced by ``mount_path`` and omitted entirely when it is empty.
     """
     base = endpoint.removesuffix("/")
-    return f"{base}/endpoints/workloads/{workload_id}/{WORKLOAD_A2A_PATH}/"
+    return join_mount_path(f"{base}/endpoints/workloads/{workload_id}", mount_path)
 
 
 def build_deployment_mcp_url(endpoint: str, deployment_id: str) -> str:

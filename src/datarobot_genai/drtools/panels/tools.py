@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"panels", "read", "list", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—list] List panels (metadata only) in a source ('main' committed, "
         "'staging' session-scoped). Read-only. Next step: get_panel for a single panel's "
@@ -81,7 +81,7 @@ async def list_panels(
 
 
 @tool_metadata(
-    tags={"panels", "read", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—get] Fetch a single panel's metadata by ID. Read-only. Bulky payloads "
         "(Dataset/Chart) are referenced by payload_files_id, not inlined here."
@@ -103,7 +103,7 @@ async def get_panel(
 
 
 @tool_metadata(
-    tags={"panels", "write", "create", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—create text] Create a Text panel (markdown narrative/report) in a source. "
         "Returns the created panel including its assigned ID."
@@ -128,7 +128,7 @@ async def create_text_panel(
 
 
 @tool_metadata(
-    tags={"panels", "write", "create", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—create json] Create a Json panel (structured dict payload) in a source. "
         "Returns the created panel including its assigned ID."
@@ -153,7 +153,7 @@ async def create_json_panel(
 
 
 @tool_metadata(
-    tags={"panels", "schemas", "read", "list", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—schemas] List registered Pydantic schemas available for Json panel "
         "validation, optionally filtered by namespace. Read-only. Next step: "
@@ -188,7 +188,7 @@ async def list_panel_schemas(
 
 
 @tool_metadata(
-    tags={"panels", "schemas", "read", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—schemas] Describe a registered schema in detail: fields with types and "
         "required status, the full JSON Schema, and an example value. Read-only."
@@ -216,7 +216,7 @@ async def describe_panel_schema(
 
 
 @tool_metadata(
-    tags={"panels", "schemas", "read", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—schemas] Validate data against a registered schema without creating a "
         "panel. Returns {valid: true, normalized_data} on success or {valid: false, "
@@ -252,7 +252,7 @@ async def validate_panel_data(
 
 
 @tool_metadata(
-    tags={"panels", "write", "move", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—move] Move a panel between sources (e.g. promote 'staging' to 'main') by "
         "retagging it in place. The panel id is preserved, so existing references stay valid."
@@ -277,7 +277,7 @@ async def move_panel(
 
 
 @tool_metadata(
-    tags={"panels", "write", "delete", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—delete] Delete a panel (manifest + payload) by ID. Returns the deleted ID."
     ),

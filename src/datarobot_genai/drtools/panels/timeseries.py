@@ -517,7 +517,7 @@ def _infer_forecast_point(frame: pl.DataFrame, reqs: ScoringDataRequirements) ->
 
 
 @tool_metadata(
-    tags={"panels", "write", "dataset", "timeseries", "daria"},
+    tags=("DataRobot", "Panels"),
     description=(
         "[Panels—TS scoring dataset] Prepare a Dataset panel for time-series scoring against "
         "a deployment: introspects the deployment's datetime partitioning + forecast settings "

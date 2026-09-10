@@ -35,7 +35,7 @@ _JIRA_ISSUES_REST = "https://developer.atlassian.com/cloud/jira/platform/rest/v3
 
 
 @tool_metadata(
-    tags={"jira", "search", "issues"},
+    tags=("Atlassian", "Jira"),
     description=(
         "[Jira—search issues] Use when filtering many issues with JQL (project, status, text, "
         "dates, assignee, etc.). Returns matching issues as summaries. Not one known issue key "
@@ -76,7 +76,7 @@ async def jira_search_issues(
 
 
 @tool_metadata(
-    tags={"jira", "read", "get", "issue"},
+    tags=("Atlassian", "Jira"),
     description=(
         "[Jira—get issue] Use when you already have an issue key (e.g. PROJ-123) and need full "
         "fields and current values. Read-only. Not JQL multi-issue search (jira_search_issues).\n\n"
@@ -109,7 +109,7 @@ async def jira_get_issue(
 
 
 @tool_metadata(
-    tags={"jira", "create", "add", "issue"},
+    tags=("Atlassian", "Jira"),
     description=(
         "[Jira—create issue] Use when opening a new work item: project key, summary, and issue "
         "type name (Task/Bug/Story as configured). Optional description. Not status moves "
@@ -165,7 +165,7 @@ async def jira_create_issue(
 
 
 @tool_metadata(
-    tags={"jira", "update", "edit", "issue"},
+    tags=("Atlassian", "Jira"),
     description=(
         "[Jira—update fields] Use when changing field values on an existing issue (summary, "
         "description, custom fields) by key; values must match Jira field formats. Not workflow "
@@ -211,7 +211,7 @@ async def jira_update_issue(
 
 
 @tool_metadata(
-    tags={"jira", "update", "transition", "issue"},
+    tags=("Atlassian", "Jira"),
     description=(
         "[Jira—transition status] Use when moving an existing issue along its workflow by exact "
         "transition name (e.g. 'In Progress'). Not arbitrary field edits (jira_update_issue), "

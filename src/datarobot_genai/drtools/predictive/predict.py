@@ -84,7 +84,7 @@ def _batch_job_submitted_payload(job: Any, deployment_id: str, input_desc: str) 
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "read", "scoring", "batch"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—deployment + catalog dataset] Submits batch scoring of one AI Catalog tabular "
         "dataset through an MLOps deployment (deployment_id + dataset_id). Returns immediately "
@@ -132,7 +132,7 @@ async def predict_batch_predictions_from_dataset(
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "read", "scoring", "batch"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—deployment + project splits] Submits batch predictions from a deployment using "
         "project data: training, holdout, validation, or allBacktest (partition), optional "
@@ -201,7 +201,7 @@ async def predict_batch_predictions_from_partition(
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "read", "scoring", "batch"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—batch job status] REQUIRED polling step after "
         "predict_batch_predictions_from_dataset or "
@@ -261,7 +261,7 @@ async def predict_get_batch_job_status(
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "read", "scoring", "batch"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—fetch batch CSV] After predict_get_batch_job_status shows COMPLETED and "
         "url, returns scored CSV text inline for job_id when under the inline size cap. If too "

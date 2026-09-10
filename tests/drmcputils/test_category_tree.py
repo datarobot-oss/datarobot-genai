@@ -43,7 +43,7 @@ def _filterable(tools: list[Any]) -> dict[str, set[str]]:
     mapping: dict[str, set[str]] = {}
     for item in build_tool_gallery_items([merge_tool_info(t, {}) for t in tools]):
         for category in item["categories"]:
-            mapping.setdefault(str(category), set()).add(item["name"])
+            mapping.setdefault(category["name"], set()).add(item["name"])
     return mapping
 
 

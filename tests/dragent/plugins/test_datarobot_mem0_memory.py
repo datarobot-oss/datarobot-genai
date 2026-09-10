@@ -617,14 +617,88 @@ def test_dr_mem0_endpoint_falls_back_to_datarobot_endpoint_env(monkeypatch: Any)
     )
 
 
+def test_dr_mem0_endpoint_prefers_public_api_endpoint_over_internal_endpoint(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
+    )
+
+
+def test_dr_mem0_endpoint_stays_on_control_hub_when_enclave_gateway_is_set(
+    monkeypatch: Any,
+) -> None:
+    # GIVEN a workload on an Envoy-fronted enclave whose control-hub URLs
+    # still point at staging. Agent memory is provisioned on the control hub
+    # (Pulumi / MemorySpace.create); the enclave host is only for the
+    # registry L2 cache.
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "http://datarobot-nginx/api/v2")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    # WHEN the mem0 endpoint is built
+    # THEN it still talks to the control hub, not the enclave
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
+    )
+
+
+def test_dr_mem0_endpoint_partial_gateway_config_falls_back_to_public_api(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv(
+        "DATAROBOT_PUBLIC_API_ENDPOINT",
+        "https://staging.datarobot.com/api/v2",
+    )
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
+    config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
+    )
+
+
+def test_dr_mem0_endpoint_explicit_endpoint_wins_over_enclave(monkeypatch: Any) -> None:
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_HOST", "enclave-x.datarobot.com")
+    monkeypatch.setenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", "/workloads/abc123")
+    config = DRMem0MemoryClientConfig(
+        agent_memory_space_id="space-123",
+        datarobot_endpoint="https://override.example/api/v2",
+    )
+
+    assert (
+        datarobot_mem0_memory._dr_mem0_endpoint(config)
+        == "https://override.example/api/v2/memory/space-123"
+    )
+
+
 def test_dr_mem0_endpoint_requires_a_base_url(monkeypatch: Any) -> None:
     # GIVEN no datarobot_endpoint configured and no env var.
     monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+    monkeypatch.delenv("DATAROBOT_PUBLIC_API_ENDPOINT", raising=False)
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_HOST", raising=False)
+    monkeypatch.delenv("DR_WORKLOAD_EXTERNAL_URL_PREFIX", raising=False)
     config = DRMem0MemoryClientConfig(agent_memory_space_id="space-xyz")
 
     # THEN the builder refuses to fabricate a URL — better to fail loud than to
     # point at a wrong host.
-    with pytest.raises(RuntimeError, match="DATAROBOT_ENDPOINT"):
+    with pytest.raises(ValueError, match="DATAROBOT_PUBLIC_API_ENDPOINT"):
         datarobot_mem0_memory._dr_mem0_endpoint(config)
 
 
@@ -778,6 +852,12 @@ async def test_registered_memory_client_yields_unconfigured_editor_without_dr_to
     # GIVEN an agent_memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    class _NoToken:
+        def resolve_datarobot_api_token(self) -> None:
+            return None
+
+    monkeypatch.setattr(datarobot_mem0_memory, "resolve_config", _NoToken)
 
     async with datarobot_mem0_memory.dr_mem0_memory_client(
         DRMem0MemoryClientConfig(

@@ -173,7 +173,7 @@ class ModelEncoder(json.JSONEncoder):
 
 
 @tool_metadata(
-    tags={"predictive", "model", "read", "management", "info", "daria"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—pick best model] Use when the user wants the top leaderboard model for one "
         "modeling project, optionally ranked by a validation metric (e.g. AUC, LogLoss). "
@@ -247,7 +247,7 @@ async def models_get_bestmodel(
 
 
 @tool_metadata(
-    tags={"predictive", "model", "read", "scoring", "dataset"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—model vs catalog] Use when the user wants to score an AI Catalog dataset with a "
         "specific leaderboard model inside a modeling project (they give project_id, model_id, and "
@@ -296,7 +296,7 @@ async def modeling_score_dataset(
 
 
 @tool_metadata(
-    tags={"predictive", "model", "read", "management", "list", "daria"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—list models] Use when the user needs trained leaderboard models for a "
         "project (IDs, types, metrics), with optional offset/limit pagination. Read-only. Not "
@@ -358,7 +358,7 @@ async def modeling_list_models(
 
 
 @tool_metadata(
-    tags={"predictive", "model", "read", "details", "info", "daria"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—model diagnostics] Use when the user asks for training-time detail on one "
         "leaderboard model: target, project metric, validation metrics, optional feature impact "
@@ -418,7 +418,7 @@ async def modeling_get_modeldetails(
 
 
 @tool_metadata(
-    tags={"predictive", "model", "read", "timeseries", "validation", "daria"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—time series readiness] Use before starting time-series Autopilot: checks an "
         "AI Catalog dataset for row count, parsable datetime column, target null rate, optional "

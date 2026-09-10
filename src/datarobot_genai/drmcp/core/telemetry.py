@@ -30,6 +30,7 @@ from fastmcp.server.middleware import CallNext
 from fastmcp.server.middleware import Middleware
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.tool import ToolResult
+from opentelemetry import baggage
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.context import attach
@@ -129,6 +130,9 @@ class OpenTelemetryMiddleware(Middleware):
                     "mcp.method.name": "tools/call",
                 }
             )
+            agent_name = baggage.get_baggage("gen_ai.agent.name")
+            if isinstance(agent_name, str) and agent_name:
+                span.set_attribute("gen_ai.agent.name", agent_name)
             started = time.perf_counter()
             try:
                 result = await call_next(context)

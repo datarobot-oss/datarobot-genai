@@ -322,7 +322,7 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         env_ignore_empty=True,
     )
 
-    oauth_claim_validation: bool = Field(
+    mcp_enable_oauth_claim_validation: bool = Field(
         default=False,
         description="Enable OAuth claim validation (e.g., audience, scope)",
     )

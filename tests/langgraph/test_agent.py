@@ -38,6 +38,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph.message import MessagesState
 from langgraph.graph.state import StateGraph
 from langgraph.types import Interrupt
+from opentelemetry import baggage
 
 from datarobot_genai.core.chat.completions import agent_chat_completion_wrapper
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
@@ -203,6 +204,59 @@ class SimpleLangGraphAgent(LangGraphAgent):
     @property
     def langgraph_config(self) -> dict[str, Any]:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# name (compiled onto the graph, read back out by the OTel auto-instrumentor
+# as gen_ai.agent.name)
+# ---------------------------------------------------------------------------
+
+
+def test_name_defaults_to_the_concrete_subclass_name() -> None:
+    """Without an explicit name=, langgraph's own compile() falls back to the
+    generic literal "LangGraph" - identical across every agent built from this
+    class, useless for multi-agent segmentation. Defaulting to the subclass
+    name here gives every agent something distinguishing for free.
+    """
+    assert SimpleLangGraphAgent().name == "SimpleLangGraphAgent"
+
+
+def test_name_respects_an_explicit_override() -> None:
+    assert SimpleLangGraphAgent(name="my_custom_agent").name == "my_custom_agent"
+
+
+class _NameCheckingAgent(SimpleLangGraphAgent):
+    """Captures the Baggage value visible mid-run, from inside the astream call."""
+
+    seen_agent_name: str | None = None
+
+    @cached_property
+    def workflow(self) -> StateGraph[MessagesState]:
+        async def mock_stream_generator():
+            self.seen_agent_name = baggage.get_baggage("gen_ai.agent.name")
+            yield (
+                "first_agent",
+                "updates",
+                {"first_agent": {"usage": {}, "messages": [AIMessage(content="hi", id="1")]}},
+            )
+
+        mock_graph_stream = Mock(astream=Mock(return_value=mock_stream_generator()))
+        return Mock(compile=Mock(return_value=mock_graph_stream))
+
+
+@pytest.mark.asyncio
+async def test_invoke_puts_agent_name_in_baggage_during_graph_execution(
+    run_agent_input: RunAgentInput,
+) -> None:
+    """gen_ai.agent.name must be visible as Baggage while the graph runs, so
+    a tool call made from inside it can be tagged with which agent triggered it.
+    """
+    agent = _NameCheckingAgent(name="my_named_agent")
+
+    _ = [e async for e in agent.invoke(run_agent_input)]
+
+    assert agent.seen_agent_name == "my_named_agent"
+    assert baggage.get_baggage("gen_ai.agent.name") is None
 
 
 def test_datarobot_agent_class_from_langgraph_factory_receives_llm_tools_verbose() -> None:

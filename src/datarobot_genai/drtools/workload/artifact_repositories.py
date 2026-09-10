@@ -35,7 +35,7 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 
 @tool_metadata(
-    tags={"artifact", "repository", "workload", "datarobot", "get", "list"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact repository—get] Read artifact repositories.\n"
         "  - Omit repository_id to LIST repositories (ID, name, type, timestamps); "
@@ -107,7 +107,7 @@ async def artifact_repository_get(
 
 
 @tool_metadata(
-    tags={"artifact", "repository", "workload", "datarobot", "delete"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact repository—delete] Permanently delete an artifact repository. "
         "Artifacts within the repository are cascade-deleted unless they are locked "

@@ -45,7 +45,7 @@ def _parse_datetime(value: str) -> datetime:
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "realtime", "read", "scoring"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—deployment + catalog, synchronous rows] Use when the user already has an AI "
         "Catalog dataset_id and wants realtime-style scoring through a deployment with rows "
@@ -122,7 +122,7 @@ async def predict_score_catalog_realtime(
 
 
 @tool_metadata(
-    tags={"predictive", "prediction", "realtime", "read", "scoring"},
+    tags=("DataRobot", "Predictive", "Prediction"),
     description=(
         "[Predict—inline rows now] Use when the user pastes or embeds prediction rows directly "
         "in the conversation: a CSV snippet (header + rows) or a JSON array of row objects in "

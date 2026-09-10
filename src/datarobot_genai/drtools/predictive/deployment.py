@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "management", "list", "daria"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—discover deployments] Use when the user needs their MLOps deployments as "
         "ID-to-label map. Read-only. Not modeling projects (modeling_list_projects), not logged "
@@ -54,7 +54,7 @@ async def deployment_get_list() -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "model", "info", "daria"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—model linkage] Use when the user wants the model record attached to a deployment "
         "(model ID, project linkage). Read-only and narrow. For input feature names, types, and "
@@ -79,7 +79,7 @@ async def deployment_get_model_info(
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "write", "model", "create", "daria"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—from leaderboard model] Use when the user wants a new live MLOps deployment "
         "from an existing trained leaderboard model_id "
@@ -204,7 +204,7 @@ async def deploy_custom_model(
 
 
 @tool_metadata(
-    tags={"predictive", "deployment", "read", "predictions", "history", "daria"},
+    tags=("DataRobot", "Predictive", "Deployment"),
     description=(
         "[Deploy—prediction audit log] Use when the user asks for historical prediction rows "
         "already logged for a deployment (monitoring, audit). Read-only pagination; does not run "

@@ -29,9 +29,9 @@ provider reads the token from there regardless of which route it arrived on.
 
 Agent-card discovery needs no exemption because auth there is optional, which the pass-through
 above already models: an unauthenticated request reaches ``_handle_get_agent_card``, which
-applies ``enable_unauthenticated_well_known_route`` and serves a redacted card or a 401. A
-request that *does* present a token gets the full check first -- a token naming another agent is
-rejected rather than earning a card.
+applies ``enable_unauthenticated_well_known_route`` and serves a redacted card or a generic
+404. A request that *does* present a token gets the full check first -- a token naming another
+agent is rejected rather than earning a card.
 
 Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
 """

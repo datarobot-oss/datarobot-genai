@@ -50,7 +50,7 @@ from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREF
 
 from .config import MCPServerConfig
 from .config import get_config
-from .runtime_identity import resolve_self_url
+from .runtime_identity import DeploymentEndpointResolver
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,11 @@ def build_scope_settings(config: MCPServerConfig | None = None) -> ScopeSettings
         source=ScopeSource.parse(config.mcp_oauth_scope_source),
         tag_scopes=read_tag_scopes(),
         issuer=issuers[0] if issuers else None,
-        audience=config.mcp_oauth_audience or config.mcp_oauth_resource or resolve_self_url(),
+        audience=(
+            config.mcp_oauth_audience
+            or config.mcp_oauth_resource
+            or DeploymentEndpointResolver().get_deployment_url()
+        ),
         jwks_uri=config.mcp_oauth_jwks_uri,
     )
 

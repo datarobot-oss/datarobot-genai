@@ -14,6 +14,8 @@
 import logging
 from dataclasses import asdict
 from dataclasses import dataclass
+from enum import Enum
+from enum import auto
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -217,3 +219,45 @@ class MCPOAuthProtectedResourceMetadata(BaseDataClass):
             scopes_supported=user_config.scopes_supported,
             cross_application_access=user_config.cross_application_access,
         )
+
+
+class ErrorCodeInAuthErrorResponse(Enum):
+    """It is based on https://www.rfc-editor.org/info/rfc6750/#section-3.1."""
+
+    INVALID_REQUEST = auto()
+    INVALID_TOKEN = auto()
+    INSUFFICIENT_SCOPE = auto()
+    UNKNOWN = auto()  # This is not the part of the spec. I added here for better code readability.
+
+    def to_value(self) -> str:
+        return self.name.lower()
+
+
+@dataclass
+class AuthErrorResponse:
+    resource_metadata: str
+    error_code: ErrorCodeInAuthErrorResponse = ErrorCodeInAuthErrorResponse.UNKNOWN
+    scopes: list[str] | None = None
+    error_description: str | None = None
+
+    def get_scopes_string_representation(self) -> str | None:
+        if self.scopes:
+            return " ".join(self.scopes)
+        return None
+
+    @staticmethod
+    def get_header_name() -> str:
+        return "WWW-Authenticate"
+
+    def to_header_value(self) -> str:
+        parts = [f'resource_metadata="{self.resource_metadata}"']
+        if self.scopes:
+            parts.append(f'scope="{self.get_scopes_string_representation()}"')
+        if self.error_code != ErrorCodeInAuthErrorResponse.UNKNOWN:
+            parts.append(f'error="{self.error_code.to_value()}"')
+        if self.error_description:
+            parts.append(f'error_description="{self.error_description}"')
+        return "Bearer " + ", ".join(parts)
+
+    def to_response_content(self) -> dict[str, str | None]:
+        return {"error": self.error_code.to_value(), "error_description": self.error_description}

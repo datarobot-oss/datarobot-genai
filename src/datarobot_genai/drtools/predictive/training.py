@@ -194,7 +194,7 @@ def _build_dataset_insights(df: pd.DataFrame) -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"predictive", "training", "read", "analysis", "dataset"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—quick profile] Use for a fast structural overview of one AI Catalog dataset: "
         "row/column counts, inferred kinds (numeric, categorical, datetime, text), missingness, "
@@ -219,7 +219,7 @@ async def catalog_analyze_dataset(
 
 
 @tool_metadata(
-    tags={"predictive", "training", "read", "analysis", "usecase"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—use-case ideas] Use when the user wants ranked ML problem suggestions from one "
         "catalog dataset (name, suggested target, problem type, confidence). Read-only. Builds on "
@@ -253,7 +253,7 @@ async def catalog_suggest_ml_problems(
 
 
 @tool_metadata(
-    tags={"predictive", "training", "read", "analysis", "eda"},
+    tags=("DataRobot", "Predictive", "Catalog"),
     description=(
         "[Catalog—deep EDA] Use when the user wants richer exploratory stats on one catalog "
         "dataset: memory, per-column missingness, type groupings, optional target distribution "
@@ -609,7 +609,7 @@ def _analyze_target_for_use_cases(df: pd.DataFrame, target_col: str) -> list[Use
 
 
 @tool_metadata(
-    tags={"predictive", "training", "write", "autopilot", "model", "daria"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—start Autopilot] Use when the user wants to start or resume Autopilot for one "
         "tabular target: new project from dataset_id or public dataset_url plus project_name, or "
@@ -705,7 +705,7 @@ async def modeling_start_autopilot(
 
 
 @tool_metadata(
-    tags={"prediction", "training", "read", "model", "evaluation"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—ROC only] Use when the user wants ROC curve points for one binary classification "
         "leaderboard model; source must be string 'validation', 'holdout', or 'crossValidation'. "
@@ -776,7 +776,7 @@ async def modeling_get_model_roc(
 
 
 @tool_metadata(
-    tags={"predictive", "training", "read", "model", "evaluation"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—global feature impact] Use for training-time global feature impact on one "
         "leaderboard model (may wait while impact is computed). Read-only. Not per-row SHAP from "
@@ -814,7 +814,7 @@ async def modeling_get_model_feature_impact(
 
 
 @tool_metadata(
-    tags={"predictive", "training", "read", "model", "evaluation"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—lift chart] Use for lift chart bins on one classification leaderboard model "
         "(actual vs predicted by score bucket); source must be 'validation', 'holdout', or "

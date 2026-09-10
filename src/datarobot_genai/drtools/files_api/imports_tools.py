@@ -49,7 +49,7 @@ _IMPORT_STATUS_NOTE = (
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "import", "upload", "url", "data_source"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—import] Start a background import into a catalog directory. "
         "Use for large or remote files instead of file_write. Returns immediately "
@@ -135,7 +135,7 @@ async def file_import(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "import", "status"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—import status] Fetch the current status of a background import "
         "started by file_import. Performs ONE non-blocking fetch — it does not "

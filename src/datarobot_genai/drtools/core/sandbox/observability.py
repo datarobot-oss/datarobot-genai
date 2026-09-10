@@ -191,6 +191,43 @@ def _mark_span_error(span: Any, reason: str | None) -> None:
     span.set_status(Status(StatusCode.ERROR))
 
 
+def _split_image_version(image: str) -> str | None:
+    """Return the version (tag or digest) portion of a container image reference.
+
+    Handles the three shapes we publish/consume:
+
+    ``repo:tag`` -> ``tag`` · ``repo@sha256:…`` -> ``sha256:…`` ·
+    ``host:5000/repo:tag`` -> ``tag`` (a colon in the registry host, which has
+    no ``/`` after it, is not a tag separator). Returns ``None`` when the
+    reference carries no explicit version — an untagged reference means
+    ``:latest``, but we record what was actually asked for rather than
+    inventing a version the caller never specified.
+    """
+    if "@" in image:
+        return image.rsplit("@", 1)[1] or None
+    name, sep, tag = image.rpartition(":")
+    if not sep or "/" in tag:
+        return None
+    return tag or None
+
+
+def _set_image_attributes(span: Any, inner: Any) -> None:
+    """Record which sandbox image ran, on ``span``.
+
+    Set before the backend is invoked so the attributes are present on the
+    failure path too — "which image was this?" matters most when the run
+    failed. Backends that do not carry an ``image`` (e.g. a local process
+    sandbox) simply contribute nothing.
+    """
+    image = getattr(inner, "image", None)
+    if not isinstance(image, str) or not image:
+        return
+    span.set_attribute("sandbox.image", image)
+    version = _split_image_version(image)
+    if version:
+        span.set_attribute("sandbox.image_version", version)
+
+
 class InstrumentedSandbox:
     """Wraps any :class:`~datarobot_genai.drtools.core.sandbox.base.Sandbox` backend
     and records SLI metrics + a span around each execution.
@@ -222,6 +259,7 @@ class InstrumentedSandbox:
         tracer = self._tracer or get_tracer()
         start = time.monotonic()
         with tracer.start_as_current_span("sandbox.execute") as span:
+            _set_image_attributes(span, self._inner)
             try:
                 result = await self._inner.run(
                     code, inputs=inputs, externals=externals, timeout_s=timeout_s

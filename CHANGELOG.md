@@ -2,7 +2,113 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+
+## 0.29.34
+- `dragent`: the agent card registry L2 MemorySpace is created at runtime on enclave workloads only (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID`, with registry-backed A2A clients). Uses a workload-scoped `deduplication_key` so replicas share one space. Other runtimes use in-process L1 caching only.
+- `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there via Pulumi / `task deploy-dev`; the enclave API gateway is only for the agent card registry L2 cache.
+- `dragent`: bootstrap registry L2 cache provisioning at import and lifespan warmup so enclave workloads adopt MemorySpace L2 without recipe-side wiring. Skips `dr.Client()`'s `/version/` probe on enclave gateways (memory API only) and resets the registry singleton after provisioning.
+
+## 0.29.33 - 2026-09-08
+- Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
+- Add a minimum version for `langchain-core`: `>=1.3.3`.
+- Raise the minimum `mistune` version from `>=3.3.0` to `>=3.3.3`.
+
+## 0.29.32
+- `langgraph/llm`: fixed `base_url` being silently dropped when constructing an external `ChatLiteLLM` client.
+
+## 0.29.31
+- `dragent`: A2A can now be mounted under a configurable `a2a.mount_path` (default `a2a`); the advertised agent card URL follows it across the gateway, deployment, workload and local-dev tiers. Mounting at the application root is rejected.
+- `dragent`: the agent card is also served at the root `/.well-known/agent-card.json` as a discovery fallback, whatever suffix A2A is mounted under. It shares the mounted route's handler, so the unauthenticated-access policy — including the generic `404` from 0.29.29 — holds on both paths.
+- `dragent`: `a2a.mount_path` is validated at config load instead of accepted verbatim: every segment must be RFC 3986 unreserved characters (letters, digits, `- . _ ~`) and must not start with a dot. Values that used to fail silently are now rejected — Starlette path-parameter syntax (`{id}`, `{path}`), URI syntax (`?`, `#`, `%`), empty segments, and the RFC 8615 `.well-known` namespace.
+- `dragent`: mounting A2A where another route already answers now fails at startup, naming that route; a merely overlapping prefix warns instead. An exact collision would otherwise suppress the redirect that makes the slashless `POST /{mount_path}` reach the JSON-RPC endpoint, silently serving the other route's response.
+- `dragent`: fixed `HEAD` on the health, agent-manifest, and root agent-card routes returning 405 instead of 200; FastAPI's `APIRoute` does not add `HEAD` alongside a registered `GET` the way Starlette's `Route` does.
+
+## 0.29.30
+- `drmcp/core/runtime_identity.py`: Fix MCP deployment URL generation error (URL_PREFIX related)
+
+## 0.29.29
+- `dragent/frontends`: **an agent that has not opted in to unauthenticated agent-card access now returns the generic `404 {"detail": "Not Found"}`, not a `401` explaining the opt-in.** The old refusal was an existence oracle twice over: the status code alone distinguished a live, not-opted-in agent from a nonexistent one, so an anonymous scanner could enumerate agents without reading a body, and the body then named `enable_unauthenticated_well_known_route` and its two required scopes. A blocked request is now indistinguishable from one for an agent that does not exist. The reason is logged server-side instead, so the refusal stays debuggable. Behaviour is unchanged for authenticated callers (full card) and for agents that have opted in (redacted card).
+
+## 0.29.28
+- `drmcp/core/config`: **`oauth_claim_validation` is renamed `mcp_enable_oauth_claim_validation for MCP. The Agent config (oauth_claim_validation) stays the same.
+- `drmcp/core/middleware`: the flag now gates **every** AuthZ validator, not just the token handler. `BaseAuthZMiddleware` applies it once in `dispatch`; subclasses implement `run_authz`.
+
+
+## 0.29.27
+- `drtools`: reworked every tool's gallery tags into human-readable UI tags (e.g. `DataRobot, Predictive, Catalog`; action tags like `Delete`/`Promote` on the run-action tools), replacing the lowercase functional tags. Tags are now declared as ordered tuples so the gallery reports them in declaration order.
+- `drtools/perplexity`: renamed the `perplexity_search` display name from "Perplexity — Search" to "Perplexity — Search Web".
+- `drmcputils` tool gallery (`GET /toolGallery/*`):
+  - `tools/` items report `tags` in declaration order (no longer alphabetized), a new `ui_display_name` (the action half of the display name, e.g. "Workload — List bundles" → "List bundles"), and a new `provider_name` carrying the provider's brand ("DataRobot", "Perplexity", "Atlassian", ...; `null` for proxied user-MCP tools).
+  - each item's `categories` entries are now `{name, label, kind}` dicts (`kind` is `parent` or `leaf`) instead of bare `dr_*` strings; `categories_for_tool` returns the same shape.
+  - `categories/` nodes (and their children) are ordered alphabetically by label.
+  - `providers/` label for `third_party` is now "Third-party".
+
+## 0.29.26
+- `drmcp/core/runtime_identity.py`: Fix logic of resolving MCP deployment URL
+
+## 0.29.24
+- `dragent`: agent card registry MemorySpace L2 and the Mem0 DataRobot memory client talk to the enclave memory service when `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set. Both use `{host}/api/v2` instead of `DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`, which point at the control hub and are unreachable from an isolated enclave.
+- `dragent`: agent tracing now sets `datarobot.session_id` from AG-UI `thread_id`, and tool-call spans now carry `gen_ai.agent.name` so Datavolt can attribute tool usage to the invoking agent.
+
+## 0.29.23 - 2026-09-03
+- `dragent`: fixed the `X-DataRobot-Model-Monitoring` response header never being set when the server runs under a `--root_path`.
+
+## 0.29.22 - 2026-09-02
+- Raise the minimum `pypdf` version from `>=6.15.0` to `>=6.16.1`.
+- Raise the minimum `tornado` version from `>=6.5.7` to `>=6.5.8`.
+
+## 0.29.21
+- `dragent`: set `X-DataRobot-Model-Monitoring` response header on OpenAI-compatible chat-completions responses to delegates chat-completions monitoring to the predictions-gateway; unrelated routes remain excluded.
+
+## 0.29.20
+- `dragent`: the A2A agent card's `url` now honours the API gateway route. Envoy-fronted clusters serve a workload from a per-enclave host and path prefix that `DATAROBOT_ENDPOINT` cannot derive, so the composed `{endpoint}/endpoints/workloads/{id}/a2a/` URL is unreachable there. When both `DR_WORKLOAD_EXTERNAL_URL_HOST` and `DR_WORKLOAD_EXTERNAL_URL_PREFIX` are set, the card advertises `{host}/{prefix}/a2a/` instead; otherwise nothing changes.
+
+## 0.29.19
+- `drmcp/core/middleware.py`: Add well-known metadata info in MCP 403 authorization error response
+
+## 0.29.18 - 2026-09-01
+- Add a minimum version for `hydra-core`: `>=1.3.4`.
+- Raise the minimum `nltk` version from `>=3.10.2` to `>=3.10.3`.
+
+## 0.29.17 - 2026-09-01
+- `crewai`, `dragent`, `langgraph`, `llama_index`: `gen_ai.agent.name` is now propagated as OTel Baggage for the duration of an agent's own execution.
+- Adds `datarobot_genai.core.telemetry.agent_identity`
+
+## 0.29.16
+- `drtools/core/sandbox`: `sandbox.execute` spans now carry `sandbox.image` and `sandbox.image_version`, so telemetry says which sandbox image a run used. Set before the backend is invoked, so they are present on the failure path too — the case where the question matters most. Backends with no image (local process) omit both.
+
+## 0.29.15 - 2026-08-31
+- `dragent`: simplified the agent card registry's MemorySpace L2 cache event encoding to store the payload directly as the event's `content` field, dropping the now-redundant `v`/`payload` envelope (`content` already carried the same value, so existing cache entries remain readable). Brings the stable-`datarobot[core]`-based cache's shape closer to the `datarobot[application-utils]` Memory Service ORM design from BUZZOK-32180 without taking the pre-release `datarobot-early-access` dependency — see the module docstring in `memory_space_cache.py` for what still differs and why.
+- `dragent`: fixed the agent card registry's MemorySpace (L2) cache raising `requests.exceptions.ConnectionError` (`RemoteDisconnected`/`ProtocolError`, "Remote end closed connection without response") when a pooled keep-alive connection sat idle across the infrequent L1-cache-miss / 30-minute registry-refresh calls in `memory_space_cache.py` for longer than the remote end's idle-connection timeout. That error isn't retried by the DataRobot client's own `handle_connection_reset` wrapper (which only retries `ConnectionResetError`), so it previously surfaced on every stale-connection hit even though the cache already degrades gracefully to a miss. All memory-space Session API calls in the module now retry once on `ConnectionError` before giving up.
+
+## 0.29.14 - 2026-08-31
+- Raise the `nltk` floor from `>=3.10.0` to `>=3.10.2`.
+
+## 0.29.13 - 2026-08-28
+- Narrow the cve-sync residue block to the packages this project actually resolves, dropping 36 that could never affect its lock. No dependency floor moved.
+
+## 0.29.12
+- Prefer `DATAROBOT_PUBLIC_API_ENDPOINT` when constructing the memory space URL.
+
+## 0.29.11 - 2026-08-26
+- `dragent`: tool-call spans now carry `gen_ai.tool.name` instead of the bare legacy `tool_name` attributeg.
+
+## 0.29.10 - 2026-08-26
+- `dragent`, `langgraph`, `llama_index`: **agent spans now carry `gen_ai.agent.name`.
+- Adds `datarobot-opentelemetry>=0.4.0,<1.0.0` to the `llamaindex` and `dragent` extras.
+
+## 0.29.9
+- `dragent`: `registry` in `workflow.yaml` accepts `workload_id` alongside `deployment_id` and `external_id`, so an agent served by the Workload API runtime — where its card is keyed by workload rather than deployment — is reachable through the central agent card registry. Lookups query `workloadIds`, cache under a `workload:` key (L1 and MemorySpace L2), and take part in startup prefetch, background refresh and stale-if-error like the other two kinds. A workload card that also publishes an `external.id` stays reachable by either ID.
+- `dragent`: each registry request now carries exactly **one** ID kind. `deploymentIds` + `workloadIds` in one request is rejected by the API with HTTP 400 (not an empty result like `deploymentIds` + `externalIds`), so the client fetches one kind per call and raises before issuing a request that mixes the two.
+- `dragent`: **fixed** registry requests exceeding the API's cap of 20 IDs per parameter — a workflow with more than 20 registry-backed function groups sent them all in one `deploymentIds`/`externalIds` value and got an HTTP 400. ID lists are now split into chunks of 20; entries from every chunk are merged before parsing, so `AGENT_CARD_REGISTRY_ON_DUPLICATE` still applies across the whole result set.
+
+## 0.29.8
+- `dragent`: agent card registry MemorySpace L2 uses write-behind instead of write-through so connect-time registry fetches are not blocked on MemorySpace round-trips.
+- `dragent`: layered agent card cache skips L2 on soft-expired L1 hits; cold-path fresh L2 reads are bounded by a short timeout so a slow MemorySpace cannot delay registry fetch (stale-if-error L2 reads are not bounded).
+- `dragent`: agent card registry L2 lookups pass deployment/external key type to avoid probing both MemorySpace aliases; MemorySpace KV cache reuses resolved session IDs in-process to skip repeated ``Session.list`` calls.
+- `dragent`: agent card registry skips MemorySpace L2 when ``AGENT_CARD_REGISTRY_CACHE_TTL=0``.
+- `dragent`: agent card registry evicts MemorySpace L2 synchronously on successful miss so a deregistered card cannot be resurrected from L2 before background eviction completes.
 
 ## 0.29.9
 - `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)

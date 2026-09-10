@@ -161,7 +161,13 @@ def _apply_filters(
         items = [item for item in items if item.get("provider") in wanted]
     if categories is not None:
         wanted = set(categories)
-        items = [item for item in items if wanted.intersection(item.get("categories") or ())]
+        # Each item's categories are ``{name, label, kind}`` dicts; the filter matches
+        # on ``name`` — the same ``dr_*`` value the categories endpoint reports.
+        items = [
+            item
+            for item in items
+            if wanted.intersection(category["name"] for category in item.get("categories") or ())
+        ]
     return items
 
 

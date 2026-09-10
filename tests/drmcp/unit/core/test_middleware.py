@@ -14,6 +14,7 @@
 import json
 from collections.abc import Iterator
 from http import HTTPStatus
+from typing import Any
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
@@ -28,13 +29,20 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from datarobot_genai.drmcp.core.middleware import ErrorResponse
 from datarobot_genai.drmcp.core.middleware import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.drmcp.core.middleware import OAuthJWTTokenHandlerMiddleware
+from datarobot_genai.drmcp.core.middleware import OAuthMCPToolCallScopeValidationMiddleware
+from datarobot_genai.drmcp.core.middleware import build_http_response_from_auth_error
 from datarobot_genai.drmcp.core.middleware import is_path_exempt_from_oauth_validation
+from datarobot_genai.drmcp.core.middleware import should_run_claim_validation
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import AuthErrorResponse
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    ErrorCodeInAuthErrorResponse,
+)
 
 
 async def _ok_response(_request: Request) -> PlainTextResponse:
@@ -60,14 +68,37 @@ def module_under_test() -> str:
     return "datarobot_genai.drmcp.core.middleware"
 
 
-class TestErrorResponse:
-    def test_unauthorized(self) -> None:
-        expected = JSONResponse(
-            status_code=HTTPStatus.UNAUTHORIZED,
-            content={"detail": "Audience claim validation failed."},
+@pytest.fixture
+def mock_get_user_from_request_scope(module_under_test: str) -> Iterator[Mock]:
+    with patch(f"{module_under_test}.get_user_from_request_scope") as mock_func:
+        yield mock_func
+
+
+@pytest.fixture
+def mock_jwt_token_claims_validator_cls(module_under_test: str) -> Iterator[Mock]:
+    with patch(f"{module_under_test}.JWTTokenClaimsValidator") as mock_cls:
+        yield mock_cls
+
+
+class TestAuthErrorHTTPResponseGeneration:
+    @pytest.fixture
+    def mock_json_response_cls(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.JSONResponse") as mock_cls:
+            yield mock_cls
+
+    def test_build_http_response_from_auth_error(self, mock_json_response_cls: Mock) -> None:
+        mock_status_code = Mock()
+        mock_error_response = Mock()
+        output = build_http_response_from_auth_error(mock_status_code, mock_error_response)
+
+        expected_header_name = mock_error_response.get_header_name.return_value
+        expected_header_value = mock_error_response.to_header_value.return_value
+        mock_json_response_cls.assert_called_once_with(
+            status_code=mock_status_code,
+            content=mock_error_response.to_response_content.return_value,
+            headers={expected_header_name: expected_header_value},
         )
-        actual = ErrorResponse.INVALID_OAUTH_AUDIENCE_CLAIM.to_starlette_response()
-        assert (expected.body, expected.status_code) == (actual.body, actual.status_code)
+        assert output == mock_json_response_cls.return_value
 
 
 class TestPathExemptFromOAuthValidation:
@@ -103,13 +134,15 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.fixture
-    def mock_to_run_jwt_token_handling(self, module_under_test: str) -> Iterator[Mock]:
-        with patch.object(OAuthJWTTokenHandlerMiddleware, "to_run_jwt_token_handling") as mock_func:
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_to_run_jwt_token_handling_returns_true(self, module_under_test: str) -> Iterator[Mock]:
-        with patch.object(OAuthJWTTokenHandlerMiddleware, "to_run_jwt_token_handling") as mock_func:
+    def mock_should_run_claim_validation_returns_true(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
             mock_func.return_value = True
             yield mock_func
 
@@ -130,35 +163,32 @@ class TestOAuthJWTTokenHandlerMiddleware:
             yield mock_func
 
     @pytest.mark.parametrize(
-        "is_path_exempt_from_validation, is_oauth_validation_enabled, to_run_jwt_token_handling",
+        "is_path_exempt_from_validation, is_oauth_validation_enabled, should_handle_claims",
         [(True, True, False), (True, False, False), (False, False, False), (False, True, True)],
         ids=str,
     )
-    def test_to_run_jwt_token_handling(
+    def test_should_run_claim_validation(
         self,
         is_path_exempt_from_validation: bool,
         is_oauth_validation_enabled: bool,
-        to_run_jwt_token_handling: bool,
+        should_handle_claims: bool,
         mock_get_config: Mock,
         mock_is_path_exempt_from_oauth_validation: Mock,
     ) -> None:
         mock_is_path_exempt_from_oauth_validation.return_value = is_path_exempt_from_validation
         mock_config = mock_get_config.return_value
-        mock_config.oauth_claim_validation = is_oauth_validation_enabled
+        mock_config.mcp_enable_oauth_claim_validation = is_oauth_validation_enabled
 
-        mock_request = Mock()
-        output = OAuthJWTTokenHandlerMiddleware.to_run_jwt_token_handling(mock_request)
-
-        assert output is to_run_jwt_token_handling
+        assert should_run_claim_validation(Mock()) is should_handle_claims
 
     def test_bypass_jwt_token_handling(
         self,
-        mock_to_run_jwt_token_handling: Mock,
+        mock_should_run_claim_validation: Mock,
         mock_parse_to_access_token: Mock,
         mock_update_scope_with_auth_credentials: Mock,
         mock_update_scope_with_authenticated_user: Mock,
     ) -> None:
-        mock_to_run_jwt_token_handling.return_value = False
+        mock_should_run_claim_validation.return_value = False
 
         client = TestClient(mock_app())
         response = client.get("/")
@@ -168,7 +198,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         mock_update_scope_with_auth_credentials.assert_not_called()
         mock_update_scope_with_authenticated_user.assert_not_called()
 
-    @pytest.mark.usefixtures("mock_to_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     async def test_run_jwt_token_handling(
         self,
         mock_parse_to_access_token: Mock,
@@ -190,7 +220,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         )
         mock_call_next.assert_called_once_with(request)
 
-    @pytest.mark.usefixtures("mock_to_run_jwt_token_handling_returns_true")
+    @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
     def test_return_error_when_there_is_no_valid_jwt_token(
         self,
         mock_parse_to_access_token: Mock,
@@ -202,7 +232,11 @@ class TestOAuthJWTTokenHandlerMiddleware:
         client = TestClient(mock_app())
         response = client.get("/")
 
-        assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.json() == {
+            "error": ErrorCodeInAuthErrorResponse.INVALID_TOKEN.to_value(),
+            "error_description": "Invalid JWT token.",
+        }
         mock_parse_to_access_token.assert_called_once_with(
             OAuthJWTTokenHandlerMiddleware.HTTP_HEADER_TO_VALIDATE,
             ANY,
@@ -212,27 +246,20 @@ class TestOAuthJWTTokenHandlerMiddleware:
 
 
 class TestGeneralOAuthClaimValidationMiddleware:
+    @pytest.fixture(autouse=True)
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
+            mock_func.return_value = True
+            yield mock_func
+
     @pytest.fixture
     def mock_get_config(self, module_under_test: str) -> Iterator[Mock]:
         with patch(f"{module_under_test}.get_config") as mock_func:
             yield mock_func
 
     @pytest.fixture
-    def mock_jwt_token_claims_validator_cls(self, module_under_test: str) -> Iterator[Mock]:
-        with patch(f"{module_under_test}.JWTTokenClaimsValidator") as mock_cls:
-            yield mock_cls
-
-    @pytest.fixture
     def mock_validate_audience_claim(self) -> Iterator[Mock]:
         with patch.object(JWTTokenClaimsValidator, "validate_audience_claim") as mock_func:
-            yield mock_func
-
-    @pytest.fixture
-    def mock_get_user_from_request_scope(self) -> Iterator[Mock]:
-        with patch.object(
-            GeneralOAuthClaimValidationMiddleware,
-            "get_user_from_request_scope",
-        ) as mock_func:
             yield mock_func
 
     @pytest.fixture
@@ -243,11 +270,37 @@ class TestGeneralOAuthClaimValidationMiddleware:
         ) as mock_func:
             yield mock_func
 
+    @pytest.fixture
+    def mock_build_well_known_protected_resource_url(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.build_well_known_protected_resource_url") as mock_func:
+            mock_func.return_value = "https://mcp.example.com/.well-known/oauth-protected-resource"
+            yield mock_func
+
     def test_get_expected_audience_claim(self, mock_get_config: Mock) -> None:
         output = GeneralOAuthClaimValidationMiddleware.get_expected_audience_claim()
 
         mock_get_config.assert_called_once_with()
         assert output == mock_get_config.return_value.mcp_xaa_token_audience
+
+    async def test_skip_claim_validation_if_the_gate_is_off(
+        self,
+        mock_should_run_claim_validation: Mock,
+        mock_get_user_from_request_scope: Mock,
+        mock_jwt_token_claims_validator_cls: Mock,
+    ) -> None:
+        """OAUTH_CLAIM_VALIDATION gates this validator, not only the token handler."""
+        mock_should_run_claim_validation.return_value = False
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = GeneralOAuthClaimValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_get_user_from_request_scope.assert_not_called()
+        mock_jwt_token_claims_validator_cls.assert_not_called()
+        mock_call_next.assert_called_once_with(request)
 
     async def test_skip_claim_validation_if_no_user_to_validate_in_inbound_request(
         self,
@@ -288,6 +341,7 @@ class TestGeneralOAuthClaimValidationMiddleware:
     @pytest.mark.usefixtures(
         "mock_get_expected_audience_claim",
         "mock_get_user_from_request_scope",
+        "mock_build_well_known_protected_resource_url",
     )
     async def test_run_claim_validation_fails(
         self,
@@ -305,6 +359,295 @@ class TestGeneralOAuthClaimValidationMiddleware:
 
         output = await middleware.dispatch(request, mock_call_next)
         assert isinstance(output, JSONResponse)
-        assert output.status_code == HTTPStatus.UNAUTHORIZED
-        assert json.loads(output.body) == {"detail": error_message}
+        assert output.status_code == HTTPStatus.FORBIDDEN
+        assert json.loads(output.body) == {
+            "error": "invalid_token",
+            "error_description": error_message,
+        }
+        assert output.headers["www-authenticate"] == (
+            "Bearer "
+            'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource", '
+            'error="invalid_token", '
+            f'error_description="{error_message}"'
+        )
+        mock_call_next.assert_not_called()
+
+
+class TestOAuthMCPToolCallScopeValidationMiddleware:
+    @pytest.fixture(autouse=True)
+    def mock_should_run_claim_validation(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.should_run_claim_validation") as mock_func:
+            mock_func.return_value = True
+            yield mock_func
+
+    @pytest.fixture
+    def mock_json_loads(self) -> Iterator[Mock]:
+        with patch.object(json, "loads") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_mcp_tool_name_in_request(self) -> Iterator[AsyncMock]:
+        with patch.object(
+            OAuthMCPToolCallScopeValidationMiddleware,
+            "get_mcp_tool_name_in_request",
+        ) as mock_func:
+            mock_func.return_value = "mcp_tool_name"
+            yield mock_func
+
+    @pytest.fixture
+    def mock_declared_scopes_for_one_tool(self, module_under_test: str) -> Iterator[AsyncMock]:
+        with patch(f"{module_under_test}.declared_scopes_for_one_tool") as mock_func:
+            mock_func.return_value = {"mcp:tools:write"}
+            yield mock_func
+
+    @pytest.fixture
+    def mock_build_http_response_from_auth_error(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.build_http_response_from_auth_error") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_build_well_known_protected_resource_url(
+        self, module_under_test: str
+    ) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.build_well_known_protected_resource_url") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_request_not_post_method(self) -> Iterator[Mock]:
+        yield Mock()
+
+    @pytest.fixture
+    def mock_request_body(self) -> dict[str, Any]:
+        return {
+            "method": "tools/call",
+            "params": {"name": "tool_name"},
+        }
+
+    @pytest.fixture
+    def mock_request(self, mock_request_body: dict[str, Any]) -> Iterator[Mock]:
+        _request = Mock()
+        _request.method = "POST"
+        _request.body = AsyncMock(return_value=mock_request_body)
+
+        yield _request
+
+    async def test_get_mcp_tool_name(
+        self,
+        mock_request: Mock,
+        mock_request_body: dict[str, Any],
+        mock_json_loads: Mock,
+    ) -> None:
+        mock_json_loads.return_value = mock_request_body
+
+        output = await OAuthMCPToolCallScopeValidationMiddleware.get_mcp_tool_name_in_request(
+            mock_request
+        )
+
+        mock_request.body.assert_called_once_with()
+        mock_json_loads.assert_called_once_with(mock_request.body.return_value)
+        assert output == mock_request_body["params"]["name"]
+
+    async def test_get_mcp_tool_name_return_none_if_not_a_post_method(
+        self,
+        mock_request_not_post_method: Mock,
+    ) -> None:
+        output = await OAuthMCPToolCallScopeValidationMiddleware.get_mcp_tool_name_in_request(
+            mock_request_not_post_method
+        )
+
+        assert output is None
+
+    @pytest.mark.parametrize(
+        "raised_error",
+        [
+            json.JSONDecodeError("Expecting value", "", 0),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        ],
+        ids=["JSONDecodeError", "UnicodeDecodeError"],
+    )
+    async def test_get_mcp_tool_name_return_none_if_request_payload_invalid(
+        self,
+        raised_error: json.JSONDecodeError | UnicodeDecodeError,
+        mock_request: Mock,
+        mock_json_loads: Mock,
+    ) -> None:
+        mock_json_loads.side_effect = raised_error
+
+        output = await OAuthMCPToolCallScopeValidationMiddleware.get_mcp_tool_name_in_request(
+            mock_request
+        )
+
+        mock_request.body.assert_called_once_with()
+        assert output is None
+
+    @pytest.mark.parametrize(
+        "json_loads_output",
+        [None, {"method": "tools/not_a_call"}, {"not_a_method": "dafa"}],
+        ids=str,
+    )
+    async def test_get_mcp_tool_name_return_none_if_not_mcp_tool_call(
+        self,
+        json_loads_output: dict[str, Any],
+        mock_request: Mock,
+        mock_json_loads: Mock,
+    ) -> None:
+        mock_json_loads.return_value = json_loads_output
+
+        output = await OAuthMCPToolCallScopeValidationMiddleware.get_mcp_tool_name_in_request(
+            mock_request,
+        )
+
+        assert output is None
+
+    @pytest.mark.parametrize(
+        "params_in_request",
+        [None, {"not_a_name": "dafa"}],
+        ids=str,
+    )
+    async def test_get_mcp_tool_name_return_none_if_no_name_in_request_payload(
+        self,
+        params_in_request: dict[str, Any],
+        mock_request: Mock,
+        mock_json_loads: Mock,
+    ) -> None:
+        mock_json_loads.return_value = {"params": params_in_request}
+
+        output = await OAuthMCPToolCallScopeValidationMiddleware.get_mcp_tool_name_in_request(
+            mock_request,
+        )
+
+        assert output is None
+
+    async def test_run_claim_validation_succeeds(
+        self,
+        mock_get_user_from_request_scope: Mock,
+        mock_jwt_token_claims_validator_cls: Mock,
+        mock_build_well_known_protected_resource_url: Mock,
+        mock_declared_scopes_for_one_tool: Mock,
+        mock_get_mcp_tool_name_in_request: Mock,
+        mock_request: Mock,
+    ) -> None:
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+
+        await middleware.dispatch(mock_request, mock_call_next)
+
+        mock_get_user_from_request_scope.assert_called_once_with(mock_request)
+        mock_declared_scopes_for_one_tool.assert_called_once_with(
+            mock_request.app.state.fastmcp_server,
+            mock_get_mcp_tool_name_in_request.return_value,
+        )
+        mock_get_user_from_request_scope.assert_called_once_with(mock_request)
+        mock_user = mock_get_user_from_request_scope.return_value
+        mock_jwt_token_claims_validator_cls.assert_called_once_with(mock_user)
+        claim_validator = mock_jwt_token_claims_validator_cls.return_value
+        claim_validator.validate_mcp_tool_scope_claims.assert_called_once_with(
+            mock_declared_scopes_for_one_tool.return_value,
+        )
+
+        mock_call_next.assert_called_once_with(mock_request)
+
+    async def test_skip_validation_if_not_a_valid_mcp_tool_call(
+        self,
+        mock_get_mcp_tool_name_in_request: AsyncMock,
+    ) -> None:
+        mock_get_mcp_tool_name_in_request.return_value = None
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_get_mcp_tool_name_in_request.assert_called_once_with(request)
+        mock_call_next.assert_called_once_with(request)
+
+    async def test_skip_validation_if_no_registered_scope_found_in_mcp_tool(
+        self,
+        mock_get_mcp_tool_name_in_request: AsyncMock,
+        mock_declared_scopes_for_one_tool: AsyncMock,
+    ) -> None:
+        mock_declared_scopes_for_one_tool.return_value = None
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_declared_scopes_for_one_tool.assert_called_once_with(
+            request.app.state.fastmcp_server,
+            mock_get_mcp_tool_name_in_request.return_value,
+        )
+        mock_call_next.assert_called_once_with(request)
+
+    async def test_skip_validation_if_the_gate_is_off(
+        self,
+        mock_should_run_claim_validation: Mock,
+        mock_get_mcp_tool_name_in_request: AsyncMock,
+    ) -> None:
+        """OAUTH_CLAIM_VALIDATION gates this validator, not only the token handler."""
+        mock_should_run_claim_validation.return_value = False
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_get_mcp_tool_name_in_request.assert_not_called()
+        mock_call_next.assert_called_once_with(request)
+
+    @pytest.mark.usefixtures(
+        "mock_get_mcp_tool_name_in_request",
+        "mock_declared_scopes_for_one_tool",
+    )
+    async def test_skip_validation_if_no_user_found_in_request_scope(
+        self,
+        mock_get_user_from_request_scope: Mock,
+    ) -> None:
+        mock_get_user_from_request_scope.return_value = None
+
+        request = Mock()
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+
+        await middleware.dispatch(request, mock_call_next)
+
+        mock_call_next.assert_called_once_with(request)
+
+    @pytest.mark.usefixtures(
+        "mock_get_mcp_tool_name_in_request",
+    )
+    async def test_run_claim_validation_fails(
+        self,
+        mock_get_user_from_request_scope: Mock,
+        mock_jwt_token_claims_validator_cls: Mock,
+        mock_build_http_response_from_auth_error: Mock,
+        mock_build_well_known_protected_resource_url: Mock,
+        mock_declared_scopes_for_one_tool: AsyncMock,
+        mock_request: Mock,
+    ) -> None:
+        claim_validator = mock_jwt_token_claims_validator_cls.return_value
+        expected_error_message = "dasfdaw"
+        claim_validator.validate_mcp_tool_scope_claims.side_effect = (
+            MCPToolScopeClaimValidationError(expected_error_message)
+        )
+        expected_scopes = ["scope"]
+        mock_declared_scopes_for_one_tool.return_value = expected_scopes
+
+        mock_call_next = AsyncMock()
+        middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
+        await middleware.dispatch(mock_request, mock_call_next)
+
+        mock_get_user_from_request_scope.assert_called_once_with(mock_request)
+        mock_user = mock_get_user_from_request_scope.return_value
+        mock_jwt_token_claims_validator_cls.assert_called_once_with(mock_user)
+        mock_build_http_response_from_auth_error.assert_called_once_with(
+            status_code=HTTPStatus.FORBIDDEN,
+            auth_error_response=AuthErrorResponse(
+                resource_metadata=mock_build_well_known_protected_resource_url.return_value,
+                error_code=ErrorCodeInAuthErrorResponse.INSUFFICIENT_SCOPE,
+                error_description=expected_error_message,
+                scopes=sorted(expected_scopes),
+            ),
+        )
+
         mock_call_next.assert_not_called()

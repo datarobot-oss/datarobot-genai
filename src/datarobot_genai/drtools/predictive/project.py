@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"predictive", "project", "read", "management", "list"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—discover IDs] Use when the user needs their modeling projects as ID-to-name "
         "map (no single project_id yet). Read-only. Not for datasets inside one project "
@@ -48,7 +48,7 @@ async def modeling_list_projects() -> dict[str, Any]:
 
 
 @tool_metadata(
-    tags={"predictive", "project", "read", "data", "info"},
+    tags=("DataRobot", "Predictive", "Modeling"),
     description=(
         "[Project—resolve dataset by name] Use when the user names or describes a dataset "
         "already attached to a modeling project (e.g. 'get the holdout dataset', 'dataset named "

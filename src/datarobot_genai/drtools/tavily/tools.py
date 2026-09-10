@@ -38,7 +38,7 @@ _TAVILY_CRAWL_API = "https://docs.tavily.com/documentation/api-reference/endpoin
 
 
 @tool_metadata(
-    tags={"tavily", "search", "web", "websearch"},
+    tags=("Tavily",),
     description=(
         "[Tavily—web search] Use when the user needs fresh facts from the public web by keyword "
         "(optional topic string: 'general', 'news', or 'finance'). Returns ranked snippets and "
@@ -119,7 +119,7 @@ async def tavily_search_web(
 
 
 @tool_metadata(
-    tags={"tavily", "extract", "web", "content"},
+    tags=("Tavily", "Web"),
     description=(
         "[Tavily—read URLs] Use when you already have one or more page URLs and need cleaned "
         "body text or reranked chunks (optional query for relevance). Not broad keyword web "
@@ -194,7 +194,7 @@ async def tavily_extract_text(
 
 
 @tool_metadata(
-    tags={"tavily", "map", "discovery"},
+    tags=("Tavily",),
     description=(
         "[Tavily—site map] Use when you need a structured list of links under one root URL "
         "(find sections or docs paths before reading). Optional instructions steer which branches "
@@ -242,7 +242,7 @@ async def tavily_list_links(
 
 
 @tool_metadata(
-    tags={"tavily", "crawl", "web", "rag"},
+    tags=("Tavily",),
     description=(
         "[Tavily—site crawl] Use when you need many related pages from one site guided by "
         "natural-language instructions (breadth/depth limits). Not single-URL read "

@@ -73,7 +73,7 @@ def _coerce_json_encoded_list(value: Any) -> Any:
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "write", "create", "upload"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—write] Write content to a file at dr://<catalog_id>/path, creating "
         "parent folders implicitly (DataRobot has no empty directories). The path "
@@ -125,7 +125,7 @@ async def file_write(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "upload", "local", "create", "write"},
+    tags=("DataRobot", "Files"),
     description=(
         "[Files—upload] Upload file(s) from the server's local disk into a catalog "
         "directory at dr://<catalog_id>/path. Content is streamed in chunks (no "
@@ -212,7 +212,7 @@ async def file_upload(
 
 
 @tool_metadata(
-    tags={"file", "datarobot", "create", "delete", "copy", "move", "clone"},
+    tags=("DataRobot", "Files", "Clone", "Copy", "Create", "Delete", "Move"),
     description=(
         "[Files—manage] Run a structural action on the filesystem. action is one of:\n"
         "  'create_dir' — create a new empty catalog item directory; returns its "

@@ -253,7 +253,7 @@ def _wait_for_new_vdb_deployment(
 
 
 @tool_metadata(
-    tags={"vdb", "read", "list", "daria"},
+    tags=("DataRobot", "Vector database"),
     description=(
         "[VDB—discover deployments] Use when the user needs deployed Vector Databases (VDBs) as "
         "ID/label/status records. Read-only. Filters deployments client-side to vector-database "
@@ -323,7 +323,7 @@ async def vdb_list(
 
 
 @tool_metadata(
-    tags={"vdb", "read", "query", "search", "daria"},
+    tags=("DataRobot", "Vector database"),
     description=(
         "[VDB—semantic search] Use when the user wants to retrieve documents from a deployed "
         "Vector Database via semantic similarity (deployment_id from vdb_list). "
@@ -458,7 +458,7 @@ def _resolve_chunking_parameters(
 
 
 @tool_metadata(
-    tags={"vdb", "write", "create"},
+    tags=("DataRobot", "Vector database"),
     description=(
         "[VDB—create] Use when the user wants to create a new DataRobot vector database from an "
         "AI Catalog dataset (dataset_id from catalog_list_datasets or catalog_upload_dataset) "
@@ -553,7 +553,7 @@ async def vdb_create(
 
 
 @tool_metadata(
-    tags={"vdb", "read", "status", "daria"},
+    tags=("DataRobot", "Vector database"),
     description=(
         "[VDB—status] REQUIRED polling step after vdb_create or vdb_deploy. Pass exactly one of "
         "vector_database_id (build status) or deployment_id (launch status). Performs ONE "
@@ -656,7 +656,7 @@ async def vdb_get(
 
 
 @tool_metadata(
-    tags={"vdb", "write", "deploy", "daria"},
+    tags=("DataRobot", "Vector database"),
     description=(
         "[VDB—deploy] Use when the user wants to deploy a built vector database "
         "(vector_database_id from vdb_create) to a live deployment for querying. "

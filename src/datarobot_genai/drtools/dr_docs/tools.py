@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 @tool_metadata(
-    tags={"dr_docs", "datarobot", "docs", "documentation", "search"},
+    tags=("DataRobot", "Documentation"),
     description=(
         "[DR docs—search] Use when the user asks about DataRobot agentic AI product behavior, "
         "setup, or APIs covered on the public agentic-AI documentation site. Returns page titles "
@@ -104,7 +104,7 @@ async def search_datarobot_agentic_docs(
 
 
 @tool_metadata(
-    tags={"dr_docs", "datarobot", "docs", "documentation", "fetch", "read"},
+    tags=("DataRobot", "Documentation"),
     description=(
         "[DR docs—fetch page] Use when you already have a full docs.datarobot.com English docs URL "
         "(e.g. from search results) and need the page body as text. Not keyword search across the "

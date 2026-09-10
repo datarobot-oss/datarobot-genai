@@ -624,6 +624,16 @@ async def collect_code_declared_scopes(mcp: Any) -> set[str]:
     return found
 
 
+async def declared_scopes_for_one_tool(mcp: Any, tool_name: str) -> frozenset[str] | None:
+    for tool in await mcp._list_tools():
+        if tool.name == tool_name:
+            required: set[str] = set()
+            for check in _as_check_list(tool.auth):
+                required.update(_declared_scopes_of(check))
+            return frozenset(required)
+    return None
+
+
 async def apply_tag_scopes(mcp: Any) -> int:
     """Attach per-tag scope requirements to the components carrying those tags.
 

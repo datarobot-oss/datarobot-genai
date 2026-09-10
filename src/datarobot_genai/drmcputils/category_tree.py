@@ -55,9 +55,6 @@ from datarobot_genai.drmcputils.categories import category_label
 from datarobot_genai.drmcputils.tool_gallery import build_tool_gallery_items
 from datarobot_genai.drmcputils.tool_gallery import merge_tool_info
 
-# Enum definition order → stable ordering for both top-level categories and children.
-_ENUM_ORDER: dict[str, int] = {category.value: i for i, category in enumerate(MCPToolCategory)}
-
 # Parents own leaf children; ``_CHILDREN`` is every leaf that appears under a parent.
 _PARENTS: frozenset[str] = frozenset(str(parent) for parent in PARENT_TO_CHILDREN)
 _CHILDREN: frozenset[str] = frozenset(
@@ -93,19 +90,14 @@ def build_category_tree(tools: Sequence[Any]) -> tuple[list[dict[str, Any]], int
 
 
 def ordered_top_level() -> list[str]:
-    """Top-level categories: parents first, then standalone leaves, dynamic last.
+    """Top-level categories, ordered alphabetically by display label.
 
     Derived from the taxonomy (not hard-coded) so a new category flows through to
-    the filter panel by existing; within each group, enum-definition order is
-    preserved. This mirrors the picker layout.
+    the filter panel by existing. Alphabetical (case-insensitive, value as the
+    tie-breaker) so the response order matches how a picker lists them.
     """
     tops = [c.value for c in MCPToolCategory if c.value in _PARENTS or c.value not in _CHILDREN]
-
-    def sort_key(name: str) -> tuple[bool, bool, int]:
-        # (dynamic last, non-parents after parents, then enum order)
-        return (name in _DYNAMIC_CATEGORIES, name not in _PARENTS, _ENUM_ORDER[name])
-
-    return sorted(tops, key=sort_key)
+    return sorted(tops, key=_label_sort_key)
 
 
 def _category_to_tools(tools: Sequence[Any]) -> dict[str, set[str]]:
@@ -127,15 +119,20 @@ def _category_to_tools(tools: Sequence[Any]) -> dict[str, set[str]]:
     mapping: dict[str, set[str]] = defaultdict(set)
     merged = [merge_tool_info(tool, {}) for tool in tools]
     for item in build_tool_gallery_items(merged):
-        for name in item["categories"]:
-            mapping[str(name)].add(item["name"])
+        for category in item["categories"]:
+            mapping[str(category["name"])].add(item["name"])
     return mapping
 
 
+def _label_sort_key(name: str) -> tuple[str, str]:
+    """Alphabetical-by-label ordering (case-insensitive), value as the tie-breaker."""
+    return (category_label(name).casefold(), name)
+
+
 def _ordered_children(parent: str) -> list[str]:
-    """Leaf children of *parent* in enum-definition order ([] for a leaf)."""
+    """Leaf children of *parent*, alphabetical by label ([] for a leaf)."""
     children = [str(child) for child in PARENT_TO_CHILDREN.get(parent, frozenset())]
-    return sorted(children, key=lambda name: _ENUM_ORDER[name])
+    return sorted(children, key=_label_sort_key)
 
 
 def _category_node(name: str, by_category: dict[str, set[str]]) -> dict[str, Any]:

@@ -37,7 +37,7 @@ from datarobot_genai.drtools.pagination import merge_pagination_metadata
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "get", "list"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact—get] Read artifacts.\n"
         "  - Omit artifact_id to LIST artifacts (ID, name, status draft/locked, type, "
@@ -119,7 +119,7 @@ async def artifact_get(
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "create"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact—create] Create a new draft artifact from an InputArtifact payload. "
         "The payload must contain 'name' and 'spec'. 'spec' must have 'type' "
@@ -169,7 +169,7 @@ async def artifact_create(
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "update"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact—update] Partially update a draft artifact: name, description, "
         "or spec. Only the supplied fields are changed. At least one field is required. "
@@ -221,7 +221,7 @@ async def artifact_update(
 
 
 @tool_metadata(
-    tags={"artifact", "workload", "datarobot", "lock", "clone", "delete"},
+    tags=("DataRobot", "Workload", "Artifact", "Clone", "Delete", "Lock"),
     description=(
         "[Artifact—action] Run an action on an artifact. action is one of:\n"
         "  'lock'   — lock a draft artifact so it can be versioned and used in "

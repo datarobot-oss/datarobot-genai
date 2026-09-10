@@ -13,15 +13,20 @@
 # limitations under the License.
 from dataclasses import dataclass
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     DEFAULT_TOKEN_ENDPOINT_AUTH_METHOD,
 )
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import AuthErrorResponse
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import BaseDataClass
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     CrossApplicationAccessMetadata,
+)
+from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
+    ErrorCodeInAuthErrorResponse,
 )
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import (
     MCPOAuthProtectedResourceMetadata,
@@ -329,3 +334,62 @@ class TestMCPOAuthProtectedResourceMetadata:
             "bearer_methods_supported": ["header"],
             "cross_application_access": cross_application_access_in_dict,
         }
+
+
+class TestErrorCodeInAuthErrorResponse:
+    @pytest.mark.parametrize(
+        "error_code",
+        [error_code for error_code in ErrorCodeInAuthErrorResponse],
+        ids=str,
+    )
+    def test_to_value(self, error_code: ErrorCodeInAuthErrorResponse) -> None:
+        error_code_and_value_map = {
+            ErrorCodeInAuthErrorResponse.INVALID_REQUEST: "invalid_request",
+            ErrorCodeInAuthErrorResponse.INVALID_TOKEN: "invalid_token",
+            ErrorCodeInAuthErrorResponse.INSUFFICIENT_SCOPE: "insufficient_scope",
+            ErrorCodeInAuthErrorResponse.UNKNOWN: "unknown",
+        }
+        assert error_code.to_value() == error_code_and_value_map[error_code]
+
+
+class TestAuthErrorResponse:
+    @pytest.mark.parametrize(
+        "scopes_arg, expected_scopes",
+        [(["A", "B"], "A B"), (None, None)],
+        ids=str,
+    )
+    def test_get_scopes_string_representation(
+        self,
+        scopes_arg: list[str] | None,
+        expected_scopes: str | None,
+    ) -> None:
+        assert (
+            AuthErrorResponse(Mock(), scopes=scopes_arg).get_scopes_string_representation()
+            == expected_scopes
+        )
+
+    def test_get_header_name(self) -> None:
+        assert AuthErrorResponse.get_header_name() == "WWW-Authenticate"
+
+    def test_to_header_value(self) -> None:
+        expected_resource_metadata = "resource_metadata"
+        expected_scopes = ["A", "B"]
+        expected_error_description = "error_description"
+        error_response = AuthErrorResponse(
+            resource_metadata=expected_resource_metadata,
+            error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+            scopes=expected_scopes,
+            error_description=expected_error_description,
+        )
+        assert error_response.to_header_value() == (
+            'Bearer resource_metadata="resource_metadata", '
+            'scope="A B", error="invalid_token", error_description="error_description"'
+        )
+
+    def test_to_header_value_not_include_error_code_if_unknown(self) -> None:
+        expected_resource_metadata = "resource_metadata"
+        error_response = AuthErrorResponse(
+            resource_metadata=expected_resource_metadata,
+            error_code=ErrorCodeInAuthErrorResponse.UNKNOWN,
+        )
+        assert error_response.to_header_value() == 'Bearer resource_metadata="resource_metadata"'

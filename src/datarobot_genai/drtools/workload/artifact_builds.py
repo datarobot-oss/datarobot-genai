@@ -37,7 +37,7 @@ from datarobot_genai.drtools.workload.build_status import annotate_build_deploya
 
 
 @tool_metadata(
-    tags={"artifact", "build", "workload", "datarobot", "get", "list", "logs"},
+    tags=("DataRobot", "Workload", "Artifact"),
     description=(
         "[Artifact build—get] Read image builds for an artifact.\n"
         "  - Omit build_id to LIST builds (status, timestamps, build ID); paginated.\n"
@@ -112,7 +112,7 @@ async def artifact_get_build(
 
 
 @tool_metadata(
-    tags={"artifact", "build", "workload", "datarobot", "trigger", "delete"},
+    tags=("DataRobot", "Workload", "Artifact", "Build", "Delete", "Trigger"),
     description=(
         "[Artifact build—action] Run an action on artifact image builds. action is "
         "one of:\n"

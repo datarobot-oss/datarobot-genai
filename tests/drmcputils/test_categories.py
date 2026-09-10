@@ -287,40 +287,48 @@ class TestFilterableCategories:
         known = {category.value for category in MCPToolCategory}
         assert set(ordered_top_level()) <= known
 
-    def test_marker_buckets_sort_last(self) -> None:
-        # The predefined taxonomy comes first; the marker-resolved buckets
-        # (dr_user_tools / dr_dynamic_tools) trail it, matching the picker layout.
+    def test_top_level_is_alphabetical_by_label(self) -> None:
+        # The categories endpoint serves nodes in alphabetical label order, marker
+        # buckets included — the response order is the picker order.
         tops = ordered_top_level()
-        dynamic = {MCPToolCategory.DR_USER_TOOLS.value, MCPToolCategory.DR_DYNAMIC_TOOLS.value}
-        assert set(tops[-len(dynamic) :]) == dynamic
+        labels = [category_label(name).casefold() for name in tops]
+        assert labels == sorted(labels)
+        assert MCPToolCategory.DR_USER_TOOLS.value in tops
+        assert MCPToolCategory.DR_DYNAMIC_TOOLS.value in tops
 
 
 class TestCategoriesForTool:
-    """Reverse index: tool name → its leaf category plus parent (if any)."""
+    """Reverse index: tool name → its leaf category plus parent (if any), as dicts."""
 
     def test_tool_under_parented_leaf_returns_leaf_and_parent(self) -> None:
         # jira_search_issues → leaf dr_connector_jira → parent dr_connectors
         assert categories_for_tool("jira_search_issues") == [
-            "dr_connector_jira",
-            "dr_connectors",
+            {"name": "dr_connector_jira", "label": "Jira", "kind": "leaf"},
+            {"name": "dr_connectors", "label": "Data connectors", "kind": "parent"},
         ]
 
     def test_tool_under_standalone_leaf_returns_only_leaf(self) -> None:
         # dr_documentation is a leaf with no parent.
-        assert categories_for_tool("search_datarobot_agentic_docs") == ["dr_documentation"]
+        assert categories_for_tool("search_datarobot_agentic_docs") == [
+            {"name": "dr_documentation", "label": "Documentation", "kind": "leaf"}
+        ]
 
     def test_use_case_tool_returns_leaf_only(self) -> None:
-        assert categories_for_tool("datarobot_usecases_list") == ["dr_use_cases"]
+        assert [c["name"] for c in categories_for_tool("datarobot_usecases_list")] == [
+            "dr_use_cases"
+        ]
 
     def test_deployment_tool_returns_leaf_only(self) -> None:
-        assert categories_for_tool("deployment_get_list") == ["dr_deployments"]
+        assert [c["name"] for c in categories_for_tool("deployment_get_list")] == ["dr_deployments"]
 
     def test_predictive_tool_returns_leaf_and_predictive_parent(self) -> None:
-        assert categories_for_tool("modeling_list_models") == ["dr_modeling", "dr_predictive"]
+        result = categories_for_tool("modeling_list_models")
+        assert [c["name"] for c in result] == ["dr_modeling", "dr_predictive"]
+        assert [c["kind"] for c in result] == ["leaf", "parent"]
 
-    def test_result_is_sorted(self) -> None:
-        result = categories_for_tool("jira_search_issues")
-        assert result == sorted(result)
+    def test_result_is_sorted_by_name(self) -> None:
+        names = [c["name"] for c in categories_for_tool("jira_search_issues")]
+        assert names == sorted(names)
 
     def test_unknown_tool_returns_empty_list(self) -> None:
         assert categories_for_tool("not_a_real_tool") == []
@@ -334,4 +342,5 @@ class TestCategoriesForTool:
         # Each tool in every leaf category must report that leaf among its categories.
         for leaf, tools in LEAF_CATEGORY_TOOLS.items():
             for tool_name in tools:
-                assert leaf in categories_for_tool(tool_name)
+                names = {c["name"] for c in categories_for_tool(tool_name)}
+                assert str(leaf) in names
