@@ -34,6 +34,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `drmcpbase/routes`: moved shared tool gallery HTTP routes (`register_tool_gallery_routes`, `GET /toolGallery/*`) and route gating helpers from `drmcputils/routes`. Import from `datarobot_genai.drmcpbase.routes` instead of `datarobot_genai.drmcputils.routes`.
 
+## 0.29.37
+- `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
+- Raise the `datarobot` floor from `>=3.18.0` to `>=3.19.0` and add `datarobot[application-utils]` to the `dragent` extra.
+- `core/config`: dropped the local pre-rename LLM parameter shim now that `datarobot>=3.19` ships it in `datarobot.core`.
+
 ## 0.29.36
 - `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
 - Fixed Nemo Guardrails moderation e2e tests

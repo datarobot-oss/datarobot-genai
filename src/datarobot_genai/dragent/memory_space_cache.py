@@ -18,43 +18,11 @@ Used only on enclave workloads (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
 ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` with ``WORKLOAD_ID``). Other runtimes use
 in-process L1 caching only.
 
-Uses the agentic memory **Session API** (``datarobot.models.memory.Session``) — not the
-mem0-compatible sub-route used by agent memory on the control hub.
-
-Each provisioned memory space has a unique ``memory_space_id`` and platform-level
-access control scoped to the deploying user or workload API token. Unlike shared
-Redis, no per-deployment namespace or HMAC signing is required for this backend.
-
-Each cache entry is one Memory Service session — found by a ``description``-filtered
-lookup on the logical cache key — carrying a single event whose ``body["content"]``
-is the opaque JSON payload. ``set_value`` patches that event in place instead of
-appending; the cache only ever needs the current value, never a history.
-
-Deliberately built on stable ``datarobot[core]`` rather than the Memory Service
-light ORM (``DRMemorySpace`` / ``DRSession`` / ``DREvent`` /
-``DRDeduplicationKey``) that BUZZOK-32180 standardizes this cache on: that ORM
-ships only as ``application_utils.persistence`` in the pre-release
-``datarobot-early-access`` distribution today, which we can't take as a
-production dependency. Two things fall out of that constraint that a future
-migration to the ORM should pick back up:
-
-* **Session lookup by logical key** goes through ``Session.list(description=...)``
-  (see ``_find_cache_session``) rather than an exact-match ``deduplicationKey``
-  point lookup — the stable SDK's ``Session.list`` has no such filter, so a
-  ``deduplication_key`` here only dedupes concurrent *creates*
-  (``MemorySessionDeduplicationError``), not reads.
-* **The DataRobot client is process-global** (configured once by
-  ``configure_datarobot_memory_client``), not an object explicitly threaded into
-  ``MemorySpaceKVCache`` the way ``DRMemoryServiceClient`` is. Stable
-  ``datarobot.models.memory.Session`` always resolves credentials through
-  ``datarobot.client.get_client()``; there's no per-instance client to inject
-  without giving up the pooled, keep-alive ``requests.Session`` this module
-  relies on (see the note on ``_STALE_CONNECTION_RETRIES`` below). Enclave
-  gateways expose the memory Session API but not ``GET /version/``, so the
-  client is built with ``RESTClientObject.from_config`` instead of ``dr.Client()``.
-
-Once ``application_utils.persistence`` ships in a stable ``datarobot`` release,
-this module should be replaced with that ORM the same way BUZZOK-32180 did.
+Uses the Memory Service light ORM from ``datarobot.application_utils.persistence``
+(``DRMemorySpace`` / ``DRSession`` / ``DREvent`` / ``DRMemoryServiceClient``).
+Each cache entry is one session located by a stable ``DRDeduplicationKey`` hash
+and carrying a single ``status`` event whose ``content`` is the opaque JSON
+payload. ``set_value`` patches that event in place instead of appending.
 """
 
 from __future__ import annotations
@@ -63,15 +31,23 @@ import asyncio
 import hashlib
 import logging
 import os
+from collections.abc import Awaitable
 from collections.abc import Callable
+from collections.abc import Coroutine
+from typing import Annotated
 from typing import Any
+from typing import ClassVar
 from typing import TypeVar
+from typing import cast
 
-import requests
-from datarobot.errors import MemorySessionDeduplicationError
-from datarobot.errors import MemorySpaceDeduplicationError
-from datarobot.models.memory import MemorySpace
-from datarobot.models.memory import Session
+from datarobot.application_utils.persistence import DRDeduplicationKey
+from datarobot.application_utils.persistence import DREvent
+from datarobot.application_utils.persistence import DRMemoryServiceClient
+from datarobot.application_utils.persistence import DRMemorySpace
+from datarobot.application_utils.persistence import DRRangeKey
+from datarobot.application_utils.persistence import DRSession
+from datarobot.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot.application_utils.persistence.exceptions import DRMemoryUnavailableError
 
 from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.core.runtime import is_workload_mode
@@ -81,45 +57,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# `dr.Client()` keeps a single process-lifetime `requests.Session` (and pooled
-# `HTTPAdapter`) shared by every DataRobot API call -- see
-# `datarobot.rest.RESTClientObject`. Memory-space cache calls are infrequent
-# (on-demand L1-cache misses, plus the agent card registry's 30-minute
-# background refresh), so a pooled keep-alive connection can sit idle longer
-# than the server side's (or an intervening proxy's) idle-connection timeout.
-# The next reuse then fails with a `ConnectionError` wrapping
-# `RemoteDisconnected`/`ProtocolError` ("Remote end closed connection without
-# response") -- not the `ConnectionResetError` that the DataRobot client's own
-# `handle_connection_reset` retry wrapper looks for, so it is never retried
-# there and surfaces on every call that lands on a stale connection.
-#
-# Retrying here is a cheap, safe mitigation: the failed attempt evicts the
-# dead connection from the pool, so the retry opens a fresh one.
-_STALE_CONNECTION_RETRIES = 2
-
-
-def _call_with_stale_connection_retry(func: Callable[[], T], *, op: str) -> T:
-    """Call *func*, retrying on a stale pooled-connection ``ConnectionError``.
-
-    Only ``requests.exceptions.ConnectionError`` (e.g. a stale keep-alive
-    connection closed by the remote end) is retried; any other exception --
-    including a real API error -- propagates immediately.
-    """
-    for attempt in range(_STALE_CONNECTION_RETRIES + 1):
-        try:
-            return func()
-        except requests.exceptions.ConnectionError as exc:
-            if attempt >= _STALE_CONNECTION_RETRIES:
-                raise
-            logger.debug(
-                "MemorySpace %s hit a connection error (attempt %d/%d), retrying: %s",
-                op,
-                attempt + 1,
-                _STALE_CONNECTION_RETRIES + 1,
-                exc,
-            )
-    raise AssertionError("unreachable")  # pragma: no cover
-
+_TRANSPORT_RETRIES = 2
 
 # Stable 24-hex participant id (BSON ObjectId length) for cache sessions.
 DRAGENT_CACHE_PARTICIPANT_ID = hashlib.sha256(b"datarobot-genai:dragent-cache").hexdigest()[:24]
@@ -131,10 +69,34 @@ CACHE_KIND = "agent_card"
 _REGISTRY_CACHE_SPACE_DEDUP_PREFIX = "dragent:agent-card-registry"
 
 
+class AgentCardCacheSession(DRSession):
+    """Memory Service session model for one agent-card registry L2 cache entry."""
+
+    __description_prefix__ = "dragent_cache"
+    __lifecycle_strategies__: ClassVar[list[dict[str, Any]]] = []
+
+    cache_kind: Annotated[str, DRRangeKey]
+    dedup_key: Annotated[str, DRDeduplicationKey]
+    logical_key: str
+    dragent_cache: bool = True
+
+
+class AgentCardCacheEvent(DREvent, session=AgentCardCacheSession):  # type: ignore[call-arg]
+    """Single-value status event carrying the opaque JSON cache payload."""
+
+    __event_type__ = CACHE_EVENT_TYPE
+
+
 class _ProvisionedRegistryCacheSpaceState:
     """Mutable container for the provisioned registry L2 MemorySpace ID."""
 
     space_id: str | None = None
+
+
+class _MemoryClientState:
+    """Process-global Memory Service ORM client."""
+
+    client: DRMemoryServiceClient | None = None
 
 
 def is_enclave_l2_workload() -> bool:
@@ -145,6 +107,42 @@ def is_enclave_l2_workload() -> bool:
 def registry_cache_deduplication_key(workload_id: str) -> str:
     """Return the stable deduplication key for an enclave workload's registry L2 space."""
     return f"{_REGISTRY_CACHE_SPACE_DEDUP_PREFIX}:workload:{workload_id}"
+
+
+def get_memory_service_client() -> DRMemoryServiceClient | None:
+    """Return the configured Memory Service client, if any."""
+    return _MemoryClientState.client
+
+
+def _run_async(coro: Coroutine[Any, Any, T]) -> T:
+    """Run *coro* from a synchronous caller when no event loop is running."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    raise RuntimeError("memory_space_cache sync helper called from a running event loop")
+
+
+async def _call_with_transport_retry(
+    coro_factory: Callable[[], Awaitable[T]],
+    *,
+    op: str,
+) -> T:
+    """Await *coro_factory*, retrying on transient transport failures."""
+    for attempt in range(_TRANSPORT_RETRIES + 1):
+        try:
+            return await coro_factory()
+        except DRMemoryUnavailableError as exc:
+            if attempt >= _TRANSPORT_RETRIES:
+                raise
+            logger.debug(
+                "MemorySpace %s hit a transport error (attempt %d/%d), retrying: %s",
+                op,
+                attempt + 1,
+                _TRANSPORT_RETRIES + 1,
+                exc,
+            )
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def try_resolve_memory_space_id() -> str | None:
@@ -173,28 +171,8 @@ def try_resolve_memory_space_id() -> str | None:
     if not try_configure_datarobot_memory_client():
         return None
 
-    description = "Agent card registry L2 cache"
-
-    def _create() -> MemorySpace:
-        try:
-            return _call_with_stale_connection_retry(
-                lambda: MemorySpace.create(
-                    description=description,
-                    deduplication_key=deduplication_key,
-                ),
-                op="provision_registry_cache_memory_space",
-            )
-        except MemorySpaceDeduplicationError as exc:
-            if exc.existing_memory_space_id is None:
-                raise
-            existing_space_id = exc.existing_memory_space_id
-            return _call_with_stale_connection_retry(
-                lambda: MemorySpace.get(existing_space_id),
-                op="get_registry_cache_memory_space",
-            )
-
     try:
-        space = _create()
+        space_id = _run_async(_provision_registry_cache_memory_space(deduplication_key))
     except Exception:
         logger.exception(
             "Failed to provision agent card registry L2 MemorySpace (dedup_key=%s)",
@@ -202,11 +180,24 @@ def try_resolve_memory_space_id() -> str | None:
         )
         return None
 
-    _ProvisionedRegistryCacheSpaceState.space_id = space.id
+    _ProvisionedRegistryCacheSpaceState.space_id = space_id
     logger.info(
         "Provisioned agent card registry L2 MemorySpace %s (dedup_key=%s)",
-        space.id,
+        space_id,
         deduplication_key,
+    )
+    return space_id
+
+
+async def _provision_registry_cache_memory_space(deduplication_key: str) -> str:
+    client = _require_memory_client()
+    space = await _call_with_transport_retry(
+        lambda: DRMemorySpace.post(
+            client,
+            description="Agent card registry L2 cache",
+            deduplication_key=deduplication_key,
+        ),
+        op="provision_registry_cache_memory_space",
     )
     return space.id
 
@@ -228,11 +219,12 @@ def configure_datarobot_memory_client(
     *,
     api_token: str | None = None,
 ) -> None:
-    """Configure the process-global DataRobot client for enclave memory Session API calls.
+    """Configure the process-global Memory Service ORM client for enclave workloads.
 
     Uses the enclave API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
-    ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` → ``{host}/api/v2``). Skips ``dr.Client()``'s
-    ``GET /version/`` probe because enclave gateways expose the memory API only.
+    ``DR_WORKLOAD_EXTERNAL_URL_PREFIX`` → ``{host}/api/v2``). The ORM client talks
+    directly to ``{endpoint}/memory`` and does not require ``dr.Client()``'s
+    ``GET /version/`` probe.
     """
     enclave_endpoint = resolve_external_workload_api_endpoint()
     if enclave_endpoint is None:
@@ -244,16 +236,22 @@ def configure_datarobot_memory_client(
     if not token:
         raise ValueError("DATAROBOT_API_TOKEN is required when using memory_space cache backends.")
     logger.info(
-        "Configuring DataRobot memory client for enclave gateway %s "
-        "(skipping dr.Client /version/ compatibility check).",
+        "Configuring DataRobot memory client for enclave gateway %s.",
         enclave_endpoint,
     )
-    from datarobot.client import set_client
-    from datarobot.config import create_drconfig
-    from datarobot.rest import RESTClientObject
+    _MemoryClientState.client = DRMemoryServiceClient(
+        endpoint=enclave_endpoint.rstrip("/"),
+        api_token=token,
+    )
 
-    drconfig = create_drconfig(token=token, endpoint=enclave_endpoint.rstrip("/"))
-    set_client(RESTClientObject.from_config(drconfig))
+
+def _require_memory_client() -> DRMemoryServiceClient:
+    client = _MemoryClientState.client
+    if client is None:
+        raise RuntimeError(
+            "MemorySpace client is not configured; call configure_datarobot_memory_client first."
+        )
+    return client
 
 
 def _cache_deduplication_key(logical_key: str) -> str:
@@ -261,151 +259,109 @@ def _cache_deduplication_key(logical_key: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:DEDUPLICATION_KEY_LENGTH]
 
 
-def _cache_session_description(logical_key: str) -> str:
-    return f"/dragent/cache/{logical_key}"
-
-
-def _cache_session_metadata(logical_key: str) -> dict[str, Any]:
-    return {
-        "dragent_cache": True,
-        "cache_key": logical_key,
-        "cache_kind": CACHE_KIND,
-    }
-
-
-def _create_cache_session(
-    memory_space_id: str,
-    *,
-    logical_key: str,
-) -> Session:
-    """Create a cache session, adopting an existing one on deduplication collision."""
-    try:
-        return _call_with_stale_connection_retry(
-            lambda: Session.create(
-                memory_space_id,
-                [DRAGENT_CACHE_PARTICIPANT_ID],
-                metadata=_cache_session_metadata(logical_key),
-                description=_cache_session_description(logical_key),
-                deduplication_key=_cache_deduplication_key(logical_key),
-            ),
-            op="create_cache_session",
-        )
-    except MemorySessionDeduplicationError as exc:
-        if exc.existing_session_id is None:
-            raise
-        existing_session_id = exc.existing_session_id
-        return _call_with_stale_connection_retry(
-            lambda: Session.get(memory_space_id, existing_session_id),
-            op="get_cache_session",
-        )
-
-
-def _find_cache_session(memory_space_id: str, logical_key: str) -> Session | None:
-    description = _cache_session_description(logical_key)
-    sessions = _call_with_stale_connection_retry(
-        lambda: Session.list(
-            memory_space_id,
-            participants=[DRAGENT_CACHE_PARTICIPANT_ID],
-            description=description,
-            limit=1,
-        ),
-        op="find_cache_session",
-    )
-    return sessions[0] if sessions else None
-
-
-def _read_payload(session: Session) -> str | None:
-    """Return the cache entry's payload, or ``None`` when the session has no event yet.
-
-    The payload is the event's ``content`` directly -- no cache-specific envelope
-    or schema version -- matching how BUZZOK-32180's ``DREvent.content`` is read.
-    """
-    events = _call_with_stale_connection_retry(lambda: session.events(last_n=1), op="read_payload")
-    if not events:
-        return None
-    body = events[0].body
-    if not body:
-        return None
-    value = body.get("content")
-    return str(value) if value is not None else None
-
-
-def _write_payload(session: Session, payload: str) -> None:
-    # The Memory Sessions Events API requires a top-level "content" field on every
-    # event body (schema validation: `body.content` is required), so the payload
-    # is stored there directly -- no extra wrapper field is needed.
-    body = {"content": payload}
-    events = _call_with_stale_connection_retry(
-        lambda: session.events(last_n=1), op="write_payload_read"
-    )
-    if events and events[0].sequence_id is not None:
-        sequence_id = events[0].sequence_id
-        _call_with_stale_connection_retry(
-            lambda: session.update_event(sequence_id, body=body),
-            op="write_payload_update",
-        )
-        return
-    _call_with_stale_connection_retry(
-        lambda: session.post_event(
-            body=body,
-            emitter={"type": "agent"},
-            event_type=CACHE_EVENT_TYPE,
-        ),
-        op="write_payload_post",
-    )
-
-
 class MemorySpaceKVCache:
     """Store opaque JSON payloads in a DataRobot MemorySpace by logical key."""
 
-    def __init__(self, *, memory_space_id: str, key_prefix: str = "dragent:") -> None:
+    def __init__(
+        self,
+        *,
+        memory_space_id: str,
+        key_prefix: str = "dragent:",
+        client: DRMemoryServiceClient | None = None,
+    ) -> None:
         self._memory_space_id = memory_space_id
         normalized = key_prefix if key_prefix.endswith(":") else f"{key_prefix}:"
         self._key_prefix = normalized
-        self._session_ids: dict[str, str] = {}
+        self._client = client
+        self._space: DRMemorySpace | None = None
+        self._sessions: dict[str, AgentCardCacheSession] = {}
 
     def _logical_key(self, key: str) -> str:
         return f"{self._key_prefix}{CACHE_KIND}:{key}"
 
-    def _cache_session_id(self, logical_key: str, session: Session) -> None:
-        self._session_ids[logical_key] = session.id
+    def _client_or_global(self) -> DRMemoryServiceClient:
+        return self._client or _require_memory_client()
 
-    def _invalidate_session_id(self, logical_key: str) -> None:
-        self._session_ids.pop(logical_key, None)
+    async def _resolve_space(self) -> DRMemorySpace:
+        if self._space is None:
+            client = self._client_or_global()
+            self._space = await _call_with_transport_retry(
+                lambda: DRMemorySpace.get(client, self._memory_space_id),
+                op="resolve_space",
+            )
+        return self._space
 
-    def _resolve_session(self, logical_key: str) -> Session | None:
-        """Return the cache session, using a process-local session-id cache when possible."""
-        if session_id := self._session_ids.get(logical_key):
-            try:
-                return _call_with_stale_connection_retry(
-                    lambda: Session.get(self._memory_space_id, session_id),
-                    op="resolve_session_get",
-                )
-            except Exception:
-                logger.debug(
-                    "MemorySpace session cache miss for %s (session_id=%s)",
-                    logical_key,
-                    session_id,
-                )
-                self._invalidate_session_id(logical_key)
+    def _cache_session(self, logical_key: str, session: AgentCardCacheSession) -> None:
+        self._sessions[logical_key] = session
 
-        session = _find_cache_session(self._memory_space_id, logical_key)
-        if session is not None:
-            self._cache_session_id(logical_key, session)
-        return session
+    def _invalidate_session(self, logical_key: str) -> None:
+        self._sessions.pop(logical_key, None)
+
+    async def _resolve_session(self, logical_key: str) -> AgentCardCacheSession | None:
+        if session := self._sessions.get(logical_key):
+            return session
+
+        space = await self._resolve_space()
+        dedup_key = _cache_deduplication_key(logical_key)
+        try:
+            resolved = cast(
+                AgentCardCacheSession,
+                await _call_with_transport_retry(
+                    lambda: AgentCardCacheSession.get(space, dedup_key=dedup_key),
+                    op="resolve_session",
+                ),
+            )
+        except DRMemoryNotFoundError:
+            return None
+        except DRMemoryUnavailableError:
+            raise
+        except Exception:
+            logger.debug("MemorySpace session lookup failed for %s", logical_key)
+            return None
+
+        self._cache_session(logical_key, resolved)
+        return resolved
+
+    async def _read_payload(self, session: AgentCardCacheSession) -> str | None:
+        events = await _call_with_transport_retry(
+            lambda: AgentCardCacheEvent.last(session, n=1, type=CACHE_EVENT_TYPE),
+            op="read_payload",
+        )
+        if not events:
+            return None
+        return events[0].content
+
+    async def _write_payload(self, session: AgentCardCacheSession, payload: str) -> None:
+        events = await _call_with_transport_retry(
+            lambda: AgentCardCacheEvent.last(session, n=1, type=CACHE_EVENT_TYPE),
+            op="write_payload_read",
+        )
+        if events:
+            await _call_with_transport_retry(
+                lambda: events[0].patch(content=payload),
+                op="write_payload_update",
+            )
+            return
+        await _call_with_transport_retry(
+            lambda: AgentCardCacheEvent.post(
+                session,
+                content=payload,
+                emitter_type="agent",
+            ),
+            op="write_payload_post",
+        )
 
     async def get_value(self, key: str) -> str | None:
         """Return the stored JSON payload for *key*, or ``None`` when missing."""
         logical_key = self._logical_key(key)
-
-        def _get() -> str | None:
-            session = self._resolve_session(logical_key)
+        try:
+            session = await self._resolve_session(logical_key)
             if session is None:
                 return None
-            return _read_payload(session)
-
-        try:
-            return await asyncio.to_thread(_get)
+            return await self._read_payload(session)
+        except DRMemoryUnavailableError:
+            logger.exception("MemorySpace cache read failed for %s", logical_key)
+            return None
         except Exception:
             logger.exception("MemorySpace cache read failed for %s", logical_key)
             return None
@@ -413,33 +369,37 @@ class MemorySpaceKVCache:
     async def set_value(self, key: str, payload: str) -> None:
         """Upsert a JSON payload for *key*."""
         logical_key = self._logical_key(key)
-
-        def _set() -> None:
-            session = self._resolve_session(logical_key)
-            if session is None:
-                session = _create_cache_session(
-                    self._memory_space_id,
-                    logical_key=logical_key,
-                )
-                self._cache_session_id(logical_key, session)
-            _write_payload(session, payload)
+        dedup_key = _cache_deduplication_key(logical_key)
 
         try:
-            await asyncio.to_thread(_set)
+            space = await self._resolve_space()
+            session = await self._resolve_session(logical_key)
+            if session is None:
+                session = cast(
+                    AgentCardCacheSession,
+                    await _call_with_transport_retry(
+                        lambda: AgentCardCacheSession.post(
+                            space,
+                            cache_kind=CACHE_KIND,
+                            dedup_key=dedup_key,
+                            logical_key=logical_key,
+                            participants=[DRAGENT_CACHE_PARTICIPANT_ID],
+                        ),
+                        op="create_cache_session",
+                    ),
+                )
+                self._cache_session(logical_key, session)
+            await self._write_payload(session, payload)
         except Exception:
             logger.exception("MemorySpace cache write failed for %s", logical_key)
 
     async def delete_value(self, key: str) -> None:
         """Remove a cached payload for *key* when present."""
         logical_key = self._logical_key(key)
-
-        def _delete() -> None:
-            session = self._resolve_session(logical_key)
-            if session is not None:
-                _call_with_stale_connection_retry(session.delete, op="delete_session")
-            self._invalidate_session_id(logical_key)
-
         try:
-            await asyncio.to_thread(_delete)
+            session = await self._resolve_session(logical_key)
+            if session is not None:
+                await _call_with_transport_retry(session.delete, op="delete_session")
+            self._invalidate_session(logical_key)
         except Exception:
             logger.exception("MemorySpace cache delete failed for %s", logical_key)
