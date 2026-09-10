@@ -21,7 +21,10 @@ import pytest
 from fastmcp.server.auth import AccessToken
 
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import JWTDecodeError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import NoJWTBearerTokenKeyInRequestHeaderError
+from datarobot_genai.drmcpbase.auth.exceptions import NoTokenWithBearerPrefixError
 from datarobot_genai.drmcpbase.auth.jwt import AuthorizationClaims
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
@@ -212,20 +215,27 @@ class TestJWTTokenHandler:
 
     def test_get_bearer_token_value_if_without_bearer_header_schema(self) -> None:
         token_without_schema = "afdsafsa"
-        assert JWTTokenHandler.get_bearer_token_value(token_without_schema) == token_without_schema
+        assert (
+            JWTTokenHandler.get_bearer_token_value(
+                token_without_schema,
+                bearer_token_prefix_can_be_missing=True,
+            )
+            == token_without_schema
+        )
 
     @pytest.mark.parametrize(
         "invalid_token_header_schema",
         ["_earer", "adfafd"],
         ids=str,
     )
-    def test_get_bearer_token_value_returns_null_if_bearer_header_schema_invalid(
+    def test_get_bearer_token_value_raise_error_if_bearer_header_schema_invalid(
         self, invalid_token_header_schema: str
     ) -> None:
-        assert not JWTTokenHandler.get_bearer_token_value(
-            f"{invalid_token_header_schema} afdsafsa",
-            bearer_token_header_can_be_missing=False,
-        )
+        with pytest.raises(NoTokenWithBearerPrefixError):
+            JWTTokenHandler.get_bearer_token_value(
+                f"{invalid_token_header_schema} afdsafsa",
+                bearer_token_prefix_can_be_missing=False,
+            )
 
     def test_is_jwt_token(
         self,
@@ -261,8 +271,9 @@ class TestJWTTokenHandler:
             == token_value
         )
 
-    def test_get_bearer_token_header_returns_null_if_absent(self) -> None:
-        assert JWTTokenHandler.get_bearer_token_header(Mock(), {}) is None
+    def test_get_bearer_token_header_raise_error(self) -> None:
+        with pytest.raises(NoJWTBearerTokenKeyInRequestHeaderError):
+            JWTTokenHandler.get_bearer_token_header(Mock(), {})
 
     def test_get_jwt_payload_without_signature_verification(self, mock_jwt_decode: Mock) -> None:
         mock_jwt_token_value = Mock()
@@ -384,41 +395,25 @@ class TestJWTTokenHandler:
             access_token.claims == mock_get_jwt_payload_without_signature_verification.return_value
         )
 
-    def test_parse_to_access_token_returns_null_if_no_jwt_bearer_token_header_found(
-        self,
-        mock_get_bearer_token_header: Mock,
-    ) -> None:
-        mock_get_bearer_token_header.return_value = None
-
-        assert JWTTokenHandler.parse_to_access_token(Mock(), Mock()) is None
-
-    @pytest.mark.usefixtures("mock_get_bearer_token_header")
-    def test_parse_to_access_token_returns_null_if_jwt_bearer_token_header_value_is_invalid(
-        self,
-        mock_get_bearer_token_value: Mock,
-    ) -> None:
-        mock_get_bearer_token_value.return_value = None
-
-        assert JWTTokenHandler.parse_to_access_token(Mock(), Mock()) is None
-
     @pytest.mark.usefixtures(
         "mock_get_bearer_token_header",
         "mock_get_bearer_token_value",
     )
-    def test_parse_to_access_token_returns_null_if_jwt_content_is_malformed(
+    def test_parse_to_access_token_raise_error_if_jwt_content_is_malformed(
         self,
         mock_is_jwt_decode: Mock,
     ) -> None:
         mock_is_jwt_decode.return_value = False
 
-        assert JWTTokenHandler.parse_to_access_token(Mock(), Mock()) is None
+        with pytest.raises(JWTDecodeError):
+            JWTTokenHandler.parse_to_access_token(Mock(), Mock())
 
     @pytest.mark.usefixtures(
         "mock_get_bearer_token_header",
         "mock_get_bearer_token_value",
         "mock_is_jwt_decode",
     )
-    def test_parse_to_access_token_returns_null_if_jwt_decode_failed(
+    def test_parse_to_access_token_raise_error_if_jwt_decode_failed(
         self,
         mock_get_jwt_payload_without_signature_verification: Mock,
     ) -> None:
@@ -428,7 +423,8 @@ class TestJWTTokenHandler:
 
         mock_header_name = Mock()
         mock_header = Mock()
-        assert JWTTokenHandler.parse_to_access_token(mock_header_name, mock_header) is None
+        with pytest.raises(JWTDecodeError):
+            JWTTokenHandler.parse_to_access_token(mock_header_name, mock_header)
 
     @pytest.mark.usefixtures(
         "mock_get_bearer_token_header",
@@ -437,14 +433,15 @@ class TestJWTTokenHandler:
         "mock_is_jwt_decode",
     )
     @pytest.mark.parametrize("raised_error", [ValueError, TypeError], ids=str)
-    def test_parse_to_access_token_returns_null_if_access_token_init_failed(
+    def test_parse_to_access_token_raise_error_if_access_token_init_failed(
         self,
         raised_error: ValueError | TypeError,
         mock_access_token_cls: Mock,
     ) -> None:
         mock_access_token_cls.side_effect = raised_error
 
-        assert JWTTokenHandler.parse_to_access_token(Mock(), Mock()) is None
+        with pytest.raises(JWTDecodeError):
+            JWTTokenHandler.parse_to_access_token(Mock(), Mock())
 
 
 class TestJWTTokenClaimsValidator:
