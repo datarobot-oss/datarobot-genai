@@ -52,13 +52,6 @@ datarobot_genai = [
     "drmcpbase/dynamic_tools/deployment/schemas/*.json",
 ]
 
-# LOCAL INTEGRATION BRANCH ONLY. MCPServerRef and the two MCP resolvers live in
-# datarobot.core.config but are not in a released `datarobot` yet, so the SDK is consumed
-# as an editable checkout beside this one. Delete this table and drop the rc0 floors in
-# setup.py once 3.19 ships -- nothing else changes, because genai already imports these
-# names straight from the SDK.
-[tool.uv.sources]
-datarobot = { path = "../public_api_client", editable = true }
 
 [tool.uv]
 package = true
