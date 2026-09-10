@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared gating helper for ``drmcputils`` HTTP route groups.
+"""Shared gating helpers for DataRobot MCP HTTP route groups.
 
 A route *gate* is an async predicate ``(Request) -> bool``. When it returns
 ``False`` — or raises — the route responds ``404`` so the feature stays hidden
 (fail closed). global-mcp injects a per-user feature-flag check; user-mcp injects
 the static-account check; either may pass ``None`` to leave a route open.
-
-The tool-gallery route group predates this helper and keeps its own copy; new
-route groups (``tool_gallery``, ``metadata``) share this one.
 """
 
 import logging

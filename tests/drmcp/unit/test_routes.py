@@ -1092,9 +1092,7 @@ class TestToolsGalleryGate:
 
         mock_mcp = Mock()
         mock_mcp.custom_route = mock_custom_route
-        with patch(
-            "datarobot_genai.drmcp.core.routes.register_tool_gallery_routes"
-        ) as mock_register:
+        with patch("datarobot_genai.drmcp.core.routes.register_static_routes") as mock_register:
             register_routes(mock_mcp)
         _, kwargs = mock_register.call_args
         assert kwargs["gate"] is _tools_gallery_enabled

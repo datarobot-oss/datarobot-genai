@@ -33,9 +33,8 @@ from starlette.routing import Mount
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from datarobot_genai.drmcpbase.routes import register_static_routes
 from datarobot_genai.drmcputils.routes import TrailingSlashNormalizer
-from datarobot_genai.drmcputils.routes import register_metadata_routes
-from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
 
 
 def _ok(_request: Any) -> PlainTextResponse:
@@ -83,9 +82,9 @@ class TestBothSpellingsAreServed:
             ("/metadata", "/metadata"),
             ("/metadata", "/metadata/"),
             # Registered slashed (every /toolGallery REST route).
-            ("/toolGallery/tools/", "/toolGallery/tools"),
-            ("/toolGallery/tools/", "/toolGallery/tools/"),
-            ("/toolGallery/categories/", "/toolGallery/categories"),
+            ("/static/tools/", "/static/tools"),
+            ("/static/tools/", "/static/tools/"),
+            ("/static/categories/", "/static/categories"),
         ],
     )
     def test_request_reaches_the_registered_route(self, registered: str, requested: str) -> None:
@@ -102,9 +101,9 @@ class TestBothSpellingsAreServed:
     def test_a_wrong_method_still_normalizes_then_405s(self) -> None:
         # Match.PARTIAL — right path, wrong method — must still be rewritten, so the
         # router answers 405 for the route rather than missing it entirely.
-        app = _app(["/toolGallery/tools/"], methods=["GET"])
+        app = _app(["/static/tools/"], methods=["GET"])
         with TestClient(app) as client:
-            resp = client.post("/toolGallery/tools", follow_redirects=False)
+            resp = client.post("/static/tools", follow_redirects=False)
         assert resp.status_code == 405
 
 
@@ -118,7 +117,7 @@ class TestItCannotCreateARedirectLoop:
     """
 
     def test_a_slashless_route_beside_slashed_siblings_is_left_alone(self) -> None:
-        paths = ["/toolGallery/tools/", "/toolGallery/toolSets/{sid}"]
+        paths = ["/static/tools/", "/toolGallery/toolSets/{sid}"]
         # The slash-less sibling is served as registered...
         status, seen = _reaches(paths, "/toolGallery/toolSets/abc")
         assert status == 200
@@ -147,11 +146,11 @@ class TestMountedUnderAPrefix:
         "requested, expected",
         [
             ("/api/mcp/", "/api/mcp"),
-            ("/api/toolGallery/tools", "/api/toolGallery/tools/"),
+            ("/api/static/tools", "/api/static/tools/"),
         ],
     )
     def test_prefixed_paths_normalize(self, requested: str, expected: str) -> None:
-        status, seen = _reaches(["/api/mcp", "/api/toolGallery/tools/"], requested)
+        status, seen = _reaches(["/api/mcp", "/api/static/tools/"], requested)
         assert status == 200
         assert seen == expected
 
@@ -180,7 +179,7 @@ class TestScopeHandling:
         async def app(scope: Any, receive: Any, send: Any) -> None:
             seen.append(scope)
 
-        scope = {"type": "http", "path": "/toolGallery/tools"}
+        scope = {"type": "http", "path": "/static/tools"}
         await TrailingSlashNormalizer(app)(scope, None, None)
         assert seen[0] is scope
 
@@ -213,21 +212,18 @@ class TestEndToEnd:
             """List."""
             return 1
 
-        register_tool_gallery_routes(mcp)
-        register_metadata_routes(mcp)
+        register_static_routes(mcp)
         return TestClient(mcp.http_app(middleware=[Middleware(TrailingSlashNormalizer)]))
 
     @pytest.mark.parametrize(
         "path",
         [
-            "/toolGallery/tools",
-            "/toolGallery/tools/",
-            "/toolGallery/categories",
-            "/toolGallery/categories/",
-            "/toolGallery/providers",
-            "/toolGallery/providers/",
-            "/metadata",
-            "/metadata/",
+            "/static/tools",
+            "/static/tools/",
+            "/static/categories",
+            "/static/categories/",
+            "/static/providers",
+            "/static/providers/",
         ],
     )
     def test_both_spellings_answer_without_a_redirect(self, path: str) -> None:
