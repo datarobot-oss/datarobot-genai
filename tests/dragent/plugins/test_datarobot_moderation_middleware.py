@@ -116,9 +116,6 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _set_moderation_invoke_state,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
-    _split_response_by_text_deltas,
-)
-from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _streaming_text_events_from_openai_chunk,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
@@ -2297,10 +2294,16 @@ def test_prescore_datarobot_moderations_from_df_uses_pipeline_columns(
     assert "Responses_token_count" not in mods
 
 
-async def test_function_middleware_stream_attaches_prescore_to_text_message_start(
+async def test_function_middleware_stream_attaches_prescore_to_text_message_content(
     builder_mock: MagicMock,
 ) -> None:
-    """Prescore metrics belong on TEXT_MESSAGE_START; content chunks keep postscore only."""
+    """Prescore and postscore metrics are merged and appear on TEXT_MESSAGE_CONTENT.
+
+    With dome's AG-UI streaming path, ``moderate_agui_stream`` handles prescore merging
+    internally: ``stream_response_async`` receives the prescore_df and builds a merged
+    moderation sidecar on the first moderated chunk (TEXT_MESSAGE_CONTENT). TEXT_MESSAGE_START
+    is forwarded as-is with no moderations attached.
+    """
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -2343,141 +2346,14 @@ async def test_function_middleware_stream_attaches_prescore_to_text_message_star
     content_chunks = [
         c for c in chunks if any(isinstance(ev, TextMessageContentEvent) for ev in c.events)
     ]
+    # TEXT_MESSAGE_START is forwarded by dome without moderations.
     assert len(start_chunks) == 1
-    assert start_chunks[0].datarobot_moderations is not None
-    assert start_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
-    assert "Responses_token_count" not in start_chunks[0].datarobot_moderations
+    assert start_chunks[0].datarobot_moderations is None
+    # Merged prescore + postscore metrics appear on TEXT_MESSAGE_CONTENT.
     assert content_chunks
     assert content_chunks[0].datarobot_moderations is not None
+    assert content_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
     assert content_chunks[0].datarobot_moderations["Responses_token_count"] == 6
-    assert "Prompts_token_count" not in content_chunks[0].datarobot_moderations
-
-
-def test_split_response_by_text_deltas_keeps_homogeneous_batches_intact() -> None:
-    # GIVEN batches whose events are either all text deltas or all lifecycle events
-    # WHEN they are split
-    # THEN the original object is returned so the common path allocates nothing
-    text_only = DRAgentEventResponse(
-        events=[
-            TextMessageContentEvent(message_id="m", delta="a"),
-            TextMessageContentEvent(message_id="m", delta="b"),
-        ],
-        usage_metrics=default_usage_metrics(),
-    )
-    lifecycle_only = DRAgentEventResponse(
-        events=[ToolCallEndEvent(tool_call_id="t"), RunFinishedEvent(thread_id="th", run_id="r")],
-        usage_metrics=default_usage_metrics(),
-    )
-
-    assert _split_response_by_text_deltas(text_only) == [text_only]
-    assert _split_response_by_text_deltas(lifecycle_only) == [lifecycle_only]
-
-
-def test_split_response_by_text_deltas_separates_nat_tool_call_and_text_batch() -> None:
-    # GIVEN the batch NAT puts on the wire: tool-call lifecycle events, then the first text
-    # WHEN it is split
-    # THEN lifecycle and text land in separate batches, in upstream order, and only the text
-    # batch keeps the usage payload so aggregation cannot double-count it
-    usage = default_usage_metrics() | {"completion_tokens": 11, "total_tokens": 11}
-    response = DRAgentEventResponse(
-        events=[
-            ToolCallEndEvent(tool_call_id="t"),
-            ToolCallResultEvent(message_id="tool-msg", tool_call_id="t", content="42"),
-            TextMessageStartEvent(message_id="m", role="assistant"),
-            TextMessageContentEvent(message_id="m", delta="the answer is 42"),
-        ],
-        usage_metrics=usage,
-    )
-
-    parts = _split_response_by_text_deltas(response)
-
-    assert [[ev.type for ev in part.events] for part in parts] == [
-        [EventType.TOOL_CALL_END, EventType.TOOL_CALL_RESULT, EventType.TEXT_MESSAGE_START],
-        [EventType.TEXT_MESSAGE_CONTENT],
-    ]
-    assert parts[0].usage_metrics["completion_tokens"] == 0
-    assert parts[1].usage_metrics["completion_tokens"] == 11
-    assert [ev for part in parts for ev in part.events] == response.events
-
-
-async def test_function_middleware_stream_moderates_text_batched_behind_tool_calls(
-    builder_mock: MagicMock,
-) -> None:
-    # GIVEN NAT's real wire shape, where the run's only text delta shares a batch with the
-    # tool-call lifecycle events that precede it
-    # WHEN function_middleware_stream runs
-    # THEN the text still reaches the guards and the moderation metadata is attached, instead
-    # of the batch being routed around moderation because its first event is a tool call
-    pipeline = _pipeline_mock()
-    pipeline.get_prescore_guards.return_value = [MagicMock()]
-    moderation = _moderation_mock(pipeline)
-    moderation.stream_response_async = _stream_response_with_merged_moderation_metrics
-    prescore_df = _prescore_df_ok("what is the answer?")
-    prescore_df["Prompts_token_count"] = [3]
-    _set_evaluate_prompt_async_return(moderation, prescore_df)
-    mid = "msg-1"
-    zero = default_usage_metrics()
-
-    async def upstream():
-        yield DRAgentEventResponse(
-            events=[
-                RunStartedEvent(thread_id="th", run_id="r"),
-                StepStartedEvent(step_name="agent"),
-            ],
-            usage_metrics=zero,
-        )
-        yield DRAgentEventResponse(
-            events=[
-                ToolCallStartEvent(tool_call_id="t", tool_call_name="calculator"),
-                ToolCallArgsEvent(tool_call_id="t", delta="{}"),
-            ],
-            usage_metrics=zero,
-        )
-        yield DRAgentEventResponse(
-            events=[
-                ToolCallEndEvent(tool_call_id="t"),
-                ToolCallResultEvent(message_id="tool-msg", tool_call_id="t", content="42"),
-                TextMessageStartEvent(message_id=mid, role="assistant"),
-                TextMessageContentEvent(message_id=mid, delta="the answer is 42"),
-            ],
-            usage_metrics=zero,
-        )
-        yield DRAgentEventResponse(events=[TextMessageEndEvent(message_id=mid)], usage_metrics=zero)
-        yield DRAgentEventResponse(
-            events=[
-                StepFinishedEvent(step_name="agent"),
-                RunFinishedEvent(thread_id="th", run_id="r"),
-            ],
-            usage_metrics=zero,
-        )
-
-    stream_next = MagicMock(return_value=upstream())
-
-    with patch(
-        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
-        return_value=moderation,
-    ):
-        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
-        chunks = [
-            item
-            async for item in mw.function_middleware_stream(
-                _make_run_input("what is the answer?"),
-                call_next=stream_next,
-                context=_fn_context(),
-            )
-        ]
-
-    assert any(chunk.datarobot_moderations for chunk in chunks)
-    content_chunks = [
-        chunk
-        for chunk in chunks
-        if any(isinstance(ev, TextMessageContentEvent) for ev in chunk.events)
-    ]
-    assert content_chunks, "moderated text delta was dropped"
-    assert content_chunks[0].datarobot_moderations is not None
-    assert content_chunks[0].datarobot_moderations["Responses_token_count"] == 6
-    # Splitting must not corrupt the AG-UI sequence the frontend replays.
-    validate_sequence([ev for chunk in chunks for ev in chunk.events])
 
 
 async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock: MagicMock) -> None:
@@ -3931,14 +3807,18 @@ async def test_function_middleware_stream_block_still_emits_upstream_run_finishe
 
     flat = [ev for resp in responses for ev in resp.events]
     validate_sequence(flat)
+    # dome's AG-UI path drains all held lifecycle events after a block, so msg-b's start/end are
+    # still emitted even though its content was blocked (empty message bubble, no text inside).
     assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
         (EventType.RUN_STARTED, None),
         (EventType.TEXT_MESSAGE_START, mid_a),
         (EventType.TEXT_MESSAGE_CONTENT, mid_a),
         (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.TEXT_MESSAGE_START, mid_b),
+        (EventType.TEXT_MESSAGE_END, mid_b),
         (EventType.RUN_FINISHED, None),
     ]
-    # The blocked upstream text never reaches the client, and mid_b is never opened.
+    # Only the block intervention text reaches the client; the original content is discarded.
     assert [ev.delta for ev in flat if isinstance(ev, TextMessageContentEvent)] == [blocked_text]
 
 

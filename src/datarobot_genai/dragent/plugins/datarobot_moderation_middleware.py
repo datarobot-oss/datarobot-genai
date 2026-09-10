@@ -56,7 +56,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
 from collections.abc import Coroutine
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -70,11 +69,8 @@ import numpy as np
 import pandas as pd
 import yaml
 from ag_ui.core import AssistantMessage
-from ag_ui.core import Event
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
-from ag_ui.core import RunErrorEvent
-from ag_ui.core import RunFinishedEvent
 from ag_ui.core import SystemMessage
 from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
@@ -85,6 +81,7 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from datarobot_dome.agui import moderate_agui_stream
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
@@ -641,42 +638,6 @@ def _postscore_only_datarobot_moderations(
     return cast(dict[str, Any], stripped) if stripped else None
 
 
-def _is_text_message_start_response(response: DRAgentEventResponse) -> bool:
-    """Whether the batch opens a text segment.
-
-    Checks every event, not just the first: NAT batches ``TEXT_MESSAGE_START`` behind the
-    tool-call lifecycle events that precede it, and an ``events[0]``-only test would leave
-    prescore metadata unattached for the whole run.
-    """
-    return any(event.type == EventType.TEXT_MESSAGE_START for event in response.events)
-
-
-@dataclass
-class _StreamingPrescoreModerationState:
-    """Track prescore attachment across a moderated DRAgent stream (dome first-chunk semantics)."""
-
-    prescore_moderations: dict[str, Any] | None
-    prescore_attached: bool = False
-    saw_moderated_content: bool = False
-
-    def emit(self, response: DRAgentEventResponse) -> DRAgentEventResponse:
-        if (
-            not self.prescore_attached
-            and self.prescore_moderations
-            and _is_text_message_start_response(response)
-        ):
-            self.prescore_attached = True
-            return response.model_copy(update={"datarobot_moderations": self.prescore_moderations})
-        return response
-
-    def emit_moderated(self, response: DRAgentEventResponse) -> DRAgentEventResponse:
-        mods = response.datarobot_moderations
-        if self.prescore_moderations and mods:
-            if self.prescore_attached or self.saw_moderated_content:
-                mods = _postscore_only_datarobot_moderations(mods, self.prescore_moderations)
-                response = response.model_copy(update={"datarobot_moderations": mods})
-        self.saw_moderated_content = True
-        return response
 
 
 def _infer_parent_message_id_for_tool_calls(
@@ -1111,69 +1072,6 @@ def _prompt_sent_after_prescore_replacement(
     return original_prompt, False
 
 
-def skip_event_type(event: Event) -> bool:
-    return event.type not in {
-        EventType.TEXT_MESSAGE_CONTENT,
-        EventType.TEXT_MESSAGE_CHUNK,
-    }
-
-
-def _split_response_by_text_deltas(
-    response: DRAgentEventResponse,
-) -> list[DRAgentEventResponse]:
-    """Split one batch into runs that are either all text deltas or all other events.
-
-    ``_moderated_dragent_stream`` routes each batch either into moderation or around it,
-    keyed on the batch's *first* event. NAT emits the first text delta in the same batch as
-    the tool-call lifecycle events that precede it (observed on the wire:
-    ``TOOL_CALL_END, TOOL_CALL_RESULT, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT``), so an
-    unsplit batch sends the run's text down the non-text path: response-stage guards never
-    run and no chunk carries moderation metadata. Feeding the mixed batch to dome instead is
-    not an option -- the moderated chunk is rebuilt into text/tool-delta events only, which
-    would drop ``TOOL_CALL_END`` / ``TOOL_CALL_RESULT`` and break the AG-UI sequence.
-
-    Segments keep upstream order, so flattening the result reproduces the original event
-    sequence. The stream payload (``original_chunk`` / ``usage_metrics``) rides with the first
-    text segment: it describes the delta, and copying it onto every segment would double-count
-    usage downstream.
-    """
-    events = response.events
-    if len(events) < 2:
-        return [response]
-
-    segments: list[tuple[bool, list[Event]]] = []
-    for event in events:
-        carries_text = not skip_event_type(event)
-        if segments and segments[-1][0] == carries_text:
-            segments[-1][1].append(event)
-        else:
-            segments.append((carries_text, [event]))
-    if len(segments) == 1:
-        return [response]
-
-    zero = default_usage_metrics()
-    parts: list[DRAgentEventResponse] = []
-    payload_assigned = False
-    for carries_text, segment_events in segments:
-        keep_payload = carries_text and not payload_assigned
-        payload_assigned = payload_assigned or keep_payload
-        update: dict[str, Any] = {"events": segment_events}
-        if not keep_payload:
-            update |= {"usage_metrics": zero, "original_chunk": None}
-        parts.append(response.model_copy(update=update))
-    return parts
-
-
-async def _split_mixed_text_batches(
-    upstream: AsyncGenerator[DRAgentEventResponse],
-) -> AsyncGenerator[DRAgentEventResponse]:
-    """Re-emit *upstream* with lifecycle events and text deltas in separate batches."""
-    async with contextlib.aclosing(upstream) as source:
-        async for response in source:
-            for part in _split_response_by_text_deltas(response):
-                yield part
-
-
 def _synthetic_text_message_end_events(
     open_message_ids: set[str],
 ) -> list[TextMessageEndEvent]:
@@ -1217,84 +1115,6 @@ def _merge_moderations_into_multi_event_response(
     )
 
 
-def _text_delta_message_ids(events: Iterable[Event]) -> set[str]:
-    """Collect the message_ids carried by assistant text deltas in *events*.
-
-    ``TextMessageChunkEvent.message_id`` is optional, so ids are filtered rather than assumed.
-    """
-    ids: set[str] = set()
-    for event in events:
-        if isinstance(event, (TextMessageContentEvent, TextMessageChunkEvent)) and event.message_id:
-            ids.add(event.message_id)
-    return ids
-
-
-def _retain_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
-    """Record that one more queued source response carries each id in *ids*."""
-    for message_id in ids:
-        counts[message_id] = counts.get(message_id, 0) + 1
-
-
-def _release_queued_message_ids(counts: dict[str, int], ids: set[str]) -> None:
-    """Drop one queued reference per id, deleting ids no longer carried by anything queued.
-
-    Zero-count keys are removed rather than kept so the live set stays proportional to the
-    segments still in flight instead of every message_id the stream has ever produced.
-    """
-    for message_id in ids:
-        remaining = counts.get(message_id, 0) - 1
-        if remaining > 0:
-            counts[message_id] = remaining
-        else:
-            counts.pop(message_id, None)
-
-
-def _closed_text_message_ids(response: DRAgentEventResponse) -> set[str]:
-    """Collect the message_ids a buffered batch would close with ``TEXT_MESSAGE_END``."""
-    return {
-        event.message_id for event in response.events if event.type == EventType.TEXT_MESSAGE_END
-    }
-
-
-def _moderated_chunk_carries_text(chunk: ChatCompletionChunk) -> bool:
-    """Whether a moderated chunk carries assistant text.
-
-    dome's BLOCK/REPLACE sequence wraps the intervention message in a text-less ``role``
-    opener and a text-less terminal ``content_filter`` chunk. Those must not consume a source
-    response, or every following moderated delta would borrow the *next* segment's message_id.
-    """
-    return bool(chunk.choices and chunk.choices[0].delta.content)
-
-
-def _release_buffered_prefix(
-    pending: list[DRAgentEventResponse],
-    live_message_ids: set[str],
-) -> list[DRAgentEventResponse]:
-    """Pop the leading buffered batches that are safe to emit before the next moderated delta.
-
-    Non-text upstream batches are buffered because moderated deltas lag behind the source
-    chunks they came from: emitting ``TEXT_MESSAGE_END`` as soon as upstream produces it would
-    close a segment that still has moderated content coming.
-
-    Buffered batches keep upstream order, so the first batch closing a segment in
-    *live_message_ids* (one that can still receive moderated deltas) blocks itself **and
-    everything behind it**. Releasing a later ``TEXT_MESSAGE_START`` ahead of the
-    ``TEXT_MESSAGE_END`` it follows would interleave two segments, and storage would
-    mis-attribute or truncate the earlier segment's last deltas.
-    """
-    released: list[DRAgentEventResponse] = []
-    while pending and not (_closed_text_message_ids(pending[0]) & live_message_ids):
-        released.append(pending.pop(0))
-    return released
-
-
-def _drain_buffered(pending: list[DRAgentEventResponse]) -> list[DRAgentEventResponse]:
-    """Release every remaining buffered batch: no further moderated delta can arrive."""
-    drained = list(pending)
-    pending.clear()
-    return drained
-
-
 async def _aclose_async_iterator(iterator: AsyncGenerator[Any]) -> None:
     """Close an async generator, ignoring errors from double-close or partial consumption."""
     try:
@@ -1317,8 +1137,8 @@ async def _advance_in_context(
 
 
 async def _context_pinned_stream(
-    source: AsyncGenerator[DRAgentEventResponse],
-) -> AsyncGenerator[DRAgentEventResponse]:
+    source: AsyncGenerator[_T],
+) -> AsyncGenerator[_T]:
     """Advance and tear down *source* from a single fixed :class:`~contextvars.Context`.
 
     ``ModerationPipeline.stream_response_async`` drains the chunk iterator we hand it from
@@ -1359,156 +1179,72 @@ async def _moderated_dragent_stream(
     moderation: ModerationPipeline,
     stream_state: _ModerationInvokeState,
 ) -> AsyncGenerator[DRAgentEventResponse]:
-    """Yield DRAgent stream chunks with AG-UI-safe ordering around moderated text deltas.
+    """Yield DRAgent stream responses with postscore moderation applied via dome's AG-UI path.
 
-    Non-text upstream events pass through immediately until the first text delta. Text deltas are
-    moderated via ``stream_response_async``; every later non-text event is buffered in upstream
-    order and released only once the moderated stream has passed the segment it closes.
+    Upstream batches are flattened into individual AG-UI events and fed to
+    ``moderate_agui_stream``, which classifies each event individually. This correctly handles
+    NAT's mixed batches (e.g. ``TOOL_CALL_END`` bundled with the run's first
+    ``TEXT_MESSAGE_CONTENT`` in the same frame) without the caller splitting them first.
+
+    Each output ``DRAgentEventResponse`` carries one AG-UI event. Upstream usage is
+    accumulated across all batches and attached to the final frame so the downstream
+    aggregator totals correctly.
     """
-    stream_tool_index_map: dict[int, str] = {}
+    accumulated_usage: dict[str, int] = default_usage_metrics()
     open_text_message_ids: set[str] = set()
-    pending_upstream: list[DRAgentEventResponse] = []
-    terminal_run_error: DRAgentEventResponse | None = None
-    terminal_run_finished: DRAgentEventResponse | None = None
-    moderation_source_responses: list[DRAgentEventResponse] = []
-    # Live text message_ids carried by ``moderation_source_responses``, maintained as the queue
-    # moves. Rescanning the queue per moderated chunk made a buffered stream quadratic: dome
-    # queues one source response per upstream delta, so the scan cost grew with the stream.
-    queued_source_message_ids: dict[str, int] = {}
-    last_source_response: DRAgentEventResponse | None = None
-    last_source_message_ids: set[str] = set()
-    stopped_for_content_filter = False
 
-    def buffer_upstream(response: DRAgentEventResponse) -> None:
-        nonlocal terminal_run_error, terminal_run_finished
-        if any(isinstance(event, RunErrorEvent) for event in response.events):
-            # Terminal RUN_ERROR: hold it and emit last so no moderated chunk trails after it.
-            terminal_run_error = response
-            return
-        if any(isinstance(event, RunFinishedEvent) for event in response.events):
-            # Terminal RUN_FINISHED: hold it out of the ordinary buffer for two reasons.
-            # A block breaks out of the moderated loop without draining the buffer, so leaving
-            # RUN_FINISHED in there ends a blocked stream with no terminal event at all and the
-            # client keeps waiting on a run that is over. It also must not be released early:
-            # unlike a TEXT_MESSAGE_END it closes no segment, so the prefix release would let it
-            # overtake the last segment's remaining moderated deltas and synthetic END.
-            terminal_run_finished = response
-            return
-        pending_upstream.append(response)
+    async def _events_iter() -> AsyncGenerator[Any, None]:
+        """Flatten batch stream → individual events, accumulating usage on the side."""
+        async with contextlib.aclosing(upstream) as src:
+            async for response in src:
+                for key, val in (response.usage_metrics or {}).items():
+                    accumulated_usage[key] = accumulated_usage.get(key, 0) + (val or 0)
+                for event in response.events:
+                    yield event
 
-    def live_moderated_message_ids() -> set[str]:
-        """Segments that can still receive a moderated delta.
-
-        dome buffers the whole upstream stream before releasing its first moderated chunk, so
-        source responses queue up far ahead of the moderated output. Anything still queued names
-        a segment whose deltas have not been emitted yet. ``last_source_message_ids`` counts too:
-        it is the message_id every further moderated chunk falls back to once the queue drains.
-        """
-        return set(queued_source_message_ids) | last_source_message_ids
-
-    async def next_text_response() -> DRAgentEventResponse | None:
-        async for response in upstream:
-            if not response.events or skip_event_type(response.events[0]):
-                buffer_upstream(response)
-                continue
-            return response
-        return None
-
-    async def completion_chunks(
-        first_text: DRAgentEventResponse,
-    ) -> AsyncIterator[ChatCompletionChunk]:
-        current: DRAgentEventResponse | None = first_text
-        while current is not None:
-            moderation_source_responses.append(current)
-            _retain_queued_message_ids(
-                queued_source_message_ids, _text_delta_message_ids(current.events)
-            )
-            yield dragent_event_response_to_dome_chunk(current)
-            current = await next_text_response()
-
-    first_text: DRAgentEventResponse | None = None
     try:
-        prescore_state = _StreamingPrescoreModerationState(
-            prescore_moderations=_prescore_datarobot_moderations_from_df(
-                moderation._pipeline,
-                stream_state.prescore_df,
-            ),
-        )
-        async for response in upstream:
-            if response.events and not skip_event_type(response.events[0]):
-                first_text = response
-                break
-            track_open_text_in_events(open_text_message_ids, response.events)
-            yield prescore_state.emit(response)
-        if first_text is None:
-            return
-
+        pending: DRAgentEventResponse | None = None
         async with contextlib.aclosing(
-            moderation.stream_response_async(
-                completion_chunks(first_text),
+            moderate_agui_stream(
+                moderation,
+                # Pin to one Context so NAT's push_active_function contextvar token is always
+                # reset in the context that set it (dome drains the event iterator from its own
+                # asyncio task, which runs in a copy of the parent context).
+                _context_pinned_stream(_events_iter()),
                 prompt=stream_state.prompt,
                 prescore_df=stream_state.prescore_df,
                 prescore_latency=stream_state.latency_so_far,
             )
-        ) as moderation_stream:
-            async for moderated in moderation_stream:
-                # ModerationIterator (moderations >= 11.2.45) no longer emits one moderated
-                # chunk per source chunk. On BLOCK/REPLACE it discards the buffered content and
-                # yields a synthetic sequence: a role opener, the message chunk, then a terminal
-                # finish chunk. Only the middle one carries text, so only text-carrying chunks
-                # consume a source response -- otherwise the opener would burn the first
-                # segment's message_id and shift every later delta onto the wrong segment. Once
-                # the source list drains we reuse the last source response, since all the
-                # synthetic chunks derive from the same upstream text message.
-                if _moderated_chunk_carries_text(moderated) and moderation_source_responses:
-                    last_source_response = moderation_source_responses.pop(0)
-                    last_source_message_ids = _text_delta_message_ids(last_source_response.events)
-                    _release_queued_message_ids(queued_source_message_ids, last_source_message_ids)
-                source_response = last_source_response
-                converted = dome_chunk_to_dragent_event_response(
-                    moderated,
-                    source_ag_ui_events=(
-                        source_response.events if source_response is not None else None
-                    ),
-                    stream_tool_index_map=stream_tool_index_map,
-                )
-                if converted.events:
-                    # ``emit_moderated`` first: it owns the prescore-attachment bookkeeping that
-                    # ``emit`` below reads, and that ordering must not depend on what we release.
-                    moderated_response = prescore_state.emit_moderated(converted)
-                    # Release buffered lifecycle *before* the delta, so this segment's
-                    # TEXT_MESSAGE_START is already open and the previous segment is closed.
-                    for item in _release_buffered_prefix(
-                        pending_upstream, live_moderated_message_ids()
-                    ):
-                        track_open_text_in_events(open_text_message_ids, item.events)
-                        yield prescore_state.emit(item)
-                    track_open_text_in_events(open_text_message_ids, moderated_response.events)
-                    yield moderated_response
-                finish = moderated.choices[0].finish_reason if moderated.choices else None
-                if finish == "content_filter":
+        ) as agui_stream:
+            async for moderated in agui_stream:
+                if pending is not None:
+                    yield pending
+                # Emit synthetic TEXT_MESSAGE_END events before terminal run events so they stay
+                # last on the wire.  Dome holds RUN_FINISHED/RUN_ERROR behind the text it
+                # follows, but if the upstream omitted TEXT_MESSAGE_END, neither dome nor the
+                # caller knows to close the segment; the synthetic close must precede the
+                # terminal event so the AG-UI sequence is valid.
+                if moderated.event.type in (EventType.RUN_ERROR, EventType.RUN_FINISHED):
                     for end_response in _synthetic_text_message_end_responses(
                         open_text_message_ids
                     ):
                         yield end_response
-                    stopped_for_content_filter = True
-                    break
-
-        if not stopped_for_content_filter:
-            for item in _drain_buffered(pending_upstream):
-                track_open_text_in_events(open_text_message_ids, item.events)
-                yield prescore_state.emit(item)
-            for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
-                yield end_response
-        # A terminal event last on every path (normal or content_filter) so a block can't mask it.
-        # RUN_ERROR wins when upstream somehow produced both: a run that errored did not finish.
-        if terminal_run_error is not None:
-            yield prescore_state.emit(terminal_run_error)
-        elif terminal_run_finished is not None:
-            yield prescore_state.emit(terminal_run_finished)
+                track_open_text_in_events(open_text_message_ids, [moderated.event])
+                pending = DRAgentEventResponse(
+                    events=[moderated.event],
+                    usage_metrics=default_usage_metrics(),
+                    datarobot_moderations=moderated.datarobot_moderations,
+                )
+        # Attach accumulated upstream usage to the last frame so the downstream aggregator
+        # produces the correct total without double-counting.
+        if pending is not None:
+            yield pending.model_copy(update={"usage_metrics": accumulated_usage})
+        # Synthetic TEXT_MESSAGE_END for messages opened but not explicitly closed (e.g. when a
+        # block guard emits an intervention TextMessageContentEvent with no matching END in the
+        # upstream, or when the upstream omitted the END event entirely).
+        for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
+            yield end_response
     except Exception as exc:
-        # Close open text segments, then end the stream in-band with a terminal RUN_ERROR
-        # instead of raising: NAT would otherwise emit an unframed error that clients drop.
         _logger.exception("Error while producing moderated stream")
         for end_response in _synthetic_text_message_end_responses(open_text_message_ids):
             yield end_response
@@ -1840,19 +1576,10 @@ class DataRobotModerationMiddleware(
 
             async with contextlib.aclosing(
                 _moderated_dragent_stream(
-                    # Pin the upstream stream to one Context: dome drains part of it from its
-                    # own feed task, and NAT's ``push_active_function`` token cannot be reset
-                    # across Contexts. See ``_context_pinned_stream``.
-                    _context_pinned_stream(
-                        # Split before routing: a batch mixing lifecycle events with text
-                        # deltas would otherwise bypass moderation entirely.
-                        _split_mixed_text_batches(
-                            _validated_dragent_stream(
-                                cast(
-                                    AsyncGenerator[Any, None],
-                                    call_next(*ctx.modified_args, **ctx.modified_kwargs),
-                                ),
-                            ),
+                    _validated_dragent_stream(
+                        cast(
+                            AsyncGenerator[Any, None],
+                            call_next(*ctx.modified_args, **ctx.modified_kwargs),
                         ),
                     ),
                     moderation=moderation,
