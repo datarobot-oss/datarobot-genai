@@ -47,9 +47,9 @@ core = [
 crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
-    "crewai[litellm]>=1.11.0",
+    "crewai[litellm]>=1.15.21,<2.0.0",
     "litellm>=1.91.1,<2.0.0",
-    "crewai-tools[mcp]>=0.69.0,<0.77.0",
+    "crewai-tools[mcp]>=1.15.21,<2.0.0",
     "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
     "nvidia-nat-crewai==1.7.0",
     "opentelemetry-instrumentation-crewai>=0.62.1,<1.0.0",
