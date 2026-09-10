@@ -23,6 +23,9 @@ from nat.builder.builder import Builder
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.agent import AgentBaseConfig
+from nat.data_models.component_ref import FunctionGroupRef
+from nat.data_models.component_ref import FunctionRef
+from pydantic import Field
 
 # INSTRUMENTATION CALL IS REQUIRED TO SETUP TRACING AND TELEMETRY FOR AGENTS
 instrument()
@@ -36,6 +39,14 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     The LLM is managed by NAT and accessed via builder.get_llm().
     """
 
+    tool_names: list[FunctionRef | FunctionGroupRef] = Field(
+        default_factory=list,
+        description=(
+            "Tools and function groups to give the agent, by name. An MCP server is a "
+            "`function_groups` entry; naming it here attaches every tool it exposes."
+        ),
+    )
+
 
 @register_per_user_function(
     config_type=LanggraphAgentConfig,
@@ -45,16 +56,19 @@ class LanggraphAgentConfig(AgentBaseConfig, name="langgraph_agent"):
     framework_wrappers=[LLMFrameworkEnum.LANGCHAIN],
 )
 async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> AsyncGenerator:
-    from datarobot_genai.core.mcp import MCPConfig
-    from datarobot_genai.dragent.context import extract_authorization_from_context
     from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
     from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
-    from datarobot_genai.langgraph.mcp import mcp_tools_context
     from nat.builder.function_info import FunctionInfo
     from nat.data_models.streaming import Streaming
 
     from dragent.langgraph.myagent import HITL_E2E_CHECKPOINTER
     from dragent.langgraph.myagent import MyAgent
+
+    # Built once, not per request: NAT keeps the MCP clients connected and the auth
+    # provider recomputes credentials per HTTP request.
+    tools = await builder.get_tools(
+        tool_names=config.tool_names, wrapper_type=LLMFrameworkEnum.LANGCHAIN
+    )
 
     async def _response_fn(
         input_message: RunAgentInput,
@@ -67,27 +81,23 @@ async def langgraph_agent(config: LanggraphAgentConfig, builder: Builder) -> Asy
         # LLM might contain user-specific headers
         llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 
-        # Agent contains user-specific headers and authorization context
+        # Agent contains user-specific headers
         forwarded_headers = extract_datarobot_headers_from_context()
-        authorization_context = extract_authorization_from_context()
-        mcp_config = MCPConfig(
-            forwarded_headers=forwarded_headers, authorization_context=authorization_context
-        )
-        async with mcp_tools_context(mcp_config) as tools:
-            agent = MyAgent(
-                llm=llm,
-                forwarded_headers=forwarded_headers,
-                tools=tools,
-                verbose=config.verbose,
-                checkpointer=HITL_E2E_CHECKPOINTER,
-            )
 
-            async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
-                yield DRAgentEventResponse(
-                    events=[event],
-                    usage_metrics=usage_metrics,
-                    pipeline_interactions=pipeline_interactions,
-                )
+        agent = MyAgent(
+            llm=llm,
+            forwarded_headers=forwarded_headers,
+            tools=tools,
+            verbose=config.verbose,
+            checkpointer=HITL_E2E_CHECKPOINTER,
+        )
+
+        async for event, pipeline_interactions, usage_metrics in agent.invoke(input_message):
+            yield DRAgentEventResponse(
+                events=[event],
+                usage_metrics=usage_metrics,
+                pipeline_interactions=pipeline_interactions,
+            )
 
     yield FunctionInfo.from_fn(
         _response_fn,

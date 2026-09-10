@@ -24,9 +24,7 @@ from setuptools import setup
 # Core dependencies shared across extras. These are merged into other extras except standalone extras.
 core = [
     "requests>=2.32.4,<3.0.0",
-    # datarobot.core.config's LLMConfig / LLMType / resolve_llm_config, which
-    # datarobot_genai.core.config consumes instead of redefining, ship in stable 3.18.0.
-    "datarobot[core]>=3.18.0,<4.0.0",
+    "datarobot[core]>=3.19.0,<4.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "openai>=2.0.0,<3.0.0",
     "pyjwt>=2.12.0,<3.0.0",  # CVE-2026-32597 fixed in 2.12.0
@@ -96,7 +94,7 @@ dragent = core + [
 
 # auth is standalone set of dependencies for auth utilities only
 auth = [
-  "datarobot[auth]>=3.18.0,<4.0.0",
+  "datarobot[auth]>=3.19.0,<4.0.0",
   "aiohttp>=3.13.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",

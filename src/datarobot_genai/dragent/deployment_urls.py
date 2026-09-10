@@ -294,18 +294,12 @@ def build_deployment_mcp_url(endpoint: str, deployment_id: str) -> str:
 
 
 def workload_mcp_url_from_endpoint(workload_endpoint: str, path: str = MCP_PATH) -> str:
-    """Append the MCP path to the endpoint the platform reported for a workload.
-
-    This is the only way to address a workload's MCP server: its route cannot be
-    composed from a workload ID, due to different endpoints for the API Gateway.
-    We look up the endpoint from the workload API
-    (:func:`datarobot_genai.core.mcp.config.lookup_workload_endpoint`) and append
-    the path to what it reports.
+    """Append the MCP path to a workload endpoint that is already known.
 
     Parameters
     ----------
     workload_endpoint:
-        The workload's ``endpoint`` field as returned by the Workload API.
+        A workload's base endpoint, however it was obtained.
     path:
         Path the MCP server is served from, relative to the endpoint.
 
@@ -315,6 +309,46 @@ def workload_mcp_url_from_endpoint(workload_endpoint: str, path: str = MCP_PATH)
         ``{workload_endpoint}/{path}``, with duplicate slashes avoided.
     """
     return f"{workload_endpoint.rstrip('/')}/{path.lstrip('/')}"
+
+
+def build_workload_mcp_url(endpoint: str, workload_id: str, path: str = MCP_PATH) -> str:
+    """Construct the MCP URL for a DataRobot workload, without asking the platform.
+
+    Two route shapes, chosen by the enclave rather than by the workload addressed:
+
+    ====================  ==========================================================
+    Gateway               Route
+    ====================  ==========================================================
+    Envoy, per-enclave    ``https://{host}/workloads/{id}/{path}``
+    Public API            ``{endpoint}/endpoints/workloads/{id}/{path}``
+    ====================  ==========================================================
+
+    ``DR_WORKLOAD_EXTERNAL_URL_HOST`` picks between them, the same signal
+    ``drmcp.core.runtime_identity.RuntimeIdentity.get_gateway_type`` uses -- so a change
+    to either shape has to be made in both places. Only the host is read from this
+    process; the id comes from the caller, and the host is shared across the enclave.
+
+    Use an explicit ``<name>_mcp_url`` when the target is on a different enclave, or
+    when this process is not itself behind the Envoy gateway while the target is.
+
+    Parameters
+    ----------
+    endpoint:
+        DataRobot API endpoint. Used only for the public-API shape.
+    workload_id:
+        The workload to address -- not necessarily this process's own.
+    path:
+        Path the MCP server is served from.
+
+    Returns
+    -------
+    str
+        The composed MCP URL. No network call.
+    """
+    if host := _external_workload_host():
+        return workload_mcp_url_from_endpoint(f"{host}/workloads/{workload_id}", path)
+    base = normalize_api_v2_endpoint(endpoint)
+    return workload_mcp_url_from_endpoint(f"{base}/endpoints/workloads/{workload_id}", path)
 
 
 def build_local_mcp_url(port: int, host: str = "localhost") -> str:

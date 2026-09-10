@@ -22,9 +22,24 @@ DataRobot can attach **extra tools** (including from an MCP deployment) when the
 
 Practical rule: **merge** platform tools with yours wherever you bind tools to the graph (the e2e `myagent.py` shows the intended pattern).
 
-## Configuration outside the repo
+## Where the servers are configured
 
-MCP server URL and credentials come from **your deployment / environment**, not from the LangGraph `workflow.yaml` in the minimal sample. The NAT workflow example adds **`function_groups`** in YAML instead; see [nat/mcp.md](../nat/mcp.md). With `MCP_WORKLOAD_ID`, the agent asks the platform where that workload is served (`GET /api/v2/workloads/<id>/`) and appends `/mcp` to the endpoint it reports, so the same variable works whether your cluster routes workloads through different API Gateway. The agent's API token therefore needs read access to the workload. If the lookup cannot answer, the agent runs without MCP tools and logs a warning. Then, no URL is guessed, because a composed one would be wrong on some clusters. Use `EXTERNAL_MCP_URL` to address a workload directly instead.
+`workflow.yaml` says **what** the agent may reach — one `function_groups` entry per server, listed in `tool_names`. The **address** is not in the YAML: it comes from that server's `<name>_MCP_*` variables in your deployment or environment, so the same file runs locally and deployed. `server.name` is the join. See **MCP servers** in the agent application template's docs for the full setup, and [nat/mcp.md](../nat/mcp.md) for what this library adds to NAT.
+
+
+## Getting the tools
+
+Let NAT build them, **once**, outside your per-request handler:
+
+```python
+tools = await builder.get_tools(
+    tool_names=config.tool_names, wrapper_type=LLMFrameworkEnum.LANGCHAIN
+)
+```
+
+NAT keeps those clients connected and the auth provider recomputes credentials per request.
+
+For code that does not use NAT, `mcp_tools_context(target, ...)` yields the LangChain tools for one resolved server. It bakes the headers in at connect time, so enter it at startup rather than inside a response function — doing the latter reconnects to every server on every prompt.
 
 ## Automated tests
 

@@ -19,16 +19,20 @@ from urllib.parse import urlsplit
 import httpx
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_per_user_function_group
-from nat.plugins.mcp.client.client_config import MCPServerConfig
+from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client.client_config import PerUserMCPClientConfig
 from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
 from nat.plugins.mcp.client.client_impl import per_user_mcp_client_function_group
 from pydantic import Field
 from pydantic import HttpUrl
 
+from datarobot_genai.core.mcp.target import build_target
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import resolve_auth_provider_name
+from datarobot_genai.dragent.plugins.datarobot_mcp_client import resolve_server_ref
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
@@ -78,16 +82,39 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
     )
 
 
-class CustomizedMCPServerConfig(MCPServerConfig):
-    transport: Literal["streamable-http"] = Field(
+class CustomizedMCPServerConfig(DataRobotMCPServerConfig):
+    """The XAA client's server block: the same addressing as ``datarobot_mcp_client``.
+
+    Subclasses it rather than NAT's base so the two client types cannot drift. That is
+    what gives this one ``name``, and with it an address that can live in the
+    environment as ``<name>_mcp_*`` instead of being pinned in the YAML -- so an XAA
+    server can differ between staging and production without editing the workflow.
+
+    Narrowed in two ways. ``transport`` is ``streamable-http`` only, which is all the
+    per-user MCP path supports, and ``auth_provider`` has no default: this client
+    requires an ``okta_cross_app_access`` provider, and inheriting a default of
+    ``datarobot_mcp_auth`` would mean fetching the wrong provider and failing an
+    isinstance check rather than saying what is missing.
+    """
+
+    transport: Literal["streamable-http"] = Field(  # type: ignore[assignment]
         default="streamable-http",
         description=(
             "Transport type to connect to the MCP server (only streamable-http is supported)."
         ),
     )
 
-    url: HttpUrl = Field(
-        description="URL of the MCP server (for streamable-http transport).",
+    url: HttpUrl | None = Field(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "URL of the MCP server. Optional: leave it unset and give `name` instead, "
+            "and the address is resolved from <name>_mcp_* in the environment."
+        ),
+    )
+
+    auth_provider: str | AuthenticationRef | None = Field(
+        default=None,
+        description="Reference to an `okta_cross_app_access` authentication provider.",
     )
 
 
@@ -179,6 +206,38 @@ async def mcp_client_with_xaa_support_function_group(
     config: MCPClientWithXAASupportConfig,
     builder: Builder,
 ) -> AsyncGenerator[PerUserMCPFunctionGroup, None]:
+    from datarobot_genai.core.config import resolve_config  # noqa: PLC0415
+
+    if not config.server.auth_provider:
+        raise ValueError(
+            f"MCP block {config.server.name!r} uses cross-application access but names no "
+            f"`auth_provider`. Declare an `okta_cross_app_access` entry under "
+            f"`authentication:` and reference it here."
+        )
+
+    # Resolve the address exactly as `datarobot_mcp_client` does, so `name` plus
+    # <name>_mcp_* in the environment works here too, and write it back onto the block:
+    # NAT's per-user client reads `config.server.url`, and so does the
+    # protected-resource metadata lookup inside `setup_auth_provider` below.
+    #
+    # The block's `auth_provider` is applied to the ref first. That is what tells
+    # `build_target` this server presents an exchanged per-user token rather than the
+    # DataRobot service one, so it does not demand a DATAROBOT_API_TOKEN that an XAA
+    # deployment typically does not have.
+    if config.server.url is None:
+        app_config = resolve_config()
+        ref = resolve_server_ref(config.server, app_config)
+        ref = ref.model_copy(
+            update={"auth_provider": str(resolve_auth_provider_name(config.server, ref))}
+        )
+        config.server.url = HttpUrl(
+            build_target(
+                ref,
+                datarobot_endpoint=app_config.resolve_datarobot_endpoint(),
+                datarobot_api_token=app_config.resolve_datarobot_api_token(),
+            ).url
+        )
+
     auth_provider = await builder.get_auth_provider(config.server.auth_provider)
     if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
         raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")

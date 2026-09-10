@@ -16,43 +16,40 @@
 
 # MCP tools in NAT workflows
 
-This matches the **`function_groups`**, **`authentication`**, and **`workflow.tool_names`** sections in [`e2e-tests/dragent/nat/workflow.yaml`](../../e2e-tests/dragent/nat/workflow.yaml).
+For how to configure and connect MCP servers, see **MCP servers** in the agent
+application template's docs. This page documents only what this library adds to NAT.
 
-## `function_groups` — attach an MCP server
+## `_type: datarobot_mcp_client`
 
-```yaml
-function_groups:
-  mcp_tools:
-    _type: datarobot_mcp_client
-```
+NAT's `mcp_client` with one added field and one relaxed rule:
 
-**`mcp_tools`** is an arbitrary label. DRAgent resolves the MCP server URL, transport, and default auth from **deployment settings and environment** (MCP deployment id, external URL, etc.—what you configure for your app). You do not paste secrets into this block in the example; per-request headers are read from NAT context at runtime.
+- **`server.name`** — which configured server the block connects to. The address is not in
+  the YAML; it comes from that server's `<name>_MCP_*` variables. Defaults to `default`,
+  the server the single-server variables configure, so a block that omits it keeps working.
+- `server.url` is optional. NAT requires it; here an inline URL is the other way to address
+  a server, and setting both an inline URL and environment variables for one name is an
+  error rather than a precedence rule.
 
-## `authentication` — MCP auth block
+Everything else on the block — `include`, `exclude`, `tool_overrides`, the timeouts, the
+`reconnect_*` family, `session_aware_tools`, `max_sessions`, `session_idle_timeout` — is
+NAT's and behaves as
+[NAT documents it](https://docs.nvidia.com/nemo/agent-toolkit/latest/build-workflows/mcp-client.html).
 
-```yaml
-authentication:
-  datarobot_mcp_auth:
-    _type: datarobot_mcp_auth
-```
+## `_type: datarobot_mcp_auth`
 
-This ties MCP HTTP calls to DataRobot-style auth. Per-request headers (API token, identity context) are read from NAT request context at runtime so MCP and LLM calls stay consistent.
+The auth provider for DataRobot-hosted servers. Per request it sends forwarded
+`x-datarobot-*` headers, `Authorization: Bearer`, `x-datarobot-api-key` and the
+authorization context.
 
-## `workflow.tool_names` — expose MCP to the orchestrator
+NAT hands **one instance to every block naming it**, which is correct here because it
+produces the same credentials for every server. A server reached without a DataRobot
+identity names `auth_provider: none` and never reaches this provider.
 
-The orchestrator only sees tools you list. Include the **group name** (`mcp_tools` in the example), not individual MCP tool names:
+`headers:` on this block is merged last and wins. It is the only way to attach a static
+header to a DataRobot-hosted server.
 
-```yaml
-workflow:
-  tool_names:
-    - planner
-    - writer
-    - mcp_tools
-    - generate_objectid
-```
+## Behaviour
 
-MCP tools often show up in traces with a prefix (e.g. `mcp_tools__...`); that is normal.
-
-## Custom Python tools vs MCP
-
-**`functions:`** defines one-off tools (e.g. `generate_objectid`) registered from [`register.py`](../../e2e-tests/dragent/nat/register.py). **MCP** brings a whole group from a server. Both appear in **`tool_names`** side by side.
+Clients are built once, at workflow build, and stay connected. A server that is configured
+and unreachable fails the build, naming the server, rather than yielding an agent with no
+tools.
