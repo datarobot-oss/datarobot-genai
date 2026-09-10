@@ -241,11 +241,22 @@ class TestSetupAuthProvider:
         ) as mock_func:
             yield mock_func
 
-    def test_get_mcp_auth_server_metadata_url(self) -> None:
+    @pytest.mark.parametrize(
+        "server_url",
+        [
+            "https://foo:8081/bar/mcp",
+            "https://foo:8081/bar/mcp/",
+            "https://foo:8081/bar",
+            # workload_id segment happens to start with "mcp" - must not be truncated early
+            "https://foo:8081/bar/mcp-workload-1/mcp",
+        ],
+    )
+    def test_get_mcp_auth_server_metadata_url(self, server_url: str) -> None:
         config = Mock()
-        config.server.url = "https://foo:8081/bar/mcp"
+        config.server.url = server_url
         output = get_mcp_auth_server_metadata_url(config)
-        assert output == "https://foo:8081/.well-known/oauth-protected-resource/bar/mcp"
+        expected_path = "/bar/mcp-workload-1" if "mcp-workload-1" in server_url else "/bar"
+        assert output == f"https://foo:8081{expected_path}/.well-known/oauth-protected-resource"
 
     def test_get_xaa_params_from_config(self) -> None:
         xaa_config = Mock()
