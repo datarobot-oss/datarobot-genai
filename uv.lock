@@ -1200,10 +1200,14 @@ wheels = [
 [[package]]
 name = "datarobot-genai"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.29.38"
 =======
 version = "0.29.37"
 >>>>>>> d3fe9923 (Upgrade CrewAI to the latest by overrides)
+=======
+version = "0.29.38"
+>>>>>>> bb7b175b (Version)
 source = { editable = "." }
 
 [package.optional-dependencies]
