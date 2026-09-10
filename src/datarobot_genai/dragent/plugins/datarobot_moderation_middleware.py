@@ -1237,7 +1237,9 @@ async def _moderated_dragent_stream(
         # Attach accumulated upstream usage to the last frame so the downstream aggregator
         # produces the correct total without double-counting.
         if pending is not None:
-            yield pending.model_copy(update={"usage_metrics": cast(UsageMetrics, _accumulated_usage)})
+            yield pending.model_copy(
+                update={"usage_metrics": cast(UsageMetrics, _accumulated_usage)}
+            )
         # Synthetic TEXT_MESSAGE_END for messages opened but not explicitly closed (e.g. when a
         # block guard emits an intervention TextMessageContentEvent with no matching END in the
         # upstream, or when the upstream omitted the END event entirely).
