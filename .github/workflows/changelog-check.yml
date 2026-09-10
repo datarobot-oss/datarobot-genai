@@ -1,6 +1,6 @@
 # Requires a CHANGELOG.md entry on every PR, or the `skip-changelog` label for
-# changes that don't warrant one. Docs-only PRs (Markdown files and anything
-# under docs/) are exempt automatically, without needing the label.
+# changes that don't warrant one. PRs changing only Markdown files or files
+# under docs/ or .github/ are exempt automatically, without needing the label.
 #
 # Stacks are checked as a unit, the same way version-check.yml handles version
 # bumps: the tip's diff against the stack's base contains every layer, so a single
@@ -130,10 +130,10 @@ jobs:
             exit 0
           fi
 
-          # Docs-only changes (Markdown files anywhere, or anything under docs/)
-          # don't need a CHANGELOG entry.
-          if ! grep -qv -E '\.md$|^docs/' <<<"$CHANGED"; then
-            echo "✅ Only docs were changed, no CHANGELOG.md entry required"
+          # Changes limited to Markdown files, docs/, or .github/ don't need
+          # a CHANGELOG entry.
+          if ! grep -qv -E '\.md$|^docs/|^\.github/' <<<"$CHANGED"; then
+            echo "✅ Only docs or .github/ files were changed, no CHANGELOG.md entry required"
             exit 0
           fi
 
