@@ -101,6 +101,10 @@ class MCPToolConfig(DataRobotAppFrameworkBaseSettings):
         default=False,
         description="Enable/disable DataRobot Files API (filesystem) tools",
     )
+    enable_otel_tools: bool = Field(
+        default=False,
+        description="Enable/disable DataRobot OpenTelemetry observability tools",
+    )
 
     # Treat empty env values as unset so a runtime parameter (resolved by the base
     # settings sources) is not shadowed by an empty plain env var.

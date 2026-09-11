@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 
 import polars as pl
 
+from datarobot_genai.drmcp.test_utils.stubs.otel_stubs import otel_stub_get
 from datarobot_genai.drmcp.test_utils.stubs.stub_rest_response import StubRestResponse
 from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_delete
 from datarobot_genai.drmcp.test_utils.stubs.workload_stubs import workload_stub_get
@@ -657,6 +658,9 @@ def test_create_dr_client() -> StubDRClient:
         workload_response = workload_stub_get(url, params, **kwargs)
         if workload_response is not None:
             return workload_response
+        otel_response = otel_stub_get(url, params, **kwargs)
+        if otel_response is not None:
+            return otel_response
         return _stub_get_non_workload(url, params)
 
     def stub_post(url: str, json: dict | None = None, **kwargs: Any) -> StubRestResponse:

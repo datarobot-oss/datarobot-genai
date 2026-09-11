@@ -419,6 +419,28 @@ class TestMCPCLIConfigs:
             assert config.tool_config.enable_tavily_tools is False
             self._reset_config()
 
+    def test_otel_enabled_when_in_mcp_cli_configs(self) -> None:
+        """OTel is wired into MCP_CLI_OPTS: MCP_CLI_CONFIGS='otel' enables its tools.
+
+        Regression guard: otel was the only ToolType missing from MCP_CLI_OPTS, so
+        MCP_CLI_CONFIGS=otel silently came up without any otel_* tools.
+        """
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "otel"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_otel_tools is True
+            assert config.tool_config.enable_predictive_tools is False
+            self._reset_config()
+
+    def test_otel_disabled_when_absent_from_mcp_cli_configs(self) -> None:
+        """Like every listed package, otel is off when MCP_CLI_CONFIGS names others only."""
+        with patch.dict(os.environ, {"MCP_CLI_CONFIGS": "predictive"}, clear=True):
+            self._reset_config()
+            config = get_config()
+            assert config.tool_config.enable_predictive_tools is True
+            assert config.tool_config.enable_otel_tools is False
+            self._reset_config()
+
     def test_predictive_in_mcp_cli_configs_but_env_false_respected(self) -> None:
         """ENABLE_PREDICTIVE_TOOLS=false with predictive in list: env wins, stays False."""
         with patch.dict(

@@ -14,6 +14,7 @@
 
 """Unit tests for tool_base_ete.py module."""
 
+from datarobot_genai.drmcp.test_utils.clients.base import ToolCall
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ANY_NONEMPTY_STRING
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ETETestExpectations
 from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolBaseE2E
@@ -21,6 +22,8 @@ from datarobot_genai.drmcp.test_utils.tool_base_ete import ToolCallTestExpectati
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _canonical_tool_name_for_expectation
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_has_keys
 from datarobot_genai.drmcp.test_utils.tool_base_ete import _check_dict_params_match
+from datarobot_genai.drmcp.test_utils.tool_base_ete import _forbidden_parameter_violations
+from datarobot_genai.drmcp.test_utils.tool_base_ete import _forbidden_tool_call_violations
 
 
 class TestToolCallTestExpectations:
@@ -54,6 +57,23 @@ class TestToolCallTestExpectations:
 
         assert isinstance(expectations.result, dict)
         assert expectations.result["status"] == "success"
+
+    def test_tool_call_test_expectations_forbidden_parameter_values_defaults_empty(self) -> None:
+        """Test forbidden_parameter_values defaults to an empty dict."""
+        expectations = ToolCallTestExpectations(name="test_tool", parameters={}, result="result")
+
+        assert expectations.forbidden_parameter_values == {}
+
+    def test_tool_call_test_expectations_forbidden_parameter_values_stores_value(self) -> None:
+        """Test forbidden_parameter_values stores the value it is given."""
+        expectations = ToolCallTestExpectations(
+            name="otel_trace_get",
+            parameters={"trace_id": "abc"},
+            result="result",
+            forbidden_parameter_values={"view": "payloads"},
+        )
+
+        assert expectations.forbidden_parameter_values == {"view": "payloads"}
 
 
 class TestCanonicalToolNameForExpectation:
@@ -106,6 +126,25 @@ class TestETETestExpectations:
         )
 
         assert expectations.potential_no_tool_calls is True
+
+    def test_ete_test_expectations_forbidden_tool_names_defaults_empty(self) -> None:
+        """Test forbidden_tool_names defaults to an empty list."""
+        expectations = ETETestExpectations(
+            tool_calls_expected=[],
+            llm_response_content_contains_expectations=[],
+        )
+
+        assert expectations.forbidden_tool_names == []
+
+    def test_ete_test_expectations_forbidden_tool_names_stores_value(self) -> None:
+        """Test forbidden_tool_names stores the value it is given."""
+        expectations = ETETestExpectations(
+            tool_calls_expected=[],
+            llm_response_content_contains_expectations=[],
+            forbidden_tool_names=["otel_trace_get"],
+        )
+
+        assert expectations.forbidden_tool_names == ["otel_trace_get"]
 
 
 class TestCheckDictHasKeys:
@@ -249,6 +288,115 @@ class TestCheckDictParamsMatch:
         expected = {"job_id": ANY_NONEMPTY_STRING}
         assert _check_dict_params_match(expected, {"job_id": ""}) is False
         assert _check_dict_params_match(expected, {"job_id": "   "}) is False
+
+
+class TestForbiddenParameterViolations:
+    """Test cases for _forbidden_parameter_violations function."""
+
+    def test_no_violation_when_key_absent(self) -> None:
+        """An omitted optional arg is not a violation, even if it defaults to that value."""
+        forbidden = {"view": "payloads"}
+        actual: dict = {"trace_id": "abc"}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {}
+
+    def test_no_violation_when_value_differs(self) -> None:
+        """The call explicitly chose a different, acceptable value."""
+        forbidden = {"view": "payloads"}
+        actual = {"view": "summary"}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {}
+
+    def test_violation_when_value_matches(self) -> None:
+        """The call explicitly chose the forbidden value."""
+        forbidden = {"view": "payloads"}
+        actual = {"view": "payloads", "trace_id": "abc"}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {"view": "payloads"}
+
+    def test_violation_string_comparison_strips_whitespace(self) -> None:
+        """String comparison strips whitespace, matching _param_leaf_matches elsewhere."""
+        forbidden = {"view": "payloads"}
+        actual = {"view": "  payloads  "}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {"view": "  payloads  "}
+
+    def test_empty_forbidden_yields_no_violations(self) -> None:
+        """An empty forbidden dict never reports a violation."""
+        assert _forbidden_parameter_violations({}, {"view": "payloads"}) == {}
+
+    def test_nested_dict_violation_recurses_with_subset_semantics(self) -> None:
+        """A forbidden nested shape is flagged even when actual carries extra sibling fields.
+
+        This mirrors ``parameters``' own subset matching (via ``_check_dict_params_match``) --
+        the docstring's claim that nested values are "checked the same way `parameters` is
+        checked" must actually hold, not just for the top level.
+        """
+        forbidden = {"filters": {"status": "error"}}
+        actual = {"filters": {"status": "error", "extra": "x"}}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {
+            "filters": {"status": "error", "extra": "x"}
+        }
+
+    def test_nested_dict_no_violation_when_inner_value_differs(self) -> None:
+        """A nested dict that does not match the forbidden subset is not a violation."""
+        forbidden = {"filters": {"status": "error"}}
+        actual = {"filters": {"status": "ok"}}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {}
+
+    def test_nested_dict_no_violation_when_actual_value_is_not_a_dict(self) -> None:
+        """A forbidden nested dict never matches a scalar actual value at that key."""
+        forbidden = {"filters": {"status": "error"}}
+        actual = {"filters": "error"}
+
+        assert _forbidden_parameter_violations(forbidden, actual) == {}
+
+
+class TestForbiddenToolCallViolations:
+    """Test cases for _forbidden_tool_call_violations function."""
+
+    def test_empty_forbidden_names_yields_no_violations(self) -> None:
+        """No forbidden names means nothing can violate, regardless of what was called."""
+        calls = [ToolCall(tool_name="otel_trace_get", parameters={}, reasoning="")]
+
+        assert _forbidden_tool_call_violations([], calls) == []
+
+    def test_no_violation_when_forbidden_tool_never_called(self) -> None:
+        """A call to an unrelated tool is not a violation."""
+        calls = [ToolCall(tool_name="otel_span_payload_get", parameters={}, reasoning="")]
+
+        assert _forbidden_tool_call_violations(["otel_trace_get"], calls) == []
+
+    def test_violation_when_forbidden_tool_is_called(self) -> None:
+        """A call to the forbidden tool is reported by its raw name."""
+        calls = [ToolCall(tool_name="otel_trace_get", parameters={}, reasoning="")]
+
+        assert _forbidden_tool_call_violations(["otel_trace_get"], calls) == ["otel_trace_get"]
+
+    def test_violation_regardless_of_position_in_the_call_sequence(self) -> None:
+        """The forbidden tool is caught even when it is not the first or only call.
+
+        This is what lets a legitimate extra call to the *expected* tool (e.g. a paginated
+        otel_span_payload_get continuation) coexist with a strict "never call X" assertion --
+        the check scans every call rather than assuming a fixed position or count.
+        """
+        calls = [
+            ToolCall(tool_name="otel_span_payload_get", parameters={}, reasoning=""),
+            ToolCall(tool_name="otel_trace_get", parameters={}, reasoning=""),
+            ToolCall(tool_name="otel_span_payload_get", parameters={}, reasoning=""),
+        ]
+
+        assert _forbidden_tool_call_violations(["otel_trace_get"], calls) == ["otel_trace_get"]
+
+    def test_normalizes_namespaced_tool_names_before_matching(self) -> None:
+        """A namespaced MCP tool name still matches its bare logical forbidden name."""
+        calls = [ToolCall(tool_name="mcp_someserver_otel_trace_get", parameters={}, reasoning="")]
+
+        assert _forbidden_tool_call_violations(["otel_trace_get"], calls) == [
+            "mcp_someserver_otel_trace_get"
+        ]
 
 
 class TestToolBaseE2E:
