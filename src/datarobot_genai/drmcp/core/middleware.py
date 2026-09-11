@@ -211,8 +211,14 @@ class GeneralOAuthClaimValidationMiddleware(BaseAuthZMiddleware):
 
     @staticmethod
     def get_expected_audience_claim() -> str | None:
-        mcp_server_config = get_config()
-        return mcp_server_config.mcp_xaa_token_audience
+        """Return the ``aud`` an inbound token must carry, or ``None`` to skip the check.
+
+        ``MCP_XAA_TOKEN_AUDIENCE`` when Cross-Application Access is configured, else
+        ``MCP_OAUTH_AUDIENCE``. With neither set this is ``None`` and the audience
+        check is skipped (logged by the validator).
+        """
+        config = get_config()
+        return config.mcp_xaa_token_audience or config.mcp_oauth_audience
 
     async def run_authz(
         self,

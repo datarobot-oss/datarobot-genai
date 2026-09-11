@@ -91,6 +91,7 @@ class TestToolGalleryRoute:
             "provider",
             "provider_name",
             "oauth_provider_type",
+            "required_scopes",
             "hosted",
         }
         for item in body["tools"]:
@@ -463,6 +464,55 @@ class TestToolGalleryEnumRoutesAreGated:
             assert client.get("/prefixed/static/categories/").status_code == 200
             assert client.get("/prefixed/static/providers/").status_code == 200
             assert client.get("/static/categories/").status_code == 404
+
+
+class TestRequiredScopes:
+    """``required_scopes`` covers every declaration spelling — nothing missed."""
+
+    def _server(self) -> FastMCP:
+        import asyncio
+
+        from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
+        from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
+        from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
+
+        mcp = FastMCP("static-scopes")
+
+        @mcp.tool(tags={"database"}, auth=required_scopes_check("mcp:tools:execute"))
+        def run_sql() -> str:
+            """Declare in code and carry a mapped tag."""
+            return "ok"
+
+        @mcp.tool
+        def harmless() -> str:
+            """Declare nothing."""
+            return "ok"
+
+        # Tag spelling on top of the in-code one: MCP_OAUTH_TAG_SCOPES_DATABASE.
+        asyncio.run(wire_scopes(mcp, ScopeSettings(tag_scopes={"database": ["mcp:tools:db"]})))
+        register_static_routes(mcp)
+        return mcp
+
+    def test_items_carry_the_combined_required_scopes(self) -> None:
+        from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
+
+        try:
+            mcp = self._server()
+            with TestClient(mcp.http_app()) as client:
+                body = client.get("/static/tools/").json()
+        finally:
+            reset_scope_state()
+        by_name = {t["name"]: t for t in body["tools"]}
+        # The union across the in-code declaration AND the tag rule — the same answer
+        # the scope-validation middleware enforces a tools/call against.
+        assert by_name["run_sql"]["required_scopes"] == ["mcp:tools:db", "mcp:tools:execute"]
+        assert by_name["harmless"]["required_scopes"] == []
+
+    def test_undeclared_tools_report_an_empty_list_not_a_missing_field(self) -> None:
+        mcp = _make_server_with_route()
+        with TestClient(mcp.http_app()) as client:
+            body = client.get("/static/tools/").json()
+        assert all(item["required_scopes"] == [] for item in body["tools"])
 
 
 class TestUiMetadataProvider:

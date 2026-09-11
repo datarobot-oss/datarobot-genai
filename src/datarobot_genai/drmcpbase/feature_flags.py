@@ -58,7 +58,7 @@ async def check_mcp_tools_gallery_support(
     """Return True when the MCP tools-gallery feature is enabled for the request's user.
 
     Shared entry point for everything gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``: the
-    tool providers (which pass their lifespan client) and the global-mcp ``/toolGallery/tools/``
+    tool providers (which pass their lifespan client) and the global-mcp ``/static/tools/``
     route gate (which passes a short-lived client). None-safe — returns False when the
     client is not yet available (e.g. a request that races a provider's lifespan), so
     callers no longer need a separate ``is_datarobot_api_client_initialized`` guard.

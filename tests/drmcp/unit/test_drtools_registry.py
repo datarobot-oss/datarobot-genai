@@ -73,3 +73,62 @@ class TestRegisterDrtoolsFunctionFeatureFlag:
 
         mock_eval.assert_not_called()
         mock_dr_mcp_tool.assert_called_once()
+
+
+class TestRegisterDrtoolsFunctionRequiredScopes:
+    """``required_scopes`` metadata is handed to ``dr_mcp_tool`` unchanged.
+
+    drtools may not import drmcpbase or fastmcp (scripts/check_imports.py), so a
+    tool declares its scopes as plain metadata. The registrar only has to carry
+    the key past the private-key strip; ``dr_mcp_tool`` owns the conversion into
+    a declaration check, the same as for a user tool.
+    """
+
+    @pytest.fixture
+    def mock_dr_mcp_tool(self) -> MagicMock:
+        with patch.object(drtools_registry, "dr_mcp_tool") as mocked:
+            mocked.return_value = lambda func: func
+            yield mocked
+
+    def test_required_scopes_is_forwarded_to_dr_mcp_tool(self, mock_dr_mcp_tool: MagicMock) -> None:
+        drtools_registry.register_drtools_function(
+            _example_tool,
+            {"tags": ("DataRobot",), "required_scopes": ("mcp:tools:execute", "mcp:tools:read")},
+        )
+
+        kwargs = mock_dr_mcp_tool.call_args.kwargs
+        assert kwargs["required_scopes"] == ("mcp:tools:execute", "mcp:tools:read")
+        # Not converted here — dr_mcp_tool does that once, for every kind of tool.
+        assert "auth" not in kwargs
+
+    def test_the_key_survives_the_private_metadata_strip(self, mock_dr_mcp_tool: MagicMock) -> None:
+        # It sits in DRTOOLS_PRIVATE_METADATA_KEYS so registrars that do not know it
+        # strip it; this one must still hand it on.
+        drtools_registry.register_drtools_function(
+            _example_tool, {"display_name": "X — Y", "required_scopes": ("mcp:tools:execute",)}
+        )
+
+        kwargs = mock_dr_mcp_tool.call_args.kwargs
+        assert "display_name" not in kwargs
+        assert kwargs["required_scopes"] == ("mcp:tools:execute",)
+
+    def test_a_lone_scope_written_as_a_string_is_one_scope(
+        self, mock_dr_mcp_tool: MagicMock
+    ) -> None:
+        # `required_scopes="mcp:tools:execute"` (no tuple comma) must not be split
+        # into its characters on the way through tuple().
+        drtools_registry.register_drtools_function(
+            _example_tool, {"required_scopes": "mcp:tools:execute"}
+        )
+
+        assert mock_dr_mcp_tool.call_args.kwargs["required_scopes"] == ("mcp:tools:execute",)
+
+    def test_no_required_scopes_means_no_kwarg(self, mock_dr_mcp_tool: MagicMock) -> None:
+        drtools_registry.register_drtools_function(_example_tool, {"tags": ("DataRobot",)})
+
+        assert "required_scopes" not in mock_dr_mcp_tool.call_args.kwargs
+
+    def test_empty_required_scopes_means_no_kwarg(self, mock_dr_mcp_tool: MagicMock) -> None:
+        drtools_registry.register_drtools_function(_example_tool, {"required_scopes": ()})
+
+        assert "required_scopes" not in mock_dr_mcp_tool.call_args.kwargs

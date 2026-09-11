@@ -14,6 +14,7 @@
 
 import logging
 from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import asdict
 from dataclasses import dataclass
 from functools import wraps
@@ -35,6 +36,7 @@ from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
 
 from .config import MCPServerConfig
 from .config import get_config
@@ -248,11 +250,10 @@ mcp = DataRobotMCP(
 )
 
 
-class ToolKwargs(TypedDict, total=False):
-    """Keyword arguments passed through to FastMCP's mcp.tool() decorator.
+class MCPToolKwargs(TypedDict, total=False):
+    """Keyword arguments forwarded to FastMCP's mcp.tool() decorator unchanged.
 
-    All parameters are optional and forwarded directly to FastMCP tool registration.
-    See FastMCP documentation for full details on each parameter.
+    All parameters are optional. See FastMCP documentation for full details on each.
     """
 
     name: str | None
@@ -264,11 +265,24 @@ class ToolKwargs(TypedDict, total=False):
     annotations: Any | None
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
-    # Forwarded to mcp.tool() unchanged. Pair with
-    # `datarobot_genai.drmcp.core.oauth_scopes.require_scopes` to require OAuth
-    # scopes on a tool; FastMCP's own require_scopes hides the tool from every
-    # caller when no auth provider is configured, which is the deployed shape.
+    # FastMCP's own checks (its require_scopes, restrict_tag) gate at the tool level
+    # against ctx.token, which is None behind the DataRobot gateway — the tool
+    # disappears for everyone. Declare scopes with ToolKwargs.required_scopes instead.
     auth: AuthCheck | list[AuthCheck] | None
+
+
+class ToolKwargs(MCPToolKwargs, total=False):
+    """Keyword arguments the dr_mcp_tool family of decorators accepts.
+
+    Everything in :class:`MCPToolKwargs`, which passes through to mcp.tool(), plus
+    ``required_scopes``, which :func:`apply_required_scopes` consumes before that.
+    """
+
+    # OAuth scopes a tools/call token must cover, as plain data. dr_mcp_tool converts
+    # them into a declaration check the scope-validation middleware reads back per
+    # tools/call and publishes in scopes_supported (see drmcpbase.oauth_scopes) —
+    # not a tool-level gate. Never forwarded to mcp.tool().
+    required_scopes: Sequence[str] | None
 
 
 @dataclass
@@ -334,6 +348,29 @@ class ResourceInitArguments:
         self.meta["resource_category"] = resource_category.name
 
 
+def apply_required_scopes(mcp_tool_init_args: ToolKwargs) -> MCPToolKwargs:
+    """Convert ``required_scopes`` into a declaration check on ``auth``, in place.
+
+    Stacks with any ``auth`` already given rather than clobbering it: FastMCP runs
+    checks with AND logic and the middleware enforces the union of every check's
+    declared scopes. ``required_scopes`` itself never reaches ``mcp.tool()`` — what
+    comes back is exactly what ``mcp.tool()`` accepts.
+    """
+    scopes = mcp_tool_init_args.pop("required_scopes", None)
+    if not scopes:
+        return mcp_tool_init_args
+    if isinstance(scopes, str):  # a lone scope written without the tuple comma
+        scopes = (scopes,)
+    declared = required_scopes_check(*scopes)
+    existing = mcp_tool_init_args.get("auth")
+    if existing is None:
+        mcp_tool_init_args["auth"] = declared
+    else:
+        checks = existing if isinstance(existing, list) else [existing]
+        mcp_tool_init_args["auth"] = [*checks, declared]
+    return mcp_tool_init_args
+
+
 def dr_core_mcp_tool(
     **kwargs: Unpack[ToolKwargs],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -345,7 +382,7 @@ def dr_core_mcp_tool(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         instrumented = dr_mcp_extras()(func)
-        mcp.tool(**kwargs)(instrumented)
+        mcp.tool(**apply_required_scopes(kwargs))(instrumented)
         return instrumented
 
     return decorator
@@ -353,8 +390,8 @@ def dr_core_mcp_tool(
 
 def update_mcp_tool_init_args_with_tool_category(
     tool_category: DataRobotMCPToolCategory,
-    **mcp_tool_init_args: Unpack[ToolKwargs],
-) -> ToolKwargs:
+    **mcp_tool_init_args: Unpack[MCPToolKwargs],
+) -> MCPToolKwargs:
     meta = mcp_tool_init_args.get("meta")
     if meta and meta.get("tool_category"):
         raise ValueError("tool_category is a reserved field under meta. Please don't override it.")
@@ -377,7 +414,7 @@ def dr_mcp_tool(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         updated_kwargs = update_mcp_tool_init_args_with_tool_category(
-            tool_category, **mcp_tool_init_args
+            tool_category, **apply_required_scopes(mcp_tool_init_args)
         )
         # fastmcp 3.x removed 'enabled' from tool(); handle it separately
         enabled = updated_kwargs.pop("enabled", None)  # type: ignore[typeddict-item]

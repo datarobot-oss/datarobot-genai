@@ -18,20 +18,29 @@ This module has no fastmcp dependency and no MCP-protocol imports so it can be
 imported by drtools, drmcputils, and drmcpbase alike.
 """
 
+from collections.abc import Callable
+from collections.abc import Iterable
 from typing import Any
 
 from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.categories import category_entry
 
-# Keys present in @tool_metadata(...) that carry UI/gallery metadata. These must be stripped
-# before the metadata dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
-# them in tools/list or tools/call responses.
+# Keys present in @tool_metadata(...) that carry UI/gallery metadata or server-side
+# registration hints. These must be stripped before the metadata dict is forwarded to
+# FastMCP's mcp.tool() call so agents / LLMs never see them in tools/list or tools/call
+# responses (and mcp.tool() never chokes on a kwarg it does not know).
+#
+# ``required_scopes`` is the registration-hint kind: drtools may not import drmcpbase
+# or fastmcp (scripts/check_imports.py), so a tool declares its OAuth scopes as plain
+# metadata and the drmcp registrar hands the key to ``dr_mcp_tool``, which converts it
+# into a declaration check, before this strip. A registrar unaware of the key strips it.
 DRTOOLS_PRIVATE_METADATA_KEYS: frozenset[str] = frozenset(
     {
         "display_name",
         "description_ui",
         "auth_provider",
         "categories",
+        "required_scopes",
     }
 )
 
@@ -49,7 +58,7 @@ _OAUTH_PROVIDER_TYPES: dict[str, str] = {
 
 
 # Provider classification reported on each gallery item and exposed as the
-# ``GET /toolGallery/providers/`` filter enum.
+# ``GET /static/providers/`` filter enum.
 # ``datarobot`` = served by the DataRobot API.
 # ``third_party`` = served from outside it (OAuth / API-key connectors, proxied MCPs).
 PROVIDER_DATAROBOT = "datarobot"
@@ -129,7 +138,19 @@ def is_hosted(tool: Any) -> bool:
     return bool(kind and kind["hosted"])
 
 
-def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
+# Supplies the OAuth scopes a FastMCP tool requires, whichever way they were
+# declared (required_scopes on @dr_mcp_tool / @tool_metadata, tag-keyed
+# configuration). Injected by the caller — drmcpbase's
+# ``declared_scopes_of_component`` — because this module may not import drmcpbase.
+# When unset, ``required_scopes`` reports empty.
+ScopesProvider = Callable[[Any], Iterable[str]]
+
+
+def merge_tool_info(
+    tool: Any,
+    ui_metadata: dict[str, dict[str, Any]],
+    scopes_provider: ScopesProvider | None = None,
+) -> dict[str, Any]:
     """Combine a FastMCP ``Tool`` with drtools UI metadata + derived categories.
 
     Carries the raw ``tool_category`` marker and the tool's own ``description`` so the
@@ -140,6 +161,10 @@ def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[s
     order of ``@tool_metadata(tags=(...))``. FastMCP stores tags as a set, so tools
     outside the registry fall back to a sorted list — the only deterministic order a
     set can offer.
+
+    ``required_scopes`` is read through *scopes_provider* so it covers every
+    declaration spelling and matches what the scope-validation middleware
+    enforces — never re-derived from any single mechanism here.
     """
     ui = ui_metadata.get(tool.name, {})
     ordered_tags = ui.get("tags")
@@ -151,6 +176,7 @@ def merge_tool_info(tool: Any, ui_metadata: dict[str, dict[str, Any]]) -> dict[s
         "auth_provider": ui.get("auth_provider"),
         "tags": list(ordered_tags) if ordered_tags else sorted(tool.tags or []),
         "categories": categories_for_tool(tool.name),
+        "required_scopes": sorted(scopes_provider(tool)) if scopes_provider else [],
         "tool_category": _tool_category(tool),
         "hosted": is_hosted(tool),
     }
@@ -239,6 +265,9 @@ def build_tool_gallery_items(tools: list[dict]) -> list[dict]:
                 "description": t.get("description_ui") or t.get("description") or "",
                 # Declaration order, as merged from the drtools registry — never re-sorted.
                 "tags": list(t.get("tags") or []),
+                # Every OAuth scope the tool requires, across all declaration
+                # spellings — what a tools/call token must cover (sorted).
+                "required_scopes": sorted(t.get("required_scopes") or []),
                 "categories": [_category_item(category) for category in categories],
                 "provider": provider,
                 "provider_name": provider_name,

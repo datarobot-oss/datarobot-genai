@@ -293,6 +293,22 @@ class TestGeneralOAuthClaimValidationMiddleware:
         mock_get_config.assert_called_once_with()
         assert output == mock_get_config.return_value.mcp_xaa_token_audience
 
+    def test_without_xaa_the_oauth_audience_is_expected(self, mock_get_config: Mock) -> None:
+        mock_get_config.return_value = Mock(
+            mcp_xaa_token_audience=None, mcp_oauth_audience="https://aud"
+        )
+        assert GeneralOAuthClaimValidationMiddleware.get_expected_audience_claim() == "https://aud"
+
+    def test_neither_audience_setting_means_no_expected_audience(
+        self, mock_get_config: Mock
+    ) -> None:
+        # None tells the validator to skip the audience check; nothing else is consulted
+        # (not MCP_OAUTH_RESOURCE, not the deployment URL).
+        mock_get_config.return_value = Mock(
+            mcp_xaa_token_audience=None, mcp_oauth_audience=None, mcp_oauth_resource="https://res"
+        )
+        assert GeneralOAuthClaimValidationMiddleware.get_expected_audience_claim() is None
+
     async def test_skip_claim_validation_if_the_gate_is_off(
         self,
         mock_should_run_claim_validation: Mock,

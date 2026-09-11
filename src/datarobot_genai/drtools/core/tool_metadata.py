@@ -39,6 +39,15 @@ def tool_metadata(**metadata: Any) -> Callable[[Callable[P, R]], Callable[P, R]]
     unchanged — no wrapper — so the registry and direct callers see the real
     function (including its true coroutine-ness).
 
+    To require OAuth scopes on a tool, declare them as plain data::
+
+        @tool_metadata(..., required_scopes=("mcp:tools:execute",))
+
+    The same key ``@dr_mcp_tool`` accepts for user tools. drtools may not import
+    drmcpbase or fastmcp (scripts/check_imports.py), so the scopes stay a tuple of
+    strings here; ``dr_mcp_tool`` converts them into a declaration that the
+    scope-validation middleware enforces per ``tools/call``.
+
     Args:
         **metadata: Keyword arguments for tool metadata (tags, name, description, etc.)
 

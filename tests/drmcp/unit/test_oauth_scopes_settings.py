@@ -22,6 +22,7 @@ from datarobot_genai.drmcp.core.config import MCPServerConfig
 from datarobot_genai.drmcp.core.oauth_scopes import build_scope_settings
 from datarobot_genai.drmcp.core.oauth_scopes import read_tag_scopes
 from datarobot_genai.drmcp.core.oauth_scopes import split_setting
+from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
 
 DB_WRITE = "mcp:tools:database:write"
 EXECUTE = "mcp:tools:execute"
@@ -110,8 +111,6 @@ def _config(**overrides: str) -> MCPServerConfig:
     fields: dict[str, str | None] = {
         "mcp_oauth_authorization_servers": None,
         "mcp_oauth_resource": None,
-        "mcp_oauth_audience": None,
-        "mcp_oauth_jwks_uri": None,
         "mcp_oauth_scope_source": None,
     }
     fields.update(overrides)
@@ -119,81 +118,91 @@ def _config(**overrides: str) -> MCPServerConfig:
 
 
 class TestBuildScopeSettings:
-    """The audience follows the same chain the published ``resource`` does."""
+    """Declarations only — which mechanism is read, and the tag-keyed rules."""
 
-    @pytest.fixture(autouse=True)
-    def _off_platform(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Start every test outside a DataRobot runtime; opt back in per test."""
-        for name in (
-            "MLOPS_DEPLOYMENT_ID",
-            "WORKLOAD_ID",
-            "DATAROBOT_PUBLIC_API_ENDPOINT",
-            "DATAROBOT_ENDPOINT",
-        ):
-            monkeypatch.delenv(name, raising=False)
+    def test_the_scope_source_is_read_off_the_config(self) -> None:
+        settings = build_scope_settings(_config(mcp_oauth_scope_source="tags"))
 
-    def test_an_explicit_audience_wins(self) -> None:
-        settings = build_scope_settings(
-            _config(mcp_oauth_audience="https://aud", mcp_oauth_resource="https://res")
-        )
+        assert settings.source is ScopeSource.TAGS
 
-        assert settings.audience == "https://aud"
+    def test_the_source_defaults_to_both(self) -> None:
+        settings = build_scope_settings(_config())
 
-    def test_the_resource_is_the_default_audience(self) -> None:
-        settings = build_scope_settings(_config(mcp_oauth_resource="https://res"))
+        assert settings.source is ScopeSource.BOTH
 
-        assert settings.audience == "https://res"
-
-    def test_the_runtime_resolved_url_is_the_last_resort(
+    def test_tag_scopes_are_read_from_the_environment(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """GIVEN a deployment that lets `resource` resolve at runtime.
+        monkeypatch.setenv("MCP_OAUTH_TAG_SCOPES_DATABASE", f"{EXECUTE},{DB_WRITE}")
 
-        The published document will carry the resolved URL as `resource`, so a
-        discovering client mints its token with that `aud` — the server must
-        check against the same value, or it publishes an identity it never
-        verifies.
-        """
-        monkeypatch.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
-        monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://dr.example.com/api/v2")
+        settings = build_scope_settings(_config())
 
-        settings = build_scope_settings(
-            _config(mcp_oauth_authorization_servers="https://idp.example.com/oauth2/aus1")
+        assert settings.tag_scopes == {"DATABASE": [EXECUTE, DB_WRITE]}
+
+
+class TestWireScopesEnforcementWarning:
+    """Declared scopes with the enforcement gate off are called out at startup."""
+
+    _LOGGER = "datarobot_genai.drmcp.core.oauth_scopes"
+
+    @pytest.fixture
+    def guarded_server(self):  # type: ignore[no-untyped-def]
+        from fastmcp import FastMCP
+
+        from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
+        from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
+
+        mcp: FastMCP = FastMCP("gate-test")
+
+        @mcp.tool(auth=required_scopes_check(EXECUTE))
+        def guarded() -> str:
+            """Declare a scope; what ``required_scopes=(EXECUTE,)`` attaches."""
+            return "ok"
+
+        yield mcp
+        reset_scope_state()
+
+    async def test_declared_scopes_with_the_gate_off_are_called_out(
+        self,
+        guarded_server,
+        caplog: pytest.LogCaptureFixture,  # type: ignore[no-untyped-def]
+    ) -> None:
+        from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
+
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            await wire_scopes(guarded_server, _config(mcp_enable_oauth_claim_validation=False))
+
+        assert any(
+            "MCP_ENABLE_OAUTH_CLAIM_VALIDATION is off" in r.message and EXECUTE in r.message
+            for r in caplog.records
         )
 
-        assert settings.audience == (
-            "https://dr.example.com/api/v2/deployments/abc123/directAccess/mcp"
-        )
-        assert settings.enforced, "setting the authorization server alone activates verification"
+    async def test_no_warning_when_the_gate_is_on(
+        self,
+        guarded_server,
+        caplog: pytest.LogCaptureFixture,  # type: ignore[no-untyped-def]
+    ) -> None:
+        from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
 
-    def test_off_platform_the_audience_stays_unset(self) -> None:
-        settings = build_scope_settings(
-            _config(mcp_oauth_authorization_servers="https://idp.example.com/oauth2/aus1")
-        )
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            await wire_scopes(guarded_server, _config(mcp_enable_oauth_claim_validation=True))
 
-        assert settings.audience is None
-        assert not settings.enforced
+        assert not [r for r in caplog.records if "MCP_ENABLE_OAUTH_CLAIM_VALIDATION" in r.message]
 
-    def test_the_first_authorization_server_is_the_issuer(self) -> None:
-        settings = build_scope_settings(
-            _config(mcp_oauth_authorization_servers="https://one,https://two")
-        )
-
-        assert settings.issuer == "https://one"
-
-    def test_more_than_one_authorization_server_is_called_out(
+    async def test_no_warning_when_nothing_is_declared(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Only the first can ever verify — one JWKS URI serves one issuer."""
-        with caplog.at_level(logging.WARNING, logger="datarobot_genai.drmcp.core.oauth_scopes"):
-            build_scope_settings(_config(mcp_oauth_authorization_servers="https://one,https://two"))
+        from fastmcp import FastMCP
 
-        assert "verified against the first" in caplog.text
+        from datarobot_genai.drmcp.core.oauth_scopes import wire_scopes
+        from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
 
-    def test_a_single_authorization_server_is_not_warned_at(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        with caplog.at_level(logging.WARNING, logger="datarobot_genai.drmcp.core.oauth_scopes"):
-            build_scope_settings(_config(mcp_oauth_authorization_servers="https://one"))
+        try:
+            with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+                await wire_scopes(
+                    FastMCP("empty"), _config(mcp_enable_oauth_claim_validation=False)
+                )
+        finally:
+            reset_scope_state()
 
-        assert caplog.text == ""
+        assert not [r for r in caplog.records if "MCP_ENABLE_OAUTH_CLAIM_VALIDATION" in r.message]

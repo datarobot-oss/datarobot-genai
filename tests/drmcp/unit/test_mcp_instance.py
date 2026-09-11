@@ -247,6 +247,67 @@ class TestMCPToolDecorator:
             **mock_update_mcp_tool_init_args_with_tool_category.return_value,
         )
 
+    # ── required_scopes: the one in-code declaration spelling ─────────────────
+
+    @pytest.mark.usefixtures("mock_dr_mcp_extras")
+    def test_required_scopes_becomes_an_auth_declaration(
+        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
+    ) -> None:
+        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
+
+        dr_mcp_tool(tags={"database"}, required_scopes=("mcp:tools:execute", "mcp:tools:db"))(
+            mock_mcp_tool_callable
+        )
+
+        kwargs = mock_datarobot_mcp_server_tool.call_args.kwargs
+        # The plain-data key never reaches mcp.tool(); the declaration check does.
+        assert "required_scopes" not in kwargs
+        assert getattr(kwargs["auth"], DECLARED_SCOPES_ATTR) == frozenset(
+            {"mcp:tools:execute", "mcp:tools:db"}
+        )
+
+    @pytest.mark.usefixtures("mock_dr_mcp_extras")
+    async def test_the_declaration_admits_every_caller(
+        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
+    ) -> None:
+        # Enforcement is the scope-validation middleware's job; the check must not
+        # hide the tool at the tool level.
+        dr_mcp_tool(required_scopes=("mcp:tools:execute",))(mock_mcp_tool_callable)
+
+        assert await mock_datarobot_mcp_server_tool.call_args.kwargs["auth"](None) is True
+
+    @pytest.mark.usefixtures("mock_dr_mcp_extras")
+    def test_required_scopes_stacks_with_an_existing_auth_check(
+        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
+    ) -> None:
+        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
+
+        existing = Mock()
+        dr_mcp_tool(auth=existing, required_scopes=("mcp:tools:execute",))(mock_mcp_tool_callable)
+
+        checks = mock_datarobot_mcp_server_tool.call_args.kwargs["auth"]
+        assert isinstance(checks, list) and checks[0] is existing
+        assert getattr(checks[1], DECLARED_SCOPES_ATTR) == frozenset({"mcp:tools:execute"})
+
+    @pytest.mark.usefixtures("mock_dr_mcp_extras")
+    def test_a_lone_scope_written_as_a_string_is_one_scope(
+        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
+    ) -> None:
+        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
+
+        dr_mcp_tool(required_scopes="mcp:tools:execute")(mock_mcp_tool_callable)  # type: ignore[typeddict-item]
+
+        auth = mock_datarobot_mcp_server_tool.call_args.kwargs["auth"]
+        assert getattr(auth, DECLARED_SCOPES_ATTR) == frozenset({"mcp:tools:execute"})
+
+    @pytest.mark.usefixtures("mock_dr_mcp_extras")
+    def test_empty_required_scopes_attaches_nothing(
+        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
+    ) -> None:
+        dr_mcp_tool(required_scopes=())(mock_mcp_tool_callable)
+
+        assert "auth" not in mock_datarobot_mcp_server_tool.call_args.kwargs
+
     def test_dr_mcp_integration_tool(
         self,
         mock_mcp_tool_callable: Mock,
