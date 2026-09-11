@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.39
+- `dragent`: added a temporary `/debug/headers` diagnostic route (`GET`, returns the raw request headers as seen by the FastAPI app) for QA-14194 header-forwarding verification. Intended to be reverted once that QA pass completes.
+
 ## 0.29.38
 - `dragent/plugins/datarobot_user_mcp_xaa_client` Fixed MCP well-known endpoint in NAT MCP XAA client.
 
