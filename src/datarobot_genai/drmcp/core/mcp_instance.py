@@ -266,8 +266,12 @@ class MCPToolKwargs(TypedDict, total=False):
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
     # FastMCP's own checks (its require_scopes, restrict_tag) gate at the tool level
-    # against ctx.token, which is None behind the DataRobot gateway — the tool
-    # disappears for everyone. Declare scopes with ToolKwargs.required_scopes instead.
+    # against ctx.token, which FastMCP reads from request.scope["user"] — set by our
+    # token-handler middleware only while MCP_ENABLE_OAUTH_CLAIM_VALIDATION is on. Gate
+    # off: the token is None and the tool disappears for everyone. Gate on: the tool
+    # is hidden from callers short of the scope instead of refused with 403, and the
+    # scope never reaches scopes_supported or the REST required_scopes field. Declare
+    # scopes with ToolKwargs.required_scopes instead.
     auth: AuthCheck | list[AuthCheck] | None
 
 

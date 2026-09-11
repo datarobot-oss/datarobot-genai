@@ -42,10 +42,6 @@ every caller. They exist so the requirement is recorded on the component
 itself, where :func:`declared_scopes_for_one_tool` (what the scope-validation
 middleware enforces a ``tools/call`` against) and :func:`derived_scopes` (what
 the published ``scopes_supported`` is generated from) can read it back.
-Tool-level *enforcement* — verifying the request's own bearer token per
-component with a ``JWTVerifier`` and hiding components the token's scopes did
-not cover — used to live here too; it duplicated the middleware's authorization
-and has been removed along with the tool-level authentication floor.
 
 The scope source selects which declaration mechanism is live and defaults to
 ``both``, so each mechanism simply applies wherever it is declared; set
@@ -243,10 +239,13 @@ def required_scopes_check(*scopes: str) -> AuthCheck:
 
     Deliberately not FastMCP's ``require_scopes``, which is unsuitable on both
     counts: it captures the scope names in a closure nothing can read back, and
-    it enforces at the tool level by reading ``ctx.token`` — which is ``None`` on
-    a gateway-authenticated deployment with no FastMCP auth provider, so it hides
-    the tool from every caller. :func:`report_foreign_auth_checks` warns when one
-    is attached anyway.
+    it gates at the tool level against ``ctx.token``. FastMCP fills that token
+    from ``request.scope["user"]`` — set by our token-handler middleware only
+    while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` is on — so with the gate off (the
+    default) it is ``None`` and the tool is hidden from every caller; with the
+    gate on the tool silently vanishes from ``tools/list`` for a token short of the
+    scope instead of answering 403 ``insufficient_scope``.
+    :func:`report_foreign_auth_checks` warns when one is attached anyway.
     """
     required = frozenset(scopes)
 
@@ -357,11 +356,16 @@ async def report_foreign_auth_checks(mcp: Any) -> list[str]:
 
     Anything on ``component.auth`` that is neither a ``required_scopes`` declaration
     nor a tag rule — FastMCP's own ``require_scopes``/``restrict_tag``, or a custom
-    check — is evaluated by FastMCP *at the tool level* against ``ctx.token``. Behind
-    the DataRobot gateway no FastMCP auth provider is configured, so ``ctx.token`` is
-    ``None`` and such a check fails for every caller: the component silently vanishes
-    from ``tools/list``. Whatever scopes it requires are also held where this module
-    cannot read them, so they reach neither the middleware nor ``scopes_supported``.
+    check — is evaluated by FastMCP *at the tool level* against ``ctx.token``, which
+    FastMCP reads from ``request.scope["user"]``: the ``AuthenticatedUser`` our
+    token-handler middleware sets, and only while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION``
+    is on. With the gate off (the default) the token is ``None``, such a check fails
+    for every caller and the component silently vanishes from ``tools/list``. With the
+    gate on the check works, but as a tool-level gate: the component is hidden from a
+    caller short of the scope rather than refused with 403 ``insufficient_scope``.
+    Either way the scopes it requires are held where this module cannot read them, so
+    they reach neither the middleware, nor ``scopes_supported``, nor the REST
+    ``required_scopes`` field.
 
     Returns the names of the affected components (empty when there are none).
     """
@@ -373,10 +377,12 @@ async def report_foreign_auth_checks(mcp: Any) -> list[str]:
     if affected:
         logger.warning(
             "Component(s) %s carry auth checks not declared through required_scopes or "
-            "tag rules. FastMCP evaluates those at the tool level against ctx.token, "
-            "which is None behind the DataRobot gateway, so the component is hidden from "
-            "every caller — and any scopes they require are invisible to the "
-            "scope-validation middleware and to scopes_supported. Declare "
+            "tag rules. FastMCP evaluates those at the tool level: with "
+            "MCP_ENABLE_OAUTH_CLAIM_VALIDATION off the component is hidden from every "
+            "caller (no token reaches FastMCP), and with it on the component is hidden "
+            "from callers short of the scope instead of refused with 403. Any scopes "
+            "they require are invisible to the scope-validation middleware, to "
+            "scopes_supported and to the REST required_scopes field. Declare "
             "required_scopes=(...) on the tool instead.",
             sorted(affected),
         )

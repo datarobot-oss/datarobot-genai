@@ -188,7 +188,7 @@ class TestForeignAuthChecks:
 
         @server.tool(auth=fastmcp_require_scopes(EXECUTE))
         def gated() -> str:
-            """Guarded by FastMCP's own check — hidden behind the gateway."""
+            """Guarded by FastMCP's own check — a tool-level gate on ctx.token."""
             return "ok"
 
         @server.tool(auth=required_scopes_check(EXECUTE))
@@ -200,8 +200,9 @@ class TestForeignAuthChecks:
             affected = await report_foreign_auth_checks(server)
         assert affected == ["gated"]
         assert any("gated" in r.message and "hidden" in r.message for r in caplog.records)
-        # And the behaviour the warning describes: no auth provider → ctx.token is
-        # None → FastMCP's check fails → the tool is gone from tools/list.
+        # And the behaviour the warning describes for the gate-off (default) shape:
+        # no token-handler middleware ran, so FastMCP's ctx.token is None, its check
+        # fails, and the tool is gone from tools/list for everyone.
         assert await _visible(server) == {"declared"}
 
     async def test_our_declarations_are_not_reported(self, mcp: FastMCP) -> None:
