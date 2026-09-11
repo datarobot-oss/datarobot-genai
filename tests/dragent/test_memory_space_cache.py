@@ -14,57 +14,37 @@
 
 from __future__ import annotations
 
-from typing import Any
+import warnings
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-import requests
+from datarobot.application_utils.persistence.exceptions import DRMemoryNotFoundError
+from datarobot.application_utils.persistence.exceptions import DRMemoryUnavailableError
 
 import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
-from datarobot_genai.dragent.memory_space_cache import _STALE_CONNECTION_RETRIES
-from datarobot_genai.dragent.memory_space_cache import CACHE_EVENT_TYPE
+from datarobot_genai.dragent.memory_space_cache import _TRANSPORT_RETRIES
 from datarobot_genai.dragent.memory_space_cache import DRAGENT_CACHE_PARTICIPANT_ID
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
-from datarobot_genai.dragent.memory_space_cache import _find_cache_session
+from datarobot_genai.dragent.memory_space_cache import _cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import configure_datarobot_memory_client
 from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import registry_cache_deduplication_key
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
+from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
 
 
 class _FakeEvent:
-    def __init__(self, *, sequence_id: int, body: dict[str, Any] | None) -> None:
-        self.sequence_id = sequence_id
-        self.body = body
+    def __init__(self, *, content: str) -> None:
+        self.content = content
+        self.patch = AsyncMock()
 
 
 class _FakeSession:
     def __init__(self, session_id: str = "sess-1") -> None:
         self.id = session_id
-        self.metadata: dict[str, Any] = {}
-        self._events: list[_FakeEvent] = []
-        self.post_event = MagicMock(side_effect=self._post_event)
-        self.update_event = MagicMock(side_effect=self._update_event)
-        self.delete = MagicMock()
-
-    def events(self, **kwargs: Any) -> list[_FakeEvent]:
-        if "last_n" in kwargs:
-            return self._events[-kwargs["last_n"] :]
-        return list(self._events)
-
-    def _post_event(self, **kwargs: Any) -> _FakeEvent:
-        event = _FakeEvent(sequence_id=len(self._events) + 1, body=kwargs.get("body"))
-        self._events.append(event)
-        return event
-
-    def _update_event(self, sequence_id: int, **kwargs: Any) -> None:
-        for event in self._events:
-            if event.sequence_id == sequence_id:
-                if "body" in kwargs:
-                    event.body = kwargs["body"]
-                return
-        raise KeyError(sequence_id)
+        self.delete = AsyncMock()
 
 
 _ENCLAVE_HOST_ENV = "DR_WORKLOAD_EXTERNAL_URL_HOST"
@@ -79,13 +59,16 @@ def _set_enclave_gateway_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _reset_provisioned_registry_cache_space_state() -> None:
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    memory_space_cache_module._MemoryClientState.client = None
     yield
     memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+    memory_space_cache_module._MemoryClientState.client = None
 
 
 @pytest.fixture
 def kv_cache() -> MemorySpaceKVCache:
-    return MemorySpaceKVCache(memory_space_id="space-1")
+    client = MagicMock()
+    return MemorySpaceKVCache(memory_space_id="space-1", client=client)
 
 
 class TestEnclaveL2Workload:
@@ -126,7 +109,7 @@ class TestResolveMemorySpaceId:
         monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
         _set_enclave_gateway_env(monkeypatch)
         space = MagicMock(id="space-new")
-        create_mock = MagicMock(return_value=space)
+        post_mock = AsyncMock(return_value=space)
 
         with (
             patch(
@@ -134,13 +117,18 @@ class TestResolveMemorySpaceId:
                 return_value=True,
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
-                create_mock,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
             ),
         ):
             assert try_resolve_memory_space_id() == "space-new"
 
-        create_mock.assert_called_once_with(
+        post_mock.assert_awaited_once_with(
+            post_mock.await_args.args[0],
             description="Agent card registry L2 cache",
             deduplication_key="dragent:agent-card-registry:workload:wl-abc123",
         )
@@ -148,19 +136,10 @@ class TestResolveMemorySpaceId:
     def test_adopts_existing_space_on_dedup_collision(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from datarobot.errors import MemorySpaceDeduplicationError
-
         monkeypatch.setenv("WORKLOAD_ID", "wl-xyz")
         _set_enclave_gateway_env(monkeypatch)
-        existing = MagicMock(id="space-existing")
-        create_mock = MagicMock(
-            side_effect=MemorySpaceDeduplicationError(
-                "conflict",
-                409,
-                json={"existingMemorySpaceId": "space-existing"},
-            )
-        )
-        get_mock = MagicMock(return_value=existing)
+        space = MagicMock(id="space-existing")
+        post_mock = AsyncMock(return_value=space)
 
         with (
             patch(
@@ -168,60 +147,147 @@ class TestResolveMemorySpaceId:
                 return_value=True,
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
-                create_mock,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.MemorySpace.get",
-                get_mock,
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
             ),
         ):
             assert try_resolve_memory_space_id() == "space-existing"
-
-        get_mock.assert_called_once_with("space-existing")
 
     def test_returns_cached_space_id_without_reprovisioning(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
-        create_mock = MagicMock()
+        post_mock = AsyncMock()
 
         with patch(
-            "datarobot_genai.dragent.memory_space_cache.MemorySpace.create",
-            create_mock,
+            "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+            post_mock,
         ):
             assert try_resolve_memory_space_id() == "space-cached"
 
-        create_mock.assert_not_called()
+        post_mock.assert_not_called()
+
+    async def test_sync_from_running_loop_returns_already_provisioned_space_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN bootstrap already stored a space id WHEN resolved from a running loop
+        THEN the cached id is returned without asyncio.run.
+        """
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
+        resolve_mock = AsyncMock()
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache._try_resolve_memory_space_id",
+            resolve_mock,
+        ):
+            assert try_resolve_memory_space_id() == "space-cached"
+
+        resolve_mock.assert_not_called()
+
+    async def test_async_creates_space_from_running_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN an enclave workload WHEN resolved from a running loop
+        THEN the space is provisioned.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        space = MagicMock(id="space-new")
+        post_mock = AsyncMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert await try_resolve_memory_space_id_async() == "space-new"
+
+        post_mock.assert_awaited_once()
+
+    async def test_sync_from_running_loop_does_not_leave_unawaited_coroutine(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN a running loop WHEN the sync helper is used
+        THEN no provision coroutine is created.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        resolve_mock = AsyncMock(return_value="space-new")
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._try_resolve_memory_space_id",
+                resolve_mock,
+            ),
+            warnings.catch_warnings(record=True) as caught,
+        ):
+            warnings.simplefilter("always")
+            assert try_resolve_memory_space_id() is None
+
+        resolve_mock.assert_not_called()
+        assert not any("never awaited" in str(w.message) for w in caught)
+
+    async def test_async_retry_succeeds_after_sync_helper_misses_on_running_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN a missed sync bootstrap from a running loop
+        WHEN async resolve retries THEN L2 is provisioned.
+        """
+        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        _set_enclave_gateway_env(monkeypatch)
+        space = MagicMock(id="space-new")
+        post_mock = AsyncMock(return_value=space)
+
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.try_configure_datarobot_memory_client",
+                return_value=True,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
+                post_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache._require_memory_client",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert try_resolve_memory_space_id() is None
+            assert await try_resolve_memory_space_id_async() == "space-new"
+
+        post_mock.assert_awaited_once()
 
 
 class TestConfigureDatarobotMemoryClient:
-    def test_configures_enclave_gateway_without_dr_client(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_configures_enclave_gateway_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         _set_enclave_gateway_env(monkeypatch)
-        mock_client = MagicMock()
-        mock_config = MagicMock()
+        client_ctor_mock = MagicMock()
 
-        with (
-            patch("datarobot.config.create_drconfig", return_value=mock_config) as create_mock,
-            patch(
-                "datarobot.rest.RESTClientObject.from_config",
-                return_value=mock_client,
-            ) as from_config_mock,
-            patch("datarobot.client.set_client") as set_client_mock,
-            patch("datarobot.Client") as client_ctor_mock,
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache.DRMemoryServiceClient",
+            client_ctor_mock,
         ):
             configure_datarobot_memory_client()
 
-        create_mock.assert_called_once_with(
-            token="token",
+        client_ctor_mock.assert_called_once_with(
             endpoint="https://enclave-x.datarobot.com/api/v2",
+            api_token="token",
         )
-        from_config_mock.assert_called_once_with(mock_config)
-        set_client_mock.assert_called_once_with(mock_client)
-        client_ctor_mock.assert_not_called()
+        assert memory_space_cache_module._MemoryClientState.client is client_ctor_mock.return_value
 
     def test_raises_without_enclave_gateway(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
@@ -235,168 +301,187 @@ class TestConfigureDatarobotMemoryClient:
 class TestMemorySpaceKVCache:
     async def test_set_and_get_round_trip(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
+        event = _FakeEvent(content='{"version": 1}')
+        space = MagicMock()
+        logical_key = "dragent:agent_card:dep-1"
+        dedup_key = _cache_deduplication_key(logical_key)
 
         with (
             patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=None,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                AsyncMock(side_effect=DRMemoryNotFoundError("missing", status_code=404)),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.post",
+                AsyncMock(return_value=session),
+            ) as create_mock,
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.last",
+                AsyncMock(side_effect=[[], [event]]),
             ),
         ):
             await kv_cache.set_value("dep-1", '{"version": 1}')
             assert await kv_cache.get_value("dep-1") == '{"version": 1}'
 
-        session.post_event.assert_called_once()
-        kwargs = session.post_event.call_args.kwargs
-        assert kwargs["event_type"] == CACHE_EVENT_TYPE
-        assert kwargs["body"]["content"] == '{"version": 1}'
+        create_mock.assert_awaited_once_with(
+            space,
+            cache_kind="agent_card",
+            dedup_key=dedup_key,
+            logical_key=logical_key,
+            participants=[DRAGENT_CACHE_PARTICIPANT_ID],
+        )
 
-    async def test_get_reuses_cached_session_id_without_list(
+    async def test_get_reuses_cached_session_without_second_lookup(
         self, kv_cache: MemorySpaceKVCache
     ) -> None:
         session = _FakeSession()
-        find_mock = MagicMock(return_value=None)
-        get_mock = MagicMock(return_value=session)
-        session.post_event(body={"content": "cached"})
+        event = _FakeEvent(content="cached")
+        space = MagicMock()
+        get_session_mock = AsyncMock(return_value=session)
 
         with (
             patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                find_mock,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache._create_cache_session",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                get_session_mock,
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                get_mock,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.last",
+                AsyncMock(return_value=[event]),
             ),
         ):
             await kv_cache.set_value("dep-1", "cached")
-            find_mock.reset_mock()
-            get_mock.reset_mock()
+            get_session_mock.reset_mock()
             assert await kv_cache.get_value("dep-1") == "cached"
 
-        find_mock.assert_not_called()
-        get_mock.assert_called_once_with("space-1", "sess-1")
+        get_session_mock.assert_not_awaited()
 
     async def test_update_existing_entry(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
-        session.post_event(body={"content": "v1"})
+        event = _FakeEvent(content="v1")
+        space = MagicMock()
 
         with (
             patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                AsyncMock(return_value=session),
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.last",
+                AsyncMock(return_value=[event]),
             ),
         ):
             await kv_cache.set_value("dep-1", "v2")
 
-        session.update_event.assert_called_once_with(1, body={"content": "v2"})
-        assert session.post_event.call_count == 1
+        event.patch.assert_awaited_once_with(content="v2")
 
     async def test_create_uses_cache_participant(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
+        space = MagicMock()
 
         with (
             patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=None,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.create",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                AsyncMock(side_effect=DRMemoryNotFoundError("missing", status_code=404)),
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.post",
+                AsyncMock(return_value=session),
             ) as create_mock,
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.last",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.post",
+                AsyncMock(),
+            ),
         ):
             await kv_cache.set_value("dep-1", "payload")
 
-        create_mock.assert_called_once()
-        assert create_mock.call_args.args[1] == [DRAGENT_CACHE_PARTICIPANT_ID]
+        assert create_mock.await_args.kwargs["participants"] == [DRAGENT_CACHE_PARTICIPANT_ID]
 
     async def test_delete_removes_session(self, kv_cache: MemorySpaceKVCache) -> None:
         session = _FakeSession()
+        space = MagicMock()
 
         with (
             patch(
-                "datarobot_genai.dragent.memory_space_cache._find_cache_session",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
             ),
             patch(
-                "datarobot_genai.dragent.memory_space_cache.Session.get",
-                return_value=session,
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                AsyncMock(return_value=session),
             ),
         ):
             await kv_cache.delete_value("dep-1")
 
-        session.delete.assert_called_once()
+        session.delete.assert_awaited_once()
 
 
-class TestStaleConnectionRetry:
-    """Regression tests for the stale pooled-connection retry (RemoteDisconnected)."""
-
-    async def test_find_cache_session_retries_transient_connection_error(self) -> None:
-        session = _FakeSession()
-        list_mock = MagicMock(
-            side_effect=[
-                requests.exceptions.ConnectionError("stale connection"),
-                [session],
-            ]
-        )
-
-        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
-            result = _find_cache_session("space-1", "dragent:agent_card:dep-1")
-
-        assert result is session
-        assert list_mock.call_count == 2
-
-    async def test_find_cache_session_raises_after_exhausting_retries(self) -> None:
-        list_mock = MagicMock(side_effect=requests.exceptions.ConnectionError("stale connection"))
-
-        with (
-            patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock),
-            pytest.raises(requests.exceptions.ConnectionError),
-        ):
-            _find_cache_session("space-1", "dragent:agent_card:dep-1")
-
-        assert list_mock.call_count == _STALE_CONNECTION_RETRIES + 1
-
-    async def test_get_value_survives_a_single_transient_connection_error(
+class TestTransportRetry:
+    async def test_resolve_session_retries_transient_transport_error(
         self, kv_cache: MemorySpaceKVCache
     ) -> None:
         session = _FakeSession()
-        session.post_event(body={"content": "cached"})
-        list_mock = MagicMock(
+        space = MagicMock()
+        get_mock = AsyncMock(
             side_effect=[
-                requests.exceptions.ConnectionError("stale connection"),
-                [session],
+                DRMemoryUnavailableError("stale connection"),
+                session,
             ]
         )
 
-        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                get_mock,
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheEvent.last",
+                AsyncMock(return_value=[_FakeEvent(content="cached")]),
+            ),
+        ):
             assert await kv_cache.get_value("dep-1") == "cached"
 
-        assert list_mock.call_count == 2
+        assert get_mock.await_count == 2
 
     async def test_get_value_falls_back_to_none_once_retries_are_exhausted(
         self, kv_cache: MemorySpaceKVCache
     ) -> None:
-        list_mock = MagicMock(side_effect=requests.exceptions.ConnectionError("stale connection"))
+        space = MagicMock()
+        get_mock = AsyncMock(side_effect=DRMemoryUnavailableError("stale connection"))
 
-        with patch("datarobot_genai.dragent.memory_space_cache.Session.list", list_mock):
-            # Still degrades to a cache miss rather than raising -- get_value's own
-            # try/except is the last line of defense once the retry is exhausted.
+        with (
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
+                AsyncMock(return_value=space),
+            ),
+            patch(
+                "datarobot_genai.dragent.memory_space_cache.AgentCardCacheSession.get",
+                get_mock,
+            ),
+        ):
             assert await kv_cache.get_value("dep-1") is None
 
-        assert list_mock.call_count == _STALE_CONNECTION_RETRIES + 1
+        assert get_mock.await_count == _TRANSPORT_RETRIES + 1
