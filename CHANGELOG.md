@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## 0.29.39
+- Upgraded `crewai` to 1.15.21 and `crewai-tools` to 1.15.21 (from 1.13.0 and 0.76.0), clearing `CVE-2026-62240` (crewai-tools SSRF redirect bypass). `crewai-tools` was renumbered upstream into lockstep with `crewai`, jumping 0.76 straight to 1.15.x, so the previous `<0.77.0` ceiling could never reach the new release line. The pins are now `crewai[litellm]>=1.15.21,<2.0.0` and `crewai-tools[mcp]>=1.15.21,<2.0.0`.
+- Added an `aiofiles>=25.1.0` override. crewai 1.15 pins `aiofiles~=24.1.0` while `nvidia-nat-core` requires `>=25.1`; resolution already selected 25.1.0, so the override only holds that pin. This conflict is what previously blocked moving off the 1.13.x line.
+- Excluded `pymupdf`, which crewai-tools 1.15 added as a non-optional dependency. It is AGPL-3.0-or-commercial, and both of its import sites are function-local, so it is not needed at runtime.
+- `crewai/kickoff_storage`: revalidated the kickoff-outputs neutralization against crewai 1.15. `Crew._task_output_handler` is still a `PrivateAttr` typed `TaskOutputStorageHandler` backed by `KickoffTaskOutputsSQLiteStorage`, and that storage still opens `sqlite3.connect(...)` blocks that commit but never close, so the workaround is still required. The version sentinel test now pins 1.15.x.
 
 ## 0.29.38
 - `dragent/plugins/datarobot_user_mcp_xaa_client` Fixed MCP well-known endpoint in NAT MCP XAA client.

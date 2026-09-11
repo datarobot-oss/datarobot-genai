@@ -71,6 +71,7 @@ exclude-dependencies = [
     "lancedb",                  # optional vector DB pulled in by crewai; not used
     "openpyxl",                 # Excel parser pulled in by crewai-tools; not used
     "python-docx",              # Word doc parser pulled in by crewai-tools; not used
+    "pymupdf",                  # PDF parser pulled in by crewai-tools; AGPL-3.0, lazily imported, not used
     # llama-index / mem0ai bloat
     "llama-index-cli",          # CLI tool pulled in by llama-index; not needed at runtime
 ]
@@ -113,8 +114,10 @@ constraint-dependencies = [
     "urllib3>=2.7.0",
 ]
 override-dependencies = [
+    # crewai 1.15 pins aiofiles~=24.1.0; nvidia-nat-core 1.7.0 needs >=25.1.
+    "aiofiles>=25.1.0",
     "click>=8.3.3",
-    "crewai>=1.11.0",
+    "crewai>=1.15.21",
     "cryptography>=50.0.0",
     "json-repair>=0.60.1",
     "litellm>=1.91.1,<2.0.0",
