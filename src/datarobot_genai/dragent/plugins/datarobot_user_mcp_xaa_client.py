@@ -121,10 +121,10 @@ def get_mcp_auth_server_metadata_url(
 ) -> str:
     mcp_server_url = str(config.server.url)
     url_split = urlsplit(mcp_server_url)
-    return (
-        f"{url_split.scheme}://{url_split.netloc}"
-        f"/.well-known/oauth-protected-resource{url_split.path}"
-    )
+    url_path = url_split.path.rstrip("/")
+    if url_path.endswith("/mcp"):
+        url_path = url_path[: -len("/mcp")]
+    return f"{url_split.scheme}://{url_split.netloc}{url_path}/.well-known/oauth-protected-resource"
 
 
 async def get_xaa_params_from_mcp_auth_server_metadata(
