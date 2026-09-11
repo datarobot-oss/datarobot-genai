@@ -164,9 +164,15 @@ def try_resolve_memory_space_id() -> str | None:
 
     Import-time bootstrap uses this synchronous helper. Lifespan warmup and
     :func:`~datarobot_genai.dragent.agent_card_registry.get_default_registry`
-    must call :func:`try_resolve_memory_space_id_async` instead — ``asyncio.run``
+    must call :func:`try_resolve_memory_space_id_async` to *provision* — ``asyncio.run``
     cannot nest inside an already running event loop.
+
+    An id already stored by a prior provision (import bootstrap or the async
+    helper) is returned synchronously even from a running loop, so YAML parse
+    and ``AgentCardRegistry.__init__`` can still attach L2 write-behind.
     """
+    if _ProvisionedRegistryCacheSpaceState.space_id is not None:
+        return _ProvisionedRegistryCacheSpaceState.space_id
     try:
         return _run_async(_try_resolve_memory_space_id)
     except RuntimeError as exc:
@@ -419,6 +425,11 @@ class MemorySpaceKVCache:
                     ),
                 )
                 self._cache_session(logical_key, session)
+                logger.info(
+                    "MemorySpace L2 cache: created session %s for %s",
+                    getattr(session, "id", None),
+                    logical_key,
+                )
             await self._write_payload(session, payload)
         except Exception:
             logger.exception("MemorySpace cache write failed for %s", logical_key)

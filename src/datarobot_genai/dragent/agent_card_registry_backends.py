@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 if TYPE_CHECKING:
@@ -514,6 +515,10 @@ class LayeredAgentCardCacheBackend:
         registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
         await self._l1.store(cards, key_types=key_types, registry_ids=registry_ids)
+        logger.info(
+            "Agent card registry cache: write-behind to MemorySpace L2 for %d key(s)",
+            len(cards),
+        )
         self._schedule_l2(self._l2.store(cards, key_types=key_types, registry_ids=registry_ids))
 
     async def evict(
@@ -544,7 +549,13 @@ def create_agent_card_cache_backend(
 
     memory_space_id = try_resolve_memory_space_id()
     if memory_space_id is None:
-        logger.debug("Agent card registry cache: L1 only (not on an enclave workload)")
+        if is_enclave_l2_workload():
+            logger.warning(
+                "Agent card registry cache: L1 only (enclave workload but MemorySpace id "
+                "is not yet provisioned; L2 write-behind disabled)"
+            )
+        else:
+            logger.debug("Agent card registry cache: L1 only (not on an enclave workload)")
         return l1
 
     kv_cache = MemorySpaceKVCache(memory_space_id=memory_space_id)

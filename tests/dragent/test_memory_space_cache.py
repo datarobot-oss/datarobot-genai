@@ -171,6 +171,23 @@ class TestResolveMemorySpaceId:
 
         post_mock.assert_not_called()
 
+    async def test_sync_from_running_loop_returns_already_provisioned_space_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GIVEN bootstrap already stored a space id WHEN resolved from a running loop
+        THEN the cached id is returned without asyncio.run.
+        """
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
+        resolve_mock = AsyncMock()
+
+        with patch(
+            "datarobot_genai.dragent.memory_space_cache._try_resolve_memory_space_id",
+            resolve_mock,
+        ):
+            assert try_resolve_memory_space_id() == "space-cached"
+
+        resolve_mock.assert_not_called()
+
     async def test_async_creates_space_from_running_loop(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

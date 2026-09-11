@@ -354,7 +354,7 @@ class AgentCardRegistry:
         )
         self._backend = cache_backend or create_agent_card_cache_backend(config)
 
-        logger.debug(
+        logger.info(
             "AgentCardRegistry created (cache_ttl=%ds, l2=%s)",
             self._cache_ttl,
             isinstance(self._backend, LayeredAgentCardCacheBackend),
@@ -764,7 +764,9 @@ def get_default_registry_sync() -> AgentCardRegistry:
 
     Safe to call from pydantic validators and other sync contexts
     (e.g. config-parse time) because :class:`AgentCardRegistry.__init__`
-    does no I/O.
+    does no I/O. If import-time bootstrap already provisioned the L2
+    MemorySpace, the constructor attaches write-behind even when this is
+    called on a running event loop.
     """
     if _RegistryHolder.instance is None:
         _RegistryHolder.instance = AgentCardRegistry()
