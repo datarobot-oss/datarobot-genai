@@ -29,6 +29,7 @@ from fastmcp.server.auth import AuthContext
 
 from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
 from datarobot_genai.drmcpbase.oauth_scopes import TAG_APPLIED_ATTR
+from datarobot_genai.drmcpbase.oauth_scopes import ForeignAuthCheckError
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
 from datarobot_genai.drmcpbase.oauth_scopes import collect_code_declared_scopes
@@ -177,11 +178,9 @@ class TestDeclarationOnlyChecks:
 
 
 class TestForeignAuthChecks:
-    """FastMCP-native (or custom) auth checks are reported: they gate at the tool level."""
+    """FastMCP-native (or custom) auth checks are refused: they gate at the tool level."""
 
-    async def test_a_fastmcp_native_check_is_reported_by_name(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def _server_with_a_native_check(self) -> FastMCP:
         from fastmcp.server.auth import require_scopes as fastmcp_require_scopes
 
         server: FastMCP = FastMCP(name="foreign")
@@ -196,18 +195,37 @@ class TestForeignAuthChecks:
             """Declare scopes our way — reported to the middleware, never hidden."""
             return "ok"
 
-        with caplog.at_level(logging.WARNING, logger=SCOPES_LOGGER):
-            affected = await report_foreign_auth_checks(server)
-        assert affected == ["gated"]
-        assert any("gated" in r.message and "hidden" in r.message for r in caplog.records)
-        # And the behaviour the warning describes for the gate-off (default) shape:
+        return server
+
+    async def test_a_fastmcp_native_check_is_logged_and_refused(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        server = self._server_with_a_native_check()
+
+        with (
+            caplog.at_level(logging.ERROR, logger=SCOPES_LOGGER),
+            pytest.raises(ForeignAuthCheckError) as raised,
+        ):
+            await report_foreign_auth_checks(server)
+
+        # Names the offending component only, in the log and in the error.
+        assert "gated" in str(raised.value) and "'declared'" not in str(raised.value)
+        assert any(
+            r.levelno == logging.ERROR and "gated" in r.message and "hidden" in r.message
+            for r in caplog.records
+        )
+        # And the behaviour the message describes for the gate-off (default) shape:
         # no token-handler middleware ran, so FastMCP's ctx.token is None, its check
         # fails, and the tool is gone from tools/list for everyone.
         assert await _visible(server) == {"declared"}
 
-    async def test_our_declarations_are_not_reported(self, mcp: FastMCP) -> None:
+    async def test_wire_scopes_refuses_to_start_such_a_server(self) -> None:
+        with pytest.raises(ForeignAuthCheckError):
+            await wire_scopes(self._server_with_a_native_check(), ScopeSettings())
+
+    async def test_our_declarations_are_accepted(self, mcp: FastMCP) -> None:
         await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
-        assert await report_foreign_auth_checks(mcp) == []
+        await report_foreign_auth_checks(mcp)  # both spellings present; nothing raised
 
 
 class TestCodeDeclaredScopes:

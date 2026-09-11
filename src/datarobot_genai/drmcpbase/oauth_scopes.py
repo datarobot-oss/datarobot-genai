@@ -134,6 +134,15 @@ DECLARED_SCOPES_ATTR = "dr_declared_scopes"
 TAG_APPLIED_ATTR = "dr_tag_scope_check"
 
 
+class ForeignAuthCheckError(RuntimeError):
+    """A component carries an auth check not produced by ``required_scopes`` or a tag rule.
+
+    Raised by :func:`report_foreign_auth_checks` (and so by :func:`wire_scopes` at
+    startup) so the server refuses to start rather than serve a component that
+    FastMCP gates at the tool level and whose scopes nothing can read back.
+    """
+
+
 def normalize_tag(tag: str) -> str:
     """Return a tag in the form used to match configuration against components.
 
@@ -245,7 +254,8 @@ def required_scopes_check(*scopes: str) -> AuthCheck:
     default) it is ``None`` and the tool is hidden from every caller; with the
     gate on the tool silently vanishes from ``tools/list`` for a token short of the
     scope instead of answering 403 ``insufficient_scope``.
-    :func:`report_foreign_auth_checks` warns when one is attached anyway.
+    :func:`report_foreign_auth_checks` refuses to start the server when one is
+    attached anyway.
     """
     required = frozenset(scopes)
 
@@ -351,8 +361,8 @@ def declared_scopes_of_component(component: Any) -> frozenset[str]:
     return frozenset(required)
 
 
-async def report_foreign_auth_checks(mcp: Any) -> list[str]:
-    """Warn about components carrying auth checks this module did not produce.
+async def report_foreign_auth_checks(mcp: Any) -> None:
+    """Refuse components carrying auth checks this module did not produce.
 
     Anything on ``component.auth`` that is neither a ``required_scopes`` declaration
     nor a tag rule — FastMCP's own ``require_scopes``/``restrict_tag``, or a custom
@@ -367,26 +377,27 @@ async def report_foreign_auth_checks(mcp: Any) -> list[str]:
     they reach neither the middleware, nor ``scopes_supported``, nor the REST
     ``required_scopes`` field.
 
-    Returns the names of the affected components (empty when there are none).
+    Logs the offending components at ERROR and raises :class:`ForeignAuthCheckError`,
+    so a server carrying one does not start (:func:`wire_scopes` runs at startup).
     """
     affected: list[str] = []
     for component in await _all_components(mcp):
         checks = _as_check_list(getattr(component, "auth", None))
         if any(not hasattr(check, DECLARED_SCOPES_ATTR) for check in checks):
             affected.append(str(getattr(component, "name", component)))
-    if affected:
-        logger.warning(
-            "Component(s) %s carry auth checks not declared through required_scopes or "
-            "tag rules. FastMCP evaluates those at the tool level: with "
-            "MCP_ENABLE_OAUTH_CLAIM_VALIDATION off the component is hidden from every "
-            "caller (no token reaches FastMCP), and with it on the component is hidden "
-            "from callers short of the scope instead of refused with 403. Any scopes "
-            "they require are invisible to the scope-validation middleware, to "
-            "scopes_supported and to the REST required_scopes field. Declare "
-            "required_scopes=(...) on the tool instead.",
-            sorted(affected),
-        )
-    return affected
+    if not affected:
+        return
+    message = (
+        f"Component(s) {sorted(affected)} carry auth checks not declared through "
+        "required_scopes or tag rules. FastMCP evaluates those at the tool level: with "
+        "MCP_ENABLE_OAUTH_CLAIM_VALIDATION off the component is hidden from every caller "
+        "(no token reaches FastMCP), and with it on the component is hidden from callers "
+        "short of the scope instead of refused with 403. Any scopes they require are "
+        "invisible to the scope-validation middleware, to scopes_supported and to the "
+        "REST required_scopes field. Declare required_scopes=(...) on the tool instead."
+    )
+    logger.error(message)
+    raise ForeignAuthCheckError(message)
 
 
 async def declared_scopes_for_one_tool(mcp: Any, tool_name: str) -> frozenset[str] | None:
@@ -519,6 +530,10 @@ async def wire_scopes(mcp: Any, settings: ScopeSettings | None = None) -> None:
     declarations rather than stacking a second copy, and leaves checks declared
     in code alone. Called with no settings, the ones already installed are
     reused.
+
+    Raises :class:`ForeignAuthCheckError` when a component carries an auth check
+    this module did not produce (see :func:`report_foreign_auth_checks`), so such a
+    server fails at startup instead of serving a tool-level-gated component.
     """
     if settings is not None:
         configure_scopes(settings)

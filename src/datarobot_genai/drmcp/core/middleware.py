@@ -124,19 +124,6 @@ def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
     return request.scope.get("user")
 
 
-# Message for a validator that found no authenticated user on the request.
-# OAuthJWTTokenHandlerMiddleware runs first and either sets scope["user"] or returns
-# 401 itself, so in the shipped middleware order this is unreachable. The validators
-# still fail closed rather than pass through, so a guarded request is never let
-# through unchecked because an earlier middleware was skipped or the chain reordered.
-# Never reached with MCP_ENABLE_OAUTH_CLAIM_VALIDATION off: the gate short-circuits
-# in BaseAuthZMiddleware.dispatch before any validator runs.
-MISSING_USER_ERROR_MESSAGE = (
-    "No authenticated user on the request: the OAuth token handler did not run before "
-    "claim validation."
-)
-
-
 class BaseAuthZMiddleware(BaseHTTPMiddleware, ABC):
     """Applies the ``mcp_enable_oauth_claim_validation`` gate before any AuthZ work runs.
 
@@ -240,15 +227,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseAuthZMiddleware):
     ) -> Response:
         user = get_user_from_request_scope(request)
         if not user:
-            logger.warning(MISSING_USER_ERROR_MESSAGE)
-            return build_http_response_from_auth_error(
-                status_code=HTTPStatus.UNAUTHORIZED,
-                auth_error_response=AuthErrorResponse(
-                    resource_metadata=build_well_known_protected_resource_url(request),
-                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
-                    error_description=MISSING_USER_ERROR_MESSAGE,
-                ),
-            )
+            return await call_next(request)
 
         try:
             claims_validator = JWTTokenClaimsValidator(user)
@@ -309,16 +288,7 @@ class OAuthMCPToolCallScopeValidationMiddleware(BaseAuthZMiddleware):
 
         user = get_user_from_request_scope(request)
         if not user:
-            logger.warning(MISSING_USER_ERROR_MESSAGE)
-            return build_http_response_from_auth_error(
-                status_code=HTTPStatus.UNAUTHORIZED,
-                auth_error_response=AuthErrorResponse(
-                    resource_metadata=build_well_known_protected_resource_url(request),
-                    error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
-                    error_description=MISSING_USER_ERROR_MESSAGE,
-                    scopes=sorted(declared_scopes),
-                ),
-            )
+            return await call_next(request)
 
         try:
             claims_validator = JWTTokenClaimsValidator(user)

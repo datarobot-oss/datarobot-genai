@@ -270,7 +270,8 @@ class MCPToolKwargs(TypedDict, total=False):
     # token-handler middleware only while MCP_ENABLE_OAUTH_CLAIM_VALIDATION is on. Gate
     # off: the token is None and the tool disappears for everyone. Gate on: the tool
     # is hidden from callers short of the scope instead of refused with 403, and the
-    # scope never reaches scopes_supported or the REST required_scopes field. Declare
+    # scope never reaches scopes_supported or the REST required_scopes field. The
+    # server refuses to start when it finds one (report_foreign_auth_checks). Declare
     # scopes with ToolKwargs.required_scopes instead.
     auth: AuthCheck | list[AuthCheck] | None
 
