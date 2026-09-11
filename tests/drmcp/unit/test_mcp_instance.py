@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import NotFoundError
+from fastmcp.server.auth import AccessToken
+from fastmcp.server.auth import AuthContext
+from fastmcp.server.auth import require_scopes as fastmcp_require_scopes
 
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import PromptInitArguments
@@ -26,8 +31,11 @@ from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_prompt
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_resource
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
+from datarobot_genai.drmcp.core.mcp_instance import gate_auth_checks
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
+from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
 
 
 @pytest.fixture
@@ -402,3 +410,110 @@ class TestMCPResourceDecorator:
         # The handler must be registered unwrapped: a sync pass-through wrapper
         # would hide an async handler's coroutine-ness from FastMCP.
         assert registered_func is mock_mcp_resource_callable
+
+
+class TestGateAuthChecks:
+    """Every ``auth=`` check is wrapped: inert while the OAuth gate is off, itself when on."""
+
+    @pytest.fixture
+    def gate(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_config") as mock_get_config:
+            yield mock_get_config.return_value
+
+    @staticmethod
+    def _ctx(scopes: list[str] | None = None) -> AuthContext:
+        token = None if scopes is None else AccessToken(token="t", client_id="c", scopes=scopes)
+        return AuthContext(token=token, component=Mock())
+
+    @staticmethod
+    def _wrapped(auth: Any) -> Any:
+        (check,) = gate_auth_checks({"auth": auth}, tool_name="t")["auth"]
+        return check
+
+    async def test_a_fastmcp_native_check_admits_everyone_while_the_gate_is_off(
+        self, gate: Mock
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        check = self._wrapped(fastmcp_require_scopes("scope_1"))
+
+        # FastMCP's own check returns False for a None token; wrapped, it does not gate.
+        assert await check(self._ctx(None)) is True
+
+    async def test_a_fastmcp_native_check_runs_unchanged_while_the_gate_is_on(
+        self, gate: Mock
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = True
+        check = self._wrapped(fastmcp_require_scopes("scope_1"))
+
+        assert await check(self._ctx(None)) is False
+        assert await check(self._ctx(["scope_9"])) is False
+        assert await check(self._ctx(["scope_1", "scope_9"])) is True
+
+    async def test_the_flag_is_read_when_the_check_runs_not_at_registration(
+        self, gate: Mock
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        check = self._wrapped(fastmcp_require_scopes("scope_1"))
+        assert await check(self._ctx(None)) is True
+
+        gate.mcp_enable_oauth_claim_validation = True
+        assert await check(self._ctx(None)) is False
+
+    async def test_a_sync_custom_check_is_wrapped_too(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = True
+        assert await self._wrapped(lambda ctx: False)(self._ctx(None)) is False
+
+        gate.mcp_enable_oauth_claim_validation = False
+        assert await self._wrapped(lambda ctx: False)(self._ctx(None)) is True
+
+    def test_our_declaration_is_not_wrapped(self, gate: Mock) -> None:
+        # Ours decides enforcement from the verifier configuration, not the gate.
+        gate.mcp_enable_oauth_claim_validation = False
+        ours = require_scopes("mcp:tools:execute", "mcp:tools:read")
+
+        out = gate_auth_checks({"auth": ours}, tool_name="t")
+
+        assert out["auth"] is ours
+        assert getattr(ours, DECLARED_SCOPES_ATTR) == frozenset(
+            {"mcp:tools:execute", "mcp:tools:read"}
+        )
+
+    async def test_a_list_wraps_only_the_foreign_checks(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        ours = require_scopes("mcp:tools:execute")
+        out = gate_auth_checks({"auth": [fastmcp_require_scopes("scope_1"), ours]}, tool_name="t")
+
+        wrapped, kept = out["auth"]
+        assert kept is ours
+        assert await wrapped(self._ctx(None)) is True  # bypassed while the gate is off
+
+    def test_no_auth_is_left_alone(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        assert gate_auth_checks({"name": "t"}, tool_name="t") == {"name": "t"}
+
+    def test_a_foreign_check_is_called_out_once_when_the_gate_is_off(
+        self, gate: Mock, caplog: pytest.LogCaptureFixture, module_under_test: str
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        with caplog.at_level(logging.WARNING, logger=module_under_test):
+            gate_auth_checks({"auth": fastmcp_require_scopes("scope_1")}, tool_name="run_sql")
+            gate_auth_checks({"auth": require_scopes("mcp:tools:execute")}, tool_name="quiet")
+
+        warnings = [
+            r.message for r in caplog.records if "MCP_ENABLE_OAUTH_CLAIM_VALIDATION" in r.message
+        ]
+        assert len(warnings) == 1 and "run_sql" in warnings[0]
+
+    async def test_dr_mcp_tool_wraps_before_registering(
+        self, gate: Mock, module_under_test: str
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        with (
+            patch(f"{module_under_test}.dr_mcp_extras", return_value=lambda func: func),
+            patch(f"{module_under_test}.mcp.tool") as mock_tool,
+        ):
+            mock_tool.return_value = lambda func: func
+            dr_mcp_tool(auth=fastmcp_require_scopes("scope_1"))(lambda: "ok")
+
+        (check,) = mock_tool.call_args.kwargs["auth"]
+        assert await check(self._ctx(None)) is True

@@ -364,7 +364,7 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
 # ── category → display label ─────────────────────────────────────────────────
 
 # The human-readable name of every category, in UI display order. Single source of
-# truth for the ``label`` on each node of ``GET /toolGallery/categories/`` (see
+# truth for the ``label`` on each node of ``GET /static/categories/`` (see
 # ``drmcputils/category_tree.py``) and, through it, for the legal values of the
 # gallery's ``category`` filter param — the keys here are the same ``dr_*`` strings
 # emitted in each tool item's ``categories``.

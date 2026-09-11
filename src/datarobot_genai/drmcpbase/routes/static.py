@@ -19,6 +19,11 @@ Routes in the group:
   - ``GET /static/categories/`` — the category tree, with live per-node tool counts.
   - ``GET /static/providers/`` — the tool-provider filter enum (``value`` + ``label``).
 
+Each ``tools/`` item carries ``required_scopes`` — the OAuth scopes a ``tools/call``
+token must cover, combined across every declaration spelling and read with
+``drmcpbase.oauth_scopes.declared_scopes_of_component``, the same function the
+scope-validation middleware enforces with, so what is reported is what is enforced.
+
 global-mcp and user-mcp both call ``register_static_routes`` from this module.
 Tool Sets remain global-mcp-only at ``/toolGallery/toolSets/*``.
 """
@@ -32,6 +37,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from datarobot_genai.drmcpbase.oauth_scopes import declared_scopes_of_component
 from datarobot_genai.drmcpbase.routes.helpers import apply_list_filters
 from datarobot_genai.drmcpbase.routes.helpers import enum_items
 from datarobot_genai.drmcpbase.routes.helpers import parse_list_filters
@@ -95,7 +101,12 @@ def _make_tools_handler(
                 content={"error": f"Failed to retrieve tool gallery: {exc}"},
             )
         ui_metadata = ui_metadata_provider() if ui_metadata_provider is not None else {}
-        merged = [merge_tool_info(tool, ui_metadata) for tool in tools]
+        # ``required_scopes`` per item: every declaration spelling (require_scopes(...) on
+        # the tool's auth=, MCP_OAUTH_TAG_SCOPES_<TAG>),
+        # read with the same function the scope-validation middleware enforces with.
+        merged = [
+            merge_tool_info(tool, ui_metadata, declared_scopes_of_component) for tool in tools
+        ]
         items = build_tool_gallery_items(merged)
 
         name, providers, categories = parse_list_filters(request)

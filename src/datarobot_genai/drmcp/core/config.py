@@ -155,7 +155,7 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
     # `scopes_supported` is deliberately not configurable: it is always derived
     # from the scope requirements actually enforced, so the document can never
     # advertise something the server does not check. Declare requirements with
-    # require_scopes(...) or MCP_OAUTH_TAG_SCOPES_<TAG> instead.
+    # require_scopes(...) on the tool's auth= or MCP_OAUTH_TAG_SCOPES_<TAG> instead.
     mcp_oauth_scope_source: str | None = Field(
         default=None,
         description=(
@@ -168,25 +168,11 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
     # `MCP_OAUTH_TAG_SCOPES_<TAG>=scope,scope` — so they cannot be declared as
     # fixed fields here. See drmcp.core.oauth_scopes.read_tag_scopes.
     #
-    # There is no enforcement setting either. Whether a caller with no verifiable
-    # token loses a guarded component follows from the three fields below: a
-    # server that can verify tokens enforces, one that cannot cannot.
-    mcp_oauth_audience: str | None = Field(
-        default=None,
-        description=(
-            "Expected `aud` when verifying bearer tokens for scope checks. "
-            "Defaults to MCP_OAUTH_RESOURCE, then to this server's runtime-resolved "
-            "URL — the same value the published `resource` falls back to, so the "
-            "audience a discovering client mints for is the one checked"
-        ),
-    )
-    mcp_oauth_jwks_uri: str | None = Field(
-        default=None,
-        description=(
-            "JWKS URI used to verify bearer tokens for scope checks. "
-            "Defaults to `<issuer>/v1/keys`, which is Okta's layout"
-        ),
-    )
+    # There is no enforcement setting either: declared scopes are enforced per
+    # tools/call by the scope-validation middleware (see drmcp.core.middleware) and,
+    # against the same parsed token, by the checks on the components themselves,
+    # both gated by `mcp_enable_oauth_claim_validation` below (no token is parsed
+    # while it is off, and a tokenless request is admitted).
     mcp_xaa_trusted_issuer: str | None = Field(
         default=None,
         description="Cross-Application Access token exchange trusted issuer",

@@ -29,6 +29,8 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from datarobot_genai.drmcpbase.oauth_scopes import without_component_auth_checks
+
 logger = logging.getLogger(__name__)
 
 # Async predicate deciding whether a request may see a route (True) or gets 404.
@@ -56,10 +58,16 @@ async def resolve_catalog(mcp: Any, provider: CatalogProvider | None) -> Sequenc
     catalog with the session filter neutralized (``drmcpbase.fastmcp_transforms``
     supplies one). Without a provider this falls back to the plain call — correct for any
     server with no transform installed, and unchanged from the previous behaviour.
+
+    Either way FastMCP's per-component ``auth`` checks are skipped
+    (``without_component_auth_checks``): the scope checks run inside every
+    ``list_tools()`` against the current request's token, so the catalog would otherwise
+    shrink to what the REST caller may call — the opposite of describing the server.
     """
-    if provider is not None:
-        return await provider()
-    return await mcp.list_tools(run_middleware=False)
+    with without_component_auth_checks():
+        if provider is not None:
+            return await provider()
+        return await mcp.list_tools(run_middleware=False)
 
 
 def register_gated_get(

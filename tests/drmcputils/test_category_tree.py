@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The tree behind ``GET /toolGallery/categories/`` must agree with ``/toolGallery/tools/``."""
+"""The tree behind ``GET /static/categories/`` must agree with ``/static/tools/``."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -39,7 +39,7 @@ def _populated_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _filterable(tools: list[Any]) -> dict[str, set[str]]:
-    """Category value → tool names ``GET /toolGallery/tools/?category=<value>`` returns."""
+    """Category value → tool names ``GET /static/tools/?category=<value>`` returns."""
     mapping: dict[str, set[str]] = {}
     for item in build_tool_gallery_items([merge_tool_info(t, {}) for t in tools]):
         for category in item["categories"]:
