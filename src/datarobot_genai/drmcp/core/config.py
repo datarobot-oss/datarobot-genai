@@ -152,14 +152,6 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
         default=None,
         description="RFC 9728 `authorization_servers`, comma-separated",
     )
-    mcp_oauth_audience: str | None = Field(
-        default=None,
-        description=(
-            "Expected `aud` on inbound OAuth tokens when Cross-Application Access is not "
-            "configured (MCP_XAA_TOKEN_AUDIENCE wins when it is). Unset with no XAA "
-            "means the audience check is skipped"
-        ),
-    )
     # `scopes_supported` is deliberately not configurable: it is always derived
     # from the scope requirements actually enforced, so the document can never
     # advertise something the server does not check. Declare requirements with
