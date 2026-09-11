@@ -18,6 +18,7 @@ import json
 import logging
 from abc import ABC
 from abc import abstractmethod
+from collections.abc import Iterable
 from http import HTTPMethod
 from http import HTTPStatus
 from typing import Any
@@ -124,6 +125,34 @@ def get_user_from_request_scope(request: Request) -> AuthenticatedUser | None:
     return request.scope.get("user")
 
 
+def build_missing_user_response(
+    request: Request, scopes: Iterable[str] | None = None
+) -> JSONResponse:
+    """Return the 401 for a validator that found no authenticated user on the request.
+
+    ``OAuthJWTTokenHandlerMiddleware`` runs first and either sets ``scope["user"]`` or
+    returns 401 itself, so in the shipped middleware order this is unreachable. The
+    validators still fail closed here rather than pass through, so a guarded request
+    is never let through unchecked because an earlier middleware was skipped or the
+    chain was reordered. Not consulted with ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` off:
+    the gate short-circuits before any validator runs.
+    """
+    error_message = (
+        "No authenticated user on the request: the OAuth token handler did not run before "
+        "claim validation."
+    )
+    logger.warning(error_message)
+    return build_http_response_from_auth_error(
+        status_code=HTTPStatus.UNAUTHORIZED,
+        auth_error_response=AuthErrorResponse(
+            resource_metadata=build_well_known_protected_resource_url(request),
+            error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
+            error_description=error_message,
+            scopes=sorted(scopes) if scopes else None,
+        ),
+    )
+
+
 class BaseAuthZMiddleware(BaseHTTPMiddleware, ABC):
     """Applies the ``mcp_enable_oauth_claim_validation`` gate before any AuthZ work runs.
 
@@ -227,7 +256,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseAuthZMiddleware):
     ) -> Response:
         user = get_user_from_request_scope(request)
         if not user:
-            return await call_next(request)
+            return build_missing_user_response(request)
 
         try:
             claims_validator = JWTTokenClaimsValidator(user)
@@ -288,7 +317,7 @@ class OAuthMCPToolCallScopeValidationMiddleware(BaseAuthZMiddleware):
 
         user = get_user_from_request_scope(request)
         if not user:
-            return await call_next(request)
+            return build_missing_user_response(request, declared_scopes)
 
         try:
             claims_validator = JWTTokenClaimsValidator(user)

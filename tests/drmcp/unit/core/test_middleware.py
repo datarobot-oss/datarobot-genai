@@ -327,20 +327,24 @@ class TestGeneralOAuthClaimValidationMiddleware:
         mock_jwt_token_claims_validator_cls.assert_not_called()
         mock_call_next.assert_called_once_with(request)
 
-    async def test_skip_claim_validation_if_no_user_to_validate_in_inbound_request(
+    @pytest.mark.usefixtures("mock_build_well_known_protected_resource_url")
+    async def test_no_user_on_the_request_is_rejected_not_passed_through(
         self,
         mock_get_user_from_request_scope: Mock,
         mock_jwt_token_claims_validator_cls: Mock,
     ) -> None:
+        """Fail closed: unreachable behind the token handler, but never dependent on it."""
         mock_get_user_from_request_scope.return_value = None
 
         request = Mock()
         mock_call_next = AsyncMock()
         middleware = GeneralOAuthClaimValidationMiddleware(app=Mock())
-        await middleware.dispatch(request, mock_call_next)
+        response = await middleware.dispatch(request, mock_call_next)
 
+        mock_call_next.assert_not_called()
         mock_jwt_token_claims_validator_cls.assert_not_called()
-        mock_call_next.assert_called_once_with(request)
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert 'error="invalid_token"' in response.headers["WWW-Authenticate"]
 
     async def test_run_claim_validation_succeeds(
         self,
@@ -624,19 +628,27 @@ class TestOAuthMCPToolCallScopeValidationMiddleware:
         "mock_get_mcp_tool_name_in_request",
         "mock_declared_scopes_for_one_tool",
     )
-    async def test_skip_validation_if_no_user_found_in_request_scope(
+    async def test_no_user_on_a_scoped_tool_call_is_rejected_with_401(
         self,
         mock_get_user_from_request_scope: Mock,
+        mock_build_well_known_protected_resource_url: Mock,
     ) -> None:
+        """A scoped tools/call is never let through unchecked because no user was set."""
         mock_get_user_from_request_scope.return_value = None
+        mock_build_well_known_protected_resource_url.return_value = "https://mcp/.well-known"
 
         request = Mock()
         mock_call_next = AsyncMock()
         middleware = OAuthMCPToolCallScopeValidationMiddleware(app=Mock())
 
-        await middleware.dispatch(request, mock_call_next)
+        response = await middleware.dispatch(request, mock_call_next)
 
-        mock_call_next.assert_called_once_with(request)
+        mock_call_next.assert_not_called()
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        challenge = response.headers["WWW-Authenticate"]
+        assert 'error="invalid_token"' in challenge
+        # The declared scopes ride along so the client knows what to request.
+        assert 'scope="mcp:tools:write"' in challenge
 
     @pytest.mark.usefixtures(
         "mock_get_mcp_tool_name_in_request",
