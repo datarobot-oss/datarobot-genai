@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.42
+- `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
+- `dragent`: provision the registry L2 MemorySpace from async lifespan warmup and `get_default_registry` instead of swallowing `_run_async`'s running-loop error as a failed create (which left enclave workloads on L1-only caching and leaked an unawaited provision coroutine).
+- Raise the `datarobot` floor from `>=3.18.0` to `>=3.19.0` and add `datarobot[application-utils]` to the `dragent` extra.
+- `core/config`: dropped the local pre-rename LLM parameter shim now that `datarobot>=3.19` ships it in `datarobot.core`.
+
 ## 0.29.41
 - `drmcpbase/oauth_scopes`: removed the tool-level *authentication* added in 0.27.3 — the `JWTVerifier`-based bearer-token reading and verification (`request_scopes` reading headers, `require_verified_token`, `apply_token_floor`, `probe_verification_keys`, the per-request memoisation), `ScopeSettings`' `issuer`/`audience`/`jwks_uri`/`enforced`, the `MCP_OAUTH_JWKS_URI` and `MCP_OAUTH_AUDIENCE` settings (nothing reads them anymore) and the partial-verifier / multi-issuer startup warnings; `drmcp/core/oauth_scopes.build_scope_settings` no longer reads any of those settings. Authentication is the DataRobot gateway's job. The tool-level *scope check* stays: `require_scopes(...)` (still `@dr_mcp_tool(auth=require_scopes(...))`, exported from `datarobot_genai.drmcp`) and the `MCP_OAUTH_TAG_SCOPES_<TAG>` rules enforce the subset test (`satisfies`) against the scopes on the request's token — the token the gateway authenticated and `OAuthJWTTokenHandlerMiddleware` parsed into `request.scope["user"]`, which FastMCP hands to the check as `ctx.token` — so an under-scoped token does not see the tool in `tools/list`, and the scope-validation middleware refuses its `tools/call` with 403 `insufficient_scope` first. A request with no token is admitted, so enforcement follows `MCP_ENABLE_OAUTH_CLAIM_VALIDATION` alone (no token is parsed while it is off); setting `MCP_OAUTH_AUTHORIZATION_SERVERS` no longer activates anything by itself.
   - `declared_scopes_for_one_tool` — what the middleware checks a token against — now honours `MCP_OAUTH_SCOPE_SOURCE`, so a declaration the source silences (whose check already admits everyone) is not enforced by the middleware either. It delegates to the new `declared_scopes_of_component`, one reader for every consumer of "what does this component require".
@@ -33,12 +39,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcpbase/routes`: renamed `register_tool_gallery_routes` to `register_static_routes`; discovery routes moved from `GET /toolGallery/*` to `GET /static/*`. Shared query helpers (`parse_pagination`, `parse_list_filters`, `apply_list_filters`) are now public in `drmcpbase/routes/helpers.py`. user-mcp mounts at `{prefix}/static/*`.
 
 - `drmcpbase/routes`: moved shared tool gallery HTTP routes (`register_tool_gallery_routes`, `GET /toolGallery/*`) and route gating helpers from `drmcputils/routes`. Import from `datarobot_genai.drmcpbase.routes` instead of `datarobot_genai.drmcputils.routes`.
-
-## 0.29.37
-- `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
-- `dragent`: provision the registry L2 MemorySpace from async lifespan warmup and `get_default_registry` instead of swallowing `_run_async`'s running-loop error as a failed create (which left enclave workloads on L1-only caching and leaked an unawaited provision coroutine).
-- Raise the `datarobot` floor from `>=3.18.0` to `>=3.19.0` and add `datarobot[application-utils]` to the `dragent` extra.
-- `core/config`: dropped the local pre-rename LLM parameter shim now that `datarobot>=3.19` ships it in `datarobot.core`.
 
 ## 0.29.36
 - `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
