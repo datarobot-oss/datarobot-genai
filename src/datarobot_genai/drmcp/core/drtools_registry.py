@@ -67,12 +67,6 @@ def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
         )
         return
 
-    # A drtools tool declares its OAuth scopes as plain metadata —
-    # @tool_metadata(required_scopes=(...)) — the same key dr_mcp_tool accepts and
-    # converts into a declaration check. Popped before the private-key strip below
-    # (which would otherwise discard it) and handed back to dr_mcp_tool after it.
-    required_scopes = metadata.pop("required_scopes", None)
-
     # Strip private @tool_metadata keys that must not reach the MCP client
     # (UI/gallery metadata and server-side registration hints).
     for key in DRTOOLS_PRIVATE_METADATA_KEYS:
@@ -82,11 +76,6 @@ def register_drtools_function(func: Callable, metadata: dict[str, Any]) -> None:
     # declaration order); FastMCP wants a set.
     if metadata.get("tags") is not None:
         metadata["tags"] = set(metadata["tags"])
-
-    if required_scopes:
-        if isinstance(required_scopes, str):  # a lone scope written without the tuple comma
-            required_scopes = (required_scopes,)
-        metadata["required_scopes"] = tuple(required_scopes)
 
     # Apply the dr_mcp_tool decorator with the metadata
     dr_mcp_tool(tool_category=DataRobotMCPToolCategory.BUILT_IN_TOOL, **metadata)(func)

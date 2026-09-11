@@ -32,19 +32,12 @@ class TestDrtoolsPrivateMetadataKeys:
                 "description_ui",
                 "auth_provider",
                 "categories",
-                "required_scopes",
             }
         )
 
     def test_gallery_display_fields_in_set(self) -> None:
         for key in ("display_name", "description_ui", "auth_provider", "categories"):
             assert key in DRTOOLS_PRIVATE_METADATA_KEYS, f"{key!r} missing from private keys"
-
-    def test_required_scopes_is_stripped_before_registration(self) -> None:
-        # drtools declares OAuth scopes as plain metadata (it may not import
-        # drmcpbase/fastmcp); a registrar that does not convert the key must at
-        # least strip it so mcp.tool() never sees an unknown kwarg.
-        assert "required_scopes" in DRTOOLS_PRIVATE_METADATA_KEYS
 
 
 class TestToolProvidersFilterEnum:

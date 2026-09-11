@@ -25,22 +25,15 @@ from typing import Any
 from datarobot_genai.drmcputils.categories import categories_for_tool
 from datarobot_genai.drmcputils.categories import category_entry
 
-# Keys present in @tool_metadata(...) that carry UI/gallery metadata or server-side
-# registration hints. These must be stripped before the metadata dict is forwarded to
-# FastMCP's mcp.tool() call so agents / LLMs never see them in tools/list or tools/call
-# responses (and mcp.tool() never chokes on a kwarg it does not know).
-#
-# ``required_scopes`` is the registration-hint kind: drtools may not import drmcpbase
-# or fastmcp (scripts/check_imports.py), so a tool declares its OAuth scopes as plain
-# metadata and the drmcp registrar hands the key to ``dr_mcp_tool``, which converts it
-# into a declaration check, before this strip. A registrar unaware of the key strips it.
+# Keys present in @tool_metadata(...) that carry UI/gallery metadata. These must be stripped
+# before the metadata dict is forwarded to FastMCP's mcp.tool() call so agents / LLMs never see
+# them in tools/list or tools/call responses.
 DRTOOLS_PRIVATE_METADATA_KEYS: frozenset[str] = frozenset(
     {
         "display_name",
         "description_ui",
         "auth_provider",
         "categories",
-        "required_scopes",
     }
 )
 
@@ -139,7 +132,7 @@ def is_hosted(tool: Any) -> bool:
 
 
 # Supplies the OAuth scopes a FastMCP tool requires, whichever way they were
-# declared (required_scopes on @dr_mcp_tool / @tool_metadata, tag-keyed
+# declared (``require_scopes(...)`` on the tool's ``auth=``, tag-keyed
 # configuration). Injected by the caller — drmcpbase's
 # ``declared_scopes_of_component`` — because this module may not import drmcpbase.
 # When unset, ``required_scopes`` reports empty.

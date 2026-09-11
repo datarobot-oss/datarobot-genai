@@ -25,12 +25,10 @@ requires ``mcp:tools:write``". Something has to bind component to scopes, and
 there are two places to write that binding:
 
 in code
-    ``required_scopes=("mcp:tools:write",)`` on the tool's own decorator —
-    ``@dr_mcp_tool(...)`` for a user tool, ``@tool_metadata(...)`` for a drtools
-    tool (which may not import this module; see scripts/check_imports.py). Plain
-    data, converted at registration into the declaration check
-    :func:`required_scopes_check` produces. The requirement travels with the
-    component it guards and survives a tag rename.
+    ``@dr_mcp_tool(auth=require_scopes("mcp:tools:write"))`` — :func:`require_scopes`
+    from this module (re-exported by ``datarobot_genai.drmcp``), on the tool's own
+    decorator. The requirement travels with the component it guards and survives
+    a tag rename.
 
 in configuration
     a scope requirement keyed on a tag the component already declares, so one
@@ -115,7 +113,7 @@ class ScopeSource(StrEnum):
 
     @property
     def reads_code(self) -> bool:
-        """Whether ``required_scopes`` declared on components in code are read."""
+        """Whether ``require_scopes(...)`` declared on components in code are read."""
         return self in {ScopeSource.CODE, ScopeSource.BOTH}
 
     @property
@@ -124,7 +122,7 @@ class ScopeSource(StrEnum):
         return self in {ScopeSource.TAGS, ScopeSource.BOTH}
 
 
-#: Attribute :func:`required_scopes_check` records its scope names on, so they can
+#: Attribute :func:`require_scopes` records its scope names on, so they can
 #: be read back and published. FastMCP's own ``require_scopes`` keeps them in a
 #: closure where nothing can reach them.
 DECLARED_SCOPES_ATTR = "dr_declared_scopes"
@@ -132,15 +130,6 @@ DECLARED_SCOPES_ATTR = "dr_declared_scopes"
 #: Marks a check that :func:`apply_tag_scopes` attached, so re-wiring can strip
 #: its own previous work instead of stacking a second copy of every rule.
 TAG_APPLIED_ATTR = "dr_tag_scope_check"
-
-
-class ForeignAuthCheckError(RuntimeError):
-    """A component carries an auth check not produced by ``required_scopes`` or a tag rule.
-
-    Raised by :func:`report_foreign_auth_checks` (and so by :func:`wire_scopes` at
-    startup) so the server refuses to start rather than serve a component that
-    FastMCP gates at the tool level and whose scopes nothing can read back.
-    """
 
 
 def normalize_tag(tag: str) -> str:
@@ -174,7 +163,7 @@ class ScopeSettings:
 
     @property
     def code_active(self) -> bool:
-        """Whether ``required_scopes`` declared on components in code are read."""
+        """Whether ``require_scopes(...)`` declared on components in code are read."""
         return self.source.reads_code
 
     @property
@@ -218,7 +207,7 @@ def reset_scope_state() -> None:
 
 
 def _declared_scopes_of(check: Any) -> frozenset[str]:
-    """Return scopes recorded on an auth check by :func:`required_scopes_check`, or empty."""
+    """Return scopes recorded on an auth check by :func:`require_scopes`, or empty."""
     found = getattr(check, DECLARED_SCOPES_ATTR, None)
     return found if isinstance(found, frozenset) else frozenset()
 
@@ -230,14 +219,12 @@ def _as_check_list(auth: Any) -> list[Any]:
     return [auth] if callable(auth) else list(auth)
 
 
-def required_scopes_check(*scopes: str) -> AuthCheck:
-    """Build the declaration check a ``required_scopes=(...)`` declaration becomes.
+def require_scopes(*scopes: str) -> AuthCheck:
+    """Declare the OAuth scopes a ``tools/call`` token must carry for a component.
 
-    Not a user-facing API: tools declare scopes as plain data —
-    ``@dr_mcp_tool(required_scopes=(...))`` or ``@tool_metadata(required_scopes=(...))``
-    — and the registering decorator calls this to attach the declaration. A
-    declaration, not a gate: the returned check admits every caller. It records
-    the scope names on the component so that
+    Use on the tool's own decorator — ``@dr_mcp_tool(auth=require_scopes("a", "b"))``;
+    every listed scope is required. A declaration, not a gate: the returned check
+    admits every caller. It records the scope names on the component so that
 
     * the scope-validation middleware can read them back per tool
       (:func:`declared_scopes_for_one_tool`) and reject a ``tools/call`` whose
@@ -253,9 +240,8 @@ def required_scopes_check(*scopes: str) -> AuthCheck:
     while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` is on — so with the gate off (the
     default) it is ``None`` and the tool is hidden from every caller; with the
     gate on the tool silently vanishes from ``tools/list`` for a token short of the
-    scope instead of answering 403 ``insufficient_scope``.
-    :func:`report_foreign_auth_checks` refuses to start the server when one is
-    attached anyway.
+    scope instead of answering 403 ``insufficient_scope``. ``dr_mcp_tool``
+    therefore bypasses FastMCP's own checks while the gate is off.
     """
     required = frozenset(scopes)
 
@@ -269,7 +255,7 @@ def required_scopes_check(*scopes: str) -> AuthCheck:
 def restrict_tag_scopes(tag: str, scopes: list[str]) -> AuthCheck:
     """Declare ``scopes`` on a component carrying ``tag``.
 
-    The same declaration-only contract as :func:`required_scopes_check` — the check
+    The same declaration-only contract as :func:`require_scopes` — the check
     admits every caller. :func:`apply_tag_scopes` attaches it only to the
     components that actually carry the tag, so no membership test is needed at
     read time. The marker attribute records which tag produced the check (any
@@ -335,9 +321,8 @@ async def collect_code_declared_scopes(mcp: Any) -> set[str]:
 def declared_scopes_of_component(component: Any) -> frozenset[str]:
     """Return the scopes *component* declares, whichever way they were declared.
 
-    The union across both declaration spellings — ``required_scopes`` declared on
-    the component in code (``@dr_mcp_tool`` or drtools ``@tool_metadata``, both
-    converted to the same check at registration) and tag-keyed configuration.
+    The union across both declaration spellings — ``require_scopes(...)`` declared
+    on the component in code and tag-keyed configuration.
     Honours the scope source, so a declaration the source silences is not
     reported either: in-code
     declarations contribute nothing under ``source=tags``. (Tag rules under
@@ -359,45 +344,6 @@ def declared_scopes_of_component(component: Any) -> frozenset[str]:
             continue
         required.update(_declared_scopes_of(check))
     return frozenset(required)
-
-
-async def report_foreign_auth_checks(mcp: Any) -> None:
-    """Refuse components carrying auth checks this module did not produce.
-
-    Anything on ``component.auth`` that is neither a ``required_scopes`` declaration
-    nor a tag rule — FastMCP's own ``require_scopes``/``restrict_tag``, or a custom
-    check — is evaluated by FastMCP *at the tool level* against ``ctx.token``, which
-    FastMCP reads from ``request.scope["user"]``: the ``AuthenticatedUser`` our
-    token-handler middleware sets, and only while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION``
-    is on. With the gate off (the default) the token is ``None``, such a check fails
-    for every caller and the component silently vanishes from ``tools/list``. With the
-    gate on the check works, but as a tool-level gate: the component is hidden from a
-    caller short of the scope rather than refused with 403 ``insufficient_scope``.
-    Either way the scopes it requires are held where this module cannot read them, so
-    they reach neither the middleware, nor ``scopes_supported``, nor the REST
-    ``required_scopes`` field.
-
-    Logs the offending components at ERROR and raises :class:`ForeignAuthCheckError`,
-    so a server carrying one does not start (:func:`wire_scopes` runs at startup).
-    """
-    affected: list[str] = []
-    for component in await _all_components(mcp):
-        checks = _as_check_list(getattr(component, "auth", None))
-        if any(not hasattr(check, DECLARED_SCOPES_ATTR) for check in checks):
-            affected.append(str(getattr(component, "name", component)))
-    if not affected:
-        return
-    message = (
-        f"Component(s) {sorted(affected)} carry auth checks not declared through "
-        "required_scopes or tag rules. FastMCP evaluates those at the tool level: with "
-        "MCP_ENABLE_OAUTH_CLAIM_VALIDATION off the component is hidden from every caller "
-        "(no token reaches FastMCP), and with it on the component is hidden from callers "
-        "short of the scope instead of refused with 403. Any scopes they require are "
-        "invisible to the scope-validation middleware, to scopes_supported and to the "
-        "REST required_scopes field. Declare required_scopes=(...) on the tool instead."
-    )
-    logger.error(message)
-    raise ForeignAuthCheckError(message)
 
 
 async def declared_scopes_for_one_tool(mcp: Any, tool_name: str) -> frozenset[str] | None:
@@ -530,14 +476,9 @@ async def wire_scopes(mcp: Any, settings: ScopeSettings | None = None) -> None:
     declarations rather than stacking a second copy, and leaves checks declared
     in code alone. Called with no settings, the ones already installed are
     reused.
-
-    Raises :class:`ForeignAuthCheckError` when a component carries an auth check
-    this module did not produce (see :func:`report_foreign_auth_checks`), so such a
-    server fails at startup instead of serving a tool-level-gated component.
     """
     if settings is not None:
         configure_scopes(settings)
     await apply_tag_scopes(mcp)
     await collect_code_declared_scopes(mcp)
-    await report_foreign_auth_checks(mcp)
     report_enforcement_state()

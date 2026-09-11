@@ -101,8 +101,8 @@ def _make_tools_handler(
                 content={"error": f"Failed to retrieve tool gallery: {exc}"},
             )
         ui_metadata = ui_metadata_provider() if ui_metadata_provider is not None else {}
-        # ``required_scopes`` per item: every declaration spelling (required_scopes on
-        # @dr_mcp_tool / @tool_metadata, MCP_OAUTH_TAG_SCOPES_<TAG>),
+        # ``required_scopes`` per item: every declaration spelling (require_scopes(...) on
+        # the tool's auth=, MCP_OAUTH_TAG_SCOPES_<TAG>),
         # read with the same function the scope-validation middleware enforces with.
         merged = [
             merge_tool_info(tool, ui_metadata, declared_scopes_of_component) for tool in tools

@@ -473,12 +473,12 @@ class TestRequiredScopes:
         import asyncio
 
         from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
-        from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
+        from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
         from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
 
         mcp = FastMCP("static-scopes")
 
-        @mcp.tool(tags={"database"}, auth=required_scopes_check("mcp:tools:execute"))
+        @mcp.tool(tags={"database"}, auth=require_scopes("mcp:tools:execute"))
         def run_sql() -> str:
             """Declare in code and carry a mapped tag."""
             return "ok"

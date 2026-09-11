@@ -163,13 +163,13 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
     # `scopes_supported` is deliberately not configurable: it is always derived
     # from the scope requirements actually enforced, so the document can never
     # advertise something the server does not check. Declare requirements with
-    # required_scopes=(...) on the tool or MCP_OAUTH_TAG_SCOPES_<TAG> instead.
+    # require_scopes(...) on the tool's auth= or MCP_OAUTH_TAG_SCOPES_<TAG> instead.
     mcp_oauth_scope_source: str | None = Field(
         default=None,
         description=(
             "Which scope declaration mechanism is live: `both` (the default — each "
-            "applies wherever it is declared), `code` (only the required_scopes declared "
-            "on tools), or `tags` (only the MCP_OAUTH_TAG_SCOPES_<TAG> variables)"
+            "applies wherever it is declared), `code` (only the in-code require_scopes "
+            "declarations), or `tags` (only the MCP_OAUTH_TAG_SCOPES_<TAG> variables)"
         ),
     )
     # Per-tag scope requirements are one variable per tag —

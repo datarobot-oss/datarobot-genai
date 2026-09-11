@@ -12,22 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
 from fastmcp.exceptions import NotFoundError
+from fastmcp.server.auth import require_scopes as fastmcp_require_scopes
 
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
 from datarobot_genai.drmcp.core.mcp_instance import PromptInitArguments
 from datarobot_genai.drmcp.core.mcp_instance import ResourceInitArguments
+from datarobot_genai.drmcp.core.mcp_instance import bypass_fastmcp_auth_checks_when_gate_off
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_integration_tool
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_prompt
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_resource
 from datarobot_genai.drmcp.core.mcp_instance import dr_mcp_tool
 from datarobot_genai.drmcp.core.mcp_instance import update_mcp_tool_init_args_with_tool_category
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
+from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
 
 
 @pytest.fixture
@@ -247,67 +252,6 @@ class TestMCPToolDecorator:
             **mock_update_mcp_tool_init_args_with_tool_category.return_value,
         )
 
-    # ── required_scopes: the one in-code declaration spelling ─────────────────
-
-    @pytest.mark.usefixtures("mock_dr_mcp_extras")
-    def test_required_scopes_becomes_an_auth_declaration(
-        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
-    ) -> None:
-        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
-
-        dr_mcp_tool(tags={"database"}, required_scopes=("mcp:tools:execute", "mcp:tools:db"))(
-            mock_mcp_tool_callable
-        )
-
-        kwargs = mock_datarobot_mcp_server_tool.call_args.kwargs
-        # The plain-data key never reaches mcp.tool(); the declaration check does.
-        assert "required_scopes" not in kwargs
-        assert getattr(kwargs["auth"], DECLARED_SCOPES_ATTR) == frozenset(
-            {"mcp:tools:execute", "mcp:tools:db"}
-        )
-
-    @pytest.mark.usefixtures("mock_dr_mcp_extras")
-    async def test_the_declaration_admits_every_caller(
-        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
-    ) -> None:
-        # Enforcement is the scope-validation middleware's job; the check must not
-        # hide the tool at the tool level.
-        dr_mcp_tool(required_scopes=("mcp:tools:execute",))(mock_mcp_tool_callable)
-
-        assert await mock_datarobot_mcp_server_tool.call_args.kwargs["auth"](None) is True
-
-    @pytest.mark.usefixtures("mock_dr_mcp_extras")
-    def test_required_scopes_stacks_with_an_existing_auth_check(
-        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
-    ) -> None:
-        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
-
-        existing = Mock()
-        dr_mcp_tool(auth=existing, required_scopes=("mcp:tools:execute",))(mock_mcp_tool_callable)
-
-        checks = mock_datarobot_mcp_server_tool.call_args.kwargs["auth"]
-        assert isinstance(checks, list) and checks[0] is existing
-        assert getattr(checks[1], DECLARED_SCOPES_ATTR) == frozenset({"mcp:tools:execute"})
-
-    @pytest.mark.usefixtures("mock_dr_mcp_extras")
-    def test_a_lone_scope_written_as_a_string_is_one_scope(
-        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
-    ) -> None:
-        from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
-
-        dr_mcp_tool(required_scopes="mcp:tools:execute")(mock_mcp_tool_callable)  # type: ignore[typeddict-item]
-
-        auth = mock_datarobot_mcp_server_tool.call_args.kwargs["auth"]
-        assert getattr(auth, DECLARED_SCOPES_ATTR) == frozenset({"mcp:tools:execute"})
-
-    @pytest.mark.usefixtures("mock_dr_mcp_extras")
-    def test_empty_required_scopes_attaches_nothing(
-        self, mock_mcp_tool_callable: Mock, mock_datarobot_mcp_server_tool: Mock
-    ) -> None:
-        dr_mcp_tool(required_scopes=())(mock_mcp_tool_callable)
-
-        assert "auth" not in mock_datarobot_mcp_server_tool.call_args.kwargs
-
     def test_dr_mcp_integration_tool(
         self,
         mock_mcp_tool_callable: Mock,
@@ -463,3 +407,69 @@ class TestMCPResourceDecorator:
         # The handler must be registered unwrapped: a sync pass-through wrapper
         # would hide an async handler's coroutine-ness from FastMCP.
         assert registered_func is mock_mcp_resource_callable
+
+
+class TestBypassFastMCPAuthChecksWhenGateOff:
+    """FastMCP-native ``auth=`` checks are bypassed while the OAuth gate is off; ours never are."""
+
+    @pytest.fixture
+    def gate(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.get_config") as mock_get_config:
+            yield mock_get_config.return_value
+
+    def test_a_fastmcp_native_check_is_dropped_when_the_gate_is_off(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        args: dict[str, Any] = {"auth": fastmcp_require_scopes("scope_1")}
+
+        out = bypass_fastmcp_auth_checks_when_gate_off(args, tool_name="t")
+
+        assert "auth" not in out
+
+    def test_our_declaration_survives_when_the_gate_is_off(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        ours = require_scopes("mcp:tools:execute")
+        args: dict[str, Any] = {"auth": [fastmcp_require_scopes("scope_1"), ours]}
+
+        out = bypass_fastmcp_auth_checks_when_gate_off(args, tool_name="t")
+
+        assert out["auth"] == [ours]
+
+    def test_everything_is_forwarded_when_the_gate_is_on(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = True
+        native = fastmcp_require_scopes("scope_1")
+        args: dict[str, Any] = {"auth": native}
+
+        assert bypass_fastmcp_auth_checks_when_gate_off(args, tool_name="t")["auth"] is native
+
+    def test_no_auth_is_left_alone(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        args: dict[str, Any] = {"name": "t"}
+
+        assert bypass_fastmcp_auth_checks_when_gate_off(args, tool_name="t") == {"name": "t"}
+
+    def test_the_bypass_is_logged_with_the_tool_name(
+        self, gate: Mock, caplog: pytest.LogCaptureFixture, module_under_test: str
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        with caplog.at_level(logging.WARNING, logger=module_under_test):
+            bypass_fastmcp_auth_checks_when_gate_off(
+                {"auth": fastmcp_require_scopes("scope_1")}, tool_name="run_sql"
+            )
+
+        assert any(
+            "run_sql" in r.message and "MCP_ENABLE_OAUTH_CLAIM_VALIDATION" in r.message
+            for r in caplog.records
+        )
+
+    def test_dr_mcp_tool_applies_it_before_registering(
+        self, gate: Mock, module_under_test: str
+    ) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
+        with (
+            patch(f"{module_under_test}.dr_mcp_extras", return_value=lambda func: func),
+            patch(f"{module_under_test}.mcp.tool") as mock_tool,
+        ):
+            mock_tool.return_value = lambda func: func
+            dr_mcp_tool(auth=fastmcp_require_scopes("scope_1"))(lambda: "ok")
+
+        assert "auth" not in mock_tool.call_args.kwargs

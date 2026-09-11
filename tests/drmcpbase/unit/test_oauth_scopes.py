@@ -29,7 +29,6 @@ from fastmcp.server.auth import AuthContext
 
 from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
 from datarobot_genai.drmcpbase.oauth_scopes import TAG_APPLIED_ATTR
-from datarobot_genai.drmcpbase.oauth_scopes import ForeignAuthCheckError
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
 from datarobot_genai.drmcpbase.oauth_scopes import collect_code_declared_scopes
@@ -38,8 +37,7 @@ from datarobot_genai.drmcpbase.oauth_scopes import declared_scopes_for_one_tool
 from datarobot_genai.drmcpbase.oauth_scopes import declared_scopes_of_component
 from datarobot_genai.drmcpbase.oauth_scopes import derived_scopes
 from datarobot_genai.drmcpbase.oauth_scopes import normalize_tag
-from datarobot_genai.drmcpbase.oauth_scopes import report_foreign_auth_checks
-from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
+from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
 from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
 from datarobot_genai.drmcpbase.oauth_scopes import restrict_tag_scopes
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
@@ -64,8 +62,8 @@ def mcp() -> FastMCP:
     """GIVEN a server with a code-declared tool, a tag-only tool, and an open one."""
     server: FastMCP = FastMCP(name="test")
 
-    # What ``@dr_mcp_tool(required_scopes=(EXECUTE,))`` attaches after conversion.
-    @server.tool(tags={"database"}, auth=required_scopes_check(EXECUTE))
+    # What ``@dr_mcp_tool(auth=require_scopes(EXECUTE))`` attaches.
+    @server.tool(tags={"database"}, auth=require_scopes(EXECUTE))
     def run_sql() -> str:
         """Declare a scope in code, and carry a mappable tag as well."""
         return "ok"
@@ -147,7 +145,7 @@ class TestScopeSettings:
 class TestDeclarationOnlyChecks:
     """The attached checks record scopes but never gate a caller."""
 
-    async def test_required_scopes_check_admits_every_caller(self, mcp: FastMCP) -> None:
+    async def test_require_scopes_admits_every_caller(self, mcp: FastMCP) -> None:
         # GIVEN a caller presenting nothing at all (no auth provider, no token)
         ctx = await _context(mcp, "run_sql")
         # WHEN the code-declared check runs
@@ -155,8 +153,8 @@ class TestDeclarationOnlyChecks:
         # THEN it admits the caller — enforcement is the middleware's job
         assert await check(ctx) is True
 
-    def test_required_scopes_check_records_the_declared_names(self) -> None:
-        check = required_scopes_check(EXECUTE, DB_WRITE)
+    def test_require_scopes_records_the_declared_names(self) -> None:
+        check = require_scopes(EXECUTE, DB_WRITE)
         assert getattr(check, DECLARED_SCOPES_ATTR) == frozenset({EXECUTE, DB_WRITE})
 
     async def test_restrict_tag_scopes_admits_every_caller(self, mcp: FastMCP) -> None:
@@ -175,57 +173,6 @@ class TestDeclarationOnlyChecks:
         await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
         # THEN nothing is hidden at the tool level — there is no tool-level gate
         assert await _visible(mcp) == {"run_sql", "list_tables", "harmless"}
-
-
-class TestForeignAuthChecks:
-    """FastMCP-native (or custom) auth checks are refused: they gate at the tool level."""
-
-    def _server_with_a_native_check(self) -> FastMCP:
-        from fastmcp.server.auth import require_scopes as fastmcp_require_scopes
-
-        server: FastMCP = FastMCP(name="foreign")
-
-        @server.tool(auth=fastmcp_require_scopes(EXECUTE))
-        def gated() -> str:
-            """Guarded by FastMCP's own check — a tool-level gate on ctx.token."""
-            return "ok"
-
-        @server.tool(auth=required_scopes_check(EXECUTE))
-        def declared() -> str:
-            """Declare scopes our way — reported to the middleware, never hidden."""
-            return "ok"
-
-        return server
-
-    async def test_a_fastmcp_native_check_is_logged_and_refused(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        server = self._server_with_a_native_check()
-
-        with (
-            caplog.at_level(logging.ERROR, logger=SCOPES_LOGGER),
-            pytest.raises(ForeignAuthCheckError) as raised,
-        ):
-            await report_foreign_auth_checks(server)
-
-        # Names the offending component only, in the log and in the error.
-        assert "gated" in str(raised.value) and "'declared'" not in str(raised.value)
-        assert any(
-            r.levelno == logging.ERROR and "gated" in r.message and "hidden" in r.message
-            for r in caplog.records
-        )
-        # And the behaviour the message describes for the gate-off (default) shape:
-        # no token-handler middleware ran, so FastMCP's ctx.token is None, its check
-        # fails, and the tool is gone from tools/list for everyone.
-        assert await _visible(server) == {"declared"}
-
-    async def test_wire_scopes_refuses_to_start_such_a_server(self) -> None:
-        with pytest.raises(ForeignAuthCheckError):
-            await wire_scopes(self._server_with_a_native_check(), ScopeSettings())
-
-    async def test_our_declarations_are_accepted(self, mcp: FastMCP) -> None:
-        await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
-        await report_foreign_auth_checks(mcp)  # both spellings present; nothing raised
 
 
 class TestCodeDeclaredScopes:

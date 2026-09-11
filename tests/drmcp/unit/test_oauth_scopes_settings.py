@@ -149,14 +149,14 @@ class TestWireScopesEnforcementWarning:
     def guarded_server(self):  # type: ignore[no-untyped-def]
         from fastmcp import FastMCP
 
-        from datarobot_genai.drmcpbase.oauth_scopes import required_scopes_check
+        from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
         from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
 
         mcp: FastMCP = FastMCP("gate-test")
 
-        @mcp.tool(auth=required_scopes_check(EXECUTE))
+        @mcp.tool(auth=require_scopes(EXECUTE))
         def guarded() -> str:
-            """Declare a scope; what ``required_scopes=(EXECUTE,)`` attaches."""
+            """Declare a scope with require_scopes."""
             return "ok"
 
         yield mcp
