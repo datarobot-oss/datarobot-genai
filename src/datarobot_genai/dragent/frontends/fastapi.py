@@ -208,6 +208,11 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         if a2a := self._a2a_config:
             await self._add_a2a_routes(app, builder, a2a)
 
+        # QA-14194 temporary diagnostic. Remove before leaving this on any shared cluster.
+        @app.get("/debug/headers")
+        async def _qa14194_debug_headers(request: Request) -> dict:
+            return {"headers": dict(request.headers)}
+
     def _resolve_expected_audience(self) -> str | None:
         """Audience an inbound token must carry: the one callers obtain through the
         cross-application-access flow this agent advertises.
