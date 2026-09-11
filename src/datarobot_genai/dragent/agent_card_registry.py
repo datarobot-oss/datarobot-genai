@@ -497,7 +497,9 @@ class AgentCardRegistry:
         if record is None:
             return None
         logger.warning(
-            "Registry unreachable; serving stale agent card for %s (age=%.0fs)",
+            "Central agent card registry unreachable; serving cached agent card for "
+            "%s_id='%s' (age=%.0fs)",
+            key_type,
             key,
             record.age_seconds(),
         )
@@ -592,7 +594,10 @@ class AgentCardRegistry:
             }
 
             if not any(missing.values()):
-                logger.debug("All requested agent cards already cached — skipping prefetch.")
+                logger.info(
+                    "Agent card registry cache: all requested IDs satisfied from cache; "
+                    "skipping central registry fetch."
+                )
                 return
 
             await self._fetch_and_store_by_kind(missing)

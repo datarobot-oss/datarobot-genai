@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.42
+- `dragent`: add INFO-level logging for the agent card registry L2 read-through path (L1 miss → MemorySpace hit/miss, stale-if-error, and cache-only prefetch) so enclave pod restarts show a clear sequence when the control hub is down.
 - `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
 - `dragent`: provision the registry L2 MemorySpace from async lifespan warmup and `get_default_registry` instead of swallowing `_run_async`'s running-loop error as a failed create (which left enclave workloads on L1-only caching and leaked an unawaited provision coroutine).
 - Raise the `datarobot` floor from `>=3.18.0` to `>=3.19.0` and add `datarobot[application-utils]` to the `dragent` extra.

@@ -110,7 +110,7 @@ async def warmup_registry_from_config(config: Config) -> None:
 
     _WarmState.warm = False
     logger.info(
-        "Prefetching agent cards from central registry "
+        "Warming agent card cache for registry-backed A2A clients "
         "(deployment_ids=%s, external_ids=%s, workload_ids=%s)",
         collected.deployment_ids,
         collected.external_ids,
