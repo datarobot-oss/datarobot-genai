@@ -269,13 +269,14 @@ class ToolKwargs(TypedDict, total=False):
     exclude_args: list[str] | None
     meta: dict[str, Any] | None
     # Pair with `datarobot_genai.drmcp.require_scopes` to declare the OAuth scopes a
-    # tools/call token must carry; the scope-validation middleware enforces them. Every
-    # check given here is wrapped by gate_auth_checks: it admits every caller while
-    # MCP_ENABLE_OAUTH_CLAIM_VALIDATION is off and runs unchanged when it is on. FastMCP's
-    # own checks (its require_scopes, restrict_tag, custom checks) gate at the tool level
-    # against ctx.token, which FastMCP reads from the request.scope["user"] our token
-    # handler sets only while the gate is on — without the wrapper they would hide the
-    # tool from every caller while it is off.
+    # tools/call token must carry: a subset test at the tool level against the request's
+    # parsed token (an under-scoped token does not see the tool in tools/list) and by
+    # the scope-validation middleware (403 on tools/call); a tokenless request passes.
+    # FastMCP-native checks given here (its require_scopes, restrict_tag, custom checks)
+    # are wrapped by gate_auth_checks: they admit every caller while
+    # MCP_ENABLE_OAUTH_CLAIM_VALIDATION is off — FastMCP reads ctx.token from the
+    # request.scope["user"] our token handler sets only while the gate is on, so
+    # unwrapped they would hide the tool from every caller — and run unchanged when on.
     auth: AuthCheck | list[AuthCheck] | None
 
 
@@ -347,9 +348,7 @@ def gated_by_oauth_flag(check: AuthCheck) -> AuthCheck:
 
     The flag is read when the check runs, not when the tool is registered, so it
     follows ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` the same way the ASGI middleware
-    does. With the gate on the original check runs unchanged. ``functools.wraps``
-    carries the original's attributes over, so a ``require_scopes`` declaration keeps
-    the marker the middleware, ``scopes_supported`` and the REST route read.
+    does. With the gate on the original check runs unchanged.
     """
 
     @functools.wraps(check)
@@ -365,34 +364,40 @@ def gated_by_oauth_flag(check: AuthCheck) -> AuthCheck:
 
 
 def gate_auth_checks(mcp_tool_init_args: ToolKwargs, *, tool_name: str) -> ToolKwargs:
-    """Wrap every check on ``auth`` with :func:`gated_by_oauth_flag`, in place.
+    """Wrap FastMCP-native checks on ``auth`` with :func:`gated_by_oauth_flag`, in place.
 
-    Nothing is removed: the original checks stay attached and run whenever the gate is
-    on. What the wrapper prevents is the gate-off failure mode of FastMCP-native checks
-    (its ``require_scopes``/``restrict_tag``, or a custom check reading ``ctx.token``):
-    FastMCP fills ``ctx.token`` from the ``request.scope["user"]`` our token handler sets
-    only while the gate is on, so with it off the token is ``None``, such a check fails
-    for every caller and the tool vanishes from ``tools/list``. Our ``require_scopes``
-    declarations already admit everyone, so wrapping them changes nothing.
+    Nothing is removed: the wrapped checks stay attached and run whenever the gate is
+    on. What the wrapper prevents is their gate-off failure mode: FastMCP evaluates
+    ``auth`` checks against ``ctx.token``, which it fills from the ``request.scope["user"]``
+    our token handler sets only while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` is on — so
+    with the gate off the token is ``None``, FastMCP's own ``require_scopes``/``restrict_tag``
+    (or a custom check reading the token) fails for every caller and the tool vanishes
+    from ``tools/list``.
+
+    Our own ``require_scopes`` / tag checks are left untouched: they already admit a
+    request that carries no token (gate off, or no request) and enforce a subset test
+    against the token's scopes otherwise, so they need no wrapper.
     """
     auth = mcp_tool_init_args.get("auth")
     if auth is None:
         return mcp_tool_init_args
     checks = auth if isinstance(auth, list) else [auth]
-    # Say so once, at registration, when a check that is not one of our declarations
-    # is going to be inert — our own declarations are expected and not worth a warning.
     foreign = [check for check in checks if not hasattr(check, DECLARED_SCOPES_ATTR)]
-    if foreign and not get_config().mcp_enable_oauth_claim_validation:
+    if not foreign:
+        return mcp_tool_init_args
+    if not get_config().mcp_enable_oauth_claim_validation:
         logger.warning(
             "Tool %s: %d auth check(s) on auth= are bypassed while "
             "MCP_ENABLE_OAUTH_CLAIM_VALIDATION is off — no token reaches FastMCP then and "
             "such a check would hide the tool from every caller. They run again once the "
             "gate is on. Declare scopes with datarobot_genai.drmcp.require_scopes, which "
-            "the middleware enforces.",
+            "admits a tokenless request and is enforced by the middleware.",
             tool_name,
             len(foreign),
         )
-    mcp_tool_init_args["auth"] = [gated_by_oauth_flag(check) for check in checks]
+    mcp_tool_init_args["auth"] = [
+        gated_by_oauth_flag(check) if check in foreign else check for check in checks
+    ]
     return mcp_tool_init_args
 
 

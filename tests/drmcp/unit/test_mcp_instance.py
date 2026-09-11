@@ -466,25 +466,26 @@ class TestGateAuthChecks:
         gate.mcp_enable_oauth_claim_validation = False
         assert await self._wrapped(lambda ctx: False)(self._ctx(None)) is True
 
-    async def test_our_declaration_keeps_its_marker_and_still_admits_everyone(
-        self, gate: Mock
-    ) -> None:
-        gate.mcp_enable_oauth_claim_validation = True
-        check = self._wrapped(require_scopes("mcp:tools:execute", "mcp:tools:read"))
+    def test_our_declaration_is_not_wrapped(self, gate: Mock) -> None:
+        # Ours decides enforcement from the verifier configuration, not the gate.
+        gate.mcp_enable_oauth_claim_validation = False
+        ours = require_scopes("mcp:tools:execute", "mcp:tools:read")
 
-        assert getattr(check, DECLARED_SCOPES_ATTR) == frozenset(
+        out = gate_auth_checks({"auth": ours}, tool_name="t")
+
+        assert out["auth"] is ours
+        assert getattr(ours, DECLARED_SCOPES_ATTR) == frozenset(
             {"mcp:tools:execute", "mcp:tools:read"}
         )
-        assert await check(self._ctx(None)) is True
 
-    def test_a_list_of_checks_is_wrapped_element_by_element(self, gate: Mock) -> None:
-        gate.mcp_enable_oauth_claim_validation = True
+    async def test_a_list_wraps_only_the_foreign_checks(self, gate: Mock) -> None:
+        gate.mcp_enable_oauth_claim_validation = False
         ours = require_scopes("mcp:tools:execute")
         out = gate_auth_checks({"auth": [fastmcp_require_scopes("scope_1"), ours]}, tool_name="t")
 
-        assert len(out["auth"]) == 2
-        assert hasattr(out["auth"][1], DECLARED_SCOPES_ATTR)
-        assert not hasattr(out["auth"][0], DECLARED_SCOPES_ATTR)
+        wrapped, kept = out["auth"]
+        assert kept is ours
+        assert await wrapped(self._ctx(None)) is True  # bypassed while the gate is off
 
     def test_no_auth_is_left_alone(self, gate: Mock) -> None:
         gate.mcp_enable_oauth_claim_validation = False

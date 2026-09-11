@@ -35,11 +35,20 @@ in configuration
     setting guards every component carrying it and can differ per environment
     without a code change.
 
-The auth checks attached here are **declaration markers only**: they admit
-every caller. They exist so the requirement is recorded on the component
-itself, where :func:`declared_scopes_for_one_tool` (what the scope-validation
-middleware enforces a ``tools/call`` against) and :func:`derived_scopes` (what
-the published ``scopes_supported`` is generated from) can read it back.
+The checks attached here do two jobs. They **record** the requirement on the
+component itself, where :func:`declared_scopes_for_one_tool` (what the
+scope-validation middleware enforces a ``tools/call`` against) and
+:func:`derived_scopes` (what the published ``scopes_supported`` is generated from)
+can read it back. And they **enforce** it at the tool level with the same subset
+test (:func:`satisfies`) against the scopes on the request's token — the token
+the DataRobot gateway authenticated and ``OAuthJWTTokenHandlerMiddleware`` parsed
+into ``request.scope["user"]``, which FastMCP hands to the check as ``ctx.token``
+— so an under-scoped token does not see the component in ``tools/list``, while a
+``tools/call`` is refused with 403 by the middleware before FastMCP is reached. No
+token on the request (the gate off, or no request at all) admits: this module
+verifies nothing itself, authentication is the gateway's job. Server-side listings
+that must see every component regardless of the caller's token (the ``/static/*``
+catalog, the lineage sync) run under :func:`without_component_auth_checks`.
 
 The scope source selects which declaration mechanism is live and defaults to
 ``both``, so each mechanism simply applies wherever it is declared; set
@@ -64,7 +73,9 @@ the same way the protected-resource metadata entities take theirs.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
@@ -72,6 +83,8 @@ from typing import Any
 
 from fastmcp.server.auth import AuthCheck
 from fastmcp.server.auth import AuthContext
+from fastmcp.server.context import reset_transport
+from fastmcp.server.context import set_transport
 
 logger = logging.getLogger(__name__)
 
@@ -219,53 +232,75 @@ def _as_check_list(auth: Any) -> list[Any]:
     return [auth] if callable(auth) else list(auth)
 
 
+def request_scopes(ctx: AuthContext) -> frozenset[str] | None:
+    """Return the scopes on this request's token, or ``None`` when it carries none.
+
+    ``ctx.token`` is what FastMCP read off ``request.scope["user"]`` — set by drmcp's
+    ``OAuthJWTTokenHandlerMiddleware`` from the gateway-authenticated token while
+    ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` is on. Nothing is verified here.
+    """
+    if ctx.token is None:
+        return None
+    return frozenset(ctx.token.scopes or ())
+
+
+def satisfies(required: frozenset[str], presented: frozenset[str] | None) -> bool:
+    """Return whether the scopes on a request cover a requirement.
+
+    A subset test, never equality: every required scope must be present, anything
+    else the token carries is not examined. ``None`` — no token on the request —
+    admits: with the gate off no token is parsed, and outside a request there is
+    nothing to check against.
+    """
+    if presented is None:
+        return True
+    return required.issubset(presented)
+
+
 def require_scopes(*scopes: str) -> AuthCheck:
-    """Declare the OAuth scopes a ``tools/call`` token must carry for a component.
+    """Require OAuth scopes on one component, declared where it is defined.
 
     Use on the tool's own decorator — ``@dr_mcp_tool(auth=require_scopes("a", "b"))``;
-    every listed scope is required. A declaration, not a gate: the returned check
-    admits every caller. It records the scope names on the component so that
+    all listed scopes are required, not any one of them. The check enforces
+    :func:`satisfies` against the request's token (:func:`request_scopes`), so a
+    token short of a scope does not see the tool in ``tools/list``; the
+    scope-validation middleware refuses its ``tools/call`` with 403
+    ``insufficient_scope`` first. A request without a token is admitted. It also
+    records the scope names on the component (:data:`DECLARED_SCOPES_ATTR`) so the
+    middleware, ``scopes_supported`` and the REST ``required_scopes`` field can read
+    them back — FastMCP's own ``require_scopes`` keeps them in a closure and fails a
+    tokenless request, which is why it is not used directly.
 
-    * the scope-validation middleware can read them back per tool
-      (:func:`declared_scopes_for_one_tool`) and reject a ``tools/call`` whose
-      token does not cover them, and
-    * the published ``scopes_supported`` can be generated rather than
-      hand-maintained (:func:`collect_code_declared_scopes` /
-      :func:`derived_scopes`).
-
-    Deliberately not FastMCP's ``require_scopes``, which is unsuitable on both
-    counts: it captures the scope names in a closure nothing can read back, and
-    it gates at the tool level against ``ctx.token``. FastMCP fills that token
-    from ``request.scope["user"]`` — set by our token-handler middleware only
-    while ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION`` is on — so with the gate off (the
-    default) it is ``None`` and the tool is hidden from every caller; with the
-    gate on the tool silently vanishes from ``tools/list`` for a token short of the
-    scope instead of answering 403 ``insufficient_scope``. ``dr_mcp_tool``
-    therefore bypasses FastMCP's own checks while the gate is off.
+    Inert under ``MCP_OAUTH_SCOPE_SOURCE=tags``.
     """
     required = frozenset(scopes)
 
-    async def check(_ctx: AuthContext) -> bool:
-        return True
+    async def check(ctx: AuthContext) -> bool:
+        if not _state.settings.code_active:
+            return True
+        return satisfies(required, request_scopes(ctx))
 
     setattr(check, DECLARED_SCOPES_ATTR, required)
     return check
 
 
 def restrict_tag_scopes(tag: str, scopes: list[str]) -> AuthCheck:
-    """Declare ``scopes`` on a component carrying ``tag``.
+    """Require ``scopes`` on a component carrying ``tag``.
 
-    The same declaration-only contract as :func:`require_scopes` — the check
-    admits every caller. :func:`apply_tag_scopes` attaches it only to the
-    components that actually carry the tag, so no membership test is needed at
-    read time. The marker attribute records which tag produced the check (any
-    truthy value marks it as configuration rather than code), so re-wiring can
-    replace these without touching in-code declarations.
+    The same contract as :func:`require_scopes` — subset test against the request's
+    token, tokenless requests admitted, scope names recorded. :func:`apply_tag_scopes`
+    attaches it only to the components that actually carry the tag, so no membership
+    test is needed at check time. The tag marker records which tag produced the check
+    (any truthy value marks it as configuration rather than code), so re-wiring can
+    replace these without touching in-code declarations. Inert under
+    ``MCP_OAUTH_SCOPE_SOURCE=code``.
     """
     required = frozenset(scopes)
 
-    async def check(_ctx: AuthContext) -> bool:
-        return True
+    async def check(ctx: AuthContext) -> bool:
+        if not _state.settings.tags_active:
+            return True
+        return satisfies(required, request_scopes(ctx))
 
     setattr(check, DECLARED_SCOPES_ATTR, required)
     setattr(check, TAG_APPLIED_ATTR, normalize_tag(tag))
@@ -356,6 +391,25 @@ async def declared_scopes_for_one_tool(mcp: Any, tool_name: str) -> frozenset[st
         if tool.name == tool_name:
             return declared_scopes_of_component(tool)
     return None
+
+
+@contextmanager
+def without_component_auth_checks() -> Iterator[None]:
+    """Make FastMCP skip per-component ``auth`` checks for the listings inside.
+
+    For code that describes the server rather than serving a caller — the
+    ``/static/*`` catalog, the lineage sync. FastMCP evaluates ``auth`` checks inside
+    every ``list_tools()`` against the current request's token, so such a listing
+    made during a REST call would shrink to what *that* caller may call. FastMCP
+    skips component auth only for the stdio transport (see its ``_get_auth_context``),
+    so this borrows that switch for the duration of the block through FastMCP's
+    public ``set_transport`` / ``reset_transport``.
+    """
+    token = set_transport("stdio")
+    try:
+        yield
+    finally:
+        reset_transport(token)
 
 
 async def apply_tag_scopes(mcp: Any) -> int:

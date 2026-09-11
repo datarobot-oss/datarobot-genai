@@ -177,8 +177,10 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
     # fixed fields here. See drmcp.core.oauth_scopes.read_tag_scopes.
     #
     # There is no enforcement setting either: declared scopes are enforced per
-    # tools/call by the scope-validation middleware (see drmcp.core.middleware),
-    # gated by `mcp_enable_oauth_claim_validation` below.
+    # tools/call by the scope-validation middleware (see drmcp.core.middleware) and,
+    # against the same parsed token, by the checks on the components themselves,
+    # both gated by `mcp_enable_oauth_claim_validation` below (no token is parsed
+    # while it is off, and a tokenless request is admitted).
     mcp_xaa_trusted_issuer: str | None = Field(
         default=None,
         description="Cross-Application Access token exchange trusted issuer",

@@ -25,7 +25,11 @@ from typing import Any
 
 import pytest
 from fastmcp import FastMCP
+from fastmcp.server.auth import AccessToken
 from fastmcp.server.auth import AuthContext
+from fastmcp.server.http import set_http_request
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+from starlette.requests import Request
 
 from datarobot_genai.drmcpbase.oauth_scopes import DECLARED_SCOPES_ATTR
 from datarobot_genai.drmcpbase.oauth_scopes import TAG_APPLIED_ATTR
@@ -40,7 +44,9 @@ from datarobot_genai.drmcpbase.oauth_scopes import normalize_tag
 from datarobot_genai.drmcpbase.oauth_scopes import require_scopes
 from datarobot_genai.drmcpbase.oauth_scopes import reset_scope_state
 from datarobot_genai.drmcpbase.oauth_scopes import restrict_tag_scopes
+from datarobot_genai.drmcpbase.oauth_scopes import satisfies
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
+from datarobot_genai.drmcpbase.oauth_scopes import without_component_auth_checks
 
 EXECUTE = "mcp:tools:execute"
 DB_WRITE = "mcp:tools:database:write"
@@ -91,9 +97,30 @@ async def _checks_on(mcp: FastMCP, name: str) -> list[Any]:
     return [auth] if callable(auth) else list(auth)
 
 
-async def _context(mcp: FastMCP, name: str = "run_sql") -> AuthContext:
+def _token(scopes: list[str]) -> AccessToken:
+    """Build a token as OAuthJWTTokenHandlerMiddleware parses it — no verification involved."""
+    return AccessToken(token="t", client_id="c", scopes=scopes)
+
+
+async def _context(
+    mcp: FastMCP, name: str = "run_sql", scopes: list[str] | None = None
+) -> AuthContext:
+    """GIVEN a request carrying a token with *scopes*, or none at all when ``None``."""
     tool = next(t for t in await mcp._list_tools() if t.name == name)
-    return AuthContext(token=None, component=tool)
+    return AuthContext(token=None if scopes is None else _token(scopes), component=tool)
+
+
+def _request_from(scopes: list[str]) -> Request:
+    """GIVEN an HTTP request the token handler has already stamped a user on."""
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/mcp",
+            "headers": [],
+            "user": AuthenticatedUser(_token(scopes)),
+        }
+    )
 
 
 class TestNormalizeTag:
@@ -142,37 +169,82 @@ class TestScopeSettings:
         assert settings.tag_scopes == {"READ_ONLY": [READ]}
 
 
-class TestDeclarationOnlyChecks:
-    """The attached checks record scopes but never gate a caller."""
+class TestSatisfies:
+    def test_no_token_admits(self) -> None:
+        assert satisfies(frozenset({EXECUTE}), None) is True
 
-    async def test_require_scopes_admits_every_caller(self, mcp: FastMCP) -> None:
-        # GIVEN a caller presenting nothing at all (no auth provider, no token)
-        ctx = await _context(mcp, "run_sql")
-        # WHEN the code-declared check runs
+    def test_every_required_scope_must_be_present(self) -> None:
+        assert satisfies(frozenset({EXECUTE, DB_WRITE}), frozenset({EXECUTE})) is False
+        assert satisfies(frozenset({EXECUTE, DB_WRITE}), frozenset({EXECUTE, DB_WRITE})) is True
+
+    def test_extra_scopes_on_the_token_are_not_examined(self) -> None:
+        assert satisfies(frozenset({EXECUTE}), frozenset({EXECUTE, READ, DB_WRITE})) is True
+
+    def test_nothing_required_is_always_satisfied(self) -> None:
+        assert satisfies(frozenset(), frozenset()) is True
+
+
+class TestScopeChecks:
+    """The checks record scopes and enforce the subset test against the request's token."""
+
+    async def test_require_scopes_admits_a_request_without_a_token(self, mcp: FastMCP) -> None:
+        # Gate off, or no request at all: nothing was parsed, nothing to check against.
         (check,) = await _checks_on(mcp, "run_sql")
-        # THEN it admits the caller — enforcement is the middleware's job
-        assert await check(ctx) is True
+        assert await check(await _context(mcp, "run_sql")) is True
+
+    async def test_require_scopes_enforces_the_subset_against_the_token(self, mcp: FastMCP) -> None:
+        (check,) = await _checks_on(mcp, "run_sql")
+        assert await check(await _context(mcp, "run_sql", scopes=[READ])) is False
+        assert await check(await _context(mcp, "run_sql", scopes=[])) is False
+        assert await check(await _context(mcp, "run_sql", scopes=[EXECUTE])) is True
+        assert await check(await _context(mcp, "run_sql", scopes=[READ, EXECUTE])) is True
 
     def test_require_scopes_records_the_declared_names(self) -> None:
         check = require_scopes(EXECUTE, DB_WRITE)
         assert getattr(check, DECLARED_SCOPES_ATTR) == frozenset({EXECUTE, DB_WRITE})
 
-    async def test_restrict_tag_scopes_admits_every_caller(self, mcp: FastMCP) -> None:
+    async def test_code_declarations_are_inert_under_source_tags(self, mcp: FastMCP) -> None:
+        configure_scopes(ScopeSettings(source=ScopeSource.TAGS))
+        (check,) = await _checks_on(mcp, "run_sql")
+        assert await check(await _context(mcp, "run_sql", scopes=[READ])) is True
+
+    async def test_restrict_tag_scopes_enforces_the_same_way(self, mcp: FastMCP) -> None:
         await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
-        ctx = await _context(mcp, "list_tables")
         (check,) = await _checks_on(mcp, "list_tables")
-        assert await check(ctx) is True
+        assert await check(await _context(mcp, "list_tables")) is True
+        assert await check(await _context(mcp, "list_tables", scopes=[EXECUTE])) is False
+        assert await check(await _context(mcp, "list_tables", scopes=[DB_WRITE])) is True
 
     def test_restrict_tag_scopes_is_marked_as_configuration(self) -> None:
         check = restrict_tag_scopes("database", [DB_WRITE])
         assert getattr(check, TAG_APPLIED_ATTR, False)
         assert getattr(check, DECLARED_SCOPES_ATTR) == frozenset({DB_WRITE})
 
-    async def test_every_tool_stays_listed_whatever_it_declares(self, mcp: FastMCP) -> None:
-        # GIVEN declarations from both mechanisms and a caller with no token
+    async def test_a_tokenless_listing_hides_nothing(self, mcp: FastMCP) -> None:
+        # GIVEN declarations from both mechanisms and no token on the request
         await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
-        # THEN nothing is hidden at the tool level — there is no tool-level gate
+        # THEN nothing is hidden — there is no token to fall short of
         assert await _visible(mcp) == {"run_sql", "list_tables", "harmless"}
+
+    async def test_an_under_scoped_token_does_not_see_the_tool(self, mcp: FastMCP) -> None:
+        # GIVEN a request whose token covers the tag rule but not the code declaration
+        await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
+        with set_http_request(_request_from([DB_WRITE])):
+            assert await _visible(mcp) == {"list_tables", "harmless"}
+        with set_http_request(_request_from([DB_WRITE, EXECUTE])):
+            assert await _visible(mcp) == {"run_sql", "list_tables", "harmless"}
+
+
+class TestWithoutComponentAuthChecks:
+    """A describe-the-server listing must see every component whatever the caller holds."""
+
+    async def test_the_block_lists_everything_and_only_the_block(self, mcp: FastMCP) -> None:
+        await wire_scopes(mcp, ScopeSettings(tag_scopes={"database": [DB_WRITE]}))
+        with set_http_request(_request_from([READ])):
+            assert await _visible(mcp) == {"harmless"}
+            with without_component_auth_checks():
+                assert await _visible(mcp) == {"run_sql", "list_tables", "harmless"}
+            assert await _visible(mcp) == {"harmless"}
 
 
 class TestCodeDeclaredScopes:

@@ -119,10 +119,12 @@ def read_tag_scopes(environ: dict[str, str] | None = None) -> dict[str, list[str
 def build_scope_settings(config: MCPServerConfig | None = None) -> ScopeSettings:
     """Assemble the scope settings this server is configured with.
 
-    Declarations only — which scopes each component requires, and which
-    declaration mechanism is read. Enforcement happens in the ASGI middleware
-    (see ``drmcp.core.middleware``), which validates a ``tools/call``'s token
-    claims against the called tool's declared scopes.
+    Which scopes each component requires, and which declaration mechanism is
+    read. Enforcement is the ASGI middleware's (see ``drmcp.core.middleware``),
+    which validates a ``tools/call``'s token claims against the called tool's
+    declared scopes, and the checks' own subset test against the same token
+    (see ``drmcpbase.oauth_scopes``), which keeps an under-scoped token from
+    seeing the tool in ``tools/list``. Nothing verifies tokens here.
     """
     config = config or get_config()
     return ScopeSettings(
