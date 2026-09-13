@@ -94,9 +94,18 @@ class _ProvisionedRegistryCacheSpaceState:
 
 
 class _MemoryClientState:
-    """Process-global Memory Service ORM client."""
+    """Process-global Memory Service ORM client, bound to one event loop.
+
+    ``httpx.AsyncClient`` (and the anyio transports it owns) bind to the first
+    loop that uses them. Import-time bootstrap provisions via ``asyncio.run``,
+    which is a different loop from the later app/lifespan loop — reusing the
+    same client then fails with ``RuntimeError: bound to a different event loop``.
+    """
 
     client: DRMemoryServiceClient | None = None
+    loop: asyncio.AbstractEventLoop | None = None
+    endpoint: str | None = None
+    api_token: str | None = None
 
 
 def is_enclave_l2_workload() -> bool:
@@ -118,12 +127,21 @@ def _run_async(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """Run *coro_factory* from a synchronous caller when no event loop is running.
 
     The factory is invoked only after confirming no loop is running, so a
-    coroutine is never left unawaited.
+    coroutine is never left unawaited. The Memory Service HTTP client is
+    closed before ``asyncio.run`` tears the temporary loop down, so a later
+    app loop does not inherit a pool bound to this one.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro_factory())
+
+        async def _run_then_close() -> T:
+            try:
+                return await coro_factory()
+            finally:
+                await _aclose_memory_client()
+
+        return asyncio.run(_run_then_close())
     raise RuntimeError("memory_space_cache sync helper called from a running event loop")
 
 
@@ -275,19 +293,59 @@ def configure_datarobot_memory_client(
         "Configuring DataRobot memory client for enclave gateway %s.",
         enclave_endpoint,
     )
+    _MemoryClientState.endpoint = enclave_endpoint.rstrip("/")
+    _MemoryClientState.api_token = token
     _MemoryClientState.client = DRMemoryServiceClient(
-        endpoint=enclave_endpoint.rstrip("/"),
+        endpoint=_MemoryClientState.endpoint,
         api_token=token,
     )
+    _MemoryClientState.loop = None
 
 
-def _require_memory_client() -> DRMemoryServiceClient:
-    client = _MemoryClientState.client
-    if client is None:
+def _new_memory_client() -> DRMemoryServiceClient:
+    if _MemoryClientState.endpoint is None or _MemoryClientState.api_token is None:
         raise RuntimeError(
             "MemorySpace client is not configured; call configure_datarobot_memory_client first."
         )
-    return client
+    return DRMemoryServiceClient(
+        endpoint=_MemoryClientState.endpoint,
+        api_token=_MemoryClientState.api_token,
+    )
+
+
+async def _aclose_memory_client() -> None:
+    """Close the process-global HTTP client on the loop that owns it."""
+    client = _MemoryClientState.client
+    _MemoryClientState.client = None
+    _MemoryClientState.loop = None
+    if client is None:
+        return
+    try:
+        await client.aclose()
+    except Exception:
+        logger.debug("Failed to close Memory Service HTTP client", exc_info=True)
+
+
+def _require_memory_client() -> DRMemoryServiceClient:
+    """Return a Memory Service client bound to the currently running event loop.
+
+    Recreates the client when the previous one was used on a different loop
+    (import-time ``asyncio.run`` vs the app loop, or a worker-thread loop).
+    """
+    loop = asyncio.get_running_loop()
+    client = _MemoryClientState.client
+    bound_loop = _MemoryClientState.loop
+    if client is not None and (bound_loop is None or bound_loop is loop):
+        _MemoryClientState.loop = loop
+        return client
+    if bound_loop is not None:
+        logger.debug(
+            "Recreating Memory Service HTTP client for a new event loop "
+            "(previous loop is closed or belongs to another thread)"
+        )
+    _MemoryClientState.client = _new_memory_client()
+    _MemoryClientState.loop = loop
+    return _MemoryClientState.client
 
 
 def _cache_deduplication_key(logical_key: str) -> str:
@@ -311,6 +369,7 @@ class MemorySpaceKVCache:
         self._client = client
         self._space: DRMemorySpace | None = None
         self._sessions: dict[str, AgentCardCacheSession] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def _logical_key(self, key: str) -> str:
         return f"{self._key_prefix}{CACHE_KIND}:{key}"
@@ -318,11 +377,20 @@ class MemorySpaceKVCache:
     def _client_or_global(self) -> DRMemoryServiceClient:
         return self._client or _require_memory_client()
 
+    def _bind_to_running_loop(self) -> None:
+        """Drop space/session objects that still point at a previous loop's client."""
+        loop = asyncio.get_running_loop()
+        if self._loop is loop:
+            return
+        self._space = None
+        self._sessions.clear()
+        self._loop = loop
+
     async def _resolve_space(self) -> DRMemorySpace:
+        self._bind_to_running_loop()
         if self._space is None:
-            client = self._client_or_global()
             self._space = await _call_with_transport_retry(
-                lambda: DRMemorySpace.get(client, self._memory_space_id),
+                lambda: DRMemorySpace.get(self._client_or_global(), self._memory_space_id),
                 op="resolve_space",
             )
         return self._space

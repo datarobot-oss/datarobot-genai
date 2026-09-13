@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.42
+- `dragent`: close the registry L2 Memory Service HTTP client after import-time `asyncio.run` provision and recreate it on the app event loop. Reusing the bootstrap `httpx.AsyncClient` after a pod restart caused L2 reads to fail with `RuntimeError: bound to a different event loop`, which was logged as an L2 miss even when the space was already populated.
 - `dragent`: `try_resolve_memory_space_id()` returns an already-provisioned registry L2 space id even from a running event loop, so YAML parse (`get_default_registry_sync`) and `AgentCardRegistry.__init__` attach MemorySpace write-behind instead of locking the singleton to L1-only after import-time bootstrap.
 - `dragent`: add INFO-level logging for the agent card registry L2 read-through path (L1 miss → MemorySpace hit/miss, stale-if-error, and cache-only prefetch) so enclave pod restarts show a clear sequence when the control hub is down.
 - `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
