@@ -59,7 +59,6 @@ def _set_enclave_gateway_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _reset_memory_client_state() -> None:
     memory_space_cache_module._MemoryClientState.client = None
-    memory_space_cache_module._MemoryClientState.loop = None
     memory_space_cache_module._MemoryClientState.endpoint = None
     memory_space_cache_module._MemoryClientState.api_token = None
 
@@ -307,52 +306,12 @@ class TestConfigureDatarobotMemoryClient:
 
 
 class TestMemoryClientEventLoop:
-    def test_sync_provision_closes_http_client_after_asyncio_run(
+    async def test_cache_read_after_sync_provision_uses_a_new_http_client(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """GIVEN import-time provision via asyncio.run
-        WHEN the helper returns
-        THEN the httpx client is closed and discarded so the app loop cannot reuse it.
-        """
-        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
-        _set_enclave_gateway_env(monkeypatch)
-        created: list[MagicMock] = []
-
-        def _client_ctor(**_kwargs: object) -> MagicMock:
-            client = MagicMock()
-            client.aclose = AsyncMock()
-            created.append(client)
-            return client
-
-        space = MagicMock(id="space-new")
-        with (
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.DRMemoryServiceClient",
-                side_effect=_client_ctor,
-            ),
-            patch(
-                "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.post",
-                AsyncMock(return_value=space),
-            ),
-        ):
-            assert try_resolve_memory_space_id() == "space-new"
-
-        assert created
-        created[0].aclose.assert_awaited_once()
-        assert memory_space_cache_module._MemoryClientState.client is None
-        assert memory_space_cache_module._MemoryClientState.loop is None
-        assert memory_space_cache_module._MemoryClientState.endpoint == (
-            "https://enclave-x.datarobot.com/api/v2"
-        )
-        assert memory_space_cache_module._MemoryClientState.api_token == "token"
-
-    async def test_cache_read_after_sync_provision_uses_running_loop_client(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """GIVEN L2 provisioned on a temporary asyncio.run loop
         WHEN get_value runs on the app event loop
-        THEN MemorySpace.get uses a client created on this loop.
+        THEN the bootstrap httpx client is closed and MemorySpace.get uses a new one.
         """
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
@@ -382,7 +341,12 @@ class TestMemoryClientEventLoop:
             assert await asyncio.to_thread(try_resolve_memory_space_id) == "space-new"
 
         bootstrap_client = created[0]
+        bootstrap_client.aclose.assert_awaited_once()
         assert memory_space_cache_module._MemoryClientState.client is None
+        assert memory_space_cache_module._MemoryClientState.endpoint == (
+            "https://enclave-x.datarobot.com/api/v2"
+        )
+        assert memory_space_cache_module._MemoryClientState.api_token == "token"
 
         get_space = AsyncMock(return_value=space)
         cache = MemorySpaceKVCache(memory_space_id="space-new")
@@ -410,53 +374,6 @@ class TestMemoryClientEventLoop:
         app_client = created[1]
         assert app_client is not bootstrap_client
         get_space.assert_awaited_once_with(app_client, "space-new")
-        assert memory_space_cache_module._MemoryClientState.loop is asyncio.get_running_loop()
-
-    async def test_require_memory_client_replaces_client_bound_to_another_loop(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """GIVEN a client bound to a different loop
-        WHEN required from the running loop
-        THEN a new client is constructed for this loop.
-        """
-        monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-        _set_enclave_gateway_env(monkeypatch)
-        stale = MagicMock()
-        replacement = MagicMock()
-
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache.DRMemoryServiceClient",
-            side_effect=[stale, replacement],
-        ):
-            configure_datarobot_memory_client()
-            memory_space_cache_module._MemoryClientState.loop = object()  # type: ignore[assignment]
-            client = memory_space_cache_module._require_memory_client()
-
-        assert client is replacement
-        assert client is not stale
-        assert memory_space_cache_module._MemoryClientState.loop is asyncio.get_running_loop()
-
-    async def test_resolve_space_drops_cached_objects_when_loop_changes(
-        self, kv_cache: MemorySpaceKVCache
-    ) -> None:
-        """GIVEN a cached DRMemorySpace from another loop
-        WHEN resolved on the running loop
-        THEN the space is fetched again with this loop's client.
-        """
-        stale_space = MagicMock()
-        kv_cache._space = stale_space
-        kv_cache._sessions["k"] = _FakeSession()
-        kv_cache._loop = object()  # type: ignore[assignment]
-        fresh_space = MagicMock()
-
-        with patch(
-            "datarobot_genai.dragent.memory_space_cache.DRMemorySpace.get",
-            AsyncMock(return_value=fresh_space),
-        ) as get_mock:
-            assert await kv_cache._resolve_space() is fresh_space
-
-        assert kv_cache._sessions == {}
-        get_mock.assert_awaited_once()
 
 
 class TestMemorySpaceKVCache:
