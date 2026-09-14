@@ -18,69 +18,25 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Literal
+from contextlib import AsyncExitStack
 
-from nat.cli.register_workflow import register_per_user_function_group
-from nat.data_models.component_ref import AuthenticationRef
 from nat.plugins.mcp.client.client_base import AuthAdapter
 from nat.plugins.mcp.client.client_base import MCPStreamableHTTPClient
 from nat.plugins.mcp.client.client_config import MCPServerConfig
 from nat.plugins.mcp.client.client_impl import MCPClientConfig
-from nat.plugins.mcp.exception_handler import extract_primary_exception
+from nat.builder.builder import Builder
+from nat.cli.register_workflow import register_per_user_function_group
+from nat.data_models.component_ref import AuthenticationRef
+
 from pydantic import Field
-from pydantic import HttpUrl
+
 
 if TYPE_CHECKING:
     import httpx
     from nat.authentication.interfaces import AuthProviderBase
-    from nat.builder.builder import Builder
     from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 
 logger = logging.getLogger(__name__)
-
-
-def _default_transport() -> Literal["streamable-http", "sse"]:
-    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
-
-    server_config = MCPConfig().server_config
-    return server_config["transport"] if server_config else "streamable-http"
-
-
-def _default_url() -> HttpUrl:
-    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
-
-    server_config = MCPConfig().server_config
-    return HttpUrl(server_config["url"]) if server_config else HttpUrl("http://localhost:8080/mcp")
-
-
-def _default_auth_provider() -> str | AuthenticationRef | None:
-    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
-
-    server_config = MCPConfig().server_config
-    return "datarobot_mcp_auth" if server_config else None
-
-
-class DataRobotMCPServerConfig(MCPServerConfig):
-    transport: Literal["streamable-http", "sse"] = Field(
-        default_factory=_default_transport,
-        description="Transport type to connect to the MCP server (sse or streamable-http)",
-    )
-    url: HttpUrl = Field(
-        default_factory=_default_url,
-        description="URL of the MCP server (for sse or streamable-http transport)",
-    )
-    # Authentication configuration
-    auth_provider: str | AuthenticationRef | None = Field(
-        default_factory=_default_auth_provider,
-        description="Reference to authentication provider",
-    )
-
-
-class DataRobotMCPClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  # type: ignore[call-arg]
-    server: DataRobotMCPServerConfig = Field(
-        default_factory=DataRobotMCPServerConfig,
-        description="DataRobot MCP Server configuration",
-    )
 
 
 class DataRobotAuthAdapter(AuthAdapter):
@@ -149,154 +105,131 @@ def _make_input_schema_enum_safe(tool_fn: Any) -> Any:
     return tool_fn
 
 
-@register_per_user_function_group(config_type=DataRobotMCPClientConfig)
-async def datarobot_mcp_client_function_group(
-    config: DataRobotMCPClientConfig, _builder: Builder
-) -> MCPFunctionGroup:
-    """
-    Connect to an MCP server and expose tools as a function group.
+class DrMcpClientConfig(MCPClientConfig, name="datarobot_mcp_client"):  # type: ignore[call-arg]
+    server: MCPServerConfig | None = Field(
+        default=None,
+        description=(
+            "Explicit server to connect to. Omit entirely to auto-discover every "
+            "MCP server configured via env vars on agent/config.py's Config."
+        ),
+    )
+    auth_provider: str | AuthenticationRef | None = Field(
+        default=None,
+        description="Auth provider reference, for the explicit-server case.",
+    )
 
-    Args:
-        config: The configuration for the MCP client
-        _builder: The builder
-    Returns:
-        The function group
+
+def _already_covered_urls(builder: Builder) -> set[str]:
     """
+    URLs already claimed by a sibling `dr_mcp_client` entry that has `server:` set
+    explicitly, so the auto-discovery sweep doesn't connect to them a second time.
+
+    Walks whichever function actually owns `tool_names` -- which may be the
+    workflow function itself, or (as with streaming_memory_agent) a wrapper one
+    level up from it via `inner_agent_name`.
+    """
+    workflow_config = builder.get_workflow_config()
+    inner_name = getattr(workflow_config, "inner_agent_name", None)
+    target_config = builder.get_function_config(inner_name) if inner_name else workflow_config
+    tool_names = getattr(target_config, "tool_names", [])
+
+    covered: set[str] = set()
+    for name in tool_names:
+        try:
+            fg_config = builder.get_function_group_config(name)
+        except Exception:
+            continue
+        if isinstance(fg_config, DrMcpClientConfig) and fg_config.server is not None:
+            covered.add(str(fg_config.server.url).rstrip("/"))
+    return covered
+
+
+@register_per_user_function_group(config_type=DrMcpClientConfig)
+async def dr_mcp_client_function_group(config: DrMcpClientConfig, _builder: Builder) -> "MCPFunctionGroup":
+    # Local imports: keep NAT plugin discovery (which imports this module just to
+    # register the type) from eagerly pulling in the MCP adapter stack or this
+    # agent's own Config -- matching the discipline already used elsewhere in this
+    # agent's register.py.
     from nat.plugins.mcp.client.client_base import MCPSSEClient  # noqa: PLC0415
     from nat.plugins.mcp.client.client_impl import MCPFunctionGroup  # noqa: PLC0415
-    from nat.plugins.mcp.client.client_impl import (
-        mcp_apply_tool_alias_and_description,  # noqa: PLC0415
+    from nat.plugins.mcp.client.client_impl import (  # noqa: PLC0415
+        mcp_apply_tool_alias_and_description,
     )
     from nat.plugins.mcp.client.client_impl import mcp_session_tool_function  # noqa: PLC0415
 
-    # Resolve auth provider if specified
-    auth_provider = None
-    if config.server.auth_provider:
-        auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
+    from datarobot_genai.core.config import resolve_config
 
-    # Build the appropriate client
-    if config.server.transport == "sse":
-        client = MCPSSEClient(
-            str(config.server.url),
-            tool_call_timeout=config.tool_call_timeout,
-            auth_flow_timeout=config.auth_flow_timeout,
-            reconnect_enabled=config.reconnect_enabled,
-            reconnect_max_attempts=config.reconnect_max_attempts,
-            reconnect_initial_backoff=config.reconnect_initial_backoff,
-            reconnect_max_backoff=config.reconnect_max_backoff,
-        )
-    elif config.server.transport == "streamable-http":
-        # Use default_user_id for the base client
-        # For interactive OAuth2: from config. For service accounts: defaults to server URL
-        base_user_id = (
-            getattr(auth_provider.config, "default_user_id", str(config.server.url))
-            if auth_provider
-            else None
-        )
-        client = DataRobotMCPStreamableHTTPClient(
-            str(config.server.url),
-            auth_provider=auth_provider,
-            user_id=base_user_id,
-            tool_call_timeout=config.tool_call_timeout,
-            auth_flow_timeout=config.auth_flow_timeout,
-            reconnect_enabled=config.reconnect_enabled,
-            reconnect_max_attempts=config.reconnect_max_attempts,
-            reconnect_initial_backoff=config.reconnect_initial_backoff,
-            reconnect_max_backoff=config.reconnect_max_backoff,
-        )
-    else:
-        raise ValueError(f"Unsupported transport: {config.server.transport}")
-
-    logger.info("Configured to use MCP server at %s", client.server_name)
-
-    # Create the MCP function group
     group = MCPFunctionGroup(config=config)
 
-    # Store shared components for session client creation
-    group._shared_auth_provider = auth_provider
-    group._client_config = config
+    async def _populate_from_client(client, tool_overrides) -> None:
+        all_tools = await client.get_tools()
+        overrides = mcp_apply_tool_alias_and_description(all_tools, tool_overrides)
+        for tool_name, tool in all_tools.items():
+            override = overrides.get(tool_name)
+            function_name = override.alias if override and override.alias else tool_name
+            description = override.description if override and override.description else tool.description
 
-    # Set auth provider config defaults
-    # For interactive OAuth2: use config values
-    # For service accounts: default_user_id = server URL,
-    #                       allow_default_user_id_for_tool_calls = True
-    if auth_provider:
-        group._default_user_id = getattr(
-            auth_provider.config, "default_user_id", str(config.server.url)
-        )
-        group._allow_default_user_id_for_tool_calls = getattr(
-            auth_provider.config, "allow_default_user_id_for_tool_calls", True
-        )
-    else:
-        group._default_user_id = None
-        group._allow_default_user_id_for_tool_calls = True
+            tool_fn = _make_input_schema_enum_safe(mcp_session_tool_function(tool, group))
+            single_fn = tool_fn.single_fn
+            if single_fn is None:
+                logger.warning("Skipping tool %s because single_fn is None", function_name)
+                continue
 
-    yielded = False
-    try:
-        async with client:
-            # Expose the live MCP client on the function group instance so other components
-            # (e.g., HTTP endpoints) can reuse the already-established session instead of creating a
-            # new client per request.
+            input_schema = tool_fn.input_schema
+            if input_schema is type(None):  # noqa: E721
+                input_schema = None
+
+            group.add_function(
+                name=function_name,
+                description=description,
+                fn=single_fn,
+                input_schema=input_schema,
+                converters=tool_fn.converters,
+            )
+
+    async def _build_client(url: str, transport: str, auth_provider):
+        if transport == "sse":
+            return MCPSSEClient(url)
+        user_id = getattr(auth_provider.config, "default_user_id", url) if auth_provider else None
+        client = DataRobotMCPStreamableHTTPClient(url, auth_provider=auth_provider, user_id=user_id)
+        # TODO: for a server with no auth_provider but static headers (the
+        # external/third-party case, e.g. weather_mcp_headers), those headers need
+        # to reach this client somehow -- not yet wired here. Confirm how the base
+        # MCPStreamableHTTPClient / DataRobotMCPStreamableHTTPClient accepts
+        # pre-set static headers versus an auth_provider.
+        return client
+
+    async with AsyncExitStack() as stack:
+        if config.server is not None:
+            # Explicit single-server path -- same behavior as the installed
+            # plugin's original datarobot_mcp_client_function_group.
+            auth_provider = await _builder.get_auth_provider(config.auth_provider) if config.auth_provider else None
+            client = await _build_client(str(config.server.url), config.server.transport, auth_provider)
+            await stack.enter_async_context(client)
             group.mcp_client = client
             group.mcp_client_server_name = client.server_name
             group.mcp_client_transport = client.transport
-
-            all_tools = await client.get_tools()
-            tool_overrides = mcp_apply_tool_alias_and_description(all_tools, config.tool_overrides)
-
-            # Add each tool as a function to the group
-            for tool_name, tool in all_tools.items():
-                # Get override if it exists
-                override = tool_overrides.get(tool_name)
-
-                # Use override values or defaults
-                function_name = override.alias if override and override.alias else tool_name
-                description = (
-                    override.description if override and override.description else tool.description
-                )
-
-                # Create the tool function according to configuration.
-                # Patch the input schema to store enum values as strings so
-                # NAT's downstream model_validate(kwargs) never trips on
-                # cross-class enum identity (BUZZOK-30556).
-                tool_fn = _make_input_schema_enum_safe(mcp_session_tool_function(tool, group))
-
-                # Normalize optional typing for linter/type-checker compatibility
-                single_fn = tool_fn.single_fn
-                if single_fn is None:
-                    # Should not happen because FunctionInfo always sets a single_fn
-                    logger.warning("Skipping tool %s because single_fn is None", function_name)
+            await _populate_from_client(client, config.tool_overrides)
+        else:
+            # Auto-discovery path -- sweep every MCP server configured via env
+            # vars, skipping anything a sibling entry already declared explicitly.
+            covered = _already_covered_urls(_builder)
+            for mcp_config in resolve_config().resolve_all_mcp_configs():
+                url = str(mcp_config.url).rstrip("/")
+                if url in covered:
+                    logger.debug("Skipping %s: already declared explicitly elsewhere", url)
                     continue
 
-                input_schema = tool_fn.input_schema
-                # Convert NoneType sentinel to None for FunctionGroup.add_function signature
-                if input_schema is type(None):  # noqa: E721
-                    input_schema = None
+                auth_provider = None
+                if getattr(mcp_config, "use_datarobot_auth", False):
+                    auth_provider = await _builder.get_auth_provider("datarobot_auth")
 
-                # Add to group
-                logger.debug("Adding tool %s to group", function_name)
-                group.add_function(
-                    name=function_name,
-                    description=description,
-                    fn=single_fn,
-                    input_schema=input_schema,
-                    converters=tool_fn.converters,
+                client = await _build_client(
+                    str(mcp_config.url),
+                    getattr(mcp_config, "transport", "streamable-http"),
+                    auth_provider,
                 )
-            yielded = True
-            yield group
-    except Exception as e:
-        if hasattr(e, "exceptions"):
-            primary_exception = extract_primary_exception(list(e.exceptions))
-        else:
-            primary_exception = e
+                await stack.enter_async_context(client)
+                await _populate_from_client(client, tool_overrides={})
 
-        logger.warning("Error in MCP client function group: %s", primary_exception)
-        group.mcp_client = None
-        group.mcp_client_server_name = getattr(client, "server_name", str(config.server.url))
-        group.mcp_client_transport = getattr(client, "transport", config.server.transport)
-        if not yielded:
-            yield group
-        else:
-            # Cleanup (e.g. __aexit__) failed after we already yielded; re-raise so
-            # the caller sees it and we do not yield a second time.
-            raise
+        yield group
