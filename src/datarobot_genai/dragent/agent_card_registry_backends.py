@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
+from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
 
 if TYPE_CHECKING:
@@ -398,6 +399,9 @@ class LayeredAgentCardCacheBackend:
     async def _read_l2_with_timeout(
         self,
         coro: Coroutine[Any, Any, AgentCardCacheRecord | None],
+        *,
+        lookup_key: str,
+        op: str,
     ) -> AgentCardCacheRecord | None:
         """Run an L2 read with a bounded wait; return ``None`` on timeout."""
         if self._l2_read_timeout <= 0:
@@ -405,9 +409,11 @@ class LayeredAgentCardCacheBackend:
         try:
             return await asyncio.wait_for(coro, timeout=self._l2_read_timeout)
         except TimeoutError:
-            logger.debug(
-                "Agent card registry L2 read timed out after %.2fs",
+            logger.warning(
+                "Agent card registry cache: MemorySpace L2 %s read timed out after %.2fs for %s",
+                op,
                 self._l2_read_timeout,
+                lookup_key,
             )
             return None
 
@@ -422,16 +428,38 @@ class LayeredAgentCardCacheBackend:
             return record
         # L1 holds a stale entry with the same fetched_at L2 would return — skip L2.
         if self._l1.has_entry(lookup_key):
+            logger.debug(
+                "Agent card registry cache: L1 stale entry for %s; skipping MemorySpace L2 "
+                "fresh read",
+                lookup_key,
+            )
             return None
+        logger.info(
+            "Agent card registry cache: L1 miss for %s (key_type=%s); reading MemorySpace L2",
+            lookup_key,
+            key_type or "any",
+        )
         if record := await self._read_l2_with_timeout(
             self._l2.get_fresh(
                 lookup_key,
                 cache_ttl=cache_ttl,
                 key_type=key_type,
-            )
+            ),
+            lookup_key=lookup_key,
+            op="fresh",
         ):
+            logger.info(
+                "Agent card registry cache: MemorySpace L2 hit for %s (fresh, age=%.0fs); "
+                "promoted to L1",
+                lookup_key,
+                record.age_seconds(),
+            )
             await self._promote_to_l1(lookup_key, record)
             return record
+        logger.info(
+            "Agent card registry cache: MemorySpace L2 miss for %s (no fresh entry)",
+            lookup_key,
+        )
         return None
 
     async def get_stale(
@@ -446,15 +474,34 @@ class LayeredAgentCardCacheBackend:
             max_staleness_seconds=max_staleness_seconds,
             key_type=key_type,
         ):
+            logger.info(
+                "Agent card registry cache: L1 hit for %s (stale, age=%.0fs)",
+                lookup_key,
+                record.age_seconds(),
+            )
             return record
         # Stale-if-error runs only after a registry fetch failed — wait for L2.
+        logger.info(
+            "Agent card registry cache: L1 miss for %s; reading MemorySpace L2 (stale-if-error)",
+            lookup_key,
+        )
         if record := await self._l2.get_stale(
             lookup_key,
             max_staleness_seconds=max_staleness_seconds,
             key_type=key_type,
         ):
+            logger.info(
+                "Agent card registry cache: MemorySpace L2 hit for %s (stale, age=%.0fs); "
+                "promoted to L1",
+                lookup_key,
+                record.age_seconds(),
+            )
             await self._promote_to_l1(lookup_key, record)
             return record
+        logger.info(
+            "Agent card registry cache: MemorySpace L2 miss for %s (no stale entry within bound)",
+            lookup_key,
+        )
         return None
 
     async def _promote_to_l1(self, lookup_key: str, record: AgentCardCacheRecord) -> None:
@@ -468,6 +515,10 @@ class LayeredAgentCardCacheBackend:
         registry_ids: dict[str, RegistryIds] | None = None,
     ) -> None:
         await self._l1.store(cards, key_types=key_types, registry_ids=registry_ids)
+        logger.info(
+            "Agent card registry cache: write-behind to MemorySpace L2 for %d key(s)",
+            len(cards),
+        )
         self._schedule_l2(self._l2.store(cards, key_types=key_types, registry_ids=registry_ids))
 
     async def evict(
@@ -498,12 +549,18 @@ def create_agent_card_cache_backend(
 
     memory_space_id = try_resolve_memory_space_id()
     if memory_space_id is None:
-        logger.debug("Agent card registry cache: L1 only (not on an enclave workload)")
+        if is_enclave_l2_workload():
+            logger.warning(
+                "Agent card registry cache: L1 only (enclave workload but MemorySpace id "
+                "is not yet provisioned; L2 write-behind disabled)"
+            )
+        else:
+            logger.debug("Agent card registry cache: L1 only (not on an enclave workload)")
         return l1
 
     kv_cache = MemorySpaceKVCache(memory_space_id=memory_space_id)
-    logger.debug(
-        "Agent card registry cache: L1 + MemorySpace L2 (space_id=%s)",
+    logger.info(
+        "Agent card registry cache: L1 + MemorySpace L2 enabled (space_id=%s)",
         memory_space_id,
     )
     return LayeredAgentCardCacheBackend(

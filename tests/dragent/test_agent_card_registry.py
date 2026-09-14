@@ -23,6 +23,7 @@ import httpx
 import pytest
 from a2a.types import AgentCard
 
+import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
 from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -35,6 +36,7 @@ from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheRecord
+from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import RegistryIds
 
@@ -882,8 +884,10 @@ class TestGetDefaultRegistry:
     @pytest.fixture(autouse=True)
     def _reset(self):
         reset_default_registry()
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
         yield
         reset_default_registry()
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
 
     async def test_returns_singleton(self):
         r1 = await get_default_registry()
@@ -905,6 +909,47 @@ class TestGetDefaultRegistry:
         r1 = get_default_registry_sync()
         r2 = await get_default_registry()
         assert r1 is r2
+
+    async def test_provisions_l2_before_constructing_registry(self):
+        """GIVEN no singleton WHEN get_default_registry runs THEN L2 is provisioned on this loop."""
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry.try_resolve_memory_space_id_async",
+            new_callable=AsyncMock,
+            return_value="space-1",
+        ) as resolve_mock:
+            await get_default_registry()
+
+        resolve_mock.assert_awaited_once()
+
+    async def test_sync_constructor_attaches_l2_when_space_already_provisioned(self):
+        """GIVEN import bootstrap stored a space id
+        WHEN YAML parse builds the singleton on a running loop
+        THEN the registry uses L1+L2 write-behind.
+        """
+        memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-cached"
+
+        registry = get_default_registry_sync()
+
+        assert isinstance(registry._backend, LayeredAgentCardCacheBackend)
+
+    async def test_async_constructor_attaches_l2_after_provisioning_on_this_loop(self):
+        """GIVEN async provision stores a space id on this loop
+        WHEN the singleton is constructed
+        THEN the registry uses L1+L2 rather than locking in L1-only.
+        """
+
+        async def _provision() -> str:
+            memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = "space-1"
+            return "space-1"
+
+        with patch(
+            "datarobot_genai.dragent.agent_card_registry.try_resolve_memory_space_id_async",
+            new_callable=AsyncMock,
+            side_effect=_provision,
+        ):
+            registry = await get_default_registry()
+
+        assert isinstance(registry._backend, LayeredAgentCardCacheBackend)
 
 
 # ---------------------------------------------------------------------------

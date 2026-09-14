@@ -27,7 +27,7 @@ from typing import NamedTuple
 
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
-from datarobot_genai.dragent.registry_l2_bootstrap import ensure_registry_l2_cache_provisioned
+from datarobot_genai.dragent.registry_l2_bootstrap import ensure_registry_l2_cache_provisioned_async
 
 if TYPE_CHECKING:
     from nat.data_models.config import Config
@@ -100,7 +100,7 @@ async def warmup_registry_from_config(config: Config) -> None:
     No-op when no registry lookups are configured. On failure, logs an error and
     leaves :func:`is_registry_warm` as ``False``.
     """
-    ensure_registry_l2_cache_provisioned(phase="lifespan-warmup")
+    await ensure_registry_l2_cache_provisioned_async(phase="lifespan-warmup")
 
     collected = collect_registry_lookup_ids(config)
     if collected.is_empty():
@@ -110,7 +110,7 @@ async def warmup_registry_from_config(config: Config) -> None:
 
     _WarmState.warm = False
     logger.info(
-        "Prefetching agent cards from central registry "
+        "Warming agent card cache for registry-backed A2A clients "
         "(deployment_ids=%s, external_ids=%s, workload_ids=%s)",
         collected.deployment_ids,
         collected.external_ids,

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -78,7 +79,8 @@ async def test_warmup_retries_provision_before_prefetch() -> None:
 
     with (
         patch(
-            "datarobot_genai.dragent.registry_warmup.ensure_registry_l2_cache_provisioned",
+            "datarobot_genai.dragent.registry_warmup.ensure_registry_l2_cache_provisioned_async",
+            new_callable=AsyncMock,
             return_value="space-abc",
         ) as ensure_mock,
         patch(
@@ -88,7 +90,37 @@ async def test_warmup_retries_provision_before_prefetch() -> None:
     ):
         await warmup_registry_from_config(config)
 
-    ensure_mock.assert_called_once_with(phase="lifespan-warmup")
+    ensure_mock.assert_awaited_once_with(phase="lifespan-warmup")
+
+
+async def test_ensure_registry_l2_cache_provisioned_async_resets_singleton_on_success() -> None:
+    """GIVEN an enclave workload WHEN async ensure runs on a loop THEN the singleton is reset."""
+    with (
+        patch.object(
+            bootstrap,
+            "_registry_l2_gate_status",
+            return_value={
+                "enclave_host_set": True,
+                "enclave_prefix_set": True,
+                "enclave_api_endpoint": "https://example.com/api/v2",
+                "workload_id": "wl-123",
+                "enclave_l2_workload": True,
+                "api_token_set": True,
+            },
+        ),
+        patch.object(
+            bootstrap,
+            "try_resolve_memory_space_id_async",
+            new_callable=AsyncMock,
+            return_value="space-abc",
+        ) as resolve_mock,
+        patch.object(bootstrap, "reset_default_registry") as reset_mock,
+    ):
+        result = await bootstrap.ensure_registry_l2_cache_provisioned_async(phase="test")
+        assert result == "space-abc"
+
+    resolve_mock.assert_awaited_once()
+    reset_mock.assert_called_once()
 
 
 def test_bootstrap_provisions_once() -> None:
