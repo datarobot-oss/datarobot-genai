@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+import logging
 
 import pytest
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
@@ -28,6 +29,7 @@ from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.probe_paths import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+from datarobot_genai.dragent.inbound_token import _authorization_carries_idp_token
 
 from ..helpers import make_jwt
 
@@ -36,6 +38,33 @@ OTHER_AUDIENCE = "https://app.datarobot.com/org-1/agent-2"
 SECRET_CLAIM = "super-secret-subject"
 # Opaque DataRobot API token: what `authorization` actually carries on the serving routes.
 DATAROBOT_API_TOKEN = "NjRiYWE1Njk5NmZiMzZlM2VlZWVmYzQ0"
+
+# A representative DataRobot-issued platform credential: equivalent in trust to a DataRobot
+# API key, and a perfectly decodable JWT -- which is why it cannot be classified by shape.
+# It arrives in `authorization`, never in the gateway's own header.  `aud` is empty because
+# it was never minted with this (or any) agent in mind.
+DATAROBOT_ISSUED_CLAIMS = {
+    "aud": [],
+    "client_id": "11111111-1111-1111-1111-111111111111",
+    "iss": "https://issuer.example.com",
+    "scope": "",
+    "sub": "11111111-1111-1111-1111-111111111111",
+}
+
+# An external IdP token whose `aud` names the installation rather than an agent: already
+# validated and forwarded by the gateway, and exactly what audience binding exists to catch.
+INSTALLATION_PREFIX = "https://app.example.com"
+IDP_AGENT_ID = "example-agent-principal-id"
+PLATFORM_SCOPED_CLAIMS = {
+    "iss": "https://idp.example.com/oauth2/default",
+    "aud": INSTALLATION_PREFIX,
+    "cid": "example-client-id",
+    "sub": "example-client-id",
+}
+
+# The same token minted for one agent instead.
+AGENT_BOUND_AUDIENCE = f"{INSTALLATION_PREFIX}/agents/{IDP_AGENT_ID}"
+AGENT_BOUND_CLAIMS = {**PLATFORM_SCOPED_CLAIMS, "aud": AGENT_BOUND_AUDIENCE}
 
 
 def _ok(text: str):
@@ -142,8 +171,12 @@ class TestAudienceValidation:
         response = client.post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: f"Bearer {token}"})
         assert response.status_code == 200
 
-    def test_authorization_bearer_header_is_used_as_fallback(self, client):
-        """GIVEN no DataRobot header WHEN authorization carries a Bearer JWT THEN it is read."""
+    def test_authorization_bearer_jwt_is_not_read_by_default(self, client):
+        """GIVEN a JWT in `authorization` and no opt-in THEN it is not read as an IdP token.
+
+        `authorization` carries DataRobot's own credentials, several of which are JWTs.  The
+        gateway puts the caller's IdP token in its own header; only that one is in scope.
+        """
         token = make_jwt(aud=EXPECTED_AUDIENCE)
         response = client.post("/", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
@@ -278,6 +311,7 @@ class TestServingRoutes:
         )
         assert response.status_code == 200
         assert response.text == "completion"
+        assert response.text == "completion"
 
     def test_request_without_any_token_is_untouched(self, client):
         """GIVEN no credentials at all THEN this middleware does not reject the request."""
@@ -315,21 +349,20 @@ class TestServingRoutes:
         )
         assert response.status_code == 422
 
-    def test_wrong_audience_jwt_in_authorization_is_rejected(self, client):
-        """GIVEN a wrong-audience JWT in `authorization` THEN it is rejected here too.
+    @pytest.mark.parametrize("aud", [OTHER_AUDIENCE, EXPECTED_AUDIENCE])
+    def test_jwt_in_authorization_is_not_read_by_default(self, client, aud):
+        """GIVEN a JWT in `authorization` and no opt-in THEN its `aud` is never inspected.
 
-        Both sides read the same carriers now (``dragent.inbound_token``); this header used to
-        be skipped here while the XAA provider still exchanged from it.
+        Parametrized over both audiences deliberately: they take the same path for the same
+        reason, because the header is not an IdP carrier and the claim is never decoded.  Not
+        a bypass -- with the fallback off the XAA provider does not exchange from this header
+        either, so nothing is validated here but exchanged there.  ``TestAuthorizationOptIn``
+        covers the local-dev configuration where the two audiences do diverge.
         """
-        token = make_jwt(aud=OTHER_AUDIENCE)
-        response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
-        assert response.status_code == 401
-
-    def test_matching_audience_jwt_in_authorization_passes(self, client):
-        """GIVEN a correct-audience JWT in `authorization` THEN the request proceeds."""
-        token = make_jwt(aud=EXPECTED_AUDIENCE)
+        token = make_jwt(aud=aud)
         response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
+        assert response.text == "completion"
 
     def test_mounted_a2a_subtree_is_checked_too(self, client):
         """GIVEN a wrong-audience token inside the /a2a mount THEN it is rejected.
@@ -348,14 +381,166 @@ class TestServingRoutes:
         assert response.text == "card"
 
 
-class TestFallbackHeaderClassification:
-    """`authorization` is shared with the DataRobot API token, so only a real JWT counts.
+class TestCarrierScoping:
+    """Which credential is an IdP token at all -- the question that precedes the audience check.
 
-    Asks the parser, not a dot count: opaque tokens can contain two dots (``v2.local.xxx``).
+    Only ``x-datarobot-external-access-token`` carries one.  The gateway populates it with the
+    external token it already validated, so a value there is in scope by construction;
+    ``authorization`` carries DataRobot's own credentials and is out of scope by default.
+    """
+
+    def _client(self, expected_audience: str = EXPECTED_AUDIENCE) -> TestClient:
+        return TestClient(_app(routes=_a2a_routes(), expected_audience=expected_audience))
+
+    def test_datarobot_issued_jwt_in_authorization_passes_through(self):
+        """GIVEN DataRobot's own platform credential in `authorization` THEN it is untouched.
+
+        The bug this fixes: it happens to decode as a JWT, so reading it as an IdP token
+        rejected DataRobot-authenticated calls to an agent with the flag on.
+        """
+        token = make_jwt(**DATAROBOT_ISSUED_CLAIMS)
+        response = self._client().post("/", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_datarobot_issued_jwt_is_rejected_under_the_opt_in(
+        self, authorization_carries_idp_token
+    ):
+        """GIVEN the opt-in THEN the same token is read as an IdP token and fails on `aud`.
+
+        Local-dev configuration only: it says "there is no gateway in front, so treat a JWT in
+        `authorization` as the caller's IdP token".  A deployment that turned it on would
+        reject its own platform traffic, which is precisely why it defaults off.
+        """
+        token = make_jwt(**DATAROBOT_ISSUED_CLAIMS)
+        response = self._client().post("/", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize("opt_in", [False, True])
+    def test_opaque_datarobot_api_token_in_authorization_passes_through(self, request, opt_in):
+        """GIVEN an opaque DataRobot API token THEN it is never an IdP token, opt-in or not.
+
+        It does not decode, so the fallback declines it even when it is switched on.
+        """
+        if opt_in:
+            request.getfixturevalue("authorization_carries_idp_token")
+        response = self._client().post(
+            "/", headers={"authorization": f"Bearer {DATAROBOT_API_TOKEN}"}
+        )
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_platform_scoped_idp_token_is_rejected(self):
+        """GIVEN an IdP token whose `aud` names the installation THEN this agent refuses it.
+
+        Already validated and forwarded by the gateway; `aud` just does not name us.
+        """
+        token = make_jwt(**PLATFORM_SCOPED_CLAIMS)
+        response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: token})
+        assert response.status_code == 401
+
+    def test_agent_bound_idp_token_is_accepted_by_the_matching_agent(self):
+        """GIVEN an `aud` naming this agent specifically THEN that agent accepts it."""
+        token = make_jwt(**AGENT_BOUND_CLAIMS)
+        response = self._client(expected_audience=AGENT_BOUND_AUDIENCE).post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: token}
+        )
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_agent_bound_idp_token_is_refused_by_another_agent(self):
+        """GIVEN the same token THEN an agent with a different principal still refuses it."""
+        token = make_jwt(**AGENT_BOUND_CLAIMS)
+        other = f"{INSTALLATION_PREFIX}/agents/some-other-agent-principal"
+        response = self._client(expected_audience=other).post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: token}
+        )
+        assert response.status_code == 401
+
+    def test_empty_audience_list_in_the_dedicated_header_is_rejected(self):
+        """GIVEN `aud: []` in the gateway's header THEN it is rejected.
+
+        Asserted separately from a missing claim below: ``_audience_claim`` collapses both to
+        ``[]``, and neither may be read as "no audience requirement, let it through".
+        """
+        response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=[])})
+        assert response.status_code == 401
+
+    def test_absent_audience_claim_in_the_dedicated_header_is_rejected(self):
+        """GIVEN no `aud` claim at all THEN it is rejected, by the same rule."""
+        response = self._client().post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(sub="user-1")}
+        )
+        assert response.status_code == 401
+
+    def test_unreadable_opt_in_does_not_break_pass_through(self, monkeypatch, caplog):
+        """GIVEN an unparseable value for the opt-in THEN requests still pass through.
+
+        The settings read sits on the path of *every* request, including the ones carrying no
+        IdP token at all.  Letting a config typo out of it would turn the traffic this library
+        promises to leave alone into 500s, so it resolves to off -- the field default, and what
+        a deployment wants -- and says so in the log.
+        """
+        monkeypatch.setenv("DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION", "perhaps")
+        _authorization_carries_idp_token.cache_clear()
+        token = make_jwt(aud=OTHER_AUDIENCE)
+        with caplog.at_level(logging.WARNING):
+            response = self._client().post("/", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.text == "executed"
+        assert "DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION" in caplog.text
+
+
+class TestAuthorizationOptIn:
+    """``DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION`` -- local runs with no gateway in front.
+
+    The carrier set is shared with the XAA provider (``dragent.inbound_token``), so whatever
+    audience validation reads is exactly what gets exchanged.  With the opt-in on, a JWT in
+    `authorization` is exchangeable, so it must also be validated -- the bypass this covers.
     """
 
     @pytest.fixture
-    def client(self) -> TestClient:
+    def client(self, authorization_carries_idp_token) -> TestClient:
+        return TestClient(
+            _app(
+                routes=[
+                    Route("/chat/completions", _ok("completion"), methods=["POST"]),
+                ],
+            )
+        )
+
+    def test_wrong_audience_jwt_in_authorization_is_rejected(self, client):
+        """GIVEN the opt-in and a wrong-audience JWT in `authorization` THEN it is rejected."""
+        token = make_jwt(aud=OTHER_AUDIENCE)
+        response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    def test_matching_audience_jwt_in_authorization_passes(self, client):
+        """GIVEN the opt-in and a correct-audience JWT THEN the request proceeds."""
+        token = make_jwt(aud=EXPECTED_AUDIENCE)
+        response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.text == "completion"
+
+    def test_opaque_api_token_in_authorization_still_passes(self, client):
+        """GIVEN the opt-in THEN an opaque DataRobot API token is still left alone."""
+        response = client.post(
+            "/chat/completions", headers={"authorization": f"Bearer {DATAROBOT_API_TOKEN}"}
+        )
+        assert response.status_code == 200
+
+
+class TestFallbackHeaderClassification:
+    """Under the opt-in, `authorization` is shared with the DataRobot API token, so only a
+    real JWT counts.
+
+    Asks the parser, not a dot count: opaque tokens can contain two dots (``v2.local.xxx``).
+    Local-dev configuration only -- ``DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION`` is off in a
+    deployment, where the header is not read at all.
+    """
+
+    @pytest.fixture
+    def client(self, authorization_carries_idp_token) -> TestClient:
         return TestClient(_app(routes=_a2a_routes()))
 
     @pytest.mark.parametrize(

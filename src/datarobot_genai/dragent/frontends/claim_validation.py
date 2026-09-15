@@ -18,10 +18,15 @@
 The DataRobot API Gateway already validated that the token is well-formed, signed and trusted,
 then forwarded it as-is.  This answers what is left: was it issued for *us*?
 
+So ``aud`` is the only claim read.  Signature, expiry and issuer are deliberately not checked
+here; duplicating the gateway's own checks only creates a second place to get them wrong.
+Claims are decoded unverified and compared, nothing more.
+
 Not an authentication check.  A request with no IdP token passes through -- an agent may be
 called with a DataRobot API token instead (see ``a2a.py``'s ``bearerAuth`` scheme), and whether
-a caller is authenticated is the gateway's business.  Signature, issuer and expiry are not
-re-verified either; claims are decoded unverified and only read.
+a caller is authenticated is the gateway's business.  Which credential counts as an IdP token is
+``inbound_token``'s decision: a DataRobot-issued token is a platform credential, not an IdP
+token, even when it happens to be shaped like a JWT.
 
 Covers every serving route, ``/a2a`` and agent-card discovery included: NAT copies inbound
 headers into the workflow context on every route, and the cross-application-access provider
@@ -116,7 +121,15 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
             audience = _audience_claim(token)
         except ValueError as ex:
             message = f"Malformed authorization token: {ex}"
-            logger.info(message)
+            logger.warning(
+                "Inbound token rejected: %s",
+                message,
+                extra={
+                    "token_aud": None,
+                    "expected_audience": self._expected_audience,
+                    "reason": "undecodable_token",
+                },
+            )
             return _error(HTTPStatus.UNPROCESSABLE_ENTITY, message)
 
         # `audience` is a list, so `in` is exact equality per entry. If _audience_claim ever
@@ -124,7 +137,16 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         # satisfy "aaa" -- see TestExactAudienceMatching.
         if self._expected_audience not in audience:
             message = "Authorization audience claim validation failed"  # no token/claim values
-            logger.info(message)
+            # The detail goes to the log; the body says only that it failed.
+            logger.warning(
+                "Inbound token rejected: %s",
+                message,
+                extra={
+                    "token_aud": audience,
+                    "expected_audience": self._expected_audience,
+                    "reason": "audience_mismatch",
+                },
+            )
             return _error(HTTPStatus.UNAUTHORIZED, message)
 
         logger.debug("OAuth audience claim validation succeeded")

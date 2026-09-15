@@ -119,8 +119,9 @@ The flow obtains a scoped access token through a two-step exchange.
 |----------|-------------|
 | `IDP_AGENT_ID` | Okta AI agent principal ID (used as `iss`/`sub` in JWT client assertions). |
 | `IDP_AGENT_PRIVATE_KEY_JWK` | Base64-encoded or raw-JSON private JWK (signs JWT client assertions). |
+| `DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION` | **Local development only**, default off. Also read the inbound IdP token from `authorization: Bearer <jwt>`, for runs with no DataRobot API gateway in front to populate `x-datarobot-external-access-token`. Leave it unset in a deployment: `authorization` carries DataRobot's own credentials there, and reading them as IdP tokens fails audience validation. |
 
-Both are loaded automatically from env vars, `.env`, DataRobot Runtime
+All three are loaded automatically from env vars, `.env`, DataRobot Runtime
 Parameters, or `file_secrets`.
 
 ### Full `workflow.yaml` example
@@ -246,9 +247,14 @@ authentication check: a caller with no IdP token — using a DataRobot API token
 | Present but not a decodable JWT | `422 {"detail": "Malformed authorization token: ..."}` |
 | No IdP token | Proceeds |
 
-The token is read from `x-datarobot-external-access-token` (bare or `Bearer`-prefixed), then
-`Bearer` `authorization` for local runs with no gateway. Because `authorization` also carries
-DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
+The token is read from `x-datarobot-external-access-token` only (bare or `Bearer`-prefixed).
+The gateway populates that header with the external IdP token it has already validated, so a
+value there is an in-scope IdP token by construction. `authorization` carries DataRobot's own
+credentials — an opaque API token, or a DataRobot-issued JWT that decodes perfectly well and
+has nothing to do with the caller's IdP — so it is **not** read as an IdP carrier. Set
+`DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION=true` to read it for a local run with no gateway in
+front; even then, only a value that decodes as a JWT counts. Leave it off in a deployment,
+where turning it on makes the agent reject its own platform traffic.
 
 - Applies to **every serving route**, not just `/a2a`.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
@@ -264,7 +270,8 @@ DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
 - Off unless `a2a.oauth_claim_validation: true` is set. With the flag on but no
   `cross_application_access.token_request.audience` to enforce, startup fails rather than
   pretending to. Either state is logged at startup.
-- Audience comparison is exact — no case or trailing-slash leniency.
+- Audience comparison is exact — no case or trailing-slash leniency. `aud` may be a string or
+  a list; a list matches if any entry is exactly equal.
 
 ### Server-side configuration reference: `external`
 
@@ -315,8 +322,8 @@ remote XAA-protected agent.
 | `fallback_token_headers` | — | **Deprecated, no effect.** Removed in a future release; delete it. |
 
 > **The incoming token headers are not configurable.** The access token is read from
-> `x-datarobot-external-access-token`, falling back to `Bearer` `authorization` for local runs
-> with no gateway. That set lives in `dragent/inbound_token.py` and is shared with inbound
+> `x-datarobot-external-access-token`, falling back to `Bearer` `authorization` only when
+> `DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION` is set for a local run with no gateway. That set lives in `dragent/inbound_token.py` and is shared with inbound
 > audience validation, so the agent cannot exchange a token from a header validation did not
 > inspect.
 >
@@ -359,9 +366,9 @@ in `securitySchemes`, while flow-specific parameters go in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
-| `401 Authorization audience claim validation failed` | The token was issued for a different resource. | Request a token whose `aud` matches the serving agent's `token_request.audience`. |
+| `401 Authorization audience claim validation failed` | The token's `aud` does not equal `cross_application_access.token_request.audience`. | Compare the token's `aud` against the configured value — they must match exactly. |
 | `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
-| `RuntimeError: No IdP access token in request context` | Neither carrier header holds a token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`, or `authorization: Bearer <jwt>` locally. A non-JWT in `authorization` is ignored, since that header also carries DataRobot API tokens. |
+| `RuntimeError: No IdP access token in request context` | `x-datarobot-external-access-token` holds no token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`. Locally, set `DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION=true` and send `authorization: Bearer <jwt>`; a non-JWT there is ignored, since that header also carries DataRobot credentials. |
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
 | `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
