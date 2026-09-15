@@ -114,6 +114,24 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
             return None  # Readiness/liveness traffic; never reaches the workflow.
 
         token = find_idp_token(request.headers)
+
+        # TEMP DIAGNOSTIC: which carrier, and whose token.
+        from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+        dedicated_present = OAUTH_ACCESS_TOKEN_HEADER in request.headers
+        logger.info(
+            "claim-validation carrier probe",
+            extra={
+                "path": request.url.path,
+                "dedicated_header_present": dedicated_present,
+                "authorization_present": "authorization" in request.headers,
+                "token_found": token is not None,
+                # Names only — never values.
+                "dr_headers": sorted(
+                    k for k in request.headers.keys() if k.lower().startswith("x-datarobot-")
+                ),
+            },
+        )
+        
         if token is None:
             return None  # No claim validation When using standard datarobot api tokens
 
@@ -138,6 +156,7 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         if self._expected_audience not in audience:
             message = "Authorization audience claim validation failed"  # no token/claim values
             # The detail goes to the log; the body says only that it failed.
+            claims = decode_jwt_claims_unverified(token)
             logger.warning(
                 "Inbound token rejected: %s",
                 message,
@@ -145,6 +164,11 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
                     "token_aud": audience,
                     "expected_audience": self._expected_audience,
                     "reason": "audience_mismatch",
+                    # TEMP: identifies the minter.
+                    "token_iss": claims.get("iss"),
+                    "token_sub": claims.get("sub"),
+                    "token_has_dr_ext": bool(claims.get("ext")),
+                    "from_dedicated_header": dedicated_present,
                 },
             )
             return _error(HTTPStatus.UNAUTHORIZED, message)
