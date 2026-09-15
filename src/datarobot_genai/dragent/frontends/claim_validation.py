@@ -23,9 +23,15 @@ called with a DataRobot API token instead (see ``a2a.py``'s ``bearerAuth`` schem
 a caller is authenticated is the gateway's business.  Signature, issuer and expiry are not
 re-verified either; claims are decoded unverified and only read.
 
-Covers every route with no exemptions, ``/a2a`` and agent-card discovery included: NAT copies
-inbound headers into the workflow context on every route, and the cross-application-access
-provider reads the token from there regardless of which route it arrived on.
+Covers every serving route, ``/a2a`` and agent-card discovery included: NAT copies inbound
+headers into the workflow context on every route, and the cross-application-access provider
+reads the token from there regardless of which route it arrived on.
+
+The health/readiness routes are the one exemption (see ``probe_paths``).  That reasoning does
+not reach them: ``health_check`` returns a static response and never invokes the workflow, so
+an exempted probe cannot carry a token into an agent call.  The exemption is unconditional
+because the platform's probe is anonymous infrastructure traffic that cannot hold an
+agent-scoped token -- checking it just leaves the workload permanently un-ready.
 
 Agent-card discovery needs no exemption because auth there is optional, which the pass-through
 above already models: an unauthenticated request reaches ``_handle_get_agent_card``, which
@@ -47,6 +53,7 @@ from starlette.responses import JSONResponse
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from datarobot_genai.dragent.frontends.probe_paths import is_probe_request
 from datarobot_genai.dragent.inbound_token import find_idp_token
 
 logger = logging.getLogger(__name__)
@@ -98,6 +105,9 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
 
     def _reject(self, request: Request) -> JSONResponse | None:
         """Response to send instead of calling the app, or ``None`` to allow."""
+        if is_probe_request(request):
+            return None  # Readiness/liveness traffic; never reaches the workflow.
+
         token = find_idp_token(request.headers)
         if token is None:
             return None  # No claim validation When using standard datarobot api tokens

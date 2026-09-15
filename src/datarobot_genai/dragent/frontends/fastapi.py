@@ -44,6 +44,8 @@ from .a2a import create_agent_card
 from .agent_manifest import AgentManifest
 from .agent_manifest import build_agent_manifest
 from .claim_validation import GeneralOAuthClaimValidationMiddleware
+from .probe_paths import DATAROBOT_EXPECTED_HEALTH_ROUTES
+from .probe_paths import route_path as _route_path
 from .register import DRAgentA2AConfig
 from .session import DRAgentAGUISessionManager
 from .session import _a2a_headers
@@ -51,13 +53,13 @@ from .session import headers_from_a2a_state
 from .session import resolve_identity_from_headers
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
 
-DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
-
 # Instructs predictions-gateway to run monitoring for chat-completions endpoints.
 DATAROBOT_MODEL_MONITORING_HEADER = "X-DataRobot-Model-Monitoring"
 
 # Exclude health/ping and the bare or mount-prefixed deployment root the k8s probe hits;
 # named endpoints (/chat/completions, /a2a/, ...) keep a path segment and their server span.
+# The same routes ``probe_paths`` exempts, spelled as regexes because OTel matches the raw
+# URL and so cannot strip ``root_path`` the way ``route_path`` does. Keep the two in step.
 _PROBE_EXCLUDED_URLS = r"//[^/]+/$,/[0-9a-fA-F]{24}/[0-9a-fA-F]{24}/?$,/health/?$,/ping/?$"
 
 logger = logging.getLogger(__name__)
@@ -67,21 +69,6 @@ logger = logging.getLogger(__name__)
 # clients — would get a 405. Once matched, the ASGI server (uvicorn) strips the body for
 # HEAD on the wire, so handlers need no method-specific branch.
 _GET_AND_HEAD = ["GET", "HEAD"]
-
-
-def _route_path(request: Request) -> str:
-    """Request path relative to the ASGI ``root_path`` the app is mounted under.
-
-    In a DataRobot deployment the server runs with ``--root_path /<model_id>/<lrs_id>`` and the
-    LRS ingress forwards the full, prefixed path. Since Starlette 0.33 ``scope["path"]`` (and so
-    ``request.url.path``) includes that prefix, so comparing against the unprefixed route paths
-    NAT registers requires stripping ``root_path`` first.
-    """
-    path: str = request.scope["path"]
-    root_path: str = request.scope.get("root_path", "").rstrip("/")
-    if root_path and path.startswith(root_path):
-        return path[len(root_path) :] or "/"
-    return path
 
 
 def _instrument_fastapi_app(app: FastAPI) -> None:

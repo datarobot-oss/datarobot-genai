@@ -35,6 +35,7 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
@@ -970,18 +971,66 @@ class TestInboundAudienceValidation:
     def test_serving_route_rejects_a_token_naming_another_agent(self):
         """GIVEN a wrong-audience token on a non-A2A route THEN it is rejected.
 
-        NAT copies inbound headers into the workflow context on every route.
+        NAT copies inbound headers into the workflow context on every route.  Uses a chat
+        route rather than a health one: health is exempt, so it cannot show this.
         """
         token = make_jwt(aud="api://another-agent")
-        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
-            response = client.get("/health", headers={"x-datarobot-external-access-token": token})
-        assert response.status_code == 401
+        worker = self._worker("api://my-agent")
+        paths = worker._chat_completion_paths()
+        assert paths, "no chat route to check against; the assertion below would be vacuous"
+        with self._built_app(worker) as app, TestClient(app) as client:
+            for path in paths:
+                response = client.post(
+                    path, json={}, headers={"x-datarobot-external-access-token": token}
+                )
+                assert response.status_code == 401, path
 
     def test_serving_route_accepts_a_token_naming_this_agent(self):
         token = make_jwt(aud="api://my-agent")
         with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
             response = client.get("/health", headers={"x-datarobot-external-access-token": token})
         assert response.status_code == 200
+
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_answer_a_token_naming_another_agent(self, path):
+        """GIVEN a wrong-audience token on a health route THEN the probe still succeeds.
+
+        The platform's readiness probe carries whatever token the gateway attaches; its ``aud``
+        is not this agent's.  Checking it 401s every probe and the workload never goes ready.
+        """
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get(path, headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 200, path
+        assert response.json() == {"status": "healthy"}
+
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_are_exempt_under_a_mount_prefix(self, path):
+        """GIVEN the deployment's ``--root_path`` prefix THEN the probe is still exempt.
+
+        The workload is served under /<model_id>/<lrs_id>, so matching the bare path would
+        miss every real probe.
+        """
+        root_path = "/6a983b0b73f5f93c12b3be0c/6a983c7931cd39434aacda20"
+        token = make_jwt(aud="api://another-agent")
+        with (
+            self._built_app(self._worker("api://my-agent")) as app,
+            TestClient(app, root_path=root_path) as client,
+        ):
+            response = client.get(
+                f"{root_path}{path}", headers={"x-datarobot-external-access-token": token}
+            )
+        assert response.status_code == 200, path
+        assert response.json() == {"status": "healthy"}
+
+    def test_a2a_route_still_rejects_a_token_naming_another_agent(self):
+        """GIVEN the exemption THEN /a2a is unaffected -- agent A's token is refused by B."""
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.post(
+                f"/{A2A_MOUNT_PATH}/", json={}, headers={"x-datarobot-external-access-token": token}
+            )
+        assert response.status_code == 401
 
     def test_serving_route_without_an_idp_token_still_works(self):
         """GIVEN validation is enabled but no IdP token is sent THEN nothing breaks.

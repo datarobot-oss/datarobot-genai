@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.44
+- `dragent/frontends`: health/readiness routes are exempt from the `a2a.oauth_claim_validation` audience check. The flag previously rejected every readiness probe with 401, so an agent with it enabled never reached ready state. Serving routes are unchanged.
+
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
 
