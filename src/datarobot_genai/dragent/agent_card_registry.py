@@ -57,7 +57,6 @@ from pydantic import Field
 from pydantic import model_validator
 
 from datarobot_genai.core.config import resolve_config
-from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import LookupKeyType
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
@@ -360,7 +359,6 @@ class AgentCardRegistry:
         self,
         *,
         config: AgentCardRegistryConfig,
-        cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
         self._api_token: str | None = None
         self._endpoint: str | None = None
@@ -382,7 +380,7 @@ class AgentCardRegistry:
         assert soft_cache_ttl is not None  # normalized by _resolve_soft_cache_ttl
         self._soft_cache_ttl: int = soft_cache_ttl
         self._on_duplicate = config.agent_card_registry_on_duplicate
-        self._backend = cache_backend or create_agent_card_cache_backend(self._cache_ttl)
+        self._backend = create_agent_card_cache_backend(self._cache_ttl)
 
         logger.info(
             "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",

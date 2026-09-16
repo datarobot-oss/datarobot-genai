@@ -112,12 +112,10 @@ def _memory_registry(**kwargs) -> AgentCardRegistry:
     if on_duplicate is not None:
         config_kwargs["agent_card_registry_on_duplicate"] = on_duplicate
 
-    registry = AgentCardRegistry(
-        config=AgentCardRegistryConfig(**config_kwargs),
-        cache_backend=cache_backend,
-    )
+    registry = AgentCardRegistry(config=AgentCardRegistryConfig(**config_kwargs))
     registry._api_token = api_token
     registry._endpoint = endpoint
+    registry._backend = cache_backend
     return registry
 
 
