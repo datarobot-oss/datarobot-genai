@@ -359,10 +359,9 @@ class AgentCardRegistry:
     def __init__(
         self,
         *,
-        config: AgentCardRegistryConfig | None = None,
+        config: AgentCardRegistryConfig,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
-        config = config or AgentCardRegistryConfig()
         self._api_token: str | None = None
         self._endpoint: str | None = None
         self._lock = asyncio.Lock()
@@ -787,7 +786,9 @@ async def get_default_registry() -> AgentCardRegistry:
                 # Provision L2 on this loop before __init__ builds the cache
                 # backend. The sync helper cannot nest asyncio.run here.
                 await try_resolve_memory_space_id_async()
-                _RegistryHolder.instance = AgentCardRegistry()
+                _RegistryHolder.instance = AgentCardRegistry(
+                    config=AgentCardRegistryConfig(),
+                )
     return _RegistryHolder.instance
 
 
@@ -801,7 +802,9 @@ def get_default_registry_sync() -> AgentCardRegistry:
     called on a running event loop.
     """
     if _RegistryHolder.instance is None:
-        _RegistryHolder.instance = AgentCardRegistry()
+        _RegistryHolder.instance = AgentCardRegistry(
+            config=AgentCardRegistryConfig(),
+        )
     return _RegistryHolder.instance
 
 
