@@ -43,7 +43,9 @@ Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
 """
 
 import logging
+from collections.abc import Mapping
 from http import HTTPStatus
+from typing import Any
 
 from nat.authentication.jwt_utils import decode_jwt_claims_unverified
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -59,18 +61,14 @@ from datarobot_genai.dragent.inbound_token import find_idp_token
 logger = logging.getLogger(__name__)
 
 
-def _audience_claim(token: str) -> list[str]:
+def _audience_values(claims: Mapping[str, Any]) -> list[str]:
     """Return ``aud`` as a list of strings, or ``[]``.  Compared verbatim by the caller -- no
     case or trailing-slash leniency.
 
     Normalized here rather than with NAT's ``UserManager._user_info_from_jwt``, which is private
     and rejects tokens carrying no identity claim.
-
-    Raises
-    ------
-        ValueError: If the token is empty, malformed, or undecodable.
     """
-    raw = decode_jwt_claims_unverified(token).get("aud")
+    raw = claims.get("aud")
     values = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
     return [entry for entry in values if isinstance(entry, str)]
 
@@ -106,56 +104,38 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
     def _reject(self, request: Request) -> JSONResponse | None:
         """Response to send instead of calling the app, or ``None`` to allow."""
         token = find_idp_token(request.headers)
-
-        # TEMP DIAGNOSTIC: which carrier, and whose token.
-        dedicated_present = OAUTH_ACCESS_TOKEN_HEADER in request.headers
-        dr_headers = sorted(  # names only -- never values
-            k for k in request.headers.keys() if k.lower().startswith("x-datarobot-")
-        )
-        logger.info(
-            "claim-validation carrier probe: path=%s dedicated_header_present=%s "
-            "authorization_present=%s token_found=%s dr_headers=%s",
-            request.url.path,
-            dedicated_present,
-            "authorization" in request.headers,
-            token is not None,
-            dr_headers,
-        )
+        carrier = OAUTH_ACCESS_TOKEN_HEADER if OAUTH_ACCESS_TOKEN_HEADER in request.headers else "-"
 
         if token is None:
             return None  # No claim validation When using standard datarobot api tokens
 
         try:
-            audience = _audience_claim(token)
+            claims = decode_jwt_claims_unverified(token)
         except ValueError as ex:
             message = f"Malformed authorization token: {ex}"
             logger.warning(
-                "Inbound token rejected: %s (expected_audience=%s reason=undecodable_token)",
-                message,
-                self._expected_audience,
+                "Inbound token rejected: reason=undecodable_token carrier=%s detail=%s",
+                carrier,
+                ex,  # the parser naming the defect; it never echoes the token
             )
             return _error(HTTPStatus.UNPROCESSABLE_ENTITY, message)
 
-        # `audience` is a list, so `in` is exact equality per entry. If _audience_claim ever
+        # `audience` is a list, so `in` is exact equality per entry. If _audience_values ever
         # returned the raw claim, a str would make this a substring match and let "-aaa"
         # satisfy "aaa" -- see TestExactAudienceMatching.
+        audience = _audience_values(claims)
         if self._expected_audience not in audience:
             message = "Authorization audience claim validation failed"  # no token/claim values
-            # The detail goes to the log; the body says only that it failed.
-            # TEMP: identifies the minter, to distinguish a misconfigured audience from a
-            # token that should never have reached this agent at all.
-            claims = decode_jwt_claims_unverified(token)
             logger.warning(
-                "Inbound token rejected: %s (token_aud=%s expected_audience=%s "
-                "reason=audience_mismatch token_iss=%s token_sub=%s token_has_dr_ext=%s "
-                "from_dedicated_header=%s)",
-                message,
-                audience,
+                "Inbound token rejected: reason=audience_mismatch expected_audience=%s "
+                "token_aud=%s carrier=%s iss=%s has_sub=%s has_scp=%s has_ext=%s",
                 self._expected_audience,
+                audience,
+                carrier,
                 claims.get("iss"),
-                claims.get("sub"),
+                bool(claims.get("sub")),
+                bool(claims.get("scp") or claims.get("scope")),
                 bool(claims.get("ext")),
-                dedicated_present,
             )
             return _error(HTTPStatus.UNAUTHORIZED, message)
 

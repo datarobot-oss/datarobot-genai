@@ -358,7 +358,7 @@ in `securitySchemes`, while flow-specific parameters go in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
-| `401 Authorization audience claim validation failed` | The token's `aud` does not equal `cross_application_access.token_request.audience`. | Compare the token's `aud` against the configured value — they must match exactly. |
+| `401 Authorization audience claim validation failed` | The token's `aud` does not equal `cross_application_access.token_request.audience`. | The warning carries everything needed: both values, the carrier, the issuer, and shape flags.
 | `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
 | `RuntimeError: No IdP access token in request context` | `x-datarobot-external-access-token` holds no token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`; `authorization` is never read as an IdP carrier. |
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |

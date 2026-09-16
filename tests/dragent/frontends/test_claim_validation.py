@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+import logging
 
 import pytest
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
@@ -30,6 +31,9 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 
 from ..helpers import make_jwt
+
+# Scope caplog to this module's logger, as the rest of the suite does.
+_MODULE = "datarobot_genai.dragent.frontends.claim_validation"
 
 EXPECTED_AUDIENCE = "https://app.datarobot.com/org-1/agent-1"
 OTHER_AUDIENCE = "https://app.datarobot.com/org-1/agent-2"
@@ -437,7 +441,7 @@ class TestCarrierScoping:
     def test_empty_audience_list_in_the_dedicated_header_is_rejected(self):
         """GIVEN `aud: []` in the gateway's header THEN it is rejected.
 
-        Asserted separately from a missing claim below: ``_audience_claim`` collapses both to
+        Asserted separately from a missing claim below: ``_audience_values`` collapses both to
         ``[]``, and neither may be read as "no audience requirement, let it through".
         """
         response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=[])})
@@ -528,3 +532,148 @@ class TestMountPrefixRobustness:
             response = client.get(f"{self.UNRECOGNISED_MOUNT}{AGENT_CARD_WELL_KNOWN_PATH}")
         assert response.status_code == 200
         assert response.text == "card"
+
+
+class TestDiagnosticLogging:
+    """What reaches the log, and at which level.
+
+    The rejection body is already pinned by ``test_rejection_body_leaks_neither_token_nor_claims``;
+    this is its counterpart for the log, which has no redacting formatter behind it in dragent.
+    """
+
+    def _client(self) -> TestClient:
+        return TestClient(_app(routes=_a2a_routes()))
+
+    @staticmethod
+    def _messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """Return the rendered messages.  ``getMessage()``, not ``.message``: lazy %-args."""
+        return [record.getMessage() for record in caplog.records]
+
+    def test_rejection_log_leaks_neither_token_nor_principal(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a rejected token THEN neither it nor its `sub` reaches the log, even at DEBUG.
+
+        DEBUG is the worst case on purpose: nothing at any level may carry the subject, which
+        is reported only as the boolean `has_sub`.
+        """
+        token = make_jwt(aud=OTHER_AUDIENCE, sub=SECRET_CLAIM)
+        with caplog.at_level(logging.DEBUG, logger=_MODULE):
+            response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: token})
+        assert response.status_code == 401
+        assert token not in caplog.text
+        assert SECRET_CLAIM not in caplog.text
+
+    def test_one_warning_carries_the_whole_diagnosis(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a mismatch THEN a single WARNING holds everything needed to diagnose it.
+
+        Both sides of the comparison, the carrier, the minter, and the shape flags -- so a
+        rejection never needs a DEBUG re-run to be actionable.
+        """
+        issuer = "https://idp.example.com/oauth2/default"
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, sub=SECRET_CLAIM, iss=issuer, scp=["dr.impersonation"]
+                    )
+                },
+            )
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "reason=audience_mismatch" in message
+        assert EXPECTED_AUDIENCE in message
+        assert OTHER_AUDIENCE in message
+        assert f"carrier={OAUTH_ACCESS_TOKEN_HEADER}" in message
+        assert f"iss={issuer}" in message
+
+    def test_shape_flags_separate_a_platform_token_from_an_idp_one(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN two rejections THEN the flags tell the two causes apart.
+
+        A DataRobot-issued token reaching an audience check is a routing bug (`has_ext`); an
+        external IdP token with the wrong audience is a misconfigured audience (`has_scp`).
+        The rest of the line looks the same either way.
+        """
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, ext={"dr_subject_id": "x"}
+                    )
+                },
+            )
+        platform = self._messages(caplog)[-1]
+        assert "has_ext=True" in platform
+        assert "has_scp=False" in platform
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, sub="svc", scp=["dr.impersonation"]
+                    )
+                },
+            )
+        external = self._messages(caplog)[-1]
+        assert "has_ext=False" in external
+        assert "has_scp=True" in external
+        assert "has_sub=True" in external
+
+    def test_accepted_request_is_quiet_at_default_verbosity(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a request that passes THEN nothing is logged above DEBUG.
+
+        The check runs on every serving route, so anything louder is per-request log spam.
+        """
+        with caplog.at_level(logging.INFO, logger=_MODULE):
+            self._client().post(
+                "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)}
+            )
+        assert caplog.records == []
+
+    def test_tokenless_request_is_quiet_at_default_verbosity(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a tokenless request (a probe, a DataRobot API token caller) THEN silence."""
+        with caplog.at_level(logging.INFO, logger=_MODULE):
+            self._client().post("/")
+        assert caplog.records == []
+
+    def test_carrier_probe_reports_a_missing_token_at_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN DEBUG and no IdP token THEN the probe still reports what arrived.
+
+        The one case no WARNING can cover: a gateway that stopped forwarding the header lets
+        requests through silently, and this is the only thing that shows it.
+        """
+        with caplog.at_level(logging.DEBUG, logger=_MODULE):
+            self._client().post("/", headers={"x-datarobot-request-id": "req-1"})
+        probe = next(m for m in self._messages(caplog) if m.startswith("Inbound claim validation"))
+        assert "token_present=False" in probe
+        assert "carrier=-" in probe
+        assert "x-datarobot-request-id" in probe  # header names
+        assert "req-1" not in probe  # never their values
+
+    def test_undecodable_token_warning_names_the_defect(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a non-JWT THEN one WARNING names the reason, the carrier and the parse error."""
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: "not-a-jwt"})
+        assert response.status_code == 422
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "reason=undecodable_token" in warnings[0]
+        assert f"carrier={OAUTH_ACCESS_TOKEN_HEADER}" in warnings[0]
+        assert "not-a-jwt" not in warnings[0]
