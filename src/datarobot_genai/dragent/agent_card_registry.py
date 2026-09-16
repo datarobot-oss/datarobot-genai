@@ -359,9 +359,9 @@ class AgentCardRegistry:
         self,
         *,
         config: AgentCardRegistryConfig,
+        api_token: str,
+        endpoint: str,
     ) -> None:
-        self._api_token: str | None = None
-        self._endpoint: str | None = None
         self._lock = asyncio.Lock()
 
         # Pending registrations (filled synchronously, flushed on first get)
@@ -380,6 +380,8 @@ class AgentCardRegistry:
         assert soft_cache_ttl is not None  # normalized by _resolve_soft_cache_ttl
         self._soft_cache_ttl: int = soft_cache_ttl
         self._on_duplicate = config.agent_card_registry_on_duplicate
+        self._api_token = api_token
+        self._endpoint = endpoint
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
 
         logger.info(
@@ -453,9 +455,8 @@ class AgentCardRegistry:
         Requests the maximum page size (100) to minimise round-trips, then
         follows ``next`` links until all pages are consumed.
         """
-        token, endpoint = _resolve_settings(self._api_token, self._endpoint)
-        registry_url = build_agent_cards_registry_url(endpoint)
-        headers = {"Authorization": f"Bearer {token}"}
+        registry_url = build_agent_cards_registry_url(self._endpoint)
+        headers = {"Authorization": f"Bearer {self._api_token}"}
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
@@ -784,8 +785,11 @@ async def get_default_registry() -> AgentCardRegistry:
                 # Provision L2 on this loop before __init__ builds the cache
                 # backend. The sync helper cannot nest asyncio.run here.
                 await try_resolve_memory_space_id_async()
+                api_token, endpoint = _resolve_settings()
                 _RegistryHolder.instance = AgentCardRegistry(
                     config=AgentCardRegistryConfig(),
+                    api_token=api_token,
+                    endpoint=endpoint,
                 )
     return _RegistryHolder.instance
 
@@ -800,8 +804,11 @@ def get_default_registry_sync() -> AgentCardRegistry:
     called on a running event loop.
     """
     if _RegistryHolder.instance is None:
+        api_token, endpoint = _resolve_settings()
         _RegistryHolder.instance = AgentCardRegistry(
             config=AgentCardRegistryConfig(),
+            api_token=api_token,
+            endpoint=endpoint,
         )
     return _RegistryHolder.instance
 

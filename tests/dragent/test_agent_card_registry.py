@@ -112,9 +112,11 @@ def _memory_registry(**kwargs) -> AgentCardRegistry:
     if on_duplicate is not None:
         config_kwargs["agent_card_registry_on_duplicate"] = on_duplicate
 
-    registry = AgentCardRegistry(config=AgentCardRegistryConfig(**config_kwargs))
-    registry._api_token = api_token
-    registry._endpoint = endpoint
+    registry = AgentCardRegistry(
+        config=AgentCardRegistryConfig(**config_kwargs),
+        api_token=api_token,
+        endpoint=endpoint,
+    )
     registry._backend = cache_backend
     return registry
 
@@ -387,7 +389,7 @@ class TestAgentCardRegistry:
     async def test_get_single_deployment_id(self, mock_fetch):
         expected = _card()
         mock_fetch.return_value = _parsed({"dep-1": expected})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         card = await registry.get(deployment_id="dep-1")
         assert card is expected
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
@@ -398,31 +400,31 @@ class TestAgentCardRegistry:
             {"ext-1": expected},
             key_types={"ext-1": "external"},
         )
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         card = await registry.get(external_id="ext-1")
         assert card is expected
         mock_fetch.assert_awaited_once_with({"externalIds": "ext-1"})
 
     async def test_get_raises_when_both_ids(self):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get(deployment_id="d", external_id="e")
 
     async def test_get_raises_when_neither_id(self):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get()
 
     async def test_get_raises_when_not_found(self, mock_fetch):
         mock_fetch.return_value = _parsed({})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="No agent card found"):
             await registry.get(deployment_id="missing")
 
     async def test_get_uses_cache(self, mock_fetch):
         card = _card()
         mock_fetch.return_value = _parsed({"dep-1": card})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
 
         card1 = await registry.get(deployment_id="dep-1")
         card2 = await registry.get(deployment_id="dep-1")
@@ -434,7 +436,7 @@ class TestAgentCardRegistry:
         """cache_ttl=0 means every get() triggers a fresh fetch."""
         card_mock = _card()
         mock_fetch.return_value = _parsed({"dep-1": card_mock})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=0)
+        registry = _memory_registry(cache_ttl=0)
 
         await registry.get(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
@@ -444,7 +446,7 @@ class TestAgentCardRegistry:
     async def test_expired_cache_triggers_refetch(self, mock_fetch):
         card = _card()
         mock_fetch.return_value = _parsed({"dep-1": card})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(cache_ttl=60)
 
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 120)
@@ -459,8 +461,6 @@ class TestAgentCardRegistry:
         card = _card()
         mock_fetch.return_value = _parsed({"dep-1": card})
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=3600,
             soft_cache_ttl=60,
         )
@@ -480,8 +480,6 @@ class TestAgentCardRegistry:
         card = _card()
         mock_fetch.return_value = _parsed({"dep-1": card})
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=3600,
             soft_cache_ttl=60,
         )
@@ -523,8 +521,6 @@ class TestAgentCardRegistryStaleIfError:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -549,8 +545,6 @@ class TestAgentCardRegistryStaleIfError:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=3600,
             soft_cache_ttl=60,
             cache_backend=cache_backend,
@@ -575,8 +569,6 @@ class TestAgentCardRegistryStaleIfError:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -589,7 +581,7 @@ class TestAgentCardRegistryStaleIfError:
 
     async def test_raises_when_no_cached_card(self, mock_fetch):
         mock_fetch.side_effect = AgentCardRegistryError("registry down")
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(cache_ttl=60)
 
         with pytest.raises(AgentCardRegistryError, match="registry down"):
             await registry.get(deployment_id="dep-1")
@@ -601,8 +593,6 @@ class TestAgentCardRegistryStaleIfError:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -625,8 +615,6 @@ class TestAgentCardRegistryStaleIfError:
             _parsed({}),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -646,8 +634,6 @@ class TestAgentCardRegistryStaleIfError:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -673,8 +659,6 @@ class TestAgentCardRegistryStaleIfError:
             _parsed({}),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -705,7 +689,7 @@ class TestAgentCardRegistryRegisterFlush:
             _parsed({"dep-1": _card(), "dep-2": _card(name="Second Agent")}),
             _parsed({"ext-1": _card(name="Third Agent")}, key_types={"ext-1": "external"}),
         ]
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-2")
         registry.register(external_id="ext-1")
@@ -728,7 +712,7 @@ class TestAgentCardRegistryRegisterFlush:
 
     async def test_register_deduplicates(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-1")
         registry.register(deployment_id="dep-1")
@@ -738,7 +722,7 @@ class TestAgentCardRegistryRegisterFlush:
 
     async def test_pending_cleared_after_flush(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(deployment_id="dep-1")
 
         await registry.get(deployment_id="dep-1")
@@ -765,7 +749,7 @@ class TestAgentCardRegistryPrefetch:
                 "dep-2": _card(name="Second Agent"),
             }
         )
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1", "dep-2"])
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1,dep-2"})
@@ -779,7 +763,7 @@ class TestAgentCardRegistryPrefetch:
             _parsed({"dep-1": _card()}),
             _parsed({"ext-1": _card(name="Second Agent")}, key_types={"ext-1": "external"}),
         ]
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         await registry.prefetch(deployment_ids=["dep-1"], external_ids=["ext-1"])
 
         assert mock_fetch.await_count == 2
@@ -789,7 +773,7 @@ class TestAgentCardRegistryPrefetch:
 
     async def test_prefetch_skips_already_cached(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
 
         await registry.prefetch(deployment_ids=["dep-1"])
         mock_fetch.reset_mock()
@@ -824,7 +808,9 @@ class TestAgentCardRegistryFetch:
     async def test_fetch_passes_params_and_auth(self, mock_httpx_client):
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_httpx_client):
             registry = _memory_registry(
-                api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
+                api_token="my-tok",
+                endpoint="https://app.dr.com/api/v2",
+                cache_ttl=3600,
             )
             parsed = await registry._fetch({"deploymentIds": "dep-1,dep-2"})
 
@@ -848,7 +834,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 403"):
                 await registry._fetch({"deploymentIds": "dep-1"})
 
@@ -894,7 +880,9 @@ class TestAgentCardRegistryFetch:
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
             registry = _memory_registry(
-                api_token="my-tok", endpoint="https://app.dr.com/api/v2", cache_ttl=3600
+                api_token="my-tok",
+                endpoint="https://app.dr.com/api/v2",
+                cache_ttl=3600,
             )
             parsed = await registry._fetch({"deploymentIds": "dep-1,dep-2,dep-3"})
 
@@ -921,7 +909,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             parsed = await registry._fetch({"deploymentIds": "dep-1"})
 
         assert "dep-1" in parsed.cards
@@ -951,7 +939,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             with pytest.raises(AgentCardRegistryError, match="HTTP 500"):
                 await registry._fetch({"deploymentIds": "dep-1,dep-2"})
 
@@ -979,7 +967,7 @@ class TestAgentCardRegistryFetch:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             parsed = await registry._fetch({"deploymentIds": "dep-0"})
 
         # Should have fetched exactly _MAX_PAGES (stopped at the safety limit)
@@ -1000,6 +988,11 @@ class TestGetDefaultRegistry:
         yield
         reset_default_registry()
         memory_space_cache_module._ProvisionedRegistryCacheSpaceState.space_id = None
+
+    @pytest.fixture(autouse=True)
+    def _resolve_settings(self):
+        with patch(f"{_MODULE}._resolve_settings", return_value=("tok", "https://ep")):
+            yield
 
     async def test_returns_singleton(self):
         r1 = await get_default_registry()
@@ -1121,7 +1114,7 @@ class TestAgentCardRegistryWorkload:
         """GIVEN a workload-keyed card WHEN got by workload ID THEN workloadIds is queried."""
         expected = _card()
         mock_fetch.return_value = self._parsed_workload({"wl-1": expected})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
 
         card = await registry.get(workload_id="wl-1")
 
@@ -1129,24 +1122,24 @@ class TestAgentCardRegistryWorkload:
         mock_fetch.assert_awaited_once_with({"workloadIds": "wl-1"})
 
     async def test_get_raises_when_workload_and_deployment_id(self):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get(deployment_id="dep-1", workload_id="wl-1")
 
     async def test_get_raises_when_workload_and_external_id(self):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="exactly one"):
             await registry.get(external_id="ext-1", workload_id="wl-1")
 
     async def test_not_found_message_names_workload_id(self, mock_fetch):
         mock_fetch.return_value = _parsed({})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with pytest.raises(AgentCardRegistryError, match="workload_id='wl-missing'"):
             await registry.get(workload_id="wl-missing")
 
     async def test_get_uses_cache(self, mock_fetch):
         mock_fetch.return_value = self._parsed_workload({"wl-1": _card()})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
 
         first = await registry.get(workload_id="wl-1")
         second = await registry.get(workload_id="wl-1")
@@ -1159,7 +1152,7 @@ class TestAgentCardRegistryWorkload:
         mock_fetch.return_value = self._parsed_workload(
             {"wl-1": _card(), "wl-2": _card(name="Second Agent")}
         )
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(workload_id="wl-1")
         registry.register(workload_id="wl-2")
         assert registry.has_registered_lookups() is True
@@ -1180,7 +1173,7 @@ class TestAgentCardRegistryWorkload:
         mock_fetch.return_value = self._parsed_workload(
             {"wl-1": _card(), "wl-2": _card(name="Second Agent")}
         )
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         await registry.prefetch(workload_ids=["wl-1", "wl-2"])
 
         mock_fetch.assert_awaited_once_with({"workloadIds": "wl-1,wl-2"})
@@ -1191,7 +1184,7 @@ class TestAgentCardRegistryWorkload:
 
     async def test_refresh_all_registered_includes_workload_ids(self, mock_fetch):
         mock_fetch.return_value = self._parsed_workload({"wl-1": _card()})
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(cache_ttl=60)
         registry.register(workload_id="wl-1")
         await registry.get(workload_id="wl-1")
         registry._age_cache_entry_for_test("wl-1", 120)
@@ -1209,8 +1202,6 @@ class TestAgentCardRegistryWorkload:
             AgentCardRegistryError("registry down"),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -1239,8 +1230,6 @@ class TestAgentCardRegistryWorkload:
             _parsed({}),
         ]
         registry = _memory_registry(
-            api_token="tok",
-            endpoint="https://ep",
             cache_ttl=60,
             cache_backend=cache_backend,
         )
@@ -1277,7 +1266,7 @@ class TestRegistryIdKindIsolation:
             assert not {"deploymentIds", "workloadIds"} <= params.keys(), params
 
     async def test_prefetch_of_all_kinds_issues_one_call_per_kind(self, mock_fetch):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         await registry.prefetch(
             deployment_ids=["dep-1"],
             external_ids=["ext-1"],
@@ -1293,7 +1282,7 @@ class TestRegistryIdKindIsolation:
         ]
 
     async def test_flush_pending_of_all_kinds_issues_one_call_per_kind(self, mock_fetch):
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         registry.register(external_id="ext-1")
         registry.register(workload_id="wl-1")
@@ -1307,7 +1296,7 @@ class TestRegistryIdKindIsolation:
 
     async def test_fetch_rejects_deployment_and_workload_ids_together(self):
         """The guard fires before any HTTP call is made."""
-        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         with patch(f"{_MODULE}.httpx.AsyncClient") as mock_client_cls:
             with pytest.raises(AgentCardRegistryError, match="same agent card registry request"):
                 await registry._fetch({"deploymentIds": "dep-1", "workloadIds": "wl-1"})
@@ -1354,7 +1343,7 @@ class TestAgentCardRegistryIdChunking:
         )
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             parsed = await registry._fetch({"deploymentIds": ",".join(ids)})
 
         requested = self._requested_ids(client, "deploymentIds")
@@ -1372,7 +1361,7 @@ class TestAgentCardRegistryIdChunking:
         )
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             parsed = await registry._fetch({"workloadIds": ",".join(ids)})
 
         assert [len(chunk) for chunk in self._requested_ids(client, "workloadIds")] == [20, 5]
@@ -1384,7 +1373,7 @@ class TestAgentCardRegistryIdChunking:
         client = self._sequenced_client([_registry_response(*[_entry(dep_id=i) for i in ids])])
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             await registry._fetch({"deploymentIds": ",".join(ids)})
 
         assert client.get.await_count == 1
@@ -1403,8 +1392,6 @@ class TestAgentCardRegistryIdChunking:
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
             registry = _memory_registry(
-                api_token="tok",
-                endpoint="https://ep",
                 cache_ttl=3600,
                 on_duplicate="first",
             )
@@ -1424,7 +1411,7 @@ class TestAgentCardRegistryIdChunking:
         )
 
         with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
-            registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+            registry = _memory_registry(cache_ttl=3600)
             await registry.prefetch(workload_ids=ids)
 
         assert [len(chunk) for chunk in self._requested_ids(client, "workloadIds")] == [20, 1]
