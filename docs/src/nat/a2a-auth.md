@@ -147,8 +147,8 @@ general:
             - Write a blog post about the future of AI in healthcare
             - Create an article about sustainable energy trends
 
-      # Opt in to enforcing the inbound token's claims (all serving routes, not just /a2a;
-      # health/readiness probes are exempt). When enabled, a token's aud claim must match
+      # Opt in to enforcing the inbound token's claims (all serving routes, not just /a2a).
+      # When enabled, a token's aud claim must match
       # cross_application_access.token_request.audience
       oauth_claim_validation: true
 
@@ -256,17 +256,14 @@ has nothing to do with the caller's IdP — so it is **not** read as an IdP carr
 front; even then, only a value that decodes as a JWT counts. Leave it off in a deployment,
 where turning it on makes the agent reject its own platform traffic.
 
-- Applies to **every serving route**, not just `/a2a`.
+- Applies to **every serving route**, not just `/a2a` — health/readiness routes included, since
+  they take a request the same way anything else does.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
-- Agent-card discovery is not exempt. Auth there is optional, so an
-  unauthenticated request still reaches the handler and
-  `enable_unauthenticated_well_known_route` decides whether it sees a redacted card or a
-  generic `404`; a request that *does* carry a token is validated first, and one naming
-  another agent gets `401` instead of a card.
-- The health/readiness routes (`/`, `/ping`, `/ping/`, `/health`, `/health/`) **are** exempt on
-  `GET`/`HEAD` — otherwise every readiness probe would `401` and the agent would never reach
-  ready state. The gateway's own auth still fronts them,
-  and the handler returns a static response without invoking the workflow.
+- No route is exempt. Auth on agent-card discovery is optional, so an unauthenticated request
+  still reaches the handler and `enable_unauthenticated_well_known_route` decides whether it
+  sees a redacted card or a generic `404`; a request that *does* carry a token is validated
+  first, and one naming another agent gets `401` instead of a card. A health/readiness probe
+  carries no IdP token at all, so it passes through the same way any tokenless request does.
 - Off unless `a2a.oauth_claim_validation: true` is set. With the flag on but no
   `cross_application_access.token_request.audience` to enforce, startup fails rather than
   pretending to. Either state is logged at startup.
@@ -306,7 +303,7 @@ server-side instead, so the refusal stays debuggable from the agent's own logs.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every serving route, not just `/a2a`. Health/readiness probes are exempt. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
+| `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every serving route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
 | `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive the generic `404 {"detail": "Not Found"}` — indistinguishable from a nonexistent agent, so the refusal reveals nothing. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`

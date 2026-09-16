@@ -13,30 +13,16 @@
 # limitations under the License.
 
 
-"""One definition of "this request is a platform probe", for every layer that must skip one.
+"""Path handling shared by the routes the platform's readiness probe hits.
 
-Two consumers today -- ``fastapi`` registers these paths and drops their OTel spans,
-``claim_validation`` exempts them from the audience check.  Kept here rather than in
-``fastapi`` because ``fastapi`` imports ``claim_validation``, so the constant cannot live
-in the module that also installs the middleware without a cycle.
-
-The probe is anonymous infrastructure traffic: it cannot obtain an agent-scoped token, so
-any layer that rejects unrecognised credentials has to let it through or the workload never
-reaches ready state.
+Registered by ``fastapi._register_health_routes``, which also uses ``route_path`` to drop
+their OTel spans.
 """
 
 from starlette.requests import Request
 
-# Registered by ``fastapi._register_health_routes``; the platform probes all five.
+# The platform probes all five.
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
-
-# The only methods ``_register_health_routes`` registers (as ``fastapi._GET_AND_HEAD``, which
-# cannot be imported here without a cycle), so anything else on those paths is a 405 from the
-# router regardless.  Narrowing to them costs no probe and keeps the exemption off a route that
-# merely shares a path -- ``/`` is both a health route and, to an A2A app mounted at the root,
-# the execute endpoint.  If the health routes ever take another method, a probe using it is
-# checked rather than wrongly exempted, so the two drifting fails safe.
-_PROBE_METHODS = frozenset({"GET", "HEAD"})
 
 
 def route_path(request: Request) -> str:
@@ -52,17 +38,3 @@ def route_path(request: Request) -> str:
     if root_path and path.startswith(root_path):
         return path[len(root_path) :] or "/"
     return path
-
-
-def is_probe_request(request: Request) -> bool:
-    """Whether this request is a liveness/readiness probe of one of the health routes.
-
-    Matches the same unprefixed path the router matches, so this is true only when the request
-    would reach ``health_check`` -- a prefixed probe (``/<model_id>/<lrs_id>/health``, or the
-    bare deployment root) resolves through ``route_path`` just as routing does, while a path
-    that merely ends in ``/health`` under some other prefix keeps that prefix and does not
-    match.  Nothing outside the five registered routes is exempted by accident.
-    """
-    return request.method.upper() in _PROBE_METHODS and (
-        route_path(request) in DATAROBOT_EXPECTED_HEALTH_ROUTES
-    )

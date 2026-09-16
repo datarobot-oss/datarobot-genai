@@ -971,8 +971,7 @@ class TestInboundAudienceValidation:
     def test_serving_route_rejects_a_token_naming_another_agent(self):
         """GIVEN a wrong-audience token on a non-A2A route THEN it is rejected.
 
-        NAT copies inbound headers into the workflow context on every route.  Uses a chat
-        route rather than a health one: health is exempt, so it cannot show this.
+        NAT copies inbound headers into the workflow context on every route.
         """
         token = make_jwt(aud="api://another-agent")
         worker = self._worker("api://my-agent")
@@ -992,36 +991,16 @@ class TestInboundAudienceValidation:
         assert response.status_code == 200
 
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_health_routes_answer_a_token_naming_another_agent(self, path):
-        """GIVEN a wrong-audience token on a health route THEN the probe still succeeds.
+    def test_health_routes_reject_a_token_naming_another_agent(self, path):
+        """GIVEN a wrong-audience token on a health route THEN it is rejected like any other.
 
-        The platform's readiness probe carries whatever token the gateway attaches; its ``aud``
-        is not this agent's.  Checking it 401s every probe and the workload never goes ready.
+        A probe carries no IdP token, so it still reaches ready state via the ordinary
+        tokenless pass-through -- see ``test_serving_route_without_an_idp_token_still_works``.
         """
         token = make_jwt(aud="api://another-agent")
         with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
             response = client.get(path, headers={"x-datarobot-external-access-token": token})
-        assert response.status_code == 200, path
-        assert response.json() == {"status": "healthy"}
-
-    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_health_routes_are_exempt_under_a_mount_prefix(self, path):
-        """GIVEN the deployment's ``--root_path`` prefix THEN the probe is still exempt.
-
-        The workload is served under /<model_id>/<lrs_id>, so matching the bare path would
-        miss every real probe.
-        """
-        root_path = "/6a983b0b73f5f93c12b3be0c/6a983c7931cd39434aacda20"
-        token = make_jwt(aud="api://another-agent")
-        with (
-            self._built_app(self._worker("api://my-agent")) as app,
-            TestClient(app, root_path=root_path) as client,
-        ):
-            response = client.get(
-                f"{root_path}{path}", headers={"x-datarobot-external-access-token": token}
-            )
-        assert response.status_code == 200, path
-        assert response.json() == {"status": "healthy"}
+        assert response.status_code == 401, path
 
     def test_a2a_route_still_rejects_a_token_naming_another_agent(self):
         """GIVEN the exemption THEN /a2a is unaffected -- agent A's token is refused by B."""

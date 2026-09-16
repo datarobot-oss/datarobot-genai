@@ -568,88 +568,37 @@ class TestFallbackHeaderClassification:
         assert response.status_code == 422
 
 
-class TestHealthProbeExemption:
-    """Health/readiness routes are exempt, so a probe is never 401'd out of readiness.
+class TestHealthRoutesAreNotExempt:
+    """Health/readiness routes get the same audience check as any other route.
 
-    The platform's probe carries whatever token the gateway attaches; its ``aud`` names the
-    platform, not this agent.  Checking it leaves the workload permanently un-ready.
+    A probe carrying no IdP token still passes through (see ``test_missing_token_passes_through``
+    on ``TestAudienceValidation``) -- that is the general tokenless pass-through, not a route
+    exemption. A probe that *does* present one is checked like everything else.
     """
 
-    def _client(self, root_path: str = "") -> TestClient:
+    def _client(self) -> TestClient:
         routes = [
             Route(path, _ok("healthy"), methods=["GET", "HEAD"])
             for path in DATAROBOT_EXPECTED_HEALTH_ROUTES
         ]
-        routes.append(Route("/chat/completions", _ok("completion"), methods=["POST"]))
-        return TestClient(_app(routes=routes), root_path=root_path)
+        return TestClient(_app(routes=routes))
 
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_wrong_audience_probe_is_allowed(self, path):
-        """GIVEN a probe carrying a token for another agent THEN it still succeeds."""
+    def test_wrong_audience_probe_is_rejected(self, path):
         with self._client() as client:
             response = client.get(
                 path, headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)}
             )
-        assert response.status_code == 200, path
-        assert response.text == "healthy"
+        assert response.status_code == 401, path
 
     @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_wrong_audience_probe_is_allowed_under_a_mount_prefix(self, path):
-        """GIVEN the deployment's ``--root_path`` THEN the prefixed probe is still exempt."""
-        root_path = "/6a983b0b73f5f93c12b3be0c/6a983c7931cd39434aacda20"
-        with self._client(root_path=root_path) as client:
-            response = client.get(
-                f"{root_path}{path}",
-                headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)},
-            )
-        assert response.status_code == 200, path
-        assert response.text == "healthy"
-
-    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_malformed_token_on_a_probe_is_allowed(self, path):
-        """GIVEN a probe carrying an undecodable JWT THEN it is not 422'd either.
-
-        The exemption runs before the token is read, so no probe can fail on its credential.
-        """
-        with self._client() as client:
-            response = client.get(path, headers={OAUTH_ACCESS_TOKEN_HEADER: "not.a.jwt"})
-        assert response.status_code == 200, path
-
-    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
-    def test_wrong_audience_bearer_probe_is_allowed(self, path):
-        """GIVEN the token arrives as ``authorization: Bearer`` THEN the probe still succeeds.
-
-        The exemption short-circuits before the token is read, so it holds whichever of the two
-        headers ``find_idp_token`` would have taken it from.
-        """
+    def test_matching_audience_probe_is_allowed(self, path):
         with self._client() as client:
             response = client.get(
-                path, headers={"authorization": f"Bearer {make_jwt(aud=OTHER_AUDIENCE)}"}
+                path, headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)}
             )
         assert response.status_code == 200, path
         assert response.text == "healthy"
-
-    def test_serving_route_is_still_checked(self):
-        """GIVEN the exemption THEN a real serving route still rejects a foreign token."""
-        with self._client() as client:
-            response = client.post(
-                "/chat/completions",
-                headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)},
-            )
-        assert response.status_code == 401
-
-    def test_non_probe_method_on_a_health_path_is_still_checked(self):
-        """GIVEN a POST to a health path THEN the exemption does not apply.
-
-        Only GET/HEAD are registered as health routes, so the exemption is scoped to them --
-        a mounted app whose execute endpoint sits at ``/`` stays guarded.
-        """
-        inner = _app(routes=_a2a_routes())
-        with TestClient(inner) as client:
-            response = client.post(
-                "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)}
-            )
-        assert response.status_code == 401
 
 
 class TestMountPrefixRobustness:

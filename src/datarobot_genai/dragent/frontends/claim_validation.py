@@ -30,19 +30,14 @@ token, even when it happens to be shaped like a JWT.
 
 Covers every serving route, ``/a2a`` and agent-card discovery included: NAT copies inbound
 headers into the workflow context on every route, and the cross-application-access provider
-reads the token from there regardless of which route it arrived on.
+reads the token from there regardless of which route it arrived on.  No route is exempt,
+health/readiness included -- those probes never carry a gateway-issued IdP token, so they
+already pass through unauthenticated like any other tokenless request.
 
-The health/readiness routes are the one exemption (see ``probe_paths``).  That reasoning does
-not reach them: ``health_check`` returns a static response and never invokes the workflow, so
-an exempted probe cannot carry a token into an agent call.  The exemption is unconditional
-because the platform's probe is anonymous infrastructure traffic that cannot hold an
-agent-scoped token -- checking it just leaves the workload permanently un-ready.
-
-Agent-card discovery needs no exemption because auth there is optional, which the pass-through
-above already models: an unauthenticated request reaches ``_handle_get_agent_card``, which
-applies ``enable_unauthenticated_well_known_route`` and serves a redacted card or a generic
-404. A request that *does* present a token gets the full check first -- a token naming another
-agent is rejected rather than earning a card.
+Agent-card discovery needs no exemption of its own either: an unauthenticated request reaches
+``_handle_get_agent_card``, which applies ``enable_unauthenticated_well_known_route`` and
+serves a redacted card or a generic 404.  A request that *does* present a token gets the full
+check first -- a token naming another agent is rejected rather than earning a card.
 
 Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
 """
@@ -58,7 +53,6 @@ from starlette.responses import JSONResponse
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from datarobot_genai.dragent.frontends.probe_paths import is_probe_request
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import find_idp_token
 
@@ -111,9 +105,6 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
 
     def _reject(self, request: Request) -> JSONResponse | None:
         """Response to send instead of calling the app, or ``None`` to allow."""
-        if is_probe_request(request):
-            return None  # Readiness/liveness traffic; never reaches the workflow.
-
         token = find_idp_token(request.headers)
 
         # TEMP DIAGNOSTIC: which carrier, and whose token.

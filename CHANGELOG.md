@@ -4,12 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.45
-- `dragent`: **the caller's IdP access token is now read only from `x-datarobot-external-access-token`.** The `authorization` header is no longer treated as an IdP-token carrier unless `DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION` is set, and that switch exists only for local runs with no DataRobot API Gateway in front. **Behaviour-affecting:** `authorization` carries DataRobot's own credentials, some of which happen to be well-formed JWTs — so with `a2a.oauth_claim_validation: true`, a DataRobot-authenticated call could be misread as carrying an external IdP token and refused. Only the gateway's dedicated header carries a token this library is entitled to audience-check; it is populated with the external token the gateway has already validated, so a value there is in scope by construction. The same function feeds the cross-application-access provider's token exchange, so validation and exchange still read exactly the same carriers and nothing exchangeable goes unchecked.
-- `dragent/frontends`: audience rejections are logged at `warning` with structured `token_aud`, `expected_audience` and `reason` fields. The response body still names neither the token nor any claim value.
-
 ## 0.29.44
-- `dragent/frontends`: health/readiness routes are exempt from the `a2a.oauth_claim_validation` audience check. The flag previously rejected every readiness probe with 401, so an agent with it enabled never reached ready state. Serving routes are unchanged.
+- `dragent`: **the caller's IdP access token is now read only from `x-datarobot-external-access-token`.** The `authorization` header is no longer treated as an IdP-token carrier unless `DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION` is set, and that switch exists only for local runs with no DataRobot API Gateway in front. **Behaviour-affecting:** `authorization` carries DataRobot's own credentials, some of which happen to be well-formed JWTs — so with `a2a.oauth_claim_validation: true`, a DataRobot-authenticated call could be misread as carrying an external IdP token and refused. Only the gateway's dedicated header carries a token this library is entitled to audience-check; it is populated with the external token the gateway has already validated, so a value there is in scope by construction. The same function feeds the cross-application-access provider's token exchange, so validation and exchange still read exactly the same carriers and nothing exchangeable goes unchecked.
+- `dragent/frontends`: audience rejections are logged at `warning` with `token_aud`, `expected_audience` and `reason`. The response body still names neither the token nor any claim value.
 
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
