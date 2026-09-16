@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.44
+- `core/config`: **`Config` no longer declares `max_history_messages` or `assume_native_tool_calling_when_unmapped` (breaking for standalone use).** Both are component settings, and `af-component-agent` already declares them on the config it registers, so genai carrying its own copies only added environment variables no component could rename or override. `get_max_history_messages_default()` and `default_assume_native_tool_calling_when_unmapped()` stay and are unchanged for components: they read the registered config and fall back to `DEFAULT_MAX_HISTORY_MESSAGES` (20) and `False` when nothing declares the field.
+- `core/config`: added `test_config_field_set_is_closed`, which freezes the set of fields `Config` may declare and fails with an explanation of where a new setting belongs instead. Adding a field deliberately means adding its name to `_ALLOWED_CONFIG_FIELDS` in the same commit.
+
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
 

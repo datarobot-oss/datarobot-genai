@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import warnings
 from unittest.mock import patch
 
@@ -39,6 +40,82 @@ from datarobot_genai.core.config import register_config_provider
 from datarobot_genai.core.config import registered_default_llm_name
 from datarobot_genai.core.config import resolve_config
 
+# --- Config is a CLOSED class ------------------------------------------------
+#
+# `_ALLOWED_CONFIG_FIELDS` freezes the fields `Config` is permitted to declare,
+# and `test_config_field_set_is_closed` fails when the two drift apart. The
+# reasoning lives in `_FIELD_ADDED_MESSAGE` below, which is what a failing run
+# prints.
+
+_ALLOWED_CONFIG_FIELDS = frozenset(
+    {
+        "datarobot_endpoint",
+        "datarobot_api_token",
+        "llm_deployment_id",
+        "llm_nim_deployment_id",
+        "llm_use_datarobot_llm_gateway",
+        "llm_default_model",
+    }
+)
+
+_FIELD_ADDED_MESSAGE = """
+
+    ============================================================================
+    STOP. Config is a CLOSED class and it just gained {count} new field(s):
+
+        {added}
+
+    Do not add fields to Config.
+    ============================================================================
+
+    datarobot-genai is a library, so Config is a dependency-level class. Whoever
+    installs this package cannot edit it. A new field here is therefore not a
+    configuration point for them, it is one more environment variable this
+    library reads, which no application can add to, rename, or override. That is
+    why the field set is frozen.
+
+    Put the setting on the component's own config instead: the
+    DataRobotAppFrameworkBaseSettings subclass an af-component-* registers
+    through register_config_provider(). That class belongs to the component, so
+    its fields are the component's to name and to change.
+
+    If the field genuinely belongs on Config, add its name to
+    _ALLOWED_CONFIG_FIELDS in this file, in the same commit. That should not
+    happen without a really good reason.
+"""
+
+_FIELD_REMOVED_MESSAGE = """
+
+    Config no longer declares: {removed}
+
+    If removing these was intentional, drop them from _ALLOWED_CONFIG_FIELDS in
+    this file. If it was not, a field was lost to a rebase or a refactor and the
+    environment variables behind it have stopped being read. Restore it.
+"""
+
+
+def test_config_field_set_is_closed() -> None:
+    """Fail loudly when Config gains or loses a field.
+
+    Config is closed on purpose; see `_FIELD_ADDED_MESSAGE`, which is the text
+    this test prints when it fails.
+    """
+    # GIVEN the frozen set of fields Config is allowed to declare
+    # (_ALLOWED_CONFIG_FIELDS)
+
+    # WHEN we read the fields Config actually declares
+    declared = set(Config.model_fields)
+
+    # THEN no field has been added ...
+    added = declared - _ALLOWED_CONFIG_FIELDS
+    assert not added, _FIELD_ADDED_MESSAGE.format(
+        count=len(added), added="\n        ".join(sorted(added))
+    )
+
+    # ... and none has been removed
+    removed = _ALLOWED_CONFIG_FIELDS - declared
+    assert not removed, _FIELD_REMOVED_MESSAGE.format(removed=", ".join(sorted(removed)))
+
 
 def _make_config(**overrides: object) -> Config:
     """Build a Config with explicit defaults, immune to .env files."""
@@ -49,7 +126,6 @@ def _make_config(**overrides: object) -> Config:
         "llm_nim_deployment_id": None,
         "llm_use_datarobot_llm_gateway": True,
         "llm_default_model": None,
-        "assume_native_tool_calling_when_unmapped": False,
     }
     defaults.update(overrides)
     return Config.model_construct(**defaults)
@@ -63,16 +139,44 @@ def test_get_max_history_messages_default_env_unset(monkeypatch: pytest.MonkeyPa
     assert get_max_history_messages_default() == DEFAULT_MAX_HISTORY_MESSAGES
 
 
-def test_get_max_history_messages_default_env_zero_disables(
+def test_get_max_history_messages_default_ignores_env_when_standalone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "0")
-    assert get_max_history_messages_default() == 0
-
-
-def test_get_max_history_messages_default_env_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Config no longer declares the field, so standalone genai ignores the env var."""
+    # GIVEN the env var set and no component config registered
     monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "7")
+
+    # WHEN the default is resolved
+    # THEN the built-in default is used, because nothing binds that env var
+    assert get_max_history_messages_default() == DEFAULT_MAX_HISTORY_MESSAGES
+
+
+def test_get_max_history_messages_default_uses_registered_component_config() -> None:
+    """A component that declares the field drives the value, env var included."""
+
+    # GIVEN a component config declaring max_history_messages
+    class ComponentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        max_history_messages: int = 7
+
+    # WHEN it is registered
+    register_config_provider(ComponentConfig)
+
+    # THEN the helper reads it off that config
     assert get_max_history_messages_default() == 7
+
+
+def test_get_max_history_messages_default_clamps_negative_to_zero() -> None:
+    """Negative values disable history rather than reversing the slice."""
+
+    # GIVEN a component config with a negative value
+    class ComponentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        max_history_messages: int = -5
+
+    # WHEN it is registered
+    register_config_provider(ComponentConfig)
+
+    # THEN the helper clamps to 0
+    assert get_max_history_messages_default() == 0
 
 
 # --- LLMConfig.get_llm_type (routing lives on the per-LLM value object) ---
@@ -264,10 +368,26 @@ def test_default_nim_deployment_id_returns_none_when_unset() -> None:
         assert default_nim_deployment_id() is None
 
 
-def test_default_assume_native_tool_calling_when_unmapped() -> None:
-    cfg = _make_config(assume_native_tool_calling_when_unmapped=True)
-    with patch.object(config_mod, "Config", return_value=cfg):
-        assert default_assume_native_tool_calling_when_unmapped() is True
+def test_default_assume_native_tool_calling_when_unmapped_is_false_standalone() -> None:
+    """Config no longer declares the field, so standalone genai is always False."""
+    # GIVEN no component config registered
+    # WHEN the default is resolved
+    # THEN it is False
+    assert default_assume_native_tool_calling_when_unmapped() is False
+
+
+def test_default_assume_native_tool_calling_when_unmapped_reads_component_config() -> None:
+    """A component that declares the field drives the value."""
+
+    # GIVEN a component config turning the override on
+    class ComponentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        assume_native_tool_calling_when_unmapped: bool = True
+
+    # WHEN it is registered
+    register_config_provider(ComponentConfig)
+
+    # THEN the helper reads it off that config
+    assert default_assume_native_tool_calling_when_unmapped() is True
 
 
 # --- App config injection seam ---------------------------------------------
@@ -277,8 +397,10 @@ def test_default_assume_native_tool_calling_when_unmapped() -> None:
 def _reset_config_provider() -> object:
     """Ensure the injection provider never leaks between tests."""
     register_config_provider(None)
+    config_mod._warn_no_config_provider.cache_clear()
     yield
     register_config_provider(None)
+    config_mod._warn_no_config_provider.cache_clear()
 
 
 def test_resolve_config_falls_back_to_env_config_when_no_provider() -> None:
@@ -472,3 +594,42 @@ def test_legacy_fallback_skipped_when_name_is_not_an_llm_namespace(
         warnings.simplefilter("error")  # any deprecation warning here is a failure
         config = resolve_config()
     assert not hasattr(config, "agent_nim_deployment_id")
+
+
+# --- fallback warning -------------------------------------------------------
+
+
+def test_resolve_config_warns_once_when_no_provider_registered(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Falling back to genai's own Config is warned about, but only once."""
+    # GIVEN no registered provider
+    # WHEN resolve_config is called repeatedly
+    with caplog.at_level(logging.WARNING, logger="datarobot_genai.core.config"):
+        resolve_config()
+        resolve_config()
+        resolve_config()
+
+    # THEN exactly one warning is emitted, naming the fix
+    warnings_logged = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings_logged) == 1
+    assert "register_config_provider()" in warnings_logged[0].getMessage()
+
+
+def test_resolve_config_does_not_warn_when_provider_registered(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A registered component config is the expected case, so it stays quiet."""
+
+    # GIVEN a registered component config
+    class ComponentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        pass
+
+    register_config_provider(ComponentConfig)
+
+    # WHEN resolve_config is called
+    with caplog.at_level(logging.WARNING, logger="datarobot_genai.core.config"):
+        resolve_config()
+
+    # THEN nothing is logged
+    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
