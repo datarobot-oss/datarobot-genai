@@ -59,6 +59,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from datarobot_genai.dragent.frontends.probe_paths import is_probe_request
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import find_idp_token
 
 logger = logging.getLogger(__name__)
@@ -116,22 +117,20 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         token = find_idp_token(request.headers)
 
         # TEMP DIAGNOSTIC: which carrier, and whose token.
-        from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
         dedicated_present = OAUTH_ACCESS_TOKEN_HEADER in request.headers
-        logger.info(
-            "claim-validation carrier probe",
-            extra={
-                "path": request.url.path,
-                "dedicated_header_present": dedicated_present,
-                "authorization_present": "authorization" in request.headers,
-                "token_found": token is not None,
-                # Names only — never values.
-                "dr_headers": sorted(
-                    k for k in request.headers.keys() if k.lower().startswith("x-datarobot-")
-                ),
-            },
+        dr_headers = sorted(  # names only -- never values
+            k for k in request.headers.keys() if k.lower().startswith("x-datarobot-")
         )
-        
+        logger.info(
+            "claim-validation carrier probe: path=%s dedicated_header_present=%s "
+            "authorization_present=%s token_found=%s dr_headers=%s",
+            request.url.path,
+            dedicated_present,
+            "authorization" in request.headers,
+            token is not None,
+            dr_headers,
+        )
+
         if token is None:
             return None  # No claim validation When using standard datarobot api tokens
 
@@ -140,13 +139,9 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         except ValueError as ex:
             message = f"Malformed authorization token: {ex}"
             logger.warning(
-                "Inbound token rejected: %s",
+                "Inbound token rejected: %s (expected_audience=%s reason=undecodable_token)",
                 message,
-                extra={
-                    "token_aud": None,
-                    "expected_audience": self._expected_audience,
-                    "reason": "undecodable_token",
-                },
+                self._expected_audience,
             )
             return _error(HTTPStatus.UNPROCESSABLE_ENTITY, message)
 
@@ -156,20 +151,20 @@ class GeneralOAuthClaimValidationMiddleware(BaseHTTPMiddleware):
         if self._expected_audience not in audience:
             message = "Authorization audience claim validation failed"  # no token/claim values
             # The detail goes to the log; the body says only that it failed.
+            # TEMP: identifies the minter, to distinguish a misconfigured audience from a
+            # token that should never have reached this agent at all.
             claims = decode_jwt_claims_unverified(token)
             logger.warning(
-                "Inbound token rejected: %s",
+                "Inbound token rejected: %s (token_aud=%s expected_audience=%s "
+                "reason=audience_mismatch token_iss=%s token_sub=%s token_has_dr_ext=%s "
+                "from_dedicated_header=%s)",
                 message,
-                extra={
-                    "token_aud": audience,
-                    "expected_audience": self._expected_audience,
-                    "reason": "audience_mismatch",
-                    # TEMP: identifies the minter.
-                    "token_iss": claims.get("iss"),
-                    "token_sub": claims.get("sub"),
-                    "token_has_dr_ext": bool(claims.get("ext")),
-                    "from_dedicated_header": dedicated_present,
-                },
+                audience,
+                self._expected_audience,
+                claims.get("iss"),
+                claims.get("sub"),
+                bool(claims.get("ext")),
+                dedicated_present,
             )
             return _error(HTTPStatus.UNAUTHORIZED, message)
 
