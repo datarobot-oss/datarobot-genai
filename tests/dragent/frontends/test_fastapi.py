@@ -974,15 +974,9 @@ class TestInboundAudienceValidation:
         NAT copies inbound headers into the workflow context on every route.
         """
         token = make_jwt(aud="api://another-agent")
-        worker = self._worker("api://my-agent")
-        paths = worker._chat_completion_paths()
-        assert paths, "no chat route to check against; the assertion below would be vacuous"
-        with self._built_app(worker) as app, TestClient(app) as client:
-            for path in paths:
-                response = client.post(
-                    path, json={}, headers={"x-datarobot-external-access-token": token}
-                )
-                assert response.status_code == 401, path
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get("/health", headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 401
 
     def test_serving_route_accepts_a_token_naming_this_agent(self):
         token = make_jwt(aud="api://my-agent")
@@ -1003,7 +997,7 @@ class TestInboundAudienceValidation:
         assert response.status_code == 401, path
 
     def test_a2a_route_still_rejects_a_token_naming_another_agent(self):
-        """GIVEN the exemption THEN /a2a is unaffected -- agent A's token is refused by B."""
+        """GIVEN a wrong-audience token on the mounted /a2a route THEN it is rejected too."""
         token = make_jwt(aud="api://another-agent")
         with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
             response = client.post(

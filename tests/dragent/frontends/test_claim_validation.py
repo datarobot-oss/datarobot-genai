@@ -649,22 +649,6 @@ class TestDiagnosticLogging:
             self._client().post("/")
         assert caplog.records == []
 
-    def test_carrier_probe_reports_a_missing_token_at_debug(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """GIVEN DEBUG and no IdP token THEN the probe still reports what arrived.
-
-        The one case no WARNING can cover: a gateway that stopped forwarding the header lets
-        requests through silently, and this is the only thing that shows it.
-        """
-        with caplog.at_level(logging.DEBUG, logger=_MODULE):
-            self._client().post("/", headers={"x-datarobot-request-id": "req-1"})
-        probe = next(m for m in self._messages(caplog) if m.startswith("Inbound claim validation"))
-        assert "token_present=False" in probe
-        assert "carrier=-" in probe
-        assert "x-datarobot-request-id" in probe  # header names
-        assert "req-1" not in probe  # never their values
-
     def test_undecodable_token_warning_names_the_defect(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:

@@ -146,7 +146,7 @@ general:
             - Write a blog post about the future of AI in healthcare
             - Create an article about sustainable energy trends
 
-      # Opt in to enforcing the inbound token's claims (all serving routes, not just /a2a).
+      # Opt in to enforcing the inbound token's claims (all API routes, not just /a2a).
       # When enabled, a token's aud claim must match
       # cross_application_access.token_request.audience
       oauth_claim_validation: true
@@ -247,24 +247,20 @@ authentication check: a caller with no IdP token — using a DataRobot API token
 | No IdP token | Proceeds |
 
 The token is read from `x-datarobot-external-access-token` only (bare or `Bearer`-prefixed).
-The gateway populates that header with the external IdP token it has already validated, so a
-value there is an in-scope IdP token by construction. `authorization` carries DataRobot's own
-credentials — an opaque API token, or a DataRobot-issued JWT that decodes perfectly well and
-has nothing to do with the caller's IdP — so it is **never** read as an IdP carrier.
+`authorization` is never read as an IdP-token carrier — it carries DataRobot's own credentials
+instead, some of which are JWTs too.
 
-- Applies to **every serving route**, not just `/a2a` — health/readiness routes included, since
-  they take a request the same way anything else does.
+- Applies to **every route**, not just `/a2a`.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
-- No route is exempt. Auth on agent-card discovery is optional, so an unauthenticated request
-  still reaches the handler and `enable_unauthenticated_well_known_route` decides whether it
-  sees a redacted card or a generic `404`; a request that *does* carry a token is validated
-  first, and one naming another agent gets `401` instead of a card. A health/readiness probe
-  carries no IdP token at all, so it passes through the same way any tokenless request does.
+- No route is exempt, agent-card discovery included. Auth there is optional, so an
+  unauthenticated request still reaches the handler and
+  `enable_unauthenticated_well_known_route` decides whether it sees a redacted card or a
+  generic `404`; a request that *does* carry a token is validated first, and one naming
+  another agent gets `401` instead of a card.
 - Off unless `a2a.oauth_claim_validation: true` is set. With the flag on but no
   `cross_application_access.token_request.audience` to enforce, startup fails rather than
   pretending to. Either state is logged at startup.
-- Audience comparison is exact — no case or trailing-slash leniency. `aud` may be a string or
-  a list; a list matches if any entry is exactly equal.
+- Audience comparison is exact — no case or trailing-slash leniency.
 
 ### Server-side configuration reference: `external`
 
@@ -299,7 +295,7 @@ server-side instead, so the refusal stays debuggable from the agent's own logs.
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every serving route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
+| `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
 | `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive the generic `404 {"detail": "Not Found"}` — indistinguishable from a nonexistent agent, so the refusal reveals nothing. Authenticated callers always receive the full card regardless of this setting. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
@@ -315,9 +311,9 @@ remote XAA-protected agent.
 | `fallback_token_headers` | — | **Deprecated, no effect.** Removed in a future release; delete it. |
 
 > **The incoming token headers are not configurable.** The access token is read from
-> `x-datarobot-external-access-token`. That header lives in `dragent/inbound_token.py` and is shared with inbound
-> audience validation, so the agent cannot exchange a token from a header validation did not
-> inspect.
+> `x-datarobot-external-access-token`. That header lives in `dragent/inbound_token.py` and is
+> shared with inbound audience validation, so the agent cannot exchange a token from a header
+> validation did not inspect.
 >
 > The former `okta_token_header` and `fallback_token_headers` fields are retired. Setting one to
 > the value it used to default to still loads, with a deprecation warning in the startup log.
@@ -358,7 +354,7 @@ in `securitySchemes`, while flow-specific parameters go in
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
-| `401 Authorization audience claim validation failed` | The token's `aud` does not equal `cross_application_access.token_request.audience`. | The warning carries everything needed: both values, the carrier, the issuer, and shape flags.
+| `401 Authorization audience claim validation failed` | The token was issued for a different resource. | Request a token whose `aud` matches the serving agent's `token_request.audience`. |
 | `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
 | `RuntimeError: No IdP access token in request context` | `x-datarobot-external-access-token` holds no token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`; `authorization` is never read as an IdP carrier. |
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |

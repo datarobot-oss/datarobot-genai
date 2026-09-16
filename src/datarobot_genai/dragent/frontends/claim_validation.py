@@ -18,26 +18,20 @@
 The DataRobot API Gateway already validated that the token is well-formed, signed and trusted,
 then forwarded it as-is.  This answers what is left: was it issued for *us*?
 
-So ``aud`` is the only claim read.  Signature, expiry and issuer are deliberately not checked
-here; duplicating the gateway's own checks only creates a second place to get them wrong.
-Claims are decoded unverified and compared, nothing more.
-
 Not an authentication check.  A request with no IdP token passes through -- an agent may be
 called with a DataRobot API token instead (see ``a2a.py``'s ``bearerAuth`` scheme), and whether
-a caller is authenticated is the gateway's business.  Which credential counts as an IdP token is
-``inbound_token``'s decision: a DataRobot-issued token is a platform credential, not an IdP
-token, even when it happens to be shaped like a JWT.
+a caller is authenticated is the gateway's business.  Signature, issuer and expiry are not
+re-verified either; claims are decoded unverified and only read.
 
-Covers every serving route, ``/a2a`` and agent-card discovery included: NAT copies inbound
-headers into the workflow context on every route, and the cross-application-access provider
-reads the token from there regardless of which route it arrived on.  No route is exempt,
-health/readiness included -- those probes never carry a gateway-issued IdP token, so they
-already pass through unauthenticated like any other tokenless request.
+Covers every route with no exemptions, ``/a2a`` and agent-card discovery included: NAT copies
+inbound headers into the workflow context on every route, and the cross-application-access
+provider reads the token from there regardless of which route it arrived on.
 
-Agent-card discovery needs no exemption of its own either: an unauthenticated request reaches
-``_handle_get_agent_card``, which applies ``enable_unauthenticated_well_known_route`` and
-serves a redacted card or a generic 404.  A request that *does* present a token gets the full
-check first -- a token naming another agent is rejected rather than earning a card.
+Agent-card discovery needs no exemption because auth there is optional, which the pass-through
+above already models: an unauthenticated request reaches ``_handle_get_agent_card``, which
+applies ``enable_unauthenticated_well_known_route`` and serves a redacted card or a generic
+404. A request that *does* present a token gets the full check first -- a token naming another
+agent is rejected rather than earning a card.
 
 Installed by ``fastapi.DRAgentFastApiFrontEndPluginWorker.build_app``.
 """

@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.44
 - `dragent`: **the caller's IdP access token is now read only from `x-datarobot-external-access-token`.** The DataRobot API Gateway does not forward IdP tokens through `authorization` — that header carries DataRobot's own credentials instead, and the gateway alone is positioned to authenticate them and route them to the right header. **Behaviour-affecting:** some of those credentials happen to be well-formed JWTs, so with `a2a.oauth_claim_validation: true`, a DataRobot-authenticated call could be misread as carrying an external IdP token and refused. Only the gateway's dedicated header carries a token this library is entitled to audience-check; it is populated with the external token the gateway has already validated, so a value there is in scope by construction. The same function feeds the cross-application-access provider's token exchange, so validation and exchange still read exactly the same carrier and nothing exchangeable goes unchecked.
+
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
 
