@@ -116,7 +116,6 @@ from pydantic import model_validator
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import TOKEN_HEADERS
-from datarobot_genai.dragent.inbound_token import _authorization_carries_idp_token
 from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 
@@ -350,10 +349,9 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         default=None,
         deprecated=True,
         description=(
-            f"Deprecated. The fallback carrier is fixed at "
-            f"``{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}``, and is read only when "
-            f"``DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION`` is set for a local run. Accepted "
-            f"only when set to exactly that; removal in a future release."
+            f"Deprecated. ``{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}`` is no longer read as an "
+            f"IdP-token carrier. Accepted only when set to that value; removal in a future "
+            f"release."
         ),
     )
     principal_id: str | None = Field(
@@ -385,13 +383,9 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         production. ``Field(deprecated=True)`` above is for the JSON schema only -- it fires on
         attribute access, and nothing reads these fields.
         """
-        gating_note = (
-            f" '{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}' is now read only under "
-            f"DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION; this setting does not switch it on."
-        )
-        for name, supported, note in (
-            ("okta_token_header", OAUTH_ACCESS_TOKEN_HEADER, ""),
-            ("fallback_token_headers", [OAUTH_ACCESS_TOKEN_FALLBACK_HEADER], gating_note),
+        for name, supported in (
+            ("okta_token_header", OAUTH_ACCESS_TOKEN_HEADER),
+            ("fallback_token_headers", [OAUTH_ACCESS_TOKEN_FALLBACK_HEADER]),
         ):
             # __dict__, not getattr: Field(deprecated=True) installs a data descriptor whose
             # __get__ warns, and a null means "no value" - model_dump() emits the None
@@ -402,19 +396,16 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             if value == supported:
                 logger.warning(
                     "%s is deprecated and no longer has any effect; it will be removed in a "
-                    "future release. Delete it from workflow.yaml.%s",
+                    "future release. Delete it from workflow.yaml.",
                     name,
-                    note,
                 )
                 continue
             raise ValueError(
                 f"{name} is no longer configurable and the value you set is not what the "
-                f"agent does. The access token is read from "
-                f"'{OAUTH_ACCESS_TOKEN_HEADER}', then "
-                f"'Bearer {OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}' -- inbound audience "
-                f"validation inspects exactly those, so reading any other header would "
-                f"exchange a token it never checked. Delete {name} from workflow.yaml and "
-                f"forward the standard header."
+                f"agent does. The access token is read only from "
+                f"'{OAUTH_ACCESS_TOKEN_HEADER}' -- inbound audience validation inspects "
+                f"exactly that, so reading any other header would exchange a token it never "
+                f"checked. Delete {name} from workflow.yaml and forward the standard header."
             )
         return self
 
@@ -779,17 +770,10 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             if "okta_token_header" in self.config.model_fields_set
             else ""
         )
-        looked_in = (
-            sorted(TOKEN_HEADERS)
-            if _authorization_carries_idp_token()
-            else [OAUTH_ACCESS_TOKEN_HEADER]
-        )
         raise RuntimeError(
-            f"No IdP access token in request context (looked in {looked_in}).{override} The "
-            f"access token must be forwarded with every agent call. "
-            f"'{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}' carries DataRobot credentials and is "
-            f"read as an IdP carrier only when DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION is "
-            f"set, for local runs with no gateway."
+            f"No IdP access token in request context (looked in "
+            f"'{OAUTH_ACCESS_TOKEN_HEADER}').{override} The access token must be forwarded "
+            f"with every agent call."
         )
 
 

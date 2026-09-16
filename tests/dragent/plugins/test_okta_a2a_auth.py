@@ -162,83 +162,8 @@ class TestDiscovery:
                 await provider.authenticate_for_discovery()
 
 
-# ---------------------------------------------------------------------------
-# Tests: fallback token headers
-# ---------------------------------------------------------------------------
-
-
-class TestFallbackHeaders:
-    """The `authorization` fallback, for local runs with no gateway in front.
-
-    Off unless ``DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION`` is set, which every test here does
-    via the fixture.  Carriers come from ``dragent.inbound_token``, shared with audience
-    validation, so this cannot exchange a token from a header the validator never inspected.
-    """
-
-    @pytest.fixture
-    def provider(self, authorization_carries_idp_token):
-        return OAuth2CrossApplicationAccessOAuth2AuthProvider(
-            config=OAuth2CrossApplicationAccessAuthProviderConfig()
-        )
-
-    async def test_authorization_fallback(self, provider):
-        """GIVEN a JWT in `authorization` and no primary header THEN it is used."""
-        token = make_jwt(sub="user-1")
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"authorization": f"Bearer {token}"}
-            headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": f"Bearer {token}"}
-
-    async def test_primary_takes_precedence(self, provider):
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {
-                OAUTH_ACCESS_TOKEN_HEADER: "primary-token",
-                "authorization": f"Bearer {make_jwt(sub='fallback')}",
-            }
-            headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": "Bearer primary-token"}
-
-    async def test_strips_bearer_prefix_case_insensitive(self, provider):
-        token = make_jwt(sub="user-1")
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"authorization": f"BEARER {token}"}
-            headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": f"Bearer {token}"}
-
-    async def test_opaque_value_in_authorization_is_not_exchanged(self, provider):
-        """GIVEN a DataRobot API token in `authorization` THEN it is not read as an IdP token.
-
-        Exchanging it would send the wrong credential to the identity provider, and audience
-        validation cannot check a non-JWT anyway.
-        """
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {
-                "authorization": "Bearer NjRiYWE1Njk5NmZiMzZlM2VlZWVmYzQ0"
-            }
-            with pytest.raises(RuntimeError, match="No IdP access token"):
-                await provider.authenticate_for_discovery()
-
-    async def test_opaque_value_in_the_dedicated_header_is_still_accepted(self, provider):
-        """GIVEN an opaque token in the dedicated header THEN it is used.
-
-        That header carries nothing else, and some authorization servers issue opaque tokens.
-        """
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {
-                OAUTH_ACCESS_TOKEN_HEADER: "opaque-okta-token"
-            }
-            headers = await provider.authenticate_for_discovery()
-        assert headers == {"Authorization": "Bearer opaque-okta-token"}
-
-    async def test_no_carrier_present_raises(self, provider):
-        with patch(f"{_MODULE}.Context") as mock_ctx:
-            mock_ctx.get.return_value.metadata.headers = {"x-unrelated": "value"}
-            with pytest.raises(RuntimeError, match="No IdP access token"):
-                await provider.authenticate_for_discovery()
-
-
-class TestAuthorizationIsNotAnIdpCarrierByDefault:
-    """Without the opt-in, `authorization` holds DataRobot credentials, not an IdP token.
+class TestAuthorizationIsNeverAnIdpCarrier:
+    """`authorization` holds DataRobot credentials, never an IdP token.
 
     Exchanging one would send a platform credential to the identity provider, and audience
     validation does not inspect that header either -- so the two sides stay in step.
@@ -269,18 +194,15 @@ class TestAuthorizationIsNotAnIdpCarrierByDefault:
                 await provider.authenticate_for_discovery()
 
     async def test_error_message_names_only_the_dedicated_header(self, provider):
-        """GIVEN no opt-in THEN the error does not tell the operator to use `authorization`."""
+        """GIVEN no other credential THEN the error does not point at `authorization`."""
         token = make_jwt(aud=[], sub="dr-user")
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {"authorization": f"Bearer {token}"}
-            with pytest.raises(RuntimeError) as excinfo:
+            with pytest.raises(RuntimeError, match=f"looked in '{OAUTH_ACCESS_TOKEN_HEADER}'"):
                 await provider.authenticate_for_discovery()
-        message = str(excinfo.value)
-        assert f"looked in ['{OAUTH_ACCESS_TOKEN_HEADER}']" in message
-        assert "DRAGENT_ALLOW_IDP_TOKEN_IN_AUTHORIZATION" in message
 
     async def test_dedicated_header_is_still_read(self, provider):
-        """GIVEN the gateway's header THEN extraction is unaffected by the opt-in being off."""
+        """GIVEN the gateway's header THEN it is read regardless of what `authorization` holds."""
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {
                 OAUTH_ACCESS_TOKEN_HEADER: "token-from-gateway",
