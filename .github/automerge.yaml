@@ -1,0 +1,148 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Automerge policy.
+#
+# The presence of this file is what enrols the repo. Delete it and automerge
+# stops, with no workflow edit needed.
+#
+# It is always read from the DEFAULT BRANCH, never from a PR head, so a pull
+# request cannot ship a policy that grants itself permission to be merged.
+#
+# See docs/AUTOMERGE.md in datarobot-oss/github-actions for the full picture,
+# and note the one rule that matters: the ruleset is the enforcer, this file is
+# an EXTRA gate on top of it. `main` carries required_status_checks with an
+# empty bypass list, so nothing here can cause a failing PR to merge.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+
+# Only Dependabot for now. cve-sync opens its PRs as the `cve-sync` App, but
+# the COMMITS on those PRs are authored by `github-actions[bot]`, and
+# allow-listing that would trust every workflow in the repo. Adding cve-sync
+# needs that solved separately; do not just append it here.
+#
+# It would also be the wrong call on this repo regardless. A cve-sync PR here
+# bumps `[project].version`, and that bump IS the release decision:
+# release-on-merge.yml tags whatever version it reads out of pyproject.toml on
+# merge to main. Merging one unattended publishes to PyPI unattended.
+allowed_authors:
+  - dependabot[bot]
+
+label: automerge
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Each of these must be PRESENT and green. Not "not failing": present. A PR
+# where a suite never ran at all is refused.
+#
+# THE LIST IS FOUR NAMES, NOT THIRTY-SIX, AND THAT IS DELIBERATE. CI on this
+# repo expands to 33 matrix contexts (3 python versions x 9 modules, plus lint
+# and build-test per version). Listing all of them would buy nothing and break
+# constantly: adding or renaming a module silently invalidates the list, and a
+# stale expected check means the PR waits for a human forever.
+#
+# `security` is the sentinel instead. It is ci.yml's only non-matrix job, so its
+# name is stable, and it cannot report unless ci.yml itself ran. If ci.yml ran,
+# the whole 33-job matrix ran with it, and `block_on_any_failure` below catches
+# any one of them that goes red. So this list answers "did CI run at all", and
+# that flag answers "did anything that ran fail".
+#
+# This is also why the workflows need no gate jobs and no `if: always()`
+# scaffolding: presence is checked HERE rather than by the ruleset. Listing a
+# check here is safe in a way that REQUIRING it is not. A required context a PR
+# never fires wedges that PR forever; a missing expected check just means the PR
+# waits for a human instead of self-merging.
+#
+# WHY THESE FOUR ARE GUARANTEED TO FIRE on a Dependabot bump, verified by
+# reading each workflow's triggers: none of the four carries a path filter, none
+# carries an actor guard, and none reads anything but `secrets.GITHUB_TOKEN`,
+# which is the one secret a Dependabot event can still resolve.
+#
+# `changelog-check` and `version-check` are in the list because they PASS rather
+# than because they do work here. Both exempt this PR shape by their own rules:
+# changelog-check skips a diff confined to `.github/`, and version-check skips
+# any diff that does not touch `src/datarobot_genai/`. Listing them proves they
+# ran and reached that verdict, rather than never having run.
+#
+# DELIBERATELY ABSENT, verified the same way:
+# - `e2e / *`, `e2e-examples` - both suites now skip the `dependabot[bot]`
+#                        actor, and have to. Their `core` path filters include
+#                        their own workflow file, so a grouped actions bump
+#                        WOULD have triggered them, and they read E2E_* Actions
+#                        secrets that a Dependabot event resolves to empty. They
+#                        would have failed on auth on every single bump. They
+#                        run on the push to `main` after the merge instead.
+# - `drmcp-integration` - fires only when its paths-filter matches, which for a
+#                        bump means only when integration.yml itself was
+#                        touched. It needs no credentials, so when it does fire
+#                        it is real coverage and `block_on_any_failure` holds it
+#                        to account. It just cannot be relied on to be there.
+# - `detect-changes`   - the name is ambiguous. Three workflows define a job
+#                        called exactly that.
+# - release / publish  - release-on-merge.yml, docs_publish.yml and the two
+#                        publish workflows are push, tag or comment triggered,
+#                        so they never report on a PR.
+# - `backport`         - workflow-backport.yaml runs on closed/labeled PRs.
+# - PR-automation jobs - workflow-pr-automation.yaml's helpers fire on label and
+#                        review events a bot PR may never raise.
+#
+# That leaves a real gap: an actions bump merges without E2E having run on it.
+# The 33-job CI matrix, which does run in full, is the deliberate stand-in.
+#
+# If a name here is wrong the PR refuses to merge and escalates rather than
+# merging unverified, so the failure direction is safe. Watch the first live
+# verdict anyway.
+# ─────────────────────────────────────────────────────────────────────────────
+expected_checks:
+  # ci.yml's presence sentinel. See above: this one name stands in for all 33.
+  - "security"
+  # Both pass by exemption on this PR shape, not by doing work. Listed so that
+  # "exempted" is distinguishable from "never ran".
+  - "changelog-check"
+  - "version-check"
+  # Already required by the `main` ruleset and added automatically from the
+  # branch rules API. Repeated anyway: if someone edits the ruleset and drops
+  # it, this file still holds the line.
+  - "gate / cve-sync gate"
+
+# Refuse when ANY check is failing, including ones neither required nor listed.
+# `skipped` and `neutral` count as a pass. This is what covers the 33 CI
+# contexts that `expected_checks` deliberately does not name, and it is why the
+# short list above is safe.
+block_on_any_failure: true
+
+settle_seconds: 300
+
+# A grouped github-actions bump touches one file per workflow that pins an
+# action. There are 16 workflows here and almost all of them pin
+# `actions/checkout`, so 16 is the realistic ceiling today and 20 leaves room
+# for a few more. Anything much larger is not the PR we think it is.
+max_changed_files: 20
+
+# Dependabot here is scoped to the github-actions ecosystem at `/`, so a PR
+# touching anything outside `.github/` is by definition not the PR this policy
+# is for. There is no `.github/actions/` directory in this repo, so unlike the
+# af-component repos there are no composite actions to allow for; add
+# `.github/actions/**` here at the same time as adding one.
+allowed_paths:
+  - ".github/workflows/**"
+  - ".github/dependabot.yml"
+
+# `main review` allows squash only; any other method is refused by GitHub.
+merge_method: squash
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What happens when automerge gives up.
+#
+# Transient refusals (checks still running, settling, branch behind base) just
+# wait for the next poll. Terminal ones do not: a red check never goes green on
+# its own, and a PR touching files outside `allowed_paths` never will.
+#
+# On a terminal refusal the bot drops the `automerge` label, applies the label
+# below, and posts a new comment explaining why. Dropping `automerge` is what
+# makes that happen exactly once: the PR stops being a candidate.
+#
+# `00 - Ready for Review` puts the PR into the normal review queue. Because the
+# label is applied with the App token rather than GITHUB_TOKEN, it also
+# triggers workflow-pr-automation.yaml's Slack ping, so somebody actually hears
+# about it.
+# ─────────────────────────────────────────────────────────────────────────────
+escalate_label: "00 - Ready for Review"

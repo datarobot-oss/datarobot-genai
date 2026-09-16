@@ -7,9 +7,15 @@ name: Ensure PR-automation labels
 # backport label pairs, or enable cleanup of confusable review-label variants.
 # ─────────────────────────────────────────────────────────────────────────────
 # REQUIRED LABELS
-# - None — this workflow CREATES the labels the others require:
-#   `00 - Ready for Review`, `00 - Reviewed`, `backport-failed`, `do not merge`
-#   (+ `backport <branch>` / `backported <branch>` for any branches you pass).
+# - None. This workflow CREATES the labels the others require:
+#   `00 - Ready for Review`, `00 - Reviewed`, `backport-failed`, `do not merge`,
+#   `automerge`, `dependencies`
+#   (+ `backport <branch>` / `backported <branch>` for any branches you pass,
+#   and one label per name in `dependabot_ecosystems`).
+#
+# Run this BEFORE pointing Dependabot at a label. Dependabot silently drops a
+# label that does not exist, which would leave automerge with no candidates and
+# nothing anywhere saying why.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Triggered by: manual dispatch only (run from the Actions tab).
@@ -21,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      dependabot_ecosystems:
+        description: 'Dependabot ecosystems, comma/space-separated. Must match dependabot.yml labels.'
+        required: false
+        default: 'github-actions'
+        type: string
       delete_confusable:
         description: 'Delete confusable review-label variants (migrates open PRs first)'
         required: false
@@ -31,9 +42,10 @@ jobs:
   # Create/repair the automation labels (idempotent); optionally add per-branch
   # backport labels and clean up confusable review-label variants.
   ensure-labels:
-    uses: datarobot-oss/github-actions/.github/workflows/ensure-labels.yaml@0.0.18
+    uses: datarobot-oss/github-actions/.github/workflows/ensure-labels.yaml@0.0.28
     with:
       backport_branches: ${{ inputs.backport_branches }}
+      dependabot_ecosystems: ${{ inputs.dependabot_ecosystems }}
       delete_confusable: ${{ inputs.delete_confusable }}
     permissions:
       issues: write
