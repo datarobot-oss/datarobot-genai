@@ -85,6 +85,40 @@ class TestAgentCardRegistryRefresh:
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
+    async def test_refresh_refetches_past_soft_ttl_within_hard_ttl(self, mock_fetch):
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+        registry.register(deployment_id="dep-1")
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 90)
+
+        mock_fetch.reset_mock()
+        mock_fetch.return_value = _parsed({"dep-1": _card(name="Refreshed Agent")})
+        await registry.refresh_all_registered()
+
+        mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
+
+    async def test_refresh_skips_within_soft_ttl(self, mock_fetch):
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = AgentCardRegistry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+        registry.register(deployment_id="dep-1")
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 30)
+
+        mock_fetch.reset_mock()
+        await registry.refresh_all_registered()
+        mock_fetch.assert_not_awaited()
+
     async def test_refresh_logs_on_failure_without_raising(self, mock_fetch):
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card()}),

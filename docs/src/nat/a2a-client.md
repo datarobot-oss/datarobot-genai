@@ -112,7 +112,7 @@ function_groups:
 
 #### Batch fetching
 
-When a workflow has many registry-backed function groups, all cards are resolved in a maximum of three HTTP calls: one per ID kind (deployment, external, workload). ID kinds are never mixed in a single request — `deploymentIds` together with `workloadIds` is rejected with HTTP 400, and either combined with `externalIds` matches nothing. Results are cached in-memory and reused until the TTL expires.
+When a workflow has many registry-backed function groups, all cards are resolved in a maximum of three HTTP calls: one per ID kind (deployment, external, workload). ID kinds are never mixed in a single request — `deploymentIds` together with `workloadIds` is rejected with HTTP 400, and either combined with `externalIds` matches nothing. Results are cached in-memory and reused until the soft TTL expires.
 
 The registry API caps each ID parameter at 20 values, so a longer list of one kind is split into chunks of 20 and issued as consecutive requests; the responses are merged into a single result set before the duplicate strategy is applied.
 
@@ -128,7 +128,8 @@ On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL
 |----------|----------|-------------|
 | `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry authentication. |
 | `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. |
-| `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Cache TTL in seconds. Default `86400` (24 h). Set to `0` to disable caching. |
+| `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Hard cache TTL in seconds — maximum age for stale-if-error when the registry is unreachable. Default `86400` (24 h). Set to `0` to disable caching. |
+| `AGENT_CARD_REGISTRY_SOFT_CACHE_TTL` | No | Soft cache TTL in seconds — entries within this age skip registry fetches. Must not exceed the hard TTL. Defaults to the hard TTL when unset. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
@@ -168,4 +169,4 @@ Exactly one of the three fields must be set.
 | `ValueError: … 'url' … or 'registry' …, not both` | Both fields set. | Remove one — they are mutually exclusive. |
 | `ValueError: Specify exactly one of 'deployment_id', 'external_id' or 'workload_id' …` | More than one identifier set inside `registry`. | Keep only the one that identifies the agent. |
 | `AgentCardRegistryError: Cannot request 'deploymentIds' and 'workloadIds' in the same … request` | Both ID kinds reached one registry request — the API answers HTTP 400. | Internal invariant; report it, as each kind is meant to be fetched separately. |
-| Stale card after redeployment | Cache TTL has not expired. | Set `AGENT_CARD_REGISTRY_CACHE_TTL=0` or wait for TTL to elapse. |
+| Stale card after redeployment | Soft cache TTL has not expired. | Lower `AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`, set `AGENT_CARD_REGISTRY_CACHE_TTL=0`, or wait for the soft TTL to elapse. |

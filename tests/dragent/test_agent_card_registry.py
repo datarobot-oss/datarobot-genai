@@ -121,6 +121,30 @@ class TestAgentCardRegistryConfig:
             config = AgentCardRegistryConfig()
             assert config.agent_card_registry_cache_ttl == 120
 
+    def test_default_soft_ttl_unset(self):
+        config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_soft_cache_ttl is None
+        assert config.resolved_soft_cache_ttl() == config.agent_card_registry_cache_ttl
+
+    def test_soft_ttl_from_env(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "AGENT_CARD_REGISTRY_CACHE_TTL": "3600",
+                "AGENT_CARD_REGISTRY_SOFT_CACHE_TTL": "300",
+            },
+        ):
+            config = AgentCardRegistryConfig()
+            assert config.agent_card_registry_soft_cache_ttl == 300
+            assert config.resolved_soft_cache_ttl() == 300
+
+    def test_soft_ttl_exceeds_hard_ttl_raises(self):
+        with pytest.raises(ValueError, match="cannot exceed"):
+            AgentCardRegistryConfig(
+                agent_card_registry_cache_ttl=60,
+                agent_card_registry_soft_cache_ttl=120,
+            )
+
     def test_default_on_duplicate(self):
         config = AgentCardRegistryConfig()
         assert config.agent_card_registry_on_duplicate == "first"
@@ -415,6 +439,52 @@ class TestAgentCardRegistry:
         await registry.get(deployment_id="dep-1")
         assert mock_fetch.await_count == 2
 
+    async def test_soft_ttl_triggers_refetch_before_hard_ttl(self, mock_fetch):
+        """GIVEN an entry past soft TTL but within hard TTL WHEN got THEN it refetches."""
+        card = _card()
+        mock_fetch.return_value = _parsed({"dep-1": card})
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 90)
+
+        refreshed = _card(name="Refreshed Agent")
+        mock_fetch.return_value = _parsed({"dep-1": refreshed})
+        card2 = await registry.get(deployment_id="dep-1")
+
+        assert card2.name == "Refreshed Agent"
+        assert mock_fetch.await_count == 2
+
+    async def test_hard_ttl_allows_cache_hit_within_soft_expiry_window(self, mock_fetch):
+        """GIVEN soft < hard WHEN entry is between them THEN second get still hits cache."""
+        card = _card()
+        mock_fetch.return_value = _parsed({"dep-1": card})
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+
+        await registry.get(deployment_id="dep-1")
+        fixed_now = datetime.now(UTC)
+        cache_backend = registry._backend
+        assert isinstance(cache_backend, MemoryAgentCardCacheBackend)
+        cache_backend._entries["dep-1"].fetched_at = fixed_now - timedelta(seconds=30)
+
+        with patch("datarobot_genai.dragent.agent_card_registry_backends.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.UTC = UTC
+            card2 = await registry.get(deployment_id="dep-1")
+
+        assert card2 is card
+        mock_fetch.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # Tests: AgentCardRegistry — stale-if-error
@@ -447,6 +517,33 @@ class TestAgentCardRegistryStaleIfError:
         card1 = await registry.get(deployment_id="dep-1")
         fixed_now = datetime.now(UTC)
         cache_backend._entries["dep-1"].fetched_at = fixed_now - timedelta(seconds=60)
+        with patch("datarobot_genai.dragent.agent_card_registry_backends.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.UTC = UTC
+            card2 = await registry.get(deployment_id="dep-1")
+
+        assert card1 is stale_card
+        assert card2 is stale_card
+        assert mock_fetch.await_count == 2
+
+    async def test_serves_stale_within_hard_ttl_when_soft_expired(self, mock_fetch, cache_backend):
+        """GIVEN soft expired but within hard TTL WHEN registry is down THEN serve stale."""
+        stale_card = _card()
+        mock_fetch.side_effect = [
+            _parsed({"dep-1": stale_card}),
+            AgentCardRegistryError("registry down"),
+        ]
+        registry = _memory_registry(
+            api_token="tok",
+            endpoint="https://ep",
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+            cache_backend=cache_backend,
+        )
+
+        card1 = await registry.get(deployment_id="dep-1")
+        fixed_now = datetime.now(UTC)
+        cache_backend._entries["dep-1"].fetched_at = fixed_now - timedelta(seconds=90)
         with patch("datarobot_genai.dragent.agent_card_registry_backends.datetime") as mock_dt:
             mock_dt.now.return_value = fixed_now
             mock_dt.UTC = UTC

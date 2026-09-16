@@ -54,6 +54,7 @@ import httpx
 from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
+from pydantic import model_validator
 
 from datarobot_genai.core.config import resolve_config
 from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheBackend
@@ -117,15 +118,31 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
 
     Set ``AGENT_CARD_REGISTRY_CACHE_TTL=0`` to disable caching entirely
     (every ``get()`` triggers a fresh HTTP fetch).
+
+    ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` controls when cached cards are
+    considered fresh (skip registry fetch). ``AGENT_CARD_REGISTRY_CACHE_TTL``
+    is the hard bound for stale-if-error when the registry is unreachable.
+    When soft TTL is unset it defaults to the hard TTL.
     """
 
     agent_card_registry_cache_ttl: int = Field(
         default=_DEFAULT_CACHE_TTL_SECONDS,
         ge=0,
         description=(
-            "Time-to-live for cached agent cards in seconds. "
-            "Set to 0 to disable caching (every get() triggers a fresh fetch). "
-            "Default: 86400 (24 hours)."
+            "Hard time-to-live for cached agent cards in seconds. Entries older "
+            "than this are not served under stale-if-error. Set to 0 to disable "
+            "caching (every get() triggers a fresh fetch). Default: 86400 (24 hours)."
+        ),
+    )
+
+    agent_card_registry_soft_cache_ttl: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Soft time-to-live for cached agent cards in seconds. Entries within "
+            "this age are returned without contacting the registry; older entries "
+            "are refreshed on demand and by the background refresh loop. Must not "
+            "exceed agent_card_registry_cache_ttl. Defaults to the hard TTL when unset."
         ),
     )
 
@@ -145,6 +162,28 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
             "and 'error' raises AgentCardRegistryError.  Default: 'first'."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_soft_cache_ttl(self) -> AgentCardRegistryConfig:
+        hard = self.agent_card_registry_cache_ttl
+        soft = self.agent_card_registry_soft_cache_ttl
+        if hard == 0 or soft is None:
+            return self
+        if soft > hard:
+            raise ValueError(
+                "agent_card_registry_soft_cache_ttl cannot exceed agent_card_registry_cache_ttl"
+            )
+        return self
+
+    def resolved_soft_cache_ttl(self) -> int:
+        """Return the effective soft TTL (defaults to the hard TTL)."""
+        hard = self.agent_card_registry_cache_ttl
+        if hard == 0:
+            return 0
+        soft = self.agent_card_registry_soft_cache_ttl
+        if soft is None:
+            return hard
+        return soft
 
 
 class AgentCardRegistryError(RuntimeError):
@@ -317,8 +356,9 @@ class AgentCardRegistry:
     kind (deployment, external, workload), never mixed in a single request, plus
     one extra call per 20 IDs of the same kind (the API's per-parameter cap).
     Subsequent ``get()`` calls hit the in-memory cache until the soft TTL
-    (``AGENT_CARD_REGISTRY_CACHE_TTL``) expires.  When a refresh fails, a cached
-    card may still be returned while it remains within ``AGENT_CARD_REGISTRY_CACHE_TTL``.
+    (``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL``, defaulting to the hard TTL) expires.
+    When a refresh fails, a cached card may still be returned while it remains
+    within ``AGENT_CARD_REGISTRY_CACHE_TTL`` (the hard TTL / stale-if-error bound).
     """
 
     def __init__(
@@ -327,6 +367,7 @@ class AgentCardRegistry:
         endpoint: str | None = None,
         timeout: float | None = None,
         cache_ttl: int | None = None,
+        soft_cache_ttl: int | None = None,
         on_duplicate: DuplicateStrategy | None = None,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
@@ -349,14 +390,35 @@ class AgentCardRegistry:
         self._cache_ttl = (
             cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
         )
+        if self._cache_ttl == 0:
+            self._soft_cache_ttl = 0
+        elif soft_cache_ttl is not None:
+            if soft_cache_ttl > self._cache_ttl:
+                raise ValueError(
+                    "soft_cache_ttl cannot exceed cache_ttl "
+                    f"({soft_cache_ttl}s > {self._cache_ttl}s)"
+                )
+            self._soft_cache_ttl = soft_cache_ttl
+        else:
+            config_soft = config.agent_card_registry_soft_cache_ttl
+            if config_soft is not None:
+                if config_soft > self._cache_ttl:
+                    raise ValueError(
+                        "agent_card_registry_soft_cache_ttl cannot exceed cache_ttl "
+                        f"({config_soft}s > {self._cache_ttl}s)"
+                    )
+                self._soft_cache_ttl = config_soft
+            else:
+                self._soft_cache_ttl = self._cache_ttl
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
         self._backend = cache_backend or create_agent_card_cache_backend(config)
 
         logger.info(
-            "AgentCardRegistry created (cache_ttl=%ds, l2=%s)",
+            "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
             self._cache_ttl,
+            self._soft_cache_ttl,
             isinstance(self._backend, LayeredAgentCardCacheBackend),
         )
 
@@ -482,7 +544,7 @@ class AgentCardRegistry:
         """Return True if *key* is cached and within the soft TTL."""
         record = await self._backend.get_fresh(
             key,
-            cache_ttl=self._cache_ttl,
+            cache_ttl=self._soft_cache_ttl,
             key_type=key_type,
         )
         return record is not None
@@ -669,7 +731,7 @@ class AgentCardRegistry:
         # Fast path — fresh cache hit
         if fresh := await self._backend.get_fresh(
             lookup_key,
-            cache_ttl=self._cache_ttl,
+            cache_ttl=self._soft_cache_ttl,
             key_type=lookup_key_type,
         ):
             return fresh.card
@@ -678,7 +740,7 @@ class AgentCardRegistry:
             # Double-check after acquiring lock
             if fresh := await self._backend.get_fresh(
                 lookup_key,
-                cache_ttl=self._cache_ttl,
+                cache_ttl=self._soft_cache_ttl,
                 key_type=lookup_key_type,
             ):
                 return fresh.card
@@ -693,7 +755,7 @@ class AgentCardRegistry:
                     await self._flush_pending()
                     if fresh := await self._backend.get_fresh(
                         lookup_key,
-                        cache_ttl=self._cache_ttl,
+                        cache_ttl=self._soft_cache_ttl,
                         key_type=lookup_key_type,
                     ):
                         return fresh.card
@@ -708,7 +770,7 @@ class AgentCardRegistry:
 
                 if fresh := await self._backend.get_fresh(
                     lookup_key,
-                    cache_ttl=self._cache_ttl,
+                    cache_ttl=self._soft_cache_ttl,
                     key_type=lookup_key_type,
                 ):
                     return fresh.card

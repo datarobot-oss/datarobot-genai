@@ -78,7 +78,10 @@ class AgentCardCacheRecord(BaseModel):
         return max(0.0, (datetime.now(UTC) - self.fetched_at).total_seconds())
 
     def is_fresh(self, cache_ttl: int) -> bool:
-        """Return *True* if this entry is within the soft TTL."""
+        """Return *True* if this entry is within the soft TTL.
+
+        *cache_ttl* is the caller's soft-TTL bound (not the hard stale-if-error limit).
+        """
         if cache_ttl == 0:
             return False
         return self.age_seconds() < cache_ttl
