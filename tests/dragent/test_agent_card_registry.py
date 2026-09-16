@@ -107,9 +107,8 @@ def _memory_registry(**kwargs) -> AgentCardRegistry:
 
     config_kwargs: dict[str, object] = {
         "agent_card_registry_cache_ttl": cache_ttl,
+        "agent_card_registry_soft_cache_ttl": soft_cache_ttl,
     }
-    if soft_cache_ttl != cache_ttl:
-        config_kwargs["agent_card_registry_soft_cache_ttl"] = soft_cache_ttl
     if on_duplicate is not None:
         config_kwargs["agent_card_registry_on_duplicate"] = on_duplicate
 
@@ -141,10 +140,9 @@ class TestAgentCardRegistryConfig:
             config = AgentCardRegistryConfig()
             assert config.agent_card_registry_cache_ttl == 120
 
-    def test_default_soft_ttl_unset(self):
+    def test_default_soft_ttl_defaults_to_hard(self):
         config = AgentCardRegistryConfig()
-        assert config.agent_card_registry_soft_cache_ttl is None
-        assert config.resolved_soft_cache_ttl() == config.agent_card_registry_cache_ttl
+        assert config.agent_card_registry_soft_cache_ttl == config.agent_card_registry_cache_ttl
 
     def test_soft_ttl_from_env(self):
         with patch.dict(
@@ -156,7 +154,6 @@ class TestAgentCardRegistryConfig:
         ):
             config = AgentCardRegistryConfig()
             assert config.agent_card_registry_soft_cache_ttl == 300
-            assert config.resolved_soft_cache_ttl() == 300
 
     def test_soft_ttl_exceeds_hard_ttl_raises(self):
         with pytest.raises(ValueError, match="cannot exceed"):

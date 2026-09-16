@@ -164,26 +164,21 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     )
 
     @model_validator(mode="after")
-    def _validate_soft_cache_ttl(self) -> AgentCardRegistryConfig:
+    def _resolve_soft_cache_ttl(self) -> AgentCardRegistryConfig:
+        """Default unset soft TTL to hard TTL and reject soft > hard."""
         hard = self.agent_card_registry_cache_ttl
+        if hard == 0:
+            self.agent_card_registry_soft_cache_ttl = 0
+            return self
         soft = self.agent_card_registry_soft_cache_ttl
-        if hard == 0 or soft is None:
+        if soft is None:
+            self.agent_card_registry_soft_cache_ttl = hard
             return self
         if soft > hard:
             raise ValueError(
                 "agent_card_registry_soft_cache_ttl cannot exceed agent_card_registry_cache_ttl"
             )
         return self
-
-    def resolved_soft_cache_ttl(self) -> int:
-        """Return the effective soft TTL (defaults to the hard TTL)."""
-        hard = self.agent_card_registry_cache_ttl
-        if hard == 0:
-            return 0
-        soft = self.agent_card_registry_soft_cache_ttl
-        if soft is None:
-            return hard
-        return soft
 
 
 class AgentCardRegistryError(RuntimeError):
@@ -384,7 +379,9 @@ class AgentCardRegistry:
 
         self._timeout = config.agent_card_registry_timeout
         self._cache_ttl = config.agent_card_registry_cache_ttl
-        self._soft_cache_ttl = config.resolved_soft_cache_ttl()
+        soft_cache_ttl = config.agent_card_registry_soft_cache_ttl
+        assert soft_cache_ttl is not None  # normalized by _resolve_soft_cache_ttl
+        self._soft_cache_ttl: int = soft_cache_ttl
         self._on_duplicate = config.agent_card_registry_on_duplicate
         self._backend = cache_backend or create_agent_card_cache_backend(self._cache_ttl)
 
