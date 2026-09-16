@@ -363,11 +363,12 @@ class AgentCardRegistry:
 
     def __init__(
         self,
+        *,
+        cache_ttl: int,
+        soft_cache_ttl: int,
         api_token: str | None = None,
         endpoint: str | None = None,
         timeout: float | None = None,
-        cache_ttl: int | None = None,
-        soft_cache_ttl: int | None = None,
         on_duplicate: DuplicateStrategy | None = None,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
@@ -387,33 +388,12 @@ class AgentCardRegistry:
 
         config = AgentCardRegistryConfig()
         self._timeout = timeout if timeout is not None else config.agent_card_registry_timeout
-        self._cache_ttl = (
-            cache_ttl if cache_ttl is not None else config.agent_card_registry_cache_ttl
-        )
-        if self._cache_ttl == 0:
-            self._soft_cache_ttl = 0
-        elif soft_cache_ttl is not None:
-            if soft_cache_ttl > self._cache_ttl:
-                raise ValueError(
-                    "soft_cache_ttl cannot exceed cache_ttl "
-                    f"({soft_cache_ttl}s > {self._cache_ttl}s)"
-                )
-            self._soft_cache_ttl = soft_cache_ttl
-        else:
-            config_soft = config.agent_card_registry_soft_cache_ttl
-            if config_soft is not None:
-                if config_soft > self._cache_ttl:
-                    raise ValueError(
-                        "agent_card_registry_soft_cache_ttl cannot exceed cache_ttl "
-                        f"({config_soft}s > {self._cache_ttl}s)"
-                    )
-                self._soft_cache_ttl = config_soft
-            else:
-                self._soft_cache_ttl = self._cache_ttl
+        self._cache_ttl = cache_ttl
+        self._soft_cache_ttl = soft_cache_ttl
         self._on_duplicate: DuplicateStrategy = (
             on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
         )
-        self._backend = cache_backend or create_agent_card_cache_backend(config)
+        self._backend = cache_backend or create_agent_card_cache_backend(cache_ttl)
 
         logger.info(
             "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
@@ -791,6 +771,27 @@ class AgentCardRegistry:
         )
 
 
+def _create_agent_card_registry_from_config(
+    *,
+    api_token: str | None = None,
+    endpoint: str | None = None,
+    timeout: float | None = None,
+    on_duplicate: DuplicateStrategy | None = None,
+    cache_backend: AgentCardCacheBackend | None = None,
+) -> AgentCardRegistry:
+    """Construct an :class:`AgentCardRegistry` with TTLs from settings."""
+    config = AgentCardRegistryConfig()
+    return AgentCardRegistry(
+        cache_ttl=config.agent_card_registry_cache_ttl,
+        soft_cache_ttl=config.resolved_soft_cache_ttl(),
+        api_token=api_token,
+        endpoint=endpoint,
+        timeout=timeout,
+        on_duplicate=on_duplicate,
+        cache_backend=cache_backend,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
@@ -817,7 +818,7 @@ async def get_default_registry() -> AgentCardRegistry:
                 # Provision L2 on this loop before __init__ builds the cache
                 # backend. The sync helper cannot nest asyncio.run here.
                 await try_resolve_memory_space_id_async()
-                _RegistryHolder.instance = AgentCardRegistry()
+                _RegistryHolder.instance = _create_agent_card_registry_from_config()
     return _RegistryHolder.instance
 
 
@@ -831,7 +832,7 @@ def get_default_registry_sync() -> AgentCardRegistry:
     called on a running event loop.
     """
     if _RegistryHolder.instance is None:
-        _RegistryHolder.instance = AgentCardRegistry()
+        _RegistryHolder.instance = _create_agent_card_registry_from_config()
     return _RegistryHolder.instance
 
 

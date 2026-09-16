@@ -99,7 +99,9 @@ def _parsed(
 
 def _memory_registry(**kwargs) -> AgentCardRegistry:
     kwargs.setdefault("cache_backend", MemoryAgentCardCacheBackend())
-    return AgentCardRegistry(**kwargs)
+    cache_ttl = kwargs.pop("cache_ttl", 24 * 3600)
+    soft_cache_ttl = kwargs.pop("soft_cache_ttl", cache_ttl)
+    return AgentCardRegistry(cache_ttl=cache_ttl, soft_cache_ttl=soft_cache_ttl, **kwargs)
 
 
 # ---------------------------------------------------------------------------

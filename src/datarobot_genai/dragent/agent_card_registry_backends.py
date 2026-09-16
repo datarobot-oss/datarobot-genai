@@ -22,7 +22,6 @@ from collections.abc import Coroutine
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
 from typing import NamedTuple
@@ -35,9 +34,6 @@ from pydantic import Field
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
-
-if TYPE_CHECKING:
-    from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -541,12 +537,10 @@ class LayeredAgentCardCacheBackend:
         return self._l1
 
 
-def create_agent_card_cache_backend(
-    config: AgentCardRegistryConfig,
-) -> AgentCardCacheBackend:
+def create_agent_card_cache_backend(cache_ttl: int) -> AgentCardCacheBackend:
     """Instantiate the agent card cache backend (L1, plus MemorySpace L2 when available)."""
     l1 = MemoryAgentCardCacheBackend()
-    if config.agent_card_registry_cache_ttl == 0:
+    if cache_ttl == 0:
         logger.debug("Agent card registry cache: L1 only (cache_ttl=0)")
         return l1
 

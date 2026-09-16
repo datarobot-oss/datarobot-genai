@@ -27,6 +27,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLoo
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
+from tests.dragent.test_agent_card_registry import _memory_registry
 
 _MODULE = "datarobot_genai.dragent.registry_refresh"
 
@@ -64,7 +65,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_skips_fresh_entries(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
 
@@ -74,7 +75,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_refetches_soft_expired_entries(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 120)
@@ -87,7 +88,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_refetches_past_soft_ttl_within_hard_ttl(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=3600,
@@ -105,7 +106,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_skips_within_soft_ttl(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(
+        registry = _memory_registry(
             api_token="tok",
             endpoint="https://ep",
             cache_ttl=3600,
@@ -124,7 +125,7 @@ class TestAgentCardRegistryRefresh:
             _parsed({"dep-1": _card()}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 120)
@@ -132,7 +133,7 @@ class TestAgentCardRegistryRefresh:
         await registry.refresh_all_registered()
 
     async def test_refresh_no_op_without_registered_ids(self, mock_fetch):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
         await registry.refresh_all_registered()
         mock_fetch.assert_not_awaited()
 
