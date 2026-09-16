@@ -364,16 +364,12 @@ class AgentCardRegistry:
     def __init__(
         self,
         *,
-        cache_ttl: int,
-        soft_cache_ttl: int,
-        api_token: str | None = None,
-        endpoint: str | None = None,
-        timeout: float | None = None,
-        on_duplicate: DuplicateStrategy | None = None,
+        config: AgentCardRegistryConfig | None = None,
         cache_backend: AgentCardCacheBackend | None = None,
     ) -> None:
-        self._api_token = api_token
-        self._endpoint = endpoint
+        config = config or AgentCardRegistryConfig()
+        self._api_token: str | None = None
+        self._endpoint: str | None = None
         self._lock = asyncio.Lock()
 
         # Pending registrations (filled synchronously, flushed on first get)
@@ -386,14 +382,11 @@ class AgentCardRegistry:
         self._registered_external_ids: set[str] = set()
         self._registered_workload_ids: set[str] = set()
 
-        config = AgentCardRegistryConfig()
-        self._timeout = timeout if timeout is not None else config.agent_card_registry_timeout
-        self._cache_ttl = cache_ttl
-        self._soft_cache_ttl = soft_cache_ttl
-        self._on_duplicate: DuplicateStrategy = (
-            on_duplicate if on_duplicate is not None else config.agent_card_registry_on_duplicate
-        )
-        self._backend = cache_backend or create_agent_card_cache_backend(cache_ttl)
+        self._timeout = config.agent_card_registry_timeout
+        self._cache_ttl = config.agent_card_registry_cache_ttl
+        self._soft_cache_ttl = config.resolved_soft_cache_ttl()
+        self._on_duplicate = config.agent_card_registry_on_duplicate
+        self._backend = cache_backend or create_agent_card_cache_backend(self._cache_ttl)
 
         logger.info(
             "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
@@ -771,27 +764,6 @@ class AgentCardRegistry:
         )
 
 
-def _create_agent_card_registry_from_config(
-    *,
-    api_token: str | None = None,
-    endpoint: str | None = None,
-    timeout: float | None = None,
-    on_duplicate: DuplicateStrategy | None = None,
-    cache_backend: AgentCardCacheBackend | None = None,
-) -> AgentCardRegistry:
-    """Construct an :class:`AgentCardRegistry` with TTLs from settings."""
-    config = AgentCardRegistryConfig()
-    return AgentCardRegistry(
-        cache_ttl=config.agent_card_registry_cache_ttl,
-        soft_cache_ttl=config.resolved_soft_cache_ttl(),
-        api_token=api_token,
-        endpoint=endpoint,
-        timeout=timeout,
-        on_duplicate=on_duplicate,
-        cache_backend=cache_backend,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
@@ -818,7 +790,7 @@ async def get_default_registry() -> AgentCardRegistry:
                 # Provision L2 on this loop before __init__ builds the cache
                 # backend. The sync helper cannot nest asyncio.run here.
                 await try_resolve_memory_space_id_async()
-                _RegistryHolder.instance = _create_agent_card_registry_from_config()
+                _RegistryHolder.instance = AgentCardRegistry()
     return _RegistryHolder.instance
 
 
@@ -832,7 +804,7 @@ def get_default_registry_sync() -> AgentCardRegistry:
     called on a running event loop.
     """
     if _RegistryHolder.instance is None:
-        _RegistryHolder.instance = _create_agent_card_registry_from_config()
+        _RegistryHolder.instance = AgentCardRegistry()
     return _RegistryHolder.instance
 
 

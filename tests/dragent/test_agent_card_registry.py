@@ -98,10 +98,28 @@ def _parsed(
 
 
 def _memory_registry(**kwargs) -> AgentCardRegistry:
-    kwargs.setdefault("cache_backend", MemoryAgentCardCacheBackend())
+    cache_backend = kwargs.pop("cache_backend", MemoryAgentCardCacheBackend())
+    api_token = kwargs.pop("api_token", "tok")
+    endpoint = kwargs.pop("endpoint", "https://ep")
     cache_ttl = kwargs.pop("cache_ttl", 24 * 3600)
     soft_cache_ttl = kwargs.pop("soft_cache_ttl", cache_ttl)
-    return AgentCardRegistry(cache_ttl=cache_ttl, soft_cache_ttl=soft_cache_ttl, **kwargs)
+    on_duplicate = kwargs.pop("on_duplicate", None)
+
+    config_kwargs: dict[str, object] = {
+        "agent_card_registry_cache_ttl": cache_ttl,
+    }
+    if soft_cache_ttl != cache_ttl:
+        config_kwargs["agent_card_registry_soft_cache_ttl"] = soft_cache_ttl
+    if on_duplicate is not None:
+        config_kwargs["agent_card_registry_on_duplicate"] = on_duplicate
+
+    registry = AgentCardRegistry(
+        config=AgentCardRegistryConfig(**config_kwargs),
+        cache_backend=cache_backend,
+    )
+    registry._api_token = api_token
+    registry._endpoint = endpoint
+    return registry
 
 
 # ---------------------------------------------------------------------------
