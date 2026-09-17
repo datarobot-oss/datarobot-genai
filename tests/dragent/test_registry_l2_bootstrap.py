@@ -21,10 +21,14 @@ from unittest.mock import patch
 from nat.data_models.config import Config
 
 import datarobot_genai.dragent.registry_l2_bootstrap as bootstrap
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
+
+_REGISTRY_SETTINGS_PATCH = "datarobot_genai.dragent.agent_card_registry._resolve_settings"
+_TEST_REGISTRY_CREDENTIALS = ("test-token", "https://app.datarobot.com/api/v2")
 
 
 def test_ensure_registry_l2_cache_provisioned_resets_singleton_on_success() -> None:
@@ -188,15 +192,18 @@ def test_ensure_registry_l2_cache_provisioned_logs_probe_on_failure() -> None:
 
 async def test_lifespan_starts_refresh_after_l2_reset_clears_parse_time_registrations() -> None:
     """GIVEN L2 provisioning reset the singleton WHEN lifespan runs THEN refresh still starts."""
-    config = Config(
-        function_groups={
-            "remote_agent": AuthenticatedA2AClientConfig(
-                registry=AgentCardRegistryLookup(workload_id="wl-123"),
-                auth_provider="datarobot_auth",
-            )
-        }
-    )
+    reset_default_registry()
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=_TEST_REGISTRY_CREDENTIALS):
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(workload_id="wl-123"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
     mock_registry = MagicMock()
+    mock_registry.soft_cache_ttl = 1800
     mock_registry.has_registered_lookups.return_value = False
     mock_registry.prefetch = AsyncMock()
 
@@ -241,3 +248,5 @@ async def test_lifespan_starts_refresh_after_l2_reset_clears_parse_time_registra
         async with registry_refresh_lifespan(config):
             assert mock_registry.register.call_count >= 2
             create_task_mock.assert_called_once()
+
+    reset_default_registry()
