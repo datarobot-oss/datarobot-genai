@@ -1385,18 +1385,23 @@ dev = [
 ]
 dragent-base = [
     { name = "datarobot-genai", extra = ["dragent"] },
+    { name = "gunicorn" },
 ]
 dragent-crewai = [
     { name = "datarobot-genai", extra = ["crewai", "dragent"] },
+    { name = "gunicorn" },
 ]
 dragent-langgraph = [
     { name = "datarobot-genai", extra = ["dragent", "langgraph"] },
+    { name = "gunicorn" },
 ]
 dragent-llamaindex = [
     { name = "datarobot-genai", extra = ["dragent", "llamaindex"] },
+    { name = "gunicorn" },
 ]
 dragent-nat = [
     { name = "datarobot-genai", extra = ["dragent"] },
+    { name = "gunicorn" },
 ]
 example-quickstart = [
     { name = "datarobot-genai", extra = ["langgraph"] },
@@ -1422,11 +1427,26 @@ dev = [
     { name = "rpdb", specifier = ">=0.2.0" },
     { name = "ruff", specifier = ">=0.15.2" },
 ]
-dragent-base = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
-dragent-crewai = [{ name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" }]
-dragent-langgraph = [{ name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" }]
-dragent-llamaindex = [{ name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" }]
-dragent-nat = [{ name = "datarobot-genai", extras = ["dragent"], editable = "../" }]
+dragent-base = [
+    { name = "datarobot-genai", extras = ["dragent"], editable = "../" },
+    { name = "gunicorn" },
+]
+dragent-crewai = [
+    { name = "datarobot-genai", extras = ["dragent", "crewai"], editable = "../" },
+    { name = "gunicorn" },
+]
+dragent-langgraph = [
+    { name = "datarobot-genai", extras = ["dragent", "langgraph"], editable = "../" },
+    { name = "gunicorn" },
+]
+dragent-llamaindex = [
+    { name = "datarobot-genai", extras = ["dragent", "llamaindex"], editable = "../" },
+    { name = "gunicorn" },
+]
+dragent-nat = [
+    { name = "datarobot-genai", extras = ["dragent"], editable = "../" },
+    { name = "gunicorn" },
+]
 example-quickstart = [{ name = "datarobot-genai", extras = ["langgraph"], editable = "../" }]
 
 [[package]]
@@ -2252,6 +2272,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8a/cd/89ce482a931b543b92cdd9b2888805518c4620e0094409acb8c81dd4610a/grpcio_status-1.78.0.tar.gz", hash = "sha256:a34cfd28101bfea84b5aa0f936b4b423019e9213882907166af6b3bddc59e189", size = 13808, upload-time = "2026-02-06T10:01:48.034Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/83/8a/1241ec22c41028bddd4a052ae9369267b4475265ad0ce7140974548dc3fa/grpcio_status-1.78.0-py3-none-any.whl", hash = "sha256:b492b693d4bf27b47a6c32590701724f1d3b9444b36491878fb71f6208857f34", size = 14523, upload-time = "2026-02-06T10:01:32.584Z" },
+]
+
+[[package]]
+name = "gunicorn"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/8a/e4ef6ee11701b6cd64702848415ffb69eeff85cb388a3c6c7fe86f22f3f8/gunicorn-26.2.0.tar.gz", hash = "sha256:62b864895d9ebff0b2f9867ba04fe811c93121596540830c9c916d0769668447", size = 787921, upload-time = "2026-08-24T15:05:59.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/85/7522a52e5e2f42faf1a129113ab63e548c42e103e9af395b7bfe65e403e2/gunicorn-26.2.0-py3-none-any.whl", hash = "sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3", size = 228389, upload-time = "2026-08-24T15:05:57.67Z" },
 ]
 
 [[package]]
