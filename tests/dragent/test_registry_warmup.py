@@ -30,13 +30,16 @@ from datarobot_genai.dragent.registry_warmup import reset_registry_warm_state
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
 _MODULE = "datarobot_genai.dragent.registry_warmup"
+_REGISTRY_SETTINGS_PATCH = "datarobot_genai.dragent.agent_card_registry._resolve_settings"
+_TEST_REGISTRY_CREDENTIALS = ("test-token", "https://app.datarobot.com/api/v2")
 
 
 @pytest.fixture(autouse=True)
 def _reset_warm_state():
     reset_registry_warm_state()
     reset_default_registry()
-    yield
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=_TEST_REGISTRY_CREDENTIALS):
+        yield
     reset_registry_warm_state()
     reset_default_registry()
 
@@ -47,9 +50,16 @@ def workflow_path() -> Path:
 
 
 @pytest.fixture
-def nat_config(workflow_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "test-token")
-    return load_config(workflow_path)
+def nat_config(
+    workflow_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _reset_warm_state,
+):
+    """Parse workflow_with_a2a.yaml; registry credentials must be resolved at parse time."""
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", _TEST_REGISTRY_CREDENTIALS[0])
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", _TEST_REGISTRY_CREDENTIALS[1])
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=_TEST_REGISTRY_CREDENTIALS):
+        return load_config(workflow_path)
 
 
 class TestCollectRegistryLookupIds:
