@@ -23,6 +23,7 @@ from nat.data_models.config import Config
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
@@ -30,6 +31,16 @@ from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 from tests.dragent.test_agent_card_registry import _memory_registry
 
 _MODULE = "datarobot_genai.dragent.registry_refresh"
+_REGISTRY_SETTINGS_PATCH = "datarobot_genai.dragent.agent_card_registry._resolve_settings"
+
+
+@pytest.fixture(autouse=True)
+def _registry_credentials():
+    reset_default_registry()
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=("tok", "https://ep")):
+        yield
+    reset_default_registry()
+
 
 _SAMPLE_AGENT_CARD = {
     "name": "Test Agent",
