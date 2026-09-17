@@ -33,13 +33,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Refresh registered cards that are past the soft TTL this often.
-_REFRESH_INTERVAL_SECONDS = 30 * 60
-
 
 async def registry_refresh_loop(
     registry: AgentCardRegistry,
-    interval_seconds: int = _REFRESH_INTERVAL_SECONDS,
+    interval_seconds: int,
 ) -> None:
     """Periodically refresh soft-expired registered agent cards."""
     while True:
@@ -65,11 +62,20 @@ async def registry_refresh_lifespan(config: Config) -> AsyncIterator[None]:
     registry = await get_default_registry()
     register_registry_lookup_ids(registry, collected)
 
+    refresh_interval = registry.soft_cache_ttl
+    if refresh_interval == 0:
+        logger.debug(
+            "Agent card registry caching disabled (soft_cache_ttl=0); "
+            "skipping background refresh task."
+        )
+        yield
+        return
+
     logger.info(
         "Starting agent card registry background refresh (interval=%ds)",
-        _REFRESH_INTERVAL_SECONDS,
+        refresh_interval,
     )
-    task = asyncio.create_task(registry_refresh_loop(registry, _REFRESH_INTERVAL_SECONDS))
+    task = asyncio.create_task(registry_refresh_loop(registry, refresh_interval))
     try:
         yield
     finally:

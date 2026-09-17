@@ -171,6 +171,7 @@ class TestRegistryRefreshLoop:
 class TestRegistryRefreshLifespan:
     async def test_lifespan_starts_and_stops_task(self):
         mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 1800
         mock_registry.has_registered_lookups.return_value = True
         config = Config(
             function_groups={
@@ -212,6 +213,7 @@ class TestRegistryRefreshLifespan:
     async def test_lifespan_registers_ids_from_config_after_singleton_reset(self):
         """Background refresh must not depend on config-parse-time register() surviving L2 reset."""
         mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 1800
         mock_registry.has_registered_lookups.return_value = False
         config = Config(
             function_groups={
@@ -262,4 +264,69 @@ class TestRegistryRefreshLifespan:
                 pass
 
             mock_get_registry.assert_not_awaited()
+            mock_create_task.assert_not_called()
+
+    async def test_lifespan_uses_soft_cache_ttl_as_refresh_interval(self):
+        mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 300
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+
+        class _FakeTask:
+            def __init__(self) -> None:
+                self.cancel = MagicMock()
+
+            def __await__(self):
+                async def _noop() -> None:
+                    return None
+
+                return _noop().__await__()
+
+        fake_task = _FakeTask()
+
+        def _create_task(coro):
+            coro.close()
+            return fake_task
+
+        with (
+            patch(
+                f"{_MODULE}.get_default_registry",
+                AsyncMock(return_value=mock_registry),
+            ),
+            patch(f"{_MODULE}.asyncio.create_task", side_effect=_create_task) as mock_create_task,
+            patch(f"{_MODULE}.registry_refresh_loop") as mock_refresh_loop,
+        ):
+            async with registry_refresh_lifespan(config):
+                mock_create_task.assert_called_once()
+                mock_refresh_loop.assert_called_once_with(mock_registry, 300)
+
+    async def test_lifespan_skips_refresh_when_caching_disabled(self):
+        mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 0
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+
+        with (
+            patch(
+                f"{_MODULE}.get_default_registry",
+                AsyncMock(return_value=mock_registry),
+            ),
+            patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
+        ):
+            async with registry_refresh_lifespan(config):
+                pass
+
+            mock_registry.register.assert_called_once_with(deployment_id="dep-1")
             mock_create_task.assert_not_called()

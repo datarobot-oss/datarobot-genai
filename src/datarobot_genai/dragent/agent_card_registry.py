@@ -391,6 +391,11 @@ class AgentCardRegistry:
             isinstance(self._backend, LayeredAgentCardCacheBackend),
         )
 
+    @property
+    def soft_cache_ttl(self) -> int:
+        """Soft TTL in seconds — also used as the background refresh interval."""
+        return self._soft_cache_ttl
+
     # ------------------------------------------------------------------
     # Registration (synchronous — called at config-parse time)
     # ------------------------------------------------------------------
