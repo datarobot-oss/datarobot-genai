@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.45
+## 0.29.46
 - `core/config`: **`Config` no longer declares `max_history_messages` or `assume_native_tool_calling_when_unmapped` (breaking for standalone use).** Both are component settings, and `af-component-agent` already declares them on the config it registers, so genai carrying its own copies only added environment variables no component could rename or override. `get_max_history_messages_default()` and `default_assume_native_tool_calling_when_unmapped()` stay and are unchanged for components: they read the registered config and fall back to `DEFAULT_MAX_HISTORY_MESSAGES` (20) and `False` when nothing declares the field.
 - `core/config`: added `test_config_field_set_is_closed`, which freezes the set of fields `Config` may declare and fails with an explanation of where a new setting belongs instead. Adding a field deliberately means adding its name to `_ALLOWED_CONFIG_FIELDS` in the same commit.
+
+## 0.29.45
 - `dragent`: fixed dragent crash-looping under `use_gunicorn: true` on Python 3.12+ by forcing gunicorn's `UvicornWorker` onto the standard asyncio event loop instead of uvloop (which `nest_asyncio2` can't patch), matching the loop policy NAT's direct-uvicorn path already uses.
 
 ## 0.29.44
