@@ -35,6 +35,7 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
@@ -982,6 +983,27 @@ class TestInboundAudienceValidation:
         with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
             response = client.get("/health", headers={"x-datarobot-external-access-token": token})
         assert response.status_code == 200
+
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_reject_a_token_naming_another_agent(self, path):
+        """GIVEN a wrong-audience token on a health route THEN it is rejected like any other.
+
+        A probe carries no IdP token, so it still reaches ready state via the ordinary
+        tokenless pass-through -- see ``test_serving_route_without_an_idp_token_still_works``.
+        """
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get(path, headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 401, path
+
+    def test_a2a_route_still_rejects_a_token_naming_another_agent(self):
+        """GIVEN a wrong-audience token on the mounted /a2a route THEN it is rejected too."""
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.post(
+                f"/{A2A_MOUNT_PATH}/", json={}, headers={"x-datarobot-external-access-token": token}
+            )
+        assert response.status_code == 401
 
     def test_serving_route_without_an_idp_token_still_works(self):
         """GIVEN validation is enabled but no IdP token is sent THEN nothing breaks.
