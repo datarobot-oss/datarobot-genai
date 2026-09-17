@@ -26,6 +26,7 @@ from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLoo
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_warmup import collect_registry_lookup_ids
 from datarobot_genai.dragent.registry_warmup import is_registry_warm
+from datarobot_genai.dragent.registry_warmup import register_registry_lookup_ids
 from datarobot_genai.dragent.registry_warmup import reset_registry_warm_state
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 
@@ -115,12 +116,45 @@ class TestCollectRegistryLookupIds:
         assert collected.is_empty() is True
 
 
+class TestRegisterRegistryLookupIds:
+    def test_registers_all_id_kinds(self):
+        mock_registry = MagicMock()
+        collected = collect_registry_lookup_ids(
+            MagicMock(
+                function_groups={
+                    "a": AuthenticatedA2AClientConfig(
+                        registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                        auth_provider="x",
+                    ),
+                    "b": AuthenticatedA2AClientConfig(
+                        registry=AgentCardRegistryLookup(external_id="ext-1"),
+                        auth_provider="x",
+                    ),
+                    "c": AuthenticatedA2AClientConfig(
+                        registry=AgentCardRegistryLookup(workload_id="wl-1"),
+                        auth_provider="x",
+                    ),
+                }
+            )
+        )
+
+        register_registry_lookup_ids(mock_registry, collected)
+
+        mock_registry.register.assert_any_call(deployment_id="dep-1")
+        mock_registry.register.assert_any_call(external_id="ext-1")
+        mock_registry.register.assert_any_call(workload_id="wl-1")
+        assert mock_registry.register.call_count == 3
+
+
 class TestWarmupRegistryFromConfig:
     async def test_prefetch_called_for_registry_ids(self, nat_config):
         mock_registry = AsyncMock()
         with patch(f"{_MODULE}.get_default_registry", AsyncMock(return_value=mock_registry)):
             await warmup_registry_from_config(nat_config)
 
+        mock_registry.register.assert_any_call(deployment_id="1234")
+        mock_registry.register.assert_any_call(external_id="abcd")
+        mock_registry.register.assert_any_call(workload_id="wl-5678")
         mock_registry.prefetch.assert_awaited_once_with(
             deployment_ids=["1234"],
             external_ids=["abcd"],

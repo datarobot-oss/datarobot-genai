@@ -209,23 +209,47 @@ class TestRegistryRefreshLifespan:
 
             fake_task.cancel.assert_called_once()
 
-    async def test_lifespan_no_op_without_registered_ids(self):
+    async def test_lifespan_registers_ids_from_config_after_singleton_reset(self):
+        """Background refresh must not depend on config-parse-time register() surviving L2 reset."""
         mock_registry = MagicMock()
         mock_registry.has_registered_lookups.return_value = False
-        config = MagicMock()
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(workload_id="wl-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+
+        class _FakeTask:
+            def __init__(self) -> None:
+                self.cancel = MagicMock()
+
+            def __await__(self):
+                async def _noop() -> None:
+                    return None
+
+                return _noop().__await__()
+
+        fake_task = _FakeTask()
+
+        def _create_task(coro):
+            coro.close()
+            return fake_task
 
         with (
             patch(
                 f"{_MODULE}.get_default_registry",
                 AsyncMock(return_value=mock_registry),
-            ) as mock_get_registry,
-            patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
+            ),
+            patch(f"{_MODULE}.asyncio.create_task", side_effect=_create_task) as mock_create_task,
         ):
             async with registry_refresh_lifespan(config):
-                pass
+                mock_registry.register.assert_called_once_with(workload_id="wl-1")
+                mock_create_task.assert_called_once()
 
-            mock_get_registry.assert_not_awaited()
-            mock_create_task.assert_not_called()
+            fake_task.cancel.assert_called_once()
 
     async def test_lifespan_no_op_without_registry_backed_clients(self):
         config = Config(function_groups={})

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.registry_warmup import collect_registry_lookup_ids
+from datarobot_genai.dragent.registry_warmup import register_registry_lookup_ids
 
 if TYPE_CHECKING:
     from nat.data_models.config import Config
@@ -55,16 +56,14 @@ async def registry_refresh_lifespan(config: Config) -> AsyncIterator[None]:
 
     No-op when no registry-backed remote A2A clients are configured.
     """
-    if collect_registry_lookup_ids(config).is_empty():
+    collected = collect_registry_lookup_ids(config)
+    if collected.is_empty():
         logger.debug("No registry-backed A2A function groups; skipping background refresh task.")
         yield
         return
 
     registry = await get_default_registry()
-    if not registry.has_registered_lookups():
-        logger.debug("No registered agent card IDs; skipping background refresh task.")
-        yield
-        return
+    register_registry_lookup_ids(registry, collected)
 
     logger.info(
         "Starting agent card registry background refresh (interval=%ds)",
