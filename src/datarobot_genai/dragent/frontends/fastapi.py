@@ -522,6 +522,24 @@ class _GunicornSettings(DataRobotAppFrameworkBaseSettings):
     )
 
 
+def _force_gunicorn_worker_asyncio_loop() -> None:
+    """Keep gunicorn's UvicornWorker off uvloop, matching the direct-uvicorn path.
+
+    ``UvicornWorker``'s default ``loop="auto"`` picks uvloop, which isn't an
+    ``asyncio.BaseEventLoop`` subclass and broke ``nest_asyncio2`` on Python 3.12+.
+    NAT's direct-uvicorn path already avoids uvloop for the same reason (no child watcher
+    for MCP subprocesses); mirror that here instead of patching around it. Mutating the
+    class attribute pre-fork applies it to every gunicorn worker.
+    """
+    try:
+        from uvicorn.workers import UvicornWorker
+    except ImportError:
+        # uvicorn.workers itself imports gunicorn; not installed in this mode (local dev).
+        return
+
+    UvicornWorker.CONFIG_KWARGS = {**UvicornWorker.CONFIG_KWARGS, "loop": "asyncio"}
+
+
 def _patch_gunicorn_worker_timeout() -> None:
     """Raise gunicorn's 30s default worker timeout so long agent turns aren't SIGABRT'd mid-stream.
 
@@ -555,6 +573,7 @@ class DRAgentFastApiFrontEndPlugin(FastApiFrontEndPlugin):
 
         publish_dragent_config_file_env()
         if self.front_end_config.use_gunicorn:
+            _force_gunicorn_worker_asyncio_loop()
             _patch_gunicorn_worker_timeout()
         await super().run()
 
