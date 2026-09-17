@@ -17,20 +17,26 @@ dependencies = [
 ]
 
 [dependency-groups]
+# gunicorn isn't a datarobot-genai dependency; needed since Taskfile runs `--use_gunicorn true`.
 dragent-nat = [
-    "datarobot-genai[dragent]"
+    "datarobot-genai[dragent]",
+    "gunicorn",
 ]
 dragent-langgraph = [
-    "datarobot-genai[dragent,langgraph]"
+    "datarobot-genai[dragent,langgraph]",
+    "gunicorn",
 ]
 dragent-crewai = [
     "datarobot-genai[dragent,crewai]",
+    "gunicorn",
 ]
 dragent-llamaindex = [
-    "datarobot-genai[dragent,llamaindex]"
+    "datarobot-genai[dragent,llamaindex]",
+    "gunicorn",
 ]
 dragent-base = [
     "datarobot-genai[dragent]",
+    "gunicorn",
 ]
 example-quickstart = [
     "datarobot-genai[langgraph]",

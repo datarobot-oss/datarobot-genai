@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         example: ${{ fromJson(needs.detect-changes.outputs.examples) }}
-        python-version: ['3.12']
+        python-version: ['3.13']
     permissions:
       contents: read
     env:
