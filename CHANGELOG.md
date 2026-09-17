@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.29.46
-- `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits, on-demand refresh, and background refresh interval. Defaults to the hard TTL when unset.
+- `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits and on-demand refresh. Background refresh polls at half the soft TTL (minimum 60s). Defaults to the hard TTL when unset.
 
 ## 0.29.45
 - `dragent`: fixed dragent crash-looping under `use_gunicorn: true` on Python 3.12+ by forcing gunicorn's `UvicornWorker` onto the standard asyncio event loop instead of uvloop (which `nest_asyncio2` can't patch), matching the loop policy NAT's direct-uvicorn path already uses.

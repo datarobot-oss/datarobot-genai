@@ -26,6 +26,7 @@ from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.registry_refresh import background_refresh_interval
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 from tests.dragent.test_agent_card_registry import _memory_registry
@@ -143,6 +144,17 @@ class TestAgentCardRegistryRefresh:
         registry = _memory_registry(cache_ttl=3600)
         await registry.refresh_all_registered()
         mock_fetch.assert_not_awaited()
+
+
+class TestBackgroundRefreshInterval:
+    def test_half_soft_ttl(self):
+        assert background_refresh_interval(300) == 150
+
+    def test_minimum_floor(self):
+        assert background_refresh_interval(90) == 60
+
+    def test_large_soft_ttl(self):
+        assert background_refresh_interval(86400) == 43200
 
 
 class TestRegistryRefreshLoop:
@@ -266,7 +278,7 @@ class TestRegistryRefreshLifespan:
             mock_get_registry.assert_not_awaited()
             mock_create_task.assert_not_called()
 
-    async def test_lifespan_uses_soft_cache_ttl_as_refresh_interval(self):
+    async def test_lifespan_uses_half_soft_cache_ttl_as_refresh_interval(self):
         mock_registry = MagicMock()
         mock_registry.soft_cache_ttl = 300
         config = Config(
@@ -304,7 +316,7 @@ class TestRegistryRefreshLifespan:
         ):
             async with registry_refresh_lifespan(config):
                 mock_create_task.assert_called_once()
-                mock_refresh_loop.assert_called_once_with(mock_registry, 300)
+                mock_refresh_loop.assert_called_once_with(mock_registry, 150)
 
     async def test_lifespan_skips_refresh_when_caching_disabled(self):
         mock_registry = MagicMock()

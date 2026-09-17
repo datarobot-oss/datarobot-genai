@@ -393,7 +393,7 @@ class AgentCardRegistry:
 
     @property
     def soft_cache_ttl(self) -> int:
-        """Soft TTL in seconds — also used as the background refresh interval."""
+        """Soft TTL in seconds."""
         return self._soft_cache_ttl
 
     # ------------------------------------------------------------------
