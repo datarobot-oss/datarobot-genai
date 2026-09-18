@@ -25,26 +25,26 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
       - name: Setup Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Cache only uv's content-addressed download cache, not .venv. Caching
           # .venv across the shared key let a stale/cross-module environment be
@@ -84,26 +84,26 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
       - name: Setup Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Cache only uv's content-addressed download cache, not .venv. Caching
           # .venv across the shared key let a stale/cross-module environment be
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: junit-py${{ matrix.python-version }}-module-${{ matrix.module }}
           path: test_results/test-results.xml
@@ -141,26 +141,26 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
       - name: Setup Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache uv download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Cache only uv's content-addressed download cache, not .venv. Caching
           # .venv across the shared key let a stale/cross-module environment be
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: junit-py${{ matrix.python-version }}-all
           path: test_results/test-results.xml
@@ -202,7 +202,7 @@ jobs:
 
       - name: Upload dist
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.python-version }}
           path: dist
@@ -215,21 +215,21 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Cache uv download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Cache only uv's content-addressed download cache, not .venv (see note above).
           path: ~/.cache/uv

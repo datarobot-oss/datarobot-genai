@@ -25,7 +25,7 @@ jobs:
   # On an approving review: label the PR "00 - Reviewed".
   mark-reviewed:
     if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
-    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-reviewed.yaml@0.0.18
+    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-reviewed.yaml@0.0.29
     with:
       pr_number: ${{ github.event.pull_request.number }}
     permissions:
@@ -34,7 +34,7 @@ jobs:
   # When a "ready for review" label is added: Slack the PR (title, author, diff, URL) to reviewers.
   notify-ready-for-review:
     if: github.event_name == 'pull_request' && contains(github.event.label.name, 'ready for review')
-    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-to-review.yaml@0.0.18
+    uses: datarobot-oss/github-actions/.github/workflows/mark-pr-to-review.yaml@0.0.29
     with:
       pr_number: ${{ github.event.pull_request.number }}
       pr_url: ${{ github.event.pull_request.html_url }}
@@ -51,7 +51,7 @@ jobs:
   # On PR open/edit: comment a link to any Jira ticket found in the title or branch name.
   add-jira-link:
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
-    uses: datarobot-oss/github-actions/.github/workflows/add-jira-link.yaml@0.0.18
+    uses: datarobot-oss/github-actions/.github/workflows/add-jira-link.yaml@0.0.29
     with:
       pr_title: ${{ github.event.pull_request.title }}
       pr_number: ${{ github.event.pull_request.number }}
@@ -64,7 +64,7 @@ jobs:
   # event-driven mark-reviewed run was never dispatched.
   notify-slack-scheduled:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.26
+    uses: datarobot-oss/github-actions/.github/workflows/notify-slack.yaml@0.0.29
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     permissions:
