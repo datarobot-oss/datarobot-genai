@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.47 - 2026-09-18
+- Raise the minimum `jupyter-server` version from `>=2.20.0` to `>=2.21.0`.
+- Raise the minimum `mcp` version from `>=1.28.1` to `>=1.28.1,<2`.
+- Add a minimum version for `pydantic-settings`: `>=2.14.2`.
+- Raise the minimum `soupsieve` version from `>=2.8.4` to `>=2.9.0`.
+
 ## 0.29.46
 - `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits and on-demand refresh. Background refresh polls at half the soft TTL (minimum 60s). Defaults to the hard TTL when unset.
 
