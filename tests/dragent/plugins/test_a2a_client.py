@@ -158,7 +158,11 @@ def patched_fg_env():
 def _reset_registry():
     """Reset the agent card registry singleton between tests."""
     reset_default_registry()
-    yield
+    with patch(
+        "datarobot_genai.dragent.agent_card_registry._resolve_settings",
+        return_value=("tok", "https://ep"),
+    ):
+        yield
     reset_default_registry()
 
 

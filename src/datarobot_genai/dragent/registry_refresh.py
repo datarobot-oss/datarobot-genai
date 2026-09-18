@@ -26,19 +26,28 @@ from typing import TYPE_CHECKING
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.registry_warmup import collect_registry_lookup_ids
+from datarobot_genai.dragent.registry_warmup import register_registry_lookup_ids
 
 if TYPE_CHECKING:
     from nat.data_models.config import Config
 
 logger = logging.getLogger(__name__)
 
-# Refresh registered cards that are past the soft TTL this often.
-_REFRESH_INTERVAL_SECONDS = 30 * 60
+_MIN_REFRESH_INTERVAL_SECONDS = 60
+
+
+def background_refresh_interval(soft_cache_ttl: int) -> int:
+    """Return the background refresh poll interval for *soft_cache_ttl*.
+
+    Polls at half the soft TTL (minimum 60s) so expired entries are picked up
+    soon after they go stale rather than waiting up to another full soft TTL.
+    """
+    return max(_MIN_REFRESH_INTERVAL_SECONDS, soft_cache_ttl // 2)
 
 
 async def registry_refresh_loop(
     registry: AgentCardRegistry,
-    interval_seconds: int = _REFRESH_INTERVAL_SECONDS,
+    interval_seconds: int,
 ) -> None:
     """Periodically refresh soft-expired registered agent cards."""
     while True:
@@ -55,22 +64,30 @@ async def registry_refresh_lifespan(config: Config) -> AsyncIterator[None]:
 
     No-op when no registry-backed remote A2A clients are configured.
     """
-    if collect_registry_lookup_ids(config).is_empty():
+    collected = collect_registry_lookup_ids(config)
+    if collected.is_empty():
         logger.debug("No registry-backed A2A function groups; skipping background refresh task.")
         yield
         return
 
     registry = await get_default_registry()
-    if not registry.has_registered_lookups():
-        logger.debug("No registered agent card IDs; skipping background refresh task.")
+    register_registry_lookup_ids(registry, collected)
+
+    if registry.soft_cache_ttl == 0:
+        logger.debug(
+            "Agent card registry caching disabled (soft_cache_ttl=0); "
+            "skipping background refresh task."
+        )
         yield
         return
 
+    refresh_interval = background_refresh_interval(registry.soft_cache_ttl)
     logger.info(
-        "Starting agent card registry background refresh (interval=%ds)",
-        _REFRESH_INTERVAL_SECONDS,
+        "Starting agent card registry background refresh (interval=%ds, soft_cache_ttl=%ds)",
+        refresh_interval,
+        registry.soft_cache_ttl,
     )
-    task = asyncio.create_task(registry_refresh_loop(registry, _REFRESH_INTERVAL_SECONDS))
+    task = asyncio.create_task(registry_refresh_loop(registry, refresh_interval))
     try:
         yield
     finally:
