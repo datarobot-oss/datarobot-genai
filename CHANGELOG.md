@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.47
+- Enable cve-sync[bot] to open CVE PRs, add dependabot for updating actions, and dr-auto-merge automation to automatically merge 100% safe PRs
+
 ## 0.29.46
 - `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits and on-demand refresh. Background refresh polls at half the soft TTL (minimum 60s). Defaults to the hard TTL when unset.
 
@@ -16,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
 
-## 0.29.42
+## 0.29.47
 - `dragent`: close the registry L2 Memory Service HTTP client after import-time `asyncio.run` provision and recreate it on the app event loop. Reusing the bootstrap `httpx.AsyncClient` after a pod restart caused L2 reads to fail with `RuntimeError: bound to a different event loop`, which was logged as an L2 miss even when the space was already populated.
 - `dragent`: `try_resolve_memory_space_id()` returns an already-provisioned registry L2 space id even from a running event loop, so YAML parse (`get_default_registry_sync`) and `AgentCardRegistry.__init__` attach MemorySpace write-behind instead of locking the singleton to L1-only after import-time bootstrap.
 - `dragent`: add INFO-level logging for the agent card registry L2 read-through path (L1 miss → MemorySpace hit/miss, stale-if-error, and cache-only prefetch) so enclave pod restarts show a clear sequence when the control hub is down.
