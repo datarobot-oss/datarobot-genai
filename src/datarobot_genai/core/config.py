@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
+from functools import cache
 from typing import Any
 from typing import cast
 
@@ -23,7 +25,6 @@ from datarobot.core.config import LLMConfig  # noqa: F401  # re-exported for gen
 from datarobot.core.config import LLMType  # noqa: F401  # re-exported for genai consumers
 from datarobot.core.config import deployment_url
 from datarobot.core.config import llm_gateway_url
-from pydantic import Field
 
 DEFAULT_MAX_HISTORY_MESSAGES = 20
 DEFAULT_MODEL_NAME_FOR_DEPLOYED_LLM = "datarobot/datarobot-deployed-llm"
@@ -50,22 +51,17 @@ class Config(DataRobotAppFrameworkBaseSettings):
     class's ``resolve_datarobot_endpoint`` / ``resolve_datarobot_api_token`` methods.
     """
 
+    # --- CLOSED CLASS. Do not add fields here. ------------------------------
+    # datarobot-genai is a dependency, so an application cannot edit this class. A field
+    # added here is not a configuration point for that application, only one
+    # more environment variable this library reads and nobody downstream can
+    # add to, rename, or override. New settings belong on the app's own
+    # registered config, or behind a `default_*` helper further down this file.
+    # Enforced by `test_config_field_set_is_closed` in tests/core/test_config.py.
+
     # True ecosystem-wide globals. Fixed names, shared by every LLM instance.
     datarobot_endpoint: str = DEFAULT_DATAROBOT_ENDPOINT
     datarobot_api_token: str | None = None
-
-    # App-wide settings (genai-specific tunables).
-    max_history_messages: int = Field(
-        default=DEFAULT_MAX_HISTORY_MESSAGES, ge=0, alias="datarobot_genai_max_history_messages"
-    )
-    assume_native_tool_calling_when_unmapped: bool = Field(
-        default=False,
-        description=(
-            "CrewAI only: when LiteLLM has no catalog entry for the NIM model, "
-            "still report native tool-calling support so CrewAI uses API tool_calls "
-            "instead of the ReAct text path."
-        ),
-    )
 
     # Default LLM instance ("llm") fields, namespaced by instance name, so a
     # standalone genai reads them from the environment. An app registers its own
@@ -117,7 +113,25 @@ class Config(DataRobotAppFrameworkBaseSettings):
 # Callers that already hold an LLMConfig (the NAT path builds one from
 # workflow.yaml) should pass it down rather than re-resolving.
 
+logger = logging.getLogger(__name__)
+
 _provider_registry: dict[str, Any] = {"provider": None, "default_llm_name": DEFAULT_LLM_NAME}
+
+
+@cache
+def _warn_no_config_provider() -> None:
+    """Warn once per process that genai fell back to its default Config.
+
+    Cached so it fires on the first fallback only: ``resolve_config()`` is on a
+    hot path, with ``default_response_model()`` resolving config per streaming
+    chunk. Tests that need it again call ``_warn_no_config_provider.cache_clear()``.
+    """
+    logger.warning(
+        "No config provider is registered, so datarobot-genai is reading its own "
+        "default Config class. A component's settings will not be used. Register the "
+        "component's config with register_config_provider() to fix this. Warned "
+        "once per process."
+    )
 
 
 def register_config_provider(
@@ -175,6 +189,8 @@ def resolve_config() -> Config:
             # above); genai resolves everything off it through its resolve_* methods.
             # Cast to Config for typing since genai cannot import the app's class.
             return cast(Config, provided)
+
+    _warn_no_config_provider()
     return Config()
 
 
@@ -197,11 +213,13 @@ def registered_default_llm_name() -> str:
 def get_max_history_messages_default() -> int:
     """Return the default maximum number of history messages.
 
-    This is a genai-internal tunable (``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES``),
-    read off genai's own :class:`Config`, not per-LLM config. Invalid values fall
-    back to the built-in default; negative values are treated as 0 (disable history).
+    genai does not declare this field itself, so standalone genai always gets
+    ``DEFAULT_MAX_HISTORY_MESSAGES``. A component that declares
+    ``max_history_messages`` on its own registered config drives the value
+    instead (like af-component-agent). Negative values are treated as 0 (disable history).
     """
-    return max(Config().max_history_messages, 0)
+    config = resolve_config()
+    return max(getattr(config, "max_history_messages", DEFAULT_MAX_HISTORY_MESSAGES), 0)
 
 
 def default_api_key() -> str | None:
@@ -261,8 +279,12 @@ def default_nim_deployment_id() -> str | None:
 def default_assume_native_tool_calling_when_unmapped() -> bool:
     """Return the CrewAI native-tool-calling override for unmapped NIM models.
 
-    Like :func:`get_max_history_messages_default`, this is a genai-internal tunable
-    read off genai's own :class:`Config` rather than per-LLM config, so it does not
-    go through the app config seam.
+    When LiteLLM has no catalog entry for a NIM model, this reports native
+    tool-calling support so CrewAI uses API ``tool_calls`` instead of the ReAct
+    text path. Like :func:`get_max_history_messages_default`, genai does not
+    declare the field, so standalone genai is always ``False`` and a component
+    that declares ``assume_native_tool_calling_when_unmapped`` drives it
+    (like af-component-agent).
     """
-    return Config().assume_native_tool_calling_when_unmapped
+    config = resolve_config()
+    return bool(getattr(config, "assume_native_tool_calling_when_unmapped", False))

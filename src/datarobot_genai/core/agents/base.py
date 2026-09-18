@@ -135,9 +135,10 @@ class BaseAgent(Generic[TTool], abc.ABC):
     def max_history_messages(self) -> int:
         """Maximum number of prior messages to include in chat history.
 
-        Defaults to ``DATAROBOT_GENAI_MAX_HISTORY_MESSAGES`` env var (read at
-        call time). Subclasses can override via the constructor parameter or
-        by overriding this property.
+        Defaults to ``max_history_messages`` on the component config registered
+        with genai, read at call time, or to ``DEFAULT_MAX_HISTORY_MESSAGES``
+        when no component declares it. Subclasses can override via the
+        constructor parameter or by overriding this property.
         """
         if self._max_history_messages is not None:
             return self._max_history_messages

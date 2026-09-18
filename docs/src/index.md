@@ -76,7 +76,6 @@ The examples and `workflow.yaml` expect the variables below; see [LLM configurat
 | `LLM_DEPLOYMENT_ID` | — | Set this to target a specific LLM deployment when the gateway is off. |
 | `LLM_NIM_DEPLOYMENT_ID` | — | Set this to target an NVIDIA NIM deployment when the gateway is off. |
 | `LLM_DEFAULT_MODEL` | `datarobot-deployed-llm` | Default model name you run against. |
-| `DATAROBOT_GENAI_MAX_HISTORY_MESSAGES` | `20` | Maximum number of prior messages the client keeps in history. |
 | `AUTH_RESOLUTION_STRATEGY` | `http` | How `drtools` resolves secrets: `http` or `config`. See [drtools/auth.md](drtools/auth.md). |
 
 ## drtools

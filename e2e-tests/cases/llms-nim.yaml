@@ -5,8 +5,9 @@ cases:
       LLM_DEFAULT_MODEL: "datarobot/openai/gpt-oss-20b"
       LLM_USE_DATAROBOT_LLM_GATEWAY: 0
       LLM_DEPLOYMENT_ID: ""  # Explicitly set to empty string to avoid deployment used in external-llm
-      # CrewAI: LiteLLM has no catalog entry for gpt-oss-20b; enable native tool calling.
-      ASSUME_NATIVE_TOOL_CALLING_WHEN_UNMAPPED: true
+      # CrewAI: LiteLLM has no catalog entry for gpt-oss-20b, so the overlay sets
+      # assume_native_tool_calling_when_unmapped on the LLM component.
+      WORKFLOW_FILE: workflow-nim.yaml
     tests:
       - ./dragent_tests
     matrix:

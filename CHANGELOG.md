@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.48 - 2026-09-18
+## 0.29.49 - 2026-09-18
 - Raise the minimum `jupyter-server` version from `>=2.20.0` to `>=2.21.0`.
 - Raise the minimum `mcp` version from `>=1.28.1` to `>=1.28.1,<2`.
 - Add a minimum version for `pydantic-settings`: `>=2.14.2`.
 - Raise the minimum `soupsieve` version from `>=2.8.4` to `>=2.9.0`.
+
+
+## 0.29.48
+- `core/config`: **`Config` no longer declares `max_history_messages` or `assume_native_tool_calling_when_unmapped`.** Both are component settings, and `af-component-agent` already declares them on the config it registers, so genai carrying its own copies only added environment variables no component could rename or override. `get_max_history_messages_default()` and `default_assume_native_tool_calling_when_unmapped()` stay and are unchanged for components: they read the registered config and fall back to `DEFAULT_MAX_HISTORY_MESSAGES` (20) and `False` when nothing declares the field.
+- `core/config`: added `test_config_field_set_is_closed`, which freezes the set of fields `Config` may declare and fails with an explanation of where a new setting belongs instead. Adding a field deliberately means adding its name to `_ALLOWED_CONFIG_FIELDS` in the same commit.
 
 ## 0.29.47
 - Enable cve-sync[bot] to open CVE PRs, add dependabot for updating actions, and dr-auto-merge automation to automatically merge 100% safe PRs

@@ -24,6 +24,7 @@ from ag_ui.core.events import TextMessageContentEvent
 from ag_ui.core.types import FunctionCall
 from ag_ui.core.types import ToolCall
 from ag_ui.core.types import ToolMessage
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot_dome.guards.agent_goal_accuracy import AIMessage
 from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 
@@ -34,6 +35,7 @@ from datarobot_genai.core.agents.base import extract_user_prompt_content
 from datarobot_genai.core.agents.base import make_system_prompt
 from datarobot_genai.core.agents.base import prepend_streaming_memory_to_prompt
 from datarobot_genai.core.agents.history import extract_history_messages
+from datarobot_genai.core.config import register_config_provider
 
 
 def _make_run_agent_input_from_dicts(messages: list[dict[str, Any]]) -> RunAgentInput:
@@ -377,11 +379,41 @@ def test_create_pipeline_interactions_from_events_simple() -> None:
     assert sample.user_input == msgs
 
 
-def test_max_history_messages_defaults_to_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When no constructor param is given, property reads from env var via config."""
+def test_max_history_messages_defaults_to_registered_component_config() -> None:
+    """With no constructor param, the property reads the registered component config.
+
+    genai's own Config no longer declares ``max_history_messages``; a component
+    that wants to set it declares the field on the config it registers.
+    """
+
+    # GIVEN a component config declaring max_history_messages
+    class ComponentConfig(DataRobotAppFrameworkBaseSettings):  # type: ignore[misc]
+        max_history_messages: int = 5
+
+    register_config_provider(ComponentConfig)
+    try:
+        # WHEN an agent is built with no constructor param
+        agent = SimpleAgent()
+
+        # THEN the component's value is used
+        assert agent.max_history_messages == 5
+    finally:
+        register_config_provider(None)
+
+
+def test_max_history_messages_ignores_env_var_when_standalone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Standalone genai has no field bound to the env var, so it falls back."""
+    # GIVEN the env var set and no component config registered
     monkeypatch.setenv("DATAROBOT_GENAI_MAX_HISTORY_MESSAGES", "5")
+    register_config_provider(None)
+
+    # WHEN an agent is built with no constructor param
     agent = SimpleAgent()
-    assert agent.max_history_messages == 5
+
+    # THEN the built-in default applies
+    assert agent.max_history_messages == 20  # DEFAULT_MAX_HISTORY_MESSAGES
 
 
 def test_max_history_messages_defaults_to_builtin_when_env_unset(
