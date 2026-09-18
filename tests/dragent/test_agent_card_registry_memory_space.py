@@ -294,7 +294,7 @@ class TestCreateAgentCardCacheBackend:
                 MemoryAgentCardCacheBackend,
             )
 
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert type(backend) is MemoryAgentCardCacheBackend
 
@@ -307,7 +307,7 @@ class TestCreateAgentCardCacheBackend:
                 MemoryAgentCardCacheBackend,
             )
 
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert type(backend) is MemoryAgentCardCacheBackend
         resolve_mock.assert_not_called()
@@ -318,7 +318,7 @@ class TestCreateAgentCardCacheBackend:
             "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
             return_value="space-runtime",
         ) as resolve_mock:
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert isinstance(backend, LayeredAgentCardCacheBackend)
         resolve_mock.assert_called_once_with()
