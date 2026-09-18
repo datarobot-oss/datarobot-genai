@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.47
+## 0.29.48
 - `core/config`: **`Config` no longer declares `max_history_messages` or `assume_native_tool_calling_when_unmapped` (breaking for standalone use).** Both are component settings, and `af-component-agent` already declares them on the config it registers, so genai carrying its own copies only added environment variables no component could rename or override. `get_max_history_messages_default()` and `default_assume_native_tool_calling_when_unmapped()` stay and are unchanged for components: they read the registered config and fall back to `DEFAULT_MAX_HISTORY_MESSAGES` (20) and `False` when nothing declares the field.
 - `core/config`: added `test_config_field_set_is_closed`, which freezes the set of fields `Config` may declare and fails with an explanation of where a new setting belongs instead. Adding a field deliberately means adding its name to `_ALLOWED_CONFIG_FIELDS` in the same commit.
+
+## 0.29.47
+- Enable cve-sync[bot] to open CVE PRs, add dependabot for updating actions, and dr-auto-merge automation to automatically merge 100% safe PRs
 
 ## 0.29.46
 - `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits and on-demand refresh. Background refresh polls at half the soft TTL (minimum 60s). Defaults to the hard TTL when unset.
@@ -20,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.29.43
 - `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
 
-## 0.29.42
+## 0.29.47
 - `dragent`: close the registry L2 Memory Service HTTP client after import-time `asyncio.run` provision and recreate it on the app event loop. Reusing the bootstrap `httpx.AsyncClient` after a pod restart caused L2 reads to fail with `RuntimeError: bound to a different event loop`, which was logged as an L2 miss even when the space was already populated.
 - `dragent`: `try_resolve_memory_space_id()` returns an already-provisioned registry L2 space id even from a running event loop, so YAML parse (`get_default_registry_sync`) and `AgentCardRegistry.__init__` attach MemorySpace write-behind instead of locking the singleton to L1-only after import-time bootstrap.
 - `dragent`: add INFO-level logging for the agent card registry L2 read-through path (L1 miss → MemorySpace hit/miss, stale-if-error, and cache-only prefetch) so enclave pod restarts show a clear sequence when the control hub is down.

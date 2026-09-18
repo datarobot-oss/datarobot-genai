@@ -12,7 +12,15 @@ concurrency:
 
 jobs:
   detect-changes:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # `dependabot[bot]` is excluded for the same reason as in e2e.yml: the `core`
+    # filter below matches this workflow file, so a grouped actions bump would
+    # trigger the suite, and `e2e-examples` reads E2E_DATAROBOT_* Actions secrets
+    # that a Dependabot event resolves to empty. Skipping here skips
+    # `e2e-examples` with it; it runs on the push to `main` after the merge.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     outputs:
       examples: ${{ steps.matrix.outputs.examples }}
