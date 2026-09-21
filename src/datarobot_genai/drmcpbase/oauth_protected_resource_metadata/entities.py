@@ -170,10 +170,10 @@ class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
         ``scopes_supported`` (``mcp-remote``, and Cursor and Claude Code behind
         it) could not otherwise reproduce a token the exchange would produce.
 
-        Not because a gateway demands them: ``PUBLIC_API_JWT_REQUIRED_SCOPES``
-        is a per-install platform setting, published in no document a client
-        can read — a reason the union is *useful*, never a rule this library
-        can assume.
+        Not because anything downstream demands them. A deployment can be
+        configured to require scopes of its own on an inbound token, but that
+        is published in no document a client can read — a reason the union is
+        *useful*, never a rule this library can assume.
 
         Enforcement is unchanged: each ``tools/call`` is checked against the
         called tool's own declarations, never against this list.
