@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.50
-- Merge `main` into `DOC-9830-issue-created-from-slack`, resolving conflicts in `pyproject.toml`, `uv.lock`, `docs/src/index.md`, and `docs/src/nat/a2a-auth.md`.
-
 ## 0.29.49
 - `dragent/plugins/datarobot_user_mcp_xaa_client`: the exchange asks for the server's published `scopes_supported` rather than only `cross_application_access.token_request.scopes`. Asking for the latter alone produced a token that opened exactly the tools declaring no scope — every scoped tool was hidden from `tools/list` and refused on `tools/call`, which reads as the server exposing one tool rather than as a token short of a scope. Also tolerates a missing or empty `scopes` list in the published block: the client asks for none and lets the IdP decide.
 - `drmcpbase/oauth_protected_resource_metadata`: `scopes_supported` is now the **union** of the tool-declared scopes and the Cross-Application Access scopes (`MCP_XAA_SCOPES`), sorted, deduplicated. RFC 9728 asks for the scopes "used in authorization requests to request access to this protected resource" — not the ones this resource enforces — and the exchange asks for the Cross-App scopes on its second hop, so a client that asks for exactly `scopes_supported` (`mcp-remote`, and with it Cursor and Claude Code) could not otherwise reproduce a token the exchange would produce. Enforcement is unchanged: each `tools/call` is still checked against the called tool's own declarations. **Publishing-affecting**: a server whose only scopes come from its XAA block now advertises them where it previously advertised none.
@@ -83,12 +80,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent`: the agent card registry L2 MemorySpace is created at runtime on enclave workloads only (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID`, with registry-backed A2A clients). Uses a workload-scoped `deduplication_key` so replicas share one space. Other runtimes use in-process L1 caching only.
 - `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there via Pulumi / `task deploy-dev`; the enclave API gateway is only for the agent card registry L2 cache.
 - `dragent`: bootstrap registry L2 cache provisioning at import and lifespan warmup so enclave workloads adopt MemorySpace L2 without recipe-side wiring. Skips `dr.Client()`'s `/version/` probe on enclave gateways (memory API only) and resets the registry singleton after provisioning.
-
-## 0.29.35
-- Docs: fixed broken links in `docs/src/index.md`'s guides table (removed nonexistent LangGraph/LlamaIndex caveats links) and replaced repo-relative links/images in the root `README.md` with absolute GitHub URLs so the PyPI long-description renders correctly.
-
-## 0.29.34
-- Docs: added [`docs/README.md`](docs/README.md) hub; applied DataRobot style guide across guides; restructured root README with prerequisites, troubleshooting, and cross-links.
 
 ## 0.29.33 - 2026-09-08
 - Raise the minimum `banks` version from `>=2.4.2` to `>=2.4.5`.
