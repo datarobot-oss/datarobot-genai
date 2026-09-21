@@ -54,12 +54,19 @@ def register_routes(mcp: DataRobotMCP) -> None:
     unfiltered_catalog = unfiltered_catalog_provider(mcp)
 
     # Static discovery routes (global-mcp serves the same paths at /static/*), mounted
-    # under this server's configured prefix. Ungated here; global-mcp wires its own gate
-    # for /static/* and /toolGallery/toolSets/* separately in global_mcp.server.
+    # under this server's configured prefix.
+    #
+    # Ungated, deliberately and permanently. These routes describe the server to its own
+    # operator; they were gated on ENABLE_MCP_TOOLS_GALLERY_SUPPORT for the *container's*
+    # service account, and `register_gated_get` fails CLOSED to 404 — so a flag nobody
+    # remembered turning on, on an account nobody was looking at, made a route that exists
+    # indistinguishable from one that does not. It cost real time to diagnose on a
+    # deployed server. global-mcp still wires its own gate for /static/* and
+    # /toolGallery/toolSets/* in global_mcp.server, where the flag is per *caller* and the
+    # 404 is the intended answer.
     register_static_routes(
         mcp,
         base_path=prefix_mount_path("/static"),
-        gate=None,
         ui_metadata_provider=get_tool_ui_metadata,
         catalog_provider=unfiltered_catalog,
     )

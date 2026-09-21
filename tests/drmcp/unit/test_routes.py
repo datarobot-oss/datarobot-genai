@@ -1073,12 +1073,18 @@ class TestToolsGalleryRoutes:
     """User-mcp ``GET /static/*`` discovery routes are registered without an entitlement gate."""
 
     def test_static_routes_registered_without_gate(self):
+        """No gate is passed at all — `register_gated_get` fails closed to 404.
+
+        A gate here is evaluated for the *container's* service account, so a flag
+        nobody remembered turning on made a route that exists indistinguishable
+        from one that does not, on a deployed server.
+        """
         mock_mcp = Mock()
         mock_mcp.custom_route = Mock(return_value=lambda handler: handler)
         with patch("datarobot_genai.drmcp.core.routes.register_static_routes") as mock_register:
             register_routes(mock_mcp)
         _, kwargs = mock_register.call_args
-        assert kwargs["gate"] is None
+        assert "gate" not in kwargs
 
 
 class TestOAuthProtectedResourceMetadataRoute:

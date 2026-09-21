@@ -125,6 +125,7 @@ nav:
     - Atlassian Auth: drtools/auth-atlassian.md
   - Design:
     - design/nat-1.6-streaming.md
+    - OAuth scopes and Cross-App Access: design/oauth-scopes-and-cross-app-access.md
   - API Reference: api/
 
 # Suppress warnings for links that point to repo files (e2e-tests, src, etc.)

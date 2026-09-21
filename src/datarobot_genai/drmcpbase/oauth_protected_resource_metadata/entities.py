@@ -155,26 +155,53 @@ class MCPOAuthProtectedResourceMetadataConfig(BaseDataClass):
         """Assemble the config from the server's settings.
 
         Every parameter is the flat string an env var or runtime parameter can
-        carry — except ``scopes_supported``, which takes a list: its only
-        source is the scope rules declared in code and configuration (see
-        ``datarobot_genai.drmcpbase.oauth_scopes.derived_scopes``), never a
-        flat setting, so there is no comma-string for callers to hand-join
-        here or for this to split. Blank entries are dropped and an empty list
-        publishes nothing, like every other unset field.
+        carry, except ``scopes_supported``: the scope rules declared in code
+        and configuration (see
+        ``datarobot_genai.drmcpbase.oauth_scopes.derived_scopes``) are never a
+        flat setting, so there is nothing here to split. Blank entries are
+        dropped and an empty list publishes nothing, like every other unset
+        field.
+
+        What is published is the **union** of those declarations with the
+        Cross-Application Access scopes. RFC 9728 asks for the scopes "used in
+        authorization requests to request access to this protected resource" —
+        not the ones this resource enforces — and the exchange asks for the
+        Cross-App scopes on its second hop, so a client asking for exactly
+        ``scopes_supported`` (``mcp-remote``, and Cursor and Claude Code behind
+        it) could not otherwise reproduce a token the exchange would produce.
+
+        Not because a gateway demands them: ``PUBLIC_API_JWT_REQUIRED_SCOPES``
+        is a per-install platform setting, published in no document a client
+        can read — a reason the union is *useful*, never a rule this library
+        can assume.
+
+        Enforcement is unchanged: each ``tools/call`` is checked against the
+        called tool's own declarations, never against this list.
         """
-        scopes = [scope.strip() for scope in (scopes_supported or []) if scope.strip()]
+        declared = [scope.strip() for scope in (scopes_supported or []) if scope.strip()]
+        cross_application_access = CrossApplicationAccessMetadata.from_settings(
+            trusted_issuer=xaa_trusted_issuer,
+            exchange_audience=xaa_exchange_audience,
+            token_url=xaa_token_url,
+            token_audience=xaa_token_audience,
+            scopes=xaa_scopes,
+            token_endpoint_auth_method=xaa_token_endpoint_auth_method,
+        )
+        published = sorted(
+            {
+                *declared,
+                *(
+                    cross_application_access.token_request.scopes
+                    if cross_application_access
+                    else []
+                ),
+            }
+        )
         return cls(
             resource=resource or None,
             authorization_servers=split_list_setting(authorization_servers),
-            scopes_supported=scopes or None,
-            cross_application_access=CrossApplicationAccessMetadata.from_settings(
-                trusted_issuer=xaa_trusted_issuer,
-                exchange_audience=xaa_exchange_audience,
-                token_url=xaa_token_url,
-                token_audience=xaa_token_audience,
-                scopes=xaa_scopes,
-                token_endpoint_auth_method=xaa_token_endpoint_auth_method,
-            ),
+            scopes_supported=published or None,
+            cross_application_access=cross_application_access,
         )
 
     def is_empty(self) -> bool:
