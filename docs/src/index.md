@@ -47,8 +47,8 @@ Each guide covers the **interfaces in the repo**: `workflow.yaml` keys, env vars
 
 | Integration | Overview | Agent and workflow surface | LLM options | Tools and MCP | Caveats |
 |---|---|---|---|---|---|
-| LangGraph | [langgraph/](langgraph/) | [langgraph/agent.md](langgraph/agent.md) | [LLM configuration](llm.md) | [langgraph/mcp.md](langgraph/mcp.md) | [langgraph/caveats.md](langgraph/caveats.md) |
-| LlamaIndex | [llamaindex/](llamaindex/) | [llamaindex/agent.md](llamaindex/agent.md) | [LLM configuration](llm.md) | [llamaindex/mcp.md](llamaindex/mcp.md) | [llamaindex/caveats.md](llamaindex/caveats.md) |
+| LangGraph | [langgraph/](langgraph/) | [langgraph/agent.md](langgraph/agent.md) | [LLM configuration](llm.md) | [langgraph/mcp.md](langgraph/mcp.md) | — |
+| LlamaIndex | [llamaindex/](llamaindex/) | [llamaindex/agent.md](llamaindex/agent.md) | [LLM configuration](llm.md) | [llamaindex/mcp.md](llamaindex/mcp.md) | — |
 | CrewAI | [crewai/](crewai/) | [crewai/agent.md](crewai/agent.md) | [LLM configuration](llm.md) | [crewai/mcp.md](crewai/mcp.md) | [crewai/caveats.md](crewai/caveats.md) |
 | NAT + DRAgent | [nat/](nat/) | [nat/agent.md](nat/agent.md) | [nat/llm.md](nat/llm.md) | [nat/mcp.md](nat/mcp.md) | [nat/caveats.md](nat/caveats.md) |
 

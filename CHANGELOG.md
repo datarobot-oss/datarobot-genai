@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
 
+## 0.29.35
+- Docs: fixed broken links in `docs/src/index.md`'s guides table (removed nonexistent LangGraph/LlamaIndex caveats links) and replaced repo-relative links/images in the root `README.md` with absolute GitHub URLs so the PyPI long-description renders correctly.
+
 ## 0.29.34
 - Docs: added [`docs/README.md`](docs/README.md) hub; applied DataRobot style guide across guides; restructured root README with prerequisites, troubleshooting, and cross-links.
 

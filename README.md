@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/datarobot-oss/datarobot-genai">
-    <img src="docs/src/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
+    <img src="https://raw.githubusercontent.com/datarobot-oss/datarobot-genai/main/docs/src/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
   </a>
 </p>
 <h3 align="center">DataRobot GenAI Library</h3>
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="/LICENSE">
+  <a href="https://github.com/datarobot-oss/datarobot-genai/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/datarobot-oss/datarobot-genai" alt="License">
   </a>
   <a href="https://pypi.org/project/datarobot-genai/">
@@ -95,7 +95,7 @@ export DATAROBOT_ENDPOINT=https://app.datarobot.com/api/v2
 
 ## Standalone end-to-end examples
 
-Follow [quickstart.ipynb](e2e-tests/examples/quickstart.ipynb) to walk through setting up a LangGraph agent with DataRobot:
+Follow [quickstart.ipynb](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/examples/quickstart.ipynb) to walk through setting up a LangGraph agent with DataRobot:
 
 * LLM Gateway
 * `drtools`
@@ -105,7 +105,7 @@ Follow [quickstart.ipynb](e2e-tests/examples/quickstart.ipynb) to walk through s
 
 ## In-depth documentation
 
-See [docs/README.md](docs/README.md) for in-repo guides on every framework and feature in `datarobot-genai`. The published site is at [genai.datarobot.com](https://genai.datarobot.com/).
+See [docs/README.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md) for in-repo guides on every framework and feature in `datarobot-genai`. The published site is at [genai.datarobot.com](https://genai.datarobot.com/).
 
 # Develop
 
@@ -153,17 +153,17 @@ Common setup and runtime issues and where to find answers:
 
 | Symptom | Where to look |
 |---|---|
-| LLM auth or routing errors | [docs/src/llm.md](docs/src/llm.md) — verify `DATAROBOT_API_TOKEN` and gateway flags |
-| MCP tools missing at runtime | Framework MCP guides under [docs/README.md](docs/README.md) — merge injected tools with local tools |
-| DRAgent tracing empty | [docs/src/dragent/tracing.md](docs/src/dragent/tracing.md) — OTLP env vars and `instrument()` in `register.py` |
-| E2E test failures locally | [e2e-tests/README.md](e2e-tests/README.md) |
+| LLM auth or routing errors | [docs/src/llm.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/src/llm.md) — verify `DATAROBOT_API_TOKEN` and gateway flags |
+| MCP tools missing at runtime | Framework MCP guides under [docs/README.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md) — merge injected tools with local tools |
+| DRAgent tracing empty | [docs/src/dragent/tracing.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/src/dragent/tracing.md) — OTLP env vars and `instrument()` in `register.py` |
+| E2E test failures locally | [e2e-tests/README.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/README.md) |
 
 # Next steps
 
 After installation, continue with these resources:
 
-- Pick a framework guide from [docs/README.md](docs/README.md) and start from the matching sample under `e2e-tests/dragent/`.
-- Read [DRAgent CLI](docs/src/dragent/README.md) for `serve`, `run`, and `query`.
+- Pick a framework guide from [docs/README.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/README.md) and start from the matching sample under `e2e-tests/dragent/`.
+- Read [DRAgent CLI](https://github.com/datarobot-oss/datarobot-genai/blob/main/docs/src/dragent/README.md) for `serve`, `run`, and `query`.
 - Browse the [API reference](https://genai.datarobot.com/api/) on the published docs site.
 
 # Publishing
@@ -177,7 +177,7 @@ Release and distribution options for the package.
 
 # Contributing and support
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for issue guidelines, changelog expectations, and versioning. Report bugs via [GitHub Issues](https://github.com/datarobot-oss/datarobot-genai/issues). For security issues, email oss-community-management@datarobot.com.
+See [CONTRIBUTING.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/CONTRIBUTING.md) for issue guidelines, changelog expectations, and versioning. Report bugs via [GitHub Issues](https://github.com/datarobot-oss/datarobot-genai/issues). For security issues, email oss-community-management@datarobot.com.
 
 # Links
 
@@ -189,4 +189,4 @@ External references for the package and source repository:
 
 # License
 
-Apache-2.0&mdash;see [LICENSE](LICENSE).
+Apache-2.0&mdash;see [LICENSE](https://github.com/datarobot-oss/datarobot-genai/blob/main/LICENSE).
