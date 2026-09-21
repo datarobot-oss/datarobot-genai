@@ -1,0 +1,45 @@
+---
+# This file configures the Dependabot for the repository.
+#
+# Only the github-actions ecosystem is enabled. Real library dependencies
+# (Python) are deliberately NOT managed here: cve-sync owns them, via the
+# global floors, the central scoped overrides, and this repo's own
+# `.cve-sync-overrides.toml`. Dependabot has no view of that policy, so letting
+# it bump Python packages produces PRs that fight the resync and have to be
+# closed by hand.
+version: 2
+updates:
+  # Maintain dependencies for GitHub Actions.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Everything lands in ONE pull request. Without a group, Dependabot opens a
+    # separate PR per action, which for this repo means well over a dozen. The
+    # wildcard pattern plus all three update-types keeps majors in that same PR
+    # instead of splitting them out on their own.
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+          - "major"
+    open-pull-requests-limit: 1
+    # `automerge` opts these PRs into unattended approve-and-merge; see
+    # .github/automerge.yaml for what has to be green first.
+    #
+    # EVERY label here must already exist in the repo. Dependabot silently drops
+    # a label it cannot find: no warning, no label on the PR, and automerge then
+    # finds no candidates and does nothing, forever, with nothing saying why.
+    # `automerge` exists; `dependencies` and `github-actions` do not yet, so run
+    # workflow-ensure-labels.yaml with `dependabot_ecosystems: github-actions`
+    # before expecting any of this to work.
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automerge"
+    commit-message:
+      prefix: "ci"

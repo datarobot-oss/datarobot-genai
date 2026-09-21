@@ -36,7 +36,9 @@ from datarobot_genai.drmcp.core.middleware import build_http_response_from_auth_
 from datarobot_genai.drmcp.core.middleware import is_path_exempt_from_oauth_validation
 from datarobot_genai.drmcp.core.middleware import should_run_claim_validation
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import JWTDecodeError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import NoJWTBearerTokenKeyInRequestHeaderError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.entities import AuthErrorResponse
@@ -221,13 +223,20 @@ class TestOAuthJWTTokenHandlerMiddleware:
         mock_call_next.assert_called_once_with(request)
 
     @pytest.mark.usefixtures("mock_should_run_claim_validation_returns_true")
-    def test_return_error_when_there_is_no_valid_jwt_token(
+    @pytest.mark.parametrize(
+        "raised_error",
+        [JWTDecodeError, NoJWTBearerTokenKeyInRequestHeaderError],
+        ids=str,
+    )
+    def test_return_error(
         self,
+        raised_error: JWTDecodeError | NoJWTBearerTokenKeyInRequestHeaderError,
         mock_parse_to_access_token: Mock,
         mock_update_scope_with_auth_credentials: Mock,
         mock_update_scope_with_authenticated_user: Mock,
     ) -> None:
-        mock_parse_to_access_token.return_value = None
+        expected_error_message = "Error message"
+        mock_parse_to_access_token.side_effect = raised_error(expected_error_message)
 
         client = TestClient(mock_app())
         response = client.get("/")
@@ -235,7 +244,7 @@ class TestOAuthJWTTokenHandlerMiddleware:
         assert response.status_code == HTTPStatus.UNAUTHORIZED
         assert response.json() == {
             "error": ErrorCodeInAuthErrorResponse.INVALID_TOKEN.to_value(),
-            "error_description": "Invalid JWT token.",
+            "error_description": expected_error_message,
         }
         mock_parse_to_access_token.assert_called_once_with(
             OAuthJWTTokenHandlerMiddleware.HTTP_HEADER_TO_VALIDATE,

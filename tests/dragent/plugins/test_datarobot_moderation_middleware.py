@@ -2292,10 +2292,16 @@ def test_prescore_datarobot_moderations_from_df_uses_pipeline_columns(
     assert "Responses_token_count" not in mods
 
 
-async def test_function_middleware_stream_attaches_prescore_to_text_message_start(
+async def test_function_middleware_stream_attaches_prescore_to_text_message_content(
     builder_mock: MagicMock,
 ) -> None:
-    """Prescore metrics belong on TEXT_MESSAGE_START; content chunks keep postscore only."""
+    """Prescore and postscore metrics are merged and appear on TEXT_MESSAGE_CONTENT.
+
+    With dome's AG-UI streaming path, ``moderate_agui_stream`` handles prescore merging
+    internally: ``stream_response_async`` receives the prescore_df and builds a merged
+    moderation sidecar on the first moderated chunk (TEXT_MESSAGE_CONTENT). TEXT_MESSAGE_START
+    is forwarded as-is with no moderations attached.
+    """
     pipeline = _pipeline_mock()
     pipeline.get_prescore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -2338,14 +2344,14 @@ async def test_function_middleware_stream_attaches_prescore_to_text_message_star
     content_chunks = [
         c for c in chunks if any(isinstance(ev, TextMessageContentEvent) for ev in c.events)
     ]
+    # TEXT_MESSAGE_START is forwarded by dome without moderations.
     assert len(start_chunks) == 1
-    assert start_chunks[0].datarobot_moderations is not None
-    assert start_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
-    assert "Responses_token_count" not in start_chunks[0].datarobot_moderations
+    assert start_chunks[0].datarobot_moderations is None
+    # Merged prescore + postscore metrics appear on TEXT_MESSAGE_CONTENT.
     assert content_chunks
     assert content_chunks[0].datarobot_moderations is not None
+    assert content_chunks[0].datarobot_moderations["Prompts_token_count"] == 3
     assert content_chunks[0].datarobot_moderations["Responses_token_count"] == 6
-    assert "Prompts_token_count" not in content_chunks[0].datarobot_moderations
 
 
 async def test_function_middleware_stream_echoes_single_text_chunk(builder_mock: MagicMock) -> None:
@@ -3799,14 +3805,18 @@ async def test_function_middleware_stream_block_still_emits_upstream_run_finishe
 
     flat = [ev for resp in responses for ev in resp.events]
     validate_sequence(flat)
+    # dome's AG-UI path drains all held lifecycle events after a block, so msg-b's start/end are
+    # still emitted even though its content was blocked (empty message bubble, no text inside).
     assert [(ev.type, getattr(ev, "message_id", None)) for ev in flat] == [
         (EventType.RUN_STARTED, None),
         (EventType.TEXT_MESSAGE_START, mid_a),
         (EventType.TEXT_MESSAGE_CONTENT, mid_a),
         (EventType.TEXT_MESSAGE_END, mid_a),
+        (EventType.TEXT_MESSAGE_START, mid_b),
+        (EventType.TEXT_MESSAGE_END, mid_b),
         (EventType.RUN_FINISHED, None),
     ]
-    # The blocked upstream text never reaches the client, and mid_b is never opened.
+    # Only the block intervention text reaches the client; the original content is discarded.
     assert [ev.delta for ev in flat if isinstance(ev, TextMessageContentEvent)] == [blocked_text]
 
 

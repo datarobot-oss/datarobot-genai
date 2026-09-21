@@ -234,10 +234,46 @@ class TestMCPOAuthProtectedResourceMetadataConfig:
 
         assert metadata.resource is None
         assert metadata.authorization_servers is None
-        assert metadata.scopes_supported is None
+        # The XAA block's own scopes are published now — see the union in
+        # `from_settings`. Nothing else here is set, so they are all there is.
+        assert metadata.scopes_supported == ["scope"]
         assert metadata.to_dict_without_null_attribute() == {
-            "cross_application_access": cross_application_access_in_dict
+            "scopes_supported": ["scope"],
+            "cross_application_access": cross_application_access_in_dict,
         }
+
+    # The gap this closes cost a working login: no tool declares
+    # `dr.impersonation`, so a document built from tool declarations alone
+    # describes a set no acceptable token can be minted from — and a client
+    # that asks for exactly `scopes_supported` (mcp-remote, and with it Cursor
+    # and Claude Code) authorizes cleanly and is then refused at every call.
+    def test_scopes_supported_unions_the_cross_app_access_scopes(
+        self, xaa_settings: dict[str, Any]
+    ) -> None:
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            scopes_supported=["mcp:tools:builder", "mcp:tools:admin"],
+            xaa_trusted_issuer=xaa_settings["trusted_issuer"],
+            xaa_exchange_audience=xaa_settings["exchange_audience"],
+            xaa_token_url=xaa_settings["token_url"],
+            xaa_token_audience=xaa_settings["token_audience"],
+            xaa_scopes="dr.impersonation, mcp:tools:builder",
+        )
+
+        # Sorted, and a scope named by both sides appears once.
+        assert metadata.scopes_supported == [
+            "dr.impersonation",
+            "mcp:tools:admin",
+            "mcp:tools:builder",
+        ]
+
+    def test_scopes_supported_is_unchanged_without_cross_app_access(self) -> None:
+        """No XAA block, no union — the tool declarations stand alone."""
+        metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
+            scopes_supported=["mcp:tools:builder"]
+        )
+
+        assert metadata.cross_application_access is None
+        assert metadata.scopes_supported == ["mcp:tools:builder"]
 
     def test_scopes_supported_blank_entries_are_dropped(self) -> None:
         metadata = MCPOAuthProtectedResourceMetadataConfig.from_settings(
@@ -330,8 +366,12 @@ class TestMCPOAuthProtectedResourceMetadata:
             user_config, admin_config
         ).to_dict_without_null_attribute()
 
+        # `resource` and `authorization_servers` are the unset ones here;
+        # `scopes_supported` is not, because the XAA block carries scopes and
+        # they are published (see from_settings).
         assert served == {
             "bearer_methods_supported": ["header"],
+            "scopes_supported": ["scope"],
             "cross_application_access": cross_application_access_in_dict,
         }
 

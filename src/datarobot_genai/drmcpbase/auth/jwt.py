@@ -21,7 +21,10 @@ from fastmcp.server.auth import AccessToken
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import JWTDecodeError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import NoJWTBearerTokenKeyInRequestHeaderError
+from datarobot_genai.drmcpbase.auth.exceptions import NoTokenWithBearerPrefixError
 
 logger = logging.getLogger(__name__)
 
@@ -31,21 +34,31 @@ class JWTTokenHandler:
     def get_bearer_token_header(
         request_header_name_case_insensitive: str,
         request_headers_with_lower_case_key: Mapping[str, str],
-    ) -> str | None:
-        return request_headers_with_lower_case_key.get(request_header_name_case_insensitive.lower())
+    ) -> str:
+        token_header = request_headers_with_lower_case_key.get(
+            request_header_name_case_insensitive.lower()
+        )
+        if not token_header:
+            error_message = (
+                f"No JWT Bearer token key: {request_header_name_case_insensitive} in request header"
+            )
+            raise NoJWTBearerTokenKeyInRequestHeaderError(error_message)
+        return token_header
 
     @staticmethod
     def get_bearer_token_value(
         bearer_token_header: str,
-        bearer_token_header_can_be_missing: bool = True,
-    ) -> str | None:
+        bearer_token_prefix_can_be_missing: bool = True,
+    ) -> str:
         schema, _, value = bearer_token_header.partition(" ")
         if schema.lower() == "bearer":
             return value
-        elif bearer_token_header_can_be_missing:
+        elif bearer_token_prefix_can_be_missing:
             return bearer_token_header
         else:
-            return None
+            raise NoTokenWithBearerPrefixError(
+                "No token with Bearer prefix found in request header"
+            )
 
     @staticmethod
     def is_jwt_token(token_value: str) -> bool:
@@ -84,27 +97,24 @@ class JWTTokenHandler:
         cls,
         request_header_name: str,
         request_headers: Mapping[str, str],
-    ) -> AccessToken | None:
+    ) -> AccessToken:
         bearer_token_header = cls.get_bearer_token_header(request_header_name, request_headers)
-        bearer_token_value = (
-            cls.get_bearer_token_value(bearer_token_header) if bearer_token_header else None
-        )
-        if bearer_token_value and cls.is_jwt_token(bearer_token_value):
-            try:
-                payload_as_dict = cls.get_jwt_payload_without_signature_verification(
-                    bearer_token_value
-                )
-                return AccessToken(
-                    token=bearer_token_value,
-                    client_id=cls.extract_client_id(payload_as_dict),
-                    scopes=cls.extract_scopes(payload_as_dict),
-                    expires_at=cls.extract_exp(payload_as_dict),
-                    claims=payload_as_dict,
-                )
-            except (jwt.exceptions.PyJWTError, ValueError, TypeError):
-                logger.error("Failed to decode JWT", exc_info=True)
-                return None
-        return None
+        bearer_token_value = cls.get_bearer_token_value(bearer_token_header)
+        if not cls.is_jwt_token(bearer_token_value):
+            raise JWTDecodeError("Invalid JWT token")
+        try:
+            payload_as_dict = cls.get_jwt_payload_without_signature_verification(bearer_token_value)
+            return AccessToken(
+                token=bearer_token_value,
+                client_id=cls.extract_client_id(payload_as_dict),
+                scopes=cls.extract_scopes(payload_as_dict),
+                expires_at=cls.extract_exp(payload_as_dict),
+                claims=payload_as_dict,
+            )
+        except (jwt.exceptions.PyJWTError, ValueError, TypeError):
+            error_message = "Failed to decode JWT"
+            logger.error(error_message, exc_info=True)
+            raise JWTDecodeError(error_message)
 
 
 @dataclass

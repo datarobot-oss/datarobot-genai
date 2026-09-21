@@ -51,6 +51,11 @@ markdown_extensions:
 extra_css:
   - stylesheets/extra.css
 
+extra:
+  analytics:
+    provider: google
+    property: G-YFE17YW598
+
 plugins:
   - search
   - gen-files:

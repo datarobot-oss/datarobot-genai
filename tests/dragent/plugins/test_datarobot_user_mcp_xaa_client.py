@@ -86,8 +86,9 @@ class TestMCPAuthServerMetadataDiscovery:
         mock_exchange_audience = Mock()
         mock_token_url = Mock()
         mock_target_audience = Mock()
-        mock_scopes = [Mock()]
+        mock_scopes = ["dr.impersonation"]
         mcp_auth_server_metadata = {
+            "scopes_supported": mock_scopes,
             "cross_application_access": {
                 "token_endpoint_auth_method": mock_token_endpoint_auth_method,
                 "token_exchange": {
@@ -99,7 +100,7 @@ class TestMCPAuthServerMetadataDiscovery:
                     "audience": mock_target_audience,
                     "scopes": mock_scopes,
                 },
-            }
+            },
         }
         output = parse_xaa_params_from_mcp_auth_server_metadata(mcp_auth_server_metadata)
         assert output == _CrossAppFlowParams(
@@ -111,6 +112,88 @@ class TestMCPAuthServerMetadataDiscovery:
             token_endpoint_auth_method=mock_token_endpoint_auth_method,
         )
 
+    # A server that enforces no scopes and prescribes none publishes no
+    # `scopes_supported` at all, and `MCP_XAA_SCOPES` is optional besides.
+    # Neither is a reason to fail: the client asks for none and the IdP decides.
+    @pytest.mark.parametrize("scopes", [[], None])
+    def test_parse_xaa_params_tolerates_unprescribed_scopes(self, scopes: list | None) -> None:
+        token_request: dict = {"token_url": "https://issuer.example.com/token"}
+        if scopes is not None:
+            token_request["scopes"] = scopes
+        output = parse_xaa_params_from_mcp_auth_server_metadata(
+            {
+                "cross_application_access": {
+                    "token_exchange": {
+                        "trusted_issuer": "https://issuer.example.com",
+                        "audience": "https://as.example.com",
+                    },
+                    "token_request": token_request,
+                }
+            }
+        )
+
+        assert output.id_jag_scopes == []
+
+    # The failure this came from: an agent went through the gateway holding a
+    # token that opened no tool. It asked for `token_request.scopes` — the
+    # gateway's admission scope, `dr.impersonation` — and nothing the MCP's own
+    # middleware checks, so every tool with a scope requirement was hidden from
+    # tools/list and 403d on tools/call, leaving the unscoped ones. That reads
+    # as the server exposing one tool rather than as a token short of a scope.
+    #
+    # `scopes_supported` is published as the union of both, so asking for
+    # exactly it is one list and the whole requirement.
+    def test_parse_xaa_params_asks_for_the_published_scopes(self) -> None:
+        output = parse_xaa_params_from_mcp_auth_server_metadata(
+            {
+                "scopes_supported": [
+                    "dr.impersonation",
+                    "mcp:tools:admin",
+                    "mcp:tools:builder",
+                ],
+                "cross_application_access": {
+                    "token_exchange": {
+                        "trusted_issuer": "https://issuer.example.com",
+                        "audience": "https://as.example.com",
+                    },
+                    "token_request": {
+                        "token_url": "https://issuer.example.com/token",
+                        "scopes": ["dr.impersonation"],
+                    },
+                },
+            }
+        )
+
+        assert output.id_jag_scopes == [
+            "dr.impersonation",
+            "mcp:tools:admin",
+            "mcp:tools:builder",
+        ]
+
+    # `token_request.scopes` is the INPUT to that union, not a second list to
+    # ask from. Combining the two here would second-guess the server: one that
+    # deliberately does not advertise a scope would find it asked for anyway.
+    def test_parse_xaa_params_does_not_add_scopes_the_server_left_unpublished(
+        self,
+    ) -> None:
+        output = parse_xaa_params_from_mcp_auth_server_metadata(
+            {
+                "scopes_supported": ["mcp:tools:builder"],
+                "cross_application_access": {
+                    "token_exchange": {
+                        "trusted_issuer": "https://issuer.example.com",
+                        "audience": "https://as.example.com",
+                    },
+                    "token_request": {
+                        "token_url": "https://issuer.example.com/token",
+                        "scopes": ["dr.impersonation"],
+                    },
+                },
+            }
+        )
+
+        assert output.id_jag_scopes == ["mcp:tools:builder"]
+
     def test_parse_xaa_params_from_mcp_auth_server_metadata_without_token_request_audience(
         self,
     ) -> None:
@@ -118,8 +201,9 @@ class TestMCPAuthServerMetadataDiscovery:
         mock_trust_issuer = Mock()
         mock_exchange_audience = Mock()
         mock_token_url = Mock()
-        mock_scopes = [Mock()]
+        mock_scopes = ["dr.impersonation"]
         mcp_auth_server_metadata = {
+            "scopes_supported": mock_scopes,
             "cross_application_access": {
                 "token_endpoint_auth_method": mock_token_endpoint_auth_method,
                 "token_exchange": {
@@ -130,7 +214,7 @@ class TestMCPAuthServerMetadataDiscovery:
                     "token_url": mock_token_url,
                     "scopes": mock_scopes,
                 },
-            }
+            },
         }
         output = parse_xaa_params_from_mcp_auth_server_metadata(mcp_auth_server_metadata)
         assert output == _CrossAppFlowParams(
@@ -241,11 +325,22 @@ class TestSetupAuthProvider:
         ) as mock_func:
             yield mock_func
 
-    def test_get_mcp_auth_server_metadata_url(self) -> None:
+    @pytest.mark.parametrize(
+        "server_url",
+        [
+            "https://foo:8081/bar/mcp",
+            "https://foo:8081/bar/mcp/",
+            "https://foo:8081/bar",
+            # workload_id segment happens to start with "mcp" - must not be truncated early
+            "https://foo:8081/bar/mcp-workload-1/mcp",
+        ],
+    )
+    def test_get_mcp_auth_server_metadata_url(self, server_url: str) -> None:
         config = Mock()
-        config.server.url = "https://foo:8081/bar/mcp"
+        config.server.url = server_url
         output = get_mcp_auth_server_metadata_url(config)
-        assert output == "https://foo:8081/.well-known/oauth-protected-resource/bar/mcp"
+        expected_path = "/bar/mcp-workload-1" if "mcp-workload-1" in server_url else "/bar"
+        assert output == f"https://foo:8081{expected_path}/.well-known/oauth-protected-resource"
 
     def test_get_xaa_params_from_config(self) -> None:
         xaa_config = Mock()

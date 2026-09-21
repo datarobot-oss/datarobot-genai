@@ -633,9 +633,13 @@ def test_dr_mem0_endpoint_prefers_public_api_endpoint_over_internal_endpoint(
     )
 
 
-def test_dr_mem0_endpoint_enclave_gateway_wins_over_control_hub(monkeypatch: Any) -> None:
+def test_dr_mem0_endpoint_stays_on_control_hub_when_enclave_gateway_is_set(
+    monkeypatch: Any,
+) -> None:
     # GIVEN a workload on an Envoy-fronted enclave whose control-hub URLs
-    # still point at staging
+    # still point at staging. Agent memory is provisioned on the control hub
+    # (Pulumi / MemorySpace.create); the enclave host is only for the
+    # registry L2 cache.
     monkeypatch.setenv(
         "DATAROBOT_PUBLIC_API_ENDPOINT",
         "https://staging.datarobot.com/api/v2",
@@ -646,10 +650,10 @@ def test_dr_mem0_endpoint_enclave_gateway_wins_over_control_hub(monkeypatch: Any
     config = DRMem0MemoryClientConfig(agent_memory_space_id="space-123")
 
     # WHEN the mem0 endpoint is built
-    # THEN it talks to the enclave memory service, not the control hub
+    # THEN it still talks to the control hub, not the enclave
     assert (
         datarobot_mem0_memory._dr_mem0_endpoint(config)
-        == "https://enclave-x.datarobot.com/api/v2/memory/space-123"
+        == "https://staging.datarobot.com/api/v2/memory/space-123"
     )
 
 
@@ -848,6 +852,12 @@ async def test_registered_memory_client_yields_unconfigured_editor_without_dr_to
     # GIVEN an agent_memory_space_id but neither datarobot_api_token nor DATAROBOT_API_TOKEN.
     monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
     monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    class _NoToken:
+        def resolve_datarobot_api_token(self) -> None:
+            return None
+
+    monkeypatch.setattr(datarobot_mem0_memory, "resolve_config", _NoToken)
 
     async with datarobot_mem0_memory.dr_mem0_memory_client(
         DRMem0MemoryClientConfig(

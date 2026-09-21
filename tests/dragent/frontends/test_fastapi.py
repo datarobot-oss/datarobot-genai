@@ -35,6 +35,7 @@ from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfi
 from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
@@ -47,6 +48,7 @@ from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_MODEL_MONITORING_HEADER
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPlugin
 from datarobot_genai.dragent.frontends.fastapi import DRAgentFastApiFrontEndPluginWorker
+from datarobot_genai.dragent.frontends.fastapi import _force_gunicorn_worker_asyncio_loop
 from datarobot_genai.dragent.frontends.fastapi import _GunicornSettings
 from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_timeout
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
@@ -983,6 +985,27 @@ class TestInboundAudienceValidation:
             response = client.get("/health", headers={"x-datarobot-external-access-token": token})
         assert response.status_code == 200
 
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_health_routes_reject_a_token_naming_another_agent(self, path):
+        """GIVEN a wrong-audience token on a health route THEN it is rejected like any other.
+
+        A probe carries no IdP token, so it still reaches ready state via the ordinary
+        tokenless pass-through -- see ``test_serving_route_without_an_idp_token_still_works``.
+        """
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.get(path, headers={"x-datarobot-external-access-token": token})
+        assert response.status_code == 401, path
+
+    def test_a2a_route_still_rejects_a_token_naming_another_agent(self):
+        """GIVEN a wrong-audience token on the mounted /a2a route THEN it is rejected too."""
+        token = make_jwt(aud="api://another-agent")
+        with self._built_app(self._worker("api://my-agent")) as app, TestClient(app) as client:
+            response = client.post(
+                f"/{A2A_MOUNT_PATH}/", json={}, headers={"x-datarobot-external-access-token": token}
+            )
+        assert response.status_code == 401
+
     def test_serving_route_without_an_idp_token_still_works(self):
         """GIVEN validation is enabled but no IdP token is sent THEN nothing breaks.
 
@@ -1419,9 +1442,41 @@ class TestPatchGunicornWorkerTimeout:
         _patch_gunicorn_worker_timeout()  # must not raise
 
 
+class TestForceGunicornWorkerAsyncioLoop:
+    """Force UvicornWorker off its default uvloop so gunicorn mode never hits the
+    ``nest_asyncio2``/uvloop incompatibility.
+    """
+
+    @pytest.fixture
+    def fake_uvicorn_workers(self, monkeypatch):
+        """Stand-in for ``uvicorn.workers`` with the one attribute the fix depends on."""
+
+        class UvicornWorker:
+            CONFIG_KWARGS = {"loop": "auto", "http": "auto"}
+
+        module = types.ModuleType("uvicorn.workers")
+        module.UvicornWorker = UvicornWorker
+        monkeypatch.setitem(sys.modules, "uvicorn.workers", module)
+        return UvicornWorker
+
+    def test_forces_asyncio_loop(self, fake_uvicorn_workers):
+        """GIVEN "auto" loop WHEN the fix is applied THEN it's forced to "asyncio"."""
+        _force_gunicorn_worker_asyncio_loop()
+
+        assert fake_uvicorn_workers.CONFIG_KWARGS == {"loop": "asyncio", "http": "auto"}
+
+    def test_noop_when_uvicorn_not_installed(self, monkeypatch):
+        """Must no-op, not raise, if uvicorn is ever missing."""
+        monkeypatch.setitem(sys.modules, "uvicorn.workers", None)  # forces ImportError
+        _force_gunicorn_worker_asyncio_loop()  # must not raise
+
+
 class TestRunGunicornTimeoutGating:
     _SUPER_RUN = "nat.front_ends.fastapi.fastapi_front_end_plugin.FastApiFrontEndPlugin.run"
     _PATCH_FN = "datarobot_genai.dragent.frontends.fastapi._patch_gunicorn_worker_timeout"
+    _FORCE_ASYNCIO_LOOP_FN = (
+        "datarobot_genai.dragent.frontends.fastapi._force_gunicorn_worker_asyncio_loop"
+    )
     _PUBLISH = "datarobot_genai.dragent.workflow_paths.publish_dragent_config_file_env"
 
     @pytest.mark.asyncio
@@ -1433,10 +1488,12 @@ class TestRunGunicornTimeoutGating:
         with (
             patch(self._PUBLISH),
             patch(self._PATCH_FN) as mock_patch,
+            patch(self._FORCE_ASYNCIO_LOOP_FN) as mock_force_asyncio_loop,
             patch(self._SUPER_RUN, new_callable=AsyncMock),
         ):
             await plugin.run()
         mock_patch.assert_called_once()
+        mock_force_asyncio_loop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_skips_patch_without_use_gunicorn(self):
@@ -1447,7 +1504,9 @@ class TestRunGunicornTimeoutGating:
         with (
             patch(self._PUBLISH),
             patch(self._PATCH_FN) as mock_patch,
+            patch(self._FORCE_ASYNCIO_LOOP_FN) as mock_force_asyncio_loop,
             patch(self._SUPER_RUN, new_callable=AsyncMock),
         ):
             await plugin.run()
         mock_patch.assert_not_called()
+        mock_force_asyncio_loop.assert_not_called()

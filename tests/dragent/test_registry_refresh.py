@@ -18,14 +18,30 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from nat.data_models.config import Config
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
+from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.registry_refresh import background_refresh_interval
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
+from tests.dragent.test_agent_card_registry import _memory_registry
 
 _MODULE = "datarobot_genai.dragent.registry_refresh"
+_REGISTRY_SETTINGS_PATCH = "datarobot_genai.dragent.agent_card_registry._resolve_settings"
+
+
+@pytest.fixture(autouse=True)
+def _registry_credentials():
+    reset_default_registry()
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=("tok", "https://ep")):
+        yield
+    reset_default_registry()
+
 
 _SAMPLE_AGENT_CARD = {
     "name": "Test Agent",
@@ -61,7 +77,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_skips_fresh_entries(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
 
@@ -71,7 +87,7 @@ class TestAgentCardRegistryRefresh:
 
     async def test_refresh_refetches_soft_expired_entries(self, mock_fetch):
         mock_fetch.return_value = _parsed({"dep-1": _card()})
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 120)
@@ -82,12 +98,42 @@ class TestAgentCardRegistryRefresh:
 
         mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
 
+    async def test_refresh_refetches_past_soft_ttl_within_hard_ttl(self, mock_fetch):
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = _memory_registry(
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+        registry.register(deployment_id="dep-1")
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 90)
+
+        mock_fetch.reset_mock()
+        mock_fetch.return_value = _parsed({"dep-1": _card(name="Refreshed Agent")})
+        await registry.refresh_all_registered()
+
+        mock_fetch.assert_awaited_once_with({"deploymentIds": "dep-1"})
+
+    async def test_refresh_skips_within_soft_ttl(self, mock_fetch):
+        mock_fetch.return_value = _parsed({"dep-1": _card()})
+        registry = _memory_registry(
+            cache_ttl=3600,
+            soft_cache_ttl=60,
+        )
+        registry.register(deployment_id="dep-1")
+        await registry.get(deployment_id="dep-1")
+        registry._age_cache_entry_for_test("dep-1", 30)
+
+        mock_fetch.reset_mock()
+        await registry.refresh_all_registered()
+        mock_fetch.assert_not_awaited()
+
     async def test_refresh_logs_on_failure_without_raising(self, mock_fetch):
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card()}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=60)
+        registry = _memory_registry(cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 120)
@@ -95,9 +141,20 @@ class TestAgentCardRegistryRefresh:
         await registry.refresh_all_registered()
 
     async def test_refresh_no_op_without_registered_ids(self, mock_fetch):
-        registry = AgentCardRegistry(api_token="tok", endpoint="https://ep", cache_ttl=3600)
+        registry = _memory_registry(cache_ttl=3600)
         await registry.refresh_all_registered()
         mock_fetch.assert_not_awaited()
+
+
+class TestBackgroundRefreshInterval:
+    def test_half_soft_ttl(self):
+        assert background_refresh_interval(300) == 150
+
+    def test_minimum_floor(self):
+        assert background_refresh_interval(90) == 60
+
+    def test_large_soft_ttl(self):
+        assert background_refresh_interval(86400) == 43200
 
 
 class TestRegistryRefreshLoop:
@@ -126,8 +183,16 @@ class TestRegistryRefreshLoop:
 class TestRegistryRefreshLifespan:
     async def test_lifespan_starts_and_stops_task(self):
         mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 1800
         mock_registry.has_registered_lookups.return_value = True
-        config = MagicMock()
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
 
         class _FakeTask:
             def __init__(self) -> None:
@@ -157,10 +222,113 @@ class TestRegistryRefreshLifespan:
 
             fake_task.cancel.assert_called_once()
 
-    async def test_lifespan_no_op_without_registered_ids(self):
+    async def test_lifespan_registers_ids_from_config_after_singleton_reset(self):
+        """Background refresh must not depend on config-parse-time register() surviving L2 reset."""
         mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 1800
         mock_registry.has_registered_lookups.return_value = False
-        config = MagicMock()
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(workload_id="wl-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+
+        class _FakeTask:
+            def __init__(self) -> None:
+                self.cancel = MagicMock()
+
+            def __await__(self):
+                async def _noop() -> None:
+                    return None
+
+                return _noop().__await__()
+
+        fake_task = _FakeTask()
+
+        def _create_task(coro):
+            coro.close()
+            return fake_task
+
+        with (
+            patch(
+                f"{_MODULE}.get_default_registry",
+                AsyncMock(return_value=mock_registry),
+            ),
+            patch(f"{_MODULE}.asyncio.create_task", side_effect=_create_task) as mock_create_task,
+        ):
+            async with registry_refresh_lifespan(config):
+                mock_registry.register.assert_called_once_with(workload_id="wl-1")
+                mock_create_task.assert_called_once()
+
+            fake_task.cancel.assert_called_once()
+
+    async def test_lifespan_no_op_without_registry_backed_clients(self):
+        config = Config(function_groups={})
+
+        with (
+            patch(f"{_MODULE}.get_default_registry", AsyncMock()) as mock_get_registry,
+            patch(f"{_MODULE}.asyncio.create_task") as mock_create_task,
+        ):
+            async with registry_refresh_lifespan(config):
+                pass
+
+            mock_get_registry.assert_not_awaited()
+            mock_create_task.assert_not_called()
+
+    async def test_lifespan_uses_half_soft_cache_ttl_as_refresh_interval(self):
+        mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 300
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+
+        class _FakeTask:
+            def __init__(self) -> None:
+                self.cancel = MagicMock()
+
+            def __await__(self):
+                async def _noop() -> None:
+                    return None
+
+                return _noop().__await__()
+
+        fake_task = _FakeTask()
+
+        def _create_task(coro):
+            coro.close()
+            return fake_task
+
+        with (
+            patch(
+                f"{_MODULE}.get_default_registry",
+                AsyncMock(return_value=mock_registry),
+            ),
+            patch(f"{_MODULE}.asyncio.create_task", side_effect=_create_task) as mock_create_task,
+            patch(f"{_MODULE}.registry_refresh_loop") as mock_refresh_loop,
+        ):
+            async with registry_refresh_lifespan(config):
+                mock_create_task.assert_called_once()
+                mock_refresh_loop.assert_called_once_with(mock_registry, 150)
+
+    async def test_lifespan_skips_refresh_when_caching_disabled(self):
+        mock_registry = MagicMock()
+        mock_registry.soft_cache_ttl = 0
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(deployment_id="dep-1"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
 
         with (
             patch(
@@ -172,4 +340,5 @@ class TestRegistryRefreshLifespan:
             async with registry_refresh_lifespan(config):
                 pass
 
+            mock_registry.register.assert_called_once_with(deployment_id="dep-1")
             mock_create_task.assert_not_called()

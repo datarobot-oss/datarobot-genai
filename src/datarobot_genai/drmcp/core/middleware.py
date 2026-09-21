@@ -18,8 +18,6 @@ import json
 import logging
 from abc import ABC
 from abc import abstractmethod
-from enum import Enum
-from enum import auto
 from http import HTTPMethod
 from http import HTTPStatus
 from typing import Any
@@ -36,7 +34,9 @@ from starlette.types import Scope
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.runtime_identity import DeploymentEndpointResolver
 from datarobot_genai.drmcpbase.auth.exceptions import AudienceClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import JWTDecodeError
 from datarobot_genai.drmcpbase.auth.exceptions import MCPToolScopeClaimValidationError
+from datarobot_genai.drmcpbase.auth.exceptions import NoJWTBearerTokenKeyInRequestHeaderError
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenClaimsValidator
 from datarobot_genai.drmcpbase.auth.jwt import JWTTokenHandler
 from datarobot_genai.drmcpbase.middleware import AuthContextExtractor
@@ -95,29 +95,6 @@ def create_oauth_middleware(
 def initialize_oauth_middleware(mcp: Any) -> None:
     """Register OAuth middleware with the template MCP server."""
     register_oauth_middleware(mcp, create_oauth_middleware())
-
-
-class ErrorResponse(Enum):
-    INVALID_JWT_TOKEN = auto()
-    INVALID_OAUTH_AUDIENCE_CLAIM = auto()
-
-    def to_starlette_response(self, message: str | None = None) -> JSONResponse:
-        message = message or self.to_default_message()
-        return JSONResponse(status_code=self.to_status_code(), content={"detail": message})
-
-    def to_status_code(self) -> int:
-        mapping = {
-            self.INVALID_OAUTH_AUDIENCE_CLAIM: HTTPStatus.UNAUTHORIZED,
-            self.INVALID_JWT_TOKEN: HTTPStatus.UNPROCESSABLE_ENTITY,
-        }
-        return mapping[self]
-
-    def to_default_message(self) -> str:
-        mapping = {
-            self.INVALID_OAUTH_AUDIENCE_CLAIM: "Audience claim validation failed.",
-            self.INVALID_JWT_TOKEN: "Invalid JWT token.",
-        }
-        return mapping[self]
 
 
 def build_well_known_protected_resource_url(request: Request) -> str:
@@ -197,17 +174,23 @@ class OAuthJWTTokenHandlerMiddleware(BaseAuthZMiddleware):
         request: Request,
         call_next: Any,
     ) -> Response:
-        access_token = JWTTokenHandler.parse_to_access_token(
-            self.HTTP_HEADER_TO_VALIDATE,
-            request.headers,
-        )
-        if not access_token:
+        try:
+            access_token = JWTTokenHandler.parse_to_access_token(
+                self.HTTP_HEADER_TO_VALIDATE,
+                request.headers,
+            )
+        except (
+            NoJWTBearerTokenKeyInRequestHeaderError,
+            JWTDecodeError,
+        ) as ex:
+            error_message = str(ex)
+            logger.info(error_message)
             return build_http_response_from_auth_error(
                 status_code=HTTPStatus.UNAUTHORIZED,
                 auth_error_response=AuthErrorResponse(
                     resource_metadata=build_well_known_protected_resource_url(request),
                     error_code=ErrorCodeInAuthErrorResponse.INVALID_TOKEN,
-                    error_description="Invalid JWT token.",
+                    error_description=error_message,
                 ),
             )
 

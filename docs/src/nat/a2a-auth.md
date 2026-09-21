@@ -246,9 +246,9 @@ authentication check: a caller with no IdP token — using a DataRobot API token
 | Present but not a decodable JWT | `422 {"detail": "Malformed authorization token: ..."}` |
 | No IdP token | Proceeds |
 
-The token is read from `x-datarobot-external-access-token` (bare or `Bearer`-prefixed), then
-`Bearer` `authorization` for local runs with no gateway. Because `authorization` also carries
-DataRobot API tokens, a non-JWT value there is ignored rather than rejected.
+The token is read from `x-datarobot-external-access-token` only (bare or `Bearer`-prefixed).
+`authorization` is never read as an IdP-token carrier — it carries DataRobot's own credentials
+instead, some of which are JWTs too.
 
 - Applies to **every route**, not just `/a2a`.
 - Signature, issuer and expiry are **not** re-verified — the gateway owns that.
@@ -311,10 +311,9 @@ remote XAA-protected agent.
 | `fallback_token_headers` | — | **Deprecated, no effect.** Removed in a future release; delete it. |
 
 > **The incoming token headers are not configurable.** The access token is read from
-> `x-datarobot-external-access-token`, falling back to `Bearer` `authorization` for local runs
-> with no gateway. That set lives in `dragent/inbound_token.py` and is shared with inbound
-> audience validation, so the agent cannot exchange a token from a header validation did not
-> inspect.
+> `x-datarobot-external-access-token`. That header lives in `dragent/inbound_token.py` and is
+> shared with inbound audience validation, so the agent cannot exchange a token from a header
+> validation did not inspect.
 >
 > The former `okta_token_header` and `fallback_token_headers` fields are retired. Setting one to
 > the value it used to default to still loads, with a deprecation warning in the startup log.
@@ -357,8 +356,8 @@ in `securitySchemes`, while flow-specific parameters go in
 | `Authorization` header missing on A2A RPC calls | The remote agent card declares `securitySchemes` but the client uses `datarobot_api_key`. When `securitySchemes` are present, the `A2ACredentialService` performs OAuth2 security-scheme negotiation and drops incompatible credentials. | Switch to an OAuth2-compatible auth provider (e.g. `okta_cross_app_access`) that matches the security scheme advertised by the remote agent card. |
 | `401 Authorization audience claim validation failed` | The token was issued for a different resource. | Request a token whose `aud` matches the serving agent's `token_request.audience`. |
 | `422 Malformed authorization token` | The value in `x-datarobot-external-access-token` is not a decodable JWT. | Check what the caller forwards; an opaque token or API key in *that* header will not decode. |
-| `RuntimeError: No IdP access token in request context` | Neither carrier header holds a token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`, or `authorization: Bearer <jwt>` locally. A non-JWT in `authorization` is ignored, since that header also carries DataRobot API tokens. |
-| `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in the environment or Runtime Parameters. |
-| `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify the JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
+| `RuntimeError: No IdP access token in request context` | `x-datarobot-external-access-token` holds no token. If the message also mentions an ignored `okta_token_header` override, that is the cause. | Forward the Okta token in `x-datarobot-external-access-token`; `authorization` is never read as an IdP carrier. |
+| `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
+| `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
 | `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in the `function_groups` config and network connectivity. |

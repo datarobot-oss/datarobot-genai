@@ -2,7 +2,87 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## 0.29.50
+- Merge `main` into `DOC-9830-issue-created-from-slack`, resolving conflicts in `pyproject.toml`, `uv.lock`, `docs/src/index.md`, and `docs/src/nat/a2a-auth.md`.
+
+## 0.29.49
+- `dragent/plugins/datarobot_user_mcp_xaa_client`: the exchange asks for the server's published `scopes_supported` rather than only `cross_application_access.token_request.scopes`. Asking for the latter alone produced a token that opened exactly the tools declaring no scope — every scoped tool was hidden from `tools/list` and refused on `tools/call`, which reads as the server exposing one tool rather than as a token short of a scope. Also tolerates a missing or empty `scopes` list in the published block: the client asks for none and lets the IdP decide.
+- `drmcpbase/oauth_protected_resource_metadata`: `scopes_supported` is now the **union** of the tool-declared scopes and the Cross-Application Access scopes (`MCP_XAA_SCOPES`), sorted, deduplicated. RFC 9728 asks for the scopes "used in authorization requests to request access to this protected resource" — not the ones this resource enforces — and the exchange asks for the Cross-App scopes on its second hop, so a client that asks for exactly `scopes_supported` (`mcp-remote`, and with it Cursor and Claude Code) could not otherwise reproduce a token the exchange would produce. Enforcement is unchanged: each `tools/call` is still checked against the called tool's own declarations. **Publishing-affecting**: a server whose only scopes come from its XAA block now advertises them where it previously advertised none.
+- `drmcp/core/config`: `mcp_oauth_scope_source` defaults to `"both"` on the field rather than `None` (the parser already treated `None` / `""` / unrecognised as `both`). The type stays nullable so an explicit `None` from callers does not fail validation.
+- `drmcp/core/routes`: user-mcp `GET /static/*` is registered with no `gate` argument at all. It had been gated on `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` for the *container's* service account, and `register_gated_get` fails closed to 404 — so a flag nobody remembered turning on, on an account nobody was looking at, made a route that exists indistinguishable from one that does not. global-mcp still wires its own gate for `/static/*` and `/toolGallery/toolSets/*`, where the flag is per *caller* and the 404 is the intended answer.
+
+## 0.29.48
+- `core/config`: **`Config` no longer declares `max_history_messages` or `assume_native_tool_calling_when_unmapped`.** Both are component settings, and `af-component-agent` already declares them on the config it registers, so genai carrying its own copies only added environment variables no component could rename or override. `get_max_history_messages_default()` and `default_assume_native_tool_calling_when_unmapped()` stay and are unchanged for components: they read the registered config and fall back to `DEFAULT_MAX_HISTORY_MESSAGES` (20) and `False` when nothing declares the field.
+- `core/config`: added `test_config_field_set_is_closed`, which freezes the set of fields `Config` may declare and fails with an explanation of where a new setting belongs instead. Adding a field deliberately means adding its name to `_ALLOWED_CONFIG_FIELDS` in the same commit.
+
+## 0.29.47
+- Enable cve-sync[bot] to open CVE PRs, add dependabot for updating actions, and dr-auto-merge automation to automatically merge 100% safe PRs
+
+## 0.29.46
+- `dragent`: add ``AGENT_CARD_REGISTRY_SOFT_CACHE_TTL`` for a separately configurable soft TTL. ``AGENT_CARD_REGISTRY_CACHE_TTL`` remains the hard bound for stale-if-error; soft TTL controls fresh cache hits and on-demand refresh. Background refresh polls at half the soft TTL (minimum 60s). Defaults to the hard TTL when unset.
+
+## 0.29.45
+- `dragent`: fixed dragent crash-looping under `use_gunicorn: true` on Python 3.12+ by forcing gunicorn's `UvicornWorker` onto the standard asyncio event loop instead of uvloop (which `nest_asyncio2` can't patch), matching the loop policy NAT's direct-uvicorn path already uses.
+
+## 0.29.44
+- `dragent`: **the caller's IdP access token is now read only from `x-datarobot-external-access-token`.** The DataRobot API Gateway does not forward IdP tokens through `authorization` — that header carries DataRobot's own credentials instead, and the gateway alone is positioned to authenticate them and route them to the right header. **Behaviour-affecting:** some of those credentials happen to be well-formed JWTs, so with `a2a.oauth_claim_validation: true`, a DataRobot-authenticated call could be misread as carrying an external IdP token and refused. Only the gateway's dedicated header carries a token this library is entitled to audience-check; it is populated with the external token the gateway has already validated, so a value there is in scope by construction. The same function feeds the cross-application-access provider's token exchange, so validation and exchange still read exactly the same carrier and nothing exchangeable goes unchecked.
+
+## 0.29.43
+- `drmcp/core/routes`: user-mcp ``GET /static/*`` discovery routes (tools, categories, providers) are no longer gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT``.
+
+## 0.29.47
+- `dragent`: close the registry L2 Memory Service HTTP client after import-time `asyncio.run` provision and recreate it on the app event loop. Reusing the bootstrap `httpx.AsyncClient` after a pod restart caused L2 reads to fail with `RuntimeError: bound to a different event loop`, which was logged as an L2 miss even when the space was already populated.
+- `dragent`: `try_resolve_memory_space_id()` returns an already-provisioned registry L2 space id even from a running event loop, so YAML parse (`get_default_registry_sync`) and `AgentCardRegistry.__init__` attach MemorySpace write-behind instead of locking the singleton to L1-only after import-time bootstrap.
+- `dragent`: add INFO-level logging for the agent card registry L2 read-through path (L1 miss → MemorySpace hit/miss, stale-if-error, and cache-only prefetch) so enclave pod restarts show a clear sequence when the control hub is down.
+- `dragent`: migrated the agent card registry L2 MemorySpace KV cache from the stable `datarobot.models.memory.Session` API to the Memory Service light ORM in `datarobot.application_utils.persistence` (`DRMemorySpace`, `DRSession`, `DREvent`, `DRMemoryServiceClient`). Session lookup now uses `DRDeduplicationKey` point reads instead of `Session.list(description=...)`, and cache reads/writes are fully async over `httpx`.
+- `dragent`: provision the registry L2 MemorySpace from async lifespan warmup and `get_default_registry` instead of swallowing `_run_async`'s running-loop error as a failed create (which left enclave workloads on L1-only caching and leaked an unawaited provision coroutine).
+- Raise the `datarobot` floor from `>=3.18.0` to `>=3.19.0` and add `datarobot[application-utils]` to the `dragent` extra.
+- `core/config`: dropped the local pre-rename LLM parameter shim now that `datarobot>=3.19` ships it in `datarobot.core`.
+
+## 0.29.41
+- `drmcpbase/oauth_scopes`: removed the tool-level *authentication* added in 0.27.3 — the `JWTVerifier`-based bearer-token reading and verification (`request_scopes` reading headers, `require_verified_token`, `apply_token_floor`, `probe_verification_keys`, the per-request memoisation), `ScopeSettings`' `issuer`/`audience`/`jwks_uri`/`enforced`, the `MCP_OAUTH_JWKS_URI` and `MCP_OAUTH_AUDIENCE` settings (nothing reads them anymore) and the partial-verifier / multi-issuer startup warnings; `drmcp/core/oauth_scopes.build_scope_settings` no longer reads any of those settings. Authentication is the DataRobot gateway's job. The tool-level *scope check* stays: `require_scopes(...)` (still `@dr_mcp_tool(auth=require_scopes(...))`, exported from `datarobot_genai.drmcp`) and the `MCP_OAUTH_TAG_SCOPES_<TAG>` rules enforce the subset test (`satisfies`) against the scopes on the request's token — the token the gateway authenticated and `OAuthJWTTokenHandlerMiddleware` parsed into `request.scope["user"]`, which FastMCP hands to the check as `ctx.token` — so an under-scoped token does not see the tool in `tools/list`, and the scope-validation middleware refuses its `tools/call` with 403 `insufficient_scope` first. A request with no token is admitted, so enforcement follows `MCP_ENABLE_OAUTH_CLAIM_VALIDATION` alone (no token is parsed while it is off); setting `MCP_OAUTH_AUTHORIZATION_SERVERS` no longer activates anything by itself.
+  - `declared_scopes_for_one_tool` — what the middleware checks a token against — now honours `MCP_OAUTH_SCOPE_SOURCE`, so a declaration the source silences (whose check already admits everyone) is not enforced by the middleware either. It delegates to the new `declared_scopes_of_component`, one reader for every consumer of "what does this component require".
+  - New `without_component_auth_checks()` context manager makes FastMCP skip per-component `auth` checks for the listings inside it (through FastMCP's public `set_transport`). For code that describes the server rather than serving a caller — the `/static/*` catalog (`resolve_catalog`) and the lineage sync — whose `list_tools()` would otherwise be filtered by the REST caller's own token.
+- `drmcp/core/oauth_scopes.wire_scopes`: warns at startup when scopes are declared but `MCP_ENABLE_OAUTH_CLAIM_VALIDATION` is off — the gate disables the token, audience and scope middlewares together and no token is parsed, so declared requirements would otherwise be published in `scopes_supported` while every `tools/call` passes, silently.
+- `drmcpbase/routes/static`: each `/static/tools/` item now carries `required_scopes` — the OAuth scopes a `tools/call` token must cover, combined across both declaration spellings (`require_scopes(...)` on the tool, `MCP_OAUTH_TAG_SCOPES_<TAG>`), honouring `MCP_OAUTH_SCOPE_SOURCE`. Read with `declared_scopes_of_component`, the same reader the scope-validation middleware enforces with, so what the API reports is exactly what is enforced. `merge_tool_info` grew an optional `scopes_provider` argument for callers outside drmcpbase.
+- `drmcp`: `dr_mcp_tool` / `dr_core_mcp_tool` wrap FastMCP-native checks passed on `auth=` (`fastmcp.server.auth.require_scopes`, `restrict_tag`, custom checks) so they admit every caller while `MCP_ENABLE_OAUTH_CLAIM_VALIDATION` is off (the flag is read when the check runs) and run unchanged when it is on, with a warning at registration naming the tool. FastMCP evaluates those against `ctx.token`, which is `None` while the gate is off, so unwrapped they would hide the tool from every caller. Our own `require_scopes` and tag checks are left untouched: they already admit a tokenless request.
+
+## 0.29.40 - 2026-09-11
+- Raise the minimum `aiofiles` version from `>=25.1.0` to `>=25.1,<26`.
+- Add a minimum version for `crewai-tools`: `>=1.15.21`.
+
+## 0.29.39
+- Upgraded `crewai` to 1.15.21 and `crewai-tools` to 1.15.21 (from 1.13.0 and 0.76.0), clearing `CVE-2026-62240` (crewai-tools SSRF redirect bypass). `crewai-tools` was renumbered upstream into lockstep with `crewai`, jumping 0.76 straight to 1.15.x, so the previous `<0.77.0` ceiling could never reach the new release line. The pins are now `crewai[litellm]>=1.15.21,<2.0.0` and `crewai-tools[mcp]>=1.15.21,<2.0.0`.
+- Added an `aiofiles>=25.1.0` override. crewai 1.15 pins `aiofiles~=24.1.0` while `nvidia-nat-core` requires `>=25.1`; resolution already selected 25.1.0, so the override only holds that pin. This conflict is what previously blocked moving off the 1.13.x line.
+- Excluded `pymupdf`, which crewai-tools 1.15 added as a non-optional dependency. It is AGPL-3.0-or-commercial, and both of its import sites are function-local, so it is not needed at runtime.
+- `crewai/kickoff_storage`: revalidated the kickoff-outputs neutralization against crewai 1.15. `Crew._task_output_handler` is still a `PrivateAttr` typed `TaskOutputStorageHandler` backed by `KickoffTaskOutputsSQLiteStorage`, and that storage still opens `sqlite3.connect(...)` blocks that commit but never close, so the workaround is still required. The version sentinel test now pins 1.15.x.
+
+## 0.29.38
+- `dragent/plugins/datarobot_user_mcp_xaa_client` Fixed MCP well-known endpoint in NAT MCP XAA client.
+
+## 0.29.37
+- Removed `register_metadata_routes` from `drmcpbase/routes` — global-mcp owns `GET /metadata` locally. user-mcp's inline `/metadata` route in `drmcp/core/routes.py` is unchanged.
+
+- Renamed `parse_gallery_filters` → `parse_list_filters` and `apply_gallery_filters` → `apply_list_filters` in `drmcpbase/routes/helpers.py` (generic names for static and gallery list routes). `register_static_routes` and `STATIC_BASE_PATH` are exported from `drmcpbase/routes`.
+
+- `drmcpbase/routes`: renamed `register_tool_gallery_routes` to `register_static_routes`; discovery routes moved from `GET /toolGallery/*` to `GET /static/*`. Shared query helpers (`parse_pagination`, `parse_list_filters`, `apply_list_filters`) are now public in `drmcpbase/routes/helpers.py`. user-mcp mounts at `{prefix}/static/*`.
+
+- `drmcpbase/routes`: moved shared tool gallery HTTP routes (`register_tool_gallery_routes`, `GET /toolGallery/*`) and route gating helpers from `drmcputils/routes`. Import from `datarobot_genai.drmcpbase.routes` instead of `datarobot_genai.drmcputils.routes`.
+
+## 0.29.36
+- `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
+- Fixed Nemo Guardrails moderation e2e tests
+- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.6`.
+
+## 0.29.35
+- `drmcp/core/middleware`: Improve MCP JWT token handler middleware error handling
+
+## 0.29.34
+- `dragent`: the agent card registry L2 MemorySpace is created at runtime on enclave workloads only (`DR_WORKLOAD_EXTERNAL_URL_HOST` + `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID`, with registry-backed A2A clients). Uses a workload-scoped `deduplication_key` so replicas share one space. Other runtimes use in-process L1 caching only.
+- `dragent`: the Mem0 DataRobot memory client stays on the control hub (`DATAROBOT_PUBLIC_API_ENDPOINT` / `DATAROBOT_ENDPOINT`). Agent memory spaces are provisioned there via Pulumi / `task deploy-dev`; the enclave API gateway is only for the agent card registry L2 cache.
+- `dragent`: bootstrap registry L2 cache provisioning at import and lifespan warmup so enclave workloads adopt MemorySpace L2 without recipe-side wiring. Skips `dr.Client()`'s `/version/` probe on enclave gateways (memory API only) and resets the registry singleton after provisioning.
 
 ## 0.29.35
 - Docs: fixed broken links in `docs/src/index.md`'s guides table (removed nonexistent LangGraph/LlamaIndex caveats links) and replaced repo-relative links/images in the root `README.md` with absolute GitHub URLs so the PyPI long-description renders correctly.

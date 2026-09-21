@@ -20,12 +20,9 @@ interface so ``auto_memory_agent`` can store and retrieve long-term memory.
 Backend selection is driven by config:
 
 * ``agent_memory_space_id`` → the DataRobot Memory Service's mem0-compatible API,
-  reached at ``{endpoint}/memory/{agent_memory_space_id}/`` and authenticated
-  with the DataRobot API token. The endpoint is the enclave ``{host}/api/v2``
-  when ``DR_WORKLOAD_EXTERNAL_URL_HOST`` and ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``
-  are set, otherwise ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
-  See PBMP-7431 ("Agentic Memory Service"), section "Connect to DataRobot
-  memory" / "API Layout".
+  reached at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}/`` and
+  authenticated with the DataRobot API token. See PBMP-7431 ("Agentic Memory
+  Service"), section "Connect to DataRobot memory" / "API Layout".
 * ``api_key`` (or ``MEM0_API_KEY``) → Mem0's hosted SaaS at
   ``https://api.mem0.ai``. Used when no ``agent_memory_space_id`` is configured.
 
@@ -63,7 +60,6 @@ from datarobot_genai.core.config import resolve_config
 from datarobot_genai.core.telemetry.memory import trace_memory_operation
 from datarobot_genai.core.telemetry.memory import truncate_memory_text
 from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
-from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -145,10 +141,8 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
 
     * If ``agent_memory_space_id`` is set, requests go to the DataRobot Memory
       Service's mem0-compatible endpoint at
-      ``{endpoint}/memory/{agent_memory_space_id}/`` authenticated with
-      ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``). The endpoint prefers
-      the enclave API gateway when present, otherwise ``DATAROBOT_PUBLIC_API_ENDPOINT``
-      / ``DATAROBOT_ENDPOINT``.
+      ``{datarobot_endpoint}/memory/{agent_memory_space_id}/`` authenticated with
+      ``datarobot_api_token`` (or ``DATAROBOT_API_TOKEN``).
     * Otherwise, ``api_key`` (or ``MEM0_API_KEY``) is used against Mem0's
       hosted SaaS (``host`` defaults to ``https://api.mem0.ai``).
     """
@@ -178,9 +172,7 @@ class DRMem0MemoryClientConfig(  # type: ignore[call-arg]
         description=(
             "DataRobot API base URL used to build the mem0 endpoint when "
             "``agent_memory_space_id`` is set (e.g. ``https://app.datarobot.com/api/v2``). "
-            "When unset, prefers the enclave API gateway "
-            "(``DR_WORKLOAD_EXTERNAL_URL_HOST`` + ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``) "
-            "over ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``."
+            "Defaults to the ``DATAROBOT_ENDPOINT`` env var."
         ),
     )
     datarobot_api_token: str | None = Field(
@@ -394,16 +386,7 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     """Build the DataRobot Memory Service mem0 endpoint for an agent memory space.
 
     Per PBMP-7431 ("API Layout"), the DR memory service exposes a
-    mem0-compatible API at ``{endpoint}/memory/{agent_memory_space_id}``.
-
-    Endpoint resolution, most specific first — same order as
-    :func:`datarobot_genai.dragent.memory_space_cache.configure_datarobot_memory_client`
-    so both memory clients talk to the same host:
-
-    1. Explicit ``config.datarobot_endpoint``.
-    2. Enclave API gateway (``DR_WORKLOAD_EXTERNAL_URL_HOST`` +
-       ``DR_WORKLOAD_EXTERNAL_URL_PREFIX``) — ``{host}/api/v2``.
-    3. ``DATAROBOT_PUBLIC_API_ENDPOINT`` / ``DATAROBOT_ENDPOINT``.
+    mem0-compatible API at ``{DATAROBOT_ENDPOINT}/memory/{agent_memory_space_id}``.
 
     No trailing slash: mem0's ``AsyncMemoryClient._validate_api_key`` builds
     its ping URL as ``f"{host}/v1/ping/"`` via raw string concat (it does not
@@ -416,9 +399,7 @@ def _dr_mem0_endpoint(config: DRMem0MemoryClientConfig) -> str:
     # distinguishable from "configured".
     base = cast(
         str,
-        config.datarobot_endpoint
-        or resolve_external_workload_api_endpoint()
-        or resolve_datarobot_endpoint(require=True),
+        config.datarobot_endpoint or resolve_datarobot_endpoint(require=True),
     )
     return f"{base.rstrip('/')}/memory/{config.agent_memory_space_id}"
 

@@ -1,0 +1,59 @@
+name: Automerge
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Automerge
+# Approves and merges Dependabot's grouped github-actions bump once every check
+# in `.github/automerge.yaml` has reported green.
+#
+# WHY A BOT AND NOT GitHub's NATIVE AUTO-MERGE. Ruleset bypass resolves against
+# whoever PERFORMS the merge. `gh pr merge --auto` merges as
+# `github-actions[bot]`, which holds no bypass on the `main review` ruleset and
+# cannot be given one: bypass actors have to be Apps installed on the repo, and
+# Actions is built in. So the PR would sit waiting on a code-owner review
+# forever, with auto-merge armed and nothing saying why. This merges as the
+# `dr-auto-merge` App instead, which does hold that bypass.
+#
+# It also adds what native auto-merge cannot do. Native auto-merge waits only on
+# REQUIRED checks, and the `main` ruleset requires exactly one context here,
+# `gate / cve-sync gate`. Everything else, including the entire 33-job CI
+# matrix, is unrequired, so native auto-merge would merge a bump having verified
+# almost nothing. See `expected_checks` in `.github/automerge.yaml` for the real
+# bar, and `block_on_any_failure` for what holds the matrix to account.
+# ─────────────────────────────────────────────────────────────────────────────
+# MODE:
+#   report  - comments a verdict, approves and merges nothing.
+#   approve - also approves. The merge is still a human click.
+#   merge   - also approves AND merges.
+#
+# Starting in `report` on this repo rather than landing straight in `merge` as
+# af-component-agent did. The policy here is the first one to lean on a single
+# sentinel check (`security`) to stand in for a 33-job matrix, and report mode
+# is how that gets proven against a live PR before it can merge anything. Flip
+# to `merge` once a real Dependabot bump has produced a correct verdict.
+#
+# Even in `merge` the approval and the merge happen on DIFFERENT polls, so there
+# is always a window of roughly one poll interval to intervene. Dropping back to
+# `report` is a one-word revert if anything looks wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+# A cron, not `pull_request`: a Dependabot `pull_request` event cannot read this
+# repo's Actions secrets, so the App key would arrive empty. Polling also
+# self-heals when GitHub drops a workflow dispatch, and makes "wait for the
+# checks to finish" free.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  automerge:
+    uses: datarobot-oss/github-actions/.github/workflows/automerge.yaml@0.0.28
+    with:
+      # Public metadata, not a secret: `dr-auto-merge`.
+      app_id: '4912188'
+      mode: 'report'
+    secrets:
+      app_private_key: ${{ secrets.DR_AUTO_MERGE_PRIVATE_KEY }}
+    permissions:
+      contents: read

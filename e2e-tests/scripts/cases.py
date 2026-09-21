@@ -53,7 +53,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import field_validator
 
-DEFAULT_PYTHON_VERSION = "3.12"
+DEFAULT_PYTHON_VERSION = "3.13"
 DEFAULT_PYTEST_ARGS: tuple[str, ...] = (
     "-vv",
     "-s",

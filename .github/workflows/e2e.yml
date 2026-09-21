@@ -20,9 +20,18 @@ env:
 
 jobs:
   detect-changes:
+    # The `dependabot[bot]` exclusion is not an optimisation. The `core` filter
+    # below matches `.github/workflows/e2e.yml`, so a grouped github-actions bump
+    # that touches this file would fan out the full E2E matrix, and the `e2e` job
+    # reads E2E_* Actions secrets. A Dependabot `pull_request` event resolves
+    # `secrets.*` against the Dependabot secret store rather than this repo's, so
+    # every one of them arrives empty and the suite fails on auth. Skipping here
+    # skips prepare-matrix and `e2e` with it. They run on the push to `main`
+    # after the merge instead.
     if: |
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository ||
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' ||
       github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:

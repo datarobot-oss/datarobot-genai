@@ -41,7 +41,7 @@ class TestDrtoolsPrivateMetadataKeys:
 
 
 class TestToolProvidersFilterEnum:
-    """``TOOL_PROVIDER_LABELS`` is the value->label map behind ``/toolGallery/providers/``."""
+    """``TOOL_PROVIDER_LABELS`` is the value->label map behind ``/static/providers/``."""
 
     def test_maps_both_provider_values_to_labels(self) -> None:
         # GIVEN the provider filter enum
@@ -205,6 +205,16 @@ class TestBuildToolGalleryItems:
     def test_tags_none_becomes_empty_list(self) -> None:
         result = build_tool_gallery_items([{"name": "t", "tags": None}])
         assert result[0]["tags"] == []
+
+    # ── required_scopes (what a tools/call token must cover) ─────────────────
+
+    def test_required_scopes_are_sorted(self) -> None:
+        result = build_tool_gallery_items([{"name": "t", "required_scopes": ["mcp:b", "mcp:a"]}])
+        assert result[0]["required_scopes"] == ["mcp:a", "mcp:b"]
+
+    def test_required_scopes_absent_becomes_empty_list(self) -> None:
+        result = build_tool_gallery_items([{"name": "t"}])
+        assert result[0]["required_scopes"] == []
 
     # ── categories ───────────────────────────────────────────────────────────
 
