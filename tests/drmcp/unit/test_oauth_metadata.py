@@ -52,7 +52,9 @@ class TestBuildProtectedResourceMetadataConfig:
             mcp_xaa_token_endpoint_auth_method="client_secret_jwt",
         )
         monkeypatch.setattr("datarobot_genai.drmcp.core.oauth_metadata.get_config", lambda: config)
-        # `scopes_supported` is derived from the enforced scope rules, never configured.
+        # `scopes_supported` is derived, never configured: the scope rules this
+        # server enforces, unioned with the Cross-Application Access scopes —
+        # what the exchange asks for on its second hop, which no tool declares.
         monkeypatch.setattr(
             "datarobot_genai.drmcp.core.oauth_metadata.derived_scopes", lambda: ["read", "write"]
         )
@@ -61,7 +63,7 @@ class TestBuildProtectedResourceMetadataConfig:
 
         assert built.resource == "https://mcp.example.com/"
         assert built.authorization_servers == ["https://as.example.com"]
-        assert built.scopes_supported == ["read", "write"]
+        assert built.scopes_supported == ["dr.impersonation", "read", "write"]
         xaa = built.cross_application_access
         assert xaa is not None
         assert xaa.token_exchange.trusted_issuer == "https://issuer.example.com"

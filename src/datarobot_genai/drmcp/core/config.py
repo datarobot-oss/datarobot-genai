@@ -156,8 +156,13 @@ class MCPServerConfig(DataRobotAppFrameworkBaseSettings):
     # from the scope requirements actually enforced, so the document can never
     # advertise something the server does not check. Declare requirements with
     # require_scopes(...) on the tool's auth= or MCP_OAUTH_TAG_SCOPES_<TAG> instead.
+    # The default is spelled out rather than left to None so it is visible
+    # wherever settings are listed. The type stays nullable: callers construct
+    # this config with an explicit None, and ScopeSource.parse reads None, "" and
+    # an unrecognised value all as `both` — refusing to start would turn a typo
+    # in one variable into an outage.
     mcp_oauth_scope_source: str | None = Field(
-        default=None,
+        default="both",
         description=(
             "Which scope declaration mechanism is live: `both` (the default — each "
             "applies wherever it is declared), `code` (only the in-code require_scopes "
