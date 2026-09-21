@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.50
+- Bump `datarobot-moderations` floor to `>=11.3.7` (Python 3.13 support, drops EOL 3.10).
+
 ## 0.29.49
 - `dragent/plugins/datarobot_user_mcp_xaa_client`: the exchange asks for the server's published `scopes_supported` rather than only `cross_application_access.token_request.scopes`. Asking for the latter alone produced a token that opened exactly the tools declaring no scope — every scoped tool was hidden from `tools/list` and refused on `tools/call`, which reads as the server exposing one tool rather than as a token short of a scope. Also tolerates a missing or empty `scopes` list in the published block: the client asks for none and lets the IdP decide.
 - `drmcpbase/oauth_protected_resource_metadata`: `scopes_supported` is now the **union** of the tool-declared scopes and the Cross-Application Access scopes (`MCP_XAA_SCOPES`), sorted, deduplicated. RFC 9728 asks for the scopes "used in authorization requests to request access to this protected resource" — not the ones this resource enforces — and the exchange asks for the Cross-App scopes on its second hop, so a client that asks for exactly `scopes_supported` (`mcp-remote`, and with it Cursor and Claude Code) could not otherwise reproduce a token the exchange would produce. Enforcement is unchanged: each `tools/call` is still checked against the called tool's own declarations. **Publishing-affecting**: a server whose only scopes come from its XAA block now advertises them where it previously advertised none.
