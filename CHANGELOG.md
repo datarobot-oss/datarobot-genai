@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.51 - 2026-09-22
+- Raise the minimum `jupyter-server` version from `>=2.20.0` to `>=2.21.0`.
+- Raise the minimum `mcp` version from `>=1.28.1` to `>=1.28.1,<2`.
+- Add a minimum version for `mkdocs-material`: `>=9.7.7`.
+- Add a minimum version for `pydantic-settings`: `>=2.14.2`.
+- Raise the minimum `soupsieve` version from `>=2.8.4` to `>=2.9.0`.
+
 ## 0.29.50
 - Bump `datarobot-moderations` floor to `>=11.3.7` (Python 3.13 support, drops EOL 3.10).
 
