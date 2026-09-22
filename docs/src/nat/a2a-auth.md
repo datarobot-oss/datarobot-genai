@@ -14,12 +14,12 @@
   ~ limitations under the License.
 -->
 
-# A2A Authentication
+# A2A authentication
 
 This guide covers how to configure authentication for Agent-to-Agent (A2A)
 communication. There are two supported authentication methods:
 
-1. **DataRobot API key** — simple bearer token auth for DataRobot-hosted agents.
+1. **DataRobot API key** — bearer token auth for DataRobot-hosted agents.
 2. **Okta cross-application access (XAA)** — two-step token exchange for
    federated Okta environments (hybrid RFC 8693 / RFC 7523 flow).
 
@@ -34,7 +34,7 @@ requirements in the agent card.
 pip install "datarobot-genai[dragent,langgraph,auth]>=0.15.40"
 ```
 
-Replace `langgraph` with `crewai` or `llamaindex` depending on your framework.
+Replace `langgraph` with `crewai` or `llamaindex` depending on the target framework.
 
 ## Option 1: DataRobot API key authentication
 
@@ -45,7 +45,7 @@ DataRobot API token.
 
 | Variable | Description |
 |----------|-------------|
-| `DATAROBOT_API_TOKEN` | Your DataRobot API token. |
+| `DATAROBOT_API_TOKEN` | DataRobot API token. |
 
 The token is loaded automatically — no need to put it in `workflow.yaml`.
 
@@ -223,7 +223,7 @@ on the A2A agent card.
 | `token_exchange.trusted_issuer` | Yes | — | Org-level Authorization Server issuer URL. |
 | `token_exchange.audience` | Yes | — | Resource AS base URL (where ID-JAG is fetched from). |
 | `token_request.token_url` | Yes | — | Token endpoint of the resource AS. |
-| `token_request.audience` | Yes | — | Final resource identifier for the agent. Advertised on the agent card **and enforced on inbound requests** — see below. |
+| `token_request.audience` | Yes | — | Final resource identifier for the agent. Advertised on the agent card **and enforced on inbound requests** — see [Inbound audience validation](#inbound-audience-validation). |
 | `token_request.scopes` | No | `["read_data"]` | Scopes the caller must request. |
 
 > **Note:** `grant_type` URNs are injected automatically by the generator — do not
@@ -236,7 +236,7 @@ on the A2A agent card.
 The serving agent **enforces** `token_request.audience`, not just publishes it. The gateway
 validates an incoming JWT and forwards it as-is, so without this a token minted for a
 *different* agent would be accepted and exchanged here. It is an audience check, not an
-authentication check: a caller with no IdP token — using a DataRobot API token, Option 1 above
+authentication check: a caller with no IdP token — using a DataRobot API token, [Option 1: DataRobot API key authentication](#option-1-datarobot-api-key-authentication)
 — passes through.
 
 | Condition | Result |
@@ -320,7 +320,7 @@ remote XAA-protected agent.
 > Any other value — including `fallback_token_headers: []`, which used to disable the fallback —
 > is rejected at startup, because honouring it would read a header audience validation does not
 > inspect. To upgrade, remove the `okta_token_header` and `fallback_token_headers` lines from the
-> `authentication:` entry in your agent's `workflow.yaml`; nothing replaces them.
+> `authentication:` entry in the agent's `workflow.yaml`; nothing replaces them.
 
 ### Agent card mapping
 
@@ -360,4 +360,4 @@ in `securitySchemes`, while flow-specific parameters go in
 | `ValueError: principal_id is required` | `IDP_AGENT_ID` env var not set. | Set `IDP_AGENT_ID` in your environment or Runtime Parameters. |
 | `ValueError: Could not parse private_jwk` | `IDP_AGENT_PRIVATE_KEY_JWK` is neither valid base64-encoded JSON nor raw JSON. | Verify your JWK — try `echo $IDP_AGENT_PRIVATE_KEY_JWK | base64 -d | python -m json.tool`. |
 | `ValueError: Agent card ... missing required fields` | Remote agent card doesn't have the XAA extension. | Verify the remote agent has `cross_application_access` configured. |
-| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in your `function_groups` config and network connectivity. |
+| `RuntimeError: Failed to fetch agent card` | Network/auth issue reaching the agent card URL. | Check the `url` in the `function_groups` config and network connectivity. |

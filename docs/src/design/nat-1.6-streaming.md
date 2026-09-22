@@ -20,7 +20,7 @@
 
 NAT 1.4.1 did not expose a streaming path for `tool_calling_agent`. All intermediate output was delivered through NAT's `StepAdaptor.process()` callback, which receives fully-formed `IntermediateStep` objects and converts them to AG-UI events. This is the "step adaptor" path.
 
-In [NVIDIA/NeMo-Agent-Toolkit#1595](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1595), NAT added token-by-token streaming to `tool_calling_agent` via a `stream_fn` that yields `ChatResponseChunk` objects (OpenAI-compatible streaming deltas). In [NVIDIA/NeMo-Agent-Toolkit#1717](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1717), NAT added incremental tool call chunk streaming to that same path. These chunks contain partial text content and incremental tool call arguments as they arrive from the LLM. NAT's built-in frontend renders these directly, but DRAgent needs AG-UI events, so we have to convert them.
+In [NVIDIA/NeMo-Agent-Toolkit#1595](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1595), NAT added token-by-token streaming to `tool_calling_agent` via a `stream_fn` that yields `ChatResponseChunk` objects (OpenAI-compatible streaming deltas). In [NVIDIA/NeMo-Agent-Toolkit#1717](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1717), NAT added incremental tool call chunk streaming to that same path. These chunks contain partial text content and incremental tool call arguments as they arrive from the LLM. NAT's built-in frontend renders these directly, but DRAgent needs AG-UI events, so the library converts them.
 
 ## Two delivery paths now coexist
 
@@ -61,14 +61,14 @@ If the client disconnects mid-stream (`GeneratorExit`), end events are skipped (
 
 ## Other NAT 1.6 changes affecting the runtime
 
-- **UserManager monkey-patch**: In [NVIDIA/NeMo-Agent-Toolkit#1775](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1775), NAT added centralized user identity management via `UserManager.extract_user_from_connection()`, but it only supports standard auth (JWT, cookies, API key). DRAgent monkey-patches this method to also check `X-DataRobot-Authorization-Context`, falling back to the original implementation. Applied once at import time with an idempotency guard. This also made our previous `set_metadata_from_http_request` override ineffective (NAT overwrites `user_id` after the call), so that override was removed.
+- **UserManager monkey-patch**: In [NVIDIA/NeMo-Agent-Toolkit#1775](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1775), NAT added centralized user identity management via `UserManager.extract_user_from_connection()`, but it only supports standard auth (JWT, cookies, API key). DRAgent monkey-patches this method to also check `X-DataRobot-Authorization-Context`, falling back to the original implementation. Applied once at import time with an idempotency guard. This also made the previous `set_metadata_from_http_request` override ineffective (NAT overwrites `user_id` after the call), so that override was removed.
 
 - **Health routes**: NAT 1.6 no longer calls `self.add_health_route(app)` during setup. DRAgent registers health endpoints (`/`, `/ping`, `/health`) explicitly in `build_app()`.
 
-- **verify_ssl stripping**: In [NVIDIA/NeMo-Agent-Toolkit#1640](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1640), NAT added `verify_ssl` to LLM config objects. CrewAI forwards all config keys to litellm, which rejects unknown keys. We strip `verify_ssl` at both entry points (`_crewai_model_factory` and `litellm_crewai_internal`).
+- **verify_ssl stripping**: In [NVIDIA/NeMo-Agent-Toolkit#1640](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1640), NAT added `verify_ssl` to LLM config objects. CrewAI forwards all config keys to litellm, which rejects unknown keys. The library strips `verify_ssl` at both entry points (`_crewai_model_factory` and `litellm_crewai_internal`).
 
 - **Import path changes**: NAT 1.6 moved `nat.agent.tool_calling_agent` to `nat.plugins.langchain.agent.tool_calling_agent`. `TokenUsageBaseModel` moved from `nat.profiler.callbacks` to `nat.data_models.token_usage` (see [NVIDIA/NeMo-Agent-Toolkit#1748](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1748)).
 
-- **CrewAI callback patch removed**: In [NVIDIA/NeMo-Agent-Toolkit#1803](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1803), NAT fixed the `CrewAIProfilerHandler._llm_call_monkey_patch` for crewai >= 1.1.0 (see [NVIDIA/NeMo-Agent-Toolkit#1802](https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1802)), so our compatibility patch was removed.
+- **CrewAI callback patch removed**: In [NVIDIA/NeMo-Agent-Toolkit#1803](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1803), NAT fixed the `CrewAIProfilerHandler._llm_call_monkey_patch` for crewai >= 1.1.0 (see [NVIDIA/NeMo-Agent-Toolkit#1802](https://github.com/NVIDIA/NeMo-Agent-Toolkit/issues/1802)), so the compatibility patch was removed.
 
 - **User identity via JWT**: In [NVIDIA/NeMo-Agent-Toolkit#1584](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1584), NAT added JWT/cookie-based user ID resolution, which [#1775](https://github.com/NVIDIA/NeMo-Agent-Toolkit/pull/1775) later centralized into `UserManager`. DRAgent's auth context header is not part of NAT's supported auth methods, hence the monkey-patch.

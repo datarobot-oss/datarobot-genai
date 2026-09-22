@@ -14,7 +14,7 @@
   ~ limitations under the License.
 -->
 
-# Using DataRobot Prompt Templates with CrewAI
+# Using DataRobot prompt templates with CrewAI
 
 CrewAI does not have a dedicated prompt template class. Instead, prompts are plain strings passed directly to `Agent` attributes like `backstory`, `goal` or `Task` attributes `description` or `expected_output`
 

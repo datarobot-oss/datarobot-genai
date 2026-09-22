@@ -1,6 +1,6 @@
 # LangGraph + DataRobot
 
-**What you edit in the example:** [`e2e-tests/dragent/langgraph/myagent.py`](../../e2e-tests/dragent/langgraph/myagent.py) (graph + prompt) and [`e2e-tests/dragent/langgraph/workflow.yaml`](../../e2e-tests/dragent/langgraph/workflow.yaml) (LLM wiring + `workflow._type`). DRAgent runs the pair.
+**What to edit in the example:** [`e2e-tests/dragent/langgraph/myagent.py`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/langgraph/myagent.py) (graph + prompt) and [`e2e-tests/dragent/langgraph/workflow.yaml`](https://github.com/datarobot-oss/datarobot-genai/blob/main/e2e-tests/dragent/langgraph/workflow.yaml) (LLM wiring + `workflow._type`). DRAgent runs the pair.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pip install "datarobot-genai[langgraph]"
 |---|---|
 | [agent.md](agent.md) | `workflow.yaml` + what `myagent.py` defines |
 | [hitl.md](hitl.md) | Human in the loop: `interrupt`, resume, checkpointer, `thread_id` |
-| [mcp.md](mcp.md) | Extra tools merged into your graph (when MCP is enabled) |
+| [mcp.md](mcp.md) | Extra tools merged into the graph (when MCP is enabled) |
 
 Env reference: [LLM configuration (shared)](../llm.md).
 
