@@ -58,7 +58,7 @@ crewai = core + [
     "litellm>=1.96.2,<2.0.0",
     "crewai-tools[mcp]>=1.15.21,<2.0.0",
     "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
-    "nvidia-nat-crewai==1.7.0",
+    "nvidia-nat-crewai==1.9.0",
     "opentelemetry-instrumentation-crewai>=0.62.1,<1.0.0",
 ]
 
@@ -66,7 +66,7 @@ langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<2.0.0",
     "litellm>=1.96.2,<2.0.0",
-    "nvidia-nat-langchain==1.7.0",
+    "nvidia-nat-langchain[litellm]==1.9.0",  # [litellm] pulls langchain-litellm (moved from required to extra in 1.9)
     "opentelemetry-instrumentation-langchain>=0.62.1,<1.0.0",
 ]
 
@@ -76,7 +76,7 @@ llamaindex = core + [
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "litellm>=1.96.2,<2.0.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
-    "nvidia-nat-llama-index==1.7.0",
+    "nvidia-nat-llama-index==1.9.0",
     "opentelemetry-instrumentation-llamaindex>=0.62.1,<1.0.0",
     # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
@@ -84,11 +84,11 @@ llamaindex = core + [
 
 dragent = core + [
     "datarobot[application-utils]>=3.19.0,<4.0.0",
-    "nvidia-nat==1.7.0",
-    "nvidia-nat-a2a==1.7.0",
-    "nvidia-nat-opentelemetry==1.7.0",
-    "nvidia-nat-langchain==1.7.0",  # NAT built-in agents require this
-    "nvidia-nat-mcp==1.7.0",
+    "nvidia-nat==1.9.0",
+    "nvidia-nat-a2a==1.9.0",
+    "nvidia-nat-opentelemetry==1.9.0",
+    "nvidia-nat-langchain[litellm]==1.9.0",  # NAT built-in agents require this; [litellm] moved to extra in 1.9
+    "nvidia-nat-mcp==1.9.0",
     "mem0ai>=1.0.4,<2.0.0",
     "starlette>=1.3.1",  # CVE fix
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
