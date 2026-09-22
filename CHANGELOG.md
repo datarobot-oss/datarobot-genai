@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.51
+- `dragent`: bump `nvidia-nat`, `nvidia-nat-a2a`, `nvidia-nat-opentelemetry`, `nvidia-nat-langchain`, `nvidia-nat-mcp`, `nvidia-nat-crewai`, `nvidia-nat-llama-index` from 1.7.0 to 1.9.0
+- `dragent`: request `nvidia-nat-langchain[litellm]` extra — `langchain-litellm` moved from a required dep to an optional extra in NAT langchain 1.9; we use `ChatLiteLLM` / `ChatLiteLLMRouter` in eval and langgraph paths
+- `dragent/plugins/llm_clients`: stop calling NAT's private `_patch_llm_based_on_config` with a `dict` argument; NAT 1.9 added `configurable_fields` wrapping inside that function which caused `isinstance(llm, BaseChatModel)` to return `False`. Switch to our own `patch_llm_based_on_config` (retry-only) for all four gateway/deployment/NIM/component LLM registrations
+- `tests/dragent/plugins/test_a2a`: fix `set_context_user_id` autouse fixture to reset the `ContextState.user_id` ContextVar after each test, preventing cross-test pollution that caused session identity tests to fail in combined runs
+- `setup.py`: widen `llama-index-llms-openai` constraint to `>=0.7.0,<1.0.0` to satisfy `nvidia-nat-llama-index 1.9` requirement
+
 ## 0.29.50
 - Bump `datarobot-moderations` floor to `>=11.3.7` (Python 3.13 support, drops EOL 3.10).
 
@@ -70,18 +77,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcpbase/routes`: renamed `register_tool_gallery_routes` to `register_static_routes`; discovery routes moved from `GET /toolGallery/*` to `GET /static/*`. Shared query helpers (`parse_pagination`, `parse_list_filters`, `apply_list_filters`) are now public in `drmcpbase/routes/helpers.py`. user-mcp mounts at `{prefix}/static/*`.
 
 - `drmcpbase/routes`: moved shared tool gallery HTTP routes (`register_tool_gallery_routes`, `GET /toolGallery/*`) and route gating helpers from `drmcputils/routes`. Import from `datarobot_genai.drmcpbase.routes` instead of `datarobot_genai.drmcputils.routes`.
-
-## 0.29.36
-- `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)
-- Fixed Nemo Guardrails moderation e2e tests
-- Raise the `datarobot-moderations` floor from `>=11.2.47` to `>=11.3.6`.
-
-## 0.29.37
-- `dragent`: bump `nvidia-nat`, `nvidia-nat-a2a`, `nvidia-nat-opentelemetry`, `nvidia-nat-langchain`, `nvidia-nat-mcp`, `nvidia-nat-crewai`, `nvidia-nat-llama-index` from 1.7.0 to 1.9.0
-- `dragent`: request `nvidia-nat-langchain[litellm]` extra — `langchain-litellm` moved from a required dep to an optional extra in NAT langchain 1.9; we use `ChatLiteLLM` / `ChatLiteLLMRouter` in eval and langgraph paths
-- `dragent/plugins/llm_clients`: stop calling NAT's private `_patch_llm_based_on_config` with a `dict` argument; NAT 1.9 added `configurable_fields` wrapping inside that function which caused `isinstance(llm, BaseChatModel)` to return `False`. Switch to our own `patch_llm_based_on_config` (retry-only) for all four gateway/deployment/NIM/component LLM registrations
-- `tests/dragent/plugins/test_a2a`: fix `set_context_user_id` autouse fixture to reset the `ContextState.user_id` ContextVar after each test, preventing cross-test pollution that caused session identity tests to fail in combined runs
-- `setup.py`: widen `llama-index-llms-openai` constraint to `>=0.7.0,<1.0.0` to satisfy `nvidia-nat-llama-index 1.9` requirement
 
 ## 0.29.36
 - `dragent`: replaced the mixed-batch splitting workaround in the streaming moderation path with `datarobot_dome.agui.moderate_agui_stream` (shipped in `datarobot-moderations 11.3.6`)

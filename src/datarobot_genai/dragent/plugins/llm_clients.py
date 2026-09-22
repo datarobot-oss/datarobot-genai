@@ -232,10 +232,6 @@ def router_settings_from_config(llm_config: DataRobotLLMRouterConfig) -> dict:
 async def datarobot_llm_router_langchain(
     llm_config: DataRobotLLMRouterConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    from nat.plugins.langchain.llm import (  # noqa: PLC0415
-        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
-    )
-
     from datarobot_genai.langgraph.llm import get_router_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
@@ -245,4 +241,4 @@ async def datarobot_llm_router_langchain(
         llm_config.fallbacks,
         router_settings_from_config(llm_config),
     )
-    yield langchain_patch_llm_based_on_config(client, llm_config)
+    yield patch_llm_based_on_config(client, llm_config)
