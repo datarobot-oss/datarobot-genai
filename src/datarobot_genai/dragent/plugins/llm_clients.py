@@ -126,17 +126,13 @@ def patch_llm_based_on_config(client: ModelType, llm_config: LLMBaseConfig) -> M
 async def datarobot_llm_gateway_langchain(
     llm_config: DataRobotLLMGatewayModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    from nat.plugins.langchain.llm import (  # noqa: PLC0415
-        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
-    )
-
     from datarobot_genai.langgraph.llm import get_datarobot_gateway_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
 
     config = prepare_llm_parameters(llm_config)
     client = get_datarobot_gateway_llm(config["model"], parameters=config)
-    yield langchain_patch_llm_based_on_config(client, config)
+    yield patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(
@@ -145,10 +141,6 @@ async def datarobot_llm_gateway_langchain(
 async def datarobot_llm_deployment_langchain(
     llm_config: DataRobotLLMDeploymentModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    from nat.plugins.langchain.llm import (  # noqa: PLC0415
-        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
-    )
-
     from datarobot_genai.langgraph.llm import get_datarobot_deployment_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
@@ -160,17 +152,13 @@ async def datarobot_llm_deployment_langchain(
     client = get_datarobot_deployment_llm(
         llm_config.llm_deployment_id, llm_config.model_name, parameters=config
     )
-    yield langchain_patch_llm_based_on_config(client, config)
+    yield patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(config_type=DataRobotNIMModelConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 async def datarobot_nim_langchain(
     llm_config: DataRobotNIMModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    from nat.plugins.langchain.llm import (  # noqa: PLC0415
-        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
-    )
-
     from datarobot_genai.langgraph.llm import get_datarobot_nim_llm
 
     validate_no_responses_api(llm_config, LLMFrameworkEnum.LANGCHAIN)
@@ -179,7 +167,7 @@ async def datarobot_nim_langchain(
     client = get_datarobot_nim_llm(
         llm_config.llm_nim_deployment_id, llm_config.model_name, parameters=config
     )
-    yield langchain_patch_llm_based_on_config(client, config)
+    yield patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(
@@ -188,10 +176,6 @@ async def datarobot_nim_langchain(
 async def datarobot_llm_component_langchain(
     llm_config: DataRobotLLMComponentModelConfig, builder: Builder
 ) -> AsyncGenerator[ChatOpenAI]:
-    from nat.plugins.langchain.llm import (  # noqa: PLC0415
-        _patch_llm_based_on_config as langchain_patch_llm_based_on_config,
-    )
-
     from datarobot_genai.langgraph.llm import get_datarobot_deployment_llm
     from datarobot_genai.langgraph.llm import get_datarobot_gateway_llm
     from datarobot_genai.langgraph.llm import get_datarobot_nim_llm
@@ -220,7 +204,7 @@ async def datarobot_llm_component_langchain(
     else:
         raise ValueError(f"Invalid LLM type inferred from config: {llm_type}, config: {llm_config}")
 
-    yield langchain_patch_llm_based_on_config(client, config)
+    yield patch_llm_based_on_config(client, llm_config)
 
 
 @register_llm_client(config_type=DataRobotLitellmConfig, wrapper_type=LLMFrameworkEnum.LANGCHAIN)

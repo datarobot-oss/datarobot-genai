@@ -15,6 +15,7 @@
 # Tests for the ``authenticated_a2a_client`` function group.
 # Fully mocked with respx — no real network connection required.
 
+from collections.abc import Generator
 from pathlib import Path
 
 import httpx
@@ -100,9 +101,11 @@ def nat_config(workflow_path: Path, set_datarobot_api_token_for_agent_card):
 
 
 @pytest.fixture(autouse=True)
-def set_context_user_id() -> None:
+def set_context_user_id() -> Generator[None, None, None]:
     """Inject a user_id into the NAT ContextVar so per-user function groups initialise."""
-    ContextState.get().user_id.set("integration-test-user")
+    token = ContextState.get().user_id.set("integration-test-user")
+    yield
+    ContextState.get().user_id.reset(token)
 
 
 @pytest.fixture(autouse=True)
