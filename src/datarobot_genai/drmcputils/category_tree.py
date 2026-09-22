@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The tool-category tree behind ``GET /toolGallery/categories/``.
+"""The tool-category tree behind ``GET /static/categories/``.
 
 Builds the two-level taxonomy (parents → leaf children, plus standalone leaves and
 the marker-resolved buckets) with per-node **live tool counts scoped to the tools
@@ -22,7 +22,7 @@ the marker-resolved buckets) with per-node **live tool counts scoped to the tool
 Each node is ``{value, label, count, dynamic, appliesTo, toolNames, children}``.
 ``value`` is the ``dr_*`` string a tool item reports in its ``categories`` and the
 gallery's ``?category=`` filter accepts, so a selection round-trips against
-``GET /toolGallery/tools/`` without translation. ``label`` comes from
+``GET /static/tools/`` without translation. ``label`` comes from
 ``TOOL_CATEGORY_LABELS`` — one map, used by every consumer.
 
 ``appliesTo`` names the server types a category is meaningful for: the static
@@ -32,7 +32,7 @@ global-mcp serves built-in tools exclusively.
 
 Counts come from the server's real catalog (see ``resolve_catalog``: the caller's
 session headers must not narrow it), classified by ``build_tool_gallery_items`` —
-the very function behind ``GET /toolGallery/tools/``, so a node's contents and what
+the very function behind ``GET /static/tools/``, so a node's contents and what
 ``?category=`` returns are the same computation rather than two that agree by
 inspection. Never from the static ``LEAF_CATEGORY_TOOLS`` map alone, which would
 over-count tools a given server does not register. Proxied user-MCP tools carry no
@@ -105,7 +105,7 @@ def _category_to_tools(tools: Sequence[Any]) -> dict[str, set[str]]:
 
     The bucketing is read straight off ``build_tool_gallery_items`` — the same
     function that decides the ``categories`` a tool reports on ``GET
-    /toolGallery/tools/`` — so a node's contents and what ``?category=<value>``
+    /static/tools/`` — so a node's contents and what ``?category=<value>``
     returns cannot drift apart. Deriving it a second time here is what made them
     drift: this used to UNION the static taxonomy with the marker bucket, while
     the gallery treats them as mutually exclusive (a marked tool reports its

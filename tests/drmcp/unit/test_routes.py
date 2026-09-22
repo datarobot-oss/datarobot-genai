@@ -23,7 +23,6 @@ import pytest
 from fastmcp.prompts import Prompt
 
 from datarobot_genai import __version__ as drmcp_genai_version
-from datarobot_genai.drmcp.core.routes import _tools_gallery_enabled
 from datarobot_genai.drmcp.core.routes import register_routes
 from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import (
     MCPOAuthProtectedResourceMetadataManager,
@@ -1070,41 +1069,22 @@ class TestMetadataRoute:
         assert "Failed to retrieve metadata" in response_data["error"]
 
 
-GATE_FLAG = (
-    "datarobot_genai.drmcp.core.routes.FeatureFlag."
-    "is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user"
-)
+class TestToolsGalleryRoutes:
+    """User-mcp ``GET /static/*`` discovery routes are registered without an entitlement gate."""
 
+    def test_static_routes_registered_without_gate(self):
+        """No gate is passed at all — `register_gated_get` fails closed to 404.
 
-class TestToolsGalleryGate:
-    """The user-mcp gallery route is gated on the static-container-user feature flag."""
-
-    def test_tools_gallery_route_registered_with_gate(self):
-        """register_routes wires the gallery route with the feature-flag gate."""
-        registered: dict[str, object] = {}
-
-        def mock_custom_route(route_path, methods=None):
-            def decorator(handler):
-                registered[route_path] = handler
-                return handler
-
-            return decorator
-
+        A gate here is evaluated for the *container's* service account, so a flag
+        nobody remembered turning on made a route that exists indistinguishable
+        from one that does not, on a deployed server.
+        """
         mock_mcp = Mock()
-        mock_mcp.custom_route = mock_custom_route
-        with patch(
-            "datarobot_genai.drmcp.core.routes.register_tool_gallery_routes"
-        ) as mock_register:
+        mock_mcp.custom_route = Mock(return_value=lambda handler: handler)
+        with patch("datarobot_genai.drmcp.core.routes.register_static_routes") as mock_register:
             register_routes(mock_mcp)
         _, kwargs = mock_register.call_args
-        assert kwargs["gate"] is _tools_gallery_enabled
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("enabled", [True, False])
-    async def test_gate_reflects_feature_flag(self, enabled: bool):
-        with patch(GATE_FLAG, new=AsyncMock(return_value=enabled)) as mock_flag:
-            assert await _tools_gallery_enabled(Mock()) is enabled
-        mock_flag.assert_awaited_once_with()
+        assert "gate" not in kwargs
 
 
 class TestOAuthProtectedResourceMetadataRoute:

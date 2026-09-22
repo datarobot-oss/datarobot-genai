@@ -89,6 +89,18 @@ class TestMergeToolInfo:
         # Categories still derived from the static taxonomy.
         assert merged["categories"] == _JIRA_CATEGORIES
 
+    def test_required_scopes_come_from_the_injected_provider(self) -> None:
+        # The provider (drmcpbase's declared_scopes_of_component, injected because
+        # drmcputils may not import drmcpbase) covers every declaration spelling.
+        merged = merge_tool_info(
+            _FakeTool("t"), {}, scopes_provider=lambda _tool: {"mcp:b", "mcp:a"}
+        )
+        assert merged["required_scopes"] == ["mcp:a", "mcp:b"]
+
+    def test_required_scopes_default_to_empty_without_a_provider(self) -> None:
+        merged = merge_tool_info(_FakeTool("t"), {})
+        assert merged["required_scopes"] == []
+
     def test_hosted_tool_has_no_categories(self) -> None:
         tool = _FakeTool("user_xyz", meta={"tool_category": "USER_TOOL_DEPLOYMENT"})
         merged = merge_tool_info(tool, {})

@@ -294,7 +294,7 @@ class TestCreateAgentCardCacheBackend:
                 MemoryAgentCardCacheBackend,
             )
 
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert type(backend) is MemoryAgentCardCacheBackend
 
@@ -307,7 +307,7 @@ class TestCreateAgentCardCacheBackend:
                 MemoryAgentCardCacheBackend,
             )
 
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert type(backend) is MemoryAgentCardCacheBackend
         resolve_mock.assert_not_called()
@@ -318,7 +318,7 @@ class TestCreateAgentCardCacheBackend:
             "datarobot_genai.dragent.agent_card_registry_backends.try_resolve_memory_space_id",
             return_value="space-runtime",
         ) as resolve_mock:
-            backend = create_agent_card_cache_backend(config)
+            backend = create_agent_card_cache_backend(config.agent_card_registry_cache_ttl)
 
         assert isinstance(backend, LayeredAgentCardCacheBackend)
         resolve_mock.assert_called_once_with()
@@ -341,6 +341,21 @@ class TestLayeredAgentCardCacheBackend:
         assert record is not None
         assert await l1.get_fresh("dep-1", cache_ttl=60) is not None
         assert await l1.get_fresh("dep-1", cache_ttl=20) is None
+
+    async def test_get_fresh_logs_l2_read_through_sequence(self, caplog):
+        l1 = MemoryAgentCardCacheBackend()
+        l2 = MemoryAgentCardCacheBackend()
+        layered = LayeredAgentCardCacheBackend(l1, l2)
+
+        await l2.store({"dep-1": _SAMPLE_AGENT_CARD}, key_types={"dep-1": "deployment"})
+
+        with caplog.at_level("INFO"):
+            record = await layered.get_fresh("dep-1", cache_ttl=3600)
+
+        assert record is not None
+        messages = [record.message for record in caplog.records]
+        assert any("L1 miss for dep-1" in message for message in messages)
+        assert any("MemorySpace L2 hit for dep-1 (fresh" in message for message in messages)
 
     async def test_get_stale_read_through_does_not_reset_soft_ttl(self):
         l1 = MemoryAgentCardCacheBackend()

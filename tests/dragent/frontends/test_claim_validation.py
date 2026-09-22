@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+import logging
 
 import pytest
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
@@ -26,15 +27,46 @@ from starlette.testclient import TestClient
 
 from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
+from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 
 from ..helpers import make_jwt
+
+# Scope caplog to this module's logger, as the rest of the suite does.
+_MODULE = "datarobot_genai.dragent.frontends.claim_validation"
 
 EXPECTED_AUDIENCE = "https://app.datarobot.com/org-1/agent-1"
 OTHER_AUDIENCE = "https://app.datarobot.com/org-1/agent-2"
 SECRET_CLAIM = "super-secret-subject"
 # Opaque DataRobot API token: what `authorization` actually carries on the serving routes.
 DATAROBOT_API_TOKEN = "NjRiYWE1Njk5NmZiMzZlM2VlZWVmYzQ0"
+
+# A representative DataRobot-issued platform credential: equivalent in trust to a DataRobot
+# API key, and a perfectly decodable JWT -- which is why it cannot be classified by shape.
+# It arrives in `authorization`, never in the gateway's own header.  `aud` is empty because
+# it was never minted with this (or any) agent in mind.
+DATAROBOT_ISSUED_CLAIMS = {
+    "aud": [],
+    "client_id": "11111111-1111-1111-1111-111111111111",
+    "iss": "https://issuer.example.com",
+    "scope": "",
+    "sub": "11111111-1111-1111-1111-111111111111",
+}
+
+# An external IdP token whose `aud` names the installation rather than an agent: already
+# validated and forwarded by the gateway, and exactly what audience binding exists to catch.
+INSTALLATION_PREFIX = "https://app.example.com"
+IDP_AGENT_ID = "example-agent-principal-id"
+PLATFORM_SCOPED_CLAIMS = {
+    "iss": "https://idp.example.com/oauth2/default",
+    "aud": INSTALLATION_PREFIX,
+    "cid": "example-client-id",
+    "sub": "example-client-id",
+}
+
+# The same token minted for one agent instead.
+AGENT_BOUND_AUDIENCE = f"{INSTALLATION_PREFIX}/agents/{IDP_AGENT_ID}"
+AGENT_BOUND_CLAIMS = {**PLATFORM_SCOPED_CLAIMS, "aud": AGENT_BOUND_AUDIENCE}
 
 
 def _ok(text: str):
@@ -141,8 +173,12 @@ class TestAudienceValidation:
         response = client.post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: f"Bearer {token}"})
         assert response.status_code == 200
 
-    def test_authorization_bearer_header_is_used_as_fallback(self, client):
-        """GIVEN no DataRobot header WHEN authorization carries a Bearer JWT THEN it is read."""
+    def test_authorization_bearer_jwt_is_never_read(self, client):
+        """GIVEN a JWT in `authorization` THEN it is not read as an IdP token.
+
+        `authorization` carries DataRobot's own credentials, several of which are JWTs.  The
+        gateway puts the caller's IdP token in its own header; only that one is in scope.
+        """
         token = make_jwt(aud=EXPECTED_AUDIENCE)
         response = client.post("/", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
@@ -314,21 +350,19 @@ class TestServingRoutes:
         )
         assert response.status_code == 422
 
-    def test_wrong_audience_jwt_in_authorization_is_rejected(self, client):
-        """GIVEN a wrong-audience JWT in `authorization` THEN it is rejected here too.
+    @pytest.mark.parametrize("aud", [OTHER_AUDIENCE, EXPECTED_AUDIENCE])
+    def test_jwt_in_authorization_is_never_inspected(self, client, aud):
+        """GIVEN a JWT in `authorization` THEN its `aud` is never inspected.
 
-        Both sides read the same carriers now (``dragent.inbound_token``); this header used to
-        be skipped here while the XAA provider still exchanged from it.
+        Parametrized over both audiences deliberately: they take the same path for the same
+        reason, because the header is not an IdP carrier and the claim is never decoded.  Not
+        a bypass -- the XAA provider does not exchange from this header either, so nothing is
+        validated here but exchanged there.
         """
-        token = make_jwt(aud=OTHER_AUDIENCE)
-        response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
-        assert response.status_code == 401
-
-    def test_matching_audience_jwt_in_authorization_passes(self, client):
-        """GIVEN a correct-audience JWT in `authorization` THEN the request proceeds."""
-        token = make_jwt(aud=EXPECTED_AUDIENCE)
+        token = make_jwt(aud=aud)
         response = client.post("/chat/completions", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
+        assert response.text == "completion"
 
     def test_mounted_a2a_subtree_is_checked_too(self, client):
         """GIVEN a wrong-audience token inside the /a2a mount THEN it is rejected.
@@ -347,39 +381,111 @@ class TestServingRoutes:
         assert response.text == "card"
 
 
-class TestFallbackHeaderClassification:
-    """`authorization` is shared with the DataRobot API token, so only a real JWT counts.
+class TestCarrierScoping:
+    """Which credential is an IdP token at all -- the question that precedes the audience check.
 
-    Asks the parser, not a dot count: opaque tokens can contain two dots (``v2.local.xxx``).
+    Only ``x-datarobot-external-access-token`` carries one.  The gateway populates it with the
+    external token it already validated, so a value there is in scope by construction;
+    ``authorization`` carries DataRobot's own credentials and is never read as one.
     """
 
-    @pytest.fixture
-    def client(self) -> TestClient:
-        return TestClient(_app(routes=_a2a_routes()))
+    def _client(self, expected_audience: str = EXPECTED_AUDIENCE) -> TestClient:
+        return TestClient(_app(routes=_a2a_routes(), expected_audience=expected_audience))
 
-    @pytest.mark.parametrize(
-        "value",
-        [
-            "NjRiYWE1Njk5NmZiMzZlM2VlZWVmYzQ0",  # opaque DataRobot API token
-            "abc.def.ghi",  # opaque, but two dots - the dot-count heuristic misread this
-            "v2.local.k4r3ZXlz",  # segmented opaque token, also two dots
-        ],
-    )
-    def test_opaque_value_in_fallback_header_is_left_alone(self, client, value):
-        """GIVEN a non-JWT in `authorization` THEN it is neither validated nor rejected."""
-        assert client.post("/", headers={"authorization": f"Bearer {value}"}).status_code == 200
+    def test_datarobot_issued_jwt_in_authorization_passes_through(self):
+        """GIVEN DataRobot's own platform credential in `authorization` THEN it is untouched.
 
-    def test_real_jwt_in_fallback_header_is_validated(self, client):
-        """GIVEN a decodable JWT in `authorization` THEN its audience is checked."""
-        response = client.post(
-            "/", headers={"authorization": f"Bearer {make_jwt(aud=OTHER_AUDIENCE)}"}
+        The bug this fixes: it happens to decode as a JWT, so reading it as an IdP token
+        rejected DataRobot-authenticated calls to an agent with the flag on.
+        """
+        token = make_jwt(**DATAROBOT_ISSUED_CLAIMS)
+        response = self._client().post("/", headers={"authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_opaque_datarobot_api_token_in_authorization_passes_through(self):
+        """GIVEN an opaque DataRobot API token in `authorization` THEN it is never inspected."""
+        response = self._client().post(
+            "/", headers={"authorization": f"Bearer {DATAROBOT_API_TOKEN}"}
+        )
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_platform_scoped_idp_token_is_rejected(self):
+        """GIVEN an IdP token whose `aud` names the installation THEN this agent refuses it.
+
+        Already validated and forwarded by the gateway; `aud` just does not name us.
+        """
+        token = make_jwt(**PLATFORM_SCOPED_CLAIMS)
+        response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: token})
+        assert response.status_code == 401
+
+    def test_agent_bound_idp_token_is_accepted_by_the_matching_agent(self):
+        """GIVEN an `aud` naming this agent specifically THEN that agent accepts it."""
+        token = make_jwt(**AGENT_BOUND_CLAIMS)
+        response = self._client(expected_audience=AGENT_BOUND_AUDIENCE).post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: token}
+        )
+        assert response.status_code == 200
+        assert response.text == "executed"
+
+    def test_agent_bound_idp_token_is_refused_by_another_agent(self):
+        """GIVEN the same token THEN an agent with a different principal still refuses it."""
+        token = make_jwt(**AGENT_BOUND_CLAIMS)
+        other = f"{INSTALLATION_PREFIX}/agents/some-other-agent-principal"
+        response = self._client(expected_audience=other).post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: token}
         )
         assert response.status_code == 401
 
-    def test_malformed_value_in_the_dedicated_header_still_reports_422(self, client):
-        """The dedicated header carries nothing else, so a non-JWT there is an error."""
-        response = client.post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: "abc.def.ghi"})
-        assert response.status_code == 422
+    def test_empty_audience_list_in_the_dedicated_header_is_rejected(self):
+        """GIVEN `aud: []` in the gateway's header THEN it is rejected.
+
+        Asserted separately from a missing claim below: ``_audience_values`` collapses both to
+        ``[]``, and neither may be read as "no audience requirement, let it through".
+        """
+        response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=[])})
+        assert response.status_code == 401
+
+    def test_absent_audience_claim_in_the_dedicated_header_is_rejected(self):
+        """GIVEN no `aud` claim at all THEN it is rejected, by the same rule."""
+        response = self._client().post(
+            "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(sub="user-1")}
+        )
+        assert response.status_code == 401
+
+
+class TestHealthRoutesAreNotExempt:
+    """Health/readiness routes get the same audience check as any other route.
+
+    A probe carrying no IdP token still passes through (see ``test_missing_token_passes_through``
+    on ``TestAudienceValidation``) -- that is the general tokenless pass-through, not a route
+    exemption. A probe that *does* present one is checked like everything else.
+    """
+
+    def _client(self) -> TestClient:
+        routes = [
+            Route(path, _ok("healthy"), methods=["GET", "HEAD"])
+            for path in DATAROBOT_EXPECTED_HEALTH_ROUTES
+        ]
+        return TestClient(_app(routes=routes))
+
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_wrong_audience_probe_is_rejected(self, path):
+        with self._client() as client:
+            response = client.get(
+                path, headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=OTHER_AUDIENCE)}
+            )
+        assert response.status_code == 401, path
+
+    @pytest.mark.parametrize("path", DATAROBOT_EXPECTED_HEALTH_ROUTES)
+    def test_matching_audience_probe_is_allowed(self, path):
+        with self._client() as client:
+            response = client.get(
+                path, headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)}
+            )
+        assert response.status_code == 200, path
+        assert response.text == "healthy"
 
 
 class TestMountPrefixRobustness:
@@ -426,3 +532,132 @@ class TestMountPrefixRobustness:
             response = client.get(f"{self.UNRECOGNISED_MOUNT}{AGENT_CARD_WELL_KNOWN_PATH}")
         assert response.status_code == 200
         assert response.text == "card"
+
+
+class TestDiagnosticLogging:
+    """What reaches the log, and at which level.
+
+    The rejection body is already pinned by ``test_rejection_body_leaks_neither_token_nor_claims``;
+    this is its counterpart for the log, which has no redacting formatter behind it in dragent.
+    """
+
+    def _client(self) -> TestClient:
+        return TestClient(_app(routes=_a2a_routes()))
+
+    @staticmethod
+    def _messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """Return the rendered messages.  ``getMessage()``, not ``.message``: lazy %-args."""
+        return [record.getMessage() for record in caplog.records]
+
+    def test_rejection_log_leaks_neither_token_nor_principal(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a rejected token THEN neither it nor its `sub` reaches the log, even at DEBUG.
+
+        DEBUG is the worst case on purpose: nothing at any level may carry the subject, which
+        is reported only as the boolean `has_sub`.
+        """
+        token = make_jwt(aud=OTHER_AUDIENCE, sub=SECRET_CLAIM)
+        with caplog.at_level(logging.DEBUG, logger=_MODULE):
+            response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: token})
+        assert response.status_code == 401
+        assert token not in caplog.text
+        assert SECRET_CLAIM not in caplog.text
+
+    def test_one_warning_carries_the_whole_diagnosis(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a mismatch THEN a single WARNING holds everything needed to diagnose it.
+
+        Both sides of the comparison, the carrier, the minter, and the shape flags -- so a
+        rejection never needs a DEBUG re-run to be actionable.
+        """
+        issuer = "https://idp.example.com/oauth2/default"
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, sub=SECRET_CLAIM, iss=issuer, scp=["dr.impersonation"]
+                    )
+                },
+            )
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "reason=audience_mismatch" in message
+        assert EXPECTED_AUDIENCE in message
+        assert OTHER_AUDIENCE in message
+        assert f"carrier={OAUTH_ACCESS_TOKEN_HEADER}" in message
+        assert f"iss={issuer}" in message
+
+    def test_shape_flags_separate_a_platform_token_from_an_idp_one(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN two rejections THEN the flags tell the two causes apart.
+
+        A DataRobot-issued token reaching an audience check is a routing bug (`has_ext`); an
+        external IdP token with the wrong audience is a misconfigured audience (`has_scp`).
+        The rest of the line looks the same either way.
+        """
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, ext={"dr_subject_id": "x"}
+                    )
+                },
+            )
+        platform = self._messages(caplog)[-1]
+        assert "has_ext=True" in platform
+        assert "has_scp=False" in platform
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            self._client().post(
+                "/",
+                headers={
+                    OAUTH_ACCESS_TOKEN_HEADER: make_jwt(
+                        aud=OTHER_AUDIENCE, sub="svc", scp=["dr.impersonation"]
+                    )
+                },
+            )
+        external = self._messages(caplog)[-1]
+        assert "has_ext=False" in external
+        assert "has_scp=True" in external
+        assert "has_sub=True" in external
+
+    def test_accepted_request_is_quiet_at_default_verbosity(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a request that passes THEN nothing is logged above DEBUG.
+
+        The check runs on every serving route, so anything louder is per-request log spam.
+        """
+        with caplog.at_level(logging.INFO, logger=_MODULE):
+            self._client().post(
+                "/", headers={OAUTH_ACCESS_TOKEN_HEADER: make_jwt(aud=EXPECTED_AUDIENCE)}
+            )
+        assert caplog.records == []
+
+    def test_tokenless_request_is_quiet_at_default_verbosity(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a tokenless request (a probe, a DataRobot API token caller) THEN silence."""
+        with caplog.at_level(logging.INFO, logger=_MODULE):
+            self._client().post("/")
+        assert caplog.records == []
+
+    def test_undecodable_token_warning_names_the_defect(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """GIVEN a non-JWT THEN one WARNING names the reason, the carrier and the parse error."""
+        with caplog.at_level(logging.WARNING, logger=_MODULE):
+            response = self._client().post("/", headers={OAUTH_ACCESS_TOKEN_HEADER: "not-a-jwt"})
+        assert response.status_code == 422
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "reason=undecodable_token" in warnings[0]
+        assert f"carrier={OAUTH_ACCESS_TOKEN_HEADER}" in warnings[0]
+        assert "not-a-jwt" not in warnings[0]

@@ -14,11 +14,21 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+from nat.data_models.config import Config
+
 import datarobot_genai.dragent.registry_l2_bootstrap as bootstrap
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
+from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
+from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
+from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
+
+_REGISTRY_SETTINGS_PATCH = "datarobot_genai.dragent.agent_card_registry._resolve_settings"
+_TEST_REGISTRY_CREDENTIALS = ("test-token", "https://app.datarobot.com/api/v2")
 
 
 def test_ensure_registry_l2_cache_provisioned_resets_singleton_on_success() -> None:
@@ -78,7 +88,8 @@ async def test_warmup_retries_provision_before_prefetch() -> None:
 
     with (
         patch(
-            "datarobot_genai.dragent.registry_warmup.ensure_registry_l2_cache_provisioned",
+            "datarobot_genai.dragent.registry_warmup.ensure_registry_l2_cache_provisioned_async",
+            new_callable=AsyncMock,
             return_value="space-abc",
         ) as ensure_mock,
         patch(
@@ -88,7 +99,37 @@ async def test_warmup_retries_provision_before_prefetch() -> None:
     ):
         await warmup_registry_from_config(config)
 
-    ensure_mock.assert_called_once_with(phase="lifespan-warmup")
+    ensure_mock.assert_awaited_once_with(phase="lifespan-warmup")
+
+
+async def test_ensure_registry_l2_cache_provisioned_async_resets_singleton_on_success() -> None:
+    """GIVEN an enclave workload WHEN async ensure runs on a loop THEN the singleton is reset."""
+    with (
+        patch.object(
+            bootstrap,
+            "_registry_l2_gate_status",
+            return_value={
+                "enclave_host_set": True,
+                "enclave_prefix_set": True,
+                "enclave_api_endpoint": "https://example.com/api/v2",
+                "workload_id": "wl-123",
+                "enclave_l2_workload": True,
+                "api_token_set": True,
+            },
+        ),
+        patch.object(
+            bootstrap,
+            "try_resolve_memory_space_id_async",
+            new_callable=AsyncMock,
+            return_value="space-abc",
+        ) as resolve_mock,
+        patch.object(bootstrap, "reset_default_registry") as reset_mock,
+    ):
+        result = await bootstrap.ensure_registry_l2_cache_provisioned_async(phase="test")
+        assert result == "space-abc"
+
+    resolve_mock.assert_awaited_once()
+    reset_mock.assert_called_once()
 
 
 def test_bootstrap_provisions_once() -> None:
@@ -147,3 +188,65 @@ def test_ensure_registry_l2_cache_provisioned_logs_probe_on_failure() -> None:
     )
     post_mock.assert_called_once()
     reset_mock.assert_not_called()
+
+
+async def test_lifespan_starts_refresh_after_l2_reset_clears_parse_time_registrations() -> None:
+    """GIVEN L2 provisioning reset the singleton WHEN lifespan runs THEN refresh still starts."""
+    reset_default_registry()
+    with patch(_REGISTRY_SETTINGS_PATCH, return_value=_TEST_REGISTRY_CREDENTIALS):
+        config = Config(
+            function_groups={
+                "remote_agent": AuthenticatedA2AClientConfig(
+                    registry=AgentCardRegistryLookup(workload_id="wl-123"),
+                    auth_provider="datarobot_auth",
+                )
+            }
+        )
+    mock_registry = MagicMock()
+    mock_registry.soft_cache_ttl = 1800
+    mock_registry.has_registered_lookups.return_value = False
+    mock_registry.prefetch = AsyncMock()
+
+    class _FakeTask:
+        def __init__(self) -> None:
+            self.cancel = MagicMock()
+
+        def __await__(self):
+            async def _noop() -> None:
+                return None
+
+            return _noop().__await__()
+
+    fake_task = _FakeTask()
+
+    def _create_task(coro):
+        coro.close()
+        return fake_task
+
+    with (
+        patch(
+            "datarobot_genai.dragent.registry_warmup.ensure_registry_l2_cache_provisioned_async",
+            new_callable=AsyncMock,
+            return_value="space-abc",
+        ),
+        patch(
+            "datarobot_genai.dragent.registry_warmup.get_default_registry",
+            AsyncMock(return_value=mock_registry),
+        ),
+        patch(
+            "datarobot_genai.dragent.registry_refresh.get_default_registry",
+            AsyncMock(return_value=mock_registry),
+        ),
+        patch(
+            "datarobot_genai.dragent.registry_refresh.asyncio.create_task",
+            side_effect=_create_task,
+        ) as create_task_mock,
+    ):
+        await warmup_registry_from_config(config)
+        mock_registry.register.assert_called_with(workload_id="wl-123")
+
+        async with registry_refresh_lifespan(config):
+            assert mock_registry.register.call_count >= 2
+            create_task_mock.assert_called_once()
+
+    reset_default_registry()

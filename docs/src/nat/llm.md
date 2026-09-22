@@ -18,7 +18,7 @@
 
 This matches what appears under **`llms:`** in the examples, e.g. [`e2e-tests/dragent/nat/workflow.yaml`](../../e2e-tests/dragent/nat/workflow.yaml).
 
-## What you usually declare
+## Typical `llms:` declaration
 
 ```yaml
 llms:
@@ -26,9 +26,9 @@ llms:
     _type: datarobot-llm-component
 ```
 
-**`datarobot-llm-component`** is the flexible option: it follows the same **gateway / deployment / NIM / external** routing as your **environment variables** (see [LLM configuration (shared)](../llm.md)). You can name the key anything (`datarobot_llm` is just the label used elsewhere as **`llm_name`**).
+**`datarobot-llm-component`** is the flexible option: it follows the same **gateway / deployment / NIM / external** routing as **environment variables** (see [LLM configuration (shared)](../llm.md)). Name the key anything (`datarobot_llm` is just the label used elsewhere as **`llm_name`**).
 
-## Other `_type` values you may see
+## Other `_type` values in samples
 
 | `_type` | When it appears |
 |---|---|
@@ -38,7 +38,7 @@ llms:
 | **`datarobot-litellm`** | External LiteLLM providers; provider keys still come from the environment. |
 | **`datarobot-llm-router`** | Primary + fallback LLMs with automatic failover via LiteLLM Router; includes `primary`, `fallbacks`, and optional tuning field `num_retries`. |
 
-The exact fields inside each block mirror what you would set in env for routing (model name, gateway on/off, deployment ids). Prefer the **same env vars as the e2e tests** unless you need to pin something in YAML for a deployment.
+The exact fields inside each block mirror env routing settings (model name, gateway on/off, deployment ids). Prefer the **same env vars as the e2e tests** unless something must be pinned in YAML for a deployment.
 
 ## Passing extra kwargs with `extra_body`
 
@@ -64,7 +64,7 @@ llms:
         budget_tokens: 1024
 ```
 
-See [litellm documentation](https://docs.litellm.ai/docs/providers) for a specific provider to setup correct `extra_body` for your model.
+See [litellm documentation](https://docs.litellm.ai/docs/providers) for provider-specific `extra_body` configuration for a model.
 
 ## Linking workflows to an LLM
 

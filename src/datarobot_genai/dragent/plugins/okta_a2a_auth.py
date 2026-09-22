@@ -349,9 +349,9 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         default=None,
         deprecated=True,
         description=(
-            f"Deprecated. The fallback carrier is fixed at "
-            f"``{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}``. Accepted only when set to exactly "
-            f"that; removal in a future release."
+            f"Deprecated. ``{OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}`` is no longer read as an "
+            f"IdP-token carrier. Accepted only when set to that value; removal in a future "
+            f"release."
         ),
     )
     principal_id: str | None = Field(
@@ -402,12 +402,10 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
                 continue
             raise ValueError(
                 f"{name} is no longer configurable and the value you set is not what the "
-                f"agent does. The access token is read from "
-                f"'{OAUTH_ACCESS_TOKEN_HEADER}', then "
-                f"'Bearer {OAUTH_ACCESS_TOKEN_FALLBACK_HEADER}' -- inbound audience "
-                f"validation inspects exactly those, so reading any other header would "
-                f"exchange a token it never checked. Delete {name} from workflow.yaml and "
-                f"forward the standard header."
+                f"agent does. The access token is read only from "
+                f"'{OAUTH_ACCESS_TOKEN_HEADER}' -- inbound audience validation inspects "
+                f"exactly that, so reading any other header would exchange a token it never "
+                f"checked. Delete {name} from workflow.yaml and forward the standard header."
             )
         return self
 
@@ -774,8 +772,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         )
         raise RuntimeError(
             f"No IdP access token in request context (looked in "
-            f"{sorted(TOKEN_HEADERS)}).{override} The access token must be forwarded with "
-            f"every agent call."
+            f"'{OAUTH_ACCESS_TOKEN_HEADER}').{override} The access token must be forwarded "
+            f"with every agent call."
         )
 
 

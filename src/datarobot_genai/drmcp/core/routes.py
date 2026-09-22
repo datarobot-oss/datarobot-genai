@@ -23,7 +23,7 @@ from datarobot_genai.drmcpbase.oauth_protected_resource_metadata.manager import 
     MCPOAuthProtectedResourceMetadataManager,
 )
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes
-from datarobot_genai.drmcputils.routes import register_tool_gallery_routes
+from datarobot_genai.drmcpbase.routes import register_static_routes
 from datarobot_genai.drtools.core import get_tool_ui_metadata
 
 from .config import get_config
@@ -33,7 +33,6 @@ from .dynamic_prompts.controllers import register_prompt_from_prompt_template_id
 from .dynamic_tools.deployment.controllers import delete_registered_tool_deployment
 from .dynamic_tools.deployment.controllers import get_registered_tool_deployments
 from .dynamic_tools.deployment.controllers import register_tool_for_deployment_id
-from .feature_flags import FeatureFlag
 from .mcp_instance import DataRobotMCP
 from .oauth_metadata import build_protected_resource_metadata_config
 from .routes_utils import prefix_mount_path
@@ -46,17 +45,6 @@ from .utils import get_tool_tags
 logger = getLogger(__name__)
 
 
-async def _tools_gallery_enabled(_request: Request) -> bool:
-    """Gate for the user-mcp ``/toolGallery/tools/`` route.
-
-    user-mcp runs as the static container account behind DataRobot's deployment auth, so
-    the gallery is gated on ``ENABLE_MCP_TOOLS_GALLERY_SUPPORT`` for that account (the same
-    flag global-mcp evaluates per user). Mirrors ``UserMCPProvider``'s use of the feature
-    flag. Returns False → the route layer responds 404 (and also fails closed on error).
-    """
-    return await FeatureFlag.is_mcp_tools_gallery_support_enabled_for_static_mcp_container_user()
-
-
 def register_routes(mcp: DataRobotMCP) -> None:
     """Register all routes with the MCP server."""
     # The describe-the-server routes must report the same catalog to every caller, so
@@ -65,12 +53,20 @@ def register_routes(mcp: DataRobotMCP) -> None:
     # and reject `mode=code` outright.
     unfiltered_catalog = unfiltered_catalog_provider(mcp)
 
-    # Shared toolGallery routes (also exposed by global-mcp), mounted under this
-    # server's configured prefix and gated behind ENABLE_MCP_TOOLS_GALLERY_SUPPORT.
-    register_tool_gallery_routes(
+    # Static discovery routes (global-mcp serves the same paths at /static/*), mounted
+    # under this server's configured prefix.
+    #
+    # Ungated, deliberately and permanently. These routes describe the server to its own
+    # operator; they were gated on ENABLE_MCP_TOOLS_GALLERY_SUPPORT for the *container's*
+    # service account, and `register_gated_get` fails CLOSED to 404 — so a flag nobody
+    # remembered turning on, on an account nobody was looking at, made a route that exists
+    # indistinguishable from one that does not. It cost real time to diagnose on a
+    # deployed server. global-mcp still wires its own gate for /static/* and
+    # /toolGallery/toolSets/* in global_mcp.server, where the flag is per *caller* and the
+    # 404 is the intended answer.
+    register_static_routes(
         mcp,
-        base_path=prefix_mount_path("/toolGallery"),
-        gate=_tools_gallery_enabled,
+        base_path=prefix_mount_path("/static"),
         ui_metadata_provider=get_tool_ui_metadata,
         catalog_provider=unfiltered_catalog,
     )

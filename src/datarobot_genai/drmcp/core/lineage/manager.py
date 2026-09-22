@@ -30,6 +30,7 @@ from datarobot_genai.drmcp.core.lineage.entities import MCPResourceMetadata
 from datarobot_genai.drmcp.core.lineage.entities import MCPToolMetadata
 from datarobot_genai.drmcp.core.lineage.enums import LRSEnvVars
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcpbase.oauth_scopes import without_component_auth_checks
 
 logger = logging.getLogger(__name__)
 
@@ -103,15 +104,18 @@ class LineageManager:
         ]
 
     async def get_mcp_tools_in_mcp_server(self) -> list[MCPToolMetadata]:
-        mcp_tools = await self.mcp_server_instance.list_tools()
+        with without_component_auth_checks():  # lineage describes the server
+            mcp_tools = await self.mcp_server_instance.list_tools()
         return [MCPToolMetadata.from_fastmcp_item(mcp_tool) for mcp_tool in mcp_tools]
 
     async def get_mcp_prompts_in_mcp_server(self) -> list[MCPPromptMetadata]:
-        mcp_prompts = await self.mcp_server_instance.list_prompts()
+        with without_component_auth_checks():  # lineage describes the server
+            mcp_prompts = await self.mcp_server_instance.list_prompts()
         return [MCPPromptMetadata.from_fastmcp_item(mcp_prompt) for mcp_prompt in mcp_prompts]
 
     async def get_mcp_resources_in_mcp_server(self) -> list[MCPResourceMetadata]:
-        mcp_resources = await self.mcp_server_instance.list_resources()
+        with without_component_auth_checks():  # lineage describes the server
+            mcp_resources = await self.mcp_server_instance.list_resources()
         return [
             MCPResourceMetadata.from_fastmcp_item(mcp_resource) for mcp_resource in mcp_resources
         ]

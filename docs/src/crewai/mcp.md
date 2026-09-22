@@ -16,4 +16,4 @@
 
 # Tools and MCP (CrewAI sample)
 
-When tools are injected at runtime, the DataRobot-wrapped crew agent **keeps your original per-agent tools** and **appends** injected ones (so MCP and your task-specific tools can coexist). The minimal e2e YAML does not declare MCP groups; use [nat/mcp.md](../nat/mcp.md) for a full **`function_groups`** example.
+When tools are injected at runtime, the DataRobot-wrapped crew agent **keeps the original per-agent tools** and **appends** injected ones (so MCP and task-specific tools can coexist). The minimal e2e YAML does not declare MCP groups; use [nat/mcp.md](../nat/mcp.md) for a full **`function_groups`** example.

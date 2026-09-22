@@ -43,6 +43,40 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 CROSS_APPLICATION_ACCESS_METADATA_KEY = "cross_application_access"
 
 
+def _requested_scopes(mcp_auth_server_metadata: dict[str, Any]) -> list[str]:
+    """Return the scopes the exchange should ask for: ``scopes_supported``.
+
+    That one list is already everything a usable token needs. The server
+    publishes it as the union of what the exchange itself asks for on its
+    second hop (``cross_application_access.token_request.scopes``, typically
+    ``dr.impersonation`` — which no tool declares and no middleware reads) and
+    what its own tools require; see
+    ``drmcpbase.oauth_protected_resource_metadata.entities``.
+
+    Asking for ``token_request.scopes`` alone was the bug: the agent arrived
+    holding a token that opened no tool, because every scoped tool is hidden
+    from ``tools/list`` and 403s on ``tools/call`` — which reads as a server
+    exposing one tool rather than as a token short of a scope.
+
+    Reading the union off the document rather than re-deriving it here is the
+    point. RFC 9728 defines ``scopes_supported`` as the scopes "used in
+    authorization requests to request access to this protected resource", so
+    asking for exactly it is what the field is for; combining the two lists
+    here would ask for a scope a server had deliberately withheld.
+
+    What is granted stays the IdP's decision: Okta issues the intersection
+    with the agent's resource connection, and a client not allowed a scope at
+    all can be refused the whole exchange with ``invalid_scope``. Pin
+    ``cross_application_access`` on this plugin's own config to ask for an
+    exact list instead.
+    """
+    # Optional in the document: a server that enforces nothing and prescribes
+    # nothing publishes no list at all, and the client then asks for no scopes
+    # and lets the IdP decide.
+    published = mcp_auth_server_metadata.get("scopes_supported") or []
+    return [scope for scope in published if isinstance(scope, str) and scope.strip()]
+
+
 def parse_xaa_params_from_mcp_auth_server_metadata(
     mcp_auth_server_metadata: dict[str, Any],
 ) -> _CrossAppFlowParams:
@@ -70,7 +104,10 @@ def parse_xaa_params_from_mcp_auth_server_metadata(
         exchange_audience=token_exchange_metadata["audience"],
         token_url=token_request_metadata["token_url"],
         target_audience=token_request_metadata.get("audience"),
-        id_jag_scopes=token_request_metadata["scopes"],
+        # The document's own `scopes_supported`, which is already the union of
+        # what the exchange asks for and what the tools require. See
+        # _requested_scopes.
+        id_jag_scopes=_requested_scopes(mcp_auth_server_metadata),
         # Optional in the document; only private_key_jwt is implemented today.
         token_endpoint_auth_method=xaa_metadata.get(
             "token_endpoint_auth_method", TokenEndpointAuthMethod.PRIVATE_KEY_JWT.value
@@ -121,10 +158,10 @@ def get_mcp_auth_server_metadata_url(
 ) -> str:
     mcp_server_url = str(config.server.url)
     url_split = urlsplit(mcp_server_url)
-    return (
-        f"{url_split.scheme}://{url_split.netloc}"
-        f"/.well-known/oauth-protected-resource{url_split.path}"
-    )
+    url_path = url_split.path.rstrip("/")
+    if url_path.endswith("/mcp"):
+        url_path = url_path[: -len("/mcp")]
+    return f"{url_split.scheme}://{url_split.netloc}{url_path}/.well-known/oauth-protected-resource"
 
 
 async def get_xaa_params_from_mcp_auth_server_metadata(

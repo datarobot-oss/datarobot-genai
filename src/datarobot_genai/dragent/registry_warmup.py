@@ -25,9 +25,10 @@ import logging
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 
+from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
-from datarobot_genai.dragent.registry_l2_bootstrap import ensure_registry_l2_cache_provisioned
+from datarobot_genai.dragent.registry_l2_bootstrap import ensure_registry_l2_cache_provisioned_async
 
 if TYPE_CHECKING:
     from nat.data_models.config import Config
@@ -94,13 +95,33 @@ def collect_registry_lookup_ids(config: Config) -> RegistryLookupIds:
     return collected
 
 
+def register_registry_lookup_ids(
+    registry: AgentCardRegistry,
+    collected: RegistryLookupIds,
+) -> None:
+    """Register all lookup IDs from *collected* on *registry*.
+
+    Config validation registers IDs on the first registry singleton. L2
+    MemorySpace provisioning resets that singleton at lifespan startup, so
+    warmup and the background refresh loop must re-register from the workflow
+    config before calling :meth:`AgentCardRegistry.prefetch` or
+    :meth:`AgentCardRegistry.refresh_all_registered`.
+    """
+    for deployment_id in collected.deployment_ids:
+        registry.register(deployment_id=deployment_id)
+    for external_id in collected.external_ids:
+        registry.register(external_id=external_id)
+    for workload_id in collected.workload_ids:
+        registry.register(workload_id=workload_id)
+
+
 async def warmup_registry_from_config(config: Config) -> None:
     """Batch-prefetch agent cards for all registry-backed A2A clients in *config*.
 
     No-op when no registry lookups are configured. On failure, logs an error and
     leaves :func:`is_registry_warm` as ``False``.
     """
-    ensure_registry_l2_cache_provisioned(phase="lifespan-warmup")
+    await ensure_registry_l2_cache_provisioned_async(phase="lifespan-warmup")
 
     collected = collect_registry_lookup_ids(config)
     if collected.is_empty():
@@ -110,7 +131,7 @@ async def warmup_registry_from_config(config: Config) -> None:
 
     _WarmState.warm = False
     logger.info(
-        "Prefetching agent cards from central registry "
+        "Warming agent card cache for registry-backed A2A clients "
         "(deployment_ids=%s, external_ids=%s, workload_ids=%s)",
         collected.deployment_ids,
         collected.external_ids,
@@ -119,6 +140,7 @@ async def warmup_registry_from_config(config: Config) -> None:
 
     try:
         registry = await get_default_registry()
+        register_registry_lookup_ids(registry, collected)
         await registry.prefetch(
             deployment_ids=collected.deployment_ids or None,
             external_ids=collected.external_ids or None,

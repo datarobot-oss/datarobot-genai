@@ -45,12 +45,12 @@ from typing import Any
 
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSettings
 from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
+from datarobot_genai.drmcpbase.oauth_scopes import derived_scopes
 from datarobot_genai.drmcpbase.oauth_scopes import wire_scopes as _wire_scopes
 from datarobot_genai.drmcputils.constants import RUNTIME_PARAM_ENV_VAR_NAME_PREFIX
 
 from .config import MCPServerConfig
 from .config import get_config
-from .runtime_identity import DeploymentEndpointResolver
 
 logger = logging.getLogger(__name__)
 
@@ -119,48 +119,36 @@ def read_tag_scopes(environ: dict[str, str] | None = None) -> dict[str, list[str
 def build_scope_settings(config: MCPServerConfig | None = None) -> ScopeSettings:
     """Assemble the scope settings this server is configured with.
 
-    There is no enforcement setting to read: whether a caller with no verifiable
-    token loses a guarded component follows from these values — see
-    :attr:`ScopeSettings.enforced`.
-
-    The audience falls back through the same chain the published document's
-    ``resource`` does — ``MCP_OAUTH_AUDIENCE``, then ``MCP_OAUTH_RESOURCE``,
-    then the runtime-resolved URL — so the identity a discovering client will
-    mint its token for is the identity this server checks ``aud`` against.
-    Without the last step, a deployment that lets ``resource`` resolve at
-    runtime would publish an audience it never verifies: full OAuth dance on
-    the client, no enforcement on the server, and nothing to say so. On a
-    DataRobot deployment this also means setting the authorization server
-    alone is what turns verification on.
+    Which scopes each component requires, and which declaration mechanism is
+    read. Enforcement is the ASGI middleware's (see ``drmcp.core.middleware``),
+    which validates a ``tools/call``'s token claims against the called tool's
+    declared scopes, and the checks' own subset test against the same token
+    (see ``drmcpbase.oauth_scopes``), which keeps an under-scoped token from
+    seeing the tool in ``tools/list``. Nothing verifies tokens here.
     """
     config = config or get_config()
-    issuers = split_setting(config.mcp_oauth_authorization_servers)
-    if len(issuers) > 1:
-        logger.warning(
-            "MCP_OAUTH_AUTHORIZATION_SERVERS lists %d servers; bearer tokens are "
-            "verified against the first (%s) only. One JWKS URI can serve one "
-            "issuer, so a token minted by any of the others will not verify.",
-            len(issuers),
-            issuers[0],
-        )
     return ScopeSettings(
         source=ScopeSource.parse(config.mcp_oauth_scope_source),
         tag_scopes=read_tag_scopes(),
-        issuer=issuers[0] if issuers else None,
-        audience=(
-            config.mcp_oauth_audience
-            or config.mcp_oauth_resource
-            or DeploymentEndpointResolver().get_deployment_url()
-        ),
-        jwks_uri=config.mcp_oauth_jwks_uri,
     )
 
 
 async def wire_scopes(mcp: Any, config: MCPServerConfig | None = None) -> None:
     """Install this server's scope settings and apply them to every component.
 
-    Wiring only — no network. The one-off JWKS reachability probe is a startup
-    concern and is called from the server's startup path instead, so re-wiring
-    (or a test) never fetches anything.
+    Also says out loud when requirements are declared but nothing enforces them.
+    The scope-validation middleware — and with it the token and audience checks —
+    is gated by ``MCP_ENABLE_OAUTH_CLAIM_VALIDATION``; with the gate off a declared
+    requirement is still published in ``scopes_supported`` while every
+    ``tools/call`` passes, which would otherwise look configured and stay silent.
     """
+    config = config or get_config()
     await _wire_scopes(mcp, build_scope_settings(config))
+    if not config.mcp_enable_oauth_claim_validation and (declared := derived_scopes()):
+        logger.warning(
+            "OAuth scopes %s are declared but MCP_ENABLE_OAUTH_CLAIM_VALIDATION is off: the "
+            "scope-validation middleware is not running, so no tools/call is checked against "
+            "them (nor is any token or audience checked). They are still published in "
+            "scopes_supported. Set MCP_ENABLE_OAUTH_CLAIM_VALIDATION=true to enforce them.",
+            declared,
+        )

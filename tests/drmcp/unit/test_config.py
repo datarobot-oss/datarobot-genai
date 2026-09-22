@@ -25,6 +25,7 @@ from datarobot_genai.drmcp.core.config import MCPServerConfig
 from datarobot_genai.drmcp.core.config import MCPToolConfig
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import DataRobotMCP
+from datarobot_genai.drmcpbase.oauth_scopes import ScopeSource
 
 
 def test_config_defaults() -> None:
@@ -64,7 +65,36 @@ def test_config_defaults() -> None:
         assert config.tool_config.enable_code_execution_tools is False
         assert config.tool_config.enable_optimization_tools is False
         assert config.mcp_enable_unauthenticated_well_known_route is False
+
+        # Both declaration mechanisms apply wherever they are declared. Spelled
+        # out on the field rather than left to the parser's fallback, so the
+        # default is visible wherever settings are listed.
+        assert config.mcp_oauth_scope_source == "both"
+        assert ScopeSource.parse(config.mcp_oauth_scope_source) is ScopeSource.BOTH
+
+        # Optional: the Cross-App block publishes without it.
+        assert config.mcp_xaa_scopes is None
         # Clean up the cached config after the test
+        config_module._config = None
+
+
+def test_scope_source_still_accepts_an_explicit_none() -> None:
+    """Giving the field a default must not narrow what callers may pass.
+
+    Several callers build this config with every field spelled out, None
+    included; a non-nullable field turns that into a startup ValidationError.
+    None, "" and an unrecognised value all mean `both` to the parser.
+    """
+    with patch.dict(os.environ, clear=True):
+        config_module._config = None
+        config = MCPServerConfig(
+            _env_file=None,
+            tool_config=MCPToolConfig(_env_file=None),
+            mcp_oauth_scope_source=None,
+        )
+
+        assert config.mcp_oauth_scope_source is None
+        assert ScopeSource.parse(config.mcp_oauth_scope_source) is ScopeSource.BOTH
         config_module._config = None
 
 

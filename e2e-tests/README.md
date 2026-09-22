@@ -17,7 +17,7 @@ The `task cases-*` commands below all run through Task, so they pick up the dote
 
 Some tests require additional resources deployed in DataRobot. They are injected as environment variables. Make sure to include said variables before running a specific test case.
 
-```
+```ini
 # Necessary for all tests using an MCP server — pick one method:
 #   custom-model deployment → set MCP_DEPLOYMENT_ID
 #   workload API deployment → set MCP_WORKLOAD_ID
@@ -72,7 +72,7 @@ Combinations execute one at a time on port 8080. Use `--no-server` if you have a
 
 ## Run the agent and tests by hand
 
-The original two-shell flow still works when you want to watch agent logs interactively:
+The original two-shell flow still works for watching agent logs interactively:
 
 ```shell
 # Shell 1: start the agent (load LLM-specific env from a case file by hand or

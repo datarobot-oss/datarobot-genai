@@ -76,7 +76,7 @@ async def self_check_input(
 
         check = await llm_call(llm, prompt, llm_params={"temperature": 0.0})
 
-        check = check.lower().strip()
+        check = check.content.lower().strip()
         log.info(f"Input self-checking result is: `{check}`.")
 
         if "yes" in check:

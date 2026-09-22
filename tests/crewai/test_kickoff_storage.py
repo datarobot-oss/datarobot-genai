@@ -85,15 +85,23 @@ def test_neutralize_is_safe_when_attr_missing() -> None:
 def test_crewai_version_is_validated() -> None:
     """Sentinel for the crewai version this neutralization was validated against.
 
-    crewai cannot currently move past the 1.13.x line (1.14.7 is blocked by an
-    aiofiles conflict with nvidia-nat-core). If this fails, crewai changed --
-    re-verify that ``_task_output_handler`` is still the kickoff-outputs sqlite
-    handler and that the no-op subclass still satisfies its type.
+    Re-validated against 1.15.x: ``Crew._task_output_handler`` is still a
+    ``PrivateAttr`` typed ``TaskOutputStorageHandler``, still backed by
+    ``KickoffTaskOutputsSQLiteStorage``, and that storage still opens
+    ``with sqlite3.connect(...)`` blocks that commit but never close -- so the
+    fd leak this neutralization exists to prevent is unchanged.
+
+    The aiofiles conflict with nvidia-nat-core that previously pinned us to the
+    1.13.x line is resolved by an ``aiofiles>=25.1.0`` override in pyproject.
+
+    If this fails, crewai changed -- re-verify that ``_task_output_handler`` is
+    still the kickoff-outputs sqlite handler and that the no-op subclass still
+    satisfies its type.
     """
     import crewai
 
     major, minor = (int(part) for part in crewai.__version__.split(".")[:2])
-    assert (major, minor) == (1, 13), (
+    assert (major, minor) == (1, 15), (
         f"crewai is {crewai.__version__}, but kickoff-storage neutralization "
-        "was validated against 1.13.x. Re-verify kickoff_storage.py."
+        "was validated against 1.15.x. Re-verify kickoff_storage.py."
     )

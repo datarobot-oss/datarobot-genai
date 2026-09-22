@@ -17,6 +17,7 @@
 
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -31,6 +32,7 @@ from nat.runtime.loader import load_config
 import datarobot_genai.dragent.plugins.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
 import datarobot_genai.dragent.plugins.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
 import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
+from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientFunctionGroup
@@ -110,13 +112,22 @@ def set_context_user_id() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def set_datarobot_api_token_for_agent_card(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Provide a DataRobot API token before the config is parsed.
+    """Provide registry credentials before YAML config is parsed.
 
     ``DataRobotAPIKeyAuthProviderConfig`` reads ``DATAROBOT_API_TOKEN`` at
     parse time (``default_factory=_get_default_api_token``), so the env var
-    must be present **before** ``load_config()`` runs.
+    must be present **before** ``load_config()`` runs. Registry-backed function
+    groups call ``get_default_registry_sync()`` during the same parse pass.
     """
+    reset_default_registry()
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "integration-test-token")
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
+    with patch(
+        "datarobot_genai.dragent.agent_card_registry._resolve_settings",
+        return_value=("integration-test-token", "https://app.datarobot.com/api/v2"),
+    ):
+        yield
+    reset_default_registry()
 
 
 @pytest.fixture

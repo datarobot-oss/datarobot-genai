@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared gating helper for ``drmcputils`` HTTP route groups.
+"""Shared gating helpers for DataRobot MCP HTTP route groups.
 
 A route *gate* is an async predicate ``(Request) -> bool``. When it returns
 ``False`` — or raises — the route responds ``404`` so the feature stays hidden
 (fail closed). global-mcp injects a per-user feature-flag check; user-mcp injects
 the static-account check; either may pass ``None`` to leave a route open.
-
-The tool-gallery route group predates this helper and keeps its own copy; new
-route groups (``tool_gallery``, ``metadata``) share this one.
 """
 
 import logging
@@ -31,6 +28,8 @@ from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from datarobot_genai.drmcpbase.oauth_scopes import without_component_auth_checks
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +58,16 @@ async def resolve_catalog(mcp: Any, provider: CatalogProvider | None) -> Sequenc
     catalog with the session filter neutralized (``drmcpbase.fastmcp_transforms``
     supplies one). Without a provider this falls back to the plain call — correct for any
     server with no transform installed, and unchanged from the previous behaviour.
+
+    Either way FastMCP's per-component ``auth`` checks are skipped
+    (``without_component_auth_checks``): the scope checks run inside every
+    ``list_tools()`` against the current request's token, so the catalog would otherwise
+    shrink to what the REST caller may call — the opposite of describing the server.
     """
-    if provider is not None:
-        return await provider()
-    return await mcp.list_tools(run_middleware=False)
+    with without_component_auth_checks():
+        if provider is not None:
+            return await provider()
+        return await mcp.list_tools(run_middleware=False)
 
 
 def register_gated_get(
