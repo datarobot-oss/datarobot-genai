@@ -45,6 +45,7 @@ from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
+from datarobot_genai.dragent.frontends.register import DRAgentA2ARedactedAgentCardConfig
 from datarobot_genai.dragent.frontends.session import _a2a_headers
 
 
@@ -147,7 +148,9 @@ class TestAgentCardIdentitySelection:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
         token = _a2a_headers.set({})
         try:
-            result = _make_public_card_modifier(enable_skills_in_redacted_card=True)(card)
+            result = _make_public_card_modifier(
+                DRAgentA2ARedactedAgentCardConfig(enable_skills=True)
+            )(card)
         finally:
             _a2a_headers.reset(token)
 
@@ -545,7 +548,7 @@ class TestUnauthenticatedWellKnownRoute:
         a2a_frontend_config,
         *,
         enable_unauthenticated_well_known_route: bool = False,
-        enable_skills_in_redacted_card: bool = False,
+        enable_skills: bool = False,
     ) -> DRAgentA2AStarletteApplication:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
         return DRAgentA2AStarletteApplication(
@@ -553,7 +556,7 @@ class TestUnauthenticatedWellKnownRoute:
             http_handler=MagicMock(),
             extended_agent_card=card,
             card_modifier=_make_public_card_modifier(
-                enable_skills_in_redacted_card=enable_skills_in_redacted_card
+                DRAgentA2ARedactedAgentCardConfig(enable_skills=enable_skills)
             ),
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
@@ -603,7 +606,7 @@ class TestUnauthenticatedWellKnownRoute:
         server = await self._make_server(
             a2a_frontend_config,
             enable_unauthenticated_well_known_route=True,
-            enable_skills_in_redacted_card=True,
+            enable_skills=True,
         )
         response = await server._handle_get_agent_card(self._make_request())
         assert response.status_code == 200

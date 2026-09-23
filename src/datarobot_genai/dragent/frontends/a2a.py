@@ -58,6 +58,7 @@ from datarobot_genai.dragent.deployment_urls import resolve_datarobot_endpoint
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_base
 
 from .register import DRAgentA2AExternalConfig
+from .register import DRAgentA2ARedactedAgentCardConfig
 from .session import _a2a_headers
 from .session import headers_from_a2a_state
 from .session import normalise_headers
@@ -459,15 +460,21 @@ def redact_agent_card(card: AgentCard, *, include_skills: bool = False) -> Agent
 
 
 def _make_public_card_modifier(
-    *, enable_skills_in_redacted_card: bool = False
+    redacted_agent_card_config: DRAgentA2ARedactedAgentCardConfig | None = None,
 ) -> Callable[[AgentCard], AgentCard]:
-    """Build a card modifier: extended card to authenticated callers, redacted otherwise."""
+    """Build a card modifier: extended card to authenticated callers, redacted otherwise.
+
+    Takes the whole ``redacted_agent_card`` config group rather than individual flags, so
+    a new redacted-card option only needs a read added here, not a new parameter threaded
+    through every caller.
+    """
+    redacted_agent_card_config = redacted_agent_card_config or DRAgentA2ARedactedAgentCardConfig()
 
     def _public_card_modifier(card: AgentCard) -> AgentCard:
         headers = _a2a_headers.get()
         if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
             return card
-        return redact_agent_card(card, include_skills=enable_skills_in_redacted_card)
+        return redact_agent_card(card, include_skills=redacted_agent_card_config.enable_skills)
 
     return _public_card_modifier
 
@@ -549,7 +556,7 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         agent_executor: NATWorkflowAgentExecutor,
         *,
         enable_unauthenticated_well_known_route: bool = False,
-        enable_skills_in_redacted_card: bool = False,
+        redacted_agent_card_config: DRAgentA2ARedactedAgentCardConfig | None = None,
     ) -> DRAgentA2AStarletteApplication:
         """Create an A2A server with identity-keyed public and extended agent cards.
 
@@ -562,19 +569,17 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         When the agent flag is disabled (default), unauthenticated callers receive
         the generic 404 -- indistinguishable from a nonexistent agent, so the
         refusal is not an existence oracle. When enabled, they receive a redacted
-        card, whose ``skills`` list is empty unless ``enable_skills_in_redacted_card``
-        also opts in. Authenticated callers always receive the full card.
-        ``extended_agent_card`` is also wired for
-        ``agent/getAuthenticatedExtendedCard`` clients.
+        card, shaped by ``redacted_agent_card_config`` (e.g. its ``skills`` list is
+        empty unless ``redacted_agent_card_config.enable_skills`` opts in).
+        Authenticated callers always receive the full card. ``extended_agent_card``
+        is also wired for ``agent/getAuthenticatedExtendedCard`` clients.
         """
         base_server = super().create_a2a_server(agent_card, agent_executor)
         server = DRAgentA2AStarletteApplication(
             agent_card=base_server.agent_card,
             http_handler=base_server.handler.request_handler,
             extended_agent_card=agent_card,
-            card_modifier=_make_public_card_modifier(
-                enable_skills_in_redacted_card=enable_skills_in_redacted_card
-            ),
+            card_modifier=_make_public_card_modifier(redacted_agent_card_config),
             extended_card_modifier=_extended_card_modifier,
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )

@@ -87,6 +87,29 @@ class DRAgentA2AExternalConfig(BaseModel):
     )
 
 
+class DRAgentA2ARedactedAgentCardConfig(BaseModel):
+    """Placeholder group for options shaping the card served to unauthenticated callers.
+
+    Unauthenticated ``GET /.well-known/agent-card.json`` requests never see the full
+    card built by ``create_agent_card()`` -- they see the *redacted* card produced by
+    ``redact_agent_card()``. New options that change what that redacted view contains
+    belong here, so they stay discoverable in one place instead of accreting as
+    unrelated top-level ``a2a.*`` fields.
+    """
+
+    enable_skills: bool = Field(
+        default=False,
+        description=(
+            "Per-agent developer opt-in to advertise skills on the redacted agent "
+            "card served to unauthenticated callers (has no effect unless "
+            "``a2a.enable_unauthenticated_well_known_route`` is also enabled). Off "
+            "by default, so anonymous callers see no skills unless an agent "
+            "developer explicitly opts in. When enabled, the redacted card's "
+            "``skills`` list matches the authenticated card's."
+        ),
+    )
+
+
 class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
@@ -130,16 +153,9 @@ class DRAgentA2AConfig(BaseModel):
             "redacted agent card."
         ),
     )
-    enable_skills_in_redacted_card: bool = Field(
-        default=False,
-        description=(
-            "Per-agent developer opt-in to advertise skills on the redacted agent "
-            "card served to unauthenticated callers (has no effect unless "
-            "``enable_unauthenticated_well_known_route`` is also enabled). Off by "
-            "default, so anonymous callers see no skills unless an agent developer "
-            "explicitly opts in. When enabled, the redacted card's ``skills`` list "
-            "matches the authenticated card's."
-        ),
+    redacted_agent_card: DRAgentA2ARedactedAgentCardConfig = Field(
+        default_factory=DRAgentA2ARedactedAgentCardConfig,
+        description="Options shaping the card served to unauthenticated callers.",
     )
     mount_path: str = Field(
         default=A2A_MOUNT_PATH,

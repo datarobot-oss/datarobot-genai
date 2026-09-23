@@ -54,6 +54,7 @@ from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_tim
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
+from datarobot_genai.dragent.frontends.register import DRAgentA2ARedactedAgentCardConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -1295,18 +1296,18 @@ class TestDRAgentFastApiFrontEndConfig:
         )
         assert config.a2a.enable_unauthenticated_well_known_route is True
 
-    def test_a2a_enable_skills_in_redacted_card_defaults_false(self):
+    def test_a2a_redacted_agent_card_enable_skills_defaults_false(self):
         config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
-        assert config.a2a.enable_skills_in_redacted_card is False
+        assert config.a2a.redacted_agent_card.enable_skills is False
 
-    def test_a2a_enable_skills_in_redacted_card_can_be_enabled(self):
+    def test_a2a_redacted_agent_card_enable_skills_can_be_enabled(self):
         config = DRAgentFastApiFrontEndConfig(
             a2a=DRAgentA2AConfig(
                 server=A2AFrontEndConfig(),
-                enable_skills_in_redacted_card=True,
+                redacted_agent_card=DRAgentA2ARedactedAgentCardConfig(enable_skills=True),
             )
         )
-        assert config.a2a.enable_skills_in_redacted_card is True
+        assert config.a2a.redacted_agent_card.enable_skills is True
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:
