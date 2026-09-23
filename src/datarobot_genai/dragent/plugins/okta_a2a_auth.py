@@ -80,22 +80,25 @@ Environment variables
 * ``XAA_TOKEN_EXCHANGE_IMPL``   — ``okta_sdk`` (default) or ``http``
 """
 
+import abc
 import base64
+import hashlib
 import json
 import logging
 import os
 import time
 import uuid
+from cachetools import TLRUCache
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
-from typing import Protocol
 
 import httpx
 import jwt
 from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from datarobot_genai.core.time import TimeMeasurement
 from jwt.algorithms import RSAAlgorithm
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
@@ -318,6 +321,20 @@ class _CrossAppFlowParams:
     id_jag_scopes: list[str]
     """Scopes from ``clientCredentials.scopes`` (e.g. ``["dr.impersonation"]``)."""
 
+    def get_json_string_with_sorted_scope_claims(self) -> str:
+        return json.dumps(
+            {
+                "token_url": self.token_url,
+                "trusted_issuer": self.trusted_issuer,
+                "exchange_audience": self.exchange_audience,
+                "target_audience": self.target_audience,
+                "token_endpoint_auth_method": self.token_endpoint_auth_method,
+                "id_jag_scopes": sorted(self.id_jag_scopes),
+            },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
 
 # ---------------------------------------------------------------------------
 # OAuth2CrossApplicationAccessAuthProviderConfig
@@ -367,6 +384,19 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "Base64-encoded or raw-JSON RSA private JWK (env: ``IDP_AGENT_PRIVATE_KEY_JWK``)."
         ),
     )
+    cache_max_size: int = Field(
+        default=20,
+        description=(
+            "Max size of cache recording access token retrieved through XAA protocol. Each cache "
+            "record will be kept no longer than ttl_cache_in_second config."
+        ),
+    )
+    cache_max_ttl_in_second: int = Field(
+        default=TimeMeasurement.HOUR.to_numeric_value_in_second(),
+        description=(
+            "TTL (in second) of cache recording access token retrieved through XAA protocol."
+        ),
+    )
 
     @model_validator(mode="after")
     def _retire_token_header_overrides(self) -> "OAuth2CrossApplicationAccessAuthProviderConfig":
@@ -411,6 +441,58 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
 
 
 # ---------------------------------------------------------------------------
+# Token exchange cache implementations
+# ---------------------------------------------------------------------------
+class XAATokenExchangeCacheManager:
+    def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig):
+        self.config = config
+
+    @staticmethod
+    def get_ttl_from_xaa_access_token(xaa_access_token: str) -> float:
+        claims = jwt.decode(xaa_access_token, options={"verify_signature": False})
+        ttl = claims["exp"] - time.time()
+        return ttl
+
+    def ttu_handler(self, _: str, xaa_access_token: str, now: float) -> float:
+        configured_ceiling = float(self.config.cache_max_ttl_in_second)
+        try:
+            ttl = self.get_ttl_from_xaa_access_token(xaa_access_token)
+        except (jwt.DecodeError, KeyError, TypeError):
+            logger.warning(
+                "XAA cache: exchanged token has no readable 'exp' claim; "
+                "falling back to configured TTL (%.0fs)",
+                configured_ceiling,
+            )
+            return now + configured_ceiling
+
+        return now + min(ttl, configured_ceiling)
+
+    @staticmethod
+    def get_subject_token_digest(subject_token: str) -> str:
+        return hashlib.sha256(subject_token.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def get_nat_cross_app_params_digest(cross_app_params: _CrossAppFlowParams) -> str:
+        cross_app_params_str = cross_app_params.get_json_string_with_sorted_scope_claims()
+        return hashlib.sha256(cross_app_params_str.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def get_safe_cache_key(
+        cross_app_params: _CrossAppFlowParams,
+        subject_token: str,
+    ) -> str:
+        subject_token_digest = XAATokenExchangeCacheManager.get_subject_token_digest(subject_token)
+        params_digest = XAATokenExchangeCacheManager.get_nat_cross_app_params_digest(cross_app_params)
+        return hashlib.sha256((subject_token_digest + params_digest).encode()).hexdigest()
+
+    def get_tlru_cache(self) -> TLRUCache:
+        return TLRUCache(
+            self.config.cache_max_size,
+            ttu=self.ttu_handler,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Token exchange implementations
 # ---------------------------------------------------------------------------
 
@@ -426,12 +508,31 @@ _IMPL_ENV_VAR = "XAA_TOKEN_EXCHANGE_IMPL"
 _IMPL_DEFAULT = XAATokenExchangeImpl.OKTA_SDK
 
 
-class XAATokenExchange(Protocol):
-    """Protocol for XAA token exchange implementations."""
+class XAATokenExchange(abc.ABC):
+    """Base class for XAA token exchange implementations.
 
-    config: OAuth2CrossApplicationAccessAuthProviderConfig
+    Owns the caching logic shared by every implementation; subclasses only
+    implement the actual two-step exchange via :meth:`_exchange_token_impl`.
+    """
+
+    def __init__(
+        self, config: OAuth2CrossApplicationAccessAuthProviderConfig, cache: TLRUCache
+    ) -> None:
+        self.config = config
+        self.cache = cache
 
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
+        key = XAATokenExchangeCacheManager.get_safe_cache_key(params, subject_token)
+        try:
+            return self.cache[key]
+        except KeyError:
+            pass
+        token = await self._exchange_token_impl(params, subject_token)
+        self.cache[key] = token
+        return token
+
+    @abc.abstractmethod
+    async def _exchange_token_impl(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         """Execute the full two-step XAA flow and return the final access token."""
         ...
 
@@ -458,9 +559,6 @@ class OktaTokenExchange(XAATokenExchange):
     Requires ``pip install okta-client-python``.
     """
 
-    def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
-        self.config = config
-
     @staticmethod
     def get_oauth2_client_additional_parameters(
         cross_app_flow_params: _CrossAppFlowParams,
@@ -470,7 +568,7 @@ class OktaTokenExchange(XAATokenExchange):
             additional_parameters.update({"resource": cross_app_flow_params.target_audience})
         return additional_parameters
 
-    async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
+    async def _exchange_token_impl(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         if not _HAS_OKTA_SDK:
             raise RuntimeError(
                 "okta-client-python is not installed. "
@@ -550,9 +648,6 @@ class ApiTokenExchange(XAATokenExchange):
     agent's RSA private key.
     """
 
-    def __init__(self, config: OAuth2CrossApplicationAccessAuthProviderConfig) -> None:
-        self.config = config
-
     @staticmethod
     def get_xaa_token_exchange_request_payload(
         cross_app_flow_params: _CrossAppFlowParams,
@@ -573,7 +668,7 @@ class ApiTokenExchange(XAATokenExchange):
             payload["resource"] = cross_app_flow_params.target_audience
         return payload
 
-    async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
+    async def _exchange_token_impl(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         if not self.config.principal_id:
             raise ValueError("principal_id is required for the XAA flow")
         if not self.config.private_jwk:
@@ -646,11 +741,12 @@ def _get_token_exchange_impl() -> XAATokenExchangeImpl:
 
 def get_token_exchange(
     config: OAuth2CrossApplicationAccessAuthProviderConfig,
+    token_exchange_cache: TLRUCache,
 ) -> XAATokenExchange:
     """Return the configured :class:`XAATokenExchange` implementation."""
     if _get_token_exchange_impl() is XAATokenExchangeImpl.HTTP:
-        return ApiTokenExchange(config)
-    return OktaTokenExchange(config)
+        return ApiTokenExchange(config, token_exchange_cache)
+    return OktaTokenExchange(config, token_exchange_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -674,6 +770,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         super().__init__(config)
         self._flow_params: _CrossAppFlowParams | None = None
         self._forward_inbound_x_datarobot_http_headers: bool = False
+        self._token_exchange_cache = XAATokenExchangeCacheManager(self.config).get_tlru_cache()
+        self.token_exchange = get_token_exchange(self.config, self._token_exchange_cache)
 
     def set_cross_app_flow_params(self, cross_app_flow_params: _CrossAppFlowParams) -> None:
         self._flow_params = cross_app_flow_params
@@ -728,8 +826,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
             )
 
         subject_token = self._extract_token()
-        impl = get_token_exchange(self.config)
-        exchanged_token = await impl.exchange_token(self._flow_params, subject_token)
+        exchanged_token = await self.token_exchange.exchange_token(self._flow_params, subject_token)
         return BearerTokenCred(token=exchanged_token)
 
     async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:

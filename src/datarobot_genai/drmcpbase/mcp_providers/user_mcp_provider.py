@@ -40,7 +40,7 @@ from datarobot_genai.drmcpbase.auth.exceptions import (
 )
 from datarobot_genai.drmcpbase.auth.exceptions import NoHeadersFoundInRequestContextError
 from datarobot_genai.drmcpbase.datarobot_services.client import DataRobotClientWithAsyncAPI
-from datarobot_genai.drmcpbase.datarobot_services.client import TimeMeasurement
+from datarobot_genai.core.time import TimeMeasurement
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
 from datarobot_genai.drmcpbase.fastmcp_transforms.utils import is_category_disabled_for_request
 from datarobot_genai.drmcpbase.feature_flags import check_mcp_tools_gallery_support
