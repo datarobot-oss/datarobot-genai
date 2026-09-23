@@ -34,6 +34,7 @@ from collections.abc import AsyncGenerator
 from collections.abc import Sequence
 from typing import Any
 
+from ag_ui.core import RunAgentInput
 from langchain_core.messages import BaseMessage
 from langgraph.pregel._messages import StreamMessagesHandler
 from langgraph.pregel._messages import _state_values
@@ -42,8 +43,74 @@ from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatResponse
 from nat.data_models.api_server import ChatResponseChunk
+from nat.data_models.api_server import Message as NatMessage
+from nat.data_models.api_server import UserMessageContentRoleType
 from nat.plugins.langchain.agent.tool_calling_agent.register import ToolCallAgentWorkflowConfig
 from nat.plugins.langchain.agent.tool_calling_agent.register import tool_calling_agent_workflow
+from nat.utils.type_converter import GlobalTypeConverter
+
+_AGUI_ROLE_TO_NAT: dict[str, UserMessageContentRoleType] = {
+    "user": UserMessageContentRoleType.USER,
+    "assistant": UserMessageContentRoleType.ASSISTANT,
+    "system": UserMessageContentRoleType.SYSTEM,
+    "tool": UserMessageContentRoleType.TOOL,
+    # AG-UI "developer" is treated as system in the NAT world.
+    "developer": UserMessageContentRoleType.SYSTEM,
+}
+
+
+def _agui_message_to_nat(msg: Any) -> NatMessage:
+    """Convert one AG-UI message to a NAT ``Message``."""
+    role = _AGUI_ROLE_TO_NAT.get(getattr(msg, "role", "user"), UserMessageContentRoleType.USER)
+    content: str = getattr(msg, "content", "") or ""
+
+    kwargs: dict[str, Any] = {"role": role, "content": content}
+
+    # Preserve tool_call_id for tool messages.
+    tool_call_id: str | None = getattr(msg, "tool_call_id", None) or getattr(
+        msg, "toolCallId", None
+    )
+    if tool_call_id:
+        kwargs["tool_call_id"] = tool_call_id
+
+    # Convert AG-UI camelCase toolCalls to NAT's OpenAI-compatible dicts.
+    tool_calls = getattr(msg, "tool_calls", None) or getattr(msg, "toolCalls", None)
+    if tool_calls:
+        kwargs["tool_calls"] = [
+            {
+                "id": getattr(tc, "id", None),
+                "type": "function",
+                "function": {
+                    "name": getattr(tc, "function", {}).get("name", "")
+                    if isinstance(getattr(tc, "function", None), dict)
+                    else getattr(getattr(tc, "function", None), "name", ""),
+                    "arguments": getattr(tc, "function", {}).get("arguments", "")
+                    if isinstance(getattr(tc, "function", None), dict)
+                    else getattr(getattr(tc, "function", None), "arguments", ""),
+                },
+            }
+            for tc in tool_calls
+        ]
+
+    return NatMessage(**kwargs)
+
+
+def _run_agent_input_to_chat_request(rai: RunAgentInput) -> ChatRequest:
+    """Convert an AG-UI ``RunAgentInput`` to a NAT ``ChatRequest``.
+
+    NAT 1.9 introduced strict ``GlobalTypeConverter`` checks inside
+    ``tool_calling_agent``'s ``_stream_fn``.  Without this converter,
+    ``streaming_memory_agent`` (which operates with ``RunAgentInput``) cannot
+    call the inner ``per_user_tool_calling_agent`` which expects ``ChatRequest``.
+    """
+    return ChatRequest(messages=[_agui_message_to_nat(m) for m in rai.messages])
+
+
+# Register the converter so NAT 1.9's GlobalTypeConverter can find a path from
+# RunAgentInput (used by streaming_memory_agent) to ChatRequest (expected by
+# per_user_tool_calling_agent's internal _stream_fn).
+GlobalTypeConverter.register_converter(_run_agent_input_to_chat_request)
+
 
 # Workaround: prior assistant messages from chat history were leaking back into
 # the response stream as a single trailing mega-chunk after the new response.
