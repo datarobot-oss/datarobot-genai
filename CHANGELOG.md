@@ -4,13 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.51
+## 0.29.52
 - `dragent`: bump `nvidia-nat`, `nvidia-nat-a2a`, `nvidia-nat-opentelemetry`, `nvidia-nat-langchain`, `nvidia-nat-mcp`, `nvidia-nat-crewai`, `nvidia-nat-llama-index` from 1.7.0 to 1.9.0
 - `dragent`: request `nvidia-nat-langchain[litellm]` extra — `langchain-litellm` moved from a required dep to an optional extra in NAT langchain 1.9; we use `ChatLiteLLM` / `ChatLiteLLMRouter` in eval and langgraph paths
 - `dragent/plugins/llm_clients`: stop calling NAT's private `_patch_llm_based_on_config` with a `dict` argument; NAT 1.9 added `configurable_fields` wrapping inside that function which caused `isinstance(llm, BaseChatModel)` to return `False`. Switch to our own `patch_llm_based_on_config` (retry-only) for all four gateway/deployment/NIM/component LLM registrations
 - `tests/dragent/plugins/test_a2a`: fix `set_context_user_id` autouse fixture to reset the `ContextState.user_id` ContextVar after each test, preventing cross-test pollution that caused session identity tests to fail in combined runs
 - `setup.py`: widen `llama-index-llms-openai` constraint to `>=0.7.0,<1.0.0` to satisfy `nvidia-nat-llama-index 1.9` requirement
 - `dragent/plugins/per_user_tool_calling_agent`: register a `RunAgentInput → ChatRequest` type converter with NAT's `GlobalTypeConverter`. NAT 1.9 tightened type-conversion checks inside `tool_calling_agent`'s `_stream_fn`; without this converter `streaming_memory_agent` (which passes `RunAgentInput`) could not call the inner `per_user_tool_calling_agent`, producing an empty stream with only workflow STEP events and no text or tool-call AG-UI events.
+
+## 0.29.51
+- `dragent`: add `a2a.redacted_agent_card.enable_skills` opt-in, under a new `redacted_agent_card` group that placeholder-groups options shaping the card served to unauthenticated callers (future ones land here rather than as unrelated top-level `a2a.*` fields). Off by default (redacted agent cards served to unauthenticated callers keep `skills` empty, as before); when set to `true` alongside `a2a.enable_unauthenticated_well_known_route`, the redacted card's `skills` match the authenticated card's.
 
 ## 0.29.50
 - Bump `datarobot-moderations` floor to `>=11.3.7` (Python 3.13 support, drops EOL 3.10).

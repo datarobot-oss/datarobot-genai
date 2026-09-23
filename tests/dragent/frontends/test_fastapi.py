@@ -41,7 +41,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
-from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import _make_public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
@@ -54,6 +54,7 @@ from datarobot_genai.dragent.frontends.fastapi import _patch_gunicorn_worker_tim
 from datarobot_genai.dragent.frontends.fastapi import _PerUserCompatibleAgentExecutor
 from datarobot_genai.dragent.frontends.register import DRAgentA2AConfig
 from datarobot_genai.dragent.frontends.register import DRAgentA2AExternalConfig
+from datarobot_genai.dragent.frontends.register import DRAgentA2ARedactedAgentCardConfig
 from datarobot_genai.dragent.frontends.register import DRAgentFastApiFrontEndConfig
 from datarobot_genai.dragent.frontends.step_adaptor import DRAgentNestedReasoningStepAdaptor
 
@@ -707,7 +708,7 @@ class TestRootAgentCardFallbackBehaviour:
             agent_card=card,
             http_handler=MagicMock(),
             extended_agent_card=card,
-            card_modifier=_public_card_modifier,
+            card_modifier=_make_public_card_modifier(),
             enable_unauthenticated_well_known_route=unauthenticated_well_known,
         )
 
@@ -1294,6 +1295,19 @@ class TestDRAgentFastApiFrontEndConfig:
             )
         )
         assert config.a2a.enable_unauthenticated_well_known_route is True
+
+    def test_a2a_redacted_agent_card_enable_skills_defaults_false(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
+        assert config.a2a.redacted_agent_card.enable_skills is False
+
+    def test_a2a_redacted_agent_card_enable_skills_can_be_enabled(self):
+        config = DRAgentFastApiFrontEndConfig(
+            a2a=DRAgentA2AConfig(
+                server=A2AFrontEndConfig(),
+                redacted_agent_card=DRAgentA2ARedactedAgentCardConfig(enable_skills=True),
+            )
+        )
+        assert config.a2a.redacted_agent_card.enable_skills is True
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:

@@ -173,6 +173,12 @@ general:
       # (also requires platform-level opt-in per cluster)
       enable_unauthenticated_well_known_route: true
 
+      # Optional: options shaping the card served to unauthenticated callers
+      redacted_agent_card:
+        # Advertise skills on the redacted card (has no effect unless
+        # enable_unauthenticated_well_known_route is also true)
+        enable_skills: true
+
 # Client-side: call a remote XAA-protected agent
 function_groups:
   remote_agent:
@@ -297,6 +303,18 @@ server-side instead, so the refusal stays debuggable from the agent's own logs.
 |-------|---------|---------|
 | `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
 | `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive the generic `404 {"detail": "Not Found"}` — indistinguishable from a nonexistent agent, so the refusal reveals nothing. Authenticated callers always receive the full card regardless of this setting. |
+
+### Server-side configuration reference: `redacted_agent_card`
+
+Fields under `general.front_end.a2a.redacted_agent_card` shape the card served
+to unauthenticated callers — the reduced view produced by `redact_agent_card()`,
+never the full card. It's a placeholder group: new options that change what the
+redacted card contains are added here going forward, rather than as unrelated
+top-level `a2a.*` fields.
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `enable_skills` | `false` | Per-agent developer opt-in to include `skills` on the redacted card served to unauthenticated callers. Has no effect unless `a2a.enable_unauthenticated_well_known_route` is also `true`. When `false` (default), the redacted card's `skills` list is empty. When `true`, it matches the authenticated card's. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 
