@@ -283,6 +283,7 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
             agent_card,
             agent_executor,
             enable_unauthenticated_well_known_route=a2a.enable_unauthenticated_well_known_route,
+            redacted_agent_card_config=a2a.redacted_agent_card,
         )
         a2a_app = a2a_server.build()
 
