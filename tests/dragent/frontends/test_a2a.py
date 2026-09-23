@@ -40,7 +40,7 @@ from datarobot_genai.dragent.frontends.a2a import OAUTH2_SECURITY_DESCRIPTION_WI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
-from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import _make_public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
@@ -85,6 +85,14 @@ class TestRedactAgentCard:
         assert INTERNAL_IDENTITY_URI not in redacted_uris
         assert EXTERNAL_IDENTITY_URI not in redacted_uris
 
+    async def test_includes_skills_when_opted_in(self, a2a_frontend_config):
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
+
+        redacted = redact_agent_card(card, include_skills=True)
+
+        assert redacted.skills == card.skills
+
     async def test_preserves_non_identity_extensions(self, a2a_frontend_config):
         cross_app_access = CrossApplicationAccessConfig(
             token_endpoint_auth_method="private_key_jwt",
@@ -117,7 +125,7 @@ class TestAgentCardIdentitySelection:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
         token = _a2a_headers.set({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})
         try:
-            result = _public_card_modifier(card)
+            result = _make_public_card_modifier()(card)
         finally:
             _a2a_headers.reset(token)
 
@@ -128,11 +136,22 @@ class TestAgentCardIdentitySelection:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
         token = _a2a_headers.set({})
         try:
-            result = _public_card_modifier(card)
+            result = _make_public_card_modifier()(card)
         finally:
             _a2a_headers.reset(token)
 
         assert result.skills == []
+
+    async def test_public_card_modifier_includes_skills_when_opted_in(self, a2a_frontend_config):
+        skill = AgentSkill(id="summarize", name="Summarize", description="Summarizes text", tags=[])
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[skill])
+        token = _a2a_headers.set({})
+        try:
+            result = _make_public_card_modifier(enable_skills_in_redacted_card=True)(card)
+        finally:
+            _a2a_headers.reset(token)
+
+        assert result.skills == card.skills
 
 
 class TestCreateAgentCard:
@@ -526,13 +545,16 @@ class TestUnauthenticatedWellKnownRoute:
         a2a_frontend_config,
         *,
         enable_unauthenticated_well_known_route: bool = False,
+        enable_skills_in_redacted_card: bool = False,
     ) -> DRAgentA2AStarletteApplication:
         card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
         return DRAgentA2AStarletteApplication(
             agent_card=card,
             http_handler=MagicMock(),
             extended_agent_card=card,
-            card_modifier=_public_card_modifier,
+            card_modifier=_make_public_card_modifier(
+                enable_skills_in_redacted_card=enable_skills_in_redacted_card
+            ),
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )
 
@@ -576,6 +598,17 @@ class TestUnauthenticatedWellKnownRoute:
         assert response.status_code == 200
         card = json.loads(response.body)
         assert card.get("skills") == []
+
+    async def test_unauthenticated_with_skills_opt_in_returns_skills(self, a2a_frontend_config):
+        server = await self._make_server(
+            a2a_frontend_config,
+            enable_unauthenticated_well_known_route=True,
+            enable_skills_in_redacted_card=True,
+        )
+        response = await server._handle_get_agent_card(self._make_request())
+        assert response.status_code == 200
+        card = json.loads(response.body)
+        assert card.get("skills")
 
     async def test_authenticated_without_opt_in_returns_full_card(self, a2a_frontend_config):
         server = await self._make_server(a2a_frontend_config)

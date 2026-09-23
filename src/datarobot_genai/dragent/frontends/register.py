@@ -130,6 +130,17 @@ class DRAgentA2AConfig(BaseModel):
             "redacted agent card."
         ),
     )
+    enable_skills_in_redacted_card: bool = Field(
+        default=False,
+        description=(
+            "Per-agent developer opt-in to advertise skills on the redacted agent "
+            "card served to unauthenticated callers (has no effect unless "
+            "``enable_unauthenticated_well_known_route`` is also enabled). Off by "
+            "default, so anonymous callers see no skills unless an agent developer "
+            "explicitly opts in. When enabled, the redacted card's ``skills`` list "
+            "matches the authenticated card's."
+        ),
+    )
     mount_path: str = Field(
         default=A2A_MOUNT_PATH,
         # Pydantic skips validators for defaults unless asked; without this the default

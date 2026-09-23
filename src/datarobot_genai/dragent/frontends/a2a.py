@@ -435,12 +435,12 @@ async def create_agent_card(
 # ---------------------------------------------------------------------------
 
 
-def redact_agent_card(card: AgentCard) -> AgentCard:
+def redact_agent_card(card: AgentCard, *, include_skills: bool = False) -> AgentCard:
     """Return a public-safe view of an agent card.
 
-    Strips advertised skills and removes internal/external identity extensions
-    while preserving auth and cross-application-access metadata needed for
-    anonymous discovery.
+    Strips advertised skills, unless ``include_skills`` opts back in, and removes
+    internal/external identity extensions while preserving auth and
+    cross-application-access metadata needed for anonymous discovery.
     """
     extensions = card.capabilities.extensions
     filtered_extensions = None
@@ -450,7 +450,7 @@ def redact_agent_card(card: AgentCard) -> AgentCard:
 
     return card.model_copy(
         update={
-            "skills": [],
+            "skills": card.skills if include_skills else [],
             "capabilities": card.capabilities.model_copy(
                 update={"extensions": filtered_extensions}
             ),
@@ -458,12 +458,18 @@ def redact_agent_card(card: AgentCard) -> AgentCard:
     )
 
 
-def _public_card_modifier(card: AgentCard) -> AgentCard:
-    """Serve the extended card to authenticated callers, redacted otherwise."""
-    headers = _a2a_headers.get()
-    if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
-        return card
-    return redact_agent_card(card)
+def _make_public_card_modifier(
+    *, enable_skills_in_redacted_card: bool = False
+) -> Callable[[AgentCard], AgentCard]:
+    """Build a card modifier: extended card to authenticated callers, redacted otherwise."""
+
+    def _public_card_modifier(card: AgentCard) -> AgentCard:
+        headers = _a2a_headers.get()
+        if resolve_identity_from_headers(headers, on_invalid_auth_context="none") is not None:
+            return card
+        return redact_agent_card(card, include_skills=enable_skills_in_redacted_card)
+
+    return _public_card_modifier
 
 
 def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> AgentCard:
@@ -543,6 +549,7 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         agent_executor: NATWorkflowAgentExecutor,
         *,
         enable_unauthenticated_well_known_route: bool = False,
+        enable_skills_in_redacted_card: bool = False,
     ) -> DRAgentA2AStarletteApplication:
         """Create an A2A server with identity-keyed public and extended agent cards.
 
@@ -555,7 +562,8 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         When the agent flag is disabled (default), unauthenticated callers receive
         the generic 404 -- indistinguishable from a nonexistent agent, so the
         refusal is not an existence oracle. When enabled, they receive a redacted
-        card. Authenticated callers always receive the full card.
+        card, whose ``skills`` list is empty unless ``enable_skills_in_redacted_card``
+        also opts in. Authenticated callers always receive the full card.
         ``extended_agent_card`` is also wired for
         ``agent/getAuthenticatedExtendedCard`` clients.
         """
@@ -564,7 +572,9 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
             agent_card=base_server.agent_card,
             http_handler=base_server.handler.request_handler,
             extended_agent_card=agent_card,
-            card_modifier=_public_card_modifier,
+            card_modifier=_make_public_card_modifier(
+                enable_skills_in_redacted_card=enable_skills_in_redacted_card
+            ),
             extended_card_modifier=_extended_card_modifier,
             enable_unauthenticated_well_known_route=enable_unauthenticated_well_known_route,
         )

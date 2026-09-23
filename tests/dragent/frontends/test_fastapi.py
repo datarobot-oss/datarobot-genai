@@ -41,7 +41,7 @@ from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchang
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest
 from datarobot_genai.dragent.frontends.a2a import AGENT_CARD_NOT_FOUND_BODY
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
-from datarobot_genai.dragent.frontends.a2a import _public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import _make_public_card_modifier
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.claim_validation import GeneralOAuthClaimValidationMiddleware
 from datarobot_genai.dragent.frontends.fastapi import DATAROBOT_EXPECTED_HEALTH_ROUTES
@@ -707,7 +707,7 @@ class TestRootAgentCardFallbackBehaviour:
             agent_card=card,
             http_handler=MagicMock(),
             extended_agent_card=card,
-            card_modifier=_public_card_modifier,
+            card_modifier=_make_public_card_modifier(),
             enable_unauthenticated_well_known_route=unauthenticated_well_known,
         )
 
@@ -1294,6 +1294,19 @@ class TestDRAgentFastApiFrontEndConfig:
             )
         )
         assert config.a2a.enable_unauthenticated_well_known_route is True
+
+    def test_a2a_enable_skills_in_redacted_card_defaults_false(self):
+        config = DRAgentFastApiFrontEndConfig(a2a=DRAgentA2AConfig(server=A2AFrontEndConfig()))
+        assert config.a2a.enable_skills_in_redacted_card is False
+
+    def test_a2a_enable_skills_in_redacted_card_can_be_enabled(self):
+        config = DRAgentFastApiFrontEndConfig(
+            a2a=DRAgentA2AConfig(
+                server=A2AFrontEndConfig(),
+                enable_skills_in_redacted_card=True,
+            )
+        )
+        assert config.a2a.enable_skills_in_redacted_card is True
 
 
 class TestDRAgentFastApiFrontEndPluginWorkerCleanup:

@@ -173,6 +173,11 @@ general:
       # (also requires platform-level opt-in per cluster)
       enable_unauthenticated_well_known_route: true
 
+      # Optional: per-agent opt-in to advertise skills on the redacted card
+      # served to unauthenticated callers (has no effect unless
+      # enable_unauthenticated_well_known_route is also true)
+      enable_skills_in_redacted_card: true
+
 # Client-side: call a remote XAA-protected agent
 function_groups:
   remote_agent:
@@ -297,6 +302,7 @@ server-side instead, so the refusal stays debuggable from the agent's own logs.
 |-------|---------|---------|
 | `oauth_claim_validation` | `false` | Opt in to enforcing the inbound token's claims — `aud` today, `scope` later — on every route, not just `/a2a`. The value enforced comes from `cross_application_access.token_request.audience`. Not published on the agent card. |
 | `enable_unauthenticated_well_known_route` | `false` | Per-agent developer opt-in. When `true`, unauthenticated requests that reach the agent receive a redacted agent card. When `false`, they receive the generic `404 {"detail": "Not Found"}` — indistinguishable from a nonexistent agent, so the refusal reveals nothing. Authenticated callers always receive the full card regardless of this setting. |
+| `enable_skills_in_redacted_card` | `false` | Per-agent developer opt-in to include `skills` on the redacted card served to unauthenticated callers. Has no effect unless `enable_unauthenticated_well_known_route` is also `true`. When `false` (default), the redacted card's `skills` list is empty. When `true`, it matches the authenticated card's. |
 
 ### Client-side configuration reference: `okta_cross_app_access`
 
