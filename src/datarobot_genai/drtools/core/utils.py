@@ -13,6 +13,7 @@
 # limitations under the License.
 """Shared utilities for drtools and drmcp."""
 
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -22,6 +23,9 @@ from datarobot_genai.drmcputils.constants import MAX_INLINE_SIZE
 from datarobot_genai.drmcputils.exceptions import ToolError
 from datarobot_genai.drmcputils.exceptions import ToolErrorKind
 
+_OBJECT_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{24}$")
+_TRACE_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{32}$")
+
 
 def require_id(value: str, name: str) -> str:
     if not value or not value.strip():
@@ -30,6 +34,47 @@ def require_id(value: str, name: str) -> str:
             kind=ToolErrorKind.VALIDATION,
         )
     return value.strip()
+
+
+def require_object_id(value: str, name: str) -> str:
+    """Validate a 24-character hex DataRobot object id (mirrors ``MongoIdField``).
+
+    Raised up front so a malformed id fails with a readable message instead of
+    a server 422.
+    """
+    if not isinstance(value, str):
+        raise ToolError(
+            f"Argument validation error: '{name}' must be a string, got {type(value).__name__}.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    stripped = require_id(value, name)
+    if not _OBJECT_ID_PATTERN.fullmatch(stripped):
+        raise ToolError(
+            f"Argument validation error: '{name}' must be a 24-character hex ID, got {value!r}.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    return stripped
+
+
+def require_trace_id(value: str) -> str:
+    """Validate an exactly-32-character hex OTel trace id, returned lowercased.
+
+    Mirrors ``TracingRetrieveParamValidator.trace_id``. Lowercasing matters: the
+    server emits and matches lowercase hex, so an uppercase id pasted by a human
+    would otherwise miss an existing trace.
+    """
+    if not isinstance(value, str):
+        raise ToolError(
+            f"Argument validation error: 'trace_id' must be a string, got {type(value).__name__}.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    stripped = require_id(value, "trace_id")
+    if not _TRACE_ID_PATTERN.fullmatch(stripped):
+        raise ToolError(
+            f"Argument validation error: 'trace_id' must be a 32-character hex ID, got {value!r}.",
+            kind=ToolErrorKind.VALIDATION,
+        )
+    return stripped.lower()
 
 
 def is_valid_url(url: str) -> bool:
