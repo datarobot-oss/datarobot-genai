@@ -56,6 +56,7 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
+from tests.dragent.helpers import make_jwt
 
 _AGENT_URL = "http://agent.example.com"
 
@@ -77,7 +78,7 @@ def _skip_agent_card_resolution(client, *, security_schemes=None):
         Value for ``mock_card.security_schemes``.  ``None`` (default) means
         no security schemes — the code falls back to direct header injection.
         Pass a truthy value (e.g. ``{"oauth2": MagicMock()}``) to exercise the
-        ``A2ACredentialService`` / ``AuthInterceptor`` path.
+        ``A2ACredentialServiceWithDisabledCache`` / ``AuthInterceptor`` path.
     """
 
     async def _set_mock_card():
@@ -366,13 +367,15 @@ class TestAuthenticatedA2ABaseClientCallPhase:
         The ``httpx``, ``ClientFactory`` and ``Context`` patches from
         ``patched_base_client_env`` must be active in the calling test.
 
-        When security schemes are present, ``A2ACredentialService`` is also
+        When security schemes are present, ``A2ACredentialServiceWithDisabledCache`` is also
         mocked so the test validates branch behaviour without coupling to NAT's
         scheme-compatibility internals.
         """
         client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=auth_provider)
         credential_patch = (
-            patch(f"{_MODULE}.A2ACredentialService") if security_schemes else nullcontext()
+            patch(f"{_MODULE}.A2ACredentialServiceWithDisabledCache")
+            if security_schemes
+            else nullcontext()
         )
         with credential_patch:
             with _skip_agent_card_resolution(client, security_schemes=security_schemes):
@@ -1111,7 +1114,9 @@ class TestSharedAuthProviderFlowParams:
             respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                _INBOUND_TOKEN_HEADER: "inbound-user-token"
+                # exchange_token() computes a cache key from this token's own claims,
+                # so it must be a real (if unverified) JWT, not a plain string.
+                _INBOUND_TOKEN_HEADER: make_jwt(sub="dr-user")
             }
             step1 = mock_http.post(_ORG_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "id-jag"})

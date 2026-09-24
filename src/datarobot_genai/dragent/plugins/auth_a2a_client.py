@@ -34,6 +34,7 @@ from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.builder.context import Context
 from nat.cli.register_workflow import register_per_user_function_group
+from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.plugins.a2a.auth.credential_service import A2ACredentialService
@@ -99,12 +100,60 @@ class A2ADiscoveryAuthMixin(abc.ABC):
         """
 
 
+class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
+    """A2ACredentialService with disabled cache.
+
+    The caching implementation of NAT A2ACredentialService is problematic. If the token is cached,
+    the cached token is not keyed on specific claims. The side effect is that once the first token
+    is cached, all following requests with different token claims will reuse the first cached token.
+    This is not an expected caching behavior. This class override _authenticate method by getting
+    rid of using its own caching.
+    """
+
+    async def _authenticate(self, user_id: str | None) -> AuthResult | None:
+        """
+        Authenticate and get credentials from NAT auth provider. This implementation doesn't rely
+        on A2ACredentialService._cached_auth_result.
+
+        Handles token expiration by triggering re-authentication if needed.
+        Uses a lock to prevent concurrent authentication requests and race conditions.
+
+        Args:
+            user_id: User identifier for authentication
+
+        Returns
+        -------
+            AuthResult with credentials or None on failure
+        """
+        try:
+            # Acquire lock to serialize authentication attempts
+            async with self._auth_lock:
+                # Call NAT auth provider (provider is responsible for token refresh/validity)
+                # Caching happens here on the level of auth provider
+                # (e.g., OAuth2CrossApplicationAccessOAuth2AuthProvider)
+                auth_result = await self._auth_provider.authenticate(user_id=user_id)
+
+                # Warn if provider returned expired credentials (provider bug)
+                if auth_result and auth_result.is_expired():
+                    logger.warning(
+                        "Auth provider returned already-expired credentials. "
+                        "This may indicate a bug in the auth provider's token refresh logic."
+                    )
+
+                return auth_result
+
+        except Exception as e:
+            logger.error("Authentication failed: %s", _sanitize_a2a_error(e))
+            logger.debug("Authentication exception detail: %s: %s", type(e).__name__, e)
+            return None
+
+
 class _AuthenticatedA2ABaseClient(A2ABaseClient):
     """A2A client with independent auth for card discovery and RPC calls.
 
     Discovery uses ``authenticate_for_discovery()`` when the provider implements
     :class:`A2ADiscoveryAuthMixin`, otherwise falls back to ``authenticate()``.
-    Task traffic always uses ``AuthInterceptor`` + ``A2ACredentialService``.
+    Task traffic always uses ``AuthInterceptor`` + ``A2ACredentialServiceWithDisabledCache``.
     """
 
     async def _resolve_agent_card(self) -> None:
@@ -171,10 +220,10 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         interceptors: list[Any] = []
         if self._auth_provider:
             if self._agent_card.security_schemes:
-                # Agent card declares security schemes — use A2ACredentialService
+                # Agent card declares security schemes — use A2ACredentialServiceWithDisabledCache
                 # for proper credential validation per the A2A spec.  This path
                 # supports OAuth2 providers that need security-scheme negotiation.
-                credential_service = A2ACredentialService(
+                credential_service = A2ACredentialServiceWithDisabledCache(
                     auth_provider=self._auth_provider,
                     agent_card=self._agent_card,
                 )
@@ -183,7 +232,7 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
                     "Agent card declares security schemes, using security-scheme negotiation."
                 )
             else:
-                # No security schemes on the card — A2ACredentialService would
+                # No security schemes on the card — A2ACredentialServiceWithDisabledCache would
                 # skip credential injection entirely.  Fall back to direct header
                 # injection so simple auth providers (e.g. APIKeyAuthProvider)
                 # still forward the token on every RPC call.

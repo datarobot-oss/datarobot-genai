@@ -93,6 +93,7 @@ dragent = core + [
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
     # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
+    "cachetools>=5.0.0,<8.0.0",
 ]
 
 # auth is standalone set of dependencies for auth utilities only

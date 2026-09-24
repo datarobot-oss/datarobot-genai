@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.52
+- `dragent/plugins/okta_a2a_auth`: Add support of caching XAA access token in memory.
+
 ## 0.29.51
 - `dragent`: add `a2a.redacted_agent_card.enable_skills` opt-in, under a new `redacted_agent_card` group that placeholder-groups options shaping the card served to unauthenticated callers (future ones land here rather than as unrelated top-level `a2a.*` fields). Off by default (redacted agent cards served to unauthenticated callers keep `skills` empty, as before); when set to `true` alongside `a2a.enable_unauthenticated_well_known_route`, the redacted card's `skills` match the authenticated card's.
 

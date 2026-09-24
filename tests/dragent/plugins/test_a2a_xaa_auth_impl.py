@@ -45,6 +45,7 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import OktaTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
+from tests.dragent.helpers import make_jwt
 
 try:
     from okta_client.authfoundation.networking import HTTPRequest as OktaHTTPRequest
@@ -79,6 +80,12 @@ _FAKE_JWK = {
     "qi": "stu",
 }
 _FAKE_JWK_B64 = base64.b64encode(json.dumps(_FAKE_JWK).encode()).decode()
+
+
+@pytest.fixture
+def fake_subject_token() -> str:
+    """Return a syntactically valid JWT for use as ``subject_token``."""
+    return make_jwt(sub="dr-user")
 
 
 def _generate_test_rsa_jwk() -> dict:
@@ -124,14 +131,14 @@ class TestApiTokenExchangeFormFields:
         )
 
     @pytest.fixture
-    def exchange(self) -> ApiTokenExchange:
+    def exchange(self, dummy_cache) -> ApiTokenExchange:
         config = OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id="0oa_test_principal",
             private_jwk=_FAKE_JWK_B64,
         )
-        return ApiTokenExchange(config)
+        return ApiTokenExchange(config, dummy_cache)
 
-    async def test_step1_sends_all_required_fields(self, exchange, flow_params):
+    async def test_step1_sends_all_required_fields(self, exchange, flow_params, fake_subject_token):
         """Step 1 (RFC 8693) must include all token-exchange parameters."""
         with (
             patch(f"{_MODULE}._make_client_assertion", side_effect=["assertion1", "assertion2"]),
@@ -143,11 +150,11 @@ class TestApiTokenExchangeFormFields:
             mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "user-access-token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         body = parse_qs(step1.calls.last.request.content.decode())
         assert body["grant_type"] == ["urn:ietf:params:oauth:grant-type:token-exchange"]
-        assert body["subject_token"] == ["user-access-token"]
+        assert body["subject_token"] == [fake_subject_token]
         assert body["subject_token_type"] == ["urn:ietf:params:oauth:token-type:access_token"]
         assert body["requested_token_type"] == ["urn:ietf:params:oauth:token-type:id-jag"]
         assert body["audience"] == [_EXCHANGE_AUDIENCE]
@@ -158,7 +165,7 @@ class TestApiTokenExchangeFormFields:
         ]
         assert body["client_assertion"] == ["assertion1"]
 
-    async def test_step2_sends_all_required_fields(self, exchange, flow_params):
+    async def test_step2_sends_all_required_fields(self, exchange, flow_params, fake_subject_token):
         """Step 2 (RFC 7523) must include the ID-JAG as assertion."""
         with (
             patch(f"{_MODULE}._make_client_assertion", side_effect=["assertion1", "assertion2"]),
@@ -170,7 +177,7 @@ class TestApiTokenExchangeFormFields:
             step2 = mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "user-access-token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         body = parse_qs(step2.calls.last.request.content.decode())
         assert body["grant_type"] == ["urn:ietf:params:oauth:grant-type:jwt-bearer"]
@@ -180,7 +187,7 @@ class TestApiTokenExchangeFormFields:
         ]
         assert body["client_assertion"] == ["assertion2"]
 
-    async def test_step1_uses_correct_token_url(self, exchange, flow_params):
+    async def test_step1_uses_correct_token_url(self, exchange, flow_params, fake_subject_token):
         """Step 1 must POST to {trusted_issuer}/oauth2/v1/token."""
         with (
             patch(f"{_MODULE}._make_client_assertion", return_value="jwt"),
@@ -192,12 +199,12 @@ class TestApiTokenExchangeFormFields:
             mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         assert step1.called
         assert str(step1.calls.last.request.url) == self._ORG_AS_TOKEN_URL
 
-    async def test_step2_uses_agent_card_token_url(self, exchange, flow_params):
+    async def test_step2_uses_agent_card_token_url(self, exchange, flow_params, fake_subject_token):
         """Step 2 must POST to the tokenUrl from the agent card."""
         with (
             patch(f"{_MODULE}._make_client_assertion", return_value="jwt"),
@@ -209,12 +216,14 @@ class TestApiTokenExchangeFormFields:
             step2 = mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         assert step2.called
         assert str(step2.calls.last.request.url) == self._CUSTOM_AS_TOKEN_URL
 
-    async def test_client_assertion_audience_matches_target_url(self, exchange, flow_params):
+    async def test_client_assertion_audience_matches_target_url(
+        self, exchange, flow_params, fake_subject_token
+    ):
         """_make_client_assertion must be called with the correct token URL for each step."""
         calls: list[tuple[str, str]] = []
 
@@ -232,18 +241,20 @@ class TestApiTokenExchangeFormFields:
             mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         assert calls[0] == ("0oa_test_principal", self._ORG_AS_TOKEN_URL)
         assert calls[1] == ("0oa_test_principal", self._CUSTOM_AS_TOKEN_URL)
 
-    async def test_multi_scope_joined_with_space(self, flow_params):
+    async def test_multi_scope_joined_with_space(
+        self, flow_params, dummy_cache, fake_subject_token
+    ):
         """Multiple scopes must be space-joined in the form body."""
         flow_params.id_jag_scopes = ["dr.impersonation", "openid"]
         config = OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id="p", private_jwk=_FAKE_JWK_B64
         )
-        exchange = ApiTokenExchange(config)
+        exchange = ApiTokenExchange(config, dummy_cache)
 
         with (
             patch(f"{_MODULE}._make_client_assertion", return_value="jwt"),
@@ -255,7 +266,7 @@ class TestApiTokenExchangeFormFields:
             mock_http.post(self._CUSTOM_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "final"})
             )
-            await exchange.exchange_token(flow_params, "token")
+            await exchange.exchange_token(flow_params, fake_subject_token)
 
         body = parse_qs(step1.calls.last.request.content.decode())
         assert body["scope"] == ["dr.impersonation openid"]
@@ -502,8 +513,8 @@ class TestOktaTokenExchangeSdkHttpRequests:
         )
 
     @pytest.fixture
-    def exchange(self, config) -> OktaTokenExchange:
-        return OktaTokenExchange(config)
+    def exchange(self, config, dummy_cache) -> OktaTokenExchange:
+        return OktaTokenExchange(config, dummy_cache)
 
     @pytest.fixture
     def fake_network(self) -> _FakeOktaNetwork:
@@ -512,8 +523,15 @@ class TestOktaTokenExchangeSdkHttpRequests:
             custom_as_issuer=_EXCHANGE_AUDIENCE,
         )
 
-    async def _run_exchange(self, exchange, flow_params, fake_network, subject_token="user-token"):
-        """Run OktaTokenExchange with the fake network injected into OAuth2Client."""
+    async def _run_exchange(self, exchange, flow_params, fake_network, subject_token=None):
+        """Run OktaTokenExchange with the fake network injected into OAuth2Client.
+
+        ``subject_token`` defaults to a fresh throwaway JWT rather than the
+        ``fake_subject_token`` fixture -- most callers don't care about its value, and a
+        plain method (not a fixture or test) can't receive fixtures as default arguments.
+        """
+        if subject_token is None:
+            subject_token = make_jwt(sub="dr-user")
         with patch(f"{_MODULE}.OAuth2Client") as mock_client_cls:
             # Intercept OAuth2Client construction to inject our fake network
             original_cls = pytest.importorskip("okta_client.authfoundation").OAuth2Client
@@ -548,14 +566,16 @@ class TestOktaTokenExchangeSdkHttpRequests:
         body = fake_network.step1_request.form_fields
         assert body["resource"] == [_TARGET_AUDIENCE]
 
-    async def test_step1_sends_subject_token(self, exchange, flow_params, fake_network):
+    async def test_step1_sends_subject_token(
+        self, exchange, flow_params, fake_network, fake_subject_token
+    ):
         """Step 1 must forward the caller's access token as subject_token."""
         await self._run_exchange(
-            exchange, flow_params, fake_network, subject_token="my-okta-access-token"
+            exchange, flow_params, fake_network, subject_token=fake_subject_token
         )
 
         body = fake_network.step1_request.form_fields
-        assert body["subject_token"] == ["my-okta-access-token"]
+        assert body["subject_token"] == [fake_subject_token]
 
     async def test_step1_sends_audience(self, exchange, flow_params, fake_network):
         """Step 1 audience must be the custom AS issuer (exchange_audience)."""
@@ -658,16 +678,18 @@ class TestOktaTokenExchangeSdkHttpRequests:
         scope_value = body["scope"][0]
         assert set(scope_value.split()) == {"dr.impersonation", "openid"}
 
-    async def test_raises_when_okta_sdk_not_installed(self, flow_params):
+    async def test_raises_when_okta_sdk_not_installed(
+        self, flow_params, dummy_cache, fake_subject_token
+    ):
         """Must raise RuntimeError with install instructions when SDK is missing."""
         config = OAuth2CrossApplicationAccessAuthProviderConfig(
             principal_id="p", private_jwk=_REAL_JWK_B64
         )
-        exchange = OktaTokenExchange(config)
+        exchange = OktaTokenExchange(config, dummy_cache)
 
         with patch(f"{_MODULE}._HAS_OKTA_SDK", False):
             with pytest.raises(RuntimeError, match="okta-client-python is not installed"):
-                await exchange.exchange_token(flow_params, "token")
+                await exchange.exchange_token(flow_params, fake_subject_token)
 
     def test_get_oauth2_client_additional_parameters(self) -> None:
         cross_app_flow_params = Mock()
