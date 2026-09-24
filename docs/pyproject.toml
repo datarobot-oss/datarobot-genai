@@ -18,6 +18,7 @@ dependencies = [
 constraint-dependencies = [
     "click>=8.3.3",
     "idna>=3.15",
+    "mkdocs-material>=9.7.7",
     "pygments>=2.20.0",
     "pymdown-extensions>=11.0.1",
     "requests>=2.33.0",

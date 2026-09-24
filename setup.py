@@ -87,7 +87,6 @@ dragent = core + [
     "nvidia-nat-opentelemetry==1.7.0",
     "nvidia-nat-langchain==1.7.0",  # NAT built-in agents require this
     "nvidia-nat-mcp==1.7.0",
-    "anyio>=4.14.2",
     "mem0ai>=1.0.4,<2.0.0",
     "starlette>=1.0.1",  # CVE fix
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
