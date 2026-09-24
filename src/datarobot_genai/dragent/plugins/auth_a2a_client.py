@@ -106,7 +106,8 @@ class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
     The caching implementation of NAT A2ACredentialService is problematic. If the token is cached,
     the cached token is not keyed on specific claims. The side effect is that once the first token
     is cached, all following requests with different token claims will reuse the first cached token.
-    This is not an expected caching behavior.
+    This is not an expected caching behavior. This class override _authenticate method by getting
+    rid of using its own caching.
     """
 
     async def _authenticate(self, user_id: str | None) -> AuthResult | None:
@@ -128,6 +129,8 @@ class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
             # Acquire lock to serialize authentication attempts
             async with self._auth_lock:
                 # Call NAT auth provider (provider is responsible for token refresh/validity)
+                # Caching happens here on the level of auth provider
+                # (e.g., OAuth2CrossApplicationAccessOAuth2AuthProvider)
                 auth_result = await self._auth_provider.authenticate(user_id=user_id)
 
                 # Warn if provider returned expired credentials (provider bug)
