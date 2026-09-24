@@ -78,7 +78,7 @@ def _skip_agent_card_resolution(client, *, security_schemes=None):
         Value for ``mock_card.security_schemes``.  ``None`` (default) means
         no security schemes — the code falls back to direct header injection.
         Pass a truthy value (e.g. ``{"oauth2": MagicMock()}``) to exercise the
-        ``A2ACredentialService`` / ``AuthInterceptor`` path.
+        ``A2ACredentialServiceWithDisabledCache`` / ``AuthInterceptor`` path.
     """
 
     async def _set_mock_card():
@@ -367,13 +367,15 @@ class TestAuthenticatedA2ABaseClientCallPhase:
         The ``httpx``, ``ClientFactory`` and ``Context`` patches from
         ``patched_base_client_env`` must be active in the calling test.
 
-        When security schemes are present, ``A2ACredentialService`` is also
+        When security schemes are present, ``A2ACredentialServiceWithDisabledCache`` is also
         mocked so the test validates branch behaviour without coupling to NAT's
         scheme-compatibility internals.
         """
         client = _AuthenticatedA2ABaseClient(base_url=_AGENT_URL, auth_provider=auth_provider)
         credential_patch = (
-            patch(f"{_MODULE}.A2ACredentialService") if security_schemes else nullcontext()
+            patch(f"{_MODULE}.A2ACredentialServiceWithDisabledCache")
+            if security_schemes
+            else nullcontext()
         )
         with credential_patch:
             with _skip_agent_card_resolution(client, security_schemes=security_schemes):

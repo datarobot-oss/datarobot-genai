@@ -562,6 +562,14 @@ class TestAuthenticate:
             mock_func.return_value = BearerTokenCred(token="adfa")
             yield mock_func
 
+    @pytest.fixture
+    def mock_get_expires_at_from_xaa_access_token(self) -> Iterator[Mock]:
+        with patch.object(
+            XAATokenExchangeCacheManager,
+            "get_expires_at_from_xaa_access_token",
+        ) as mock_func:
+            yield mock_func
+
     async def test_returns_bearer_cred(self, provider_with_card):
         with (
             patch(f"{_MODULE}.Context") as mock_ctx,
@@ -665,6 +673,7 @@ class TestAuthenticate:
     @pytest.mark.asyncio
     async def test_not_forward_inbound_headers_during_authenticate(
         self,
+        mock_get_expires_at_from_xaa_access_token: Mock,
         mock_get_forwardable_x_datarobot_headers_from_inbound_request: Mock,
         mock_get_exchanged_token: AsyncMock,
     ) -> None:
@@ -676,11 +685,19 @@ class TestAuthenticate:
 
         mock_get_forwardable_x_datarobot_headers_from_inbound_request.assert_not_called()
         mock_get_exchanged_token.assert_called_once_with()
-        assert output == AuthResult(credentials=[mock_get_exchanged_token.return_value])
+        mock_exchange_token = mock_get_exchanged_token.return_value
+        mock_get_expires_at_from_xaa_access_token.assert_called_once_with(
+            mock_exchange_token.token.get_secret_value(),
+        )
+        assert output == AuthResult(
+            credentials=[mock_get_exchanged_token.return_value],
+            token_expires_at=mock_get_expires_at_from_xaa_access_token.return_value,
+        )
 
     @pytest.mark.asyncio
     async def test_set_forward_inbound_x_datarobot_http_headers(
         self,
+        mock_get_expires_at_from_xaa_access_token: Mock,
         mock_get_forwardable_x_datarobot_headers_from_inbound_request: Mock,
         mock_get_exchanged_token: AsyncMock,
     ) -> None:
@@ -693,11 +710,16 @@ class TestAuthenticate:
 
         mock_get_forwardable_x_datarobot_headers_from_inbound_request.assert_called_once_with()
         mock_get_exchanged_token.assert_called_once_with()
+        mock_exchange_token = mock_get_exchanged_token.return_value
+        mock_get_expires_at_from_xaa_access_token.assert_called_once_with(
+            mock_exchange_token.token.get_secret_value(),
+        )
         assert output == AuthResult(
             credentials=[
                 *mock_get_forwardable_x_datarobot_headers_from_inbound_request.return_value,
                 mock_get_exchanged_token.return_value,
-            ]
+            ],
+            token_expires_at=mock_get_expires_at_from_xaa_access_token.return_value,
         )
 
 

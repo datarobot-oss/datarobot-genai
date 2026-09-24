@@ -90,6 +90,9 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -384,7 +387,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         ),
     )
     cache_max_size: int = Field(
-        default=20,
+        default=1000,
         description=(
             "Max size of cache recording access token retrieved through XAA protocol. Each cache "
             "record will be kept no longer than ttl_cache_in_second config."
@@ -461,7 +464,7 @@ class XAATokenExchangeCacheManager:
         ttl = claims["exp"] - time.time()
         return ttl
 
-    def ttu_handler(self, _: str, xaa_access_token: str, now: float) -> float:
+    def get_ttl_or_fallback(self, xaa_access_token: str) -> float:
         configured_ceiling = float(self.config.cache_max_ttl_in_second)
         try:
             ttl = self.get_ttl_from_xaa_access_token(xaa_access_token)
@@ -471,9 +474,15 @@ class XAATokenExchangeCacheManager:
                 "falling back to configured TTL (%.0fs)",
                 configured_ceiling,
             )
-            return now + configured_ceiling
+            return configured_ceiling
 
-        return now + min(ttl, configured_ceiling)
+        return min(ttl, configured_ceiling)
+
+    def get_expires_at_from_xaa_access_token(self, xaa_access_token: str) -> datetime:
+        return datetime.now(UTC) + timedelta(seconds=self.get_ttl_or_fallback(xaa_access_token))
+
+    def ttu_handler(self, _: str, xaa_access_token: str, now: float) -> float:
+        return now + self.get_ttl_or_fallback(xaa_access_token)
 
     @staticmethod
     def get_stable_subject_token_string(subject_token: str) -> str:
@@ -807,7 +816,8 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         super().__init__(config)
         self._flow_params: _CrossAppFlowParams | None = None
         self._forward_inbound_x_datarobot_http_headers: bool = False
-        self._token_exchange_cache = XAATokenExchangeCacheManager(self.config).get_tlru_cache()
+        self._cache_manager = XAATokenExchangeCacheManager(self.config)
+        self._token_exchange_cache = self._cache_manager.get_tlru_cache()
         self.token_exchange = get_token_exchange(self.config, self._token_exchange_cache)
 
     def set_cross_app_flow_params(self, cross_app_flow_params: _CrossAppFlowParams) -> None:
@@ -882,7 +892,10 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         bearer_token_cred = await self.get_exchanged_token()
         auth_request_credentials.append(bearer_token_cred)
 
-        return AuthResult(credentials=auth_request_credentials)
+        token_expires_at = self._cache_manager.get_expires_at_from_xaa_access_token(
+            bearer_token_cred.token.get_secret_value()
+        )
+        return AuthResult(credentials=auth_request_credentials, token_expires_at=token_expires_at)
 
     def _extract_token(self) -> str:
         """Extract the caller's IdP access token from NAT request context headers.
