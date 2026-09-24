@@ -387,7 +387,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         ),
     )
     cache_max_size: int = Field(
-        default=1000,
+        default=100,
         description=(
             "Max size of cache recording access token retrieved through XAA protocol. Each cache "
             "record will be kept no longer than ttl_cache_in_second config."
