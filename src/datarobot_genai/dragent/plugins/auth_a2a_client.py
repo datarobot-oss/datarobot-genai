@@ -143,7 +143,8 @@ class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
                 return auth_result
 
         except Exception as e:
-            logger.error("Authentication failed: %s", e, exc_info=True)
+            logger.error("Authentication failed: %s", _sanitize_a2a_error(e))
+            logger.debug("Authentication exception detail: %s: %s", type(e).__name__, e)
             return None
 
 
