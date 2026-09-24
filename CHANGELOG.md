@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.53
+- Unpin `anyio` which is preventing cve fixes everywhere with its == pin.
+
 ## 0.29.52
 - `dragent/plugins/okta_a2a_auth`: Add support of caching XAA access token in memory.
 
