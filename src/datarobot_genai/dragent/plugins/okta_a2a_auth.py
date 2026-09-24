@@ -88,7 +88,6 @@ import logging
 import os
 import time
 import uuid
-from cachetools import TLRUCache
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import StrEnum
@@ -97,8 +96,8 @@ from typing import Any
 import httpx
 import jwt
 from a2a.types import AgentCard
+from cachetools import TLRUCache
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
-from datarobot_genai.core.time import TimeMeasurement
 from jwt.algorithms import RSAAlgorithm
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
@@ -331,9 +330,9 @@ class _CrossAppFlowParams:
                 "token_endpoint_auth_method": self.token_endpoint_auth_method,
                 "id_jag_scopes": sorted(self.id_jag_scopes),
             },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +391,7 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
         ),
     )
     cache_max_ttl_in_second: int = Field(
-        default=TimeMeasurement.HOUR.to_numeric_value_in_second(),
+        default=3600,
         description=(
             "TTL (in second) of cache recording access token retrieved through XAA protocol."
         ),
@@ -448,8 +447,17 @@ class XAATokenExchangeCacheManager:
         self.config = config
 
     @staticmethod
+    def get_jwt_json_without_validating(jwt_str: str) -> dict[str, Any]:
+        return jwt.decode(jwt_str, options={"verify_signature": False})
+
+    @staticmethod
+    def get_hash(string_to_hash: str, bit_to_keep: int | None = None) -> str:
+        hash_value = hashlib.sha256(string_to_hash.encode()).hexdigest()
+        return hash_value if bit_to_keep is None else hash_value[:bit_to_keep]
+
+    @staticmethod
     def get_ttl_from_xaa_access_token(xaa_access_token: str) -> float:
-        claims = jwt.decode(xaa_access_token, options={"verify_signature": False})
+        claims = XAATokenExchangeCacheManager.get_jwt_json_without_validating(xaa_access_token)
         ttl = claims["exp"] - time.time()
         return ttl
 
@@ -468,13 +476,36 @@ class XAATokenExchangeCacheManager:
         return now + min(ttl, configured_ceiling)
 
     @staticmethod
+    def get_stable_subject_token_string(subject_token: str) -> str:
+        """Return stable subject JWT without information such as
+        - jti:  JWT ID (unique identifier for this token)
+        - iat: JWT issue time
+        - exp: JWT expiry time
+        - etc.
+        """
+        claims = XAATokenExchangeCacheManager.get_jwt_json_without_validating(subject_token)
+        stable = {
+            "sub": claims.get("sub"),
+            "iss": claims.get("iss"),
+            "cid": claims.get("cid"),
+            "aud": claims.get("aud"),
+            "scp": sorted(claims.get("scp", [])),
+            "act": claims.get("act"),
+            "sub_profile": claims.get("sub_profile"),
+        }
+        return json.dumps(stable, sort_keys=True, separators=(",", ":"))
+
+    @staticmethod
     def get_subject_token_digest(subject_token: str) -> str:
-        return hashlib.sha256(subject_token.encode()).hexdigest()[:16]
+        stable_subject_token = XAATokenExchangeCacheManager.get_stable_subject_token_string(
+            subject_token
+        )
+        return XAATokenExchangeCacheManager.get_hash(stable_subject_token, 16)
 
     @staticmethod
     def get_nat_cross_app_params_digest(cross_app_params: _CrossAppFlowParams) -> str:
         cross_app_params_str = cross_app_params.get_json_string_with_sorted_scope_claims()
-        return hashlib.sha256(cross_app_params_str.encode()).hexdigest()[:16]
+        return XAATokenExchangeCacheManager.get_hash(cross_app_params_str, 16)
 
     @staticmethod
     def get_safe_cache_key(
@@ -482,8 +513,10 @@ class XAATokenExchangeCacheManager:
         subject_token: str,
     ) -> str:
         subject_token_digest = XAATokenExchangeCacheManager.get_subject_token_digest(subject_token)
-        params_digest = XAATokenExchangeCacheManager.get_nat_cross_app_params_digest(cross_app_params)
-        return hashlib.sha256((subject_token_digest + params_digest).encode()).hexdigest()
+        params_digest = XAATokenExchangeCacheManager.get_nat_cross_app_params_digest(
+            cross_app_params
+        )
+        return XAATokenExchangeCacheManager.get_hash(subject_token_digest + params_digest)
 
     def get_tlru_cache(self) -> TLRUCache:
         return TLRUCache(
@@ -524,11 +557,15 @@ class XAATokenExchange(abc.ABC):
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
         key = XAATokenExchangeCacheManager.get_safe_cache_key(params, subject_token)
         try:
-            return self.cache[key]
+            cached_access_token = self.cache[key]
+            logger.info("Return cached XAA access token.")
+            return cached_access_token
         except KeyError:
+            logger.info("No cached XAA access token found.")
             pass
         token = await self._exchange_token_impl(params, subject_token)
         self.cache[key] = token
+        logger.info("Add new cached XAA access token.")
         return token
 
     @abc.abstractmethod

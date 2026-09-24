@@ -13,6 +13,8 @@
 # limitations under the License.
 import logging
 from collections.abc import AsyncIterator
+from enum import Enum
+from enum import auto
 from http import HTTPMethod
 from ssl import SSLContext
 from ssl import create_default_context as create_default_ssl_context
@@ -29,9 +31,20 @@ from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
 from datarobot.utils import from_api
 
-from datarobot_genai.core.time import TimeMeasurement
-
 logger = logging.getLogger(__name__)
+
+
+class TimeMeasurement(Enum):
+    HOUR = auto()
+    MINUTE = auto()
+    SECOND = auto()
+
+    def to_numeric_value_in_second(self) -> int:
+        return {
+            TimeMeasurement.HOUR: 3600,
+            TimeMeasurement.MINUTE: 60,
+            TimeMeasurement.SECOND: 1,
+        }[self]
 
 
 def get_ssl_context_from_ca_file(ca_path: str) -> SSLContext:

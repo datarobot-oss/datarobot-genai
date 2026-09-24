@@ -17,12 +17,15 @@
 import base64
 import json
 import logging
+import time
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 from urllib.parse import parse_qs
 
+import jwt
 import pytest
 import respx
 from a2a.types import AgentCapabilities
@@ -32,6 +35,7 @@ from a2a.types import ClientCredentialsOAuthFlow
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
+from cachetools import TLRUCache
 from httpx import Response
 from nat.builder.context import Context
 from nat.data_models.authentication import AuthResult
@@ -50,13 +54,15 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import OktaTokenExchange
+from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchange
+from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchangeCacheManager
 from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchangeImpl
+from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _get_token_exchange_impl
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _make_client_assertion
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _parse_cross_app_params
 from datarobot_genai.dragent.plugins.okta_a2a_auth import get_token_exchange
-
-from ..helpers import make_jwt
+from tests.dragent.helpers import make_jwt
 
 _MODULE = "datarobot_genai.dragent.plugins.okta_a2a_auth"
 
@@ -476,12 +482,12 @@ class TestTokenExchangeImplSelection:
 
     def test_dispatches_http(self, monkeypatch):
         monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "http")
-        exchange = get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig())
+        exchange = get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig(), Mock())
         assert isinstance(exchange, ApiTokenExchange)
 
     def test_dispatches_okta_sdk(self, monkeypatch):
         monkeypatch.setenv("XAA_TOKEN_EXCHANGE_IMPL", "okta_sdk")
-        exchange = get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig())
+        exchange = get_token_exchange(OAuth2CrossApplicationAccessAuthProviderConfig(), Mock())
         assert isinstance(exchange, OktaTokenExchange)
 
 
@@ -563,7 +569,7 @@ class TestAuthenticate:
             respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-external-access-token": "incoming-token"
+                "x-datarobot-external-access-token": make_jwt(sub="dr-user")
             }
             mock_http.post(self._ORG_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "id-jag-token"})
@@ -585,7 +591,7 @@ class TestAuthenticate:
             respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-external-access-token": "bad-token"
+                "x-datarobot-external-access-token": make_jwt(sub="dr-user")
             }
             mock_http.post(self._ORG_AS_TOKEN_URL).mock(
                 return_value=Response(
@@ -606,7 +612,7 @@ class TestAuthenticate:
             respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-external-access-token": "ok-token"
+                "x-datarobot-external-access-token": make_jwt(sub="dr-user")
             }
             mock_http.post(self._ORG_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "id-jag"})
@@ -651,7 +657,7 @@ class TestAuthenticate:
 
         with patch(f"{_MODULE}.Context") as mock_ctx:
             mock_ctx.get.return_value.metadata.headers = {
-                "x-datarobot-external-access-token": "token"
+                "x-datarobot-external-access-token": make_jwt(sub="dr-user")
             }
             with pytest.raises(ValueError, match=match):
                 await provider.authenticate()
@@ -719,12 +725,32 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
             yield mock_func
 
     @pytest.fixture
+    def mock_xaa_token_exchange_cache_manager_cls(self, module_under_test: str) -> Iterator[Mock]:
+        with patch(f"{module_under_test}.XAATokenExchangeCacheManager") as mock_cls:
+            yield mock_cls
+
+    @pytest.fixture
     def mock_get_token_exchange(self, module_under_test: str) -> Iterator[Mock]:
         with patch(
             f"{module_under_test}.get_token_exchange",
         ) as mock_func:
             mock_func.return_value.exchange_token = AsyncMock(return_value="TOKEN")
             yield mock_func
+
+    def test_init(
+        self, mock_xaa_token_exchange_cache_manager_cls: Mock, mock_get_token_exchange: Mock
+    ) -> None:
+        mock_config = Mock()
+        auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(mock_config)
+
+        mock_xaa_token_exchange_cache_manager_cls.assert_called_once_with(mock_config)
+        mock_cache_manager = mock_xaa_token_exchange_cache_manager_cls.return_value
+        mock_cache_manager.get_tlru_cache.assert_called_once_with()
+        assert auth_provider._token_exchange_cache == mock_cache_manager.get_tlru_cache.return_value
+        mock_get_token_exchange.assert_called_once_with(
+            mock_config,
+            auth_provider._token_exchange_cache,
+        )
 
     def test_set_cross_app_flow_params(self) -> None:
         auth_provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(Mock())
@@ -775,7 +801,9 @@ class TestOAuth2CrossApplicationAccessOAuth2AuthProvider:
         output = await auth_provider.get_exchanged_token()
 
         mock_extract_token.assert_called_once_with()
-        mock_get_token_exchange.assert_called_once_with(mock_auth_provider_config)
+        mock_get_token_exchange.assert_called_once_with(
+            mock_auth_provider_config, auth_provider._token_exchange_cache
+        )
         mock_exchange_token_impl = mock_get_token_exchange.return_value
         mock_exchange_token_impl.exchange_token.assert_called_once_with(
             mock_cross_app_params, mock_extract_token.return_value
@@ -819,7 +847,7 @@ class TestEndToEnd:
 
     @pytest.fixture
     def incoming_token(self):
-        return "user-okta-access-token-xyz"
+        return make_jwt(sub="dr-user")
 
     @pytest.fixture
     def mock_context(self, incoming_token):
@@ -876,3 +904,302 @@ class TestEndToEnd:
         cred = result.credentials[0]
         assert isinstance(cred, BearerTokenCred)
         assert cred.token.get_secret_value() == "final-scoped-agent-token"
+
+
+class DummyXAATokenExchangeForTest(XAATokenExchange):
+    async def _exchange_token_impl(self, params: _CrossAppFlowParams, subject_token: str) -> str:
+        return ""
+
+
+class TestXAATokenExchange:
+    @pytest.fixture
+    def mock_get_safe_cache_key(self) -> Iterator[Mock]:
+        with patch.object(XAATokenExchangeCacheManager, "get_safe_cache_key") as mock_func:
+            yield mock_func
+
+    async def test_get_token_from_cache(
+        self,
+        dummy_cache: TLRUCache,
+        mock_get_safe_cache_key: Mock,
+    ) -> None:
+        cache_key = "dafda"
+        mock_get_safe_cache_key.return_value = cache_key
+
+        expected_cached_token = "dsafdaf"
+        dummy_cache[cache_key] = expected_cached_token
+        token_exchange = DummyXAATokenExchangeForTest(Mock(), dummy_cache)
+        token_exchange._exchange_token_impl = Mock()
+        mock_params = Mock()
+        mock_subject_token = Mock()
+        output = await token_exchange.exchange_token(mock_params, mock_subject_token)
+
+        mock_get_safe_cache_key.assert_called_once_with(mock_params, mock_subject_token)
+        token_exchange._exchange_token_impl.assert_not_called()
+        assert output == expected_cached_token
+
+    async def test_set_new_cache_item_with_token(
+        self,
+        dummy_cache: TLRUCache,
+        mock_get_safe_cache_key: Mock,
+    ) -> None:
+        cache_key = "dafda"
+        mock_get_safe_cache_key.return_value = cache_key
+
+        token_exchange = DummyXAATokenExchangeForTest(Mock(), dummy_cache)
+        token_exchange._exchange_token_impl = AsyncMock()
+        mock_params = Mock()
+        mock_subject_token = Mock()
+        output = await token_exchange.exchange_token(mock_params, mock_subject_token)
+
+        mock_get_safe_cache_key.assert_called_once_with(mock_params, mock_subject_token)
+        token_exchange._exchange_token_impl.assert_called_once_with(mock_params, mock_subject_token)
+        assert dummy_cache[cache_key] == token_exchange._exchange_token_impl.return_value
+        assert output == dummy_cache[cache_key]
+
+
+class TestXAATokenExchangeCacheManager:
+    @pytest.fixture
+    def ttl_ceiling_in_config(self) -> int:
+        return 999
+
+    @pytest.fixture
+    def mock_config(self, ttl_ceiling_in_config: int) -> Mock:
+        config = Mock()
+        config.cache_max_size = 10
+        config.cache_max_ttl_in_second = ttl_ceiling_in_config
+        return config
+
+    @pytest.fixture
+    def mock_jwt_decode(self) -> Iterator[Mock]:
+        with patch.object(jwt, "decode") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_time_time(self) -> Iterator[Mock]:
+        with patch.object(time, "time") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_jwt_in_json(self) -> dict[str, Any]:
+        return {
+            "sub": "dsafaadsf",
+            "scp": ["B", "A"],
+        }
+
+    @pytest.fixture
+    def mock_get_ttl_from_xaa_access_token(self) -> Iterator[Mock]:
+        with patch.object(
+            XAATokenExchangeCacheManager, "get_ttl_from_xaa_access_token"
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_jwt_json_without_validating(
+        self, mock_jwt_in_json: dict[str, Any]
+    ) -> Iterator[Mock]:
+        with patch.object(
+            XAATokenExchangeCacheManager, "get_jwt_json_without_validating"
+        ) as mock_func:
+            mock_func.return_value = mock_jwt_in_json
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_stable_subject_token_string(self) -> Iterator[Mock]:
+        with patch.object(
+            XAATokenExchangeCacheManager, "get_stable_subject_token_string"
+        ) as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_hash(self) -> Iterator[Mock]:
+        with patch.object(XAATokenExchangeCacheManager, "get_hash") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_subject_token_digest(self) -> Iterator[Mock]:
+        with patch.object(XAATokenExchangeCacheManager, "get_subject_token_digest") as mock_func:
+            yield mock_func
+
+    @pytest.fixture
+    def mock_get_nat_cross_app_params_digest(self) -> Iterator[Mock]:
+        with patch.object(
+            XAATokenExchangeCacheManager, "get_nat_cross_app_params_digest"
+        ) as mock_func:
+            yield mock_func
+
+    def test_get_jwt_json_without_validating(self, mock_jwt_decode: Mock) -> None:
+        jwt_str = "dsfda"
+        output = XAATokenExchangeCacheManager.get_jwt_json_without_validating(jwt_str)
+
+        mock_jwt_decode.assert_called_once_with(jwt_str, options={"verify_signature": False})
+        assert output == mock_jwt_decode.return_value
+
+    @pytest.mark.parametrize(
+        "bits_to_keep, output",
+        [(5, "c2f28"), (None, "c2f285c56f0b335438344758d5c23d3cc16b0401a8afdcd5fc3a788e0ccbd669")],
+        ids=str,
+    )
+    def test_get_hash(self, bits_to_keep: int | None, output: str) -> None:
+        value_to_hash = "dsafsafsafsafsfasfasdadaffdafafdfdadadfa"
+        assert XAATokenExchangeCacheManager.get_hash(value_to_hash, bits_to_keep) == output
+
+    def test_get_ttl_from_xaa_access_token(
+        self,
+        mock_get_jwt_json_without_validating: Mock,
+        mock_time_time: Mock,
+    ) -> None:
+        expiry_time = 10
+        mock_get_jwt_json_without_validating.return_value = {"exp": expiry_time}
+        time_now = 5.0
+        mock_time_time.return_value = time_now
+
+        mock_jwt = Mock()
+        output = XAATokenExchangeCacheManager.get_ttl_from_xaa_access_token(mock_jwt)
+
+        mock_get_jwt_json_without_validating.assert_called_once_with(mock_jwt)
+        assert output == expiry_time - time_now
+
+    def test_ttu_handler_return_expiry_time(
+        self,
+        mock_config: Mock,
+        mock_get_ttl_from_xaa_access_token: Mock,
+    ) -> None:
+        ttl_time = 10.0
+        mock_get_ttl_from_xaa_access_token.return_value = ttl_time
+
+        manager = XAATokenExchangeCacheManager(mock_config)
+        mock_xaa_access_token = Mock()
+        mock_now = 1.0
+        expiry_time = manager.ttu_handler(Mock(), mock_xaa_access_token, mock_now)
+
+        mock_get_ttl_from_xaa_access_token.assert_called_once_with(mock_xaa_access_token)
+        assert isinstance(expiry_time, float)
+        assert expiry_time == mock_now + ttl_time
+
+    @pytest.mark.parametrize("error", [jwt.DecodeError, KeyError, TypeError], ids=str)
+    def test_ttu_handler_fallback_to_default_expiry_time(
+        self,
+        error: jwt.DecodeError | KeyError | TypeError,
+        mock_config: Mock,
+        mock_get_ttl_from_xaa_access_token: Mock,
+    ) -> None:
+        mock_get_ttl_from_xaa_access_token.side_effect = error
+
+        manager = XAATokenExchangeCacheManager(mock_config)
+        mock_now = 1
+        expiry_time = manager.ttu_handler(Mock(), Mock(), mock_now)
+
+        assert expiry_time == mock_now + mock_config.cache_max_ttl_in_second
+
+    def test_ttu_handler_return_earliest_expiry_time(
+        self,
+        mock_config: Mock,
+        ttl_ceiling_in_config: int,
+        mock_get_ttl_from_xaa_access_token: Mock,
+    ) -> None:
+        ttl_time = ttl_ceiling_in_config - 1
+        mock_get_ttl_from_xaa_access_token.return_value = float(ttl_time)
+
+        manager = XAATokenExchangeCacheManager(mock_config)
+        mock_xaa_access_token = Mock()
+        mock_now = 1
+        expiry_time = manager.ttu_handler(Mock(), mock_xaa_access_token, mock_now)
+
+        assert expiry_time == mock_now + ttl_time
+
+    @pytest.mark.parametrize("scopes", [["A", "B"], ("B", "A")], ids=str)
+    def test_get_stable_subject_token_string_with_sorted_scope_claims(
+        self,
+        scopes: list[str],
+        mock_get_jwt_json_without_validating: Mock,
+    ) -> None:
+        mock_get_jwt_json_without_validating.return_value = {"scp": scopes}
+
+        mock_jwt = Mock()
+        output = XAATokenExchangeCacheManager.get_stable_subject_token_string(mock_jwt)
+
+        mock_get_jwt_json_without_validating.assert_called_once_with(mock_jwt)
+        assert output == (
+            '{"act":null,"aud":null,"cid":null,"iss":null,"scp":["A","B"],'
+            '"sub":null,"sub_profile":null}'
+        )
+
+    @pytest.mark.parametrize("unstable_field", ["jti", "iat", "exp", "auth_time"], ids=str)
+    def test_get_stable_subject_token_string_without_unstable_info(
+        self,
+        unstable_field: str,
+        mock_get_jwt_json_without_validating: Mock,
+        mock_jwt_in_json: dict[str, Any],
+    ) -> None:
+        mock_get_jwt_json_without_validating.return_value = {
+            "sub": "sub",
+            unstable_field: unstable_field,
+        }
+
+        mock_jwt = Mock()
+        output = XAATokenExchangeCacheManager.get_stable_subject_token_string(mock_jwt)
+
+        mock_get_jwt_json_without_validating.assert_called_once_with(mock_jwt)
+        assert output == (
+            '{"act":null,"aud":null,"cid":null,"iss":null,"scp":[],"sub":"sub","sub_profile":null}'
+        )
+
+    def test_get_subject_token_digest(
+        self,
+        mock_get_hash: Mock,
+        mock_get_stable_subject_token_string: Mock,
+    ) -> None:
+        mock_jwt = Mock()
+        output = XAATokenExchangeCacheManager.get_subject_token_digest(mock_jwt)
+
+        mock_get_stable_subject_token_string.assert_called_once_with(mock_jwt)
+        mock_get_hash.assert_called_once_with(mock_get_stable_subject_token_string.return_value, 16)
+        assert output == mock_get_hash.return_value
+
+    def test_get_nat_cross_app_params_digest(
+        self,
+        mock_get_hash: Mock,
+        mock_get_stable_subject_token_string: Mock,
+    ) -> None:
+        mock_cross_app_params = Mock()
+        output = XAATokenExchangeCacheManager.get_nat_cross_app_params_digest(mock_cross_app_params)
+
+        mock_cross_app_params.get_json_string_with_sorted_scope_claims.assert_called_once_with()
+        mock_get_hash.assert_called_once_with(
+            mock_cross_app_params.get_json_string_with_sorted_scope_claims.return_value,
+            16,
+        )
+        assert output == mock_get_hash.return_value
+
+    def test_get_safe_cache_key(
+        self,
+        mock_get_hash: Mock,
+        mock_get_nat_cross_app_params_digest: Mock,
+        mock_get_subject_token_digest: Mock,
+    ) -> None:
+        expected_nat_cross_app_params_digest = "ew32qr"
+        mock_get_nat_cross_app_params_digest.return_value = expected_nat_cross_app_params_digest
+        expected_subject_token_digest = "dsafsa"
+        mock_get_subject_token_digest.return_value = expected_subject_token_digest
+
+        mock_cross_app_params = Mock()
+        mock_subject_token = Mock()
+        output = XAATokenExchangeCacheManager.get_safe_cache_key(
+            mock_cross_app_params, mock_subject_token
+        )
+
+        mock_get_nat_cross_app_params_digest.assert_called_once_with(mock_cross_app_params)
+        mock_get_subject_token_digest.assert_called_once_with(mock_subject_token)
+        mock_get_hash.assert_called_once_with(
+            expected_subject_token_digest + expected_nat_cross_app_params_digest
+        )
+        assert output == mock_get_hash.return_value
+
+    def test_get_tlru_cache(self, mock_config: Mock) -> None:
+        manager = XAATokenExchangeCacheManager(mock_config)
+
+        cache_object = manager.get_tlru_cache()
+
+        assert isinstance(cache_object, TLRUCache)
+        assert cache_object.maxsize == mock_config.cache_max_size
+        assert cache_object.ttu == manager.ttu_handler

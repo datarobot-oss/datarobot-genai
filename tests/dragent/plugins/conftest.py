@@ -11,17 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from enum import Enum, auto
+import pytest
+from cachetools import TLRUCache
 
 
-class TimeMeasurement(Enum):
-    HOUR = auto()
-    MINUTE = auto()
-    SECOND = auto()
-
-    def to_numeric_value_in_second(self) -> int:
-        return {
-            TimeMeasurement.HOUR: 3600,
-            TimeMeasurement.MINUTE: 60,
-            TimeMeasurement.SECOND: 1,
-        }[self]
+@pytest.fixture
+def dummy_cache() -> TLRUCache:
+    """Return a TLRUCache that never expires entries."""
+    return TLRUCache(maxsize=1, ttu=lambda key, value, now: float("inf"))
