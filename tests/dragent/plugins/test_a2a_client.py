@@ -56,6 +56,7 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
+from tests.dragent.helpers import make_jwt
 
 _AGENT_URL = "http://agent.example.com"
 
@@ -1111,7 +1112,9 @@ class TestSharedAuthProviderFlowParams:
             respx.mock as mock_http,
         ):
             mock_ctx.get.return_value.metadata.headers = {
-                _INBOUND_TOKEN_HEADER: "inbound-user-token"
+                # exchange_token() computes a cache key from this token's own claims,
+                # so it must be a real (if unverified) JWT, not a plain string.
+                _INBOUND_TOKEN_HEADER: make_jwt(sub="dr-user")
             }
             step1 = mock_http.post(_ORG_AS_TOKEN_URL).mock(
                 return_value=Response(200, json={"access_token": "id-jag"})
