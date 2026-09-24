@@ -781,6 +781,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
+        mock_tool_config.enable_otel_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -909,6 +910,7 @@ class TestMetadataRoute:
                     "panels",
                     "workload",
                     "files_api",
+                    "otel",
                 )
             }
         )
@@ -967,6 +969,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
+        mock_tool_config.enable_otel_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
@@ -1033,6 +1036,7 @@ class TestMetadataRoute:
         mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
+        mock_tool_config.enable_otel_tools = False
 
         mock_config.tool_config = mock_tool_config
         mock_get_config.return_value = mock_config
