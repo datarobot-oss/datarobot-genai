@@ -25,9 +25,9 @@ jobs:
     outputs:
       examples: ${{ steps.matrix.outputs.examples }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         # TODO: Add crewai to the filters
         with:
@@ -69,20 +69,20 @@ jobs:
       EXAMPLE: ${{ matrix.example }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Cache uv and virtualenv
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             e2e-tests/.venv
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-results-${{ matrix.example }}-py${{ matrix.python-version }}
           path: e2e-tests/test_results/
