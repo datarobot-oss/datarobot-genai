@@ -53,29 +53,24 @@ crewai = core + [
     "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
     "nvidia-nat-crewai==1.7.0",
     "opentelemetry-instrumentation-crewai>=0.62.1,<1.0.0",
-    "pybase64>=1.4.2,<2.0.0",
 ]
 
 langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<2.0.0",
-    "langgraph-prebuilt>=1.0.0,<2.0.0",
     "litellm>=1.91.1,<2.0.0",
     "nvidia-nat-langchain==1.7.0",
     "opentelemetry-instrumentation-langchain>=0.62.1,<1.0.0",
 ]
 
 llamaindex = core + [
-    "llama-index>=0.14.0,<0.15.0",
     "llama-index-core>=0.14.0,<0.15.0",
     "llama-index-llms-langchain>=0.8.0,<1.0.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
     "litellm>=1.91.1,<2.0.0",
-    "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
     "nvidia-nat-llama-index==1.7.0",
     "opentelemetry-instrumentation-llamaindex>=0.62.1,<1.0.0",
-    "pypdf>=6.10.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
     # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
 ]
