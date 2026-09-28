@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack
 from typing import Any
 from typing import Literal
 from urllib.parse import urlsplit
@@ -223,21 +224,27 @@ async def mcp_client_with_xaa_support_function_group(
     if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
         raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")
 
-    try:
-        await setup_auth_provider(auth_provider, config)
-        async with per_user_mcp_client_function_group(config, builder) as group:
-            yield group
-    except Exception:
-        # The runtime enters this exception handling block when
-        # - MCP well-known OAuth protected resource metadata retrieval fails, or the
-        #   retrieved metadata is invalid
-        # - MCP server connection fails (e.g., initial session connection: DNS, TCP, TLS)
-        # - MCP list-tools transaction fails (even after retry) due to a connection or
-        #   AuthN/AuthZ issue
-        logger.error(
-            "Failed to connect to MCP server at %s (connection or XAA exchange error). "
-            "MCP tools from this server will be unavailable for this user session.",
-            config.server.url,
-            exc_info=True,
-        )
-        yield PerUserMCPFunctionGroup(config=config)
+    async with AsyncExitStack() as stack:
+        try:
+            await setup_auth_provider(auth_provider, config)
+            group = await stack.enter_async_context(
+                per_user_mcp_client_function_group(config, builder)
+            )
+        except Exception:
+            # The runtime enters this exception handling block when
+            # - MCP well-known OAuth protected resource metadata retrieval fails, or
+            #   the retrieved metadata is invalid
+            # - MCP server connection fails (e.g., initial session connection: DNS,
+            #   TCP, TLS)
+            # - MCP list-tools transaction fails (even after retry) due to a
+            #   connection or AuthN/AuthZ issue
+            logger.error(
+                "Failed to connect to MCP server at %s (connection or XAA exchange error). "
+                "MCP tools from this server will be unavailable for this user session.",
+                config.server.url,
+                exc_info=True,
+            )
+            yield PerUserMCPFunctionGroup(config=config)
+            return
+
+        yield group
