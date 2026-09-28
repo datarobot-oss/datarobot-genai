@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 from typing import Literal
@@ -41,6 +42,8 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 #: ``drmcpbase.oauth_protected_resource_metadata.entities``'s served metadata
 #: (inlined rather than imported to avoid a dragent -> drmcpbase dependency).
 CROSS_APPLICATION_ACCESS_METADATA_KEY = "cross_application_access"
+
+logger = logging.getLogger(__name__)
 
 
 def _requested_scopes(mcp_auth_server_metadata: dict[str, Any]) -> list[str]:
@@ -219,7 +222,22 @@ async def mcp_client_with_xaa_support_function_group(
     auth_provider = await builder.get_auth_provider(config.server.auth_provider)
     if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
         raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")
-    await setup_auth_provider(auth_provider, config)
 
-    async with per_user_mcp_client_function_group(config, builder) as group:
-        yield group
+    try:
+        await setup_auth_provider(auth_provider, config)
+        async with per_user_mcp_client_function_group(config, builder) as group:
+            yield group
+    except Exception:
+        # The runtime enters this exception handling block when
+        # - MCP well-known OAuth protected resource metadata retrieval fails, or the
+        #   retrieved metadata is invalid
+        # - MCP server connection fails (e.g., initial session connection: DNS, TCP, TLS)
+        # - MCP list-tools transaction fails (even after retry) due to a connection or
+        #   AuthN/AuthZ issue
+        logger.error(
+            "Failed to connect to MCP server at %s (connection or XAA exchange error). "
+            "MCP tools from this server will be unavailable for this user session.",
+            config.server.url,
+            exc_info=True,
+        )
+        yield PerUserMCPFunctionGroup(config=config)
