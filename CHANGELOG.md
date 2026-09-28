@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.66 - 2026-10-08
+- Remove transitive dependencies that were declared directly in the framework extras:
+  `pybase64` (crewai), `langgraph-prebuilt` (langgraph), and `llama-index`,
+  `llama-index-llms-openai`, and `pypdf` (llamaindex). Each is still installed through the
+  packages that actually need it.
+
 ## 0.29.65 - 2026-10-07
 - Fix flakes in many E2E tests
 
