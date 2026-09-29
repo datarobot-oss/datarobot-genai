@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.55
+- `dragent`: add `tensile>=0.12.0,<1.0.0` for trajectory capture. Tensile's NAT plugin loads at startup and records each LLM call's exact request and response, made through the OpenAI SDK or LiteLLM, as an OTel log record linked to the current span. No code change is needed in the agent. Set `TENSILE_OTEL_DISABLED=1` to turn capture off.
+
 ## 0.29.54
 - `dragent/plugins/datarobot_user_mcp_xaa_client`: Improve error handling of mcp_client_with_xaa_support_function_group.
 
