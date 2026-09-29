@@ -93,9 +93,6 @@ dragent = core + [
     # >=0.4.0 for GEN_AI_AGENT_NAME
     "datarobot-opentelemetry>=0.4.0,<1.0.0",
     "cachetools>=5.0.0,<8.0.0",
-    # Trajectory capture. Never imported here: tensile registers a `nat.plugins` entry
-    # point that NAT loads at startup, which records each LLM call's wire request and
-    # response as an OTel log record on the current trace. TENSILE_OTEL_DISABLED=1 opts out.
     "tensile>=0.12.0,<1.0.0",
 ]
 
