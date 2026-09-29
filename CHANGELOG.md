@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.55
+- Bump `langchain-nvidia-ai-endpoints` to 1.4.2 to fix a CVE.
+
 ## 0.29.54
 - `dragent/plugins/datarobot_user_mcp_xaa_client`: Improve error handling of mcp_client_with_xaa_support_function_group.
 
