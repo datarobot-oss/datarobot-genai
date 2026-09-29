@@ -98,6 +98,7 @@ constraint-dependencies = [
     "langchain>=1.3.9",
     "langchain-classic>=1.0.7",
     "langchain-core>=1.3.3",
+    "langchain-nvidia-ai-endpoints>=1.4.2",
     "langchain-openai>=1.1.14",
     "langchain-text-splitters>=1.1.2",
     "langgraph-checkpoint>=4.1.1",
