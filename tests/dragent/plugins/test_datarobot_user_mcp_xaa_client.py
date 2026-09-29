@@ -18,6 +18,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
 
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     get_mcp_auth_server_metadata_url,
@@ -449,7 +450,6 @@ class TestSetupMCPClientWithXAASupportFunctionGroup:
         mock_builder.get_auth_provider = AsyncMock(return_value=mock_auth_provider)
         return mock_builder
 
-    @pytest.mark.asyncio
     async def test_mcp_client_with_xaa_support_function_group(
         self,
         mock_auth_provider: Mock,
@@ -472,7 +472,6 @@ class TestSetupMCPClientWithXAASupportFunctionGroup:
             mock_nat_builder,
         )
 
-    @pytest.mark.asyncio
     async def test_mcp_client_with_xaa_support_function_group_error_with_incompatible_auth_provider(
         self,
         mock_auth_provider: Mock,
@@ -493,3 +492,20 @@ class TestSetupMCPClientWithXAASupportFunctionGroup:
         mock_nat_builder.get_auth_provider.assert_called_once_with(mock_config.server.auth_provider)
         mock_setup_auth_provider.assert_not_called()
         mock_per_user_mcp_client_function_group.assert_not_called()
+
+    async def test_mcp_client_with_xaa_support_return_bare_mcp_func_group_if_error_raised(
+        self,
+        mock_nat_builder: AsyncMock,
+        mock_per_user_mcp_client_function_group: Mock,
+    ) -> None:
+        mock_per_user_mcp_client_function_group.side_effect = Exception()
+
+        mock_config = Mock()
+        async with mcp_client_with_xaa_support_function_group(
+            mock_config,
+            mock_nat_builder,
+        ) as group:
+            assert isinstance(group, PerUserMCPFunctionGroup)
+            assert group.get_config() == mock_config
+            mcp_tool_as_functions = await group.get_all_functions()
+            assert not mcp_tool_as_functions
