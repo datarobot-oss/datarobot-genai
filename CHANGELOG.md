@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.57 - 2026-09-30
+- Add a minimum version for `pyjwt`: `>=2.14.0`.
+- Drop the minimum version for `pyjwt`, which the shared list no longer carries.
+
 ## 0.29.56
 - `dragent`: add `tensile>=0.12.0,<1.0.0` for trajectory capture. Tensile's NAT plugin loads at startup and records each LLM call's exact request and response, made through the OpenAI SDK or LiteLLM, as an OTel log record linked to the current span. No code change is needed in the agent. Set `TENSILE_OTEL_DISABLED=1` to turn capture off.
 
