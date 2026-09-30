@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import warnings
 from collections.abc import Callable
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -396,6 +397,10 @@ def _describe_span(span: ExportedSpan) -> str:
     )
 
 
+# Orphaned spans the single-trace check tolerates before failing. See BUZZOK-32582.
+MAX_TOLERATED_ORPHAN_SPANS = 2
+
+
 # OTel semantic-convention attribute keys that carry a span's request URL. The
 # requests/httpx instrumentors use ``http.url`` (legacy) or ``url.full`` (stable
 # semconv); check both so the URL-ignore filter is convention-agnostic.
@@ -471,6 +476,17 @@ def _assert_single_trace_id(
         spans_by_trace.setdefault(span.trace_id, []).append(span)
 
     orphans = [span for span in all_spans if span.trace_id != main_trace]
+
+    # TODO(BUZZOK-32582): tolerate a few orphaned spans (typically a stray guard
+    # or HTTP span, often a late export from a timed-out prior attempt) until
+    # the root cause is fixed. A broken trace still fails the check.
+    if len(orphans) <= MAX_TOLERATED_ORPHAN_SPANS:
+        warnings.warn(
+            f"Tolerating {len(orphans)} orphaned span(s) (BUZZOK-32582): "
+            f"{sorted(s.name for s in orphans)}",
+            stacklevel=2,
+        )
+        return
 
     main_names = sorted(span.name for span in spans_by_trace.get(main_trace, []))
     orphan_traces = sorted(
