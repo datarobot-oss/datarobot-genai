@@ -26,12 +26,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from opentelemetry import baggage
-from opentelemetry.context import Context
-from opentelemetry.context import Token
 from opentelemetry.context import attach
 from opentelemetry.context import detach
+
+if TYPE_CHECKING:
+    # Annotation-only: ``opentelemetry.context`` exports ``Token`` only from
+    # opentelemetry-api 1.33, and ``agent_span`` (which imports this module) is
+    # meant to run under the older OTel pins non-NAT callers may carry.
+    from opentelemetry.context import Context
+    from opentelemetry.context import Token
 
 # Matches the GEN_AI_AGENT_NAME span attribute name (opentelemetry.semconv /
 # datarobot_opentelemetry.semconv) - same key, different carrier.

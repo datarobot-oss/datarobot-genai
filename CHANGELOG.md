@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.56
+- `core/telemetry/agent_span`: new NAT-free `agent_span()` context manager and `AgentSpanRecorder` that write the deployment Tracing table annotations (`datarobot_agent` span with `gen_ai.agent.name`, `gen_ai.prompt`, `gen_ai.completion`, `datarobot.session_id`, per-tool `gen_ai.tool.name` spans, `error.type` on `RUN_ERROR`) from a stream of AG-UI events. Imports only `opentelemetry-api`, `ag-ui-protocol` and `datarobot-opentelemetry`, so non-NAT callers such as the agent application's FastAPI backend can annotate their own spans from a plain `datarobot-genai` install with no extras.
+- `dragent/plugins/datarobot_otel_conventions_middleware`: delegates to `agent_span()`; spans and attributes are unchanged. The AG-UI prompt now matches the last message whose `role` is `user` instead of requiring a `UserMessage` instance, so inputs rebuilt from stored history as generic messages also get `gen_ai.prompt`.
+- `core/telemetry/agent_identity`: import `Token` / `Context` for type checking only, so the module (and `agent_span`) import under opentelemetry-api releases older than 1.33, which don't export `Token` from `opentelemetry.context`.
+
 ## 0.29.55
 - Bump `langchain-nvidia-ai-endpoints` to 1.4.2 to fix a CVE.
 

@@ -19,9 +19,6 @@ from typing import Any
 from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import TextMessageEndEvent
-from ag_ui.core import ToolCallStartEvent
-from ag_ui.core import UserMessage
-from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -31,16 +28,16 @@ from nat.middleware.function_middleware import FunctionMiddleware
 from nat.middleware.middleware import CallNext
 from nat.middleware.middleware import CallNextStream
 from nat.middleware.middleware import FunctionMiddlewareContext
-from opentelemetry import baggage
 from opentelemetry import trace
-from opentelemetry.trace import Status
-from opentelemetry.trace import StatusCode
 
-from datarobot_genai.core.agents import RUN_ERROR_CODE
 from datarobot_genai.core.agents import default_usage_metrics
 from datarobot_genai.core.agents import track_open_text_in_events
-from datarobot_genai.core.telemetry.agent_identity import GEN_AI_AGENT_NAME_BAGGAGE_KEY
-from datarobot_genai.core.telemetry.agent_identity import agent_name_baggage
+from datarobot_genai.core.telemetry.agent_span import AGENT_SPAN_NAME
+from datarobot_genai.core.telemetry.agent_span import ERROR_TYPE
+from datarobot_genai.core.telemetry.agent_span import GEN_AI_COMPLETION
+from datarobot_genai.core.telemetry.agent_span import GEN_AI_PROMPT
+from datarobot_genai.core.telemetry.agent_span import agent_span
+from datarobot_genai.core.telemetry.agent_span import last_user_message
 from datarobot_genai.core.telemetry.nat_context import use_nat_workflow_trace_context
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.response import run_error_response
@@ -49,17 +46,19 @@ logger = logging.getLogger(__name__)
 
 tracer = trace.get_tracer(__name__)
 
-# Parent span created per invocation so the Tracing table attributes always
-# have a span to live on, even though NAT builds its own (non-SDK) spans.
-AGENT_SPAN_NAME = "datarobot_agent"
-
-# Span attributes that map to deployment Tracing table columns.
-GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
-GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
-ERROR_TYPE = "error.type"  # Failed span classification
-
 # AG-UI event types that carry assistant text deltas.
 _TEXT_EVENT_TYPES = (EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_CHUNK)
+
+# Re-exported: the span/attribute names now live in the NAT-free
+# ``core.telemetry.agent_span`` so non-NAT callers can share them.
+__all__ = [
+    "AGENT_SPAN_NAME",
+    "ERROR_TYPE",
+    "GEN_AI_COMPLETION",
+    "GEN_AI_PROMPT",
+    "DataRobotOtelConventionsMiddleware",
+    "DataRobotOtelConventionsMiddlewareConfig",
+]
 
 
 def _thread_id_from_args(args: tuple[Any, ...]) -> str | None:
@@ -82,7 +81,7 @@ def _last_user_message_content(value: Any) -> str | None:
     if isinstance(value, ChatRequestOrMessage):
         return _nat_last_user_message_content(value)
     if isinstance(value, RunAgentInput):
-        return _ag_ui_last_user_message_content(value)
+        return last_user_message(value)
     return None
 
 
@@ -95,52 +94,9 @@ def _nat_last_user_message_content(request: ChatRequestOrMessage) -> str | None:
     return None
 
 
-def _ag_ui_last_user_message_content(run_agent_input: RunAgentInput) -> str | None:
-    for message in reversed(run_agent_input.messages):
-        if isinstance(message, UserMessage):
-            return None if message.content is None else str(message.content)
-    return None
-
-
 def _response_text(response: DRAgentEventResponse) -> str:
     """Join assistant text deltas from a DRAgentEventResponse's AG-UI events."""
     return "".join(event.delta for event in response.events if event.type in _TEXT_EVENT_TYPES)
-
-
-def _mark_span_error_on_run_error(span: trace.Span, response: DRAgentEventResponse) -> None:
-    """Mark the span failed when the response carries a ``RUN_ERROR`` event."""
-    for event in response.events:
-        if event.type == EventType.RUN_ERROR:
-            span.set_attribute(ERROR_TYPE, event.code or RUN_ERROR_CODE)
-            span.set_status(Status(StatusCode.ERROR, event.message or "workflow run error"))
-            return
-
-
-def _emit_tool_call_spans(response: DRAgentEventResponse) -> None:
-    """Emit a short-lived span carrying ``gen_ai.tool.name`` for each tool-call start.
-
-    NAT reports tool execution via intermediate-step end events we can't wrap,
-    but it does surface a ``ToolCallStartEvent``. Creating and immediately
-    ending a span with the ``gen_ai.tool.name`` attribute is enough to populate
-    the Tracing table Tools column - using the semconv name directly (rather
-    than the bare ``tool_name`` this used to set) keeps these calls out of
-    Datavolt's deprecated-attribute bucket.
-
-    Also stamps ``gen_ai.agent.name`` from the active baggage (set by the
-    caller's ``agent_name_baggage`` context around this call) directly onto
-    the span, not just left in baggage: baggage auto-propagates across an
-    outgoing HTTP hop (e.g. a networked MCP tool), but this span is created
-    in-process for every tool call, and Datavolt's agent/tool cross-tab query
-    (``get_agent_tool_stats``) requires both attributes on the same span to
-    attribute a call to its agent - baggage alone never reaches Datavolt.
-    """
-    for event in response.events:
-        if isinstance(event, ToolCallStartEvent):
-            with tracer.start_as_current_span(event.tool_call_name) as span:
-                span.set_attribute(DataRobotSpanAttributes.GEN_AI_TOOL_NAME, event.tool_call_name)
-                agent_name = baggage.get_baggage(GEN_AI_AGENT_NAME_BAGGAGE_KEY)
-                if agent_name:
-                    span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, str(agent_name))
 
 
 class DataRobotOtelConventionsMiddlewareConfig(
@@ -193,23 +149,19 @@ class DataRobotOtelConventionsMiddleware(
     ) -> Any:
         with (
             use_nat_workflow_trace_context(),
-            tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
-            agent_name_baggage(context.name),
+            agent_span(
+                context.name,
+                prompt=self._prompt_from_args(args),
+                session_id=_thread_id_from_args(args),
+                tracer=tracer,
+            ) as recorder,
         ):
-            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
-            prompt = self._prompt_from_args(args)
-            if prompt is not None:
-                span.set_attribute(GEN_AI_PROMPT, prompt)
-            thread_id = _thread_id_from_args(args)
-            if thread_id is not None:
-                span.set_attribute(DataRobotSpanAttributes.DATAROBOT_SESSION_ID, thread_id)
             output = await call_next(*args, **kwargs)
             if isinstance(output, DRAgentEventResponse):
-                _emit_tool_call_spans(output)
-                _mark_span_error_on_run_error(span, output)
+                recorder.observe(output.events)
             completion = self._completion_from_output(output)
             if completion is not None:
-                span.set_attribute(GEN_AI_COMPLETION, completion)
+                recorder.set_completion(completion)
             return output
 
     async def function_middleware_stream(
@@ -219,30 +171,25 @@ class DataRobotOtelConventionsMiddleware(
         context: FunctionMiddlewareContext,
         **kwargs: Any,
     ) -> AsyncIterator[Any]:
+        # ``agent_span`` writes the aggregated completion in its own ``finally``,
+        # so it survives early teardown: downstream moderation may stop consuming
+        # and ``aclose()`` this generator (throwing ``GeneratorExit`` at the
+        # ``yield``) before the loop exits normally.
         with (
             use_nat_workflow_trace_context(),
-            tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
-            agent_name_baggage(context.name),
+            agent_span(
+                context.name,
+                prompt=self._prompt_from_args(args),
+                session_id=_thread_id_from_args(args),
+                tracer=tracer,
+            ) as recorder,
         ):
-            span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, context.name)
-            prompt = self._prompt_from_args(args)
-            if prompt is not None:
-                span.set_attribute(GEN_AI_PROMPT, prompt)
-            thread_id = _thread_id_from_args(args)
-            if thread_id is not None:
-                span.set_attribute(DataRobotSpanAttributes.DATAROBOT_SESSION_ID, thread_id)
-            # Per-invocation accumulator; no cross-session state to manage.
-            parts: list[str] = []
             open_text_ids: set[str] = set()
             try:
                 async for chunk in call_next(*args, **kwargs):
                     if isinstance(chunk, DRAgentEventResponse):
-                        _emit_tool_call_spans(chunk)
-                        _mark_span_error_on_run_error(span, chunk)
+                        recorder.observe(chunk.events)
                         track_open_text_in_events(open_text_ids, chunk.events)
-                        text = _response_text(chunk)
-                        if text:
-                            parts.append(text)
                     yield chunk
             except Exception as exc:
                 # Close open text segments, then end the run with a terminal RUN_ERROR instead of
@@ -254,18 +201,8 @@ class DataRobotOtelConventionsMiddleware(
                         usage_metrics=default_usage_metrics(),
                     )
                 error_response = run_error_response(str(exc))
-                _mark_span_error_on_run_error(span, error_response)
+                recorder.observe(error_response.events)
                 yield error_response
-            finally:
-                # Attach the completion in ``finally`` so it survives early teardown.
-                # Downstream moderation may stop consuming and ``aclose()`` this generator
-                # (throwing ``GeneratorExit`` at the ``yield``) before the loop exits normally
-                # — e.g. when the moderation stream finishes before draining its source. Setting
-                # the attribute after the loop would then be skipped, dropping ``gen_ai.completion``
-                # even though the deltas were already seen. The span is still open here because the
-                # enclosing ``with`` block outlives this ``finally``.
-                if parts:
-                    span.set_attribute(GEN_AI_COMPLETION, "".join(parts))
 
 
 @register_middleware(  # type: ignore[untyped-decorator]
