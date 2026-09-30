@@ -39,6 +39,7 @@ constraints = [
     { name = "pyasn1", specifier = ">=0.6.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pygments", specifier = ">=2.20.0" },
+    { name = "pyjwt", specifier = ">=2.14.0" },
     { name = "pypdf", specifier = ">=6.16.1" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "python-multipart", specifier = ">=0.0.31" },
@@ -63,7 +64,6 @@ overrides = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-instrumentation", specifier = ">=0.64b0,<0.65" },
     { name = "opentelemetry-sdk", specifier = ">=1.43.0,<2.0.0" },
-    { name = "pyjwt", specifier = ">=2.13.0" },
     { name = "python-dotenv", specifier = ">=1.2.2,<2.0.0" },
 ]
 excludes = [
@@ -1034,7 +1034,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.55"
+version = "0.29.57"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1091,6 +1091,7 @@ dragent = [
     { name = "pyjwt" },
     { name = "requests" },
     { name = "starlette" },
+    { name = "tensile" },
 ]
 langgraph = [
     { name = "ag-ui-protocol" },
@@ -1346,6 +1347,7 @@ requires-dist = [
     { name = "starlette", marker = "extra == 'drmcpbase'", specifier = ">=1.0.1" },
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
+    { name = "tensile", marker = "extra == 'dragent'", specifier = ">=0.12.0,<1.0.0" },
 ]
 provides-extras = ["core", "crewai", "langgraph", "llamaindex", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent"]
 
@@ -3869,7 +3871,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pyjwt" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "sse-starlette" },
@@ -5244,6 +5246,15 @@ wheels = [
 ]
 
 [[package]]
+name = "petname"
+version = "2.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/74/8f0b5d5231e9045ef690342aa620e1a2f69d5eff1ec04803fc4fae6fe774/petname-2.9.tar.gz", hash = "sha256:df4e44b37c7907b5a5e1a74062d56a5845d7efb8833b21b557fdff99afff2d0c", size = 12956, upload-time = "2026-02-15T04:09:23.095Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/d7/6e9ca18d9d1d73e85be98664cca5d3422873e8838a6cfc84ff2096d9c88c/petname-2.9-py3-none-any.whl", hash = "sha256:57f2e0bb4292e9209b5ef02085a33525c638c07f5ec92ebd6db78e8bb574d238", size = 14093, upload-time = "2026-02-15T04:09:21.791Z" },
+]
+
+[[package]]
 name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5864,11 +5875,16 @@ wheels = [
 
 [[package]]
 name = "pyjwt"
-version = "2.13.0"
+version = "2.15.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3b/81/58d0ac84e1ef3a3843791d6954d94c0b33d526c75eeb1efbce9d0a4c4077/pyjwt-2.13.0.tar.gz", hash = "sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423", size = 107515, upload-time = "2026-05-21T19:54:36.618Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/ea/5194e52748b0da83d71e082d75496eaec6e58f419f5e184786ded517e6a9/pyjwt-2.15.1.tar.gz", hash = "sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8", size = 121252, upload-time = "2026-09-28T18:40:42.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/5e/ecf12fdb62546d64385c158514e9b2b671f7832108ef2ecd2020ce0af2d1/pyjwt-2.13.0-py3-none-any.whl", hash = "sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728", size = 31274, upload-time = "2026-05-21T19:54:35.362Z" },
+    { url = "https://files.pythonhosted.org/packages/50/ca/44de4e75f8aadc457f0634be3b542815078ded46dca30efb960edeecad6e/pyjwt-2.15.1-py3-none-any.whl", hash = "sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193", size = 33860, upload-time = "2026-09-28T18:40:41.429Z" },
+]
+
+[package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
 ]
 
 [[package]]
@@ -6696,6 +6712,28 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+]
+
+[[package]]
+name = "tensile"
+version = "0.12.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "opentelemetry-api" },
+    { name = "petname" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "tqdm" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "wrapt" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/7f/1ce55b04fc65d58a304ee2384fc356ec1546c4ad60db2163ba016c2b99ba/tensile-0.12.2-py3-none-any.whl", hash = "sha256:4435f7006d4fae66f983cbf02a7b200036008e692788fab0dc95e970f283ca10", size = 839858, upload-time = "2026-09-30T15:54:24.762Z" },
 ]
 
 [[package]]

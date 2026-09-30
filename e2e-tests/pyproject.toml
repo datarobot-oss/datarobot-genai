@@ -114,6 +114,7 @@ constraint-dependencies = [
     "pyasn1>=0.6.4",
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",
+    "PyJWT>=2.14.0",
     "pypdf>=6.16.1",
     "pytest>=9.0.3",
     "python-multipart>=0.0.31",
@@ -138,7 +139,6 @@ override-dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
     "opentelemetry-instrumentation>=0.64b0,<0.65",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
-    "PyJWT>=2.13.0",
     "python-dotenv>=1.2.2,<2.0.0",
 ]
 # cve-sync:end

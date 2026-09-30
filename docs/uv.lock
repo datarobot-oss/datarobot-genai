@@ -156,7 +156,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.55"
+version = "0.29.57"
 source = { editable = "../" }
 
 [package.metadata]
@@ -362,6 +362,7 @@ requires-dist = [
     { name = "starlette", marker = "extra == 'drmcpbase'", specifier = ">=1.0.1" },
     { name = "tavily-python", marker = "extra == 'drmcp'", specifier = ">=0.7.20,<1.0.0" },
     { name = "tavily-python", marker = "extra == 'drtools'", specifier = ">=0.7.20,<1.0.0" },
+    { name = "tensile", marker = "extra == 'dragent'", specifier = ">=0.12.0,<1.0.0" },
 ]
 provides-extras = ["core", "crewai", "langgraph", "llamaindex", "auth", "eval", "drmcpbase", "drmcputils", "drmcp", "drtools", "dragent"]
 
