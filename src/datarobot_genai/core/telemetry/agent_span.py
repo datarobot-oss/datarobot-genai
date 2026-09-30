@@ -22,9 +22,9 @@ wants its own traces classified - the DRAgent NAT middleware, or an application
 backend that calls an agent deployment over HTTP - wraps the call in
 :func:`agent_span` and feeds the AG-UI events it sees to the returned recorder.
 
-This module depends only on ``opentelemetry-api``, ``ag-ui-protocol`` and
-``datarobot-opentelemetry``, so it is importable from a plain
-``datarobot-genai`` install with no extras.
+This module depends only on ``opentelemetry-api`` and ``ag-ui-protocol``, so it
+is covered by the ``core`` extra and importable from a plain ``datarobot-genai``
+install by callers that already have those two.
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ from ag_ui.core import EventType
 from ag_ui.core import RunAgentInput
 from ag_ui.core import RunErrorEvent
 from ag_ui.core import ToolCallStartEvent
-from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from opentelemetry import baggage
 from opentelemetry import trace
 from opentelemetry.trace import Span
@@ -55,9 +54,14 @@ _tracer = trace.get_tracer(__name__)
 # have a span to live on.
 AGENT_SPAN_NAME = "datarobot_agent"
 
-# Span attributes that map to deployment Tracing table columns.
+# Span attributes that map to deployment Tracing table columns. Spelled out
+# rather than taken from ``datarobot_opentelemetry.semconv.SpanAttributes``
+# (same values) so this module needs nothing beyond the ``core`` extra.
 GEN_AI_PROMPT = "gen_ai.prompt"  # Prompt column
 GEN_AI_COMPLETION = "gen_ai.completion"  # Completion column
+GEN_AI_AGENT_NAME = "gen_ai.agent.name"
+GEN_AI_TOOL_NAME = "gen_ai.tool.name"  # Tools column
+DATAROBOT_SESSION_ID = "datarobot.session_id"
 ERROR_TYPE = "error.type"  # Failed span classification
 
 # Same value as ``datarobot_genai.core.agents.RUN_ERROR_CODE``; not imported from
@@ -136,10 +140,10 @@ class AgentSpanRecorder:
         # span (not left only in baggage) because Datavolt's agent/tool cross-tab
         # needs both attributes on one span.
         with self._tracer.start_as_current_span(event.tool_call_name) as span:
-            span.set_attribute(DataRobotSpanAttributes.GEN_AI_TOOL_NAME, event.tool_call_name)
+            span.set_attribute(GEN_AI_TOOL_NAME, event.tool_call_name)
             agent_name = baggage.get_baggage(GEN_AI_AGENT_NAME_BAGGAGE_KEY)
             if agent_name:
-                span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, str(agent_name))
+                span.set_attribute(GEN_AI_AGENT_NAME, str(agent_name))
 
     def _mark_error(self, event: RunErrorEvent) -> None:
         self._span.set_attribute(ERROR_TYPE, event.code or RUN_ERROR_CODE)
@@ -170,11 +174,11 @@ def agent_span(
         active_tracer.start_as_current_span(AGENT_SPAN_NAME) as span,
         agent_name_baggage(agent_name),
     ):
-        span.set_attribute(DataRobotSpanAttributes.GEN_AI_AGENT_NAME, agent_name)
+        span.set_attribute(GEN_AI_AGENT_NAME, agent_name)
         if prompt is not None:
             span.set_attribute(GEN_AI_PROMPT, prompt)
         if session_id is not None:
-            span.set_attribute(DataRobotSpanAttributes.DATAROBOT_SESSION_ID, session_id)
+            span.set_attribute(DATAROBOT_SESSION_ID, session_id)
         recorder = AgentSpanRecorder(span, active_tracer)
         try:
             yield recorder

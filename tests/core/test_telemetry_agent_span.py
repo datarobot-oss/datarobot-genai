@@ -30,7 +30,6 @@ from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
-from datarobot_opentelemetry.semconv import SpanAttributes as DataRobotSpanAttributes
 from opentelemetry import baggage
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace import TracerProvider
@@ -41,9 +40,12 @@ from opentelemetry.trace import Tracer
 
 from datarobot_genai.core.telemetry.agent_identity import GEN_AI_AGENT_NAME_BAGGAGE_KEY
 from datarobot_genai.core.telemetry.agent_span import AGENT_SPAN_NAME
+from datarobot_genai.core.telemetry.agent_span import DATAROBOT_SESSION_ID
 from datarobot_genai.core.telemetry.agent_span import ERROR_TYPE
+from datarobot_genai.core.telemetry.agent_span import GEN_AI_AGENT_NAME
 from datarobot_genai.core.telemetry.agent_span import GEN_AI_COMPLETION
 from datarobot_genai.core.telemetry.agent_span import GEN_AI_PROMPT
+from datarobot_genai.core.telemetry.agent_span import GEN_AI_TOOL_NAME
 from datarobot_genai.core.telemetry.agent_span import RUN_ERROR_CODE
 from datarobot_genai.core.telemetry.agent_span import agent_span
 from datarobot_genai.core.telemetry.agent_span import last_user_message
@@ -125,9 +127,9 @@ def test_agent_span_sets_input_attributes(exporter: InMemorySpanExporter, tracer
     # THEN the agent span carries the Tracing table input attributes
     span = _spans(exporter)[AGENT_SPAN_NAME]
     assert span.attributes is not None
-    assert span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "researcher"
+    assert span.attributes[GEN_AI_AGENT_NAME] == "researcher"
     assert span.attributes[GEN_AI_PROMPT] == "hi"
-    assert span.attributes[DataRobotSpanAttributes.DATAROBOT_SESSION_ID] == "thread"
+    assert span.attributes[DATAROBOT_SESSION_ID] == "thread"
 
 
 def test_agent_span_omits_absent_prompt_and_session(
@@ -142,7 +144,7 @@ def test_agent_span_omits_absent_prompt_and_session(
     span = _spans(exporter)[AGENT_SPAN_NAME]
     assert span.attributes is not None
     assert GEN_AI_PROMPT not in span.attributes
-    assert DataRobotSpanAttributes.DATAROBOT_SESSION_ID not in span.attributes
+    assert DATAROBOT_SESSION_ID not in span.attributes
 
 
 def test_agent_span_aggregates_completion_across_observe_calls(
@@ -202,8 +204,8 @@ def test_agent_span_emits_tool_spans_under_the_agent_span(
     spans = _spans(exporter)
     tool_span = spans["search"]
     assert tool_span.attributes is not None
-    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_TOOL_NAME] == "search"
-    assert tool_span.attributes[DataRobotSpanAttributes.GEN_AI_AGENT_NAME] == "researcher"
+    assert tool_span.attributes[GEN_AI_TOOL_NAME] == "search"
+    assert tool_span.attributes[GEN_AI_AGENT_NAME] == "researcher"
     assert tool_span.parent is not None
     assert tool_span.parent.span_id == spans[AGENT_SPAN_NAME].context.span_id
 
@@ -268,8 +270,8 @@ def test_agent_span_imports_without_nat_or_core_extra() -> None:
     # WHEN only agent_span is imported
     code = (
         "import sys, datarobot_genai.core.telemetry.agent_span; "
-        "heavy = [m for m in ('nat', 'datarobot_genai.core.agents', 'datarobot', 'openai') "
-        "if m in sys.modules]; print(heavy)"
+        "heavy = [m for m in ('nat', 'datarobot_genai.core.agents', 'datarobot', "
+        "'openai', 'datarobot_opentelemetry') if m in sys.modules]; print(heavy)"
     )
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
@@ -277,3 +279,15 @@ def test_agent_span_imports_without_nat_or_core_extra() -> None:
 
     # THEN nothing from NAT or the core extra is loaded
     assert result.stdout.strip() == "[]"
+
+
+def test_attribute_names_match_datarobot_opentelemetry_semconv() -> None:
+    # GIVEN the semconv package, where installed (it ships with the dragent extra)
+    semconv = pytest.importorskip("datarobot_opentelemetry.semconv")
+
+    # WHEN / THEN the spelled-out attribute names match its constants
+    attrs = semconv.SpanAttributes
+    assert GEN_AI_AGENT_NAME == attrs.GEN_AI_AGENT_NAME
+    assert GEN_AI_TOOL_NAME == attrs.GEN_AI_TOOL_NAME
+    assert DATAROBOT_SESSION_ID == attrs.DATAROBOT_SESSION_ID
+    assert ERROR_TYPE == attrs.ERROR_TYPE
