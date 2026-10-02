@@ -4,8 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.59 - 2026-10-02
+## 0.29.60 - 2026-10-02
 - Raise the published `pyjwt` extra floor from `>=2.12.0` to `>=2.15.0`. The cve-sync constraint already required 2.15.0; the extras still allowed 2.13.0.
+
+## 0.29.59 - 2026-10-02
 - Raise the minimum `tornado` version from `>=6.5.8` to `>=6.5.9`.
 
 ## 0.29.58 - 2026-09-30
