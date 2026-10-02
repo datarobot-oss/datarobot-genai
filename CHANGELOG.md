@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.62 - 2026-10-02
+- Raise the declared requirement `aiohttp>=3.13.3,<4.0.0` to `aiohttp>=3.14.3,<4.0.0` to match a CVE
+  fix this repo already enforces.
+- Raise the declared requirement `mkdocs-material>=9.5.0` to `mkdocs-material>=9.7.7` to match a CVE
+  fix this repo already enforces.
+- Raise the declared requirement `openai>=2.0.0,<3.0.0` to `openai>=2.30.0,<3.0.0` to match a CVE
+  fix this repo already enforces.
+- Raise the declared requirement `pydantic-settings>=2.1.0,<3.0.0` to
+  `pydantic-settings>=2.14.2,<3.0.0` to match a CVE fix this repo already enforces.
+- Raise the declared requirement `pypdf>=6.10.1` to `pypdf>=6.19.0` to match a CVE fix this repo
+  already enforces.
+- Raise the declared requirement `pypdf>=6.10.1,<7.0.0` to `pypdf>=6.19.0,<7.0.0` to match a CVE fix
+  this repo already enforces.
+- Raise the declared requirement `requests>=2.32.4,<3.0.0` to `requests>=2.33.0,<3.0.0` to match a
+  CVE fix this repo already enforces.
+- Raise the declared requirement `starlette>=1.0.1` to `starlette>=1.3.1` to match a CVE fix this
+  repo already enforces.
+
 ## 0.29.61 - 2026-10-02
 - Raise the minimum `jupyterlab` version from `>=4.5.10` to `>=4.6.4`.
 - Raise the minimum `litellm` version from `>=1.91.1,<2.0.0` to `>=1.96.2,<2.0.0`.
