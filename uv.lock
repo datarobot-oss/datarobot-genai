@@ -7046,7 +7046,7 @@ wheels = [
 
 [[package]]
 name = "tensile"
-version = "0.12.0"
+version = "0.12.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -7063,7 +7063,7 @@ dependencies = [
     { name = "wrapt" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/30/d05e71ce03bf4d01fe6f1dc66911322d53f8786dd53246854d65bbc3b9f2/tensile-0.12.0-py3-none-any.whl", hash = "sha256:6d744fbf882ed211a208839e1b1d41b579f008eed4c99c1aa80594eb117dd0d9", size = 835095, upload-time = "2026-09-28T14:20:34.589Z" },
+    { url = "https://files.pythonhosted.org/packages/59/32/00b5159d3b27a3339ae4111311eca04c2a3148748da4ea16f3ba9b050515/tensile-0.12.4-py3-none-any.whl", hash = "sha256:01ac582e9ed5170611fe31ba98ca32f4861da889f8059fbf13f2f38ded0b8b17", size = 820042, upload-time = "2026-10-01T14:15:54.126Z" },
 ]
 
 [[package]]
