@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.59 - 2026-10-02
+- Raise the minimum `tornado` version from `>=6.5.8` to `>=6.5.9`.
+
 ## 0.29.58 - 2026-09-30
 - Raise the minimum `pyjwt` version from `>=2.14.0` to `>=2.15.0`.
 - Raise the minimum `urllib3` version from `>=2.7.0` to `>=2.8.0`.
