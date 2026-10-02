@@ -36,6 +36,13 @@ core = [
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
     "datarobot-moderations[all]>=11.3.7,<12.0.0",
+    # moderations[all] pulls llama-index-llms-bedrock-converse without its async extra. From
+    # 0.15 that package made aioboto3 optional; litellm>=1.98 hard-requires boto3>=1.43, which
+    # cannot resolve with aiobotocore, so a bare lock drops aioboto3 and async Bedrock Converse
+    # (moderations / LlamaIndex) breaks. Declaring the async extra forces aioboto3 back and
+    # keeps litellm on a boto3-1.40-compatible release that still satisfies the CVE floor
+    # (>=1.96.2).
+    "llama-index-llms-bedrock-converse[async]>=0.15.0",
     # Keep this version in sync with all consumers of agent messages e.g. the fastapi_server of the
     # agent application template
     "ag-ui-protocol==0.1.15",
@@ -48,7 +55,7 @@ crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.15.21,<2.0.0",
-    "litellm>=1.91.1,<2.0.0",
+    "litellm>=1.96.2,<2.0.0",
     "crewai-tools[mcp]>=1.15.21,<2.0.0",
     "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
     "nvidia-nat-crewai==1.7.0",
@@ -60,7 +67,7 @@ langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
     "langgraph>=1.0.0,<2.0.0",
     "langgraph-prebuilt>=1.0.0,<2.0.0",
-    "litellm>=1.91.1,<2.0.0",
+    "litellm>=1.96.2,<2.0.0",
     "nvidia-nat-langchain==1.7.0",
     "opentelemetry-instrumentation-langchain>=0.62.1,<1.0.0",
 ]
@@ -70,7 +77,7 @@ llamaindex = core + [
     "llama-index-core>=0.14.0,<0.15.0",
     "llama-index-llms-langchain>=0.8.0,<1.0.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
-    "litellm>=1.91.1,<2.0.0",
+    "litellm>=1.96.2,<2.0.0",
     "llama-index-llms-openai>=0.6.0,<0.7.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
     "nvidia-nat-llama-index==1.7.0",
@@ -137,7 +144,7 @@ drtools =  drmcputils + [
 # eval is standalone set of dependencies for evaluation utilities only (no core).
 eval_deps = [
     "nemo-evaluator-launcher",
-    "litellm>=1.91.1,<2.0.0",
+    "litellm>=1.96.2,<2.0.0",
     "pyyaml>=6.0",
 ]
 

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.63 - 2026-10-02
+- Raise the minimum `litellm` version from `>=1.91.1,<2.0.0` to `>=1.96.2,<2.0.0` in `setup.py`.
+- Require `llama-index-llms-bedrock-converse[async]>=0.15.0` in the `core` extra so async Bedrock Converse keeps `aioboto3` after the litellm floor bump.
+
 ## 0.29.62 - 2026-10-02
 - Raise the declared requirement `aiohttp>=3.13.3,<4.0.0` to `aiohttp>=3.14.3,<4.0.0` to match a CVE
   fix this repo already enforces.
