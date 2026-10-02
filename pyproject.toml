@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.29.60"
+version = "0.29.61"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -104,7 +104,7 @@ constraint-dependencies = [
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",
     "PyJWT>=2.15.0",
-    "pypdf>=6.16.1",
+    "pypdf>=6.19.0",
     "pytest>=9.0.3",
     "python-multipart>=0.0.31",
     "requests>=2.33.0",
@@ -119,7 +119,7 @@ override-dependencies = [
     "crewai>=1.15.21",
     "cryptography>=50.0.0",
     "json-repair>=0.60.1",
-    "litellm>=1.91.1,<2.0.0",
+    "litellm>=1.96.2,<2.0.0",
     "mcp>=1.28.1,<2",
     "opentelemetry-api>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-common>=1.43.0,<2.0.0",

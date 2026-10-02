@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.61 - 2026-10-02
+- Raise the minimum `jupyterlab` version from `>=4.5.10` to `>=4.6.4`.
+- Raise the minimum `litellm` version from `>=1.91.1,<2.0.0` to `>=1.96.2,<2.0.0`.
+- Raise the minimum `notebook` version from `>=7.5.6` to `>=7.6.3`.
+- Raise the minimum `pypdf` version from `>=6.16.1` to `>=6.19.0`.
+
 ## 0.29.60 - 2026-10-02
 - Raise the published `pyjwt` extra floor from `>=2.12.0` to `>=2.15.0`. The cve-sync constraint already required 2.15.0; the extras still allowed 2.13.0.
 
