@@ -34,4 +34,5 @@ MCP_CLI_OPTS: list[tuple[str, str | None, str | None]] = [
     ("vdb", None, "enable_vdb_tools"),
     ("workload", None, "enable_workload_tools"),
     ("files_api", None, "enable_files_api_tools"),
+    ("otel", None, "enable_otel_tools"),
 ]
