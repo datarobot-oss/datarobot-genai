@@ -42,7 +42,7 @@ jobs:
   # Create/repair the automation labels (idempotent); optionally add per-branch
   # backport labels and clean up confusable review-label variants.
   ensure-labels:
-    uses: datarobot-oss/github-actions/.github/workflows/ensure-labels.yaml@0.0.28
+    uses: datarobot-oss/github-actions/.github/workflows/ensure-labels.yaml@0.0.29
     with:
       backport_branches: ${{ inputs.backport_branches }}
       dependabot_ecosystems: ${{ inputs.dependabot_ecosystems }}
