@@ -21,7 +21,7 @@ from unittest.mock import patch
 import datarobot as dr
 import polars as pl
 import pytest
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from mcp.types import TextContent
 
 from datarobot_genai.drmcputils.exceptions import ToolError

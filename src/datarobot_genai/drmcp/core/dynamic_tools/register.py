@@ -15,7 +15,7 @@
 import logging
 from typing import Any
 
-from fastmcp.tools.tool import Tool
+from fastmcp.tools import Tool
 
 from datarobot_genai.drmcp.core.config import get_config
 from datarobot_genai.drmcp.core.mcp_instance import register_tools

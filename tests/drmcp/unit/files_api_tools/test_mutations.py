@@ -409,12 +409,14 @@ async def test_file_manage_clone_files_to_omit_json_encoded_empty_list(
 async def test_file_manage_clone_files_to_omit_still_rejects_garbage_string(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from fastmcp.exceptions import ValidationError as FastMCPValidationError
     from fastmcp.tools import Tool
     from pydantic import ValidationError
 
     _use_store(monkeypatch, FakeStore())
     tool = Tool.from_function(fn=mut_mod.file_manage)
-    with pytest.raises(ValidationError):
+    # FastMCP 4 wraps argument validation errors in its own ValidationError.
+    with pytest.raises((ValidationError, FastMCPValidationError)):
         await tool.run({"action": "clone", "path": "dr://abc/", "files_to_omit": "not json"})
 
 

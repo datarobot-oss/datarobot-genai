@@ -383,7 +383,6 @@ class TestRegisterTool:
             name=tool_func_name,
             title=None,
             description=None,
-            annotations=None,
             tags=None,
             meta={"tool_category": DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name},
         )
@@ -395,3 +394,27 @@ class TestRegisterTool:
             tool_func_name,
         )
         assert actual_output == mock_datarobot_mcp_server.add_tool.return_value
+
+    @pytest.mark.asyncio
+    async def test_register_tools_puts_deployment_id_in_meta(
+        self,
+        mock_check_tool_registration_status_after_it_finishes: AsyncMock,
+        mock_datarobot_mcp_server: Mock,
+        mock_dr_mcp_extras: Mock,
+        mock_mcp_tool_callable: Mock,
+        mock_tool_from_function: Mock,
+    ) -> None:
+        # GIVEN a tool backed by a deployment
+        mock_datarobot_mcp_server.set_deployment_mapping = AsyncMock()
+
+        # WHEN it is registered
+        await register_tools(fn=mock_mcp_tool_callable, name="tool", deployment_id="dep-1")
+
+        # THEN the deployment id is in the tool's meta, not its annotations
+        kwargs = mock_tool_from_function.call_args.kwargs
+        assert kwargs["meta"] == {
+            "tool_category": DataRobotMCPToolCategory.USER_TOOL_DEPLOYMENT.name,
+            "deployment_id": "dep-1",
+        }
+        assert "annotations" not in kwargs
+        mock_datarobot_mcp_server.set_deployment_mapping.assert_awaited_once_with("dep-1", "tool")

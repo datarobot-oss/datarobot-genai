@@ -25,16 +25,13 @@ from typing import TypedDict
 from typing import TypeVar
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import NotFoundError
-from fastmcp.prompts.prompt import Prompt
+from fastmcp.prompts import Prompt
 from fastmcp.server.auth import AuthCheck
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool
 from mcp.types import Annotations as MCPAnnotationsType
-from mcp.types import AnyFunction
 from mcp.types import Icon as MCPIconType
-from mcp.types import ToolAnnotations
 from typing_extensions import Unpack
 
 from datarobot_genai.drmcpbase.dynamic_tools.enums import DataRobotMCPToolCategory
@@ -127,8 +124,8 @@ class DataRobotMCP(FastMCP):
                 f"{tool_name}"
             )
             try:
-                self.remove_tool(existing)
-            except NotFoundError:
+                self.local_provider.remove_tool(existing)
+            except KeyError:
                 logger.debug(f"Tool {existing} not found in registry, skipping removal")
         self._deployments_map[deployment_id] = tool_name
 
@@ -143,8 +140,8 @@ class DataRobotMCP(FastMCP):
         if removed is not None:
             logger.debug(f"Removed deployment mapping for ID {deployment_id} with tool {removed}")
             try:
-                self.remove_tool(removed)
-            except NotFoundError:
+                self.local_provider.remove_tool(removed)
+            except KeyError:
                 logger.debug(f"Tool {removed} not found in registry, skipping removal")
 
     async def get_prompt_mapping(self) -> dict[str, tuple[str, str]]:
@@ -516,7 +513,7 @@ async def check_prompt_registration_status_after_it_finishes(
 
 
 async def register_tools(
-    fn: AnyFunction,
+    fn: Callable[..., Any],
     name: str | None = None,
     title: str | None = None,
     description: str | None = None,
@@ -545,20 +542,19 @@ async def register_tools(
 
     wrapped_fn = dr_mcp_extras()(fn)
 
-    # Create annotations only when additional metadata is required
-    annotations: ToolAnnotations | None = None  # type: ignore[assignment]
+    # The deployment id goes in `meta`, not `annotations`: mcp 2.x's ToolAnnotations
+    # no longer accepts fields beyond the spec's.
+    meta: dict[str, Any] = {"tool_category": tool_category.name}
     if deployment_id is not None:
-        annotations = ToolAnnotations()  # type: ignore[call-arg]
-        annotations.deployment_id = deployment_id  # type: ignore[attr-defined]
+        meta["deployment_id"] = deployment_id
 
     tool = Tool.from_function(
         fn=wrapped_fn,
         name=tool_name,
         title=title,
         description=description,
-        annotations=annotations,
         tags=tags,
-        meta={"tool_category": tool_category.name},
+        meta=meta,
     )
 
     # Register the tool
@@ -574,7 +570,7 @@ async def register_tools(
 
 
 async def register_prompt(
-    fn: AnyFunction,
+    fn: Callable[..., Any],
     name: str | None = None,
     title: str | None = None,
     description: str | None = None,

@@ -19,7 +19,7 @@ from inspect import Parameter
 from inspect import Signature
 
 import datarobot as dr
-from fastmcp.prompts.prompt import Prompt
+from fastmcp.prompts import Prompt
 from pydantic import Field
 
 from datarobot_genai.drmcp.core.exceptions import DynamicPromptRegistrationError

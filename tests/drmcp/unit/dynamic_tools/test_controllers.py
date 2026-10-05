@@ -19,7 +19,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.tools.tool import Tool
+from fastmcp.tools import Tool
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.controllers import (
     delete_registered_tool_deployment,

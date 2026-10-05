@@ -447,5 +447,7 @@ def test_mcp_server_capabilities():
 
     opts = mcp._mcp_server.create_initialization_options()
 
-    assert opts.capabilities.prompts.listChanged is True
-    assert opts.capabilities.experimental == {"dynamic_prompts": {"enabled": True}}
+    # Compare the wire form: mcp 2.x renamed the field to `list_changed`, aliased to listChanged.
+    capabilities = opts.capabilities.model_dump(by_alias=True)
+    assert capabilities["prompts"]["listChanged"] is True
+    assert capabilities["experimental"] == {"dynamic_prompts": {"enabled": True}}

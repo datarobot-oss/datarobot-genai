@@ -21,8 +21,8 @@ from unittest.mock import patch
 import pytest
 from aioresponses import aioresponses
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import Tool
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import Tool
+from fastmcp.tools import ToolResult
 
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
