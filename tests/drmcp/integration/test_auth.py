@@ -20,7 +20,7 @@ from unittest.mock import patch
 import jwt
 import pytest
 from fastmcp.server.middleware import MiddlewareContext
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.drmcp.core.middleware import create_oauth_middleware

@@ -14,7 +14,7 @@
 import logging
 
 import datarobot as dr
-from fastmcp.tools.tool import Tool
+from fastmcp.tools import Tool
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool

@@ -30,14 +30,13 @@ import traceback
 from typing import Any
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-from mcp.shared.context import RequestContext
 from mcp.types import ElicitRequestParams
 from mcp.types import ElicitResult
 
 from datarobot_genai.drmcp import DRLLMGatewayMCPClient
 from datarobot_genai.drmcp import get_dr_mcp_server_url
 from datarobot_genai.drmcp import get_headers
+from datarobot_genai.drmcp.test_utils.mcp_utils_ete import open_streamable_http
 
 
 async def test_mcp_interactive() -> None:
@@ -85,12 +84,14 @@ async def test_mcp_interactive() -> None:
     print(f"🔗 Connecting to MCP server at: {mcp_server_url}")
 
     # Elicitation handler: prompt user for required values
-    async def elicitation_handler(
-        context: RequestContext[ClientSession, Any], params: ElicitRequestParams
-    ) -> ElicitResult:
+    async def elicitation_handler(context: Any, params: ElicitRequestParams) -> ElicitResult:
         print(f"\n📋 Elicitation Request: {params.message}")
-        if params.requestedSchema:
-            print(f"   Schema: {params.requestedSchema}")
+        # mcp 2.x renamed the field to snake_case.
+        schema = getattr(params, "requested_schema", None) or getattr(
+            params, "requestedSchema", None
+        )
+        if schema:
+            print(f"   Schema: {schema}")
 
         while True:
             try:
@@ -107,10 +108,10 @@ async def test_mcp_interactive() -> None:
             print("   Please enter a value or 'decline'/'cancel'")
 
     try:
-        async with streamablehttp_client(
-            url=mcp_server_url,
-            headers=get_headers(),
-        ) as (read_stream, write_stream, _):
+        async with open_streamable_http(mcp_server_url, get_headers()) as (
+            read_stream,
+            write_stream,
+        ):
             async with ClientSession(
                 read_stream,
                 write_stream,

@@ -14,7 +14,7 @@
 
 import base64
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 
 def format_response_as_tool_result(data: bytes, content_type: str, charset: str) -> ToolResult:

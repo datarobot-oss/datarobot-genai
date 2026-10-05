@@ -29,7 +29,7 @@ from fastmcp import FastMCP
 from fastmcp.server.middleware import CallNext
 from fastmcp.server.middleware import Middleware
 from fastmcp.server.middleware import MiddlewareContext
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from opentelemetry import baggage
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider

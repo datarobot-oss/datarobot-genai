@@ -20,7 +20,8 @@ from typing import Any
 import aiohttp
 from aiohttp import ClientSession as HttpClientSession
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import create_mcp_http_client
+from mcp.client.streamable_http import streamable_http_client
 
 from .utils import load_env
 
@@ -116,6 +117,18 @@ def get_headers() -> dict[str, str]:
 
 
 @asynccontextmanager
+async def open_streamable_http(url: str, headers: dict[str, str]) -> AsyncGenerator[Any, None]:
+    """Open a streamable HTTP connection, yielding its ``(read_stream, write_stream)``.
+
+    Works on both ``mcp`` 1.x and 2.x: ``streamablehttp_client`` is gone in 2.x, and
+    ``streamable_http_client`` yields three items on 1.x but two on 2.x.
+    """
+    async with create_mcp_http_client(headers=headers) as http_client:
+        async with streamable_http_client(url, http_client=http_client) as streams:
+            yield streams[0], streams[1]
+
+
+@asynccontextmanager
 async def ete_test_mcp_session(
     additional_headers: dict[str, str] | None = None,
     elicitation_callback: Any | None = None,
@@ -131,15 +144,17 @@ async def ete_test_mcp_session(
         The callback should have signature:
         async def callback(context, params: ElicitRequestParams) -> ElicitResult
     """
+    url = get_dr_mcp_server_url()
+    if not url:
+        raise ValueError("DR_MCP_SERVER_URL is not set")
     try:
         headers = get_headers()
         if additional_headers:
             headers.update(additional_headers)
 
-        async with streamablehttp_client(url=get_dr_mcp_server_url(), headers=headers) as (
+        async with open_streamable_http(url, headers) as (
             read_stream,
             write_stream,
-            _,
         ):
             async with ClientSession(
                 read_stream, write_stream, elicitation_callback=elicitation_callback

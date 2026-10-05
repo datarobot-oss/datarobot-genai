@@ -26,7 +26,7 @@ from aiohttp_retry import ExponentialRetry
 from aiohttp_retry import RetryClient
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from pydantic import BaseModel
 from pydantic import Field
 

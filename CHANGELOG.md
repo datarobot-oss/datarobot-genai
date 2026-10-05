@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.64 - 2026-10-05
+- Support FastMCP 4 in `drmcp` and `drmcpbase`: widen the `fastmcp` requirement from
+  `>=3.4.1,<4.0.0` to `>=3.4.1,<5.0.0`. FastMCP 3 keeps working, and this repo's lock stays on it,
+  since FastMCP 4 needs `mcp` 2 and the `crewai`, `langgraph` and `dragent` extras still need `mcp` 1.
+- Import `Tool`, `ToolResult` and `Prompt` from `fastmcp.tools` and `fastmcp.prompts`, which
+  exist in both versions, instead of `fastmcp.tools.tool` and `fastmcp.prompts.prompt`.
+- Remove tools through `local_provider.remove_tool`; FastMCP 4 dropped `FastMCP.remove_tool`.
+- Put a deployment tool's `deployment_id` in the tool's `meta` instead of its `annotations`,
+  since `mcp` 2's `ToolAnnotations` no longer accepts extra fields.
+- Open test-utility MCP sessions with `streamable_http_client`; `mcp` 2 removed
+  `streamablehttp_client`.
+- Add a CI job that runs the `drmcp` and `drmcpbase` tests with FastMCP 4 and `mcp` 2.
+
 ## 0.29.63 - 2026-10-02
 - Raise the minimum `litellm` version from `>=1.91.1,<2.0.0` to `>=1.96.2,<2.0.0` in `setup.py`.
 - Require `llama-index-llms-bedrock-converse[async]>=0.15.0` in the `core` extra so async Bedrock Converse keeps `aioboto3` after the litellm floor bump.

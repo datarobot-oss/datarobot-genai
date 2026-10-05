@@ -131,6 +131,53 @@ jobs:
           path: test_results/test-results.xml
           if-no-files-found: ignore
 
+  # drmcp supports FastMCP 3 and 4. The lock stays on FastMCP 3, because FastMCP 4 needs
+  # mcp 2 and other extras (crewai, langgraph, dragent) still pin mcp 1. So this job
+  # installs drmcp alone, outside the lock, with FastMCP 4 and mcp 2.
+  test-fastmcp4:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.11', '3.12', '3.13' ]
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install drmcp with FastMCP 4
+        run: |
+          uv venv -p ${{ matrix.python-version }}
+          printf 'fastmcp>=4.0.9,<5\nmcp>=2,<3\n' > "$RUNNER_TEMP/fastmcp4.txt"
+          # --no-config skips this repo's [tool.uv] overrides, which pin mcp<2.
+          uv pip install --no-config --override "$RUNNER_TEMP/fastmcp4.txt" -e ".[drmcp]" --group dev
+
+      - name: Run drmcp and drmcpbase tests
+        run: |
+          mkdir -p test_results
+          .venv/bin/python -m pytest tests/drmcp -vv \
+            --ignore=tests/drmcp/integration --ignore=tests/drmcp/acceptance \
+            --junitxml=test_results/test-results-drmcp.xml
+          .venv/bin/python -m pytest tests/drmcpbase -vv --confcutdir=tests/drmcpbase \
+            --junitxml=test_results/test-results-drmcpbase.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-py${{ matrix.python-version }}-fastmcp4
+          path: test_results/
+          if-no-files-found: ignore
+
   build-test:
     runs-on: ubuntu-latest
     strategy:

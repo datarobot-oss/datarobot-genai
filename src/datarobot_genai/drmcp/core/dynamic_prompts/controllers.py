@@ -14,7 +14,7 @@
 
 import logging
 
-from fastmcp.prompts.prompt import Prompt
+from fastmcp.prompts import Prompt
 
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template
 from datarobot_genai.drmcp.core.dynamic_prompts.dr_lib import get_datarobot_prompt_template_version

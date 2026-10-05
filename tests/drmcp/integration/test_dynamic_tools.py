@@ -286,10 +286,12 @@ async def test_dynamic_tool_registration(dr_client, mock_api_responses) -> None:
 async def test_mcp_mapping_methods():
     mcp = DataRobotMCP()
 
-    # Mock the remove_tool method to avoid actual tool removal,
+    # Mock the provider's remove_tool to avoid actual tool removal,
     # as the actual tool was not registered. This is just to test the
     # mapping methods, and whether remove_tool is called correctly.
-    mcp.remove_tool = MagicMock()
+    # DataRobotMCP removes tools through local_provider, since FastMCP 4
+    # dropped FastMCP.remove_tool.
+    mcp.local_provider.remove_tool = MagicMock()
 
     await mcp.set_deployment_mapping("id1", "tool_name_1")
     await mcp.set_deployment_mapping("id2", "tool_name_2")
@@ -303,8 +305,8 @@ async def test_mcp_mapping_methods():
     assert deployments == {"id1": "tool_name_1", "id2": "tool_name_3"}
 
     # Verify remove_tool was called when overriding
-    assert mcp.remove_tool.call_count == 1
-    mcp.remove_tool.assert_called_with("tool_name_2")
+    assert mcp.local_provider.remove_tool.call_count == 1
+    mcp.local_provider.remove_tool.assert_called_with("tool_name_2")
 
     # delete first mapping
     await mcp.remove_deployment_mapping("id1")
@@ -312,8 +314,8 @@ async def test_mcp_mapping_methods():
     assert deployments == {"id2": "tool_name_3"}
 
     # Verify remove_tool was called for id1
-    assert mcp.remove_tool.call_count == 2
-    assert mcp.remove_tool.call_args_list[-1][0][0] == "tool_name_1"
+    assert mcp.local_provider.remove_tool.call_count == 2
+    assert mcp.local_provider.remove_tool.call_args_list[-1][0][0] == "tool_name_1"
 
     # delete second mapping
     await mcp.remove_deployment_mapping("id2")
@@ -321,5 +323,5 @@ async def test_mcp_mapping_methods():
     assert deployments == {}
 
     # Verify remove_tool was called for id2
-    assert mcp.remove_tool.call_count == 3
-    assert mcp.remove_tool.call_args_list[-1][0][0] == "tool_name_3"
+    assert mcp.local_provider.remove_tool.call_count == 3
+    assert mcp.local_provider.remove_tool.call_args_list[-1][0][0] == "tool_name_3"

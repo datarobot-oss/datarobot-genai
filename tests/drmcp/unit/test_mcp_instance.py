@@ -19,7 +19,6 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
-from fastmcp.exceptions import NotFoundError
 from fastmcp.server.auth import AccessToken
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth import require_scopes as fastmcp_require_scopes
@@ -52,7 +51,7 @@ class TestDataRobotMCPInstanceAdditional:
         mcp = DataRobotMCP()
         mcp._deployments_map = {"deployment1": "old_tool"}
 
-        with patch.object(mcp, "remove_tool") as mock_remove_tool:
+        with patch.object(mcp.local_provider, "remove_tool") as mock_remove_tool:
             await mcp.set_deployment_mapping("deployment1", "new_tool")
 
             assert mcp._deployments_map["deployment1"] == "new_tool"
@@ -60,11 +59,11 @@ class TestDataRobotMCPInstanceAdditional:
 
     @pytest.mark.asyncio
     async def test_set_deployment_mapping_handles_remove_tool_not_found(self):
-        """Test that set_deployment_mapping handles NotFoundError when removing old tool."""
+        """Test that set_deployment_mapping handles a missing old tool."""
         mcp = DataRobotMCP()
         mcp._deployments_map = {"deployment1": "old_tool"}
 
-        with patch.object(mcp, "remove_tool", side_effect=NotFoundError("Tool not found")):
+        with patch.object(mcp.local_provider, "remove_tool", side_effect=KeyError("old_tool")):
             # Should not raise an exception
             await mcp.set_deployment_mapping("deployment1", "new_tool")
 
@@ -86,7 +85,7 @@ class TestDataRobotMCPInstanceAdditional:
         mcp = DataRobotMCP()
         mcp._deployments_map = {"deployment1": "existing_tool"}
 
-        with patch.object(mcp, "remove_tool") as mock_remove_tool:
+        with patch.object(mcp.local_provider, "remove_tool") as mock_remove_tool:
             await mcp.set_deployment_mapping("deployment1", "existing_tool")
 
             assert mcp._deployments_map["deployment1"] == "existing_tool"
@@ -133,7 +132,7 @@ class TestDataRobotMCPInstanceAdditional:
         mcp = DataRobotMCP()
         mcp._deployments_map = {"deployment1": "old_tool"}
 
-        with patch.object(mcp, "remove_tool"):
+        with patch.object(mcp.local_provider, "remove_tool"):
             await mcp.set_deployment_mapping("deployment1", "new_tool")
 
             mock_logger.debug.assert_called_with(
@@ -143,11 +142,11 @@ class TestDataRobotMCPInstanceAdditional:
     @pytest.mark.asyncio
     @patch("datarobot_genai.drmcp.core.mcp_instance.logger")
     async def test_set_deployment_mapping_logs_remove_tool_not_found(self, mock_logger):
-        """Test that set_deployment_mapping logs debug message when remove_tool raises NotFoundError."""  # noqa: E501
+        """Test that set_deployment_mapping logs debug message when the old tool is missing."""
         mcp = DataRobotMCP()
         mcp._deployments_map = {"deployment1": "old_tool"}
 
-        with patch.object(mcp, "remove_tool", side_effect=NotFoundError("Tool not found")):
+        with patch.object(mcp.local_provider, "remove_tool", side_effect=KeyError("old_tool")):
             await mcp.set_deployment_mapping("deployment1", "new_tool")
 
             mock_logger.debug.assert_called_with(
