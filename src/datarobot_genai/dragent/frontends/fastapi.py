@@ -50,6 +50,7 @@ from .session import _a2a_headers
 from .session import headers_from_a2a_state
 from .session import resolve_identity_from_headers
 from .step_adaptor import DRAgentNestedReasoningStepAdaptor
+from .stream_cancellation import patch_nat_streaming_disconnect_cancellation
 
 DATAROBOT_EXPECTED_HEALTH_ROUTES = ["/", "/ping", "/ping/", "/health", "/health/"]
 
@@ -204,6 +205,9 @@ class DRAgentFastApiFrontEndPluginWorker(FastApiFrontEndPluginWorker):
         return getattr(self.front_end_config, "a2a", None)
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder) -> None:
+        # Cancel the agent run when a streaming client disconnects, so an abandoned run
+        # can't keep working (and exporting spans) alongside later requests.
+        patch_nat_streaming_disconnect_cancellation()
         await super().add_routes(app, builder)
         if a2a := self._a2a_config:
             await self._add_a2a_routes(app, builder, a2a)
