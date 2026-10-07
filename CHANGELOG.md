@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.68 - 2026-10-13
+- Enable automerge for cve-sync PRs
+
 ## 0.29.67 - 2026-10-12
 - `dragent`: Registry agent card lookups now follow the `authenticated_a2a_client` auth provider.
   With Okta cross-application access, a request-time cache miss fetches `/agentCards/` with the
