@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.65 - 2026-10-07
+- Fix flakes in many E2E tests
+
 ## 0.29.64 - 2026-10-07
 - Move this repo's cve-sync overrides out of the central `datarobot-oss/cve-sync` policy and into
   `.cve-sync-overrides.toml` files beside each resolution root: the repo root, `e2e-tests/`, and an
