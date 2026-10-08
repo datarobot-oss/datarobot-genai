@@ -1079,7 +1079,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.64"
+version = "0.29.66"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1107,7 +1107,6 @@ crewai = [
     { name = "opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-threading" },
     { name = "pyarrow" },
-    { name = "pybase64" },
     { name = "pyjwt" },
     { name = "requests" },
 ]
@@ -1149,7 +1148,6 @@ langgraph = [
     { name = "httpx-retries" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
-    { name = "langgraph-prebuilt" },
     { name = "litellm" },
     { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
     { name = "nvidia-nat-langchain" },
@@ -1173,7 +1171,6 @@ llamaindex = [
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
     { name = "litellm" },
-    { name = "llama-index" },
     { name = "llama-index-core" },
     { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
     { name = "llama-index-llms-langchain" },
@@ -1189,7 +1186,6 @@ llamaindex = [
     { name = "opentelemetry-instrumentation-threading" },
     { name = "pyarrow" },
     { name = "pyjwt" },
-    { name = "pypdf" },
     { name = "requests" },
 ]
 
@@ -1266,12 +1262,10 @@ requires-dist = [
     { name = "httpx-retries", marker = "extra == 'llamaindex'", specifier = ">=0.4.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "langgraph-prebuilt", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
     { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.96.2,<2.0.0" },
     { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.96.2,<2.0.0" },
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.96.2,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.96.2,<2.0.0" },
-    { name = "llama-index", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'core'", specifier = ">=0.15.0" },
     { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'crewai'", specifier = ">=0.15.0" },
@@ -1280,7 +1274,6 @@ requires-dist = [
     { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'llamaindex'", specifier = ">=0.15.0" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.8.0,<1.0.0" },
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
-    { name = "llama-index-llms-openai", marker = "extra == 'llamaindex'", specifier = ">=0.6.0,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
@@ -1360,7 +1353,6 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'drtools'", specifier = ">=23.0.1,<24.0.0" },
     { name = "pyarrow", marker = "extra == 'langgraph'", specifier = ">=23.0.1,<24.0.0" },
     { name = "pyarrow", marker = "extra == 'llamaindex'", specifier = ">=23.0.1,<24.0.0" },
-    { name = "pybase64", marker = "extra == 'crewai'", specifier = ">=1.4.2,<2.0.0" },
     { name = "pydantic", marker = "extra == 'auth'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drmcp'", specifier = ">=2.6.1,<3.0.0" },
     { name = "pydantic", marker = "extra == 'drmcpbase'", specifier = ">=2.6.1,<3.0.0" },
@@ -1384,7 +1376,6 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.19.0,<7.0.0" },
     { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.19.0,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'llamaindex'", specifier = ">=6.19.0,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dateutil", marker = "extra == 'drtools'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0,<2.0.0" },
