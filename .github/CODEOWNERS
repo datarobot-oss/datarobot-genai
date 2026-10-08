@@ -1,21 +1,21 @@
 # Default: Buzok owns everything
-* @datarobot-oss/buzok
+* @datarobot-oss/agent-lifecycle
 
 # Shared files: either Buzok or MCP can approve
-/.github/CODEOWNERS @datarobot-oss/buzok @datarobot-oss/mcp
-/CHANGELOG.md @datarobot-oss/buzok @datarobot-oss/mcp
-/pyproject.toml @datarobot-oss/buzok @datarobot-oss/mcp
-/setup.py @datarobot-oss/buzok @datarobot-oss/mcp
-/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
-/e2e-tests/uv.lock @datarobot-oss/buzok @datarobot-oss/mcp
+/.github/CODEOWNERS @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/CHANGELOG.md @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/pyproject.toml @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/setup.py @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/uv.lock @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/e2e-tests/uv.lock @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
 # OTel wire-level e2e harness/tests exercise MCP-owned sandbox SLIs from the
 # shared dragent e2e suite, so either team can approve.
-/e2e-tests/dragent_tests/otel_helpers.py @datarobot-oss/buzok @datarobot-oss/mcp
-/e2e-tests/dragent_tests/test_otel_metrics.py @datarobot-oss/buzok @datarobot-oss/mcp
-/README.md @datarobot-oss/buzok @datarobot-oss/mcp
-/.gitignore @datarobot-oss/buzok @datarobot-oss/mcp
-/.taskfiles/tests.yml @datarobot-oss/buzok @datarobot-oss/mcp
-/scripts/ @datarobot-oss/buzok @datarobot-oss/mcp
+/e2e-tests/dragent_tests/otel_helpers.py @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/e2e-tests/dragent_tests/test_otel_metrics.py @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/README.md @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/.gitignore @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/.taskfiles/tests.yml @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
+/scripts/ @datarobot-oss/agent-lifecycle @datarobot-oss/mcp
 
 # MCP team overrides for drmcp and drtools (last match wins)
 /src/datarobot_genai/drmcp/ @datarobot-oss/mcp
