@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from pydantic import Field
 
 from .clients.base import LLMResponse
+from .clients.base import ToolCall
 
 
 class ToolCallTestExpectations(BaseModel):
@@ -36,6 +37,18 @@ class ToolCallTestExpectations(BaseModel):
     )
     parameters: dict[str, Any]
     result: str | dict[str, Any]
+    forbidden_parameter_values: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Parameter values the matched call's actual arguments must NOT equal, checked "
+            "leaf-by-leaf the same way `parameters` is checked (string comparison strips "
+            "whitespace). Only checked for keys the call actually supplied — an optional "
+            "argument the model omitted, which merely defaults to the forbidden value, is not "
+            "a violation, since the call itself did not choose it. Use this to assert a model "
+            "avoided a specific, costlier variant of an otherwise-matching call, e.g. "
+            "otel_trace_get called with view='summary' rather than an explicit view='payloads'."
+        ),
+    )
 
     def allowed_tool_names(self) -> set[str]:
         return {self.name, *self.acceptable_tool_names}
@@ -54,6 +67,18 @@ class ETETestExpectations(BaseModel):
     allow_unexpected_tool_calls: bool = True
     tool_calls_expected: list[ToolCallTestExpectations]
     llm_response_content_contains_expectations: list[str]
+    forbidden_tool_names: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Logical tool names that must not appear anywhere in the whole tool-call "
+            "sequence, checked against every actual call regardless of "
+            "allow_unexpected_tool_calls. Use this to assert a model never reached for a "
+            "specific worse tool at all (e.g. a redundant otel_trace_get once trace_id and "
+            "span_id are already known), while still allowing legitimate extra calls to the "
+            "*expected* tool -- such as a paginated otel_span_payload_get(field_offset=...) "
+            "continuation -- that an exact tool_calls_expected count would incorrectly reject."
+        ),
+    )
 
 
 SHOULD_NOT_BE_EMPTY = "SHOULD_NOT_BE_EMPTY"
@@ -201,6 +226,54 @@ def _check_dict_params_match(
     return True
 
 
+def _forbidden_parameter_violations(
+    forbidden: dict[str, Any],
+    actual: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the subset of ``forbidden`` that ``actual`` actually violates.
+
+    Only keys present in ``actual`` are considered — an optional argument the caller
+    omitted, which merely defaults to the forbidden value, was not a choice the call made and
+    is not a violation. A scalar leaf compares via :func:`_param_leaf_matches` (whitespace-
+    stripped for strings); a nested-dict leaf recurses via :func:`_check_dict_params_match`'s
+    own subset semantics, the same way ``parameters`` itself is checked, so a forbidden nested
+    shape is flagged even when ``actual``'s value carries additional fields alongside it.
+    """
+    violations: dict[str, Any] = {}
+    for key, value in forbidden.items():
+        if key not in actual:
+            continue
+        actual_v = actual[key]
+        if isinstance(value, dict):
+            if isinstance(actual_v, dict) and _check_dict_params_match(value, actual_v):
+                violations[key] = actual_v
+        elif _param_leaf_matches(value, actual_v):
+            violations[key] = actual_v
+    return violations
+
+
+def _forbidden_tool_call_violations(
+    forbidden_names: list[str],
+    tool_calls: list[ToolCall],
+) -> list[str]:
+    """Return the raw tool names in ``tool_calls`` that match a logical ``forbidden_names`` entry.
+
+    Checked against every call regardless of position or ``allow_unexpected_tool_calls`` — this
+    is a whole-sequence assertion ("the model never reached for tool X at all"), not a per-step
+    one, so it does not interact with how many times the *expected* tool is called. That keeps
+    a legitimate multi-call continuation of an expected tool (e.g. paging a truncated field with
+    ``field_offset``) from being mistaken for the specific worse call this is meant to catch.
+    """
+    if not forbidden_names:
+        return []
+    forbidden = set(forbidden_names)
+    return [
+        tool_call.tool_name
+        for tool_call in tool_calls
+        if _normalize_tool_name(tool_call.tool_name) in forbidden
+    ]
+
+
 def _check_dict_has_keys(
     expected: dict[str, Any],
     actual: dict[str, Any] | list[dict[str, Any]],
@@ -295,6 +368,8 @@ class ToolBaseE2E:
                 - tool_calls_expected: List of expected tool calls with their parameters and results
                 - allow_unexpected_tool_calls: Default True — expected calls must appear in order,
                   with optional extra calls allowed. Set False for strict exact count.
+                - forbidden_tool_names: Logical tool names that must never appear in the actual
+                  tool-call sequence, checked independently of allow_unexpected_tool_calls.
                 - llm_response_content_contains_expectations: Expected content in the LLM response
             openai_llm_client: The OpenAI LLM client
             mcp_session: The test session
@@ -307,6 +382,15 @@ class ToolBaseE2E:
         # Act
         response: LLMResponse = await openai_llm_client.process_prompt_with_mcp_support(
             prompt, mcp_session, output_file_name
+        )
+
+        violating_calls = _forbidden_tool_call_violations(
+            test_expectations.forbidden_tool_names, response.tool_calls
+        )
+        assert not violating_calls, (
+            f"Should not have called any of {sorted(set(test_expectations.forbidden_tool_names))}, "
+            f"but got: {violating_calls}\n"
+            f"{_build_failure_diagnostics(test_expectations.tool_calls_expected, response)}"
         )
 
         # sometimes llm are too smart and doesn't call tools especially for the case when file
@@ -374,6 +458,15 @@ class ToolBaseE2E:
                     f"but got: {tool_call.parameters}\n"
                     f"{diagnostics}"
                 )
+                if expected_call.forbidden_parameter_values:
+                    violations = _forbidden_parameter_violations(
+                        expected_call.forbidden_parameter_values, tool_call.parameters
+                    )
+                    assert not violations, (
+                        f"{canonical} should not have been called with {violations} — "
+                        f"got parameters: {tool_call.parameters}\n"
+                        f"{diagnostics}"
+                    )
                 if expected_call.result != SHOULD_NOT_BE_EMPTY:
                     expected_result = expected_call.result
                     if isinstance(expected_result, str):

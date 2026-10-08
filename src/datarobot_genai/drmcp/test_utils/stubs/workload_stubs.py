@@ -127,7 +127,10 @@ def _workload_get_response(url: str, p: dict[str, Any]) -> StubRestResponse | No
         response = StubRestResponse(
             {"runtime": {"containerGroups": [{"name": "default", "replicaCount": 1}]}}
         )
-    elif "/stats" in url:
+    elif url.startswith("workloads/") and "/stats" in url:
+        # Scoped to the workloads/ prefix (real shape: workloads/{id}/stats) so this
+        # never shadows the unrelated GET otel/stats/ entity-stats endpoint, which
+        # also has "/stats" in it but is a completely different route.
         response = StubRestResponse(
             {
                 "requestCount": 120,
