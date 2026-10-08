@@ -1,0 +1,38 @@
+name: Review Router
+
+# Routes review by CODEOWNERS: team labels, review requests, Slack pings, Jira links and
+# stale reminders. Team channels are configured centrally for the org.
+#
+# SECURITY: This workflow intentionally uses pull_request_target (not
+# pull_request) because review-router never checks out or executes PR code.
+# Do NOT add actions/checkout or shell run: blocks here.
+#
+# See: https://github.com/datarobot-oss/review-router/blob/main/docs/security/pull-request-target.md
+
+on:
+  pull_request_target:
+    types: [opened, labeled, closed, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '0 3,9,15,21 * * 1-5'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # `opened` carries the Jira link comment, but the org config also auto-labels dependabot
+  # on that event, which would route every bump automerge already handles. Skipping just
+  # that pair keeps the links and leaves bumps to escalate on their own.
+  route:
+    if: >-
+      github.event_name != 'pull_request_target'
+      || github.event.action != 'opened'
+      || github.event.pull_request.user.login != 'dependabot[bot]'
+    uses: datarobot-oss/.github/.github/workflows/review-router.yml@main
+    secrets: inherit
