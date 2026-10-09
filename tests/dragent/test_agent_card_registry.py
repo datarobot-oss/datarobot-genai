@@ -838,6 +838,70 @@ class TestAgentCardRegistryFetch:
             with pytest.raises(AgentCardRegistryError, match="HTTP 403"):
                 await registry._fetch({"deploymentIds": "dep-1"})
 
+    async def test_fetch_failure_starts_cooldown_skipping_subsequent_http(self):
+        """GIVEN a failed fetch WHEN fetched again during cooldown THEN HTTP is skipped."""
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 503
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unavailable", request=MagicMock(), response=mock_response
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client),
+            patch(f"{_MODULE}.random.uniform", return_value=45.0),
+        ):
+            registry = _memory_registry(cache_ttl=3600)
+            with pytest.raises(AgentCardRegistryError, match="HTTP 503"):
+                await registry._fetch({"deploymentIds": "dep-1"})
+            with pytest.raises(AgentCardRegistryError, match="failure cooldown"):
+                await registry._fetch({"deploymentIds": "dep-1"})
+
+        assert mock_client.get.await_count == 1
+
+    async def test_get_serves_stale_during_failure_cooldown_without_http(self):
+        """GIVEN a cached card and tripped cooldown WHEN get() THEN serve stale without HTTP."""
+        cache_backend = MemoryAgentCardCacheBackend()
+        ok_response = MagicMock(spec=httpx.Response)
+        ok_response.status_code = 200
+        ok_response.json.return_value = _registry_response(_entry(dep_id="dep-1"))
+        ok_response.raise_for_status = MagicMock()
+
+        fail_response = MagicMock(spec=httpx.Response)
+        fail_response.status_code = 500
+        fail_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Server Error", request=MagicMock(), response=fail_response
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[ok_response, fail_response])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client),
+            patch(f"{_MODULE}.random.uniform", return_value=45.0),
+        ):
+            registry = _memory_registry(
+                cache_ttl=3600,
+                soft_cache_ttl=60,
+                cache_backend=cache_backend,
+            )
+            first = await registry.get(deployment_id="dep-1")
+            registry._age_cache_entry_for_test("dep-1", 90)
+            second = await registry.get(deployment_id="dep-1")
+            third = await registry.get(deployment_id="dep-1")
+
+        assert first.name == "Test Agent"
+        assert second is first
+        assert third is first
+        # Warmup + one failing refresh; cooldown blocks a third HTTP attempt.
+        assert mock_client.get.await_count == 2
+
     async def test_fetch_paginates_through_all_pages(self):
         """_fetch follows the 'next' link until all pages are consumed."""
         page1_response = MagicMock(spec=httpx.Response)

@@ -44,6 +44,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import time
 from collections.abc import Iterable
 from collections.abc import Iterator
 from typing import Any
@@ -87,6 +89,10 @@ _ID_PARAMS = (_DEPLOYMENT_IDS_PARAM, _EXTERNAL_IDS_PARAM, _WORKLOAD_IDS_PARAM)
 
 # Safety limit to prevent infinite pagination loops.
 _MAX_PAGES = 100
+
+# Process-local cooldown after a registry transport/HTTP failure (jittered).
+_FAILURE_COOLDOWN_MIN_SECONDS = 30.0
+_FAILURE_COOLDOWN_MAX_SECONDS = 60.0
 
 # Allowed strategies for duplicate external IDs.
 DuplicateStrategy = Literal["first", "last", "error"]
@@ -383,6 +389,8 @@ class AgentCardRegistry:
         self._api_token = api_token
         self._endpoint = endpoint
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
+        # Monotonic deadline while the registry is treated as unhealthy.
+        self._unhealthy_until: float = 0.0
 
         logger.info(
             "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
@@ -395,6 +403,33 @@ class AgentCardRegistry:
     def soft_cache_ttl(self) -> int:
         """Soft TTL in seconds."""
         return self._soft_cache_ttl
+
+    def _cooldown_active(self) -> bool:
+        """Return whether a process-local failure cooldown is still in effect."""
+        return time.monotonic() < self._unhealthy_until
+
+    def _mark_registry_unhealthy(self) -> None:
+        """Start a short jittered cooldown after a registry HTTP/transport failure."""
+        cooldown = random.uniform(
+            _FAILURE_COOLDOWN_MIN_SECONDS,
+            _FAILURE_COOLDOWN_MAX_SECONDS,
+        )
+        self._unhealthy_until = time.monotonic() + cooldown
+        logger.warning(
+            "Agent card registry failure cooldown started (%.0fs); "
+            "subsequent lookups will skip HTTP until it expires.",
+            cooldown,
+        )
+
+    def _raise_if_cooldown_active(self) -> None:
+        """Raise when the process-local failure cooldown has not expired."""
+        if not self._cooldown_active():
+            return
+        remaining = max(0.0, self._unhealthy_until - time.monotonic())
+        raise AgentCardRegistryError(
+            f"Agent card registry is in a failure cooldown "
+            f"({remaining:.0f}s remaining); skipping HTTP request."
+        )
 
     # ------------------------------------------------------------------
     # Registration (synchronous — called at config-parse time)
@@ -459,7 +494,13 @@ class AgentCardRegistry:
 
         Requests the maximum page size (100) to minimise round-trips, then
         follows ``next`` links until all pages are consumed.
+
+        After a transport or HTTP failure a short process-local cooldown skips
+        further HTTP attempts so soft-expired on-demand lookups do not stampede
+        Control Hub while it is down.
         """
+        self._raise_if_cooldown_active()
+
         registry_url = build_agent_cards_registry_url(self._endpoint)
         headers = {"Authorization": f"Bearer {self._api_token}"}
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
@@ -471,6 +512,7 @@ class AgentCardRegistry:
         )
 
         all_entries: list[dict[str, Any]] = []
+        pages_fetched = 0
 
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
@@ -498,12 +540,14 @@ class AgentCardRegistry:
                     pages_fetched += 1
 
         except httpx.HTTPStatusError as exc:
+            self._mark_registry_unhealthy()
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
                 f"{exc.response.status_code}. Verify your API token and that "
                 f"the agents are registered."
             ) from exc
         except httpx.HTTPError as exc:
+            self._mark_registry_unhealthy()
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
         logger.debug(
@@ -640,8 +684,9 @@ class AgentCardRegistry:
     async def refresh_all_registered(self) -> None:
         """Re-fetch registered IDs whose cache entries are past the soft TTL.
 
-        Failures are logged and existing cache entries are left in place so
-        stale-if-error can continue serving them during registry outages.
+        Existing cache entries are left in place on failure so stale-if-error
+        can continue serving them during registry outages.  Errors propagate so
+        the background refresh loop can log once and back off.
         """
         if not self.has_registered_lookups():
             logger.debug("No registered agent card IDs; skipping background refresh.")
@@ -657,17 +702,11 @@ class AgentCardRegistry:
             external_ids,
             workload_ids,
         )
-        try:
-            await self.prefetch(
-                deployment_ids=deployment_ids or None,
-                external_ids=external_ids or None,
-                workload_ids=workload_ids or None,
-            )
-        except AgentCardRegistryError:
-            logger.warning(
-                "Background agent card registry refresh failed; keeping cached entries.",
-                exc_info=True,
-            )
+        await self.prefetch(
+            deployment_ids=deployment_ids or None,
+            external_ids=external_ids or None,
+            workload_ids=workload_ids or None,
+        )
 
     async def get(
         self,

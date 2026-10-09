@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.67 - 2026-10-09
+- `dragent`: add jitter and exponential failure backoff to the agent card registry
+  background refresh loop, plus a short process-local cooldown after registry HTTP
+  failures so many agents do not stampede Control Hub during an outage.
+
 ## 0.29.66 - 2026-10-08
 - Remove transitive dependencies that were declared directly in the framework extras:
   `pybase64` (crewai), `langgraph-prebuilt` (langgraph), and `llama-index`,

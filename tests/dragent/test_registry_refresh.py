@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -27,6 +28,7 @@ from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
 from datarobot_genai.dragent.registry_refresh import background_refresh_interval
+from datarobot_genai.dragent.registry_refresh import refresh_sleep_seconds
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_refresh import registry_refresh_loop
 from tests.dragent.test_agent_card_registry import _memory_registry
@@ -128,17 +130,28 @@ class TestAgentCardRegistryRefresh:
         await registry.refresh_all_registered()
         mock_fetch.assert_not_awaited()
 
-    async def test_refresh_logs_on_failure_without_raising(self, mock_fetch):
+    async def test_refresh_reraises_on_failure_without_logging(self, mock_fetch, caplog):
+        """GIVEN a soft-expired card WHEN refresh fails THEN cache is kept, error raised, no log."""
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card()}),
             AgentCardRegistryError("registry down"),
         ]
-        registry = _memory_registry(cache_ttl=60)
+        registry = _memory_registry(cache_ttl=3600, soft_cache_ttl=60)
         registry.register(deployment_id="dep-1")
         await registry.get(deployment_id="dep-1")
-        registry._age_cache_entry_for_test("dep-1", 120)
+        registry._age_cache_entry_for_test("dep-1", 90)
 
-        await registry.refresh_all_registered()
+        with (
+            caplog.at_level(logging.WARNING, logger="datarobot_genai.dragent.agent_card_registry"),
+            pytest.raises(AgentCardRegistryError, match="registry down"),
+        ):
+            await registry.refresh_all_registered()
+
+        assert await registry._backend.get_stale("dep-1", max_staleness_seconds=3600) is not None
+        assert not any(
+            "Background agent card registry refresh failed" in r.getMessage()
+            for r in caplog.records
+        )
 
     async def test_refresh_no_op_without_registered_ids(self, mock_fetch):
         registry = _memory_registry(cache_ttl=3600)
@@ -157,27 +170,124 @@ class TestBackgroundRefreshInterval:
         assert background_refresh_interval(86400) == 43200
 
 
+class TestRefreshSleepSeconds:
+    def test_healthy_poll_applies_jitter_around_base(self):
+        """GIVEN failures=0 WHEN computing sleep THEN delay is base × [0.5, 1.5]."""
+        import random
+
+        rng = random.Random(0)
+        delays = [
+            refresh_sleep_seconds(100, soft_cache_ttl=300, failures=0, rng=rng) for _ in range(50)
+        ]
+        assert all(50.0 <= d <= 150.0 for d in delays)
+        assert min(delays) < 100.0 < max(delays)
+
+    def test_failure_backoff_doubles_until_cap(self):
+        """GIVEN consecutive failures WHEN computing sleep THEN delay grows then caps."""
+        import random
+
+        class _NoJitter:
+            def uniform(self, a: float, b: float) -> float:
+                return 1.0
+
+        no_jitter = _NoJitter()
+        assert refresh_sleep_seconds(60, soft_cache_ttl=120, failures=1, rng=no_jitter) == 120.0
+        assert refresh_sleep_seconds(60, soft_cache_ttl=120, failures=2, rng=no_jitter) == 120.0
+        # Cap is min(900, max(60, 120)) = 120 for short soft TTL above.
+        # With a larger soft TTL the cap allows growth toward 15 minutes.
+        assert refresh_sleep_seconds(60, soft_cache_ttl=3600, failures=1, rng=no_jitter) == 120.0
+        assert refresh_sleep_seconds(60, soft_cache_ttl=3600, failures=2, rng=no_jitter) == 240.0
+        assert refresh_sleep_seconds(60, soft_cache_ttl=3600, failures=8, rng=no_jitter) == 900.0
+        # Sanity: jitter still applied when using a real RNG.
+        jittered = refresh_sleep_seconds(60, soft_cache_ttl=3600, failures=1, rng=random.Random(1))
+        assert 60.0 <= jittered <= 180.0
+
+
 class TestRegistryRefreshLoop:
     async def test_loop_calls_refresh_after_interval(self):
         registry = AsyncMock()
-        with patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        registry.soft_cache_ttl = 120
+        with (
+            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch(f"{_MODULE}.refresh_sleep_seconds", return_value=60.0) as mock_delay,
+        ):
             mock_sleep.side_effect = [None, asyncio.CancelledError()]
 
             with pytest.raises(asyncio.CancelledError):
                 await registry_refresh_loop(registry, interval_seconds=60)
 
         registry.refresh_all_registered.assert_awaited_once()
+        mock_delay.assert_called_with(60, 120, 0)
 
     async def test_loop_continues_after_refresh_error(self):
         registry = AsyncMock()
+        registry.soft_cache_ttl = 120
         registry.refresh_all_registered.side_effect = [RuntimeError("boom"), None]
-        with patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with (
+            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch(
+                f"{_MODULE}.refresh_sleep_seconds",
+                side_effect=[60.0, 120.0, 60.0],
+            ) as mock_delay,
+        ):
             mock_sleep.side_effect = [None, None, asyncio.CancelledError()]
 
             with pytest.raises(asyncio.CancelledError):
                 await registry_refresh_loop(registry, interval_seconds=60)
 
         assert registry.refresh_all_registered.await_count == 2
+        assert mock_delay.call_args_list[0].args == (60, 120, 0)
+        assert mock_delay.call_args_list[1].args == (60, 120, 1)
+        assert mock_delay.call_args_list[2].args == (60, 120, 0)
+
+    async def test_loop_logs_single_warning_on_refresh_failure(self, caplog):
+        """GIVEN a refresh failure WHEN the loop catches it THEN one warning is logged."""
+        registry = AsyncMock()
+        registry.soft_cache_ttl = 120
+        registry.refresh_all_registered.side_effect = AgentCardRegistryError("down")
+        with (
+            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch(f"{_MODULE}.refresh_sleep_seconds", return_value=60.0),
+            caplog.at_level(logging.WARNING, logger=_MODULE),
+        ):
+            mock_sleep.side_effect = [None, asyncio.CancelledError()]
+
+            with pytest.raises(asyncio.CancelledError):
+                await registry_refresh_loop(registry, interval_seconds=60)
+
+        failure_records = [
+            r
+            for r in caplog.records
+            if "Background agent card registry refresh failed" in r.getMessage()
+        ]
+        assert len(failure_records) == 1
+        assert failure_records[0].levelno == logging.WARNING
+        assert failure_records[0].exc_info is not None
+        assert "keeping cached entries" in failure_records[0].getMessage()
+        assert "consecutive_failures=1" in failure_records[0].getMessage()
+
+    async def test_loop_backs_off_on_registry_error_then_resets(self):
+        """GIVEN registry errors THEN successes WHEN looping THEN failures reset after success."""
+        registry = AsyncMock()
+        registry.soft_cache_ttl = 300
+        registry.refresh_all_registered.side_effect = [
+            AgentCardRegistryError("down"),
+            AgentCardRegistryError("still down"),
+            None,
+        ]
+        with (
+            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch(
+                f"{_MODULE}.refresh_sleep_seconds",
+                side_effect=[60.0, 120.0, 240.0, 60.0],
+            ) as mock_delay,
+        ):
+            mock_sleep.side_effect = [None, None, None, asyncio.CancelledError()]
+
+            with pytest.raises(asyncio.CancelledError):
+                await registry_refresh_loop(registry, interval_seconds=60)
+
+        assert [c.args[2] for c in mock_delay.call_args_list] == [0, 1, 2, 0]
 
 
 class TestRegistryRefreshLifespan:
