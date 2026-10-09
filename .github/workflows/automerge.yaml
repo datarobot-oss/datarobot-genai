@@ -25,15 +25,8 @@ name: Automerge
 #   approve - also approves. The merge is still a human click.
 #   merge   - also approves AND merges.
 #
-# Started in `report`, to prove the single `security` sentinel against a live
-# PR. Moved to `merge` 2026-10-07 alongside enrolling cve-sync[bot], because
-# cve-sync reads `report` and `approve` as not enrolled and keeps sending its
-# PRs round as ordinary reviews. Report mode never got a clean Dependabot
-# verdict first (#718 carries a human commit and was refused for it), so watch
-# the first live merges.
-#
-# Merging a cve-sync PR here also publishes to PyPI. That is an accepted risk;
-# see `allowed_authors` in `.github/automerge.yaml`.
+# `merge` is required for cve-sync, which treats `report` and `approve` as not
+# enrolled.
 #
 # Even in `merge` the approval and the merge happen on DIFFERENT polls, so there
 # is always a window of roughly one poll interval to intervene. Dropping back to

@@ -11,39 +11,15 @@
 # and note the one rule that matters: the ruleset is the enforcer, this file is
 # an EXTRA gate on top of it. `main` carries required_status_checks with an
 # empty bypass list, so nothing here can cause a failing PR to merge.
-#
-# Wiring cve-sync into this file: the enroll-automerge skill in cve-sync.
 # ─────────────────────────────────────────────────────────────────────────────
 
 version: 1
 
-# Spelled with the `[bot]` suffix, exactly. Authors are compared with no
-# normalization, and a mismatch is SILENT: the PR is not a candidate at all, so
-# it gets no comment and no hand-over.
+# Every commit author on the PR must be listed, spelled exactly. Never add
+# `github-actions[bot]`: that would trust every workflow in the repo.
 #
-# Dependabot enrolled first (#712), cve-sync[bot] 2026-10-07, one at a time so a
-# surprise has an obvious source.
-#
-# dr-auto-merge checks the author of EVERY COMMIT, not just who opened the PR.
-# cve-sync before 0.0.67 wrote its commits as `github-actions[bot]`, which is
-# what held cve-sync back here at first. This repo calls the resync at `@main`,
-# so it has the fix: #738 carries only `cve-sync[bot]` commits. Do NOT "fix" a
-# recurrence by adding `github-actions[bot]` here. That would trust every
-# workflow in the repo.
-#
-# ACCEPTED RISK, recorded so nobody "fixes" it back. A cve-sync PR here bumps
-# `[project].version`, and that bump IS the release decision:
-# release-on-merge.yml tags whatever version pyproject.toml carries and
-# dispatches publish-pypi.yml, whose `Release` environment has no required
-# reviewers. So a cve-sync PR that merges itself also publishes to PyPI
-# unattended. There is no way to split the two without leaving the CVE fix
-# unreleased, which defeats the resync.
-#
-# cve-sync decides for itself whether a resync is boring enough to carry the
-# `automerge` label at all, reading the uv.lock diff to do it: a major version
-# crossing, a package entering or leaving the resolution, or a removed ceiling
-# all get `00 - Ready for Review` instead. That is upstream of this policy, not
-# a substitute for it.
+# Accepted risk: a cve-sync PR bumps the version, so merging it also publishes
+# to PyPI unattended. Splitting the two would leave the CVE fix unreleased.
 allowed_authors:
   - dependabot[bot]
   - cve-sync[bot]
@@ -75,16 +51,13 @@ label: automerge
 # WHY THESE FOUR ARE GUARANTEED TO FIRE on either bot's PR, verified by reading
 # each workflow's triggers: none of the four carries a path filter, none
 # carries an actor guard, and none reads anything but `secrets.GITHUB_TOKEN`,
-# which is the one secret a Dependabot event can still resolve. One list serves
-# both authors, since there is no per-author scoping.
+# which is the one secret a Dependabot event can still resolve.
 #
-# `changelog-check` and `version-check` mostly PASS rather than do work here.
-# On a Dependabot bump both exempt the PR: changelog-check skips a diff
-# confined to `.github/`, and version-check skips any diff that does not touch
-# `src/datarobot_genai/`. A cve-sync resync satisfies changelog-check for real,
-# because `stamps-release: true` writes a CHANGELOG.md entry, and is exempted by
-# version-check. Listing them proves they ran and reached that verdict, rather
-# than never having run.
+# `changelog-check` and `version-check` are in the list because they PASS rather
+# than because they do work here. Both exempt this PR shape by their own rules:
+# changelog-check skips a diff confined to `.github/`, and version-check skips
+# any diff that does not touch `src/datarobot_genai/`. Listing them proves they
+# ran and reached that verdict, rather than never having run.
 #
 # DELIBERATELY ABSENT, verified the same way:
 # - `e2e / *`, `e2e-examples` - both suites now skip the `dependabot[bot]`
@@ -94,9 +67,8 @@ label: automerge
 #                        secrets that a Dependabot event resolves to empty. They
 #                        would have failed on auth on every single bump. They
 #                        run on the push to `main` after the merge instead.
-#                        A cve-sync PR does run them (the App resolves secrets
-#                        normally), and `block_on_any_failure` holds a red one
-#                        to account, but one list serves both authors.
+#                        cve-sync PRs do run them, and `block_on_any_failure`
+#                        catches a red one.
 # - `drmcp-integration` - fires only when its paths-filter matches, which for a
 #                        bump means only when integration.yml itself was
 #                        touched. It needs no credentials, so when it does fire
@@ -136,38 +108,20 @@ expected_checks:
 # short list above is safe.
 block_on_any_failure: true
 
-# Cursor Bugbot reviews this repo (e.g. #737) and reports through a review
-# comment rather than a check, so without this flag its findings are
-# decorative: a PR can carry a high-severity finding and still merge itself
-# with everything green. Only OPEN threads block; resolving the conversation,
-# or changing the code so the thread goes outdated, clears it. Needs
-# github-actions 0.0.29 or later in the caller.
+# Cursor Bugbot reports through review comments, not checks. This makes an open
+# Bugbot thread block the merge.
 block_on_cursor_comments: true
 
 settle_seconds: 300
 
-# Sized for the larger of the two bots, which is Dependabot: a grouped
-# github-actions bump touches one file per workflow that pins an action. There
-# are 16 workflows here and almost all of them pin `actions/checkout`, so 16 is
-# the realistic ceiling today and 20 leaves room for a few more. A cve-sync
-# resync is nowhere near it: 10 files at absolute worst.
+# A grouped github-actions bump touches one file per workflow that pins an
+# action. There are 16 workflows here and almost all of them pin
+# `actions/checkout`, so 16 is the realistic ceiling today and 20 leaves room
+# for a few more. Anything much larger is not the PR we think it is.
 max_changed_files: 20
 
-# The union of what both bots touch. dr-auto-merge has no per-author path rules,
-# so anything either bot needs is allowed for both.
-#
-# Dependabot's half is the `.github/` entries. It is scoped to the
-# github-actions ecosystem at `/`, and there is no `.github/actions/` directory
-# here; add `.github/actions/**` at the same time as adding one.
-#
-# cve-sync's half is the rest. This repo has three resolution roots (the
-# package, `docs`, `e2e-tests`), each with its own manifest and lock. `setup.py`
-# is on it because the extras live there and the resync raises floors in them
-# (#738). CHANGELOG.md is the entry `stamps-release: true` writes.
-# `.taskfiles/cve-sync.yml` is the vendored command file the resync rewrites
-# from the upstream definition; it rarely moves, which makes it easy to forget.
-# Each entry is spelled out rather than globbed: a resync has no business
-# touching anything else, and if one ever does, this hands the PR to a person.
+# The union of what Dependabot (`.github/`) and cve-sync (manifests, locks, and
+# the changelog) touch. Paths are not scoped per author.
 allowed_paths:
   - ".github/workflows/**"
   - ".github/dependabot.yml"
@@ -199,11 +153,5 @@ merge_method: squash
 # label is applied with the App token rather than GITHUB_TOKEN, it also
 # triggers workflow-pr-automation.yaml's Slack ping, so somebody actually hears
 # about it.
-#
-# cve-sync applies this same label itself, before anything has run, when it
-# decides a change is not one a green check run settles. Same destination, two
-# routes, and a reviewer can tell which by where the reason is: in the PR body
-# means cve-sync refused up front, in a comment means dr-auto-merge gave up
-# after the fact.
 # ─────────────────────────────────────────────────────────────────────────────
 escalate_label: "00 - Ready for Review"
