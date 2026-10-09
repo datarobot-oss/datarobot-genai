@@ -15,17 +15,14 @@
 
 version: 1
 
-# Only Dependabot for now. cve-sync opens its PRs as the `cve-sync` App, but
-# the COMMITS on those PRs are authored by `github-actions[bot]`, and
-# allow-listing that would trust every workflow in the repo. Adding cve-sync
-# needs that solved separately; do not just append it here.
+# Every commit author on the PR must be listed, spelled exactly. Never add
+# `github-actions[bot]`: that would trust every workflow in the repo.
 #
-# It would also be the wrong call on this repo regardless. A cve-sync PR here
-# bumps `[project].version`, and that bump IS the release decision:
-# release-on-merge.yml tags whatever version it reads out of pyproject.toml on
-# merge to main. Merging one unattended publishes to PyPI unattended.
+# Accepted risk: a cve-sync PR bumps the version, so merging it also publishes
+# to PyPI unattended. Splitting the two would leave the CVE fix unreleased.
 allowed_authors:
   - dependabot[bot]
+  - cve-sync[bot]
 
 label: automerge
 
@@ -51,8 +48,8 @@ label: automerge
 # never fires wedges that PR forever; a missing expected check just means the PR
 # waits for a human instead of self-merging.
 #
-# WHY THESE FOUR ARE GUARANTEED TO FIRE on a Dependabot bump, verified by
-# reading each workflow's triggers: none of the four carries a path filter, none
+# WHY THESE FOUR ARE GUARANTEED TO FIRE on either bot's PR, verified by reading
+# each workflow's triggers: none of the four carries a path filter, none
 # carries an actor guard, and none reads anything but `secrets.GITHUB_TOKEN`,
 # which is the one secret a Dependabot event can still resolve.
 #
@@ -70,6 +67,8 @@ label: automerge
 #                        secrets that a Dependabot event resolves to empty. They
 #                        would have failed on auth on every single bump. They
 #                        run on the push to `main` after the merge instead.
+#                        cve-sync PRs do run them, and `block_on_any_failure`
+#                        catches a red one.
 # - `drmcp-integration` - fires only when its paths-filter matches, which for a
 #                        bump means only when integration.yml itself was
 #                        touched. It needs no credentials, so when it does fire
@@ -109,6 +108,10 @@ expected_checks:
 # short list above is safe.
 block_on_any_failure: true
 
+# Cursor Bugbot reports through review comments, not checks. This makes an open
+# Bugbot thread block the merge.
+block_on_cursor_comments: true
+
 settle_seconds: 300
 
 # A grouped github-actions bump touches one file per workflow that pins an
@@ -117,14 +120,20 @@ settle_seconds: 300
 # for a few more. Anything much larger is not the PR we think it is.
 max_changed_files: 20
 
-# Dependabot here is scoped to the github-actions ecosystem at `/`, so a PR
-# touching anything outside `.github/` is by definition not the PR this policy
-# is for. There is no `.github/actions/` directory in this repo, so unlike the
-# af-component repos there are no composite actions to allow for; add
-# `.github/actions/**` here at the same time as adding one.
+# The union of what Dependabot (`.github/`) and cve-sync (manifests, locks, and
+# the changelog) touch. Paths are not scoped per author.
 allowed_paths:
   - ".github/workflows/**"
   - ".github/dependabot.yml"
+  - ".taskfiles/cve-sync.yml"
+  - "CHANGELOG.md"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "setup.py"
+  - "docs/pyproject.toml"
+  - "docs/uv.lock"
+  - "e2e-tests/pyproject.toml"
+  - "e2e-tests/uv.lock"
 
 # `main review` allows squash only; any other method is refused by GitHub.
 merge_method: squash

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.67 - 2026-10-09
+- Enable automerge for cve-sync PRs
+
 ## 0.29.66 - 2026-10-08
 - Remove transitive dependencies that were declared directly in the framework extras:
   `pybase64` (crewai), `langgraph-prebuilt` (langgraph), and `llama-index`,

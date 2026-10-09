@@ -2,8 +2,8 @@ name: Automerge
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Automerge
-# Approves and merges Dependabot's grouped github-actions bump once every check
-# in `.github/automerge.yaml` has reported green.
+# Approves and merges Dependabot's grouped github-actions bump and cve-sync's
+# resync PRs once every check in `.github/automerge.yaml` has reported green.
 #
 # WHY A BOT AND NOT GitHub's NATIVE AUTO-MERGE. Ruleset bypass resolves against
 # whoever PERFORMS the merge. `gh pr merge --auto` merges as
@@ -25,11 +25,8 @@ name: Automerge
 #   approve - also approves. The merge is still a human click.
 #   merge   - also approves AND merges.
 #
-# Starting in `report` on this repo rather than landing straight in `merge` as
-# af-component-agent did. The policy here is the first one to lean on a single
-# sentinel check (`security`) to stand in for a 33-job matrix, and report mode
-# is how that gets proven against a live PR before it can merge anything. Flip
-# to `merge` once a real Dependabot bump has produced a correct verdict.
+# `merge` is required for cve-sync, which treats `report` and `approve` as not
+# enrolled.
 #
 # Even in `merge` the approval and the merge happen on DIFFERENT polls, so there
 # is always a window of roughly one poll interval to intervene. Dropping back to
@@ -48,11 +45,11 @@ on:
 
 jobs:
   automerge:
-    uses: datarobot-oss/github-actions/.github/workflows/automerge.yaml@0.0.28
+    uses: datarobot-oss/github-actions/.github/workflows/automerge.yaml@0.0.30
     with:
       # Public metadata, not a secret: `dr-auto-merge`.
       app_id: '4912188'
-      mode: 'report'
+      mode: 'merge'
     secrets:
       app_private_key: ${{ secrets.DR_AUTO_MERGE_PRIVATE_KEY }}
     permissions:
