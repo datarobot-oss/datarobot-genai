@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.70 - 2026-10-14
+- `dragent`: add jitter and exponential failure backoff to the agent card registry
+  background refresh loop, plus a short process-local cooldown after registry HTTP
+  failures so many agents do not stampede Control Hub during an outage.
+
 ## 0.29.69 - 2026-10-13
 - Raise the minimum `banks` version from `>=2.4.5` to `>=2.5.1`.
 - Add a minimum version for `fsspec`: `>=2026.6.0`.

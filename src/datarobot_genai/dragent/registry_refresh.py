@@ -19,9 +19,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
+from typing import Protocol
 
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
@@ -35,6 +37,21 @@ logger = logging.getLogger(__name__)
 
 _MIN_REFRESH_INTERVAL_SECONDS = 60
 
+# Upper bound for exponential backoff after consecutive refresh failures.
+_MAX_FAILURE_BACKOFF_SECONDS = 15 * 60
+
+# Jitter multiplier range applied to every sleep (healthy or backoff).
+_JITTER_MIN = 0.5
+_JITTER_MAX = 1.5
+
+# Cap the exponent so ``base * 2**failures`` cannot overflow before ``min(cap, …)``.
+_MAX_BACKOFF_EXPONENT = 16
+
+
+class _SupportsUniform(Protocol):
+    def uniform(self, a: float, b: float) -> float:
+        """Return a random float in ``[a, b]``."""
+
 
 def background_refresh_interval(soft_cache_ttl: int) -> int:
     """Return the background refresh poll interval for *soft_cache_ttl*.
@@ -45,17 +62,58 @@ def background_refresh_interval(soft_cache_ttl: int) -> int:
     return max(_MIN_REFRESH_INTERVAL_SECONDS, soft_cache_ttl // 2)
 
 
+def refresh_sleep_seconds(
+    base_interval: int,
+    soft_cache_ttl: int,
+    failures: int,
+    *,
+    rng: _SupportsUniform | None = None,
+) -> float:
+    """Return the next background-refresh sleep duration.
+
+    Healthy polls (*failures* == 0) sleep ``base_interval`` with ±50% jitter.
+    After consecutive failures the delay grows as ``base * 2**failures``,
+    capped at ``min(15m, max(base, soft_ttl))``, then jittered the same way.
+    """
+    rng = rng or random.Random()
+    if failures <= 0:
+        delay = float(base_interval)
+    else:
+        cap = min(_MAX_FAILURE_BACKOFF_SECONDS, max(base_interval, soft_cache_ttl))
+        exponent = min(failures, _MAX_BACKOFF_EXPONENT)
+        delay = min(cap, float(base_interval) * (2**exponent))
+    return delay * rng.uniform(_JITTER_MIN, _JITTER_MAX)
+
+
 async def registry_refresh_loop(
     registry: AgentCardRegistry,
     interval_seconds: int,
 ) -> None:
-    """Periodically refresh soft-expired registered agent cards."""
+    """Periodically refresh soft-expired registered agent cards.
+
+    Sleeps a jittered interval before each attempt. Consecutive failures
+    exponentially increase the next delay (still jittered) so many agents do
+    not keep hammering Control Hub in lockstep during an outage.
+    """
+    failures = 0
     while True:
-        await asyncio.sleep(interval_seconds)
+        delay = refresh_sleep_seconds(
+            interval_seconds,
+            registry.soft_cache_ttl,
+            failures,
+        )
+        await asyncio.sleep(delay)
         try:
             await registry.refresh_all_registered()
         except Exception:
-            logger.exception("Background agent card registry refresh failed")
+            failures += 1
+            logger.exception(
+                "Background agent card registry refresh failed "
+                "(consecutive_failures=%d); backing off",
+                failures,
+            )
+        else:
+            failures = 0
 
 
 @asynccontextmanager
