@@ -685,8 +685,8 @@ class AgentCardRegistry:
         """Re-fetch registered IDs whose cache entries are past the soft TTL.
 
         Existing cache entries are left in place on failure so stale-if-error
-        can continue serving them during registry outages.  The error is
-        re-raised after logging so the background refresh loop can back off.
+        can continue serving them during registry outages.  Errors propagate so
+        the background refresh loop can log once and back off.
         """
         if not self.has_registered_lookups():
             logger.debug("No registered agent card IDs; skipping background refresh.")
@@ -702,18 +702,11 @@ class AgentCardRegistry:
             external_ids,
             workload_ids,
         )
-        try:
-            await self.prefetch(
-                deployment_ids=deployment_ids or None,
-                external_ids=external_ids or None,
-                workload_ids=workload_ids or None,
-            )
-        except AgentCardRegistryError:
-            logger.warning(
-                "Background agent card registry refresh failed; keeping cached entries.",
-                exc_info=True,
-            )
-            raise
+        await self.prefetch(
+            deployment_ids=deployment_ids or None,
+            external_ids=external_ids or None,
+            workload_ids=workload_ids or None,
+        )
 
     async def get(
         self,
