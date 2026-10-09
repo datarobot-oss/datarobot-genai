@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -129,8 +130,8 @@ class TestAgentCardRegistryRefresh:
         await registry.refresh_all_registered()
         mock_fetch.assert_not_awaited()
 
-    async def test_refresh_logs_and_reraises_on_failure(self, mock_fetch):
-        """GIVEN a soft-expired card WHEN refresh fails THEN cache is kept and error is raised."""
+    async def test_refresh_reraises_on_failure_without_logging(self, mock_fetch, caplog):
+        """GIVEN a soft-expired card WHEN refresh fails THEN cache is kept, error raised, no log."""
         mock_fetch.side_effect = [
             _parsed({"dep-1": _card()}),
             AgentCardRegistryError("registry down"),
@@ -140,10 +141,17 @@ class TestAgentCardRegistryRefresh:
         await registry.get(deployment_id="dep-1")
         registry._age_cache_entry_for_test("dep-1", 90)
 
-        with pytest.raises(AgentCardRegistryError, match="registry down"):
+        with (
+            caplog.at_level(logging.WARNING, logger="datarobot_genai.dragent.agent_card_registry"),
+            pytest.raises(AgentCardRegistryError, match="registry down"),
+        ):
             await registry.refresh_all_registered()
 
         assert await registry._backend.get_stale("dep-1", max_staleness_seconds=3600) is not None
+        assert not any(
+            "Background agent card registry refresh failed" in r.getMessage()
+            for r in caplog.records
+        )
 
     async def test_refresh_no_op_without_registered_ids(self, mock_fetch):
         registry = _memory_registry(cache_ttl=3600)
@@ -231,6 +239,32 @@ class TestRegistryRefreshLoop:
         assert mock_delay.call_args_list[0].args == (60, 120, 0)
         assert mock_delay.call_args_list[1].args == (60, 120, 1)
         assert mock_delay.call_args_list[2].args == (60, 120, 0)
+
+    async def test_loop_logs_single_warning_on_refresh_failure(self, caplog):
+        """GIVEN a refresh failure WHEN the loop catches it THEN one warning is logged."""
+        registry = AsyncMock()
+        registry.soft_cache_ttl = 120
+        registry.refresh_all_registered.side_effect = AgentCardRegistryError("down")
+        with (
+            patch(f"{_MODULE}.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch(f"{_MODULE}.refresh_sleep_seconds", return_value=60.0),
+            caplog.at_level(logging.WARNING, logger=_MODULE),
+        ):
+            mock_sleep.side_effect = [None, asyncio.CancelledError()]
+
+            with pytest.raises(asyncio.CancelledError):
+                await registry_refresh_loop(registry, interval_seconds=60)
+
+        failure_records = [
+            r
+            for r in caplog.records
+            if "Background agent card registry refresh failed" in r.getMessage()
+        ]
+        assert len(failure_records) == 1
+        assert failure_records[0].levelno == logging.WARNING
+        assert failure_records[0].exc_info is not None
+        assert "keeping cached entries" in failure_records[0].getMessage()
+        assert "consecutive_failures=1" in failure_records[0].getMessage()
 
     async def test_loop_backs_off_on_registry_error_then_resets(self):
         """GIVEN registry errors THEN successes WHEN looping THEN failures reset after success."""

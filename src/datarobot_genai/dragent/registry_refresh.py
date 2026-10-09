@@ -107,10 +107,11 @@ async def registry_refresh_loop(
             await registry.refresh_all_registered()
         except Exception:
             failures += 1
-            logger.exception(
+            logger.warning(
                 "Background agent card registry refresh failed "
-                "(consecutive_failures=%d); backing off",
+                "(consecutive_failures=%d); keeping cached entries and backing off",
                 failures,
+                exc_info=True,
             )
         else:
             failures = 0
