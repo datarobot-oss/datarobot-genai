@@ -48,7 +48,7 @@ on:
 
 jobs:
   automerge:
-    uses: datarobot-oss/github-actions/.github/workflows/automerge.yaml@0.0.28
+    uses: datarobot-oss/github-actions/.github/workflows/automerge.yaml@0.0.29
     with:
       # Public metadata, not a secret: `dr-auto-merge`.
       app_id: '4912188'
