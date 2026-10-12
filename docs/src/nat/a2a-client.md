@@ -109,6 +109,18 @@ function_groups:
 
 > **Note:** When using the registry the RPC base URL is derived from the card's advertised `url` — no separate URL is required.
 
+#### Registry lookup credentials
+
+The registry is queried with `DATAROBOT_API_TOKEN` by default. With Okta cross-application access, request-time lookups try the caller's Okta token first.
+
+| Scenario | Credentials, in order |
+|---|---|
+| Request-time lookup, `okta_cross_app_access` auth provider | 1. Caller's Okta token (`Authorization: Bearer <token>`)<br>2. `DATAROBOT_API_TOKEN`, if the token is missing, rejected or the card is not found |
+| Request-time lookup, any other auth provider | `DATAROBOT_API_TOKEN` |
+| Startup prefetch, background refresh, L2 cache | `DATAROBOT_API_TOKEN` |
+
+A request-time lookup only happens on a cache miss or an expired entry. If every credential fails, the last cached card is served while it is within the hard TTL.
+
 #### Batch fetching
 
 When a workflow has many registry-backed function groups, all cards are resolved in a maximum of three HTTP calls: one per ID kind (deployment, external, workload). ID kinds are never mixed in a single request — `deploymentIds` together with `workloadIds` is rejected with HTTP 400, and either combined with `externalIds` matches nothing. Results are cached in-memory and reused until the soft TTL expires.

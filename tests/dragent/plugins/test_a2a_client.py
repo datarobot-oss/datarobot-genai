@@ -677,6 +677,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
                 deployment_id="dep-001",
                 external_id=None,
                 workload_id=None,
+                auth_headers=None,
             )
             # Verify base_url derived from card.url
             assert patched_fg_env.call_args.kwargs["base_url"] == "https://agent.example.com/a2a/"
@@ -702,6 +703,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
                 deployment_id=None,
                 external_id="ext-001",
                 workload_id=None,
+                auth_headers=None,
             )
 
     async def test_registry_workload_id_path(
@@ -728,6 +730,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
                 deployment_id=None,
                 external_id=None,
                 workload_id="wl-001",
+                auth_headers=None,
             )
             assert (
                 patched_fg_env.call_args.kwargs["base_url"] == "https://workload.example.com/a2a/"
@@ -1201,3 +1204,114 @@ class TestSharedAuthProviderFlowParams:
         assert sorted(self._resources_requested(step1)) == sorted(
             [alpha.target_audience, beta.target_audience]
         )
+
+
+class TestRegistryLookupFollowsAuthProvider:
+    """The registry lookup uses the credentials of the client's auth provider."""
+
+    @pytest.fixture
+    def registry_config(self):
+        return AuthenticatedA2AClientConfig(
+            registry=AgentCardRegistryLookup(deployment_id="dep-001"),
+            auth_provider="my_auth",
+        )
+
+    @staticmethod
+    def _registry_returning_card():
+        card = MagicMock()
+        card.url = "https://agent.example.com/a2a/"
+        registry = AsyncMock()
+        registry.get = AsyncMock(return_value=card)
+        return registry
+
+    async def test_discovery_provider_passes_caller_headers(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        """GIVEN an XAA-style provider WHEN entered THEN registry.get gets its discovery headers."""
+        provider = MagicMock(spec=A2ADiscoveryAuthMixin)
+        provider.authenticate_for_discovery = AsyncMock(
+            return_value={"Authorization": "Bearer dummy-user-token-A7f3"}
+        )
+        mock_builder.get_auth_provider.return_value = provider
+        registry = self._registry_returning_card()
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+        provider.authenticate_for_discovery.assert_awaited_once_with("test-user")
+        registry.get.assert_awaited_once_with(
+            deployment_id="dep-001",
+            external_id=None,
+            workload_id=None,
+            auth_headers={"Authorization": "Bearer dummy-user-token-A7f3"},
+        )
+
+    async def test_api_key_provider_keeps_owner_key_lookup(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        """GIVEN a non-discovery (datarobot_api_key style) provider THEN get() is unchanged."""
+        mock_builder.get_auth_provider.return_value = MagicMock(spec=AuthProviderBase)
+        registry = self._registry_returning_card()
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+        registry.get.assert_awaited_once_with(
+            deployment_id="dep-001", external_id=None, workload_id=None, auth_headers=None
+        )
+
+    async def test_missing_caller_token_falls_back_to_owner_key(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        """GIVEN the provider cannot supply a token THEN get() runs with the owner key."""
+        provider = MagicMock(spec=A2ADiscoveryAuthMixin)
+        provider.authenticate_for_discovery = AsyncMock(
+            side_effect=RuntimeError("header x-datarobot-external-access-token missing")
+        )
+        mock_builder.get_auth_provider.return_value = provider
+        registry = self._registry_returning_card()
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+        registry.get.assert_awaited_once_with(
+            deployment_id="dep-001", external_id=None, workload_id=None, auth_headers=None
+        )
+        assert not isinstance(fg._client, _FailedRegistryClient)
+
+    async def test_registry_rejecting_caller_token_gives_placeholder(
+        self, registry_config, mock_builder
+    ):
+        """GIVEN the registry rejects the caller token THEN the peer is the placeholder."""
+        provider = MagicMock(spec=A2ADiscoveryAuthMixin)
+        provider.authenticate_for_discovery = AsyncMock(
+            return_value={"Authorization": "Bearer dummy-user-token-A7f3"}
+        )
+        mock_builder.get_auth_provider.return_value = provider
+        registry = AsyncMock()
+        registry.get = AsyncMock(side_effect=AgentCardRegistryError("HTTP 401"))
+
+        with (
+            patch(f"{_MODULE}.Context") as mock_ctx,
+            patch(f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry),
+        ):
+            mock_ctx.get.return_value.user_id = "test-user"
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+            result = await fg._functions["call"].ainvoke({"query": "hi"})
+
+        assert isinstance(fg._client, _FailedRegistryClient)
+        registry.get.assert_awaited_once()
+        assert registry.get.await_args.kwargs["auth_headers"] == {
+            "Authorization": "Bearer dummy-user-token-A7f3"
+        }
+        assert "dummy-user-token-A7f3" not in result
