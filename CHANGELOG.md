@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.67 - 2026-10-12
+- `dragent`: Registry agent card lookups now follow the `authenticated_a2a_client` auth provider.
+  With Okta cross-application access, a request-time cache miss fetches `/agentCards/` with the
+  caller's Okta token (Bearer), falling back to the owner's `DATAROBOT_API_TOKEN` if the token is
+  missing or rejected. `datarobot_api_key` peers, startup prefetch, the refresh loop and L2 keep
+  using the owner key.
+
 ## 0.29.66 - 2026-10-08
 - Remove transitive dependencies that were declared directly in the framework extras:
   `pybase64` (crewai), `langgraph-prebuilt` (langgraph), and `llama-index`,

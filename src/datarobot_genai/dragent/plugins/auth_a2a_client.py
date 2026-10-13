@@ -261,6 +261,8 @@ class AgentCardRegistryLookup(BaseModel):
     specified.  The registry is queried using standard DataRobot API-token
     authentication (``DATAROBOT_API_TOKEN``), which avoids the chicken-and-egg
     problem where the agent's own card endpoint requires per-agent AuthN/AuthZ.
+    With Okta cross-application access, request-time lookups use the caller's
+    Okta token instead.
 
     Example YAML::
 
@@ -325,7 +327,8 @@ class AuthenticatedA2AClientConfig(A2AClientConfig, name="authenticated_a2a_clie
 
     **Central registry lookup** — set ``registry`` with one of ``deployment_id``,
     ``external_id`` or ``workload_id``.  The card is fetched from the DataRobot
-    central agent card registry using ``DATAROBOT_API_TOKEN``, and the agent's RPC
+    central agent card registry using ``DATAROBOT_API_TOKEN`` (the caller's Okta
+    token with cross-application access), and the agent's RPC
     URL is derived from the card's advertised ``url``::
 
         function_groups:
@@ -410,6 +413,19 @@ def _sanitize_a2a_error(exc: Exception) -> str:
         return f"{type(exc).__name__}: authentication or protocol error"
 
     return f"{type(exc).__name__}: request to remote agent failed"
+
+
+async def _discovery_headers_for_registry(
+    provider: A2ADiscoveryAuthMixin,
+) -> dict[str, str] | None:
+    """Return the caller's registry headers, or None to use the owner key."""
+    try:
+        return await provider.authenticate_for_discovery(Context.get().user_id or "default-user")
+    except Exception as exc:
+        logger.warning(
+            "No caller token for registry lookup (%s); using owner key.", type(exc).__name__
+        )
+        return None
 
 
 def _wrap_a2a_function(fn: Any) -> Any:
@@ -559,10 +575,17 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
             # in a degraded state instead of crashing (generic JSON-RPC -32603).
             try:
                 registry = await get_default_registry()
+                # Okta XAA looks the card up as the caller first.
+                auth_headers = (
+                    await _discovery_headers_for_registry(auth_provider)
+                    if isinstance(auth_provider, A2ADiscoveryAuthMixin)
+                    else None
+                )
                 pre_resolved_card = await registry.get(
                     deployment_id=config.registry.deployment_id,
                     external_id=config.registry.external_id,
                     workload_id=config.registry.workload_id,
+                    auth_headers=auth_headers,
                 )
             except AgentCardRegistryError as exc:
                 error_msg = str(exc)

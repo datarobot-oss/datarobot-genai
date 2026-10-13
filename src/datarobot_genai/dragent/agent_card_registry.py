@@ -437,7 +437,9 @@ class AgentCardRegistry:
     # Internal HTTP
     # ------------------------------------------------------------------
 
-    async def _fetch(self, params: dict[str, str]) -> ParsedRegistryCards:
+    async def _fetch(
+        self, params: dict[str, str], *, auth_headers: dict[str, str] | None = None
+    ) -> ParsedRegistryCards:
         """Fetch and parse all agent cards matching *params*.
 
         Splits ID lists longer than the API's per-parameter cap
@@ -445,29 +447,34 @@ class AgentCardRegistry:
         raw entries so that the ``on_duplicate`` strategy is applied once
         across the full result set — the same way pagination is accumulated
         inside :meth:`_fetch_entries`.
+
+        *auth_headers* override the owner-key ``Authorization`` header.
         """
         all_entries: list[dict[str, Any]] = []
         for chunk_params in _chunk_id_params(params):
-            all_entries.extend(await self._fetch_entries(chunk_params))
+            all_entries.extend(await self._fetch_entries(chunk_params, auth_headers=auth_headers))
 
         parsed = _parse_registry_response({"data": all_entries}, on_duplicate=self._on_duplicate)
         logger.info("Fetched %d agent card(s) from registry.", len(parsed.cards))
         return parsed
 
-    async def _fetch_entries(self, params: dict[str, str]) -> list[dict[str, Any]]:
+    async def _fetch_entries(
+        self, params: dict[str, str], *, auth_headers: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
         """Execute a single registry HTTP GET with pagination, returning raw entries.
 
         Requests the maximum page size (100) to minimise round-trips, then
         follows ``next`` links until all pages are consumed.
         """
         registry_url = build_agent_cards_registry_url(self._endpoint)
-        headers = {"Authorization": f"Bearer {self._api_token}"}
+        headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
-            "Fetching agent cards from registry: %s (params=%s)",
+            "Fetching agent cards from registry: %s (params=%s, credential=%s)",
             registry_url,
             params,
+            "caller" if auth_headers else "owner",
         )
 
         all_entries: list[dict[str, Any]] = []
@@ -675,6 +682,7 @@ class AgentCardRegistry:
         deployment_id: str | None = None,
         external_id: str | None = None,
         workload_id: str | None = None,
+        auth_headers: dict[str, str] | None = None,
     ) -> AgentCard:
         """Return a single agent card, using the cache or fetching on demand.
 
@@ -684,6 +692,9 @@ class AgentCardRegistry:
 
         Exactly one of ``deployment_id``, ``external_id`` or ``workload_id``
         must be provided.
+
+        Pass *auth_headers* to fetch a miss as the caller; the owner key is the
+        fallback.
 
         Raises
         ------
@@ -709,6 +720,37 @@ class AgentCardRegistry:
         ):
             return fresh.card
 
+        if auth_headers:
+            return await self._get_with_caller_auth(lookup_key, lookup_key_type, auth_headers)
+        return await self._get_with_owner_key(lookup_key, lookup_key_type)
+
+    async def _get_with_caller_auth(
+        self, lookup_key: str, lookup_key_type: LookupKeyType, auth_headers: dict[str, str]
+    ) -> AgentCard:
+        """Fetch a card as the caller; fall back to the owner key on any failure."""
+        params = {_id_param_for(lookup_key_type): lookup_key}
+        try:
+            parsed = await self._fetch(params, auth_headers=auth_headers)
+        except (AgentCardRegistryError, UnicodeEncodeError) as exc:
+            # Log the type only: the error may carry the caller's headers.
+            reason = type(exc.__cause__ or exc).__name__
+        else:
+            await self._store_cards(parsed)
+            if lookup_key in parsed.cards:
+                return parsed.cards[lookup_key]
+            reason = "not found"
+
+        logger.warning(
+            "Caller-token registry lookup failed for %s_id='%s' (%s); using owner key.",
+            lookup_key_type,
+            lookup_key,
+            reason,
+        )
+        return await self._get_with_owner_key(lookup_key, lookup_key_type)
+
+    async def _get_with_owner_key(
+        self, lookup_key: str, lookup_key_type: LookupKeyType
+    ) -> AgentCard:
         async with self._lock:
             # Double-check after acquiring lock
             if fresh := await self._backend.get_fresh(

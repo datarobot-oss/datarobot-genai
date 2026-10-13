@@ -219,6 +219,10 @@ Both steps authenticate the client using the same method
 (private key jwt), signing JWT client assertions
 with the private key from `IDP_AGENT_PRIVATE_KEY_JWK`.
 
+With a central registry peer (`registry`), request-time agent card lookups try the caller's Okta
+token first and fall back to `DATAROBOT_API_TOKEN`. See
+[Registry lookup credentials](a2a-client.md#registry-lookup-credentials).
+
 ### Server-side configuration reference: `cross_application_access`
 
 These fields are declared in the serving agent's `workflow.yaml` and published
