@@ -863,6 +863,29 @@ class TestAgentCardRegistryFetch:
 
         assert mock_client.get.await_count == 1
 
+    async def test_caller_auth_fetch_failure_does_not_start_cooldown(self):
+        """GIVEN a caller-credential failure WHEN fetched again THEN HTTP is retried."""
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=mock_response
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_client):
+            registry = _memory_registry(cache_ttl=3600)
+            caller_headers = {"Authorization": "Bearer caller-tok"}
+            with pytest.raises(AgentCardRegistryError, match="HTTP 401"):
+                await registry._fetch({"deploymentIds": "dep-1"}, auth_headers=caller_headers)
+            with pytest.raises(AgentCardRegistryError, match="HTTP 401"):
+                await registry._fetch({"deploymentIds": "dep-1"}, auth_headers=caller_headers)
+
+        assert mock_client.get.await_count == 2
+
     async def test_get_serves_stale_during_failure_cooldown_without_http(self):
         """GIVEN a cached card and tripped cooldown WHEN get() THEN serve stale without HTTP."""
         cache_backend = MemoryAgentCardCacheBackend()

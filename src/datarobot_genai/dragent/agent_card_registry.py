@@ -501,14 +501,17 @@ class AgentCardRegistry:
         Requests the maximum page size (100) to minimise round-trips, then
         follows ``next`` links until all pages are consumed.
 
-        After a transport or HTTP failure a short process-local cooldown skips
-        further HTTP attempts so soft-expired on-demand lookups do not stampede
-        Control Hub while it is down.
+        After a transport or HTTP failure on the owner-key path a short
+        process-local cooldown skips further HTTP attempts so soft-expired
+        on-demand lookups do not stampede Control Hub while it is down.
+        Caller-credential failures do not start the cooldown: those fall back
+        to the owner key, which must still be allowed to try.
         """
         self._raise_if_cooldown_active()
 
         registry_url = build_agent_cards_registry_url(self._endpoint)
         headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
+        using_owner_key = auth_headers is None
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
@@ -547,14 +550,16 @@ class AgentCardRegistry:
                     pages_fetched += 1
 
         except httpx.HTTPStatusError as exc:
-            self._mark_registry_unhealthy()
+            if using_owner_key:
+                self._mark_registry_unhealthy()
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
                 f"{exc.response.status_code}. Verify your API token and that "
                 f"the agents are registered."
             ) from exc
         except httpx.HTTPError as exc:
-            self._mark_registry_unhealthy()
+            if using_owner_key:
+                self._mark_registry_unhealthy()
             raise AgentCardRegistryError(f"Agent card registry request failed: {exc}") from exc
 
         logger.debug(
