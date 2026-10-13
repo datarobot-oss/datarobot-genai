@@ -21,7 +21,7 @@ This evaluator is per-user: it requires a request-scoped
 :class:`~datarobot.rest.RESTClientObject` (e.g. from
 :func:`datarobot_genai.drmcputils.clients.datarobot.request_user_dr_client`)
 and caches results per ``(flag, principal)``. It is the building block for per-user,
-live tool gating (e.g. hiding the sandbox tool unless an entitlement is set).
+live tool gating (e.g. hiding a tool unless an entitlement is set).
 
 It is intentionally separate from
 :mod:`datarobot_genai.drmcp.core.feature_flags`, which evaluates the

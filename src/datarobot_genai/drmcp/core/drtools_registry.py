@@ -87,7 +87,7 @@ def load_drtools_registry(module_name: str) -> None:
     """Load and register all tools from a drtools module.
 
     Args:
-        module_name: Full module name (e.g., 'datarobot_genai.drtools.panels.tools')
+        module_name: Full module name (e.g., 'datarobot_genai.drtools.vdb.tools')
     """
     try:
         # Import the module first to trigger the @tool_metadata decorators

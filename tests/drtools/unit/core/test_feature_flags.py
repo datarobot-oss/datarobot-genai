@@ -207,14 +207,14 @@ class TestIsToolFeatureEnabled:
 
     def test_delegates_to_evaluator_when_flagged(self) -> None:
         evaluator = Mock(return_value=True)
-        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=evaluator) is True
-        evaluator.assert_called_once_with("MCP_SANDBOX")
+        assert is_tool_feature_enabled("SOME_TOOL_FLAG", evaluator=evaluator) is True
+        evaluator.assert_called_once_with("SOME_TOOL_FLAG")
 
     def test_disabled_flag_gates_off(self) -> None:
-        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=lambda _: False) is False
+        assert is_tool_feature_enabled("SOME_TOOL_FLAG", evaluator=lambda _: False) is False
 
     def test_fails_closed_when_evaluator_raises(self) -> None:
         def boom(_: str) -> bool:
             raise RuntimeError("DR client unavailable")
 
-        assert is_tool_feature_enabled("MCP_SANDBOX", evaluator=boom) is False
+        assert is_tool_feature_enabled("SOME_TOOL_FLAG", evaluator=boom) is False

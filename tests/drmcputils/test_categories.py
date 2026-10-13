@@ -163,11 +163,9 @@ class TestResolveToToolNamesParents:
         assert "file_import" in result
         assert "file_read" in result
 
-    def test_dr_visual_expands_to_panels_tools(self) -> None:
-        result = resolve_to_tool_names(frozenset({"dr_visual"}))
-        assert "list_panels" in result
-        assert "get_panel" in result
-        assert "transform_panel" in result
+    def test_dr_visual_expands_to_no_tools(self) -> None:
+        # Its only child, dr_mcpapps, is still a placeholder.
+        assert resolve_to_tool_names(frozenset({"dr_visual"})) == frozenset()
 
     def test_dr_dynamic_tools_contributes_no_names(self) -> None:
         # It is a bucket, not a name list — see resolve_tool_allowlist.

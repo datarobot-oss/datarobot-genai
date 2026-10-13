@@ -93,9 +93,9 @@ class TestExcludedSurface:
             }
         )
 
-    def test_panels_and_file_upload_excluded(self, names: set[str]) -> None:
-        # Panels not registered in global-mcp yet; file_upload needs local disk access.
-        assert not (names & {"file_upload", "list_panels"})
+    def test_file_upload_excluded(self, names: set[str]) -> None:
+        # file_upload needs local disk access.
+        assert "file_upload" not in names
 
     def test_hosted_and_placeholder_categories_excluded(self, categories: set[str]) -> None:
         assert not (categories & {"dr_dynamic_tools", "dr_proxied_user_mcp", "dr_mcpapps"})
