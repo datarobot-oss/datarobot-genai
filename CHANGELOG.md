@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.69 - 2026-10-13
+- Raise the minimum `banks` version from `>=2.4.5` to `>=2.5.1`.
+- Add a minimum version for `fsspec`: `>=2026.6.0`.
+- Raise the minimum `hydra-core` version from `>=1.3.4` to `>=1.3.7`.
+- Add a minimum version for `langgraph-sdk`: `>=0.4.4`.
+- Add a minimum version for `multidict`: `>=6.9.1`.
+- Add a minimum version for `virtualenv`: `>=21.7.13`.
+- Add a minimum version for `werkzeug`: `>=3.1.9`.
+
 ## 0.29.68 - 2026-10-13
 - Enable automerge for cve-sync PRs
 
