@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.71 - 2026-10-14
+- Add a minimum version for `hpack`: `>=4.2.0`.
+
 ## 0.29.70 - 2026-10-14
 - `dragent`: add jitter and exponential failure backoff to the agent card registry
   background refresh loop, plus a short process-local cooldown after owner-key

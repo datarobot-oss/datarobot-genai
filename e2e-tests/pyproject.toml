@@ -92,6 +92,7 @@ constraint-dependencies = [
     "crewai-tools>=1.15.21",
     "fsspec>=2026.6.0",
     "h2>=4.4.1",
+    "hpack>=4.2.0",
     "idna>=3.15",
     "joserfc>=1.6.8",
     "jupyter-server>=2.21.0",
