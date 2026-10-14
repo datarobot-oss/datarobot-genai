@@ -40,6 +40,7 @@ class ToolType(StrEnum):
     PANELS = "panels"
     WORKLOAD = "workload"
     FILES_API = "files_api"
+    OTEL = "otel"
 
 
 class ToolConfig(TypedDict):
@@ -142,6 +143,12 @@ TOOL_CONFIGS: dict[ToolType, ToolConfig] = {
         directory="files_api",
         package_prefix="datarobot_genai.drtools.files_api",
         config_field_name="enable_files_api_tools",
+    ),
+    ToolType.OTEL: ToolConfig(
+        name="otel",
+        directory="otel",
+        package_prefix="datarobot_genai.drtools.otel",
+        config_field_name="enable_otel_tools",
     ),
 }
 

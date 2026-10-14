@@ -36,6 +36,7 @@ class TestEnabledPackages:
             "vdb",
             "files_api",
             "workload",
+            "otel",
         }
 
 
