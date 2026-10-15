@@ -109,6 +109,18 @@ function_groups:
 
 > **Note:** When using the registry the RPC base URL is derived from the card's advertised `url` — no separate URL is required.
 
+#### Registry lookup credentials
+
+The registry is queried with `DATAROBOT_API_TOKEN` by default. With Okta cross-application access, request-time lookups try the caller's Okta token first.
+
+| Scenario | Credentials, in order |
+|---|---|
+| Request-time lookup, `okta_cross_app_access` auth provider | 1. Caller's Okta token (`Authorization: Bearer <token>`)<br>2. `DATAROBOT_API_TOKEN`, if the token is missing, rejected or the card is not found |
+| Request-time lookup, any other auth provider | `DATAROBOT_API_TOKEN` |
+| Startup prefetch, background refresh, L2 cache | `DATAROBOT_API_TOKEN` |
+
+A request-time lookup only happens on a cache miss or an expired entry. If every credential fails, the last cached card is served while it is within the hard TTL.
+
 #### Batch fetching
 
 When a workflow has many registry-backed function groups, all cards are resolved in a maximum of three HTTP calls: one per ID kind (deployment, external, workload). ID kinds are never mixed in a single request — `deploymentIds` together with `workloadIds` is rejected with HTTP 400, and either combined with `externalIds` matches nothing. Results are cached in-memory and reused until the soft TTL expires.
@@ -117,7 +129,7 @@ The registry API caps each ID parameter at 20 values, so a longer list of one ki
 
 On dragent startup, all registry IDs from `workflow.yaml` are **prefetched** in the same batch before the server accepts traffic.
 
-While the server is running, registered cards are **refreshed in the background** on an interval of half the soft cache TTL (minimum 60 seconds). Only entries past the soft TTL are re-fetched; failures are logged and existing cache entries are retained. If a registry fetch fails, the last-known-good cached card is served.
+While the server is running, registered cards are **refreshed in the background** on an interval of half the soft cache TTL (minimum 60 seconds), with ±50% jitter so many agents do not poll in lockstep. Only entries past the soft TTL are re-fetched. On failure the loop exponentially backs off (capped at 15 minutes), existing cache entries are retained, and a short process-local cooldown after owner-key registry failures skips further HTTP attempts so on-demand lookups do not stampede Control Hub. Caller-credential failures do not start that cooldown, so the owner-key fallback can still run. If a registry fetch fails, the last-known-good cached card is served.
 
 On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
 

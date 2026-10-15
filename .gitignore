@@ -87,5 +87,8 @@ prof/
 # Cursor IDE local hook state (not for VCS)
 .cursor/hooks/
 
+# Claude
+.claude/plans/
+
 # Docs build output
 docs/site/

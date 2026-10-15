@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.29.67 - 2026-10-11
+## 0.29.72 - 2026-10-15
 - Remove the panel tools. They were never enabled anywhere and are no longer needed. This removes
   `drtools/panels` (all 23 panel tools), `drmcputils/panels`, `drmcpbase/panels` (the `panels://`
   resources), and `drmcputils/files/store.py` (the `BlobStore` that only panels used). It also
@@ -15,6 +15,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Remove `drtools/core/sandbox` (`Sandbox`, `DataRobotWorkloadSandbox`, `InstrumentedSandbox`,
   `execute_code`) along with its `sandbox.*` SLI metrics, the e2e test for them, and the now-unused OTLP metrics
   parsing in the e2e mock collector. The panel tools were its only caller.
+
+## 0.29.71 - 2026-10-14
+- Add a minimum version for `hpack`: `>=4.2.0`.
+
+## 0.29.70 - 2026-10-14
+- `dragent`: add jitter and exponential failure backoff to the agent card registry
+  background refresh loop, plus a short process-local cooldown after owner-key
+  registry HTTP failures so many agents do not stampede Control Hub during an
+  outage. Caller-credential lookup failures do not start that cooldown, so the
+  owner-key fallback can still run.
+
+## 0.29.69 - 2026-10-13
+- Raise the minimum `banks` version from `>=2.4.5` to `>=2.5.1`.
+- Add a minimum version for `fsspec`: `>=2026.6.0`.
+- Raise the minimum `hydra-core` version from `>=1.3.4` to `>=1.3.7`.
+- Add a minimum version for `langgraph-sdk`: `>=0.4.4`.
+- Add a minimum version for `multidict`: `>=6.9.1`.
+- Add a minimum version for `virtualenv`: `>=21.7.13`.
+- Add a minimum version for `werkzeug`: `>=3.1.9`.
+
+## 0.29.68 - 2026-10-13
+- Enable automerge for cve-sync PRs
+
+## 0.29.67 - 2026-10-12
+- `dragent`: Registry agent card lookups now follow the `authenticated_a2a_client` auth provider.
+  With Okta cross-application access, a request-time cache miss fetches `/agentCards/` with the
+  caller's Okta token (Bearer), falling back to the owner's `DATAROBOT_API_TOKEN` if the token is
+  missing or rejected. `datarobot_api_key` peers, startup prefetch, the refresh loop and L2 keep
+  using the owner key.
 
 ## 0.29.66 - 2026-10-08
 - Remove transitive dependencies that were declared directly in the framework extras:
