@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.73 - 2026-10-15
+- `dragent`: bump the `nvidia-nat` family (`nvidia-nat`, `-a2a`, `-opentelemetry`, `-langchain`, `-mcp`, `-crewai`, `-llama-index`) from 1.7.0 to 1.9.0.
+- `dragent`: keep the NAT 1.7 wire format on `/generate/stream`. NAT 1.8+ wraps each chunk in a `{"value": "<json string>"}` envelope that AG-UI consumers don't unwrap; the stream cancellation patch now skips that envelope for `DRAgentEventResponse` chunks and is ported to the 1.9 signature.
+- `dragent`: request the `nvidia-nat-langchain[litellm]` extra, since `langchain-litellm` became optional in NAT 1.9.
+- `dragent/plugins/llm_clients`: use our own `patch_llm_based_on_config` for the LangChain gateway, deployment, NIM, component and router clients. NAT 1.9's private helper wraps the model in `configurable_fields`, which breaks `isinstance(llm, BaseChatModel)`.
+- `dragent/plugins/per_user_tool_calling_agent`: register a `RunAgentInput` to `ChatRequest` converter, which NAT 1.9's stricter type conversion needs for `streaming_memory_agent`.
+- `e2e-tests`: fail loudly when a stream chunk arrives wrapped in NAT's payload envelope instead of parsing it as zero events.
+
 ## 0.29.72 - 2026-10-15
 - Remove the panel tools. They were never enabled anywhere and are no longer needed. This removes
   `drtools/panels` (all 23 panel tools), `drmcputils/panels`, `drmcpbase/panels` (the `panels://`
