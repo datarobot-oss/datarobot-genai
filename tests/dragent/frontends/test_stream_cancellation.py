@@ -20,10 +20,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ag_ui.core import TextMessageContentEvent
 from nat.data_models.api_server import ResponsePayloadOutput
 from nat.front_ends.fastapi import response_helpers
 
 from datarobot_genai.dragent.frontends import stream_cancellation
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.stream_cancellation import _EXPECTED_PARAMETERS
 from datarobot_genai.dragent.frontends.stream_cancellation import generate_streaming_response
 from datarobot_genai.dragent.frontends.stream_cancellation import (
@@ -169,3 +171,20 @@ def test_patch_skips_unknown_nat_signature(
 
     assert response_helpers.generate_streaming_response is _changed
     assert "signature changed" in caplog.text
+
+
+async def test_generate_stream_keeps_agui_events_unwrapped() -> None:
+    """NAT 1.8+ wraps /generate/stream chunks in {"value": ...}; our AG-UI events must not be."""
+    event = DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m", delta="hi")])
+    run = _SlowRun([event, "other"], hang=False)
+
+    items = [
+        item
+        async for item in generate_streaming_response(
+            None, session=_session_for(run), streaming=True, wrap_output_in_payload=True
+        )
+    ]
+
+    assert items[0] is event
+    assert isinstance(items[1], ResponsePayloadOutput)
+    assert '"events"' in event.get_stream_data()

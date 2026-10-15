@@ -33,6 +33,10 @@ overlap is what breaks:
 :func:`patch_nat_streaming_disconnect_cancellation` swaps in a copy of NAT's function that
 cancels the producer when the consumer exits early, and waits briefly (shielded from the
 caller's cancellation) for it to unwind before the runner context closes.
+
+The copy also keeps the NAT 1.7 wire format for our AG-UI events. NAT 1.8+ wraps every
+``/generate/stream`` chunk in a ``{"value": "<json string>"}`` envelope, which AG-UI
+consumers of that route (our e2e helpers, the agent template's server) do not unwrap.
 """
 
 from __future__ import annotations
@@ -53,6 +57,8 @@ from nat.front_ends.fastapi.intermediate_steps_subscriber import pull_intermedia
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 from nat.utils.producer_consumer_queue import AsyncIOProducerConsumerQueue
 
+from .response import DRAgentEventResponse
+
 logger = logging.getLogger(__name__)
 
 # How long a cancelled producer gets to unwind (close spans, release its LLM/MCP calls)
@@ -70,6 +76,7 @@ _EXPECTED_PARAMETERS = (
     "step_adaptor",
     "result_type",
     "output_type",
+    "wrap_output_in_payload",
 )
 
 # Modules that bind ``generate_streaming_response`` at import time and so need their own
@@ -120,14 +127,22 @@ async def generate_streaming_response(
     step_adaptor: Any = None,
     result_type: type | None = None,
     output_type: type | None = None,
+    wrap_output_in_payload: bool = False,
 ) -> AsyncGenerator[Any]:
-    """Copy of NAT 1.7's ``generate_streaming_response`` that cancels its producer on exit.
+    """Copy of NAT 1.9's ``generate_streaming_response`` that cancels its producer on exit.
 
-    Only the ``finally`` differs from NAT: when the consumer stops early (client disconnect,
+    Two differences from NAT. When the consumer stops early (client disconnect,
     cancellation, ``aclose()``), the producer task is cancelled and awaited instead of being
-    left to run. The wait is shielded because the caller's cancel scope is already cancelled
-    and would otherwise interrupt it at once.
+    left to run; the wait is shielded because the caller's cancel scope is already cancelled
+    and would otherwise interrupt it at once. And ``DRAgentEventResponse`` chunks are never
+    wrapped in the ``{"value": ...}`` envelope, so ``/generate/stream`` keeps its 1.7 shape.
     """
+
+    def _wrap(item: Any) -> Any:
+        if wrap_output_in_payload and not isinstance(item, DRAgentEventResponse):
+            return ResponsePayloadOutput(payload=item)
+        return item
+
     if step_adaptor is None:
         step_adaptor = StepAdaptor(StepAdaptorConfig())
 
@@ -140,10 +155,10 @@ async def generate_streaming_response(
             try:
                 if session.workflow.has_streaming_output and streaming:
                     async for chunk in runner.result_stream(to_type=output_type):
-                        await q.put(chunk)
+                        await q.put(_wrap(chunk))
                 else:
                     result = await runner.result(to_type=result_type)
-                    await q.put(runner.convert(result, output_type))
+                    await q.put(_wrap(runner.convert(result, output_type)))
 
                 await intermediate_complete.wait()
             finally:
