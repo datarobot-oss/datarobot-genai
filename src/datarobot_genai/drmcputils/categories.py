@@ -41,7 +41,6 @@ Hierarchy:
     dr_file
   dr_visual
     dr_mcpapps
-    dr_panels
   dr_db
     dr_vdb
   dr_user_tools                          (user-authored tools — outside the static taxonomy)
@@ -88,7 +87,6 @@ class MCPToolCategory(StrEnum):
     # ── visual categories ────────────────────────────────────────────────────
     DR_VISUAL = "dr_visual"
     DR_MCPAPPS = "dr_mcpapps"
-    DR_PANELS = "dr_panels"
 
     # ── database categories ──────────────────────────────────────────────────
     DR_DB = "dr_db"
@@ -255,33 +253,6 @@ LEAF_CATEGORY_TOOLS: dict[str, frozenset[str]] = {
         }
     ),
     MCPToolCategory.DR_MCPAPPS: frozenset(),  # placeholder — not yet implemented
-    MCPToolCategory.DR_PANELS: frozenset(
-        {
-            "list_panels",
-            "get_panel",
-            "create_text_panel",
-            "create_json_panel",
-            "list_panel_schemas",
-            "describe_panel_schema",
-            "validate_panel_data",
-            "delete_panel",
-            "move_panel",
-            "inspect_panel",
-            "view_json_panel",
-            "create_dataset_panel_from_connector",
-            "preview_dataset_panel",
-            "transform_panel",
-            "filter_panel",
-            "create_dataset_panel_from_catalog",
-            "upload_dataset_panel_to_catalog",
-            "query_datasets_to_panel",
-            "get_prediction_history",
-            "get_autopilot_status",
-            "predict_with_deployment",
-            "apply_what_if",
-            "get_time_series_scoring_dataset_panel",
-        }
-    ),
     MCPToolCategory.DR_VDB: frozenset(
         {
             "vdb_create",
@@ -350,7 +321,6 @@ PARENT_TO_CHILDREN: dict[str, frozenset[str]] = {
     MCPToolCategory.DR_VISUAL: frozenset(
         {
             MCPToolCategory.DR_MCPAPPS,
-            MCPToolCategory.DR_PANELS,
         }
     ),
     MCPToolCategory.DR_DB: frozenset(
@@ -406,7 +376,6 @@ TOOL_CATEGORY_LABELS: dict[MCPToolCategory, str] = {
     # ── visual ──────────────────────────────────────────────────────────────
     MCPToolCategory.DR_VISUAL: "Data visualization",
     MCPToolCategory.DR_MCPAPPS: "Applications",
-    MCPToolCategory.DR_PANELS: "Panels",
     # ── databases ───────────────────────────────────────────────────────────
     MCPToolCategory.DR_DB: "Databases",
     MCPToolCategory.DR_VDB: "Vector databases",

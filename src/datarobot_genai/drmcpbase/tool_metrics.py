@@ -16,8 +16,7 @@
 
 Until now tool calls were observable through spans only — per-tool call
 counts, latency, and failure taxonomy had to be re-derived by scanning
-traces. This module adds SLI instruments (mirroring the sandbox convention in
-``drtools/core/sandbox/observability.py``) plus the OTel-recommended server
+traces. This module adds SLI instruments plus the OTel-recommended server
 operation duration histogram:
 
 - ``mcp.server.operation.duration``     histogram (OTel GenAI MCP semconv)
@@ -67,7 +66,7 @@ _NOT_FOUND_ERROR = "NotFoundError"
 # OTel GenAI MCP semconv (server-side operation latency).
 MCP_SERVER_OPERATION_DURATION = "mcp.server.operation.duration"
 
-# DataRobot SLI counters (not part of upstream MCP semconv; mirror sandbox.* shape).
+# DataRobot SLI counters (not part of upstream MCP semconv).
 TOOL_CALLS_TOTAL = "datarobot.mcp.tool.calls_total"
 TOOL_CALL_FAILURES = "datarobot.mcp.tool.call_failure_total"
 
@@ -146,9 +145,9 @@ def build_instruments(meter: Any) -> ToolCallInstruments:
     )
 
 
-# Lazily-initialized singletons keyed on the active global MeterProvider (the
-# same pattern as the sandbox instruments): if the real SDK provider replaces
-# the no-op/proxy provider after first use, instruments are rebuilt against it.
+# Lazily-initialized singletons keyed on the active global MeterProvider: if the
+# real SDK provider replaces the no-op/proxy provider after first use, instruments
+# are rebuilt against it.
 _STATE: dict[str, Any] = {"instruments": None, "provider": None}
 
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.29.72 - 2026-10-15
+- Remove the panel tools. They were never enabled anywhere and are no longer needed. This removes
+  `drtools/panels` (all 23 panel tools), `drmcputils/panels`, `drmcpbase/panels` (the `panels://`
+  resources), and `drmcputils/files/store.py` (the `BlobStore` that only panels used). It also
+  removes the `enable_panels_tools` setting, the `panels` tool type, the `dr_panels` tool category,
+  and the nightly `Live Integration (Files API)` workflow, which only tested panel storage. A stale
+  `ENABLE_PANELS_TOOLS` env var is ignored. `dr_visual` stays, with only the `dr_mcpapps`
+  placeholder under it.
+- Remove `drtools/core/sandbox` (`Sandbox`, `DataRobotWorkloadSandbox`, `InstrumentedSandbox`,
+  `execute_code`) along with its `sandbox.*` SLI metrics, the e2e test for them, and the now-unused OTLP metrics
+  parsing in the e2e mock collector. The panel tools were its only caller.
+
 ## 0.29.71 - 2026-10-14
 - Add a minimum version for `hpack`: `>=4.2.0`.
 

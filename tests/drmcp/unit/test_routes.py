@@ -778,7 +778,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
 
@@ -906,7 +905,6 @@ class TestMetadataRoute:
                     "code_execution",
                     "optimization",
                     "vdb",
-                    "panels",
                     "workload",
                     "files_api",
                 )
@@ -964,7 +962,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
 
@@ -1030,7 +1027,6 @@ class TestMetadataRoute:
         mock_tool_config.enable_code_execution_tools = False
         mock_tool_config.enable_optimization_tools = False
         mock_tool_config.enable_vdb_tools = False
-        mock_tool_config.enable_panels_tools = False
         mock_tool_config.enable_workload_tools = False
         mock_tool_config.enable_files_api_tools = False
 
