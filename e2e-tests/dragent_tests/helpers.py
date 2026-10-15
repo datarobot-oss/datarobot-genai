@@ -208,7 +208,8 @@ def parse_sse_responses(response: httpx.Response) -> list[DRAgentEventResponse]:
             # Some error paths may incorrectly prefix the NAT Error object.
             raise_if_nat_workflow_error_payload(data)
             # A NAT {"value": ...} envelope would otherwise validate as a chunk with zero events.
-            assert '"events"' in data or not data.startswith('{"value"'), (
+            chunk = json.loads(data)
+            assert not (isinstance(chunk, dict) and "value" in chunk and "events" not in chunk), (
                 f"Stream chunk is wrapped in NAT's payload envelope: {data[:200]}"
             )
             responses.append(DRAgentEventResponse.model_validate_json(data))

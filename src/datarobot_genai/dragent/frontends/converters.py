@@ -121,6 +121,17 @@ def convert_run_agent_input_to_chat_request_or_message(
     )
 
 
+def convert_run_agent_input_to_chat_request(input: RunAgentInput) -> ChatRequest:
+    """Bridge plain RunAgentInput to ChatRequest for NAT 1.9's tool-calling agent.
+
+    NAT 1.9 converts the agent's input straight to ``ChatRequest`` rather than going
+    through ``ChatRequestOrMessage``.
+    """
+    return convert_dragent_run_agent_input_to_chat_request(
+        DRAgentRunAgentInput.model_validate(input.model_dump(by_alias=True))
+    )
+
+
 def _dragent_streaming_delta_from_events(
     events: list[Any],
 ) -> tuple[str | None, list[ChoiceDeltaToolCall]]:
