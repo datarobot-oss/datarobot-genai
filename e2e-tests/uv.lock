@@ -76,7 +76,6 @@ excludes = [
     "flask",
     "kubernetes",
     "lancedb",
-    "langchain-milvus",
     "llama-index-cli",
     "llama-index-llms-azure-openai",
     "llama-index-llms-bedrock",

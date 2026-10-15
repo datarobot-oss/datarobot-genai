@@ -72,7 +72,6 @@ excludes = [
     "flask",
     "kubernetes",
     "lancedb",
-    "langchain-milvus",
     "leptonai",
     "llama-index-cli",
     "openpyxl",
