@@ -67,6 +67,7 @@ from datarobot_genai.dragent.frontends.converters import (
 from datarobot_genai.dragent.frontends.converters import (
     convert_nat_chat_response_chunk_to_openai_chat_completion_chunk,
 )
+from datarobot_genai.dragent.frontends.converters import convert_run_agent_input_to_chat_request
 from datarobot_genai.dragent.frontends.converters import (
     convert_run_agent_input_to_chat_request_or_message,
 )
@@ -207,6 +208,28 @@ def test_convert_run_agent_input_to_chat_request_or_message() -> None:
     )
     assert isinstance(result, ChatRequestOrMessage)
     assert result.model_dump() == expected.model_dump()
+
+
+def test_convert_run_agent_input_to_chat_request_keeps_tools() -> None:
+    # GIVEN a plain RunAgentInput carrying a tool
+    input_obj = RunAgentInput(
+        thread_id="thread-1",
+        run_id="run-1",
+        messages=[UserMessage(id="1", content="Hello")],
+        tools=[Tool(name="lookup", description="Look something up", parameters={})],
+        context=[],
+        forwarded_props={},
+        state={},
+    )
+
+    # WHEN converting to ChatRequest (NAT 1.9's tool-calling agent path)
+    result = convert_run_agent_input_to_chat_request(input_obj)
+
+    # THEN messages, tools and streaming survive the conversion
+    assert isinstance(result, ChatRequest)
+    assert [m.content for m in result.messages] == ["Hello"]
+    assert [t["name"] for t in result.tools] == ["lookup"]
+    assert result.stream is True
 
 
 # --- Input converters: NAT -> AG-UI ---
