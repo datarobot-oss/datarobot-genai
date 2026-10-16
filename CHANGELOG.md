@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.1 - 2026-10-16
+- `dragent/plugins/datarobot_otelcollector`: keep Japanese and other non-ASCII text readable in exported span attributes (`input.value`, `output.value`, `input.value_obj`, `output.value_obj` and metadata). NAT serializes these with `json.dumps`'s default `ensure_ascii=True`, which stored the text as `\uXXXX` escapes. `DataRobotOTLPSpanAdapterExporter` now re-encodes them with `ensure_ascii=False`.
+
 ## 0.30.0 - 2026-10-15
 - `dragent`: bump the `nvidia-nat` family (`nvidia-nat`, `-a2a`, `-opentelemetry`, `-langchain`, `-mcp`, `-crewai`, `-llama-index`) from 1.7.0 to 1.9.0.
 - `dragent`: keep the NAT 1.7 wire format on `/generate/stream`. NAT 1.8+ wraps each chunk in a `{"value": "<json string>"}` envelope that AG-UI consumers don't unwrap; the stream cancellation patch now skips that envelope for `DRAgentEventResponse` chunks and is ported to the 1.9 signature.

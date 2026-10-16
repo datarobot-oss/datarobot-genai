@@ -16,15 +16,18 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
 
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     DataRobotOtelCollectorTelemetryExporter,
 )
+from datarobot_genai.dragent.plugins.datarobot_otelcollector import DataRobotOTLPSpanAdapterExporter
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     datarobot_otelcollector_telemetry_exporter,
 )
@@ -32,6 +35,11 @@ from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
 ENDPOINT = "https://staging.datarobot.com/otel/v1/traces"
 ENTITY_ID = "deployment-abc123"
 API_KEY = "test-key-do-not-use"
+
+
+class _Payload(BaseModel):
+    query: str
+
 
 _ENV_VARS = (
     "DATAROBOT_API_TOKEN",
@@ -343,3 +351,63 @@ class TestOtlpHeadersEnvOverride:
         headers = mock_exporter.call_args.kwargs["headers"]
         assert headers["X-DataRobot-Api-Key"] == API_KEY
         assert headers["X-DataRobot-Entity-Id"] == ENTITY_ID
+
+
+class TestNonAsciiSpanAttributes:
+    r"""Japanese text must reach the trace viewer readable, not as \uXXXX escapes."""
+
+    @pytest.fixture
+    def exporter(self) -> DataRobotOTLPSpanAdapterExporter:
+        return DataRobotOTLPSpanAdapterExporter(endpoint=ENDPOINT)
+
+    def test_to_json_string_keeps_japanese_literal(self, exporter):
+        data = {"input": "東京の天気は？", "messages": [{"content": "こんにちは"}]}
+
+        result = exporter._to_json_string(data)
+
+        assert "東京の天気は？" in result
+        assert "こんにちは" in result
+        assert "\\u" not in result
+        assert json.loads(result) == data
+
+    def test_to_json_string_ascii_unchanged(self, exporter):
+        data = {"input": "hello", "count": 3}
+
+        assert exporter._to_json_string(data) == json.dumps(data)
+
+    def test_to_json_string_keeps_control_char_escapes(self, exporter):
+        data = {"input": "日本\x00語"}
+
+        result = exporter._to_json_string(data)
+
+        assert "日本" in result
+        assert "\\u0000" in result
+        assert json.loads(result) == data
+
+    def test_to_json_string_lone_surrogate_stays_escaped(self, exporter):
+        # A lone surrogate can't be UTF-8 encoded for OTLP export; keep NAT's escaped form.
+        data = {"input": "日本\ud800"}
+
+        result = exporter._to_json_string(data)
+
+        result.encode("utf-8")
+        assert "\\ud800" in result
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"query": "東京の天気は？"},
+            [{"role": "user", "content": "東京の天気は？"}],
+            _Payload(query="東京の天気は？"),
+        ],
+        ids=["dict", "list", "pydantic"],
+    )
+    def test_serialize_payload_keeps_japanese_literal(self, exporter, payload):
+        serialized, is_json = exporter._serialize_payload(payload)
+
+        assert is_json is True
+        assert "東京の天気は？" in serialized
+        assert "\\u" not in serialized
+
+    def test_serialize_payload_plain_string_untouched(self, exporter):
+        assert exporter._serialize_payload("東京") == ("東京", False)
