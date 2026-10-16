@@ -15,7 +15,8 @@
         "scored_cases":       { "type": "integer", "description": "Cases that received a numeric judge score" },
         "inconclusive_cases": { "type": "integer", "description": "Cases excluded from rates — agent errored or judge call failed (e.g. gateway content filter). See BUGS.md #3." },
         "mean_score":         { "type": ["number", "null"], "description": "Average score across scored cases (0-1)" },
-        "pass_rate":          { "type": ["number", "null"], "description": "Fraction of scored cases scoring >= 0.5" },
+        "pass_threshold":     { "type": "number", "description": "Score at or above which a case counts as passed; the pipeline's run.pass_threshold, default 0.5" },
+        "pass_rate":          { "type": ["number", "null"], "description": "Fraction of scored cases scoring >= pass_threshold" },
         "good_case_pass_rate":{ "type": ["number", "null"], "description": "Pass rate on expected_behavior=good cases only, or null if none" },
         "bad_case_pass_rate": { "type": ["number", "null"], "description": "Pass rate on expected_behavior=bad cases only, or null if none" }
       }

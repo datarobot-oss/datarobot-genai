@@ -124,6 +124,36 @@ def test_load_pipeline_judge_optional(tmp_path: Path) -> None:
     assert loaded["benchmark"]["name"] == "pii_leakage"
 
 
+def _pipeline_with(tmp_path: Path, benchmark_extra: dict, run: dict) -> Path:
+    cfg = {
+        "benchmark": {"module": "b.py", "name": "b", **benchmark_extra},
+        "target": {"model_type": "chat", "model_id": "unknown"},
+        "run": run,
+    }
+    p = tmp_path / "pipeline.yaml"
+    p.write_text(yaml.dump(cfg))
+    return p
+
+
+def test_load_pipeline_accepts_params_and_pass_threshold(tmp_path: Path) -> None:
+    p = _pipeline_with(tmp_path, {"params": {"metric": "rouge_l"}}, {"pass_threshold": 0.7})
+    loaded = load_pipeline(p)
+    assert loaded["benchmark"]["params"] == {"metric": "rouge_l"}
+
+
+def test_load_pipeline_rejects_non_mapping_params(tmp_path: Path) -> None:
+    p = _pipeline_with(tmp_path, {"params": ["rouge_l"]}, {})
+    with pytest.raises(ValueError, match="benchmark.params must be a mapping"):
+        load_pipeline(p)
+
+
+@pytest.mark.parametrize("threshold", [1.5, -0.1, "high", True])
+def test_load_pipeline_rejects_bad_pass_threshold(tmp_path: Path, threshold: object) -> None:
+    p = _pipeline_with(tmp_path, {}, {"pass_threshold": threshold})
+    with pytest.raises(ValueError, match="pass_threshold must be a number"):
+        load_pipeline(p)
+
+
 def test_load_pipeline_not_mapping(tmp_path: Path) -> None:
     p = tmp_path / "bad.yaml"
     p.write_text("- item1\n- item2\n")
