@@ -44,8 +44,10 @@ pin them in ``workflow.yaml`` to point at a non-default collector.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_telemetry_exporter
@@ -66,14 +68,48 @@ from datarobot_genai.core.telemetry.nat_context import reset_nat_span_context
 logger = logging.getLogger(__name__)
 
 
+def _unescape_json_unicode(serialized: str) -> str:
+    r"""Re-encode a JSON string so non-ASCII text is stored as-is instead of ``\uXXXX``.
+
+    NAT serializes span payloads with ``json.dumps``'s default ``ensure_ascii=True``,
+    which turns Japanese (and any other non-ASCII) text into ``\uXXXX`` escapes that
+    are unreadable in the trace viewer. Round-tripping keeps the JSON semantically
+    identical while emitting the characters literally.
+
+    The escaped input is returned unchanged when it isn't valid JSON or when the
+    decoded text contains lone surrogates, which can't be encoded as UTF-8 for export.
+    """
+    if "\\u" not in serialized:
+        return serialized
+    try:
+        unescaped = json.dumps(json.loads(serialized), ensure_ascii=False)
+        unescaped.encode("utf-8")
+    except (ValueError, UnicodeEncodeError):
+        return serialized
+    return unescaped
+
+
 class DataRobotOTLPSpanAdapterExporter(OTLPSpanAdapterExporter):
-    """OTLP exporter that mirrors NAT span hierarchy into the OTel SDK context.
+    r"""OTLP exporter that mirrors NAT span hierarchy into the OTel SDK context.
 
     NAT lifecycle spans and SDK spans (memory, framework auto-instrumentors)
     otherwise export as separate trace trees. This bridge keeps the SDK context
     aligned with NAT intermediate steps so memory spans nest under the active
     workflow span.
+
+    It also keeps non-ASCII text in span payload attributes (``input.value``,
+    ``output.value``, ``input.value_obj``, ``output.value_obj``, metadata)
+    readable instead of ``\uXXXX``-escaped.
     """
+
+    def _to_json_string(self, data: Any) -> str:
+        return _unescape_json_unicode(super()._to_json_string(data))
+
+    def _serialize_payload(self, input_value: Any) -> tuple[str, bool]:
+        serialized, is_json = super()._serialize_payload(input_value)
+        if is_json:
+            serialized = _unescape_json_unicode(serialized)
+        return serialized, is_json
 
     def _workflow_run_id(self) -> str | None:
         try:
