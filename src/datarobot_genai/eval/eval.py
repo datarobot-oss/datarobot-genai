@@ -19,6 +19,7 @@ from pathlib import Path
 
 from datarobot_genai.eval.dataset import load_dataset
 from datarobot_genai.eval.dataset import to_byob_jsonl
+from datarobot_genai.eval.output import PASS_THRESHOLD
 from datarobot_genai.eval.output import normalize_output
 from datarobot_genai.eval.runner import run_byob
 from datarobot_genai.eval.status import write_status
@@ -210,6 +211,7 @@ class EvalRunner:
                 run_id,
                 benchmark=str(cfg["benchmark"]["name"]),
                 has_judge=bool(cfg.get("judge")),
+                pass_threshold=(cfg.get("run") or {}).get("pass_threshold", PASS_THRESHOLD),
             )
         except Exception as e:  # noqa: BLE001
             write_status(

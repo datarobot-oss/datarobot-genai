@@ -42,7 +42,9 @@ class ResultsSummarizer:
         s: dict[str, Any] = data.get("summary", {})
         print("\nSummary")
         print(f"  Mean score         : {s.get('mean_score')}")
-        print(f"  Pass rate          : {s.get('pass_rate')}")
+        threshold = s.get("pass_threshold")
+        cutoff = f" (score >= {threshold})" if threshold is not None else ""
+        print(f"  Pass rate          : {s.get('pass_rate')}{cutoff}")
         print(f"  Good case pass     : {s.get('good_case_pass_rate')}")
         print(f"  Bad case pass      : {s.get('bad_case_pass_rate')}")
 

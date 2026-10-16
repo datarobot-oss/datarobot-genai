@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -69,6 +70,10 @@ def run_byob(
         # is not accidentally activated by a pre-existing shell environment.
         for _key in ("JUDGE_URL", "JUDGE_MODEL_ID", "JUDGE_API_KEY_NAME"):
             env.pop(_key, None)
+
+    # Benchmark-specific settings (e.g. response_similarity's metric), read by
+    # the benchmark at import time. Always set so a stale shell value can't leak in.
+    env["BENCHMARK_PARAMS"] = json.dumps(benchmark.get("params") or {})
 
     cmd = [
         sys.executable,

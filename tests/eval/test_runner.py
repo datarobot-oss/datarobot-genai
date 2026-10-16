@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -125,6 +126,31 @@ def test_run_byob_clears_inherited_judge_env_when_judge_free(tmp_path: Path) -> 
     assert "JUDGE_URL" not in env
     assert "JUDGE_MODEL_ID" not in env
     assert "JUDGE_API_KEY_NAME" not in env
+
+
+def test_run_byob_exports_benchmark_params(tmp_path: Path) -> None:
+    cfg = _cfg()
+    cfg["benchmark"]["params"] = {"metric": "rouge_l"}
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+
+    with patch("datarobot_genai.eval.runner.subprocess.run", return_value=mock_result) as mock_run:
+        run_byob(cfg, "http://agent/v1", "/tmp/ds.jsonl", "/tmp/out", tmp_path)
+
+    assert json.loads(mock_run.call_args[1]["env"]["BENCHMARK_PARAMS"]) == {"metric": "rouge_l"}
+
+
+def test_run_byob_overrides_inherited_benchmark_params(tmp_path: Path) -> None:
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+
+    with (
+        patch("datarobot_genai.eval.runner.subprocess.run", return_value=mock_result) as mock_run,
+        patch.dict("os.environ", {"BENCHMARK_PARAMS": '{"metric": "stale"}'}),
+    ):
+        run_byob(_cfg(), "http://agent/v1", "/tmp/ds.jsonl", "/tmp/out", tmp_path)
+
+    assert json.loads(mock_run.call_args[1]["env"]["BENCHMARK_PARAMS"]) == {}
 
 
 def test_run_byob_raises_on_nonzero_exit(tmp_path: Path) -> None:

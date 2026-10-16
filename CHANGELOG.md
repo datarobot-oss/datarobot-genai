@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.30.2 - 2026-10-19
 - `dragent/plugins/datarobot_otelcollector`: keep Japanese and other non-ASCII text readable in exported span attributes (`input.value`, `output.value`, `input.value_obj`, `output.value_obj` and metadata). NAT serializes these with `json.dumps`'s default `ensure_ascii=True`, which stored the text as `\uXXXX` escapes. `DataRobotOTLPSpanAdapterExporter` now re-encodes them with `ensure_ascii=False`.
+- `eval`: add the `response_similarity` benchmark (judge-free). Each case lists `acceptable_responses`, and the score is the raw lexical similarity to the closest one, from 0 to 1. The metric is `token_recall` (default), `token_f1`, or `rouge_l`, and each case's `reason` explains in plain words what its number means.
+- `eval`: add the `response_acceptability` benchmark, the judge-based twin that reads the same dataset. A judge rates the response 1-5 on how well it matches the examples in substance, so paraphrases still score well.
+- `eval`: a pipeline can set `benchmark.params`, exported to the benchmark as JSON in `BENCHMARK_PARAMS`. This is how `response_similarity` picks its metric.
+- `eval`: a pipeline can set `run.pass_threshold` (default 0.5) to choose where `passed` flips. The value used is reported as `summary.pass_threshold` in `eval_results.json`.
+- `eval`: `task generate --pipeline` knows both new benchmarks and requires `acceptable_responses` on generated cases.
 
 ## 0.30.1 - 2026-10-19
 - Raise the minimum `mcp` version from `>=1.28.1,<2` to `>=1.30.0,<2`.

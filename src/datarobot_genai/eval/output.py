@@ -34,6 +34,7 @@ def normalize_output(
     run_id: str,
     benchmark: str = "",
     has_judge: bool = False,
+    pass_threshold: float = PASS_THRESHOLD,
 ) -> dict[str, Any]:
     dataset_by_id: dict[str, dict[str, Any]] = {}
     for c in dataset:
@@ -74,7 +75,7 @@ def normalize_output(
             status: str = pred.get("status", "")
 
             scored_ok = isinstance(score, (int, float))
-            passed: bool | None = score >= PASS_THRESHOLD if scored_ok else None
+            passed: bool | None = score >= pass_threshold if scored_ok else None
 
             # ``reason`` is the human-readable explanation for the score,
             # whatever its source: a judge grade for judge-based benchmarks, or a
@@ -159,6 +160,7 @@ def normalize_output(
             "scored_cases": len(scored),
             "inconclusive_cases": inconclusive,
             "mean_score": round(mean_score, 4) if mean_score is not None else None,
+            "pass_threshold": pass_threshold,
             "pass_rate": round(pass_rate, 4) if pass_rate is not None else None,
             "good_case_pass_rate": (
                 round(sum(1 for c in good if c["passed"]) / len(good), 4) if good else None
