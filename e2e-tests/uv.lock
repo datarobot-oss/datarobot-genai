@@ -51,6 +51,7 @@ constraints = [
     { name = "setuptools", specifier = ">=83.0.0" },
     { name = "soupsieve", specifier = ">=2.9.0" },
     { name = "starlette", specifier = ">=1.3.1" },
+    { name = "tinytag", specifier = ">=2.3.0" },
     { name = "tornado", specifier = ">=6.5.9" },
     { name = "urllib3", specifier = ">=2.8.0" },
 ]
@@ -61,7 +62,7 @@ overrides = [
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "json-repair", specifier = ">=0.60.1" },
     { name = "litellm", specifier = ">=1.96.2,<2.0.0" },
-    { name = "mcp", specifier = ">=1.28.1,<2" },
+    { name = "mcp", specifier = ">=1.30.0,<2" },
     { name = "opentelemetry-api", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-common", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.43.0,<2.0.0" },
@@ -1073,7 +1074,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.73"
+version = "0.30.1"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -3758,7 +3759,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.29.0"
+version = "1.30.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -3776,9 +3777,9 @@ dependencies = [
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/d3/f9acc21dfc886e4f78e2add1a47db46ce16884346afde53f8a064c02c891/mcp-1.29.0.tar.gz", hash = "sha256:52d01f334de1868cc3bb2d6604931126a67631f99a6c5d3b82ba47290315ec36", size = 643148, upload-time = "2026-07-28T13:41:41.939Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/93/0142dc84a666daf8ad51a34268f34c12fd6fda4f3810c4be2504eecc8212/mcp-1.30.0.tar.gz", hash = "sha256:445414625fce5c295faa505bb11bacece661ab6f4028d57c935db57820b7a3e4", size = 680511, upload-time = "2026-09-07T14:34:15.845Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/c8/248b201f6d753d69fd5d6506011abbb35a946d9142b2ae311a948fd0be3d/mcp-1.29.0-py3-none-any.whl", hash = "sha256:f5a075bb611f23d6f4d080c6a1699fa62772eebc562ba9e66b306ddde1c755f7", size = 223436, upload-time = "2026-07-28T13:41:40.337Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/f4/e58bc33317c92a0203664daaf00bf6f41166cc0149e5d6870a03f7cd004a/mcp-1.30.0-py3-none-any.whl", hash = "sha256:666edb5009503e1047c9d60346a756f94b261f05cc2625f23d41c728ffc484d0", size = 234581, upload-time = "2026-09-07T14:34:14.266Z" },
 ]
 
 [[package]]
@@ -6656,11 +6657,11 @@ wheels = [
 
 [[package]]
 name = "tinytag"
-version = "2.2.1"
+version = "2.3.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/96/59/8a8cb2331e2602b53e4dc06960f57d1387a2b18e7efd24e5f9cb60ea4925/tinytag-2.2.1.tar.gz", hash = "sha256:e6d06610ebe7cd66fd07be2d3b9495914ab32654a5e47657bb8cd44c2484523c", size = 38214, upload-time = "2026-03-15T18:48:01.11Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/0f/fae085b7f19fe0c67b68e6d70098ac6cd046cc498f253f5ee56a3dd03bbc/tinytag-2.3.2.tar.gz", hash = "sha256:021d711cdbdbf840d3b67b976cb34dadc58d2fcfd490eb74ef9602b37b991414", size = 47353, upload-time = "2026-09-07T17:46:08.886Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/34/d50e338631baaf65ec5396e70085e5de0b52b24b28db1ffbc1c6e82190dc/tinytag-2.2.1-py3-none-any.whl", hash = "sha256:ed8b1e6d25367937e3321e054f4974f9abfde1a3e0a538824c87da377130c2b6", size = 32927, upload-time = "2026-03-15T18:47:59.613Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/54/d378858d14e5c5c7b921cb9ffccf27be3d34f3d6d010c57404ddd634685d/tinytag-2.3.2-py3-none-any.whl", hash = "sha256:ebaf957915266b9c20414a10f8c5170a345aa039a794650d39d66e7d6b96199f", size = 37171, upload-time = "2026-09-07T17:46:07.434Z" },
 ]
 
 [[package]]

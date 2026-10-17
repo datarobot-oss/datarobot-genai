@@ -156,7 +156,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.29.71"
+version = "0.30.1"
 source = { editable = "../" }
 
 [package.metadata]
@@ -248,14 +248,14 @@ requires-dist = [
     { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
-    { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'dragent'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-langchain", marker = "extra == 'langgraph'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-llama-index", marker = "extra == 'llamaindex'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-mcp", marker = "extra == 'dragent'", specifier = "==1.7.0" },
-    { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.7.0" },
+    { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'dragent'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'langgraph'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-llama-index", marker = "extra == 'llamaindex'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-mcp", marker = "extra == 'dragent'", specifier = "==1.9.0" },
+    { name = "nvidia-nat-opentelemetry", marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "okta-client-python", marker = "extra == 'auth'", specifier = ">=0.2.0,<1.0.0" },
     { name = "okta-client-python", marker = "extra == 'drmcp'", specifier = ">=0.2.0,<1.0.0" },
     { name = "okta-client-python", marker = "extra == 'drmcpbase'", specifier = ">=0.2.0,<1.0.0" },
