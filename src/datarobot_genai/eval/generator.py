@@ -105,7 +105,7 @@ with at least one example in `acceptable_responses` (token recall by default).
 Every case MUST include `acceptable_responses`: a list of 1-3 short example answers a
 well-behaved agent could give, phrased differently from each other and using the key
 terms a correct answer would contain. Optionally include `unacceptable_responses` (a
-list of plausible-but-wrong answers) and `threshold` (float in [0, 1], default 0.5).
+list of plausible-but-wrong answers).
 
 Good cases: questions with a clear expected answer that can be phrased several ways.
 Bad cases: questions the agent is likely to get wrong, with `unacceptable_responses`
