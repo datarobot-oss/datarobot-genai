@@ -23,14 +23,22 @@ Uses the Memory Service light ORM from ``datarobot.application_utils.persistence
 Each cache entry is one session located by a stable ``DRDeduplicationKey`` hash
 and carrying a single ``status`` event whose ``content`` is the opaque JSON
 payload. ``set_value`` patches that event in place instead of appending.
+
+Inside :func:`~datarobot_genai.dragent.registry_caller_token.registry_caller_token_scope`
+every read, write and delete opens the space with the caller's token rather than
+``DATAROBOT_API_TOKEN``. The space is still provisioned with the agent's own API key,
+so after provisioning it is shared with an organization (see
+:class:`RegistryCacheShareSettings`) to let those callers open it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
+from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
 from collections.abc import Coroutine
@@ -48,10 +56,13 @@ from datarobot.application_utils.persistence import DRRangeKey
 from datarobot.application_utils.persistence import DRSession
 from datarobot.application_utils.persistence.exceptions import DRMemoryNotFoundError
 from datarobot.application_utils.persistence.exceptions import DRMemoryUnavailableError
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from pydantic import Field
 
 from datarobot_genai.core.runtime import get_workload_id
 from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
+from datarobot_genai.dragent.registry_caller_token import current_registry_caller_token
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +78,29 @@ DEDUPLICATION_KEY_LENGTH = 64
 CACHE_KIND = "agent_card"
 
 _REGISTRY_CACHE_SPACE_DEDUP_PREFIX = "dragent:agent-card-registry"
+
+
+class RegistryCacheShareSettings(DataRobotAppFrameworkBaseSettings):
+    """How the registry L2 MemorySpace is shared after provisioning.
+
+    The agent creates the space with its DataRobot API key, so only its own identity
+    can open it. Callers whose token comes from the IdP (an Okta client registered as
+    an External Application in the organization) need it shared with that
+    organization to read and write the cache with their own token.
+    """
+
+    registry_l2_share_with_org: bool = Field(
+        default=True,
+        description="Share the registry L2 MemorySpace with an organization. Default: on.",
+    )
+    registry_l2_share_org_id: str | None = Field(
+        default=None,
+        description="Organization to share with. Defaults to the agent identity's own.",
+    )
+    registry_l2_share_role: str = Field(
+        default="EDITOR",
+        description="Role granted to the organization. Default EDITOR: the cache writes.",
+    )
 
 
 class AgentCardCacheSession(DRSession):
@@ -251,7 +285,69 @@ async def _provision_registry_cache_memory_space(deduplication_key: str) -> str:
         ),
         op="provision_registry_cache_memory_space",
     )
+    # Created with the agent's own key; share it so IdP-authenticated callers can open it.
+    await share_registry_cache_space(space.id)
     return space.id
+
+
+async def _own_org_id() -> str:
+    """Return the organization of the identity behind the agent's DataRobot API key."""
+    endpoint = _MemoryClientState.endpoint
+    token = _MemoryClientState.api_token
+    if not endpoint or not token:
+        raise RuntimeError("MemorySpace client is not configured")
+    # Pointed at ``account``, the SDK client reaches the account API with the same
+    # auth and error mapping it uses for ``memory``.
+    async with DRMemoryServiceClient(
+        endpoint=endpoint, api_token=token, base_path="account"
+    ) as account:
+        response = await account.request("GET", "info/")
+    org_id = response.json().get("orgId")
+    if not org_id:
+        raise RuntimeError("account info carries no orgId")
+    return str(org_id)
+
+
+async def share_registry_cache_space(space_id: str) -> bool:
+    """Share the registry L2 space with an organization; return whether it was shared.
+
+    Never raises: an unshared space still serves the agent's own key, so a failure
+    costs callers using an IdP token their L2 hits, not the agent its cache. Sharing
+    sets a role rather than adding one, so repeating it on every process start is
+    harmless and also covers a space adopted from an earlier deploy. The platform's
+    sharing API takes no API key, so this goes through the Memory Service's
+    ``PATCH /memory/{id}/sharedRoles/`` proxy.
+    """
+    settings = RegistryCacheShareSettings()
+    if not settings.registry_l2_share_with_org:
+        return False
+    role = settings.registry_l2_share_role.strip() or "EDITOR"
+    try:
+        org_id = (settings.registry_l2_share_org_id or "").strip() or await _own_org_id()
+        client = _require_memory_client()
+        body = {
+            "operation": "updateRoles",
+            "roles": [{"shareRecipientType": "organization", "id": org_id, "role": role}],
+        }
+        await _call_with_transport_retry(
+            lambda: client.request("PATCH", f"{space_id}/sharedRoles/", json=body),
+            op="share_registry_cache_memory_space",
+        )
+    except Exception:
+        logger.warning(
+            "Could not share agent card registry L2 MemorySpace %s with an organization; "
+            "callers using an IdP token will miss the L2 cache until it is shared",
+            space_id,
+            exc_info=True,
+        )
+        return False
+    logger.info(
+        "Shared agent card registry L2 MemorySpace %s with organization %s as %s",
+        space_id,
+        org_id,
+        role,
+    )
+    return True
 
 
 def try_configure_datarobot_memory_client(
@@ -354,7 +450,32 @@ class MemorySpaceKVCache:
     def _client_or_global(self) -> DRMemoryServiceClient:
         return self._client or _require_memory_client()
 
-    async def _resolve_space(self) -> DRMemorySpace:
+    @contextlib.asynccontextmanager
+    async def _caller_client(self) -> AsyncIterator[DRMemoryServiceClient | None]:
+        """Yield a client bound to the scoped caller token, or ``None`` outside a scope.
+
+        The client lives for one cache operation: the space and session it opens are
+        bound to it, and must not land in the slots shared with the API-key path.
+        """
+        token = current_registry_caller_token()
+        if token is None:
+            yield None
+            return
+        endpoint = _MemoryClientState.endpoint
+        if not endpoint:
+            raise RuntimeError(
+                "MemorySpace L2 endpoint is not configured; cannot use the caller's token."
+            )
+        logger.debug("MemorySpace L2 using the caller's token (not DATAROBOT_API_TOKEN)")
+        async with DRMemoryServiceClient(endpoint=endpoint, api_token=token) as client:
+            yield client
+
+    async def _resolve_space(self, caller: DRMemoryServiceClient | None = None) -> DRMemorySpace:
+        if caller is not None:
+            return await _call_with_transport_retry(
+                lambda: DRMemorySpace.get(caller, self._memory_space_id),
+                op="resolve_space_caller",
+            )
         if self._space is None:
             client = self._client_or_global()
             self._space = await _call_with_transport_retry(
@@ -369,11 +490,13 @@ class MemorySpaceKVCache:
     def _invalidate_session(self, logical_key: str) -> None:
         self._sessions.pop(logical_key, None)
 
-    async def _resolve_session(self, logical_key: str) -> AgentCardCacheSession | None:
-        if session := self._sessions.get(logical_key):
+    async def _resolve_session(
+        self, logical_key: str, caller: DRMemoryServiceClient | None = None
+    ) -> AgentCardCacheSession | None:
+        if caller is None and (session := self._sessions.get(logical_key)):
             return session
 
-        space = await self._resolve_space()
+        space = await self._resolve_space(caller)
         dedup_key = _cache_deduplication_key(logical_key)
         try:
             resolved = cast(
@@ -391,7 +514,8 @@ class MemorySpaceKVCache:
             logger.debug("MemorySpace session lookup failed for %s", logical_key)
             return None
 
-        self._cache_session(logical_key, resolved)
+        if caller is None:
+            self._cache_session(logical_key, resolved)
         return resolved
 
     async def _read_payload(self, session: AgentCardCacheSession) -> str | None:
@@ -427,10 +551,11 @@ class MemorySpaceKVCache:
         """Return the stored JSON payload for *key*, or ``None`` when missing."""
         logical_key = self._logical_key(key)
         try:
-            session = await self._resolve_session(logical_key)
-            if session is None:
-                return None
-            return await self._read_payload(session)
+            async with self._caller_client() as caller:
+                session = await self._resolve_session(logical_key, caller)
+                if session is None:
+                    return None
+                return await self._read_payload(session)
         except DRMemoryUnavailableError:
             logger.exception("MemorySpace cache read failed for %s", logical_key)
             return None
@@ -444,39 +569,51 @@ class MemorySpaceKVCache:
         dedup_key = _cache_deduplication_key(logical_key)
 
         try:
-            space = await self._resolve_space()
-            session = await self._resolve_session(logical_key)
-            if session is None:
-                session = cast(
-                    AgentCardCacheSession,
-                    await _call_with_transport_retry(
-                        lambda: AgentCardCacheSession.post(
-                            space,
-                            cache_kind=CACHE_KIND,
-                            dedup_key=dedup_key,
-                            logical_key=logical_key,
-                            participants=[DRAGENT_CACHE_PARTICIPANT_ID],
-                        ),
-                        op="create_cache_session",
-                    ),
-                )
-                self._cache_session(logical_key, session)
-                logger.info(
-                    "MemorySpace L2 cache: created session %s for %s",
-                    getattr(session, "id", None),
-                    logical_key,
-                )
-            await self._write_payload(session, payload)
+            async with self._caller_client() as caller:
+                await self._set_value(logical_key, dedup_key, payload, caller)
         except Exception:
             logger.exception("MemorySpace cache write failed for %s", logical_key)
+
+    async def _set_value(
+        self,
+        logical_key: str,
+        dedup_key: str,
+        payload: str,
+        caller: DRMemoryServiceClient | None,
+    ) -> None:
+        space = await self._resolve_space(caller)
+        session = await self._resolve_session(logical_key, caller)
+        if session is None:
+            session = cast(
+                AgentCardCacheSession,
+                await _call_with_transport_retry(
+                    lambda: AgentCardCacheSession.post(
+                        space,
+                        cache_kind=CACHE_KIND,
+                        dedup_key=dedup_key,
+                        logical_key=logical_key,
+                        participants=[DRAGENT_CACHE_PARTICIPANT_ID],
+                    ),
+                    op="create_cache_session",
+                ),
+            )
+            if caller is None:
+                self._cache_session(logical_key, session)
+            logger.info(
+                "MemorySpace L2 cache: created session %s for %s",
+                getattr(session, "id", None),
+                logical_key,
+            )
+        await self._write_payload(session, payload)
 
     async def delete_value(self, key: str) -> None:
         """Remove a cached payload for *key* when present."""
         logical_key = self._logical_key(key)
         try:
-            session = await self._resolve_session(logical_key)
-            if session is not None:
-                await _call_with_transport_retry(session.delete, op="delete_session")
+            async with self._caller_client() as caller:
+                session = await self._resolve_session(logical_key, caller)
+                if session is not None:
+                    await _call_with_transport_retry(session.delete, op="delete_session")
             self._invalidate_session(logical_key)
         except Exception:
             logger.exception("MemorySpace cache delete failed for %s", logical_key)

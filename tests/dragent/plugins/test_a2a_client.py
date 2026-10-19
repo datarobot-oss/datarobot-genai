@@ -1288,6 +1288,74 @@ class TestRegistryLookupFollowsAuthProvider:
         )
         assert not isinstance(fg._client, _FailedRegistryClient)
 
+    async def test_caller_token_provider_scopes_the_lookup(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        """GIVEN a RegistryCallerTokenAware provider with a token THEN get() runs in its scope."""
+        from datarobot_genai.dragent.plugins.okta_registry_auth import (
+            OktaRegistryAPIKeyAuthProvider,
+        )
+        from datarobot_genai.dragent.registry_caller_token import current_registry_caller_token
+
+        provider = MagicMock(spec=OktaRegistryAPIKeyAuthProvider)
+        provider.registry_caller_token.return_value = "dummy-okta-token-K4"
+        provider.authenticate_for_discovery = AsyncMock()
+        mock_builder.get_auth_provider.return_value = provider
+        registry = self._registry_returning_card()
+        seen: list[str | None] = []
+
+        async def _get(**kwargs):
+            seen.append(current_registry_caller_token())
+            return registry.get.return_value
+
+        registry.get.side_effect = _get
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+        assert seen == ["dummy-okta-token-K4"]
+        assert current_registry_caller_token() is None
+        provider.authenticate_for_discovery.assert_not_awaited()
+        registry.get.assert_awaited_once_with(
+            deployment_id="dep-001", external_id=None, workload_id=None, auth_headers=None
+        )
+
+    async def test_caller_token_provider_without_token_uses_owner_key(
+        self, registry_config, mock_builder, patched_fg_env
+    ):
+        """GIVEN no inbound token THEN get() runs unscoped, with the owner key."""
+        from datarobot_genai.dragent.plugins.okta_registry_auth import (
+            OktaRegistryAPIKeyAuthProvider,
+        )
+        from datarobot_genai.dragent.registry_caller_token import current_registry_caller_token
+
+        provider = MagicMock(spec=OktaRegistryAPIKeyAuthProvider)
+        provider.registry_caller_token.return_value = None
+        provider.authenticate_for_discovery = AsyncMock(side_effect=RuntimeError("no header"))
+        mock_builder.get_auth_provider.return_value = provider
+        registry = self._registry_returning_card()
+        seen: list[str | None] = []
+
+        async def _get(**kwargs):
+            seen.append(current_registry_caller_token())
+            return registry.get.return_value
+
+        registry.get.side_effect = _get
+
+        with patch(
+            f"{_MODULE}.get_default_registry", new_callable=AsyncMock, return_value=registry
+        ):
+            fg = AuthenticatedA2AClientFunctionGroup(config=registry_config, builder=mock_builder)
+            await fg.__aenter__()
+
+        assert seen == [None]
+        registry.get.assert_awaited_once_with(
+            deployment_id="dep-001", external_id=None, workload_id=None, auth_headers=None
+        )
+
     async def test_registry_rejecting_caller_token_gives_placeholder(
         self, registry_config, mock_builder
     ):
