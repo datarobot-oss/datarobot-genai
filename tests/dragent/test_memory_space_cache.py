@@ -315,6 +315,8 @@ class TestMemoryClientEventLoop:
         """
         monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
         monkeypatch.setenv("WORKLOAD_ID", "wl-abc123")
+        # Sharing opens its own account-API client; this test counts memory clients.
+        monkeypatch.setenv("REGISTRY_L2_SHARE_WITH_ORG", "false")
         _set_enclave_gateway_env(monkeypatch)
         created: list[MagicMock] = []
 

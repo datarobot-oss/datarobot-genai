@@ -111,15 +111,31 @@ function_groups:
 
 #### Registry lookup credentials
 
-The registry is queried with `DATAROBOT_API_TOKEN` by default. With Okta cross-application access, request-time lookups try the caller's Okta token first.
+The registry is queried with `DATAROBOT_API_TOKEN` by default. With Okta cross-application access, request-time lookups try the caller's Okta token first. With `okta_registry_dr_call`, they use the caller's Okta token only.
 
 | Scenario | Credentials, in order |
 |---|---|
 | Request-time lookup, `okta_cross_app_access` auth provider | 1. Caller's Okta token (`Authorization: Bearer <token>`)<br>2. `DATAROBOT_API_TOKEN`, if the token is missing, rejected or the card is not found |
+| Request-time lookup and L2 cache, `okta_registry_dr_call` auth provider, request carries `x-datarobot-external-access-token` | Caller's Okta token only. No fallback to `DATAROBOT_API_TOKEN` |
 | Request-time lookup, any other auth provider | `DATAROBOT_API_TOKEN` |
-| Startup prefetch, background refresh, L2 cache | `DATAROBOT_API_TOKEN` |
+| Startup prefetch, background refresh, L2 cache outside such a request | `DATAROBOT_API_TOKEN` |
 
-A request-time lookup only happens on a cache miss or an expired entry. If every credential fails, the last cached card is served while it is within the hard TTL.
+A request-time lookup only happens on a cache miss or an expired entry. If every credential fails, the last cached card is served while it is within the hard TTL. With `okta_registry_dr_call` a failed caller-token lookup raises instead.
+
+`okta_registry_dr_call` uses the DataRobot API key for A2A RPC to the remote agent, so it works with remotes whose card advertises `bearerAuth`:
+
+```yaml
+function_groups:
+  remote_agent:
+    _type: authenticated_a2a_client
+    registry:
+      workload_id: "64a1b2c3d4e5f6a7b8c9d0e2"
+    auth_provider: okta_registry_auth
+
+authentication:
+  okta_registry_auth:
+    _type: okta_registry_dr_call
+```
 
 #### Batch fetching
 
@@ -133,6 +149,8 @@ While the server is running, registered cards are **refreshed in the background*
 
 On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL_PREFIX` and `WORKLOAD_ID` injected by the platform), dragent creates a shared MemorySpace for the L2 cache at runtime when the workflow uses central registry lookups (`registry` on `authenticated_a2a_client` function groups). The space is keyed to `WORKLOAD_ID` via a `deduplication_key` so replicas share one cache without infra wiring. Provisioning runs automatically when the `authenticated_a2a_client` plugin loads and again at lifespan warmup; the memory client skips `dr.Client()`'s `/version/` compatibility check on enclave gateways because they expose the memory Session API only. All other runtimes use in-process L1 caching only. This cache is separate from agent memory (`AGENT_MEMORY_SPACE_ID`), which is provisioned on the control hub via Pulumi / `task deploy-dev`.
 
+The agent creates the L2 space with its own DataRobot API key, so after provisioning it shares the space with an organization. Callers whose Okta client is registered as an External Application in that organization can then read and write the cache with their own token. A failed share is logged and never fails provisioning; those callers miss the L2 cache until the space is shared.
+
 #### Registry environment variables
 
 | Variable | Required | Description |
@@ -142,6 +160,9 @@ On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Hard cache TTL in seconds — maximum age for stale-if-error when the registry is unreachable. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_SOFT_CACHE_TTL` | No | Soft cache TTL in seconds — entries within this age skip registry fetches. Must not exceed the hard TTL. Defaults to the hard TTL when unset. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
+| `REGISTRY_L2_SHARE_WITH_ORG` | No | Share the L2 MemorySpace with an organization after provisioning. Default `true`. |
+| `REGISTRY_L2_SHARE_ORG_ID` | No | Organization to share the L2 MemorySpace with. Defaults to the organization of the agent's API key. |
+| `REGISTRY_L2_SHARE_ROLE` | No | Role granted to that organization. Default `EDITOR`, since the cache writes. |
 | `AGENT_CARD_REGISTRY_ON_DUPLICATE` | No | Strategy when multiple cards share the same external ID: `first` keeps the earliest registered card, `last` keeps the most recently registered card, `error` raises an exception. Default: `first`. |
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`

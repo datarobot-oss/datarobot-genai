@@ -48,6 +48,7 @@ from pydantic import model_validator
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
+from datarobot_genai.dragent.registry_caller_token import registry_caller_token_scope
 from datarobot_genai.dragent.registry_l2_bootstrap import bootstrap_registry_l2_cache
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,20 @@ class AgentCardAware(Protocol):
 
     def set_agent_card(self, card: AgentCard) -> None:
         """Receive the resolved agent card before ``authenticate()`` is invoked."""
+        ...
+
+
+@runtime_checkable
+class RegistryCallerTokenAware(Protocol):
+    """Protocol for auth providers whose caller token replaces the owner key for the registry.
+
+    When :meth:`registry_caller_token` returns a token, the registry lookup and the
+    registry's L2 MemorySpace cache use that token only -- no fallback to
+    ``DATAROBOT_API_TOKEN``.  ``None`` keeps the default behaviour.
+    """
+
+    def registry_caller_token(self) -> str | None:
+        """Return the caller token the registry and L2 cache must use, or ``None``."""
         ...
 
 
@@ -575,18 +590,25 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
             # in a degraded state instead of crashing (generic JSON-RPC -32603).
             try:
                 registry = await get_default_registry()
+                caller_token = (
+                    auth_provider.registry_caller_token()
+                    if isinstance(auth_provider, RegistryCallerTokenAware)
+                    else None
+                )
                 # Okta XAA looks the card up as the caller first.
                 auth_headers = (
                     await _discovery_headers_for_registry(auth_provider)
-                    if isinstance(auth_provider, A2ADiscoveryAuthMixin)
+                    if isinstance(auth_provider, A2ADiscoveryAuthMixin) and caller_token is None
                     else None
                 )
-                pre_resolved_card = await registry.get(
-                    deployment_id=config.registry.deployment_id,
-                    external_id=config.registry.external_id,
-                    workload_id=config.registry.workload_id,
-                    auth_headers=auth_headers,
-                )
+                # With a caller token in scope the registry and its L2 cache use it only.
+                with registry_caller_token_scope(caller_token):
+                    pre_resolved_card = await registry.get(
+                        deployment_id=config.registry.deployment_id,
+                        external_id=config.registry.external_id,
+                        workload_id=config.registry.workload_id,
+                        auth_headers=auth_headers,
+                    )
             except AgentCardRegistryError as exc:
                 error_msg = str(exc)
                 logger.error(

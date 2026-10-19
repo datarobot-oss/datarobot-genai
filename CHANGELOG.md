@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.3 - 2026-10-19
+- `dragent/plugins/okta_registry_auth`: add the `okta_registry_dr_call` auth provider for `authenticated_a2a_client`. When the request carries an IdP token in `x-datarobot-external-access-token`, the agent card registry lookup and the registry's L2 MemorySpace cache use that token only, never `DATAROBOT_API_TOKEN` and with no fallback to it. A2A RPC to the remote agent keeps using the DataRobot API key, so `bearerAuth` remotes keep working. Without the header the lookup uses the DataRobot API key as before.
+- `dragent/registry_caller_token`: add `registry_caller_token_scope`, the request-scoped token behind the above. Auth providers opt in by implementing `RegistryCallerTokenAware.registry_caller_token()`.
+- `dragent/memory_space_cache`: share the registry L2 MemorySpace with an organization after provisioning, so callers authenticated through the IdP can open it with their own token. Shares with the agent identity's own organization as `EDITOR` by default; set `REGISTRY_L2_SHARE_WITH_ORG=false` to turn it off, or `REGISTRY_L2_SHARE_ORG_ID` and `REGISTRY_L2_SHARE_ROLE` to override. A failed share is logged and never fails provisioning.
+
 ## 0.30.2 - 2026-10-19
 - `dragent/plugins/datarobot_otelcollector`: keep Japanese and other non-ASCII text readable in exported span attributes (`input.value`, `output.value`, `input.value_obj`, `output.value_obj` and metadata). NAT serializes these with `json.dumps`'s default `ensure_ascii=True`, which stored the text as `\uXXXX` escapes. `DataRobotOTLPSpanAdapterExporter` now re-encodes them with `ensure_ascii=False`.
 

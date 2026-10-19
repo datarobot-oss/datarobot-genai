@@ -66,6 +66,7 @@ from datarobot_genai.dragent.agent_card_registry_backends import RegistryIds
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
+from datarobot_genai.dragent.registry_caller_token import current_registry_caller_token
 
 logger = logging.getLogger(__name__)
 
@@ -506,8 +507,16 @@ class AgentCardRegistry:
         on-demand lookups do not stampede Control Hub while it is down.
         Caller-credential failures do not start the cooldown: those fall back
         to the owner key, which must still be allowed to try.
+
+        Inside :func:`~datarobot_genai.dragent.registry_caller_token.registry_caller_token_scope`
+        the caller's token replaces the owner key on every request, including the
+        owner-key paths (pending-registration flush, prefetch), so
+        ``DATAROBOT_API_TOKEN`` never reaches the registry during that request.
         """
         self._raise_if_cooldown_active()
+
+        if auth_headers is None and (caller_token := current_registry_caller_token()):
+            auth_headers = {"Authorization": f"Bearer {caller_token}"}
 
         registry_url = build_agent_cards_registry_url(self._endpoint)
         headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
@@ -738,7 +747,10 @@ class AgentCardRegistry:
         must be provided.
 
         Pass *auth_headers* to fetch a miss as the caller; the owner key is the
-        fallback.
+        fallback.  Inside
+        :func:`~datarobot_genai.dragent.registry_caller_token.registry_caller_token_scope`
+        a miss is fetched with the scoped caller token only, with no owner-key
+        fallback, and *auth_headers* is ignored.
 
         Raises
         ------
@@ -764,6 +776,10 @@ class AgentCardRegistry:
         ):
             return fresh.card
 
+        if caller_token := current_registry_caller_token():
+            return await self._get_with_caller_token_only(
+                lookup_key, lookup_key_type, {"Authorization": f"Bearer {caller_token}"}
+            )
         if auth_headers:
             return await self._get_with_caller_auth(lookup_key, lookup_key_type, auth_headers)
         return await self._get_with_owner_key(lookup_key, lookup_key_type)
@@ -791,6 +807,21 @@ class AgentCardRegistry:
             reason,
         )
         return await self._get_with_owner_key(lookup_key, lookup_key_type)
+
+    async def _get_with_caller_token_only(
+        self, lookup_key: str, lookup_key_type: LookupKeyType, auth_headers: dict[str, str]
+    ) -> AgentCard:
+        """Fetch a card as the caller; never fall back to the owner key."""
+        params = {_id_param_for(lookup_key_type): lookup_key}
+        parsed = await self._fetch(params, auth_headers=auth_headers)
+        await self._store_cards(parsed)
+        if lookup_key in parsed.cards:
+            return parsed.cards[lookup_key]
+        raise AgentCardRegistryError(
+            f"No agent card found in the central registry for "
+            f"{lookup_key_type}_id='{lookup_key}' with the caller's token. Verify that "
+            "the agent is registered and visible to the caller."
+        )
 
     async def _get_with_owner_key(
         self, lookup_key: str, lookup_key_type: LookupKeyType
