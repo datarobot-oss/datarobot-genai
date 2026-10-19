@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.1 - 2026-10-19
+- Raise the minimum `mcp` version from `>=1.28.1,<2` to `>=1.30.0,<2`.
+- Add a minimum version for `tinytag`: `>=2.3.0`.
+- Raise the `mcp` override from `>=1.28.1,<2` to `>=1.30.0,<2` to meet a CVE fix.
+
 ## 0.30.0 - 2026-10-15
 - `dragent`: bump the `nvidia-nat` family (`nvidia-nat`, `-a2a`, `-opentelemetry`, `-langchain`, `-mcp`, `-crewai`, `-llama-index`) from 1.7.0 to 1.9.0.
 - `dragent`: keep the NAT 1.7 wire format on `/generate/stream`. NAT 1.8+ wraps each chunk in a `{"value": "<json string>"}` envelope that AG-UI consumers don't unwrap; the stream cancellation patch now skips that envelope for `DRAgentEventResponse` chunks and is ported to the 1.9 signature.
