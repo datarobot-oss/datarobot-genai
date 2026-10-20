@@ -406,3 +406,33 @@ def test_runner_archives_by_default(tmp_path: Path) -> None:
     runner = EvalRunner("http://x", "p.yaml", "d.json", repo_root=tmp_path)
     assert runner.archive is True
     assert runner.output_name is None
+
+
+# ---------------------------------------------------------------------------
+# run.pass_threshold resolution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("run_cfg", "expected"),
+    [
+        ({}, 0.5),
+        ({"pass_threshold": None}, 0.5),
+        ({"pass_threshold": 0.0}, 0.0),
+        ({"pass_threshold": 0.8}, 0.8),
+    ],
+)
+def test_run_resolves_pass_threshold(
+    tmp_path: Path, run_cfg: dict[str, Any], expected: float
+) -> None:
+    cfg = {**_PIPELINE_CFG, "run": run_cfg}
+    runner = _make_runner(tmp_path)
+    with (
+        _patched_success(),
+        patch("datarobot_genai.eval.eval.load_pipeline", return_value=cfg),
+        patch(
+            "datarobot_genai.eval.eval.normalize_output", return_value=_NORMALIZED_RESULTS
+        ) as normalize,
+    ):
+        assert runner.run() == 0
+    assert normalize.call_args.kwargs["pass_threshold"] == expected

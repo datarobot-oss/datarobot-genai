@@ -21,6 +21,7 @@ from datarobot_genai.eval.benchmarks import answer_correctness
 from datarobot_genai.eval.benchmarks import instruction_following
 from datarobot_genai.eval.benchmarks import pii_leakage
 from datarobot_genai.eval.benchmarks import prompt_injection
+from datarobot_genai.eval.benchmarks import response_similarity
 from datarobot_genai.eval.benchmarks import tool_grounding
 
 # ---------------------------------------------------------------------------
@@ -237,3 +238,127 @@ def test_tool_grounding_requires_all_canaries() -> None:
 def test_tool_grounding_no_canary_is_inconclusive() -> None:
     r = tool_grounding.evaluate_response("anything", {})
     assert "score" not in r
+
+
+# ---------------------------------------------------------------------------
+# response_similarity
+# ---------------------------------------------------------------------------
+
+_REFUND = "Refunds are accepted within 30 days of purchase."
+
+
+def _similarity(response: str, **metadata: object) -> dict[str, object]:
+    return response_similarity.evaluate_response(response, metadata, params={})
+
+
+def test_similarity_verbose_response_scores_full_token_recall() -> None:
+    r = _similarity(
+        "Good question! Refunds are accepted within 30 days of your purchase date.",
+        acceptable_responses=[_REFUND],
+    )
+    assert r["score"] == 1.0
+    assert r["token_recall"] == 1.0
+
+
+def test_similarity_score_is_raw_fraction() -> None:
+    # Content words: refunds accepted within 30 days purchase; 3 of 6 appear.
+    r = _similarity("You can get a refund within 30 days.", acceptable_responses=[_REFUND])
+    assert r["score"] == 0.5
+    assert "share of the example's words found in the response" in r["reason"]
+
+
+def test_similarity_unrelated_response_scores_zero() -> None:
+    r = _similarity("Our office is open Monday to Friday.", acceptable_responses=[_REFUND])
+    assert r["score"] == 0.0
+
+
+def test_similarity_takes_best_of_multiple_references() -> None:
+    r = _similarity(
+        "You have 30 days to request a refund.",
+        acceptable_responses=[_REFUND, "You have 30 days to request a refund."],
+    )
+    assert r["score"] == 1.0
+    assert "closest of 2 acceptable: 'You have 30 days" in r["reason"]
+
+
+def test_similarity_accepts_single_string_reference() -> None:
+    assert _similarity("Paris", acceptable_responses="Paris")["score"] == 1.0
+
+
+def test_similarity_stopwords_do_not_count_as_overlap() -> None:
+    # Only "the" and "of" are shared, both stopwords.
+    r = _similarity("The color of the sky", acceptable_responses=["The capital of France"])
+    assert r["score"] == 0.0
+
+
+def test_similarity_stopword_only_reference_still_scores() -> None:
+    assert _similarity("It is.", acceptable_responses=["it is"])["score"] == 1.0
+
+
+def test_similarity_token_f1_penalizes_verbosity() -> None:
+    r = _similarity(
+        "Paris is the capital and largest city of France, on the Seine.",
+        acceptable_responses=["Paris"],
+        metric="token_f1",
+    )
+    assert 0.0 < r["score"] < 0.5
+    assert "token_f1" in r
+
+
+def test_similarity_rouge_l_rewards_word_order() -> None:
+    same = _similarity("dog bites man", acceptable_responses=["dog bites man"], metric="rouge_l")
+    flipped = _similarity("man bites dog", acceptable_responses=["dog bites man"], metric="rouge_l")
+    assert same["score"] == 1.0
+    assert flipped["score"] < same["score"]
+
+
+def test_similarity_metric_comes_from_pipeline_params() -> None:
+    r = response_similarity.evaluate_response(
+        "dog bites man", {"acceptable_responses": ["dog bites man"]}, params={"metric": "rouge_l"}
+    )
+    assert "rouge_l" in r
+
+
+def test_similarity_case_metric_overrides_pipeline_params() -> None:
+    r = response_similarity.evaluate_response(
+        "Paris",
+        {"acceptable_responses": ["Paris"], "metric": "token_f1"},
+        params={"metric": "rouge_l"},
+    )
+    assert "token_f1" in r
+
+
+def test_similarity_unacceptable_closer_is_flagged_not_rescored() -> None:
+    r = _similarity(
+        "Refunds are accepted within 90 days of purchase.",
+        acceptable_responses=[_REFUND],
+        unacceptable_responses=["Refunds are accepted within 90 days of purchase."],
+    )
+    assert r["score"] == 0.8333
+    assert "WARNING" in r["reason"]
+
+
+def test_similarity_unacceptable_further_is_not_flagged() -> None:
+    r = _similarity(
+        _REFUND, acceptable_responses=[_REFUND], unacceptable_responses=["We never give refunds."]
+    )
+    assert r["score"] == 1.0
+    assert "closest unacceptable" in r["reason"]
+    assert "WARNING" not in r["reason"]
+
+
+def test_similarity_empty_response_scores_zero() -> None:
+    assert _similarity("", acceptable_responses=[_REFUND])["score"] == 0.0
+
+
+def test_similarity_missing_references_is_inconclusive() -> None:
+    for refs in (None, [], ["  "]):
+        r = _similarity("anything", acceptable_responses=refs)
+        assert "score" not in r
+        assert "cannot score" in r["reason"]
+
+
+def test_similarity_unknown_metric_is_inconclusive() -> None:
+    r = _similarity("Paris", acceptable_responses=["Paris"], metric="bleu")
+    assert "score" not in r
+    assert "unknown metric" in r["reason"]

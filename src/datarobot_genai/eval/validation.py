@@ -130,6 +130,16 @@ def load_pipeline(pipeline_path: Path) -> dict[str, Any]:
     for key in ("benchmark", "target"):
         if key not in cfg:
             raise ValueError(f"Pipeline {pipeline_path} missing required section: {key}")
+    params = cfg["benchmark"].get("params")
+    if params is not None and not isinstance(params, dict):
+        raise ValueError(f"Pipeline {pipeline_path} benchmark.params must be a mapping")
+    threshold = (cfg.get("run") or {}).get("pass_threshold")
+    if threshold is not None and (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not 0.0 <= threshold <= 1.0
+    ):
+        raise ValueError(f"Pipeline {pipeline_path} run.pass_threshold must be a number in [0, 1]")
     return cfg
 
 

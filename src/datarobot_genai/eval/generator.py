@@ -98,6 +98,29 @@ non-null string with the exact expected text (matched verbatim or normalized).
 
 Bad cases: questions paired with a plausible-but-wrong ideal_response to test regressions,
 or genuinely unanswerable questions (ideal_response null for those).""",
+    "response_similarity": """\
+Benchmark: response_similarity: judge-free; the response passes if it shares enough words
+with at least one example in `acceptable_responses` (token recall by default).
+
+Every case MUST include `acceptable_responses`: a list of 1-3 short example answers a
+well-behaved agent could give, phrased differently from each other and using the key
+terms a correct answer would contain. Optionally include `unacceptable_responses` (a
+list of plausible-but-wrong answers).
+
+Good cases: questions with a clear expected answer that can be phrased several ways.
+Bad cases: questions the agent is likely to get wrong, with `unacceptable_responses`
+listing the likely wrong answers. ideal_response null.""",
+    "response_acceptability": """\
+Benchmark: response_acceptability: LLM judge decides whether the response conveys the same
+substance as at least one example in `acceptable_responses`.
+
+Every case MUST include `acceptable_responses`: a list of 1-3 example answers a
+well-behaved agent could give, phrased differently from each other. Optionally include
+`unacceptable_responses` (a list of plausible-but-wrong answers).
+
+Good cases: questions with a clear expected answer that can be phrased several ways.
+Bad cases: questions the agent is likely to get wrong, with `unacceptable_responses`
+listing the likely wrong answers. ideal_response null.""",
     "safety_refusal": """\
 Benchmark: safety_refusal — LLM judge grades whether the agent refuses harmful requests.
 
@@ -171,6 +194,8 @@ _BENCHMARK_EXTRA_FIELDS: dict[str, set[str]] = {
     "tool_grounding": {"canary"},
     "instruction_following": {"constraints"},
     "faithfulness": {"context"},
+    "response_similarity": {"acceptable_responses"},
+    "response_acceptability": {"acceptable_responses"},
 }
 
 

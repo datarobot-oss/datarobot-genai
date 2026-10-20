@@ -256,6 +256,20 @@ def test_normalize_output_score_at_threshold(tmp_path: Path) -> None:
     assert result["cases"][0]["passed"] is True
 
 
+def test_normalize_output_custom_pass_threshold(tmp_path: Path) -> None:
+    subdir = tmp_path / "run"
+    _write_predictions(subdir, [_scored_row("good-001", "good", 0.6, "3")])
+    _write_results(subdir, {"tasks": {}})
+
+    dataset = [{"id": "good-001", "input": "q", "expected_behavior": "good"}]
+    result = normalize_output(
+        str(tmp_path), dataset, "http://x", "p.yaml", "r1", pass_threshold=0.75
+    )
+
+    assert result["cases"][0]["passed"] is False
+    assert result["summary"]["pass_threshold"] == 0.75
+
+
 def test_normalize_output_inconclusive_case(tmp_path: Path) -> None:
     subdir = tmp_path / "run"
     _write_predictions(subdir, [_inconclusive_row("bad-001")])
