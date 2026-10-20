@@ -141,6 +141,8 @@ eval_deps = [
     "nemo-evaluator-launcher",
     "litellm>=1.96.2,<2.0.0",
     "pyyaml>=6.0",
+    # Local embedding model for response_similarity's embedding_cosine metric.
+    "fastembed>=0.8.0,<1.0.0",
 ]
 
 # drmcpbase is standalone set of dependencies for MCP Servers only (no core).

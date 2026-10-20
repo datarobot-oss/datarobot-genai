@@ -156,7 +156,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.30.4"
+version = "0.30.5"
 source = { editable = "../" }
 
 [package.metadata]
@@ -218,6 +218,7 @@ requires-dist = [
     { name = "datarobot-predict", marker = "extra == 'drtools'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'langgraph'", specifier = ">=1.13.2,<2.0.0" },
     { name = "datarobot-predict", marker = "extra == 'llamaindex'", specifier = ">=1.13.2,<2.0.0" },
+    { name = "fastembed", marker = "extra == 'eval'", specifier = ">=0.8.0,<1.0.0" },
     { name = "fastmcp", marker = "extra == 'drmcp'", specifier = ">=3.4.1,<4.0.0" },
     { name = "fastmcp", marker = "extra == 'drmcpbase'", specifier = ">=3.4.1,<4.0.0" },
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.28.1,<1.0.0" },

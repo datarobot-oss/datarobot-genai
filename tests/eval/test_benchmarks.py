@@ -17,6 +17,12 @@ These score deterministically, so their ``evaluate_response`` functions are pure
 and testable without a judge, a server, or NeMo's runner.
 """
 
+import os
+from collections.abc import Iterator
+
+import numpy as np
+import pytest
+
 from datarobot_genai.eval.benchmarks import answer_correctness
 from datarobot_genai.eval.benchmarks import instruction_following
 from datarobot_genai.eval.benchmarks import pii_leakage
@@ -362,3 +368,124 @@ def test_similarity_unknown_metric_is_inconclusive() -> None:
     r = _similarity("Paris", acceptable_responses=["Paris"], metric="bleu")
     assert "score" not in r
     assert "unknown metric" in r["reason"]
+
+
+# ---------------------------------------------------------------------------
+# response_similarity: embedding_cosine
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbedder:
+    """Stands in for fastembed.TextEmbedding: fixed vectors per text, records calls."""
+
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        self.vectors = vectors
+        self.calls: list[list[str]] = []
+
+    def embed(self, texts: list[str]) -> Iterator[np.ndarray]:
+        self.calls.append(list(texts))
+        return (np.array(self.vectors[t]) for t in texts)
+
+
+@pytest.fixture
+def fake_embedder(monkeypatch: pytest.MonkeyPatch) -> _FakeEmbedder:
+    fake = _FakeEmbedder(
+        {
+            "It means the page is missing.": [1.0, 0.0],
+            "A 404 means the resource was not found.": [0.8, 0.6],
+            "A 500 is a server error.": [0.0, 1.0],
+            "Opposite.": [-1.0, 0.0],
+        }
+    )
+    embedders = {response_similarity.DEFAULT_EMBEDDING_MODEL: fake, "custom/model": fake}
+    monkeypatch.setattr(response_similarity, "_EMBEDDERS", embedders)
+    return fake
+
+
+def _embedding(response: str, **metadata: object) -> dict[str, object]:
+    return response_similarity.evaluate_response(
+        response, metadata, params={"metric": "embedding_cosine"}
+    )
+
+
+def test_embedding_cosine_scores_closest_example(fake_embedder: _FakeEmbedder) -> None:
+    r = _embedding(
+        "It means the page is missing.",
+        acceptable_responses=[
+            "A 500 is a server error.",
+            "A 404 means the resource was not found.",
+        ],
+    )
+    assert r["score"] == 0.8
+    assert r["embedding_cosine"] == 0.8
+    assert "tracks topic, not factual accuracy" in r["reason"]
+    assert "model BAAI/bge-small-en-v1.5" in r["reason"]
+    assert "closest of 2 acceptable: 'A 404 means" in r["reason"]
+
+
+def test_embedding_cosine_embeds_response_once_per_case(fake_embedder: _FakeEmbedder) -> None:
+    r = _embedding(
+        "It means the page is missing.",
+        acceptable_responses=["A 404 means the resource was not found."],
+        unacceptable_responses=["A 500 is a server error."],
+    )
+    assert fake_embedder.calls == [
+        [
+            "It means the page is missing.",
+            "A 404 means the resource was not found.",
+            "A 500 is a server error.",
+        ]
+    ]
+    assert "closest unacceptable 0.00" in r["reason"]
+    assert "WARNING" not in r["reason"]
+
+
+def test_embedding_cosine_clamps_negative_to_zero(fake_embedder: _FakeEmbedder) -> None:
+    r = _embedding("Opposite.", acceptable_responses=["It means the page is missing."])
+    assert r["score"] == 0.0
+
+
+def test_embedding_cosine_empty_response_skips_model(fake_embedder: _FakeEmbedder) -> None:
+    r = _embedding("", acceptable_responses=["It means the page is missing."])
+    assert r["score"] == 0.0
+    assert fake_embedder.calls == []
+
+
+def test_embedding_model_comes_from_pipeline_params(fake_embedder: _FakeEmbedder) -> None:
+    r = response_similarity.evaluate_response(
+        "It means the page is missing.",
+        {"acceptable_responses": ["It means the page is missing."]},
+        params={"metric": "embedding_cosine", "embedding_model": "custom/model"},
+    )
+    assert r["score"] == 1.0
+    assert "model custom/model" in r["reason"]
+
+
+def test_embedding_cosine_load_failure_is_inconclusive(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail(texts: list[str], model_name: str) -> list[np.ndarray]:
+        raise ValueError(f"Could not download model {model_name}")
+
+    monkeypatch.setattr(response_similarity, "_embed", _fail)
+    r = _embedding("anything", acceptable_responses=["something"])
+    assert "score" not in r
+    assert "embedding_cosine could not run (ValueError: Could not download" in r["reason"]
+
+
+def test_lexical_metrics_never_load_an_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail(texts: list[str], model_name: str) -> list[np.ndarray]:
+        raise AssertionError("lexical metric called the embedder")
+
+    monkeypatch.setattr(response_similarity, "_embed", _fail)
+    assert _similarity("Paris", acceptable_responses=["Paris"])["score"] == 1.0
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.environ.get("EVAL_EMBEDDING_INTEGRATION"),
+    reason="downloads a ~70MB model; set EVAL_EMBEDDING_INTEGRATION=1 to run",
+)
+def test_embedding_cosine_real_model_ranks_on_topic_above_off_topic() -> None:
+    refs = ["A 404 means the server could not find the requested resource."]
+    on_topic = _embedding("It means the page is missing.", acceptable_responses=refs)
+    off_topic = _embedding("Water boils at 100 degrees Celsius.", acceptable_responses=refs)
+    assert on_topic["score"] > off_topic["score"] + 0.15
