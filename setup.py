@@ -101,7 +101,7 @@ dragent = core + [
 # auth is standalone set of dependencies for auth utilities only
 auth = [
   "datarobot[auth]>=3.19.0,<4.0.0",
-  "aiohttp>=3.14.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
+  "aiohttp>=3.14.4,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
   "pydantic>=2.6.1,<3.0.0",
   "httpx>=0.28.1,<1.0.0",
   "pyjwt[crypto]>=2.15.0,<3.0.0",
@@ -128,7 +128,7 @@ drtools =  drmcputils + [
     "python-dateutil>=2.9.0,<3.0.0",
     "datarobot-predict>=1.13.2,<2.0.0",
     "pydantic>=2.6.1,<3.0.0",
-    "aiohttp>=3.14.3,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
+    "aiohttp>=3.14.4,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
     "opentelemetry-api>=1.22.0,<2.0.0",
@@ -147,7 +147,7 @@ eval_deps = [
 drmcpbase = drmcputils + [
     "starlette>=1.3.1",  # CVE-2026-48710 fixed in 1.0.1
     "fastmcp>=3.4.1,<4.0.0",
-    "aiohttp>=3.14.3,<4.0.0",
+    "aiohttp>=3.14.4,<4.0.0",
     "aiohttp-retry>=2.8.3,<3.0.0",
     "cachetools>=5.0.0,<8.0.0",
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,

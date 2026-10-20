@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.4 - 2026-10-20
+- Raise the minimum `aiohttp` version from `>=3.14.3` to `>=3.14.4`.
+- Raise the declared requirement `aiohttp>=3.14.3,<4.0.0` to `aiohttp>=3.14.4,<4.0.0` to match a CVE
+  fix this repo already enforces.
+
 ## 0.30.3 - 2026-10-20
 - `eval`: add the `response_similarity` benchmark (judge-free). Each case lists `acceptable_responses`, and the score is the raw lexical similarity to the closest one, from 0 to 1. The metric is `token_recall` (default), `token_f1`, or `rouge_l`, and each case's `reason` explains in plain words what its number means.
 - `eval`: add the `response_acceptability` benchmark, the judge-based twin that reads the same dataset. A judge rates the response 1-5 on how well it matches the examples in substance, so paraphrases still score well.

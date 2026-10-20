@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.30.3"
+version = "0.30.4"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -76,7 +76,7 @@ exclude-dependencies = [
 # cve-sync:begin
 # cve-sync:waived chromadb>1.5.9 NOT applied -- no-upstream-fix, expires 2026-12-09
 constraint-dependencies = [
-    "aiohttp>=3.14.3",
+    "aiohttp>=3.14.4",
     "anyio>=4.14.2",
     "authlib>=1.7.1",
     "banks>=2.5.1",
