@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.5 - 2026-10-20
+- `eval`: `response_similarity` gains an `embedding_cosine` metric. It scores closeness in meaning with a local fastembed model (`benchmark.params.embedding_model`, default `BAAI/bge-small-en-v1.5`), so paraphrases that share no words still score well. It tracks topic, not facts: with the default model unrelated text scores about 0.4 and a near-miss wrong answer can score as high as a right one, so set a higher `run.pass_threshold` and list likely wrong answers in `unacceptable_responses`. The model downloads (~70MB) on first use to `FASTEMBED_CACHE_PATH`; if it can't load, the case is inconclusive.
+- `eval`: the `eval` extra now depends on `fastembed`.
+
 ## 0.30.4 - 2026-10-20
 - Raise the minimum `aiohttp` version from `>=3.14.3` to `>=3.14.4`.
 - Raise the declared requirement `aiohttp>=3.14.3,<4.0.0` to `aiohttp>=3.14.4,<4.0.0` to match a CVE
