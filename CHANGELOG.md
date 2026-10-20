@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.3 - 2026-10-20
+- Add `task bump` and `task bump-minor`, which bump the `datarobot-genai` version in `pyproject.toml` and all three `uv.lock` files.
+- Add `task rebase` (with `rebase-continue` and `rebase-abort`), which rebases a branch onto `origin/main` without version or CHANGELOG conflicts. It drops the branch's version bump and CHANGELOG entry from each commit, rebases, then re-applies the bump on top of main's version with the saved entry.
+
 ## 0.30.2 - 2026-10-19
 - `dragent/plugins/datarobot_otelcollector`: keep Japanese and other non-ASCII text readable in exported span attributes (`input.value`, `output.value`, `input.value_obj`, `output.value_obj` and metadata). NAT serializes these with `json.dumps`'s default `ensure_ascii=True`, which stored the text as `\uXXXX` escapes. `DataRobotOTLPSpanAdapterExporter` now re-encodes them with `ensure_ascii=False`.
 
