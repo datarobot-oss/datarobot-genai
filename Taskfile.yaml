@@ -44,6 +44,36 @@ tasks:
       - uv sync --all-extras --dev
     silent: true
 
+  bump:
+    desc: "Bump the patch version in pyproject.toml and every uv.lock"
+    cmds:
+      - uv run --no-project python scripts/version_bump.py bump patch
+    silent: true
+
+  bump-minor:
+    desc: "Bump the minor version in pyproject.toml and every uv.lock"
+    cmds:
+      - uv run --no-project python scripts/version_bump.py bump minor
+    silent: true
+
+  rebase:
+    desc: "Rebase onto origin/main without version and CHANGELOG conflicts, then re-bump"
+    cmds:
+      - uv run --no-project python scripts/version_bump.py rebase --base {{.BASE | default "origin/main"}}
+    silent: true
+
+  rebase-continue:
+    desc: "Continue `task rebase` after resolving a conflict"
+    cmds:
+      - uv run --no-project python scripts/version_bump.py continue
+    silent: true
+
+  rebase-abort:
+    desc: "Abandon `task rebase` and restore the branch as it was"
+    cmds:
+      - uv run --no-project python scripts/version_bump.py abort
+    silent: true
+
   build:
     desc: "Build distribution packages"
     cmds:
