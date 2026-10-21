@@ -1235,16 +1235,21 @@ class TestXAATokenExchangeCacheManager:
 
 
 class TestInboundTokenExpiry:
+    # Offsets, not absolute times: parametrize runs at collection, which can be well before
+    # the test itself in a large run, and would push "within leeway" past the leeway.
     @pytest.mark.parametrize(
-        "claims",
+        "exp_offset",
         [
-            {"sub": "u", "exp": time.time() + 600},  # valid
-            {"sub": "u", "exp": time.time() - 5},  # expired, but within clock-skew leeway
-            {"sub": "u"},  # no exp: let the IdP decide
+            600,  # valid
+            -5,  # expired, but within clock-skew leeway
+            None,  # no exp: let the IdP decide
         ],
         ids=["valid", "within-leeway", "no-exp"],
     )
-    def test_subject_token_not_treated_as_expired(self, claims: dict[str, Any]) -> None:
+    def test_subject_token_not_treated_as_expired(self, exp_offset: int | None) -> None:
+        claims: dict[str, Any] = {"sub": "u"}
+        if exp_offset is not None:
+            claims["exp"] = time.time() + exp_offset
         token = make_jwt(**claims)
         assert XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(token) is None
 
