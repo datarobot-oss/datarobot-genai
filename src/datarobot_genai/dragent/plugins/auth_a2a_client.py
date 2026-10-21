@@ -125,6 +125,12 @@ class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
         Returns
         -------
             AuthResult with credentials or None on failure
+
+        Raises
+        ------
+        InboundTokenExpiredError
+            The caller's token had expired.  Propagated so the model learns why the remote
+            call failed; every other failure is logged and returns ``None``.
         """
         try:
             # Acquire lock to serialize authentication attempts
@@ -143,6 +149,12 @@ class A2ACredentialServiceWithDisabledCache(A2ACredentialService):
 
                 return auth_result
 
+        except InboundTokenExpiredError as e:
+            # Not worth swallowing like other failures: the call would go out without
+            # credentials and the model would only see the remote agent's generic 401.
+            # Raising lets _wrap_a2a_function tell the model the caller's token expired.
+            logger.error("Authentication failed: %s", _sanitize_a2a_error(e))
+            raise
         except Exception as e:
             logger.error("Authentication failed: %s", _sanitize_a2a_error(e))
             logger.debug("Authentication exception detail: %s: %s", type(e).__name__, e)

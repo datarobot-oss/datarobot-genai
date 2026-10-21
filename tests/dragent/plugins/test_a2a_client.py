@@ -41,6 +41,8 @@ from nat.plugins.a2a.client.client_config import A2AClientConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
+from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
+from datarobot_genai.dragent.plugins.auth_a2a_client import A2ACredentialServiceWithDisabledCache
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig
@@ -1318,8 +1320,39 @@ class TestRegistryLookupFollowsAuthProvider:
 
 
 def test_sanitize_a2a_error_explains_expired_inbound_token() -> None:
-    from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
-
     msg = _sanitize_a2a_error(InboundTokenExpiredError(120))
     assert msg.startswith("authentication error:")
     assert "expired 120s ago" in msg
+
+
+class TestCredentialServiceSurfacesExpiredInboundToken:
+    """INF-820: the expired-token error must reach the model, not turn into a bare 401."""
+
+    @staticmethod
+    def _service(error: Exception) -> A2ACredentialServiceWithDisabledCache:
+        provider = MagicMock()
+        provider.authenticate = AsyncMock(side_effect=error)
+        return A2ACredentialServiceWithDisabledCache(auth_provider=provider, agent_card=None)
+
+    async def test_expired_inbound_token_propagates(self) -> None:
+        service = self._service(InboundTokenExpiredError(120))
+        with pytest.raises(InboundTokenExpiredError):
+            await service._authenticate("user")
+
+    async def test_other_auth_failures_still_return_none(self) -> None:
+        service = self._service(RuntimeError("Token exchange Step 1 failed"))
+        assert await service._authenticate("user") is None
+
+    async def test_wrapped_a2a_call_reports_expired_token_to_model(self) -> None:
+        service = self._service(InboundTokenExpiredError(120))
+
+        async def remote_call() -> str:
+            # What AuthInterceptor does before each RPC; it does not catch exceptions.
+            await service.get_credentials("oauth2", None)
+            return "unreachable"
+
+        result = await _wrap_a2a_function(remote_call)()
+
+        assert result.startswith("Error: failed to communicate with the remote agent:")
+        assert "expired 120s ago" in result
+        assert "refreshed token" in result
