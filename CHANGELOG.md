@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.8 - 2026-10-22
+- `dragent/plugins/okta_a2a_auth`: check the caller's access token for expiry before the XAA token cache and the Okta exchange (INF-820). The cache key leaves out `exp`, so an expired caller token was served a cached exchanged token for up to an hour. Once that entry expired, the Okta exchange failed with an unclear error and the agent lost A2A. An expired token now fails at once with `InboundTokenExpiredError`, which says the caller must forward a refreshed token. A 30s allowance covers clock skew, and tokens without a readable `exp` still go to Okta.
+- `dragent/plugins/okta_a2a_auth`: add `cache_refresh_margin_in_second` (default 60). A cached XAA access token is dropped this long before it expires, so it can't expire during a remote agent call.
+- `dragent/plugins/auth_a2a_client`: A2A error messages now name an expired caller token instead of reporting a generic authentication or protocol error.
+
 ## 0.30.7 - 2026-10-22
 - Raise the minimum `pypdf` version from `>=6.19.0` to `>=6.21.1`.
 - Raise the minimum `virtualenv` version from `>=21.7.13` to `>=21.14.9`.
