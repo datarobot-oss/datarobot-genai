@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.6 - 2026-10-21
+- Add a minimum version for `certifi`: `>=2026.10.19`.
+- Add a minimum version for `pillow`: `>=13.0.0,<14`.
+- Drop the minimum version for `pillow`, which the shared list no longer carries.
+- Add an override `pillow>=13.0.0,<14` so a CVE fix gets past a dependency that holds it back.
+
 ## 0.30.5 - 2026-10-20
 - `eval`: `response_similarity` gains an `embedding_cosine` metric. It scores closeness in meaning with a local fastembed model (`benchmark.params.embedding_model`, default `BAAI/bge-small-en-v1.5`), so paraphrases that share no words still score well. It tracks topic, not facts: with the default model unrelated text scores about 0.4 and a near-miss wrong answer can score as high as a right one, so set a higher `run.pass_threshold` and list likely wrong answers in `unacceptable_responses`. The model downloads (~70MB) on first use to `FASTEMBED_CACHE_PATH`; if it can't load, the case is inconclusive.
 - `eval`: the `eval` extra now depends on `fastembed`.

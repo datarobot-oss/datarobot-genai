@@ -88,6 +88,7 @@ constraint-dependencies = [
     "authlib>=1.7.1",
     "banks>=2.5.1",
     "bleach>=6.4.0",
+    "certifi>=2026.10.19",
     "crewai-tools>=1.15.21",
     "fsspec>=2026.6.0",
     "h2>=4.4.1",
@@ -111,7 +112,6 @@ constraint-dependencies = [
     "notebook>=7.6.3",
     "openai>=2.30.0",
     "pdfminer.six>=20251230",
-    "pillow>=12.3.0",
     "pip>=26.2",
     "pyarrow>=23.0.1",
     "pyasn1>=0.6.4",
@@ -143,6 +143,7 @@ override-dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
     "opentelemetry-instrumentation>=0.64b0,<0.65",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
+    "pillow>=13.0.0,<14",
     "python-dotenv>=1.2.2,<2.0.0",
 ]
 # cve-sync:end
