@@ -121,6 +121,7 @@ from pydantic import model_validator
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import TOKEN_HEADERS
+from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
 from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.auth_a2a_client import A2ADiscoveryAuthMixin
 
@@ -199,6 +200,10 @@ _SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 _REQUESTED_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id-jag"
 
 _TOKEN_EXCHANGE_TIMEOUT = 30  # seconds per token HTTP request
+
+# Clock-skew allowance when checking the caller's token ``exp`` before exchanging it.
+# Errs towards attempting the exchange: the IdP stays the authority on validity.
+_SUBJECT_TOKEN_EXPIRY_LEEWAY_SECONDS = 30
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +404,14 @@ class OAuth2CrossApplicationAccessAuthProviderConfig(
             "TTL (in second) of cache recording access token retrieved through XAA protocol."
         ),
     )
+    cache_refresh_margin_in_second: int = Field(
+        default=60,
+        ge=0,
+        description=(
+            "A cached XAA access token is dropped this many seconds before it expires, so a "
+            "token handed to a remote agent call cannot expire while that call is in flight."
+        ),
+    )
 
     @model_validator(mode="after")
     def _retire_token_header_overrides(self) -> "OAuth2CrossApplicationAccessAuthProviderConfig":
@@ -482,7 +495,32 @@ class XAATokenExchangeCacheManager:
         return datetime.now(UTC) + timedelta(seconds=self.get_ttl_or_fallback(xaa_access_token))
 
     def ttu_handler(self, _: str, xaa_access_token: str, now: float) -> float:
-        return now + self.get_ttl_or_fallback(xaa_access_token)
+        # Expire the entry ahead of the token itself.  Serving a token in its last seconds
+        # lets it lapse in flight, and the remote agent then rejects a call we thought was
+        # authenticated.  A non-positive result makes TLRUCache skip caching the token.
+        return (
+            now
+            + self.get_ttl_or_fallback(xaa_access_token)
+            - self.config.cache_refresh_margin_in_second
+        )
+
+    @staticmethod
+    def get_subject_token_expired_seconds_ago(subject_token: str) -> float | None:
+        """Return how long ago the caller's token expired, or ``None`` if it has not.
+
+        Also ``None`` when the token has no readable ``exp`` (opaque or malformed token):
+        the IdP stays the authority on those, so the exchange is still attempted.
+        """
+        try:
+            exp = float(
+                XAATokenExchangeCacheManager.get_jwt_json_without_validating(subject_token)["exp"]
+            )
+        except (jwt.PyJWTError, KeyError, TypeError, ValueError, AttributeError):
+            return None
+        expired_seconds_ago = time.time() - exp
+        if expired_seconds_ago <= _SUBJECT_TOKEN_EXPIRY_LEEWAY_SECONDS:
+            return None
+        return expired_seconds_ago
 
     @staticmethod
     def get_stable_subject_token_string(subject_token: str) -> str:
@@ -564,6 +602,23 @@ class XAATokenExchange(abc.ABC):
         self.cache = cache
 
     async def exchange_token(self, params: _CrossAppFlowParams, subject_token: str) -> str:
+        # Check the caller's token first, before the cache.  The cache key leaves out ``exp``
+        # (so a refreshed token for the same user reuses the entry), which means an expired
+        # token would otherwise be served the cached XAA token for as long as that lasts --
+        # up to an hour -- and then fail at the IdP with an opaque error as soon as the entry
+        # lapsed (INF-820).  Rejecting it here fails at once, says why, and never lets an
+        # expired caller token buy access to the remote agent.
+        expired_seconds_ago = XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(
+            subject_token
+        )
+        if expired_seconds_ago is not None:
+            logger.warning(
+                "XAA token exchange skipped: the caller's access token expired %ds ago. "
+                "Whoever calls this agent must forward a refreshed token.",
+                int(expired_seconds_ago),
+            )
+            raise InboundTokenExpiredError(expired_seconds_ago)
+
         key = XAATokenExchangeCacheManager.get_safe_cache_key(params, subject_token)
         try:
             cached_access_token = self.cache[key]

@@ -1315,3 +1315,11 @@ class TestRegistryLookupFollowsAuthProvider:
             "Authorization": "Bearer dummy-user-token-A7f3"
         }
         assert "dummy-user-token-A7f3" not in result
+
+
+def test_sanitize_a2a_error_explains_expired_inbound_token() -> None:
+    from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
+
+    msg = _sanitize_a2a_error(InboundTokenExpiredError(120))
+    assert msg.startswith("authentication error:")
+    assert "expired 120s ago" in msg

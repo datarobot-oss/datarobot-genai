@@ -48,6 +48,7 @@ from pydantic import model_validator
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
+from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
 from datarobot_genai.dragent.registry_l2_bootstrap import bootstrap_registry_l2_cache
 
 logger = logging.getLogger(__name__)
@@ -404,10 +405,14 @@ def _sanitize_a2a_error(exc: Exception) -> str:
     if isinstance(exc, (httpx.ConnectError, httpx.NetworkError, ConnectionError, OSError)):
         return "network error communicating with remote agent"
 
-    # Safe to surface verbatim — crafted by this codebase, never contains secrets.
-    # Checked before RuntimeError (its superclass).
-    if isinstance(exc, AgentCardRegistryError):
-        return f"agent card registry error: {exc}"
+    # Safe to surface verbatim — crafted by this codebase, never contains secrets
+    # (InboundTokenExpiredError's message is built from a number, never the token).
+    # Checked before RuntimeError (their superclass).
+    if isinstance(exc, AgentCardRegistryError | InboundTokenExpiredError):
+        kind = (
+            "agent card registry" if isinstance(exc, AgentCardRegistryError) else "authentication"
+        )
+        return f"{kind} error: {exc}"
 
     if isinstance(exc, (RuntimeError, ValueError)):
         return f"{type(exc).__name__}: authentication or protocol error"

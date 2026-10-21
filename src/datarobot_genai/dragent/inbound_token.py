@@ -58,3 +58,19 @@ def find_idp_token(headers: Mapping[str, str]) -> str | None:
     if not raw:
         return None
     return _without_bearer(raw) or raw.strip() or None  # gateway sends it bare
+
+
+class InboundTokenExpiredError(RuntimeError):
+    """The caller's IdP access token had expired when the agent tried to exchange it.
+
+    Raised before any call to the IdP, so the message is built here and never carries token
+    material -- it is safe to show to operators and to the LLM.  The agent cannot recover from
+    this on its own: whoever calls the agent must forward a refreshed access token.
+    """
+
+    def __init__(self, expired_seconds_ago: float) -> None:
+        self.expired_seconds_ago = expired_seconds_ago
+        super().__init__(
+            f"the caller's access token in '{OAUTH_ACCESS_TOKEN_HEADER}' expired "
+            f"{int(expired_seconds_ago)}s ago; the caller must forward a refreshed token"
+        )
