@@ -53,6 +53,7 @@ from openai.types.chat.chat_completion_chunk import (
 from openai.types.completion_usage import CompletionUsage
 
 from datarobot_genai.core.agents import default_usage_metrics
+from datarobot_genai.core.agents.events import coalesce_delta_events
 from datarobot_genai.core.chat.completions import backfill_model
 from datarobot_genai.core.chat.completions import convert_chat_completion_params_to_run_agent_input
 from datarobot_genai.core.chat.completions import final_assistant_text
@@ -576,6 +577,27 @@ def aggregate_dragent_event_responses(
         model=model,
         usage_metrics=merged_usage_metrics,
         original_chunk=original_chunk,
+    )
+
+
+def coalesce_dragent_event_responses(
+    responses: list[DRAgentEventResponse],
+) -> DRAgentEventResponse:
+    """Aggregate streamed chunks into one response with the per-token deltas merged.
+
+    Like :func:`aggregate_dragent_event_responses` (usage summed; ``model`` and
+    ``datarobot_moderations`` last non-``None``) but the event list goes through
+    :func:`coalesce_delta_events` and ``original_chunk`` is dropped, since it only
+    ever describes a single chunk. Meant for trace export, where the per-chunk
+    envelopes are noise and the merged events carry the same information.
+    """
+    aggregated = aggregate_dragent_event_responses(responses)
+    return DRAgentEventResponse(
+        events=coalesce_delta_events(aggregated.events),
+        datarobot_moderations=aggregated.datarobot_moderations,
+        model=aggregated.model,
+        usage_metrics=aggregated.usage_metrics,
+        original_chunk=None,
     )
 
 

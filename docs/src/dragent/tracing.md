@@ -54,6 +54,8 @@ Fields:
 | `datarobot_entity_id` | no | `deployment-<MLOPS_DEPLOYMENT_ID>` | Sent as the `X-DataRobot-Entity-Id` header. Non-empty values must keep the `deployment-` prefix. |
 | `extra_headers` | no | `{}` | Additional headers; keys here win on collision with the DataRobot defaults. |
 | `resource_attributes` | no | `{}` | Extra OTel resource attributes; keys here win on collision. |
+| `drop_value_obj_attributes` | no | `true` | Drop NAT's `input.value_obj` / `output.value_obj` span attributes, a second serialization of `input.value` / `output.value` that nothing reads. |
+| `coalesce_streamed_output` | no | `true` | Merge a streaming function's per-token `DRAgentEventResponse` chunks into one response before it is written to `output.value`. Every non-delta event is kept, so tool calls and run boundaries stay visible. |
 
 Batch-tuning knobs (`batch_size`, `flush_interval`, `max_queue_size`, etc.) are inherited from NAT's `BatchConfigMixin`; defaults are fine for most agents.
 

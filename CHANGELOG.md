@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.8 - 2026-10-22
+- `dragent/plugins/datarobot_otelcollector`: drop the `input.value_obj` / `output.value_obj` span
+  attributes. NAT writes them as a second JSON serialization of the payload already carried by
+  `input.value` / `output.value`, and nothing in DataRobot reads them; on a typical streamed run
+  they were a quarter of the trace. Set `drop_value_obj_attributes: false` to keep them.
+- `dragent/plugins/datarobot_otelcollector`: coalesce a function's streamed `DRAgentEventResponse`
+  chunks into one response before writing `output.value`. NAT records a streaming function's output
+  as the list of every chunk it yielded, so a 6 KB answer was stored as ~900 per-token envelopes
+  (~280 KB) on both the workflow span and the inner agent span. Adjacent text, reasoning and
+  tool-argument deltas of the same message or tool call are merged, every other event is kept in
+  order, and usage is summed, so no information is lost. Set `coalesce_streamed_output: false` to
+  export the raw chunk list.
+
 ## 0.30.7 - 2026-10-22
 - Raise the minimum `pypdf` version from `>=6.19.0` to `>=6.21.1`.
 - Raise the minimum `virtualenv` version from `>=21.7.13` to `>=21.14.9`.

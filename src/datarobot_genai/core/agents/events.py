@@ -54,6 +54,72 @@ _REASONING_DELTA_TYPES = frozenset(
     }
 )
 _TOOL_START_TYPES = frozenset({EventType.TOOL_CALL_START, EventType.TOOL_CALL_CHUNK})
+_TOOL_DELTA_TYPES = frozenset({EventType.TOOL_CALL_ARGS, EventType.TOOL_CALL_CHUNK})
+
+
+def _delta_run_key(event: Event) -> tuple[EventType, str | None] | None:
+    """Return the merge key for a per-token delta event, or ``None`` if it is not one.
+
+    Two adjacent events merge when they share a key: the same event type and the
+    same ``message_id`` (text / reasoning) or ``tool_call_id`` (tool arguments).
+    A delta event whose ``delta`` is empty (a ``ToolCallChunk`` that only names the
+    tool, for example) has no key, so it is kept verbatim and breaks the run.
+    """
+    event_type = event.type
+    if event_type in _TEXT_DELTA_TYPES or event_type in _REASONING_DELTA_TYPES:
+        key_id = getattr(event, "message_id", None)
+    elif event_type in _TOOL_DELTA_TYPES:
+        key_id = getattr(event, "tool_call_id", None)
+    else:
+        return None
+    if not getattr(event, "delta", None):
+        return None
+    return event_type, key_id
+
+
+def coalesce_delta_events(events: Iterable[Event]) -> list[Event]:
+    """Merge each run of consecutive per-token delta events into one event.
+
+    Text (``TEXT_MESSAGE_CONTENT`` / ``TEXT_MESSAGE_CHUNK``), reasoning
+    (``REASONING_MESSAGE_CONTENT`` / ``REASONING_MESSAGE_CHUNK`` /
+    ``THINKING_TEXT_MESSAGE_CONTENT``) and tool-argument (``TOOL_CALL_ARGS`` /
+    ``TOOL_CALL_CHUNK``) deltas that are adjacent, share an event type and share
+    an id (``message_id`` / ``tool_call_id``; two ``None`` ids count as equal)
+    collapse into the first event of the run with the concatenated ``delta``.
+    Every other event is kept in place, so ordering is preserved and only the
+    per-token envelopes are lost. Input events are never mutated; a merged
+    event is a ``model_copy`` of the run's first event and a single-event run
+    keeps its original object.
+
+    Used to shrink a streamed run before it is written to a trace, where the
+    per-token split carries no information the merged text does not.
+    """
+    out: list[Event] = []
+    run_first: Event | None = None
+    run_key: tuple[EventType, str | None] | None = None
+    run_parts: list[str] = []
+
+    def _flush() -> None:
+        if run_first is None:
+            return
+        if len(run_parts) == 1:
+            out.append(run_first)
+        else:
+            out.append(run_first.model_copy(update={"delta": "".join(run_parts)}))
+
+    for event in events:
+        key = _delta_run_key(event)
+        if key is not None and key == run_key:
+            run_parts.append(event.delta)  # type: ignore[attr-defined]
+            continue
+        _flush()
+        if key is None:
+            out.append(event)
+            run_first, run_key, run_parts = None, None, []
+        else:
+            run_first, run_key, run_parts = event, key, [event.delta]  # type: ignore[attr-defined]
+    _flush()
+    return out
 
 
 def track_open_text(open_ids: set[str], event: Event) -> None:
