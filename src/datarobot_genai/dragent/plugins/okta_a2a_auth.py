@@ -606,7 +606,7 @@ class XAATokenExchange(abc.ABC):
         # (so a refreshed token for the same user reuses the entry), which means an expired
         # token would otherwise be served the cached XAA token for as long as that lasts --
         # up to an hour -- and then fail at the IdP with an opaque error as soon as the entry
-        # lapsed (INF-820).  Rejecting it here fails at once, says why, and never lets an
+        # lapsed.  Rejecting it here fails at once, says why, and never lets an
         # expired caller token buy access to the remote agent.
         expired_seconds_ago = XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(
             subject_token

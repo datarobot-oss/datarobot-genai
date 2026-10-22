@@ -1230,7 +1230,7 @@ class TestXAATokenExchangeCacheManager:
 
 
 # ---------------------------------------------------------------------------
-# INF-820: cached XAA token expiry and expired caller tokens
+# Cached XAA token expiry and expired caller tokens
 # ---------------------------------------------------------------------------
 
 
@@ -1279,7 +1279,7 @@ class TestInboundTokenExpiry:
         """The cache key ignores ``exp``, so an expired token used to hit a fresh token's entry.
 
         That masked the expired token for up to an hour, then the exchange failed at the IdP
-        once the entry lapsed (INF-820).
+        once the entry lapsed.
         """
         cache = TLRUCache(maxsize=10, ttu=lambda key, value, now: float("inf"))
         token_exchange = DummyXAATokenExchangeForTest(Mock(), cache)

@@ -1326,7 +1326,7 @@ def test_sanitize_a2a_error_explains_expired_inbound_token() -> None:
 
 
 class TestCredentialServiceSurfacesExpiredInboundToken:
-    """INF-820: the expired-token error must reach the model, not turn into a bare 401."""
+    """The expired-token error must reach the model, not turn into a bare 401."""
 
     @staticmethod
     def _service(error: Exception) -> A2ACredentialServiceWithDisabledCache:
