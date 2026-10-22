@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.7 - 2026-10-22
+- Raise the minimum `pypdf` version from `>=6.19.0` to `>=6.21.1`.
+- Raise the minimum `virtualenv` version from `>=21.7.13` to `>=21.14.9`.
+- Raise the declared requirement `pypdf>=6.19.0` to `pypdf>=6.21.1` to match a CVE fix this repo
+  already enforces.
+- Raise the declared requirement `pypdf>=6.19.0,<7.0.0` to `pypdf>=6.21.1,<7.0.0` to match a CVE fix
+  this repo already enforces.
+
 ## 0.30.6 - 2026-10-21
 - Add a minimum version for `certifi`: `>=2026.10.19`.
 - Add a minimum version for `pillow`: `>=13.0.0,<14`.
