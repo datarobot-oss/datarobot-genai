@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.30.6"
+version = "0.30.7"
 source = { editable = "../" }
 
 [package.metadata]
@@ -346,8 +346,8 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcpbase'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcputils'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.19.0,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.19.0,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.1,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.1,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dateutil", marker = "extra == 'drtools'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0,<2.0.0" },
@@ -378,7 +378,7 @@ dev = [
     { name = "perplexityai", specifier = ">=0.27" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pre-commit" },
-    { name = "pypdf", specifier = ">=6.19.0" },
+    { name = "pypdf", specifier = ">=6.21.1" },
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
