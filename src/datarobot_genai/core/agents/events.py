@@ -86,10 +86,12 @@ def coalesce_delta_events(events: Iterable[Event]) -> list[Event]:
     ``TOOL_CALL_CHUNK``) deltas that are adjacent, share an event type and share
     an id (``message_id`` / ``tool_call_id``; two ``None`` ids count as equal)
     collapse into the first event of the run with the concatenated ``delta``.
-    Every other event is kept in place, so ordering is preserved and only the
-    per-token envelopes are lost. Input events are never mutated; a merged
-    event is a ``model_copy`` of the run's first event and a single-event run
-    keeps its original object.
+    Every other event is kept in place, so ordering is preserved. What is lost
+    is the per-token split itself: a merged event keeps the first event's
+    fields (``timestamp``, ``raw_event``, role, name) and only its ``delta``
+    is the concatenation. Input events are never mutated; a merged event is a
+    ``model_copy`` of the run's first event and a single-event run keeps its
+    original object.
 
     Used to shrink a streamed run before it is written to a trace, where the
     per-token split carries no information the merged text does not.

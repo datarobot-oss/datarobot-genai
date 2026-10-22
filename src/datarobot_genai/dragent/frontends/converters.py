@@ -589,7 +589,9 @@ def coalesce_dragent_event_responses(
     ``datarobot_moderations`` last non-``None``) but the event list goes through
     :func:`coalesce_delta_events` and ``original_chunk`` is dropped, since it only
     ever describes a single chunk. Meant for trace export, where the per-chunk
-    envelopes are noise and the merged events carry the same information.
+    envelopes are noise and the merged events carry the same text and tool calls.
+    Usage is merged by the same rule the non-streaming response uses, so the trace
+    and the API agree on a run's usage.
     """
     aggregated = aggregate_dragent_event_responses(responses)
     return DRAgentEventResponse(

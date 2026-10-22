@@ -13,9 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   chunks into one response before writing `output.value`. NAT records a streaming function's output
   as the list of every chunk it yielded, so a 6 KB answer was stored as ~900 per-token envelopes
   (~280 KB) on both the workflow span and the inner agent span. Adjacent text, reasoning and
-  tool-argument deltas of the same message or tool call are merged, every other event is kept in
-  order, and usage is summed, so no information is lost. Set `coalesce_streamed_output: false` to
-  export the raw chunk list.
+  tool-argument deltas of the same message or tool call are merged into one event each and every
+  other event is kept in order, so the text, tool calls and run boundaries are unchanged; the
+  per-token split, each chunk's timestamp and the per-chunk usage snapshots are not kept. Usage,
+  model and moderation metadata are merged the same way `aggregate_dragent_event_responses`
+  merges them for the non-streaming response. Set `coalesce_streamed_output: false` to export the
+  raw chunk list.
 
 ## 0.30.7 - 2026-10-22
 - Raise the minimum `pypdf` version from `>=6.19.0` to `>=6.21.1`.
