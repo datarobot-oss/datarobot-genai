@@ -46,6 +46,7 @@ from pydantic import ValidationError
 
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
 from datarobot_genai.dragent.plugins.okta_a2a_auth import ApiTokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessAuthProviderConfig,
@@ -989,6 +990,7 @@ class TestXAATokenExchangeCacheManager:
         config = Mock()
         config.cache_max_size = 10
         config.cache_max_ttl_in_second = ttl_ceiling_in_config
+        config.cache_refresh_margin_in_second = 0
         return config
 
     @pytest.fixture
@@ -1225,3 +1227,121 @@ class TestXAATokenExchangeCacheManager:
         assert isinstance(cache_object, TLRUCache)
         assert cache_object.maxsize == mock_config.cache_max_size
         assert cache_object.ttu == manager.ttu_handler
+
+
+# ---------------------------------------------------------------------------
+# Cached XAA token expiry and expired caller tokens
+# ---------------------------------------------------------------------------
+
+
+class TestInboundTokenExpiry:
+    # Offsets, not absolute times: parametrize runs at collection, which can be well before
+    # the test itself in a large run, and would push "within leeway" past the leeway.
+    @pytest.mark.parametrize(
+        "exp_offset",
+        [
+            600,  # valid
+            -5,  # expired, but within clock-skew leeway
+            None,  # no exp: let the IdP decide
+        ],
+        ids=["valid", "within-leeway", "no-exp"],
+    )
+    def test_subject_token_not_treated_as_expired(self, exp_offset: int | None) -> None:
+        claims: dict[str, Any] = {"sub": "u"}
+        if exp_offset is not None:
+            claims["exp"] = time.time() + exp_offset
+        token = make_jwt(**claims)
+        assert XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(token) is None
+
+    @pytest.mark.parametrize("token", ["opaque-not-a-jwt", ""], ids=["opaque", "empty"])
+    def test_unreadable_subject_token_not_treated_as_expired(self, token: str) -> None:
+        assert XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(token) is None
+
+    def test_expired_subject_token_reports_age(self) -> None:
+        token = make_jwt(sub="u", exp=int(time.time()) - 600)
+        age = XAATokenExchangeCacheManager.get_subject_token_expired_seconds_ago(token)
+        assert age is not None
+        assert 590 <= age <= 610
+
+    async def test_expired_subject_token_is_rejected_before_the_idp(
+        self, dummy_cache: TLRUCache
+    ) -> None:
+        token_exchange = DummyXAATokenExchangeForTest(Mock(), dummy_cache)
+        token_exchange._exchange_token_impl = AsyncMock()
+
+        with pytest.raises(InboundTokenExpiredError, match="refreshed token"):
+            await token_exchange.exchange_token(
+                Mock(), make_jwt(sub="u", exp=int(time.time()) - 600)
+            )
+        token_exchange._exchange_token_impl.assert_not_called()
+
+    async def test_expired_subject_token_is_not_served_a_cached_xaa_token(self) -> None:
+        """The cache key ignores ``exp``, so an expired token used to hit a fresh token's entry.
+
+        That masked the expired token for up to an hour, then the exchange failed at the IdP
+        once the entry lapsed.
+        """
+        cache = TLRUCache(maxsize=10, ttu=lambda key, value, now: float("inf"))
+        token_exchange = DummyXAATokenExchangeForTest(Mock(), cache)
+        token_exchange._exchange_token_impl = AsyncMock(return_value="xaa-token")
+        params = _CrossAppFlowParams(
+            token_url="https://as.example.com/v1/token",
+            trusted_issuer="https://org.example.com",
+            exchange_audience="https://as.example.com",
+            target_audience=None,
+            token_endpoint_auth_method="private_key_jwt",
+            id_jag_scopes=["read"],
+        )
+        fresh = make_jwt(sub="u", iss="i", exp=int(time.time()) + 600, jti="1")
+        expired = make_jwt(sub="u", iss="i", exp=int(time.time()) - 600, jti="2")
+
+        assert await token_exchange.exchange_token(params, fresh) == "xaa-token"
+        with pytest.raises(InboundTokenExpiredError):
+            await token_exchange.exchange_token(params, expired)
+        token_exchange._exchange_token_impl.assert_awaited_once()
+
+    def test_error_message_carries_no_token_material(self) -> None:
+        err = InboundTokenExpiredError(42.7)
+        assert "42s ago" in str(err)
+        assert OAUTH_ACCESS_TOKEN_HEADER in str(err)
+
+
+class TestCacheRefreshMargin:
+    def test_ttu_expires_entry_ahead_of_token(self) -> None:
+        config = Mock(cache_max_ttl_in_second=3600, cache_refresh_margin_in_second=60)
+        manager = XAATokenExchangeCacheManager(config)
+        token = make_jwt(sub="u", exp=int(time.time()) + 600)
+
+        expires = manager.ttu_handler("key", token, 1000.0)
+
+        assert 1000.0 + 600 - 60 - 2 <= expires <= 1000.0 + 600 - 60
+
+    def test_token_inside_margin_is_not_cached(self) -> None:
+        config = Mock(
+            cache_max_size=10, cache_max_ttl_in_second=3600, cache_refresh_margin_in_second=60
+        )
+        cache = XAATokenExchangeCacheManager(config).get_tlru_cache()
+
+        cache["key"] = make_jwt(sub="u", exp=int(time.time()) + 30)
+
+        assert "key" not in cache
+
+    def test_cached_token_dropped_once_inside_margin(self) -> None:
+        config = Mock(
+            cache_max_size=10, cache_max_ttl_in_second=3600, cache_refresh_margin_in_second=60
+        )
+        clock = [0.0]
+        manager = XAATokenExchangeCacheManager(config)
+        cache = TLRUCache(10, ttu=manager.ttu_handler, timer=lambda: clock[0])
+
+        cache["key"] = make_jwt(sub="u", exp=int(time.time()) + 600)
+        clock[0] = 500.0
+        assert "key" in cache
+        clock[0] = 545.0  # 55s left on the token: inside the 60s margin
+        assert "key" not in cache
+
+    def test_default_margin(self) -> None:
+        field = OAuth2CrossApplicationAccessAuthProviderConfig.model_fields[
+            "cache_refresh_margin_in_second"
+        ]
+        assert field.default == 60

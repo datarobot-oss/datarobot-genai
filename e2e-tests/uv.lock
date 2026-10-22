@@ -1076,7 +1076,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.30.7"
+version = "0.30.8"
 source = { editable = "../" }
 
 [package.optional-dependencies]
