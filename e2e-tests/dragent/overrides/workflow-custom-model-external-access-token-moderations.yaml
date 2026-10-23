@@ -16,6 +16,11 @@
 # (``x-datarobot-external-access-token``) while the configured DATAROBOT_API_TOKEN is invalid.
 base: workflow.yaml
 
+llms:
+  datarobot_llm:
+    # langgraph / llamaindex enable it; the case's Azure gpt-4o rejects the ``thinking`` argument.
+    reasoning: false
+
 middleware:
   datarobot_guardrails:
     _type: datarobot_moderation
