@@ -91,6 +91,10 @@ cases:
       LLM: external
       LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
       LLM_USE_DATAROBOT_LLM_GATEWAY: 0
+      # CI sets these job-wide; they outrank LLM_DEFAULT_MODEL and would route the LLM to a
+      # DataRobot deployment with the invalid key.
+      LLM_DEPLOYMENT_ID: ""
+      LLM_NIM_DEPLOYMENT_ID: ""
       MCP_DEPLOYMENT_ID: ""
       DATAROBOT_API_TOKEN: "invalid-e2e-api-token"
       WORKFLOW_FILE: workflow-custom-model-external-access-token-moderations.yaml
