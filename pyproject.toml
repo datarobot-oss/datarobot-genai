@@ -138,16 +138,6 @@ override-dependencies = [
 ]
 # cve-sync:end
 
-# datarobot-moderations 11.4.0 is published to TestPyPI only. `explicit` keeps every other package
-# on PyPI. Drop this index and source once 11.4.0 is on PyPI, before releasing.
-[[tool.uv.index]]
-name = "testpypi"
-url = "https://test.pypi.org/simple/"
-explicit = true
-
-[tool.uv.sources]
-datarobot-moderations = { index = "testpypi" }
-
 [dependency-groups]
 dev = [
   "ruff>=0.6.0",
