@@ -98,17 +98,6 @@ def path(request: pytest.FixtureRequest) -> str:
     return request.param
 
 
-def test_guard_authenticates_with_caller_token(http_client: httpx.Client, path: str) -> None:
-    """A valid caller token in the header makes the guard call succeed."""
-    moderations = _moderations(http_client, path, {EXTERNAL_ACCESS_TOKEN_HEADER: _real_api_token()})
-
-    missing = [metric for metric in GUARD_METRICS if metric not in moderations]
-    assert not missing, (
-        f"Expected {missing} from the guard authenticated by the caller token; "
-        f"got {sorted(moderations)}"
-    )
-
-
 @pytest.mark.parametrize(
     "headers",
     [{}, {EXTERNAL_ACCESS_TOKEN_HEADER: "invalid-caller-token"}],
@@ -120,12 +109,27 @@ def test_guard_fails_open_without_valid_token(
     """Without a valid token the guard call fails, but the request still succeeds.
 
     ``no-header`` falls back to the configured key, so this also proves the server really runs
-    with a dead key. ``invalid-header`` proves the caller token replaces the configured key.
+    with a dead key. ``invalid-header`` shows a bad caller token is not rescued by anything else.
+
+    Runs before ``test_guard_authenticates_with_caller_token`` (definition order): only the
+    guard's first, deferred deployment lookup needs a valid token. Once a valid token has
+    resolved it, a worker caches the deployment and later predictions succeed without one.
     """
     moderations = _moderations(http_client, path, headers)
 
     succeeded = [metric for metric in GUARD_METRICS if metric in moderations]
     assert not succeeded, (
         f"Guard unexpectedly succeeded without a valid token: {succeeded}; "
+        f"got {sorted(moderations)}"
+    )
+
+
+def test_guard_authenticates_with_caller_token(http_client: httpx.Client, path: str) -> None:
+    """A valid caller token in the header makes the guard call succeed."""
+    moderations = _moderations(http_client, path, {EXTERNAL_ACCESS_TOKEN_HEADER: _real_api_token()})
+
+    missing = [metric for metric in GUARD_METRICS if metric not in moderations]
+    assert not missing, (
+        f"Expected {missing} from the guard authenticated by the caller token; "
         f"got {sorted(moderations)}"
     )
