@@ -110,10 +110,6 @@ def test_guard_fails_open_without_valid_token(
 
     ``no-header`` falls back to the configured key, so this also proves the server really runs
     with a dead key. ``invalid-header`` shows a bad caller token is not rescued by anything else.
-
-    Runs before ``test_guard_authenticates_with_caller_token`` (definition order): only the
-    guard's first, deferred deployment lookup needs a valid token. Once a valid token has
-    resolved it, a worker caches the deployment and later predictions succeed without one.
     """
     moderations = _moderations(http_client, path, headers)
 
@@ -133,3 +129,17 @@ def test_guard_authenticates_with_caller_token(http_client: httpx.Client, path: 
         f"Expected {missing} from the guard authenticated by the caller token; "
         f"got {sorted(moderations)}"
     )
+
+
+def test_caller_token_does_not_leak_into_next_request(http_client: httpx.Client, path: str) -> None:
+    """A request without a token must not reuse the previous request's caller token.
+
+    Per-user NAT workflows replay the context of the request that built them; dragent drops the
+    per-request part. The keep-alive client sends both requests to the same server worker.
+    """
+    _moderations(http_client, path, {EXTERNAL_ACCESS_TOKEN_HEADER: _real_api_token()})
+
+    moderations = _moderations(http_client, path, {})
+
+    leaked = [metric for metric in GUARD_METRICS if metric in moderations]
+    assert not leaked, f"Guard reused the previous request's token: {leaked}"

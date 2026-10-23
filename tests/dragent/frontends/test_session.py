@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import contextvars
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -20,9 +23,14 @@ import pytest
 from a2a.types import InvalidParamsError
 from a2a.utils.errors import ServerError
 from fastapi import Request
+from nat.builder.context import Context as NATContext
 from nat.builder.context import ContextState
+from nat.builder.function_info import FunctionInfo
+from nat.builder.workflow_builder import WorkflowBuilder
+from nat.cli.register_workflow import register_per_user_function
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
+from nat.data_models.function import FunctionBaseConfig
 from nat.data_models.user_info import UserInfo
 from nat.runtime.session import SessionManager
 from nat.runtime.user_manager import UserManager
@@ -453,3 +461,77 @@ class TestResolveIdentityFromHeaders:
             )
             is None
         )
+
+
+class _RequestContextProbeConfig(FunctionBaseConfig, name="test_request_context_probe"):
+    pass
+
+
+@register_per_user_function(
+    config_type=_RequestContextProbeConfig, input_type=str, single_output_type=str
+)
+async def _request_context_probe(config: _RequestContextProbeConfig, builder: Any):
+    async def _probe(message: str) -> str:
+        context = NATContext.get()
+        headers = context.metadata.headers or {}
+        return f"{headers.get('x-probe')}/{context.conversation_id}"
+
+    yield FunctionInfo.from_fn(_probe)
+
+
+def _probe_request(value: str) -> Request:
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/generate",
+        "query_string": b"",
+        "headers": [
+            (b"x-probe", value.encode()),
+            (b"conversation-id", value.encode()),
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "scheme": "http",
+    }
+
+    async def _receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    return Request(scope, receive=_receive)
+
+
+@pytest.mark.parametrize(
+    ("manager_cls", "expected"),
+    [
+        # Pins the NAT behavior the override works around: if this starts failing, NAT stopped
+        # replaying the build-time context and the override can go.
+        (SessionManager, ["first/first", "first/first"]),
+        # Only the request metadata (headers) is dropped; other context, e.g. the conversation
+        # id, is still replayed as NAT does.
+        (DRAgentAGUISessionManager, ["first/first", "second/first"]),
+    ],
+    ids=["nat-replays-first-request", "dragent-sees-each-requests-headers"],
+)
+async def test_per_user_workflow_sees_each_requests_headers(
+    manager_cls: type[SessionManager], expected: list[str]
+) -> None:
+    config = Config(workflow=_RequestContextProbeConfig())
+
+    async def _serve(manager: SessionManager, value: str) -> str:
+        request = _probe_request(value)
+        async with manager.session(user_id="user-1", http_connection=request) as session:
+            async with session.run("probe") as runner:
+                return await runner.result(to_type=str)
+
+    async with WorkflowBuilder.from_config(config) as builder:
+        manager = await manager_cls.create(config=config, shared_builder=builder)
+        try:
+            # Each request starts from an empty context, as it does under a real server.
+            seen = [
+                await asyncio.create_task(_serve(manager, value), context=contextvars.Context())
+                for value in ("first", "second")
+            ]
+        finally:
+            await manager.shutdown()
+
+    assert seen == expected

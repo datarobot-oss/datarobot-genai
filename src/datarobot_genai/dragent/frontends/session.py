@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextvars
 import logging
 from collections.abc import AsyncIterator
 from collections.abc import Awaitable
@@ -19,11 +20,13 @@ from collections.abc import Callable
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from typing import TYPE_CHECKING
 from typing import Literal
 
 from a2a.types import InvalidParamsError
 from a2a.utils.errors import ServerError
 from fastapi import Request
+from nat.builder.context import ContextState
 from nat.data_models.api_server import Request as NATRequest
 from nat.data_models.authentication import AuthenticatedContext
 from nat.data_models.authentication import AuthFlowType
@@ -43,6 +46,10 @@ from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 
 from .request import DRAgentRunAgentInput
 from .response import DRAgentEventResponse
+
+if TYPE_CHECKING:
+    from nat.builder.per_user_workflow_builder import PerUserWorkflowBuilder
+    from nat.builder.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +176,36 @@ def _build_metadata_from_headers(headers: dict[str, str]) -> RequestAttributes:
     return attrs
 
 
+def _without_request_metadata(saved: contextvars.Context) -> contextvars.Context:
+    """Return a copy of ``saved`` without NAT's request metadata (headers, cookies, payload)."""
+    metadata = ContextState.get()._metadata
+
+    def _copy() -> contextvars.Context:
+        for var, value in saved.items():
+            if var is not metadata:
+                var.set(value)
+        return contextvars.copy_context()
+
+    return contextvars.Context().run(_copy)
+
+
 class DRAgentAGUISessionManager(SessionManager):
+    async def _get_or_create_per_user_builder(
+        self, user_id: str
+    ) -> tuple["PerUserWorkflowBuilder", "Workflow"]:
+        """Build per-user workflows that read each request's own headers.
+
+        NAT snapshots the context when it builds a workflow (``Workflow._saved_context``) and
+        restores it at the start of every run. A per-user workflow is built inside the user's
+        first request, so ``Context.get().metadata`` would return that request's headers on
+        every later run (e.g. a stale caller access token). Only the request metadata is
+        dropped from the snapshot; build-time code still sees it, and every other context
+        variable is replayed as NAT does. Remove once NAT stops restoring request metadata.
+        """
+        builder, workflow = await super()._get_or_create_per_user_builder(user_id)
+        workflow._saved_context = _without_request_metadata(workflow._saved_context)
+        return builder, workflow
+
     @asynccontextmanager
     async def session(
         self,
