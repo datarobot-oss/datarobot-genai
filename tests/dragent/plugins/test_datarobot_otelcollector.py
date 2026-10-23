@@ -17,17 +17,31 @@
 from __future__ import annotations
 
 import json
+import uuid
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from ag_ui.core import TextMessageContentEvent
+from ag_ui.core import TextMessageEndEvent
+from ag_ui.core import TextMessageStartEvent
+from nat.builder.context import IntermediateStep
+from nat.builder.context import IntermediateStepPayload
+from nat.builder.context import IntermediateStepType
+from nat.builder.context import InvocationNode
+from nat.data_models.intermediate_step import StreamEventData
+from nat.data_models.span import Span
+from nat.plugins.opentelemetry import OTLPSpanAdapterExporter
 from pydantic import BaseModel
 
 from datarobot_genai.core.telemetry.datarobot_otel import resolve_datarobot_headers_from_env
+from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     DataRobotOtelCollectorTelemetryExporter,
 )
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import DataRobotOTLPSpanAdapterExporter
+from datarobot_genai.dragent.plugins.datarobot_otelcollector import DropValueObjAttributesProcessor
 from datarobot_genai.dragent.plugins.datarobot_otelcollector import (
     datarobot_otelcollector_telemetry_exporter,
 )
@@ -411,3 +425,219 @@ class TestNonAsciiSpanAttributes:
 
     def test_serialize_payload_plain_string_untouched(self, exporter):
         assert exporter._serialize_payload("東京") == ("東京", False)
+
+
+# --- span shrinking: value_obj processor and streamed-output coalescing ---
+
+
+def _make_step(event_type: IntermediateStepType, step_uuid: str, **data: Any) -> IntermediateStep:
+    return IntermediateStep(
+        parent_id="root",
+        function_ancestry=InvocationNode(
+            function_id="root", function_name="root", parent_id=None, parent_name=None
+        ),
+        payload=IntermediateStepPayload(
+            event_type=event_type,
+            name="langgraph_agent",
+            UUID=step_uuid,
+            data=StreamEventData(**data),
+        ),
+    )
+
+
+def _streamed_output(n: int) -> list[DRAgentEventResponse]:
+    """``n`` per-token chunks of one assistant message, framed by start/end events."""
+    chunks = [
+        DRAgentEventResponse(
+            events=[TextMessageStartEvent(message_id="m1", role="assistant")],
+            usage_metrics={"completion_tokens": 0},
+        )
+    ]
+    chunks += [
+        DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m1", delta=f"tok{i} ")],
+            usage_metrics={"completion_tokens": 1},
+        )
+        for i in range(n)
+    ]
+    chunks.append(DRAgentEventResponse(events=[TextMessageEndEvent(message_id="m1")]))
+    return chunks
+
+
+class TestDropValueObjProcessor:
+    async def test_processor_pops_both_value_obj_keys(self):
+        # GIVEN a span carrying NAT's four payload attributes
+        span = Span(name="s")
+        for key in ("input.value", "input.value_obj", "output.value", "output.value_obj"):
+            span.set_attribute(key, "{}")
+
+        # WHEN processed
+        result = await DropValueObjAttributesProcessor().process(span)
+
+        # THEN only the value_obj keys are gone and the same span is returned
+        assert result is span
+        assert set(span.attributes) == {"input.value", "output.value"}
+
+    async def test_processor_tolerates_missing_keys(self):
+        # GIVEN a span with no value_obj attributes
+        span = Span(name="s", attributes={"nat.event_type": "TOOL_END"})
+
+        # WHEN processed
+        await DropValueObjAttributesProcessor().process(span)
+
+        # THEN nothing changes
+        assert span.attributes == {"nat.event_type": "TOOL_END"}
+
+    def test_exporter_inserts_processor_at_front_by_default(self):
+        # GIVEN an exporter with default options
+        exporter = DataRobotOTLPSpanAdapterExporter(endpoint=ENDPOINT)
+
+        # THEN the processor runs first, before NAT's span-to-OTel conversion
+        assert isinstance(exporter._processors[0], DropValueObjAttributesProcessor)
+        assert exporter._processor_names["drop_value_obj_attributes"] == 0
+
+    def test_exporter_skips_processor_when_disabled(self):
+        # GIVEN an exporter with the option off
+        exporter = DataRobotOTLPSpanAdapterExporter(
+            endpoint=ENDPOINT, drop_value_obj_attributes=False
+        )
+
+        # THEN no such processor is in the pipeline
+        assert not any(isinstance(p, DropValueObjAttributesProcessor) for p in exporter._processors)
+
+
+class TestCoalescedEndEvent:
+    @pytest.fixture
+    def exporter(self) -> DataRobotOTLPSpanAdapterExporter:
+        return DataRobotOTLPSpanAdapterExporter(endpoint=ENDPOINT)
+
+    def test_end_event_passes_coalesced_copy_to_nat(self, exporter):
+        # GIVEN an END step whose output is a streamed chunk list
+        step = _make_step(IntermediateStepType.FUNCTION_END, "u1", output=_streamed_output(3))
+
+        # WHEN the end event is processed
+        with patch.object(OTLPSpanAdapterExporter, "_process_end_event") as parent_end:
+            exporter._process_end_event(step)
+
+        # THEN NAT receives a copy with one coalesced response and the original is untouched
+        received = parent_end.call_args.args[0]
+        assert received is not step
+        assert received.UUID == step.UUID
+        output = received.payload.data.output
+        assert isinstance(output, DRAgentEventResponse)
+        assert [e.type.value for e in output.events] == [
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+        ]
+        assert output.events[1].delta == "tok0 tok1 tok2 "
+        assert output.usage_metrics == {"completion_tokens": 3}
+        assert len(step.payload.data.output) == 5
+
+    @pytest.mark.parametrize(
+        "output",
+        ["plain text", {"answer": 1}, [], [DRAgentEventResponse(), "not a chunk"], None],
+        ids=["str", "dict", "empty-list", "mixed-list", "none"],
+    )
+    def test_end_event_leaves_other_outputs_untouched(self, exporter, output):
+        # GIVEN an END step whose output is not a pure chunk list
+        step = _make_step(IntermediateStepType.FUNCTION_END, "u2", output=output)
+
+        # WHEN the end event is processed
+        with patch.object(OTLPSpanAdapterExporter, "_process_end_event") as parent_end:
+            exporter._process_end_event(step)
+
+        # THEN NAT receives the very same step object
+        assert parent_end.call_args.args[0] is step
+
+    def test_end_event_skips_coalescing_when_disabled(self):
+        # GIVEN an exporter with coalescing off and a chunk-list output
+        exporter = DataRobotOTLPSpanAdapterExporter(
+            endpoint=ENDPOINT, coalesce_streamed_output=False
+        )
+        step = _make_step(IntermediateStepType.FUNCTION_END, "u3", output=_streamed_output(2))
+
+        # WHEN the end event is processed
+        with patch.object(OTLPSpanAdapterExporter, "_process_end_event") as parent_end:
+            exporter._process_end_event(step)
+
+        # THEN NAT receives the original step
+        assert parent_end.call_args.args[0] is step
+
+    def test_end_event_falls_back_to_raw_output_on_coalescer_error(self, exporter):
+        # GIVEN a coalescer that blows up
+        step = _make_step(IntermediateStepType.FUNCTION_END, "u4", output=_streamed_output(2))
+
+        # WHEN the end event is processed
+        with (
+            patch(
+                "datarobot_genai.dragent.plugins.datarobot_otelcollector."
+                "coalesce_dragent_event_responses",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch.object(OTLPSpanAdapterExporter, "_process_end_event") as parent_end,
+        ):
+            exporter._process_end_event(step)
+
+        # THEN the span is still exported with NAT's raw output
+        assert parent_end.call_args.args[0] is step
+
+    def test_end_event_writes_coalesced_output_value_through_nat(self, exporter):
+        # GIVEN a started span and an END step with many streamed chunks
+        step_uuid = str(uuid.uuid4())
+        exporter._process_start_event(
+            _make_step(IntermediateStepType.FUNCTION_START, step_uuid, input={"q": "hi"})
+        )
+        span = exporter._outstanding_spans[step_uuid]
+        chunks = _streamed_output(900)
+        raw_size = len(json.dumps([c.model_dump(mode="json") for c in chunks]))
+
+        # WHEN the end event runs through NAT's span construction
+        # Close the export coroutine NAT hands over, since no loop will run it here.
+        with patch.object(exporter, "_create_export_task", side_effect=lambda coro: coro.close()):
+            exporter._process_end_event(
+                _make_step(IntermediateStepType.FUNCTION_END, step_uuid, output=chunks)
+            )
+
+        # THEN output.value holds one response with three events and is far smaller
+        output_value = json.loads(span.attributes["output.value"])
+        assert len(output_value["events"]) == 3
+        assert output_value["events"][1]["delta"].startswith("tok0 tok1 ")
+        assert output_value["usage_metrics"] == {"completion_tokens": 900}
+        assert len(span.attributes["output.value"]) < raw_size / 10
+
+
+class TestSpanShrinkingFactoryFlags:
+    async def test_flags_default_on(self, clean_env):
+        # GIVEN a config with defaults
+        _set_datarobot_env(clean_env)
+        cfg = _make_config()
+
+        # WHEN the exporter is built
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        # THEN both behaviours are on
+        kwargs = mock_exporter.call_args.kwargs
+        assert kwargs["drop_value_obj_attributes"] is True
+        assert kwargs["coalesce_streamed_output"] is True
+
+    async def test_flags_pass_through_when_disabled(self, clean_env):
+        # GIVEN a config that turns both off
+        _set_datarobot_env(clean_env)
+        cfg = _make_config(drop_value_obj_attributes=False, coalesce_streamed_output=False)
+
+        # WHEN the exporter is built
+        with patch(
+            "datarobot_genai.dragent.plugins.datarobot_otelcollector.DataRobotOTLPSpanAdapterExporter"
+        ) as mock_exporter:
+            async with datarobot_otelcollector_telemetry_exporter(cfg, builder=MagicMock()):
+                pass
+
+        # THEN both reach the exporter as False
+        kwargs = mock_exporter.call_args.kwargs
+        assert kwargs["drop_value_obj_attributes"] is False
+        assert kwargs["coalesce_streamed_output"] is False

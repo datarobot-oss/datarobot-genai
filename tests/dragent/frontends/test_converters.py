@@ -44,6 +44,7 @@ from nat.data_models.api_server import Usage
 import datarobot_genai.dragent.frontends.register  # noqa: E402, F401
 from datarobot_genai.dragent.frontends.converters import aggregate_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import build_assistant_text_events
+from datarobot_genai.dragent.frontends.converters import coalesce_dragent_event_responses
 from datarobot_genai.dragent.frontends.converters import convert_chat_request_to_run_agent_input
 from datarobot_genai.dragent.frontends.converters import (
     convert_chat_response_to_dragent_event_response,
@@ -451,6 +452,95 @@ def test_aggregate_dragent_event_responses_empty() -> None:
     assert result.model is None
     assert result.original_chunk is None
     assert result.datarobot_moderations is None
+
+
+# --- coalesce_dragent_event_responses ---
+
+
+def test_coalesce_dragent_event_responses_merges_deltas_and_sums_usage() -> None:
+    # GIVEN three streamed chunks of one message, each with usage
+    responses = [
+        DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m1", delta=part)],
+            usage_metrics={"completion_tokens": 1, "total_tokens": 1},
+        )
+        for part in ("a", "b", "c")
+    ]
+
+    # WHEN coalesced
+    result = coalesce_dragent_event_responses(responses)
+
+    # THEN the deltas become one event and usage is summed
+    assert len(result.events) == 1
+    assert result.events[0].delta == "abc"
+    assert result.usage_metrics == {"completion_tokens": 3, "total_tokens": 3}
+
+
+def test_coalesce_dragent_event_responses_keeps_non_delta_events_in_order() -> None:
+    # GIVEN a run with a tool call between two text messages
+    responses = [
+        DRAgentEventResponse(events=[TextMessageStartEvent(message_id="m1", role="assistant")]),
+        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="x")]),
+        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="y")]),
+        DRAgentEventResponse(events=[TextMessageEndEvent(message_id="m1")]),
+        DRAgentEventResponse(events=[ToolCallStartEvent(tool_call_id="t1", tool_call_name="f")]),
+        DRAgentEventResponse(events=[ToolCallArgsEvent(tool_call_id="t1", delta="{")]),
+        DRAgentEventResponse(events=[ToolCallArgsEvent(tool_call_id="t1", delta="}")]),
+        DRAgentEventResponse(events=[ToolCallEndEvent(tool_call_id="t1")]),
+    ]
+
+    # WHEN coalesced
+    result = coalesce_dragent_event_responses(responses)
+
+    # THEN every boundary event survives and each delta run is one event
+    assert [e.type.value for e in result.events] == [
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CONTENT",
+        "TEXT_MESSAGE_END",
+        "TOOL_CALL_START",
+        "TOOL_CALL_ARGS",
+        "TOOL_CALL_END",
+    ]
+    assert result.events[1].delta == "xy"
+    assert result.events[4].delta == "{}"
+
+
+def test_coalesce_dragent_event_responses_keeps_last_model_and_moderations_drops_chunk() -> None:
+    # GIVEN chunks where the last one carries model, moderations and an original chunk
+    chunk = ChatResponseChunk(
+        id="c1",
+        choices=[ChatResponseChunkChoice(index=0, delta=ChoiceDelta(content="x"))],
+        created=datetime.datetime.now(datetime.UTC),
+        model="m",
+    )
+    responses = [
+        DRAgentEventResponse(events=[TextMessageContentEvent(message_id="m1", delta="a")]),
+        DRAgentEventResponse(
+            events=[TextMessageContentEvent(message_id="m1", delta="b")],
+            model="gpt-x",
+            datarobot_moderations={"score": 1},
+            original_chunk=chunk,
+        ),
+    ]
+
+    # WHEN coalesced
+    result = coalesce_dragent_event_responses(responses)
+
+    # THEN model and moderations are kept and the per-chunk original is dropped
+    assert result.model == "gpt-x"
+    assert result.datarobot_moderations == {"score": 1}
+    assert result.original_chunk is None
+
+
+def test_coalesce_dragent_event_responses_empty() -> None:
+    # GIVEN no chunks
+    result = coalesce_dragent_event_responses([])
+
+    # THEN the result is an empty response
+    assert result.events == []
+    assert result.usage_metrics is None
+    assert result.model is None
+    assert result.original_chunk is None
 
 
 # --- convert_dragent_event_response_to_str ---

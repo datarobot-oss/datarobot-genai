@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.30.9 - 2026-10-22
+- `dragent/plugins/datarobot_otelcollector`: drop the `input.value_obj` / `output.value_obj` span
+  attributes. NAT writes them as a second JSON serialization of the payload already carried by
+  `input.value` / `output.value`, and nothing in DataRobot reads them; on a typical streamed run
+  they were a quarter of the trace. Set `drop_value_obj_attributes: false` to keep them.
+- `dragent/plugins/datarobot_otelcollector`: coalesce a function's streamed `DRAgentEventResponse`
+  chunks into one response before writing `output.value`. NAT records a streaming function's output
+  as the list of every chunk it yielded, so a 6 KB answer was stored as ~900 per-token envelopes
+  (~280 KB) on both the workflow span and the inner agent span. Adjacent text, reasoning and
+  tool-argument deltas of the same message or tool call are merged into one event each and every
+  other event is kept in order, so the text, tool calls and run boundaries are unchanged; the
+  per-token split, each chunk's timestamp and the per-chunk usage snapshots are not kept. Usage,
+  model and moderation metadata are merged the same way `aggregate_dragent_event_responses`
+  merges them for the non-streaming response. Set `coalesce_streamed_output: false` to export the
+  raw chunk list.
+
 ## 0.30.8 - 2026-10-22
 - `dragent/plugins/okta_a2a_auth`: check the caller's access token for expiry before the XAA token cache and the Okta exchange. The cache key leaves out `exp`, so an expired caller token was served a cached exchanged token for up to an hour. Once that entry expired, the Okta exchange failed with an unclear error and the agent lost A2A. An expired token now fails at once with `InboundTokenExpiredError`, which says the caller must forward a refreshed token. A 30s allowance covers clock skew, and tokens without a readable `exp` still go to Okta.
 - `dragent/plugins/okta_a2a_auth`: add `cache_refresh_margin_in_second` (default 60). A cached XAA access token is dropped this long before it expires, so it can't expire during a remote agent call.

@@ -12,16 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from ag_ui.core import ReasoningMessageChunkEvent
+from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import RunAgentInput
+from ag_ui.core import TextMessageChunkEvent
 from ag_ui.core import TextMessageContentEvent
 from ag_ui.core import TextMessageEndEvent
 from ag_ui.core import TextMessageStartEvent
+from ag_ui.core import ThinkingTextMessageContentEvent
 from ag_ui.core import ToolCallArgsEvent
+from ag_ui.core import ToolCallChunkEvent
 from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallResultEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import UserMessage
 
+from datarobot_genai.core.agents.events import coalesce_delta_events
 from datarobot_genai.core.agents.events import events_to_messages
 from datarobot_genai.core.agents.history import drop_unpaired_boundary_tool_turns
 from datarobot_genai.core.agents.history import extract_history_messages
@@ -267,3 +272,122 @@ def test_is_replayable_as_history() -> None:
     assert paired[assistant_idx].get("tool_calls"), "tool call dropped from replayed history"
     assert paired[assistant_idx + 1]["role"] == "tool"
     assert "69cbb73789723b6936c6c9e1" in paired[assistant_idx + 1]["content"]
+
+
+# --- coalesce_delta_events ---
+
+
+def test_coalesce_merges_consecutive_text_deltas_of_one_message() -> None:
+    # GIVEN a streamed message split into three deltas
+    start = TextMessageStartEvent(message_id="m1", role="assistant")
+    end = TextMessageEndEvent(message_id="m1")
+    deltas = [TextMessageContentEvent(message_id="m1", delta=part) for part in ("Hel", "lo", "!")]
+    # WHEN coalesced
+    out = coalesce_delta_events([start, *deltas, end])
+    # THEN one content event carries the joined text and the boundaries are the same objects
+    assert [e.type for e in out] == [start.type, deltas[0].type, end.type]
+    assert out[1].delta == "Hello!"
+    assert out[1].message_id == "m1"
+    assert out[0] is start and out[2] is end
+
+
+def test_coalesce_keeps_interleaved_messages_apart_and_in_order() -> None:
+    # GIVEN deltas of two messages interleaved
+    events = [
+        TextMessageContentEvent(message_id="m1", delta="a"),
+        TextMessageContentEvent(message_id="m2", delta="b"),
+        TextMessageContentEvent(message_id="m1", delta="c"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN nothing merges across the boundary and order is preserved
+    assert [(e.message_id, e.delta) for e in out] == [("m1", "a"), ("m2", "b"), ("m1", "c")]
+
+
+def test_coalesce_merges_tool_call_args_by_tool_call_id() -> None:
+    # GIVEN a tool call whose arguments streamed in three pieces
+    events = [
+        ToolCallStartEvent(tool_call_id="tc1", tool_call_name="search"),
+        ToolCallArgsEvent(tool_call_id="tc1", delta='{"q":'),
+        ToolCallArgsEvent(tool_call_id="tc1", delta=' "x"'),
+        ToolCallArgsEvent(tool_call_id="tc1", delta="}"),
+        ToolCallEndEvent(tool_call_id="tc1"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN the arguments are one event and the start/end survive
+    assert [e.type for e in out] == [events[0].type, events[1].type, events[4].type]
+    assert out[1].delta == '{"q": "x"}'
+
+
+def test_coalesce_merges_reasoning_and_thinking_deltas() -> None:
+    # GIVEN reasoning deltas with an id and thinking deltas without one
+    events = [
+        ReasoningMessageContentEvent(message_id="r1", delta="think"),
+        ReasoningMessageContentEvent(message_id="r1", delta="ing"),
+        ThinkingTextMessageContentEvent(delta="more"),
+        ThinkingTextMessageContentEvent(delta=" thoughts"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN each run becomes one event
+    assert [e.delta for e in out] == ["thinking", "more thoughts"]
+
+
+def test_coalesce_merges_adjacent_idless_chunks_of_same_type_only() -> None:
+    # GIVEN two id-less chunks followed by a chunk with an id
+    events = [
+        TextMessageChunkEvent(delta="a"),
+        TextMessageChunkEvent(delta="b"),
+        TextMessageChunkEvent(message_id="m1", delta="c"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN the id-less pair merges and the id-bearing chunk stays separate
+    assert [(e.message_id, e.delta) for e in out] == [(None, "ab"), ("m1", "c")]
+
+
+def test_coalesce_does_not_merge_across_event_types_with_same_id() -> None:
+    # GIVEN a content delta and a chunk delta for the same message
+    events = [
+        TextMessageContentEvent(message_id="m1", delta="a"),
+        TextMessageChunkEvent(message_id="m1", delta="b"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN they stay as two events of their own types
+    assert [type(e) for e in out] == [TextMessageContentEvent, TextMessageChunkEvent]
+
+
+def test_coalesce_keeps_chunk_without_delta_verbatim_and_breaks_the_run() -> None:
+    # GIVEN a name-only tool chunk followed by two argument chunks
+    name_only = ToolCallChunkEvent(tool_call_id="tc1", tool_call_name="search")
+    events = [
+        name_only,
+        ToolCallChunkEvent(tool_call_id="tc1", delta="{"),
+        ToolCallChunkEvent(tool_call_id="tc1", delta="}"),
+    ]
+    # WHEN coalesced
+    out = coalesce_delta_events(events)
+    # THEN the name-only chunk is untouched and the argument chunks merge
+    assert out[0] is name_only
+    assert len(out) == 2
+    assert out[1].delta == "{}"
+
+
+def test_coalesce_does_not_mutate_inputs() -> None:
+    # GIVEN two deltas
+    first = TextMessageContentEvent(message_id="m1", delta="a")
+    second = TextMessageContentEvent(message_id="m1", delta="b")
+    # WHEN coalesced
+    out = coalesce_delta_events([first, second])
+    # THEN the originals keep their deltas and the merged event is a new object
+    assert first.delta == "a" and second.delta == "b"
+    assert out[0] is not first and out[0].delta == "ab"
+
+
+def test_coalesce_empty() -> None:
+    # GIVEN no events
+    # WHEN coalesced
+    # THEN the result is empty
+    assert coalesce_delta_events([]) == []
