@@ -248,6 +248,10 @@ jobs:
 
       - name: Run e2e tests
         working-directory: e2e-tests
+        env:
+          # The real key for the test client. The server started earlier keeps the case's
+          # value; custom-model-external-access-token sets an invalid one there.
+          DATAROBOT_API_TOKEN: ${{ secrets.E2E_DATAROBOT_API_TOKEN }}
         run: |
           uv run pytest ${{ matrix.tests }} ${{ matrix.pytest_args }} --junitxml=test_results/results.xml
 

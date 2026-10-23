@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.0 - 2026-10-23
+- Raise the minimum `datarobot-moderations` version from `>=11.3.7` to `>=11.4.0`.
+- `dragent/plugins/datarobot_moderation_middleware`: add `allow_external_access_tokens` (default off), so guards keep working when the agent's DataRobot API key is missing or disabled. When it's on, a dead key no longer fails startup, and guard calls to DataRobot authenticate with the caller's Okta (or other IdP) token from `x-datarobot-external-access-token`. Requests without that header use the configured key. Turn it on in `workflow.yaml`, or per deployment with the `MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS` runtime parameter; the YAML field wins when both are set. The caller's token also goes to `faas_url` and NIM guards unless they set `forward_token: false`.
+- e2e: add the `custom-model-external-access-token` moderation case. The agent starts with an invalid `DATAROBOT_API_TOKEN`, and the test checks that the Emotion Classifier guard authenticates with the real key sent in the header.
+
 ## 0.30.8 - 2026-10-22
 - `dragent/plugins/okta_a2a_auth`: check the caller's access token for expiry before the XAA token cache and the Okta exchange. The cache key leaves out `exp`, so an expired caller token was served a cached exchanged token for up to an hour. Once that entry expired, the Okta exchange failed with an unclear error and the agent lost A2A. An expired token now fails at once with `InboundTokenExpiredError`, which says the caller must forward a refreshed token. A 30s allowance covers clock skew, and tokens without a readable `exp` still go to Okta.
 - `dragent/plugins/okta_a2a_auth`: add `cache_refresh_margin_in_second` (default 60). A cached XAA access token is dropped this long before it expires, so it can't expire during a remote agent call.

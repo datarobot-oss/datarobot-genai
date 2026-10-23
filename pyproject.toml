@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.30.8"
+version = "0.31.0"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -137,6 +137,16 @@ override-dependencies = [
     "python-dotenv>=1.2.2,<2.0.0",
 ]
 # cve-sync:end
+
+# datarobot-moderations 11.4.0 is published to TestPyPI only. `explicit` keeps every other package
+# on PyPI. Drop this index and source once 11.4.0 is on PyPI, before releasing.
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+explicit = true
+
+[tool.uv.sources]
+datarobot-moderations = { index = "testpypi" }
 
 [dependency-groups]
 dev = [

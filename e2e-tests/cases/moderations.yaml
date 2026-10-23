@@ -82,3 +82,23 @@ cases:
 #        - langgraph
 #        - llamaindex
 #        - base
+
+  # The server's DATAROBOT_API_TOKEN is invalid; the guard authenticates with the token the test
+  # sends in ``x-datarobot-external-access-token`` (allow_external_access_tokens). The LLM runs
+  # on Azure so nothing else needs the DataRobot key. Runs only its own test file.
+  - name: custom-model-external-access-token
+    env:
+      LLM: external
+      LLM_DEFAULT_MODEL: "azure/gpt-4o-2024-11-20"
+      LLM_USE_DATAROBOT_LLM_GATEWAY: 0
+      MCP_DEPLOYMENT_ID: ""
+      DATAROBOT_API_TOKEN: "invalid-e2e-api-token"
+      WORKFLOW_FILE: workflow-custom-model-external-access-token-moderations.yaml
+    tests:
+      - ./dragent_tests/test_moderation_external_access_token.py
+    matrix:
+      AGENT:
+        - nat
+        - crewai
+        - langgraph
+        - llamaindex
