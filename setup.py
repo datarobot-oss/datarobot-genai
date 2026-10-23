@@ -35,7 +35,7 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.3.7,<12.0.0",
+    "datarobot-moderations[all]>=11.4.1,<12.0.0",
     # moderations[all] pulls llama-index-llms-bedrock-converse without its async extra. From
     # 0.15 that package made aioboto3 optional; litellm>=1.98 hard-requires boto3>=1.43, which
     # cannot resolve with aiobotocore, so a bare lock drops aioboto3 and async Bedrock Converse

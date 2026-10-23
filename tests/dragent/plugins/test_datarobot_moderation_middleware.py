@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Iterator
 from datetime import UTC
@@ -50,6 +51,7 @@ from ag_ui.core import ToolCallArgsEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from datarobot_dome.api import DataRobotTokenAuthError
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import _from_dataframe
 from datarobot_dome.async_http_client import AsyncHTTPClient
@@ -57,6 +59,7 @@ from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.request_credentials import resolve_datarobot_token
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.builder.context import Context as NatContext
@@ -85,11 +88,15 @@ from datarobot_genai.dragent.frontends.converters import (
 )
 from datarobot_genai.dragent.frontends.request import DRAgentRunAgentInput
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     DataRobotDRAgentNormalizationConfig,
 )
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     DataRobotDRAgentNormalizationMiddleware,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     DataRobotModerationConfig,
@@ -115,6 +122,9 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _streaming_text_events_from_openai_chunk,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    allow_external_access_tokens,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     dome_chunk_to_dragent_event_response,
@@ -1003,7 +1013,7 @@ async def test_pre_invoke_no_prescore_guards_prescore_df_has_blocked_and_replace
         finally:
             _clear_moderation_invoke_state_if_set()
 
-    moderation.evaluate_prompt_async.assert_awaited_once_with("hello")
+    moderation.evaluate_prompt_async.assert_awaited_once_with("hello", api_token=None)
 
 
 async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> None:
@@ -1526,7 +1536,9 @@ async def test_function_middleware_invoke_preserves_prescore_data_across_concurr
     moderation = _moderation_mock(pipeline)
     seen_in_evaluate_response: dict[asyncio.Task[Any], str] = {}
 
-    async def evaluate_prompt_async_side_effect(prompt: str) -> tuple[Any, float, pd.DataFrame]:
+    async def evaluate_prompt_async_side_effect(
+        prompt: str, **_: Any
+    ) -> tuple[Any, float, pd.DataFrame]:
         prescore_df = _prescore_df_ok(prompt)
         return _from_dataframe(prescore_df, PROMPT_COL), 0.0, prescore_df
 
@@ -3913,3 +3925,228 @@ async def test_function_middleware_stream_late_moderated_delta_stays_inside_its_
         (EventType.TEXT_MESSAGE_END, mid_b),
         (EventType.RUN_FINISHED, None),
     ]
+
+
+# --- External access tokens: the caller's IdP token authenticates guard calls -----------------
+
+_MODULE = "datarobot_genai.dragent.plugins.datarobot_moderation_middleware"
+_IDP_TOKEN = "okta-access-token"
+_DEAD_KEY = "disabled-api-key"
+_RUNTIME_PARAM_ENV = f"MLOPS_RUNTIME_PARAM_{ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME}"
+
+_request_token_cases = pytest.mark.parametrize(
+    ("enabled", "headers", "expected"),
+    [
+        (True, {OAUTH_ACCESS_TOKEN_HEADER: _IDP_TOKEN}, _IDP_TOKEN),
+        (True, {}, None),
+        (False, {OAUTH_ACCESS_TOKEN_HEADER: _IDP_TOKEN}, None),
+    ],
+    ids=["enabled", "enabled-no-header", "disabled"],
+)
+
+
+def _patch_request_headers(headers: dict[str, str]) -> Any:
+    context = MagicMock()
+    context.get.return_value.metadata.headers = headers
+    return patch(f"{_MODULE}.Context", context)
+
+
+@pytest.mark.parametrize(
+    ("field", "runtime_param", "expected"),
+    [
+        (None, None, False),
+        (None, True, True),
+        (None, False, False),
+        (True, False, True),
+        (False, True, False),
+    ],
+)
+def test_allow_external_access_tokens_field_wins_over_runtime_param(
+    monkeypatch: pytest.MonkeyPatch,
+    field: bool | None,
+    runtime_param: bool | None,
+    expected: bool,
+) -> None:
+    if runtime_param is None:
+        monkeypatch.delenv(_RUNTIME_PARAM_ENV, raising=False)
+    else:
+        monkeypatch.setenv(_RUNTIME_PARAM_ENV, json.dumps({"payload": runtime_param}))
+
+    cfg = DataRobotModerationConfig(allow_external_access_tokens=field)
+
+    assert allow_external_access_tokens(cfg) is expected
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_load_llm_moderation_pipeline_passes_allow_external_access_tokens(
+    moderation_config_mode: str, enabled: bool
+) -> None:
+    model_dir = INTEGRATION_MODERATION_MODEL_DIR
+    source: dict[str, Any] = (
+        {"moderation": _moderation_config_from_fixture_dir(model_dir)}
+        if moderation_config_mode == "inline"
+        else {"model_dir": str(model_dir)}
+    )
+    cfg = DataRobotModerationConfig(allow_external_access_tokens=enabled, **source)
+
+    with patch(f"{_MODULE}.ModerationPipeline.from_config") as from_config:
+        load_llm_moderation_pipeline(cfg)
+
+    assert from_config.call_args.kwargs["allow_external_access_tokens"] is enabled
+
+
+@_request_token_cases
+async def test_pre_invoke_forwards_request_token(
+    builder_mock: MagicMock, enabled: bool, headers: dict[str, str], expected: str | None
+) -> None:
+    moderation = _moderation_mock(_pipeline_mock())
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+    cfg = DataRobotModerationConfig(allow_external_access_tokens=enabled)
+
+    with (
+        patch(f"{_MODULE}.load_llm_moderation_pipeline", return_value=moderation),
+        _patch_request_headers(headers),
+    ):
+        mw = DataRobotModerationMiddleware(cfg, builder_mock)
+        try:
+            await mw.pre_invoke(_invocation(_make_run_input("hello")))
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    moderation.evaluate_prompt_async.assert_awaited_once_with("hello", api_token=expected)
+
+
+@_request_token_cases
+async def test_post_invoke_forwards_request_token(
+    builder_mock: MagicMock, enabled: bool, headers: dict[str, str], expected: str | None
+) -> None:
+    moderation = _moderation_mock(_pipeline_mock())
+    moderation.evaluate_response_async.return_value = (
+        EvaluationResult(blocked=False),
+        0.0,
+        pd.DataFrame(),
+    )
+    ctx = _invocation(_make_run_input(), output=_text_response("answer"))
+    cfg = DataRobotModerationConfig(allow_external_access_tokens=enabled)
+
+    with (
+        patch(f"{_MODULE}.load_llm_moderation_pipeline", return_value=moderation),
+        _patch_request_headers(headers),
+    ):
+        mw = DataRobotModerationMiddleware(cfg, builder_mock)
+        _set_moderation_invoke_state(
+            prompt="p", prescore_df=_prescore_df_ok("p"), latency_so_far=0.0
+        )
+        try:
+            await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
+
+    assert moderation.evaluate_response_async.await_args.kwargs["api_token"] == expected
+
+
+@_request_token_cases
+async def test_function_middleware_stream_forwards_request_token(
+    builder_mock: MagicMock, enabled: bool, headers: dict[str, str], expected: str | None
+) -> None:
+    moderation = _moderation_mock(_pipeline_mock())
+    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hi"))
+    stream_kwargs: dict[str, Any] = {}
+
+    async def fake_moderate_agui_stream(_pipeline: Any, events: Any, **kwargs: Any) -> Any:
+        stream_kwargs.update(kwargs)
+        async for _ in events:
+            pass
+        return
+        yield
+
+    async def upstream() -> Any:
+        yield _text_response("answer")
+
+    cfg = DataRobotModerationConfig(allow_external_access_tokens=enabled)
+    with (
+        patch(f"{_MODULE}.load_llm_moderation_pipeline", return_value=moderation),
+        patch(f"{_MODULE}.moderate_agui_stream", fake_moderate_agui_stream),
+        _patch_request_headers(headers),
+    ):
+        mw = DataRobotModerationMiddleware(cfg, builder_mock)
+        async for _ in mw.function_middleware_stream(
+            _make_run_input("hi"),
+            call_next=MagicMock(return_value=upstream()),
+            context=_fn_context(),
+        ):
+            pass
+
+    assert stream_kwargs["api_token"] == expected
+
+
+async def test_model_guard_uses_request_token_when_configured_key_is_rejected(
+    builder_mock: MagicMock, moderation_config_mode: str
+) -> None:
+    # GIVEN DataRobot rejects the configured key, and the caller sends an IdP token
+    pytest.importorskip("datarobot")
+    import datarobot as dr
+
+    predict_tokens: list[str | None] = []
+
+    async def fake_predict(_self: Any, deployment: Any, input_df: pd.DataFrame) -> pd.DataFrame:
+        predict_tokens.append(resolve_datarobot_token(_DEAD_KEY))
+        return pd.DataFrame({"trigger_pred": [0.0]}, index=input_df.index)
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                **_CREDENTIAL_ENV,
+                "DATAROBOT_API_TOKEN": _DEAD_KEY,
+                _RUNTIME_PARAM_ENV: json.dumps({"payload": True}),
+            },
+        ),
+        patch(
+            "datarobot_dome.api._verify_datarobot_credentials",
+            side_effect=DataRobotTokenAuthError("rejected"),
+        ),
+        patch(
+            "datarobot.Deployment.get",
+            side_effect=dr.errors.ClientError("Unauthorized", status_code=401),
+        ),
+        patch.object(
+            AsyncHTTPClient,
+            "get_deployment",
+            AsyncMock(return_value=_model_guard_deployment_stub()),
+        ),
+        patch.object(AsyncHTTPClient, "predict", fake_predict),
+        _patch_request_headers({OAUTH_ACCESS_TOKEN_HEADER: _IDP_TOKEN}),
+    ):
+        # WHEN the middleware starts with external access tokens allowed (runtime parameter)
+        mw = _moderation_middleware_for_fixture_dir(
+            INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR,
+            builder_mock,
+            config_mode=moderation_config_mode,
+        )
+        await mw.function_middleware_invoke(
+            _make_run_input("hi"),
+            call_next=AsyncMock(return_value=_text_response("answer")),
+            context=_fn_context(),
+        )
+
+    # THEN startup survives and the guard's prediction call carries the caller's token
+    assert predict_tokens == [_IDP_TOKEN]
+
+
+def test_rejected_configured_key_fails_startup_without_external_access_tokens(
+    builder_mock: MagicMock,
+) -> None:
+    cfg = DataRobotModerationConfig(
+        model_dir=str(INTEGRATION_MODERATION_MODEL_PROMPT_REPLACE_DIR),
+        allow_external_access_tokens=False,
+    )
+    with (
+        patch.dict(os.environ, {**_CREDENTIAL_ENV, "DATAROBOT_API_TOKEN": _DEAD_KEY}),
+        patch(
+            "datarobot_dome.api._verify_datarobot_credentials",
+            side_effect=DataRobotTokenAuthError("rejected"),
+        ),
+        pytest.raises(DataRobotTokenAuthError),
+    ):
+        DataRobotModerationMiddleware(cfg, builder_mock)

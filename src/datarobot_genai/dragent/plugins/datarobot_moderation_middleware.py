@@ -38,6 +38,12 @@ Guard configuration (``_type: datarobot_moderation``):
   only that entry's guards; declare one middleware instance per ``target`` and attach each to a
   different ``functions:``/``workflow:`` entry so individual agents get their own guard set from
   one shared config. Omitting ``target`` merges every target's guards (whole-workflow behavior).
+* **Caller tokens (Okta)** — set ``allow_external_access_tokens: true`` (or the
+  ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter) so a missing or disabled
+  ``DATAROBOT_API_TOKEN`` no longer fails startup, and every guard call to DataRobot authenticates
+  with the caller's IdP token from ``x-datarobot-external-access-token``. That token replaces the
+  configured key for the request; without the header the configured key is used. It is also sent
+  to ``faas_url`` and NIM guards unless they set ``forward_token: false``.
 
 ``ModerationPipeline.stream_response_async`` only accepts OpenAI ``ChatCompletionChunk``; DRAgent
 streaming uses ``convert_dragent_event_response_to_openai_chat_completion_chunk`` at that
@@ -95,6 +101,7 @@ from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatRequest
 from nat.data_models.api_server import ChatRequestOrMessage
@@ -134,6 +141,7 @@ from datarobot_genai.dragent.frontends.converters import convert_dragent_event_r
 from datarobot_genai.dragent.frontends.response import DRAgentEventResponse
 from datarobot_genai.dragent.frontends.response import run_error_response
 from datarobot_genai.dragent.frontends.tool_call_registry import register_tool_call
+from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     resolve_streaming_tool_call_id,
 )
@@ -141,6 +149,8 @@ from datarobot_genai.dragent.workflow_paths import discover_workflow_yaml
 from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_env
 
 _logger = logging.getLogger(__name__)
+
+ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME = "MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS"
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
@@ -214,6 +224,17 @@ class DataRobotModerationConfig(
             "behavior."
         ),
     )
+    allow_external_access_tokens: bool | None = Field(
+        default=None,
+        description=(
+            "Authenticate guard calls to DataRobot with the caller's IdP (e.g. Okta) access token "
+            "from ``x-datarobot-external-access-token``, and keep startup working when the "
+            "configured ``DATAROBOT_API_TOKEN`` is missing or disabled. The caller's token is also "
+            "sent to ``faas_url`` and NIM guards unless they set ``forward_token: false``. When "
+            "omitted, the ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter decides "
+            "(default off)."
+        ),
+    )
 
 
 def moderation_config_has_guards(moderation: ModerationConfig) -> bool:
@@ -282,6 +303,29 @@ def load_moderation_config_from_file(model_dir: str | None) -> ModerationConfig 
     return ModerationConfig.model_validate(raw)
 
 
+def allow_external_access_tokens(config: DataRobotModerationConfig) -> bool:
+    """Return whether guard calls authenticate with the caller's IdP token.
+
+    The ``allow_external_access_tokens`` config field wins when set; otherwise the
+    ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter decides (default off).
+    """
+    if config.allow_external_access_tokens is not None:
+        return config.allow_external_access_tokens
+    return get_runtime_parameter_value_bool(
+        ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, default_value=False
+    )
+
+
+def _build_moderation_pipeline(
+    config: DataRobotModerationConfig, moderation: ModerationConfig
+) -> ModerationPipeline:
+    return ModerationPipeline.from_config(
+        moderation,
+        model_dir=resolve_moderation_model_dir(config.model_dir),
+        allow_external_access_tokens=allow_external_access_tokens(config),
+    )
+
+
 def _load_llm_moderation_pipeline_from_inline(
     config: DataRobotModerationConfig,
 ) -> ModerationPipeline | None:
@@ -291,8 +335,7 @@ def _load_llm_moderation_pipeline_from_inline(
     if not moderation_config_has_guards(moderation):
         _logger.debug("Inline ``moderation`` has no guards; moderation middleware is a no-op")
         return None
-    resolved_model_dir = resolve_moderation_model_dir(config.model_dir)
-    return ModerationPipeline.from_config(moderation, model_dir=resolved_model_dir)
+    return _build_moderation_pipeline(config, moderation)
 
 
 def _load_llm_moderation_pipeline_from_config_file(
@@ -324,9 +367,7 @@ def _load_llm_moderation_pipeline_from_config_file(
         )
         return None
 
-    return ModerationPipeline.from_config(
-        moderation, model_dir=resolve_moderation_model_dir(config.model_dir)
-    )
+    return _build_moderation_pipeline(config, moderation)
 
 
 def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> ModerationPipeline | None:
@@ -1177,6 +1218,7 @@ async def _moderated_dragent_stream(
     *,
     moderation: ModerationPipeline,
     stream_state: _ModerationInvokeState,
+    api_token: str | None = None,
 ) -> AsyncGenerator[DRAgentEventResponse]:
     """Yield DRAgent stream responses with postscore moderation applied via dome's AG-UI path.
 
@@ -1192,7 +1234,7 @@ async def _moderated_dragent_stream(
     _accumulated_usage: dict[str, int] = cast(dict[str, int], default_usage_metrics())
     open_text_message_ids: set[str] = set()
 
-    async def _events_iter() -> AsyncGenerator[Any, None]:
+    async def _events_iter() -> AsyncGenerator[Any]:
         """Flatten batch stream → individual events, accumulating usage on the side."""
         async with contextlib.aclosing(upstream) as src:
             async for response in src:
@@ -1213,6 +1255,7 @@ async def _moderated_dragent_stream(
                 prompt=stream_state.prompt,
                 prescore_df=stream_state.prescore_df,
                 prescore_latency=stream_state.latency_so_far,
+                api_token=api_token,
             )
         ) as agui_stream:
             async for moderated in agui_stream:
@@ -1310,7 +1353,18 @@ class DataRobotModerationMiddleware(
     def __init__(self, config: DataRobotModerationConfig, builder: Builder) -> None:  # noqa: ARG002
         super().__init__()
         self._config = config
+        self._allow_external_access_tokens = allow_external_access_tokens(config)
         self._moderation = load_llm_moderation_pipeline(config)
+
+    def _request_api_token(self) -> str | None:
+        """Return the caller's IdP token for this request's guard calls.
+
+        ``None`` keeps the configured key. Disabled mode never reads the header: dome would
+        ignore the token anyway, logging a warning on every call.
+        """
+        if not self._allow_external_access_tokens:
+            return None
+        return find_idp_token(Context.get().metadata.headers or {})
 
     def _get_moderation(self) -> ModerationPipeline | None:
         """Return the moderation pipeline, retrying discovery if startup missed ``workflow.yaml``."""  # noqa: E501
@@ -1393,7 +1447,7 @@ class DataRobotModerationMiddleware(
             # disconnected trace.
             with use_nat_workflow_trace_context():
                 prompt_eval, prescore_latency, prescore_df = await moderation.evaluate_prompt_async(
-                    prompt
+                    prompt, api_token=self._request_api_token()
                 )
 
             if prompt_eval.blocked:
@@ -1467,6 +1521,7 @@ class DataRobotModerationMiddleware(
                 response_eval, _, _postscore_df = await moderation.evaluate_response_async(
                     response_text,
                     prompt=state.prompt,
+                    api_token=self._request_api_token(),
                 )
 
             prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
@@ -1585,6 +1640,7 @@ class DataRobotModerationMiddleware(
                     ),
                     moderation=moderation,
                     stream_state=stream_state,
+                    api_token=self._request_api_token(),
                 )
             ) as moderated_stream:
                 async for response in moderated_stream:
