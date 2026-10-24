@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [manifest]
@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.31.0"
+version = "0.31.1"
 source = { editable = "../" }
 
 [package.metadata]
@@ -269,10 +269,9 @@ requires-dist = [
     { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.30.0,<3.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.22.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.22.0,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.45.1,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
