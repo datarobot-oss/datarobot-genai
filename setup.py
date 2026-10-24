@@ -131,7 +131,7 @@ drtools =  drmcputils + [
     "aiohttp>=3.14.4,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -154,7 +154,7 @@ drmcpbase = drmcputils + [
     "cachetools>=5.0.0,<8.0.0",
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -171,7 +171,7 @@ drmcp = drmcpbase + drtools + [
     "datarobot-asgi-middleware>=0.2.0,<1.0.0",  # not imported in drmcp; used when running server in DataRobot ASGI env
     "python-dotenv>=1.1.0,<2.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
-    "opentelemetry-api>=1.43.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",

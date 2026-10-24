@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.1 - 2026-10-24
+- Add a minimum version for `nbconvert`: `>=7.17.2`.
+- Raise the minimum `opentelemetry-api` version from `>=1.43.0,<2.0.0` to `>=1.45.1,<2.0.0`.
+- Raise the declared requirement `opentelemetry-api>=1.22.0,<2.0.0` to
+  `opentelemetry-api>=1.45.1,<2.0.0` to match a CVE fix this repo already enforces.
+- Raise the declared requirement `opentelemetry-api>=1.43.0,<2.0.0` to
+  `opentelemetry-api>=1.45.1,<2.0.0` to match a CVE fix this repo already enforces.
+- Raise the `opentelemetry-api` override from `>=1.43.0,<2.0.0` to `>=1.45.1,<2.0.0` to meet a CVE
+  fix.
+
 ## 0.31.0 - 2026-10-23
 - Raise the minimum `datarobot-moderations` version from `>=11.3.7` to `>=11.4.1`.
 - `dragent/plugins/datarobot_moderation_middleware`: add `allow_external_access_tokens` (default off), so guards keep working when the agent's DataRobot API key is missing or disabled. When it's on, a dead key no longer fails startup, and guard calls to DataRobot authenticate with the caller's Okta (or other IdP) token from `x-datarobot-external-access-token`. Requests without that header use the configured key. Turn it on in `workflow.yaml`, or per deployment with the `MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS` runtime parameter; the YAML field wins when both are set. The caller's token also goes to `faas_url` and NIM guards unless they set `forward_token: false`.
