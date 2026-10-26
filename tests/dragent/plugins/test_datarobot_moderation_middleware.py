@@ -57,6 +57,7 @@ from datarobot_dome.api import _from_dataframe
 from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
+from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.request_credentials import resolve_datarobot_token
@@ -141,6 +142,7 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     resolve_moderation_model_dir,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import runtime_parameter_bool
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import select_moderation_target
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     workflow_input_to_completion_dict,
@@ -3975,6 +3977,98 @@ def test_allow_external_access_tokens_field_wins_over_runtime_param(
     cfg = DataRobotModerationConfig(allow_external_access_tokens=field)
 
     assert allow_external_access_tokens(cfg) is expected
+
+
+_PARAM = "SOME_BOOLEAN_FLAG"
+_PREFIXED_PARAM = f"MLOPS_RUNTIME_PARAM_{_PARAM}"
+
+
+@pytest.mark.parametrize(
+    ("prefixed", "plain", "expected"),
+    [
+        # Custom Models: typed JSON envelope
+        (json.dumps({"type": "boolean", "payload": True}), None, True),
+        (json.dumps({"type": "boolean", "payload": False}), None, False),
+        # A string payload must not read as true just because it is non-empty
+        (json.dumps({"type": "string", "payload": "false"}), None, False),
+        (json.dumps({"type": "string", "payload": "true"}), None, True),
+        # Declared but never given a value
+        (json.dumps({"type": "boolean", "payload": None}), None, False),
+        # Workload API runtime and local .env: plain env var
+        (None, "true", True),
+        (None, "TRUE", True),
+        (None, "1", True),
+        (None, "false", False),
+        (None, "0", False),
+        (None, "", False),
+        # The runtime parameter wins over the plain env var
+        (json.dumps({"type": "boolean", "payload": False}), "true", False),
+        # Nothing set
+        (None, None, False),
+    ],
+)
+def test_runtime_parameter_bool_reads_prefixed_and_plain_forms(
+    monkeypatch: pytest.MonkeyPatch, prefixed: str | None, plain: str | None, expected: bool
+) -> None:
+    # GIVEN the flag set as a runtime parameter, a plain env var, both or neither
+    for name, value in ((_PREFIXED_PARAM, prefixed), (_PARAM, plain)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+
+    # WHEN it is read
+    result = runtime_parameter_bool(_PARAM, default=False)
+
+    # THEN both forms are honoured, the runtime parameter first
+    assert result is expected
+
+
+@pytest.mark.parametrize("default", [True, False])
+def test_runtime_parameter_bool_unrecognised_value_uses_default(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, default: bool
+) -> None:
+    # GIVEN a value that is not a boolean
+    monkeypatch.delenv(_PREFIXED_PARAM, raising=False)
+    monkeypatch.setenv(_PARAM, "maybe")
+
+    # WHEN it is read
+    with caplog.at_level("WARNING"):
+        result = runtime_parameter_bool(_PARAM, default=default)
+
+    # THEN the default is used and the bad value is logged
+    assert result is default
+    assert _PARAM in caplog.text
+
+
+def test_allow_external_access_tokens_reads_plain_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN the flag only as a plain env var, as on the Workload API runtime
+    monkeypatch.delenv(_RUNTIME_PARAM_ENV, raising=False)
+    monkeypatch.setenv(ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, "true")
+
+    # WHEN the middleware config leaves the field unset
+    cfg = DataRobotModerationConfig()
+
+    # THEN the env var turns external access tokens on
+    assert allow_external_access_tokens(cfg) is True
+
+
+def test_disable_moderation_reads_plain_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    # GIVEN guards configured and DISABLE_MODERATION=true as a plain env var
+    prefixed = f"MLOPS_RUNTIME_PARAM_{DISABLE_MODERATION_RUNTIME_PARAM_NAME}"
+    monkeypatch.delenv(prefixed, raising=False)
+    monkeypatch.setenv(DISABLE_MODERATION_RUNTIME_PARAM_NAME, "true")
+    cfg = DataRobotModerationConfig(model_dir=str(INTEGRATION_MODERATION_MODEL_DIR))
+
+    # WHEN the pipeline is loaded
+    with patch(f"{_MODULE}.ModerationPipeline.from_config") as from_config:
+        pipeline = load_llm_moderation_pipeline(cfg)
+
+    # THEN moderation is off
+    assert pipeline is None
+    from_config.assert_not_called()
 
 
 @pytest.mark.parametrize("enabled", [True, False])

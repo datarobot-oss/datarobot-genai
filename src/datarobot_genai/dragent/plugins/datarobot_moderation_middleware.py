@@ -39,7 +39,7 @@ Guard configuration (``_type: datarobot_moderation``):
   different ``functions:``/``workflow:`` entry so individual agents get their own guard set from
   one shared config. Omitting ``target`` merges every target's guards (whole-workflow behavior).
 * **Caller tokens (Okta)** — set ``allow_external_access_tokens: true`` (or the
-  ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter) so a missing or disabled
+  ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter or env var) so a missing or disabled
   ``DATAROBOT_API_TOKEN`` no longer fails startup, and every guard call to DataRobot authenticates
   with the caller's IdP token from ``x-datarobot-external-access-token``. That token replaces the
   configured key for the request; without the header the configured key is used. It is also sent
@@ -87,6 +87,7 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
+from datarobot.core.config import getenv as get_runtime_parameter
 from datarobot_dome.agui import moderate_agui_stream
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
@@ -97,7 +98,6 @@ from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
-from datarobot_dome.runtime import get_runtime_parameter_value_bool
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.builder.builder import Builder
@@ -151,6 +151,40 @@ from datarobot_genai.dragent.workflow_paths import publish_dragent_config_file_e
 _logger = logging.getLogger(__name__)
 
 ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME = "MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS"
+
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def runtime_parameter_bool(name: str, *, default: bool) -> bool:
+    """Read a boolean runtime parameter, accepting a plain env var as well.
+
+    Custom Models injects a declared runtime parameter as ``MLOPS_RUNTIME_PARAM_<name>``
+    holding ``{"type": "boolean", "payload": ...}``. The Workload API runtime and local
+    ``.env`` files set the plain ``<name>`` instead. ``datarobot.core.config.getenv`` checks
+    both, prefixed first, the same way ``DataRobotAppFrameworkBaseSettings`` reads every other
+    setting. ``datarobot_dome.runtime.get_runtime_parameter_value_bool`` reads only the
+    prefixed form and coerces the payload with ``bool()``, so a string ``"false"`` reads as
+    true there.
+
+    Unset, empty or unrecognised values return ``default``.
+    """
+    value = get_runtime_parameter(name)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _TRUE_VALUES:
+        return True
+    if text in _FALSE_VALUES:
+        return False
+    if text:
+        _logger.warning(
+            "Ignoring runtime parameter %s=%r: not a boolean; using %s", name, value, default
+        )
+    return default
+
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
 
@@ -307,13 +341,12 @@ def allow_external_access_tokens(config: DataRobotModerationConfig) -> bool:
     """Return whether guard calls authenticate with the caller's IdP token.
 
     The ``allow_external_access_tokens`` config field wins when set; otherwise the
-    ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter decides (default off).
+    ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter (or plain env var, see
+    ``runtime_parameter_bool``) decides (default off).
     """
     if config.allow_external_access_tokens is not None:
         return config.allow_external_access_tokens
-    return get_runtime_parameter_value_bool(
-        ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, default_value=False
-    )
+    return runtime_parameter_bool(ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, default=False)
 
 
 def _build_moderation_pipeline(
@@ -377,7 +410,7 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
     resolved source has no guards, so the middleware is a no-op and can be listed unconditionally
     in ``workflow.yaml``. The inline ``moderation`` block takes priority over the YAML file.
     """
-    if get_runtime_parameter_value_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default_value=False):
+    if runtime_parameter_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default=False):
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
