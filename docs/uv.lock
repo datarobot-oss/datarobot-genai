@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [manifest]
@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.31.0"
+version = "0.31.1"
 source = { editable = "../" }
 
 [package.metadata]
@@ -248,7 +248,7 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
-    { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.4,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.8,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.9.0" },
@@ -269,10 +269,9 @@ requires-dist = [
     { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.30.0,<3.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.22.0,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.22.0,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.45.1,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
@@ -346,8 +345,8 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcpbase'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcputils'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.1,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.1,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.2,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.2,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dateutil", marker = "extra == 'drtools'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0,<2.0.0" },
@@ -378,7 +377,7 @@ dev = [
     { name = "perplexityai", specifier = ">=0.27" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pre-commit" },
-    { name = "pypdf", specifier = ">=6.21.1" },
+    { name = "pypdf", specifier = ">=6.21.2" },
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
