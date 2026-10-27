@@ -39,7 +39,7 @@ Guard configuration (``_type: datarobot_moderation``):
   different ``functions:``/``workflow:`` entry so individual agents get their own guard set from
   one shared config. Omitting ``target`` merges every target's guards (whole-workflow behavior).
 * **Caller tokens (Okta)** — set ``allow_external_access_tokens: true`` (or the
-  ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter or env var) so a missing or disabled
+  ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter) so a missing or disabled
   ``DATAROBOT_API_TOKEN`` no longer fails startup, and every guard call to DataRobot authenticates
   with the caller's IdP token from ``x-datarobot-external-access-token``. That token replaces the
   configured key for the request; without the header the configured key is used. It is also sent
@@ -87,14 +87,13 @@ from ag_ui.core import ToolCallEndEvent
 from ag_ui.core import ToolCallStartEvent
 from ag_ui.core import ToolMessage
 from ag_ui.core import UserMessage
-from datarobot.core.config import getenv as get_runtime_parameter
+from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from datarobot_dome.agui import moderate_agui_stream
 from datarobot_dome.api import EvaluationResult
 from datarobot_dome.api import ModerationPipeline
 from datarobot_dome.api import _from_dataframe
 from datarobot_dome.chat_helper import build_moderations_attribute_for_completion
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
-from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
@@ -127,6 +126,7 @@ from openai.types.chat.chat_completion_chunk import (
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIToolFunction
 from pydantic import Field
+from pydantic_settings import SettingsConfigDict
 
 from datarobot_genai.core.agents import UsageMetrics
 from datarobot_genai.core.agents import default_usage_metrics
@@ -152,38 +152,20 @@ _logger = logging.getLogger(__name__)
 
 ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME = "MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS"
 
-_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
-_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
+class ModerationRuntimeParameters(DataRobotAppFrameworkBaseSettings):
+    """Moderation toggles, read like every other DataRobot runtime parameter.
 
-def runtime_parameter_bool(name: str, *, default: bool) -> bool:
-    """Read a boolean runtime parameter, accepting a plain env var as well.
-
-    Custom Models injects a declared runtime parameter as ``MLOPS_RUNTIME_PARAM_<name>``
-    holding ``{"type": "boolean", "payload": ...}``. The Workload API runtime and local
-    ``.env`` files set the plain ``<name>`` instead. ``datarobot.core.config.getenv`` checks
-    both, prefixed first, the same way ``DataRobotAppFrameworkBaseSettings`` reads every other
-    setting. ``datarobot_dome.runtime.get_runtime_parameter_value_bool`` reads only the
-    prefixed form and coerces the payload with ``bool()``, so a string ``"false"`` reads as
-    true there.
-
-    Unset, empty or unrecognised values return ``default``.
+    ``DataRobotAppFrameworkBaseSettings`` reads the plain ``<NAME>`` env var (Custom Models,
+    the Workload API runtime and a local ``.env`` all set it) and falls back to the
+    ``MLOPS_RUNTIME_PARAM_<NAME>`` JSON form. ``datarobot_dome``'s own reader only checks the
+    prefixed form, so these used to be ignored outside Custom Models.
     """
-    value = get_runtime_parameter(name)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    if text in _TRUE_VALUES:
-        return True
-    if text in _FALSE_VALUES:
-        return False
-    if text:
-        _logger.warning(
-            "Ignoring runtime parameter %s=%r: not a boolean; using %s", name, value, default
-        )
-    return default
+
+    model_config = SettingsConfigDict(env_ignore_empty=True)
+
+    moderation_allow_external_access_tokens: bool = False
+    disable_moderation: bool = False
 
 
 WorkflowInput: TypeAlias = RunAgentInput | ChatRequest | ChatRequestOrMessage
@@ -341,12 +323,11 @@ def allow_external_access_tokens(config: DataRobotModerationConfig) -> bool:
     """Return whether guard calls authenticate with the caller's IdP token.
 
     The ``allow_external_access_tokens`` config field wins when set; otherwise the
-    ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter (or plain env var, see
-    ``runtime_parameter_bool``) decides (default off).
+    ``MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS`` runtime parameter decides (default off).
     """
     if config.allow_external_access_tokens is not None:
         return config.allow_external_access_tokens
-    return runtime_parameter_bool(ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, default=False)
+    return ModerationRuntimeParameters().moderation_allow_external_access_tokens
 
 
 def _build_moderation_pipeline(
@@ -410,7 +391,7 @@ def load_llm_moderation_pipeline(config: DataRobotModerationConfig) -> Moderatio
     resolved source has no guards, so the middleware is a no-op and can be listed unconditionally
     in ``workflow.yaml``. The inline ``moderation`` block takes priority over the YAML file.
     """
-    if runtime_parameter_bool(DISABLE_MODERATION_RUNTIME_PARAM_NAME, default=False):
+    if ModerationRuntimeParameters().disable_moderation:
         _logger.warning("Moderation is disabled via runtime parameter on the model")
         return None
 
