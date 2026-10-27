@@ -89,7 +89,7 @@ dragent = core + [
     "nvidia-nat-opentelemetry==1.9.0",
     "nvidia-nat-langchain[litellm]==1.9.0",  # NAT built-in agents require this; [litellm] moved to extra in 1.9
     "nvidia-nat-mcp==1.9.0",
-    "mem0ai>=1.0.4,<2.0.0",
+    "mem0ai>=1.0.8,<2.0.0",
     "starlette>=1.3.1",  # CVE fix
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
     # >=0.4.0 for GEN_AI_AGENT_NAME
@@ -121,7 +121,7 @@ drtools =  drmcputils + [
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
     "perplexityai>=0.27,<1.0",
-    "pypdf>=6.21.1,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
+    "pypdf>=6.21.2,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
     "polars>=1.0.0,<2.0.0",
     # Required indirectly by polars->pandas conversion.
     "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
@@ -131,7 +131,7 @@ drtools =  drmcputils + [
     "aiohttp>=3.14.4,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -154,7 +154,7 @@ drmcpbase = drmcputils + [
     "cachetools>=5.0.0,<8.0.0",
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.22.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -171,7 +171,7 @@ drmcp = drmcpbase + drtools + [
     "datarobot-asgi-middleware>=0.2.0,<1.0.0",  # not imported in drmcp; used when running server in DataRobot ASGI env
     "python-dotenv>=1.1.0,<2.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
-    "opentelemetry-api>=1.43.0,<2.0.0",
+    "opentelemetry-api>=1.45.1,<2.0.0",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",
