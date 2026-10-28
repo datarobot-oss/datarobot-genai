@@ -57,6 +57,7 @@ from datarobot_dome.api import _from_dataframe
 from datarobot_dome.async_http_client import AsyncHTTPClient
 from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
+from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
 from datarobot_dome.request_credentials import resolve_datarobot_token
@@ -103,6 +104,9 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     DataRobotModerationMiddleware,
+)
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
+    ModerationRuntimeParameters,
 )
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
@@ -3975,6 +3979,105 @@ def test_allow_external_access_tokens_field_wins_over_runtime_param(
     cfg = DataRobotModerationConfig(allow_external_access_tokens=field)
 
     assert allow_external_access_tokens(cfg) is expected
+
+
+_FLAGS = {
+    "moderation_allow_external_access_tokens": ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME,
+    "disable_moderation": DISABLE_MODERATION_RUNTIME_PARAM_NAME,
+}
+
+
+def _set_flag(
+    monkeypatch: pytest.MonkeyPatch, name: str, prefixed: str | None, plain: str | None
+) -> None:
+    for env_name, value in ((f"MLOPS_RUNTIME_PARAM_{name}", prefixed), (name, plain)):
+        if value is None:
+            monkeypatch.delenv(env_name, raising=False)
+        else:
+            monkeypatch.setenv(env_name, value)
+
+
+@pytest.fixture
+def _no_local_settings_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep a developer's ``.env`` or ``pulumi_config.json`` out of the settings tests."""
+    monkeypatch.chdir(tmp_path)
+
+
+def test_moderation_runtime_parameter_fields_match_the_documented_names() -> None:
+    # GIVEN the runtime parameter names the middleware documents
+    # WHEN they are compared with the settings fields that read them
+    # THEN each field reads exactly that env var
+    assert set(ModerationRuntimeParameters.model_fields) == set(_FLAGS)
+    assert all(field.upper() == name for field, name in _FLAGS.items())
+
+
+@pytest.mark.usefixtures("_no_local_settings_files")
+@pytest.mark.parametrize("field", list(_FLAGS))
+@pytest.mark.parametrize(
+    ("prefixed", "plain", "expected"),
+    [
+        # Plain env var: Custom Models, Workload API runtime and local .env all set it
+        (None, "true", True),
+        (None, "TRUE", True),
+        (None, "1", True),
+        (None, "false", False),
+        (None, "0", False),
+        (None, "", False),
+        # MLOPS_RUNTIME_PARAM_ JSON form alone
+        (json.dumps({"type": "boolean", "payload": True}), None, True),
+        (json.dumps({"type": "boolean", "payload": False}), None, False),
+        (json.dumps({"type": "string", "payload": "false"}), None, False),
+        (json.dumps({"type": "boolean", "payload": None}), None, False),
+        # Both set: the plain env var wins, as for every DataRobotAppFrameworkBaseSettings field
+        (json.dumps({"type": "boolean", "payload": True}), "false", False),
+        # Nothing set
+        (None, None, False),
+    ],
+)
+def test_moderation_runtime_parameters_read_plain_and_prefixed_forms(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    prefixed: str | None,
+    plain: str | None,
+    expected: bool,
+) -> None:
+    # GIVEN the flag set as a plain env var, a runtime parameter, both or neither
+    _set_flag(monkeypatch, _FLAGS[field], prefixed, plain)
+
+    # WHEN the moderation settings are read
+    settings = ModerationRuntimeParameters()
+
+    # THEN the flag takes the expected value
+    assert getattr(settings, field) is expected
+
+
+@pytest.mark.usefixtures("_no_local_settings_files")
+def test_allow_external_access_tokens_reads_plain_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GIVEN the flag only as a plain env var, as on the Workload API runtime
+    _set_flag(monkeypatch, ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME, None, "true")
+
+    # WHEN the middleware config leaves the field unset
+    cfg = DataRobotModerationConfig()
+
+    # THEN the env var turns external access tokens on
+    assert allow_external_access_tokens(cfg) is True
+
+
+@pytest.mark.usefixtures("_no_local_settings_files")
+def test_disable_moderation_reads_plain_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    # GIVEN guards configured and DISABLE_MODERATION=true as a plain env var
+    _set_flag(monkeypatch, DISABLE_MODERATION_RUNTIME_PARAM_NAME, None, "true")
+    cfg = DataRobotModerationConfig(model_dir=str(INTEGRATION_MODERATION_MODEL_DIR))
+
+    # WHEN the pipeline is loaded
+    with patch(f"{_MODULE}.ModerationPipeline.from_config") as from_config:
+        pipeline = load_llm_moderation_pipeline(cfg)
+
+    # THEN moderation is off
+    assert pipeline is None
+    from_config.assert_not_called()
 
 
 @pytest.mark.parametrize("enabled", [True, False])

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.2 - 2026-10-26
+- `dragent/plugins/datarobot_moderation_middleware`: `MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS` and `DISABLE_MODERATION` are now read through `DataRobotAppFrameworkBaseSettings`, like other runtime parameters, so the plain env var works on every runtime: Custom Models, the Workload API runtime and a local `.env`. They were read with `datarobot_dome`'s reader, which only checks the `MLOPS_RUNTIME_PARAM_<NAME>` JSON form, so on the Workload API runtime and locally they were ignored. A string payload of `"false"` now reads as off; the old reader coerced it with `bool()`, which turned it on. A value that isn't a boolean now raises a validation error instead of being read as true or false.
+
 ## 0.31.1 - 2026-10-27
 - Add a minimum version for `filelock`: `>=4.2.1`.
 - Add a minimum version for `mem0ai`: `>=1.0.8`.
