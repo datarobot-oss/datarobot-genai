@@ -48,6 +48,7 @@ import random
 import time
 from collections.abc import Iterable
 from collections.abc import Iterator
+from enum import StrEnum
 from typing import Any
 from typing import Literal
 from typing import NamedTuple
@@ -56,6 +57,7 @@ import httpx
 from a2a.types import AgentCard
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 from pydantic import Field
+from pydantic import field_validator
 from pydantic import model_validator
 
 from datarobot_genai.core.config import resolve_config
@@ -64,7 +66,9 @@ from datarobot_genai.dragent.agent_card_registry_backends import LookupKeyType
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import RegistryIds
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
+from datarobot_genai.dragent.deployment_urls import DEFAULT_AGENT_CARD_REGISTRY_PATH
 from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
+from datarobot_genai.dragent.deployment_urls import resolve_external_workload_api_endpoint
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id_async
 
 logger = logging.getLogger(__name__)
@@ -98,6 +102,19 @@ _FAILURE_COOLDOWN_MAX_SECONDS = 60.0
 DuplicateStrategy = Literal["first", "last", "error"]
 
 
+class RegistrySource(StrEnum):
+    """Allowed bases for the registry URL."""
+
+    DATAROBOT_ENDPOINT = "datarobot_endpoint"
+    PREFER_ENCLAVE = "prefer_enclave"
+
+
+def _registry_base_endpoint(source: RegistrySource, endpoint: str) -> str:
+    if source is RegistrySource.PREFER_ENCLAVE:
+        return resolve_external_workload_api_endpoint() or endpoint
+    return endpoint
+
+
 class DataRobotRegistrySettings(DataRobotAppFrameworkBaseSettings):
     """DataRobot endpoint setting for the central agent card registry.
 
@@ -128,6 +145,11 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
     considered fresh (skip registry fetch). ``AGENT_CARD_REGISTRY_CACHE_TTL``
     is the hard bound for stale-if-error when the registry is unreachable.
     When soft TTL is unset it defaults to the hard TTL.
+
+    The registry URL is ``{base} + {AGENT_CARD_REGISTRY_PATH}``, where
+    ``AGENT_CARD_REGISTRY_SOURCE`` chooses the base: ``DATAROBOT_ENDPOINT`` by default,
+    or with ``prefer_enclave`` the enclave's ``https://{host}/api/v2`` when the workload
+    runs on an enclave (``DATAROBOT_ENDPOINT`` otherwise).
     """
 
     agent_card_registry_cache_ttl: int = Field(
@@ -167,6 +189,45 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
             "and 'error' raises AgentCardRegistryError.  Default: 'first'."
         ),
     )
+
+    agent_card_registry_source: RegistrySource = Field(
+        default=RegistrySource.DATAROBOT_ENDPOINT,
+        description=(
+            "Base URL of the agent card registry. 'datarobot_endpoint' uses "
+            "DATAROBOT_ENDPOINT. 'prefer_enclave' uses the enclave's "
+            "https://{host}/api/v2 when the workload runs on an enclave "
+            "(DR_WORKLOAD_EXTERNAL_URL_HOST and _PREFIX both set), and "
+            "DATAROBOT_ENDPOINT otherwise. Default: 'datarobot_endpoint'."
+        ),
+    )
+
+    agent_card_registry_path: str = Field(
+        default=DEFAULT_AGENT_CARD_REGISTRY_PATH,
+        description=(
+            "Registry path after the chosen base, used as written (keep the "
+            "trailing slash). Relative to the /api/v2 base, so it must not start "
+            "with api/v2. Default: '/agentCards/'."
+        ),
+    )
+
+    @field_validator("agent_card_registry_path")
+    @classmethod
+    def _validate_registry_path(cls, value: str) -> str:
+        """Strip the path and reject values that would not join onto an ``/api/v2`` base."""
+        path = value.strip()
+        if not path:
+            raise ValueError("agent_card_registry_path must not be empty")
+        if "://" in path:
+            raise ValueError(
+                "agent_card_registry_path must be a path, not a URL; "
+                "AGENT_CARD_REGISTRY_SOURCE chooses the base"
+            )
+        if path.lstrip("/").startswith("api/v2"):
+            raise ValueError(
+                "agent_card_registry_path is relative to the /api/v2 base and must not "
+                "start with api/v2, e.g. use '/discovery/agentCards/'"
+            )
+        return path
 
     @model_validator(mode="after")
     def _resolve_soft_cache_ttl(self) -> AgentCardRegistryConfig:
@@ -387,13 +448,15 @@ class AgentCardRegistry:
         self._soft_cache_ttl: int = soft_cache_ttl
         self._on_duplicate = config.agent_card_registry_on_duplicate
         self._api_token = api_token
-        self._endpoint = endpoint
+        base = _registry_base_endpoint(config.agent_card_registry_source, endpoint)
+        self._registry_url = build_agent_cards_registry_url(base, config.agent_card_registry_path)
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
         # Monotonic deadline while the registry is treated as unhealthy.
         self._unhealthy_until: float = 0.0
 
         logger.info(
-            "AgentCardRegistry created (cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
+            "AgentCardRegistry created (registry_url=%s, cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
+            self._registry_url,
             self._cache_ttl,
             self._soft_cache_ttl,
             isinstance(self._backend, LayeredAgentCardCacheBackend),
@@ -509,7 +572,7 @@ class AgentCardRegistry:
         """
         self._raise_if_cooldown_active()
 
-        registry_url = build_agent_cards_registry_url(self._endpoint)
+        registry_url = self._registry_url
         headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
         using_owner_key = auth_headers is None
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
